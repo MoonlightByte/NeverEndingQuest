@@ -40,12 +40,48 @@ import json
 import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
-from openai import OpenAI
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
+from core.ai import api_client
+import config
 import jsonschema
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from model_config import convert_to_gemini_schema
+register_callsite("T036", "core/generators/plot_generator.py", 404)
+register_callsite("T037", "core/generators/plot_generator.py", 504)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+# issue #128: pre-load + convert plot_schema for Gemini response_schema so flash
+# models emit the plot structure JSON, not DM narration. Loaded once at import; if
+# it fails, _PLOT_SCHEMA_GEMINI stays None and the Gemini branch raises rather than
+# silently producing narration.
+_PLOT_SCHEMA_GEMINI = None
+try:
+    _plot_schema_path = os.path.join(os.path.dirname(__file__), "..", "..", "schemas", "plot_schema.json")
+    with open(_plot_schema_path, "r", encoding="utf-8") as _f:
+        _PLOT_SCHEMA_GEMINI = convert_to_gemini_schema(json.load(_f))
+except Exception:
+    _PLOT_SCHEMA_GEMINI = None
+
+
+def _parse_plot_text_field(content: Any, field_path: str) -> str:
+    """Validate T036's title/objective text boundary."""
+    if not isinstance(content, str):
+        raise ValueError(f"{field_path} response content must be a string")
+    value = content.strip()
+    if value.startswith("```"):
+        lines = value.splitlines()
+        if len(lines) < 3 or lines[-1].strip() != "```":
+            raise ValueError(f"{field_path} returned an incomplete code fence")
+        value = "\n".join(lines[1:-1]).strip()
+    if value.startswith('"'):
+        value = json.loads(value)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_path} must be a useful non-empty string")
+    if value.lstrip().startswith(("{", "[")):
+        raise ValueError(f"{field_path} must be text, not structured JSON")
+    value = value.strip()
+    if value.casefold() in {"null", "none", "n/a"}:
+        raise ValueError(f"{field_path} must be useful text")
+    return value
+
 
 @dataclass
 class PlotPromptGuide:
@@ -318,6 +354,8 @@ class PlotGenerator:
     def generate_field(self, field_path: str, schema_info: Dict[str, Any], 
                       context: Dict[str, Any]) -> Any:
         """Generate content for a specific field"""
+        if schema_info.get("type") != "string":
+            raise ValueError(f"T036 {field_path} requires a string field schema")
         field_name = field_path.split(".")[-1]
         guide_attr = field_name
         
@@ -342,28 +380,51 @@ Return ONLY the value for this field in the correct format.
 For strings, return just the string.
 For arrays, return just the array.
 For objects, return just the object.
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
-        
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            temperature=0.7,
-            messages=[
-                {"role": "system", "content": "You are an expert 5e adventure designer. Return only the requested data in the exact format needed."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        
-        content = response.choices[0].message.content.strip()
-        
-        # Try to parse as JSON if it looks like JSON
-        if content.startswith(('[', '{')):
+
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            main_cfg = config.DM_MAIN_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            main_cfg = config.DM_MAIN_LMSTUDIO
+        else:  # legacy
+            main_cfg = config.DM_MAIN_LEGACY
+
+        last_error = None
+        for attempt in range(2):
+            retry_prompt = prompt
+            if last_error is not None:
+                retry_prompt += (
+                    "\nPREVIOUS RESPONSE ERROR: "
+                    f"{last_error}\nReturn one useful plain-text string only."
+                )
+            response = capture_and_fanout("T036", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=[
+                    {"role": "system", "content": "You are an expert 5e adventure designer. Return only the requested data in the exact format needed."},
+                    {"role": "user", "content": retry_prompt}
+                ],
+                model=main_cfg["model"],
+                temperature=0.7,
+                response_format=None,
+                **{k: v for k, v in main_cfg.items() if k != "model"})
             try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                pass
-        
-        return content
-    
+                return _parse_plot_text_field(
+                    response.choices[0].message.content, field_path
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                last_error = exc
+                print(
+                    f"WARNING: T036 {field_path} failed validation "
+                    f"(attempt {attempt + 1}/2): {exc}"
+                )
+        raise ValueError(
+            f"T036 {field_path} failed validation after 2 attempts: {last_error}"
+        )
+
     def generate_plot_structure(self, num_plot_points: int, 
                                 context: Dict[str, Any],
                                 context_header: str = "") -> Dict[str, Any]:
@@ -409,19 +470,57 @@ Return a JSON object with this structure:
 }}
 
 IMPORTANT: Each plot point should have its sideQuests array (can be empty). Side quests are nested within plot points, not at the root level.
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
-        
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            temperature=0.8,
-            messages=[
-                {"role": "system", "content": "You are an expert 5e adventure designer."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"}
+
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            main_cfg = config.DM_MAIN_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            main_cfg = config.DM_MAIN_LMSTUDIO
+        else:  # legacy
+            main_cfg = config.DM_MAIN_LEGACY
+
+        # issue #128: attach converted plot schema for Gemini so flash models emit
+        # the plot structure, not DM narration. DM_MAIN_* dicts are shared across
+        # callsites, so attach per-call via extra_params (not the dict).
+        extra_params = {k: v for k, v in main_cfg.items() if k != "model"}
+        if MODEL_PROVIDER == "gemini":
+            if _PLOT_SCHEMA_GEMINI is None:
+                raise RuntimeError(
+                    "issue #128: Gemini plot schema is None (schemas/plot_schema.json "
+                    "failed to load at import). Refusing to call Gemini without "
+                    "response_schema -- it would silently produce DM narration."
+                )
+            extra_params["response_schema"] = _PLOT_SCHEMA_GEMINI
+
+        # MP-H1: a malformed AI response previously raised an uncaught
+        # JSONDecodeError that crashed the entire module build. Retry once on
+        # a parse failure, then fail with a clear, logged error instead.
+        last_err = None
+        for attempt in range(2):
+            response = capture_and_fanout("T037", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=[
+                    {"role": "system", "content": "You are an expert 5e adventure designer."},
+                    {"role": "user", "content": prompt}
+                ],
+                model=main_cfg["model"],
+                temperature=0.8,
+                response_format={"type": "json_object"},
+                **extra_params)
+            raw = response.choices[0].message.content
+            try:
+                return json.loads(raw)
+            except (json.JSONDecodeError, TypeError) as e:
+                last_err = e
+                print(f"WARNING: T037 plot structure returned invalid JSON "
+                      f"(attempt {attempt + 1}/2): {e}. Raw (truncated): {str(raw)[:300]}")
+        raise ValueError(
+            f"Plot structure generation returned invalid JSON after 2 attempts: {last_err}"
         )
-        
-        return json.loads(response.choices[0].message.content)
     
     def generate_plot(self, module_data: Dict[str, Any], 
                      area_data: Dict[str, Any],
@@ -483,9 +582,22 @@ IMPORTANT: Each plot point should have its sideQuests array (can be empty). Side
         print(f"Generated plot title: {plot_data['plotTitle']}")
         print(f"Generated main objective: {plot_data['mainObjective']}")
         
+        # issue #128: restore the area's real location IDs into the plot-structure
+        # context. Regression from commit 0f718e7 (which deleted _slim_context_for_plot):
+        # generate_plot_structure dumps `context` into its prompt, so without this the AI
+        # had no valid locationIds and guessed plotPoints[].location / involvedLocations.
+        field_context["availableLocations"] = [
+            {
+                "locationId": loc.get("locationId"),
+                "name": loc.get("name"),
+                "type": loc.get("type"),
+            }
+            for loc in location_data.get("locations", [])
+        ]
+
         # Generate complete plot structure
         num_plot_points = min(8, max(4, len(location_data.get("locations", [])) // 3))
-        
+
         plot_structure = self.generate_plot_structure(num_plot_points, field_context, context_header)
         
         plot_data["plotPoints"] = plot_structure["plotPoints"]
@@ -511,23 +623,38 @@ IMPORTANT: Each plot point should have its sideQuests array (can be empty). Side
         
         # Content validation
         available_locations = {loc["locationId"] for loc in location_data.get("locations", [])}
-        
+
         # Check plot point locations exist
         for pp in plot_data.get("plotPoints", []):
             if pp["location"] not in available_locations:
                 errors.append(f"Plot point {pp['id']} references non-existent location {pp['location']}")
-            
-            # Check next points exist
-            all_pp_ids = {p["id"] for p in plot_data.get("plotPoints", [])}
-            for next_id in pp.get("nextPoints", []):
-                if next_id not in all_pp_ids:
-                    errors.append(f"Plot point {pp['id']} references non-existent next point {next_id}")
-            
+
             # Check side quest locations
             for sq in pp.get("sideQuests", []):
                 for loc_id in sq.get("involvedLocations", []):
                     if loc_id not in available_locations:
                         errors.append(f"Side quest {sq['id']} references non-existent location {loc_id}")
+
+        # Cross-reference nextPoints against the set of declared plot point IDs.
+        # Schema only enforces that nextPoints items are strings (VAL-M5), so
+        # a generated plot with nextPoints=["PP99"] -- where PP99 does not
+        # exist in plotPoints -- would otherwise pass validation and produce
+        # a dangling pointer at runtime. Defensive isinstance/"id in pp" guards
+        # keep this pass from crashing on malformed entries that somehow slip
+        # past schema validation (e.g. a future schema change relaxing it).
+        plot_point_ids = {
+            pp["id"]
+            for pp in plot_data.get("plotPoints", [])
+            if isinstance(pp, dict) and "id" in pp
+        }
+        for pp in plot_data.get("plotPoints", []):
+            if not isinstance(pp, dict):
+                continue
+            for next_id in pp.get("nextPoints", []):
+                if next_id not in plot_point_ids:
+                    errors.append(
+                        f"plotPoint {pp.get('id', '?')} references unknown nextPoint '{next_id}'"
+                    )
         
         # Check for orphaned plot points (no incoming connections)
         all_next_points = set()

@@ -51,8 +51,17 @@ def create_backup():
     if os.path.exists("modules"):
         print(f"Backing up modules directory...")
         def ignore_backups(dir, files):
-            # Ignore the backups directory to prevent recursive backup loops
-            return ['backups'] if os.path.basename(dir) == 'modules' else []
+            # Runtime transaction/forensic roots are local recovery authority,
+            # not campaign save data. Copying them would make a later restore
+            # replay stale or contradictory lifecycle state.
+            if os.path.basename(dir) != 'modules':
+                return []
+            return [
+                'backups',
+                '.module_transactions',
+                '.publication_transactions',
+                '.module_orphan_quarantine',
+            ]
 
         shutil.copytree("modules", os.path.join(backup_dir, "modules"), ignore=ignore_backups)
     
@@ -158,8 +167,54 @@ def reset_module(module_name):
         os.remove(npc_codex)
 
 def reset_global_state():
+    """Reset global files without interleaving a party module publication."""
+    from core.managers.campaign_manager import (
+        _campaign_transaction_lock,
+        _party_module_transition_lock,
+    )
+    from utils.module_refresh_lock import module_refresh_lock
+
+    # Global lock order: party transition -> module (when needed) -> campaign.
+    with _party_module_transition_lock():
+        with module_refresh_lock() as refresh_acquired:
+            if not refresh_acquired:
+                raise TimeoutError("Module refresh is active; retry reset")
+            lifecycle = _recover_module_lifecycle_for_reset_locked()
+            with _campaign_transaction_lock("modules/campaign.json"):
+                return _reset_global_state_locked(lifecycle=lifecycle)
+
+
+def _recover_module_lifecycle_for_reset_locked():
+    """Recover before reset work; leave receipts live until reset commits."""
+    from utils.commit_state import recover_incomplete_refresh_commit
+    from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
+
+    recover_incomplete_refresh_commit()
+    lifecycle = ModuleLifecycleStore("modules")
+    lifecycle_recovery = lifecycle.recover()
+    if lifecycle_recovery.status is RecoveryStatus.INDETERMINATE:
+        raise RuntimeError("Module lifecycle recovery is required before reset")
+    return lifecycle
+
+
+def _reset_global_state_locked(*, lifecycle=None, reset_prepared=False):
     """Phase 3: Create fresh game state"""
     print(f"\n{CYAN}PHASE 3: Creating fresh game state...{RESET}")
+
+    campaign_file = os.path.join("modules", "campaign.json")
+    from core.managers.campaign_manager import (
+        _assert_no_active_campaign_completion,
+        _bump_campaign_lifecycle_epoch,
+    )
+
+    if not reset_prepared:
+        # Refusal-capable checks must preserve the old timeline and its pending
+        # delivery authority.  Invalidate only after reset is certain to begin.
+        _assert_no_active_campaign_completion(campaign_file)
+        if lifecycle is None:
+            raise RuntimeError("Module lifecycle reset preflight is unavailable")
+        lifecycle.invalidate_pending_publication_receipts_for_reset()
+        _bump_campaign_lifecycle_epoch(campaign_file)
     
     # Reset party tracker to empty object (matches installer behavior)
     with open("party_tracker.json", 'w') as f:
@@ -171,11 +226,18 @@ def reset_global_state():
         os.remove("player_storage.json")
         print("  [OK] Removed player_storage.json (will be created fresh)")
     
-    # Delete campaign.json - let game create fresh one
-    campaign_file = os.path.join("modules", "campaign.json")
+    # Delete campaign state and its transactional metadata under the same
+    # lifecycle boundary used by completion/save/restore.
     if os.path.exists(campaign_file):
         os.remove(campaign_file)
         print("  [OK] Removed modules/campaign.json (will be created fresh)")
+    completion_metadata = os.path.join(
+        os.path.dirname(campaign_file),
+        f".{os.path.basename(campaign_file)}.completion",
+    )
+    if os.path.isdir(completion_metadata):
+        shutil.rmtree(completion_metadata)
+        print("  [OK] Removed campaign completion recovery metadata")
     
     # Delete world_registry.json - let module stitcher create fresh one
     world_registry_file = os.path.join("modules", "world_registry.json")
@@ -294,9 +356,36 @@ def clear_all_files():
         print("  ✓ Cleared campaign_summaries")
 
 def perform_reset_logic():
+    """Run the full reset under the shared campaign lifecycle boundary."""
+    from core.managers.campaign_manager import (
+        _assert_no_active_campaign_completion,
+        _campaign_transaction_lock,
+        _party_module_transition_lock,
+    )
+    from utils.module_refresh_lock import module_refresh_lock
+
+    with _party_module_transition_lock():
+        with module_refresh_lock() as refresh_acquired:
+            if not refresh_acquired:
+                raise TimeoutError("Module refresh is active; retry reset")
+            lifecycle = _recover_module_lifecycle_for_reset_locked()
+            with _campaign_transaction_lock("modules/campaign.json"):
+                _assert_no_active_campaign_completion("modules/campaign.json")
+                return _perform_reset_logic_locked(lifecycle)
+
+
+def _perform_reset_logic_locked(lifecycle):
     """The core logic of the reset, without prompts or top-level error handling."""
     # Phase 1: Backup everything
     backup_dir = create_backup()
+
+    # Backup/refusal paths leave the old timeline intact.  Once the backup is
+    # durable, retire old delivery authority and invalidate stale workers once,
+    # immediately before the first live campaign/module mutation.
+    from core.managers.campaign_manager import _bump_campaign_lifecycle_epoch
+
+    lifecycle.invalidate_pending_publication_receipts_for_reset()
+    _bump_campaign_lifecycle_epoch("modules/campaign.json")
     
     # Phase 2: Reset all modules
     print(f"\n{CYAN}PHASE 2: Resetting all modules from backups...{RESET}")
@@ -307,7 +396,7 @@ def perform_reset_logic():
         reset_module(module)
     
     # Phase 3: Reset global state
-    reset_global_state()
+    _reset_global_state_locked(reset_prepared=True)
     
     # Phase 4: Clear all generated files
     clear_all_files()

@@ -42,9 +42,13 @@ making it flexible and adaptable to any character structure or edge case.
 
 import json
 import logging
+import copy
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-from openai import OpenAI
+from core.ai import api_client
+import config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T050", "core/validation/character_effects_validator.py", 345)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -54,7 +58,6 @@ except:
     USAGE_TRACKING_AVAILABLE = False
     def track_response(r): pass
 
-from config import OPENAI_API_KEY, CHARACTER_VALIDATOR_MODEL
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.module_path_manager import ModulePathManager
 
@@ -62,7 +65,6 @@ class AICharacterEffectsValidator:
     def __init__(self):
         """Initialize AI-powered effects validator"""
         self.logger = logging.getLogger(__name__)
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.corrections_made = []
         # Get current module from party tracker for consistent path resolution
         try:
@@ -327,16 +329,28 @@ class AICharacterEffectsValidator:
             return character_data
         
         categorization_prompt = self.build_categorization_prompt(character_data, game_time)
-        
+
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            effects_config = config.CHAR_VALIDATOR_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            effects_config = config.CHAR_VALIDATOR_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            effects_config = config.CHAR_VALIDATOR_LMSTUDIO
+        else:  # legacy
+            effects_config = config.CHAR_VALIDATOR_LEGACY
+
         try:
-            response = self.client.chat.completions.create(
-                model=CHARACTER_VALIDATOR_MODEL,
-                temperature=0.1,
+            response = capture_and_fanout("T050", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": self.get_effects_system_prompt()},
                     {"role": "user", "content": categorization_prompt}
-                ]
-            )
+                ],
+                model=effects_config["model"],
+                temperature=0.1,
+                **{k: v for k, v in effects_config.items() if k != "model"})
             
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
@@ -464,25 +478,41 @@ Provide the corrected arrays following the response format."""
             if start_idx != -1 and end_idx != -1:
                 json_str = ai_response[start_idx:end_idx]
                 parsed_response = json.loads(json_str)
+                required = {
+                    'temporaryEffects',
+                    'injuries',
+                    'removed_effects',
+                    'categorization_summary',
+                }
+                if not isinstance(parsed_response, dict) or set(parsed_response) != required:
+                    raise ValueError("T050 requires exactly the four categorization fields")
+                for field in ('temporaryEffects', 'injuries'):
+                    if not isinstance(parsed_response[field], list) or not all(
+                        isinstance(item, dict) for item in parsed_response[field]
+                    ):
+                        raise ValueError(f"T050 {field} must be an array of objects")
+                if not isinstance(parsed_response['removed_effects'], list) or not all(
+                    isinstance(item, str) and item.strip()
+                    for item in parsed_response['removed_effects']
+                ):
+                    raise ValueError("T050 removed_effects must contain useful strings")
+                summary = parsed_response['categorization_summary']
+                if not isinstance(summary, str):
+                    raise ValueError("T050 categorization_summary must be a string")
+
+                # Commit only after the complete response has passed validation.
+                corrected_data = copy.deepcopy(original_data)
+                corrected_data['temporaryEffects'] = parsed_response['temporaryEffects']
+                corrected_data['injuries'] = parsed_response['injuries']
+
+                for removed in parsed_response['removed_effects']:
+                    self.logger.info(f"Removed effect: {removed}")
+                if summary.strip():
+                    self.corrections_made.append(summary)
+
+                return corrected_data
                 
-                # Update character data with categorized effects
-                if 'temporaryEffects' in parsed_response:
-                    original_data['temporaryEffects'] = parsed_response['temporaryEffects']
-                
-                if 'injuries' in parsed_response:
-                    original_data['injuries'] = parsed_response['injuries']
-                
-                # Log changes
-                if 'removed_effects' in parsed_response:
-                    for removed in parsed_response['removed_effects']:
-                        self.logger.info(f"Removed effect: {removed}")
-                
-                if 'categorization_summary' in parsed_response:
-                    self.corrections_made.append(parsed_response['categorization_summary'])
-                
-                return original_data
-                
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
             self.logger.error(f"Failed to parse AI categorization response: {str(e)}")
         
         return original_data

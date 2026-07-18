@@ -43,10 +43,14 @@ with separate panels for game output and debug information.
 import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-from flask import Flask, render_template, request, jsonify, Response
-from flask_socketio import SocketIO, emit
 import os
 import sys
+
+# Add parent directory to path FIRST so we can import from utils, core, etc.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from flask import Flask, render_template, request, jsonify, Response
+from flask_socketio import SocketIO, emit
 import json
 import threading
 import queue
@@ -56,12 +60,23 @@ from datetime import datetime
 from collections import deque
 import io
 import zipfile
+from uuid import uuid4
 from contextlib import redirect_stdout, redirect_stderr
 from openai import OpenAI
+from core.ai import api_client
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T094", "web/web_interface.py", 1816)
+register_callsite("T095", "web/web_interface.py", 4277)
+from utils.compendium_store import (
+    MONSTER_COMPENDIUM_PATH,
+    NPC_COMPENDIUM_PATH,
+    compendium_entry_exists,
+    merge_compendium_entries,
+    merge_npc_description_pair,
+    validate_generated_prose,
+)
+from utils.encoding_utils import sanitize_text
 from PIL import Image
-
-# Add parent directory to path so we can import from utils, core, etc.
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Token tracking import
 try:
@@ -79,7 +94,6 @@ import main as dm_main
 import utils.reset_campaign as reset_campaign
 from core.managers.status_manager import set_status_callback, set_compression_callback
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
-from model_config import DM_MINI_MODEL
 
 # Import toolkit components for API support
 try:
@@ -93,6 +107,21 @@ except ImportError:
 
 # Set script name for logging
 set_script_name("web_interface")
+
+# Apply a web-set OpenAI key from user_settings.json at startup (no-op if none).
+# Import config FIRST so apply_persisted_openai_key() has the canonical `config`
+# module in sys.modules to write into (it no-ops if 'config' isn't loaded). Doing
+# the import here means this does NOT depend on the transitive `import main`
+# side-effect above -- it stays correct even if these import lines are reordered.
+# config.py itself runs after `from model_config import *`, so its default
+# OPENAI_API_KEY is already set by the time we overwrite it with the persisted one.
+try:
+    import config as _cfg_boot  # noqa: F401  (ensure config is loaded before applying)
+    import model_config as _mc
+    _mc.apply_persisted_openai_key()
+    _mc.apply_persisted_gemini_key()
+except Exception:
+    pass
 
 # Set up Flask with correct template and static paths
 # Templates are in both web/templates (for game) and root templates (for toolkit)
@@ -147,7 +176,11 @@ log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)  # Only show errors, not every HTTP request
 
 # Import shared state
-from web.shared_state import module_progress_queue
+from web.shared_state import (
+    SAFE_ACTION_FAILURE_MESSAGE,
+    module_progress_queue,
+    set_player_output_sink,
+)
 
 # Global variables for managing output
 game_output_queue = queue.Queue()
@@ -158,11 +191,17 @@ game_thread = None
 original_stdout = sys.stdout
 original_stderr = sys.stderr
 original_stdin = sys.stdin
+STARTUP_RECOVERY_ACTION_COOLDOWN_SECONDS = 10
+startup_recovery_attempts = {}
+startup_recovery_attempts_lock = threading.Lock()
+startup_handoff_active = False
+startup_ready_emitted = False
 
 # Message cache for persistence across restarts
 MESSAGE_CACHE_FILE = "modules/conversation_history/game_interface_cache.json"
 MESSAGE_CACHE_SIZE = 15  # Keep last 15 messages
 message_cache = deque(maxlen=MESSAGE_CACHE_SIZE)
+message_cache_lock = threading.RLock()
 
 # Message cache functions
 def load_message_cache():
@@ -190,11 +229,67 @@ def save_message_cache():
         print(f"[MESSAGE_CACHE] Failed to save cache: {e}")
 
 def add_to_message_cache(message):
-    """Add a message to the cache and save it"""
-    # Only cache narration and user-input types
-    if message.get('type') in ['narration', 'user-input']:
-        message_cache.append(message)
+    """Add a message once; stable IDs deduplicate replayable safe output."""
+    if not isinstance(message, dict):
+        return False
+    message_id = message.get("message_id")
+    if message_id is not None and (
+        not isinstance(message_id, str) or not message_id.strip()
+    ):
+        return False
+    cacheable = message.get('type') in ['narration', 'user-input']
+    cacheable = cacheable or message_id is not None
+    if not cacheable:
+        return False
+    with message_cache_lock:
+        if message_id is not None and any(
+            cached.get("message_id") == message_id
+            for cached in message_cache
+            if isinstance(cached, dict)
+        ):
+            return False
+        message_cache.append(dict(message))
         save_message_cache()
+    return True
+
+
+def _queue_safe_player_output(message):
+    """Route normalized player output through the existing web game queue."""
+    try:
+        payload = dict(message)
+        if not add_to_message_cache(payload):
+            return False
+        game_output_queue.put(payload)
+        return True
+    except Exception:
+        return False
+
+
+set_player_output_sink(_queue_safe_player_output)
+
+
+def _emit_pending_game_output(emit_function):
+    """Drain current player output through a supplied Socket.IO emitter."""
+    emitted = 0
+    while True:
+        try:
+            message = game_output_queue.get_nowait()
+        except queue.Empty:
+            break
+        try:
+            emit_function("game_output", message)
+            emitted += 1
+        except Exception:
+            break
+    return emitted
+
+def log_web_audit(event_name, **fields):
+    """Emit a compact audit/debug log line for web actions."""
+    details = ", ".join(f"{key}={value}" for key, value in fields.items())
+    message = f"AUDIT: {event_name}"
+    if details:
+        message = f"{message} | {details}"
+    debug(message, category="web_interface")
 
 # Status callback function
 def emit_status_update(status_message, is_processing):
@@ -223,8 +318,46 @@ class WebOutputCapture:
         self.buffer = ""
         self.in_dm_section = False
         self.dm_buffer = []
+        self.dm_section_is_startup = False
+
+    def _flush_dm_buffer(self):
+        global startup_ready_emitted
+        if not self.dm_buffer:
+            return
+        try:
+            combined_content = '\n'.join(self.dm_buffer)
+            combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
+            if combined_content.strip():
+                # DM narration is always type 'narration' so the client renders it
+                # with the full DM message styling (avatar, header, Generate Image).
+                # The old 'startup' type rendered as plain text with no formatting.
+                message = {
+                    'type': 'narration',
+                    'content': combined_content
+                }
+                game_output_queue.put(message)
+                add_to_message_cache(message)
+                debug_output_queue.put({
+                    'type': 'debug',
+                    'content': f"[OUTPUT_TRACE] Sent DM content to game_output: {len(combined_content)} chars",
+                    'timestamp': datetime.now().isoformat()
+                })
+        except Exception as e:
+            try:
+                debug_output_queue.put({
+                    'type': 'debug',
+                    'content': f"[OUTPUT_ERROR] DM content processing failed: {str(e)} - Buffer: {str(self.dm_buffer)}",
+                    'timestamp': datetime.now().isoformat()
+                })
+            except Exception:
+                pass
+        finally:
+            self.in_dm_section = False
+            self.dm_buffer = []
+            self.dm_section_is_startup = False
     
     def write(self, text):
+        global startup_handoff_active, startup_ready_emitted
         # Write to original stream for console visibility (with error handling)
         try:
             # Ensure text is a string and handle encoding issues
@@ -250,9 +383,59 @@ class WebOutputCapture:
             for line in lines[:-1]:
                 # Clean the line of ANSI codes for checking content
                 clean_line = self.strip_ansi_codes(line)
+
+                # Startup marker stream: drive web readiness state.
+                marker_line = False
+                if "STARTUP_MARKER:" in clean_line:
+                    try:
+                        marker_line = True
+                        marker_payload = clean_line.split("STARTUP_MARKER:", 1)[1].strip()
+                        marker_data = json.loads(marker_payload)
+                        phase = marker_data.get("phase", "")
+                        if phase in {
+                            "startup_handoff_begin",
+                            "startup_wizard_sync",
+                            "startup_wizard_complete",
+                            "startup_context_built",
+                            "startup_kickoff_attempted",
+                        }:
+                            startup_handoff_active = True
+                            socketio.emit("startup_status", {"status": "in_progress", "phase": phase})
+                        if phase == "startup_kickoff_done":
+                            startup_handoff_active = False
+                            socketio.emit("startup_status", {"status": "ready", "phase": phase})
+                            # Marker is authoritative - emit immediately when detected
+                            if not startup_ready_emitted:
+                                startup_ready_emitted = True
+                                socketio.emit('game_started', {'message': 'Game started successfully'})
+                        elif phase == "startup_kickoff_skipped":
+                            if marker_data.get("result") == "already_done":
+                                startup_handoff_active = False
+                                socketio.emit("startup_status", {"status": "ready", "phase": phase})
+                                if not startup_ready_emitted:
+                                    startup_ready_emitted = True
+                                    socketio.emit('game_started', {'message': 'Game started successfully'})
+                        elif phase in {"startup_kickoff_failed", "startup_kickoff_stale_discarded"}:
+                            startup_handoff_active = False
+                            socketio.emit("startup_status", {"status": "failed", "phase": phase})
+                    except Exception:
+                        pass
+                    if marker_line:
+                        continue
                 
                 # Check if this is a player status/prompt line
                 if clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line):
+                    # Fallback: if primary marker path failed, emit on prompt detection
+                    if not startup_ready_emitted:
+                        startup_handoff_active = False
+                        startup_ready_emitted = True
+                        debug_output_queue.put({
+                            'type': 'debug',
+                            'content': '[STARTUP_FALLBACK] game_started emitted via prompt detection - primary marker path may have failed',
+                            'timestamp': datetime.now().isoformat()
+                        })
+                        socketio.emit("startup_status", {"status": "ready", "phase": "prompt_detected"})
+                        socketio.emit('game_started', {'message': 'Game started successfully'})
                     # This is a player prompt - send to debug
                     debug_output_queue.put({
                         'type': 'debug',
@@ -265,6 +448,7 @@ class WebOutputCapture:
                         # Start capturing DM content
                         self.in_dm_section = True
                         self.dm_buffer = [clean_line]
+                        self.dm_section_is_startup = startup_handoff_active
                         # Debug trace for combat output
                         debug_output_queue.put({
                             'type': 'debug',
@@ -292,37 +476,7 @@ class WebOutputCapture:
                          clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line) or \
                          clean_line.startswith('>'):
                         # This ends the DM section - send accumulated DM content as single message
-                        if self.dm_buffer:
-                            try:
-                                combined_content = '\n'.join(self.dm_buffer)
-                                # Remove "Dungeon Master:" prefix from the beginning if present
-                                combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
-                                if combined_content.strip():  # Only send if there's actual content
-                                    message = {
-                                        'type': 'narration',
-                                        'content': combined_content
-                                    }
-                                    game_output_queue.put(message)
-                                    add_to_message_cache(message)
-                                    # Debug trace for successful DM output
-                                    debug_output_queue.put({
-                                        'type': 'debug',
-                                        'content': f"[OUTPUT_TRACE] Sent DM content to game_output: {len(combined_content)} chars",
-                                        'timestamp': datetime.now().isoformat()
-                                    })
-                            except Exception as e:
-                                # If DM content processing fails, send raw content to debug
-                                try:
-                                    debug_output_queue.put({
-                                        'type': 'debug',
-                                        'content': f"[OUTPUT_ERROR] DM content processing failed: {str(e)} - Buffer: {str(self.dm_buffer)}",
-                                        'timestamp': datetime.now().isoformat()
-                                    })
-                                except Exception:
-                                    # If even debug fails, just continue
-                                    pass
-                        self.in_dm_section = False
-                        self.dm_buffer = []
+                        self._flush_dm_buffer()
                         # Send this line to debug
                         try:
                             debug_output_queue.put({
@@ -1306,85 +1460,174 @@ def process_video():
         error(f"TOOLKIT: Failed to process video: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+def _job_identity(data, prefix):
+    """Return a client-known job ID and its optional Socket.IO target room."""
+    supplied = data.get('job_id')
+    if isinstance(supplied, str) and supplied.strip() and len(supplied) <= 128:
+        job_id = supplied.strip()
+    else:
+        job_id = f"{prefix}-{uuid4().hex}"
+    target_room = (
+        data.get('socket_sid') or data.get('socket_id') or data.get('room')
+    )
+    if not isinstance(target_room, str) or not target_room.strip():
+        target_room = None
+    else:
+        target_room = target_room.strip()
+    return job_id, target_room
+
+
+def _emit_job_event(event_name, payload, *, job_id, target_room=None):
+    """Attach correlation data to every event and target its initiating client."""
+    correlated = dict(payload)
+    correlated['job_id'] = job_id
+    if target_room:
+        socketio.emit(event_name, correlated, to=target_room)
+    else:
+        socketio.emit(event_name, correlated)
+    return correlated
+
+
+def _run_bestiary_update_job(
+    module_name,
+    monster_ids,
+    job_id,
+    *,
+    target_room=None,
+    updater_factory=None,
+):
+    """Run T083 and emit a single result whose counts come from the updater."""
+    requested = len(monster_ids)
+    try:
+        if updater_factory is None:
+            from utils.bestiary_updater import BestiaryUpdater
+            updater_factory = BestiaryUpdater
+        updater = updater_factory()
+        monster_names = [
+            monster_id.replace('_', ' ').title()
+            for monster_id in monster_ids
+        ]
+        _emit_job_event(
+            'bestiary_update_progress',
+            {
+                'status': 'started',
+                'requested': requested,
+                'message': f'Starting to process {requested} monsters...',
+            },
+            job_id=job_id,
+            target_room=target_room,
+        )
+        import asyncio
+        result = asyncio.run(
+            updater.process_missing_monsters(
+                module_name=module_name,
+                monster_names=monster_names,
+                test_mode=False,
+            )
+        )
+        required = {
+            'requested', 'added', 'skipped', 'failed', 'error', 'success'
+        }
+        if not isinstance(result, dict) or set(result) != required:
+            raise RuntimeError('Bestiary updater returned an invalid result')
+        count_fields = ('requested', 'added', 'skipped', 'failed')
+        if any(
+            type(result[field]) is not int or result[field] < 0
+            for field in count_fields
+        ):
+            raise RuntimeError('Bestiary updater returned invalid counts')
+        if result['requested'] != (
+            result['added'] + result['skipped'] + result['failed']
+        ):
+            raise RuntimeError('Bestiary updater counts do not balance')
+        expected_success = result['failed'] == 0 and result['error'] is None
+        if (
+            not isinstance(result['success'], bool)
+            or result['success'] != expected_success
+        ):
+            raise RuntimeError('Bestiary updater returned inconsistent success status')
+
+        if result['success']:
+            message = (
+                f"Added {result['added']} of {result['requested']} requested "
+                f"monsters; {result['skipped']} skipped."
+            )
+        else:
+            message = (
+                f"Added {result['added']} of {result['requested']} requested "
+                f"monsters; {result['failed']} failed."
+            )
+        _emit_job_event(
+            'bestiary_update_complete',
+            {
+                **result,
+                'status': 'complete' if result['success'] else 'failed',
+                'message': message,
+            },
+            job_id=job_id,
+            target_room=target_room,
+        )
+        return result
+    except Exception as exc:
+        error(f"TOOLKIT: Bestiary update failed: {exc}")
+        failure = {
+            'requested': requested,
+            'added': 0,
+            'skipped': 0,
+            'failed': requested,
+            'error': str(exc),
+            'success': False,
+        }
+        _emit_job_event(
+            'bestiary_update_error',
+            {**failure, 'status': 'failed'},
+            job_id=job_id,
+            target_room=target_room,
+        )
+        return failure
+
+
 @app.route('/api/toolkit/add-to-bestiary', methods=['POST'])
 def add_to_bestiary():
-    """Adds monsters to the bestiary using their ID. Skips any that already exist."""
+    """Adds monsters to the bestiary using a correlated background job."""
     try:
-        data = request.json
-        module_name = data.get('module_name')  # Used for context
-        monster_ids = data.get('monster_ids', [])  # We now use IDs
-        
-        if not module_name or not monster_ids:
+        data = request.json or {}
+        module_name = data.get('module_name')
+        monster_ids = data.get('monster_ids', [])
+
+        if not module_name or not isinstance(monster_ids, list) or not monster_ids:
             return jsonify({'success': False, 'error': 'Missing module_name or monster_ids'})
-        
-        info(f"TOOLKIT: Request to add {len(monster_ids)} monsters to bestiary from module: {module_name}")
-        
-        # Start processing in background thread
-        import threading
-        import asyncio
-        
-        def run_bestiary_update():
-            try:
-                from utils.bestiary_updater import BestiaryUpdater
-                updater = BestiaryUpdater()
-                
-                # Convert IDs to names for the updater, but FIRST filter out existing ones
-                compendium_path = 'data/bestiary/monster_compendium.json'
-                with open(compendium_path, 'r', encoding='utf-8') as f:
-                    compendium = json.load(f)
-                existing_monsters = compendium.get("monsters", {}).keys()
+        if any(
+            not isinstance(monster_id, str) or not monster_id.strip()
+            for monster_id in monster_ids
+        ):
+            return jsonify({'success': False, 'error': 'Monster IDs must be non-empty strings'})
 
-                monsters_to_add_ids = [mid for mid in monster_ids if mid not in existing_monsters]
-                
-                if not monsters_to_add_ids:
-                    socketio.emit('bestiary_update_complete', {
-                        'success': True,
-                        'message': 'All selected monsters already exist in the bestiary. No action taken.',
-                        'monsters': []
-                    })
-                    return
-
-                # Convert the filtered IDs to names for the existing updater logic
-                monsters_to_add_names = [mid.replace('_', ' ').title() for mid in monsters_to_add_ids]
-
-                socketio.emit('bestiary_update_progress', {
-                    'status': 'started',
-                    'message': f'Starting to process {len(monsters_to_add_names)} new monsters...'
-                })
-                
-                # Create new event loop for thread
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                loop.run_until_complete(
-                    updater.process_missing_monsters(
-                        module_name=module_name,
-                        monster_names=monsters_to_add_names,  # Pass names to the existing function
-                        test_mode=False
-                    )
-                )
-                
-                socketio.emit('bestiary_update_complete', {
-                    'success': True,
-                    'message': f'Successfully added {len(monsters_to_add_names)} monsters to bestiary.',
-                    'monsters': monsters_to_add_names
-                })
-                info(f"TOOLKIT: Successfully added {len(monsters_to_add_names)} monsters to bestiary.")
-
-            except Exception as e:
-                error(f"TOOLKIT: Bestiary update failed: {e}")
-                socketio.emit('bestiary_update_error', {'success': False, 'error': str(e)})
-        
-        # Start in background thread
-        thread = threading.Thread(target=run_bestiary_update)
-        thread.daemon = True
+        job_id, target_room = _job_identity(data, 'bestiary')
+        monster_snapshot = [monster_id.strip() for monster_id in monster_ids]
+        info(
+            f"TOOLKIT: Request to add {len(monster_snapshot)} monsters "
+            f"to bestiary from module: {module_name}"
+        )
+        thread = threading.Thread(
+            target=_run_bestiary_update_job,
+            kwargs={
+                'module_name': module_name,
+                'monster_ids': monster_snapshot,
+                'job_id': job_id,
+                'target_room': target_room,
+            },
+            daemon=True,
+        )
         thread.start()
-        
-        return jsonify({'success': True, 'message': f'Started processing {len(monster_ids)} monsters.'})
-        
-    except Exception as e:
-        error(f"TOOLKIT: Failed to start bestiary update: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({
+            'success': True,
+            'job_id': job_id,
+            'message': f'Started processing {len(monster_snapshot)} monsters.',
+        })
+    except Exception as exc:
+        error(f"TOOLKIT: Failed to start bestiary update: {exc}")
+        return jsonify({'success': False, 'error': str(exc)})
 
 @app.route('/toolkit/get_style_prompt/<style_id>')
 def get_style_prompt(style_id):
@@ -1519,42 +1762,72 @@ def update_monster_description():
         if not monster_id or not description:
             return jsonify({'success': False, 'error': 'Monster ID and description are required'})
         
-        # Load and update monster compendium
-        import json
-        compendium_path = 'data/bestiary/monster_compendium.json'
-        with open(compendium_path, 'r', encoding='utf-8') as f:
-            compendium = json.load(f)
-        
+        compendium_path = MONSTER_COMPENDIUM_PATH
+        compendium = {}
+        if os.path.exists(compendium_path):
+            from utils.file_operations import safe_read_json
+            compendium = safe_read_json(compendium_path) or {}
         monsters = compendium.get('monsters', {})
-        if monster_id in monsters:
-            monsters[monster_id]['description'] = description
-        else:
-            # Try to find by alternative ID
+        resolved_id = monster_id
+        existing_entry = monsters.get(monster_id)
+        if existing_entry is None:
             monster_id_alt = monster_id.replace('_', ' ').lower()
-            found = False
-            for mid, mdata in monsters.items():
-                if mid.lower() == monster_id_alt or mdata.get('name', '').lower() == monster_id_alt:
-                    monsters[mid]['description'] = description
-                    found = True
+            for candidate_id, candidate in monsters.items():
+                if (
+                    candidate_id.lower() == monster_id_alt
+                    or (
+                        isinstance(candidate, dict)
+                        and candidate.get('name', '').lower() == monster_id_alt
+                    )
+                ):
+                    resolved_id = candidate_id
+                    existing_entry = candidate
                     break
-            
-            if not found:
-                # Add new monster entry
-                monsters[monster_id] = {
-                    'name': monster_id.replace('_', ' ').title(),
-                    'description': description,
-                    'type': 'unknown',
-                    'tags': []
-                }
-        
-        # Save updated compendium
-        with open(compendium_path, 'w', encoding='utf-8') as f:
-            json.dump(compendium, f, indent=2, ensure_ascii=False)
+
+        entry = dict(existing_entry) if isinstance(existing_entry, dict) else {}
+        entry.update({
+            'name': entry.get('name') or monster_id.replace('_', ' ').title(),
+            'description': sanitize_text(description),
+        })
+        entry.setdefault('type', 'unknown')
+        entry.setdefault('tags', [])
+        merge_compendium_entries(
+            compendium_path,
+            'monsters',
+            {resolved_id: entry},
+            overwrite=True,
+        )
         
         return jsonify({'success': True, 'message': 'Monster description updated'})
     except Exception as e:
         error(f"TOOLKIT: Failed to update monster description: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+
+def _provider_credentials_available(provider):
+    """Check only credentials required by the selected provider."""
+    import config
+
+    if provider == "lmstudio":
+        return True
+    if provider in ("legacy", "openai"):
+        key = getattr(config, "OPENAI_API_KEY", "")
+        placeholder = "your_openai_api_key_here"
+    elif provider == "gemini":
+        key = getattr(config, "GEMINI_API_KEY", "")
+        placeholder = "your_gemini_api_key_here"
+    else:
+        return False
+    return isinstance(key, str) and bool(key.strip()) and key.strip() != placeholder
+
+
+def _persist_promoted_monster(monster_id, entry, compendium_path):
+    return merge_compendium_entries(
+        compendium_path,
+        "monsters",
+        {monster_id: entry},
+        overwrite=False,
+    )
 
 @app.route('/api/toolkit/promote-to-bestiary', methods=['POST'])
 def promote_to_bestiary():
@@ -1569,32 +1842,41 @@ def promote_to_bestiary():
         if not monster_id:
             return jsonify({'success': False, 'error': 'Monster ID is required'})
 
-        # 1. Load the compendium to check for existence
-        compendium_path = 'data/bestiary/monster_compendium.json'
-        with open(compendium_path, 'r', encoding='utf-8') as f:
-            compendium = json.load(f)
-        
-        if monster_id in compendium.get('monsters', {}):
+        compendium_path = MONSTER_COMPENDIUM_PATH
+        if compendium_entry_exists(compendium_path, "monsters", monster_id):
             return jsonify({'success': False, 'error': f'Monster "{monster_id}" already exists in the bestiary.'})
 
-        # 2. Use AI to generate a description
         monster_name = monster_id.replace('_', ' ').title()
         prompt = f"""Generate a compelling 5th edition of the world's most popular roleplaying game style bestiary description for a monster named "{monster_name}".
         The description should be concise (around 100-150 words) and focus on its appearance, typical behavior, and combat tactics.
-        Make it sound like an entry from an official monster manual. Do not include stat blocks."""
+        Make it sound like an entry from an official monster manual. Do not include stat blocks.
+        Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
         
-        from config import OPENAI_API_KEY
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        
-        response = client.chat.completions.create(
-            model=DM_MINI_MODEL,
+        from model_config import get_provider
+        provider_snapshot = get_provider()
+        import config
+        if provider_snapshot == "openai":
+            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif provider_snapshot == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
+        elif provider_snapshot == "lmstudio":
+            mini_cfg = config.MINI_UTIL_LMSTUDIO
+        elif provider_snapshot == "legacy":
+            mini_cfg = config.MINI_UTIL_LEGACY
+        else:
+            raise ValueError(f"Unsupported model provider: {provider_snapshot}")
+
+        response = capture_and_fanout("T094", api_client.create_completion,
+            _request_provider=provider_snapshot,
             messages=[
                 {"role": "system", "content": "You are a creative writer for a fantasy role-playing game, specializing in monster lore."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7
-        )
-        
+            model=mini_cfg["model"],
+            temperature=0.7,
+            response_format=None,
+            **{k: v for k, v in mini_cfg.items() if k != "model"})
+
         # Track token usage with context for telemetry
         if USAGE_TRACKING_AVAILABLE:
             try:
@@ -1604,20 +1886,27 @@ def promote_to_bestiary():
             except:
                 pass
         
-        description = response.choices[0].message.content.strip()
+        description = validate_generated_prose(
+            sanitize_text(response.choices[0].message.content),
+            minimum_words=20,
+        )
 
-        # 3. Create and add the new monster entry
         new_entry = {
             "name": monster_name,
             "description": description,
             "type": "unknown",
             "tags": ["custom", "pack-promoted"]
         }
-        compendium["monsters"][monster_id] = new_entry
-        
-        # 4. Save the updated compendium
-        with open(compendium_path, 'w', encoding='utf-8') as f:
-            json.dump(compendium, f, indent=2)
+        merge_result = _persist_promoted_monster(
+            monster_id,
+            new_entry,
+            compendium_path,
+        )
+        if monster_id in merge_result.skipped:
+            return jsonify({
+                'success': False,
+                'error': f'Monster "{monster_id}" already exists in the bestiary.'
+            })
         
         info(f"TOOLKIT: Promoted pack monster '{monster_id}' to the bestiary.")
         return jsonify({'success': True, 'message': f'Successfully added {monster_name} to the bestiary.'})
@@ -1958,6 +2247,22 @@ def handle_connect():
     """Handle client connection"""
     emit('connected', {'data': 'Connected to NeverEndingQuest'})
 
+    # A process may have stopped after durable module publication but before
+    # its narration receipt was acknowledged. Replay the stable-ID message
+    # before sending cache/queue state so reconnect is self-healing.
+    try:
+        import main as game_main
+
+        receipt_history = game_main.load_json_file(game_main.json_file)
+        if not isinstance(receipt_history, list):
+            receipt_history = []
+        game_main._recover_pending_module_publications(receipt_history)
+    except Exception as receipt_error:
+        error(
+            f"Pending module delivery recovery deferred: {receipt_error}",
+            category="module_management",
+        )
+
     # Check for updates and notify client
     try:
         from utils.version_checker import check_for_updates
@@ -1983,9 +2288,7 @@ def handle_connect():
         _emit_game_resumed()
 
     # Send any queued messages
-    while not game_output_queue.empty():
-        msg = game_output_queue.get()
-        emit('game_output', msg)
+    _emit_pending_game_output(emit)
 
     while not debug_output_queue.empty():
         msg = debug_output_queue.get()
@@ -2084,10 +2387,128 @@ def handle_action(data):
         except Exception as e:
             emit('error', {'message': f'Campaign reset failed: {str(e)}'})
 
+    elif action_type == 'recover_startup_handoff':
+        session_id = getattr(request, 'sid', None) or 'unknown-session'
+        recovery_token = parameters.get('recoveryToken')
+        startup_attempt_id = parameters.get('startupAttemptId')
+        source = 'socketio.action'
+
+        try:
+            import config
+
+            expected_token = getattr(config, 'STARTUP_RECOVERY_TOKEN', None)
+            if not expected_token:
+                log_web_audit(
+                    'recover_startup_handoff',
+                    source=source,
+                    session=session_id,
+                    result='failed',
+                    reason='missing_server_token',
+                )
+                payload = {'status': 'failed', 'error': 'server_token_not_configured'}
+                emit('startup_recovery_response', payload)
+                return payload
+
+            if not recovery_token or recovery_token != expected_token:
+                log_web_audit(
+                    'recover_startup_handoff',
+                    source=source,
+                    session=session_id,
+                    result='failed',
+                    reason='invalid_token',
+                )
+                payload = {'status': 'failed', 'error': 'invalid_recovery_token'}
+                emit('startup_recovery_response', payload)
+                return payload
+
+            current_state = dm_main.load_startup_state()
+            expected_attempt_id = current_state.get('startup_attempt_id')
+            if not startup_attempt_id:
+                payload = {'status': 'failed', 'error': 'missing_startup_attempt_id'}
+                emit('startup_recovery_response', payload)
+                return payload
+            if expected_attempt_id and startup_attempt_id != expected_attempt_id:
+                payload = {
+                    'status': 'failed',
+                    'error': 'stale_startup_attempt_id',
+                    'expectedStartupAttemptId': expected_attempt_id,
+                }
+                emit('startup_recovery_response', payload)
+                return payload
+
+            now = time.monotonic()
+            with startup_recovery_attempts_lock:
+                last_attempt = startup_recovery_attempts.get(session_id)
+                if last_attempt is not None:
+                    elapsed = now - last_attempt
+                    if elapsed < STARTUP_RECOVERY_ACTION_COOLDOWN_SECONDS:
+                        retry_after = max(
+                            1,
+                            int(
+                                STARTUP_RECOVERY_ACTION_COOLDOWN_SECONDS - elapsed + 0.999
+                            ),
+                        )
+                        log_web_audit(
+                            'recover_startup_handoff',
+                            source=source,
+                            session=session_id,
+                            result='failed',
+                            reason='cooldown_active',
+                            retry_after_seconds=retry_after,
+                        )
+                        payload = {
+                            'status': 'failed',
+                            'error': 'cooldown_active',
+                            'retryAfterSeconds': retry_after,
+                        }
+                        emit('startup_recovery_response', payload)
+                        return payload
+                startup_recovery_attempts[session_id] = now
+
+            log_web_audit(
+                'recover_startup_handoff',
+                source=source,
+                session=session_id,
+                result='attempting',
+            )
+            recovery_result = dm_main.recover_startup_handoff() or {}
+            status = recovery_result.get('status', 'failed')
+            if status not in {'recovered', 'already_ready', 'failed', 'in_progress', 'not_recoverable'}:
+                status = 'failed'
+
+            payload = {'status': status}
+            if status == 'failed':
+                payload['error'] = (
+                    recovery_result.get('error')
+                    or recovery_result.get('reason')
+                    or 'unknown'
+                )
+
+            log_web_audit(
+                'recover_startup_handoff',
+                source=source,
+                session=session_id,
+                result=status,
+            )
+            emit('startup_recovery_response', payload)
+            return payload
+        except Exception as e:
+            log_web_audit(
+                'recover_startup_handoff',
+                source=source,
+                session=session_id,
+                result='failed',
+                reason='exception',
+                error=str(e),
+            )
+            payload = {'status': 'failed', 'error': str(e)}
+            emit('startup_recovery_response', payload)
+            return payload
+
 @socketio.on('start_game')
 def handle_start_game():
     """Start the game in a separate thread"""
-    global game_thread
+    global game_thread, startup_handoff_active, startup_ready_emitted, message_cache
     
     if game_thread and game_thread.is_alive():
         # Browser reopened on a live game: reconnect this client instead of
@@ -2104,10 +2525,14 @@ def handle_start_game():
     sys.stdin = WebInput(user_input_queue)
     
     # Start the game in a separate thread
+    startup_handoff_active = True
+    startup_ready_emitted = False
+    message_cache.clear()
+    save_message_cache()
     game_thread = threading.Thread(target=run_game_loop, daemon=True)
     game_thread.start()
-    
-    emit('game_started', {'message': 'Game started successfully'})
+
+    emit('startup_status', {'status': 'in_progress', 'phase': 'launching'})
 
 @socketio.on('request_player_data')
 def handle_player_data_request(data):
@@ -2601,6 +3026,19 @@ def handle_party_data_request():
         error(f"Failed to get party data: {str(e)}", exception=e, category="web_interface")
         emit('party_data_response', {'members': [], 'location_npcs': []})
 
+def _overlay_authoritative_character_state(combatant_data, character_data):
+    """Overlay character-file state onto an encounter UI projection."""
+    projected = dict(combatant_data or {})
+    if not isinstance(character_data, dict):
+        return projected
+
+    if character_data.get("hitPoints") is not None:
+        projected["currentHp"] = character_data["hitPoints"]
+    if character_data.get("maxHitPoints") is not None:
+        projected["maxHp"] = character_data["maxHitPoints"]
+    return projected
+
+
 @socketio.on('request_initiative_data')
 def handle_initiative_data_request():
     """Handles requests for the current combat initiative order."""
@@ -2685,6 +3123,12 @@ def handle_initiative_data_request():
                     if char_file and os.path.exists(char_file):
                         char_data = safe_read_json(char_file)
                         if char_data:
+                            # Player HP is persisted in the character file;
+                            # NPC/enemy combat HP remains encounter-owned.
+                            if c.get("type") == "player":
+                                combatant_data = _overlay_authoritative_character_state(
+                                    combatant_data, char_data
+                                )
                             # Extract spell data organized by level
                             spells_by_level = {}
                             spellcasting = char_data.get('spellcasting', {})
@@ -2795,13 +3239,14 @@ def handle_plot_data_request():
         from utils.module_path_manager import ModulePathManager
         path_manager = ModulePathManager(current_module)
         
-        # Step 2.5: Check for player-friendly quest file first
-        player_quests_path = os.path.join(path_manager.module_dir, f"player_quests_{current_module}.json")
-        
-        if os.path.exists(player_quests_path):
-            # Use player-friendly quest descriptions
-            with open(player_quests_path, 'r', encoding='utf-8') as f:
-                player_quests_data = json.load(f)
+        # Step 2.5: Use derived player quests only when their source digest
+        # still matches the current exact module_plot.json bytes.
+        from utils.quest_player_formatter import load_current_player_quests
+
+        player_quests_data = load_current_player_quests(current_module)
+
+        if player_quests_data is not None:
+            # Use current player-friendly quest descriptions.
             
             # Convert player quest format back to module_plot format for compatibility
             plot_data = {
@@ -2841,7 +3286,7 @@ def handle_plot_data_request():
             with open(plot_file_path, 'r', encoding='utf-8') as f:
                 plot_data = json.load(f)
             
-            debug(f"WEB_INTERFACE: Using original plot data for {current_module} (no player quests file)", category="web_interface")
+            debug(f"WEB_INTERFACE: Using original plot data for {current_module} (player quests unavailable or stale)", category="web_interface")
         
         # The 'emit' function sends the data over the web socket connection to the player's browser.
         emit('plot_data_response', {'data': plot_data})
@@ -2882,54 +3327,212 @@ def handle_user_exit():
     except Exception as e:
         print(f"ERROR handling user exit: {e}")
 
-@socketio.on('toggle_model')
-def handle_model_toggle(data):
-    """Handle model toggle between GPT-4.1 and GPT-5"""
+@socketio.on('get_model_provider')
+def handle_get_provider():
+    """Return current provider setting for UI sync on page load."""
     try:
-        import config
-        use_gpt5 = data.get('use_gpt5', False)
-        config.USE_GPT5_MODELS = use_gpt5
-        
-        # Log the change
-        debug(f"Model toggled to: {'GPT-5' if use_gpt5 else 'GPT-4.1'}", category="web_interface")
-        
-        # Send confirmation back to client
-        emit('model_toggled', {'use_gpt5': config.USE_GPT5_MODELS}, broadcast=True)
-        
+        import model_config
+        provider = model_config.get_provider()
+        emit('provider_changed', {'provider': provider})
     except Exception as e:
-        error(f"Error toggling model: {e}", exception=e, category="web_interface")
-        emit('error', {'message': f"Failed to toggle model: {str(e)}"})
+        error(f"Error getting provider: {e}", exception=e, category="web_interface")
+        emit('provider_changed', {'provider': 'legacy'})  # Safe fallback
 
-@socketio.on('test_module_progress')
-def handle_test_module_progress():
-    """Test handler to simulate module creation progress"""
-    import threading
-    import time
-    
-    def simulate_progress():
-        """Simulate module creation progress events"""
-        stages = [
-            {'stage': 0, 'total_stages': 9, 'stage_name': 'Initializing', 'percentage': 0, 'message': 'Starting module creation...'},
-            {'stage': 1, 'total_stages': 9, 'stage_name': 'Parsing narrative', 'percentage': 11, 'message': 'Analyzing narrative to extract module parameters...'},
-            {'stage': 2, 'total_stages': 9, 'stage_name': 'Configuring builder', 'percentage': 22, 'message': 'Setting up module: Test_Module...'},
-            {'stage': 3, 'total_stages': 9, 'stage_name': 'Creating builder', 'percentage': 33, 'message': 'Initializing module builder...'},
-            {'stage': 4, 'total_stages': 9, 'stage_name': 'Building module', 'percentage': 44, 'message': 'Starting module generation process...'},
-            {'stage': 5, 'total_stages': 9, 'stage_name': 'Creating areas', 'percentage': 55, 'message': 'Generating area layouts and descriptions...'},
-            {'stage': 6, 'total_stages': 9, 'stage_name': 'Populating locations', 'percentage': 66, 'message': 'Adding NPCs and encounters...'},
-            {'stage': 7, 'total_stages': 9, 'stage_name': 'Finalizing', 'percentage': 77, 'message': 'Finalizing module data...'},
-            {'stage': 8, 'total_stages': 9, 'stage_name': 'Complete', 'percentage': 100, 'message': 'Module Test_Module created successfully!'}
-        ]
-        
-        for stage_data in stages:
-            socketio.emit('module_creation_progress', stage_data)
-            time.sleep(1.5)  # Delay between stages for visual effect
-    
-    # Run simulation in background thread
-    thread = threading.Thread(target=simulate_progress)
-    thread.daemon = True
-    thread.start()
-    
-    emit('system_message', {'content': 'Starting module progress test simulation...'})
+
+@socketio.on('set_model_provider')
+def handle_set_provider(data):
+    """Handle provider selection from web UI settings dropdown."""
+    try:
+        import model_config
+        provider = data.get('provider', 'legacy')
+        model_config.set_provider(provider)
+        model_config.persist_provider(provider)
+
+        debug(f"Model provider set to: {provider}", category="web_interface")
+
+        emit('provider_changed', {'provider': provider}, broadcast=True)
+
+    except ValueError as e:
+        error(f"Invalid provider: {e}", category="web_interface")
+        emit('error', {'message': str(e)})
+    except Exception as e:
+        error(f"Error setting provider: {e}", exception=e, category="web_interface")
+        emit('error', {'message': f"Failed to set provider: {str(e)}"})
+
+
+@socketio.on('get_local_endpoint')
+def handle_get_local_endpoint():
+    """Report the Local/Custom endpoint for UI sync. Never returns the raw key."""
+    try:
+        import model_config
+        ep = model_config.get_local_endpoint()
+        emit('local_endpoint_changed', {
+            'base_url': ep['base_url'],
+            'model': ep['model'],
+            'has_key': bool(ep['api_key']) and ep['api_key'] != 'not-needed',
+        })
+    except Exception as e:
+        error(f"Error getting local endpoint: {e}", exception=e, category="web_interface")
+        emit('local_endpoint_changed',
+             {'base_url': 'http://localhost:1234/v1', 'model': '', 'has_key': False})
+
+
+@socketio.on('set_local_endpoint')
+def handle_set_local_endpoint(data):
+    """Persist the Local/Custom endpoint. Applies live (openai_client reads it per call)."""
+    try:
+        import model_config
+        data = data or {}
+        # Blank api_key => keep the existing stored key (UI promises "leave blank
+        # to keep" and the field auto-clears after save); a value sets it.
+        raw_key = (data.get('api_key') or '').strip()
+        model_config.persist_local_endpoint(
+            base_url=data.get('base_url', ''),
+            api_key=(raw_key if raw_key else None),
+            model=data.get('model', ''))
+        debug("Local endpoint updated via web UI", category="web_interface")
+        ep = model_config.get_local_endpoint()
+        emit('local_endpoint_changed', {
+            'base_url': ep['base_url'],
+            'model': ep['model'],
+            'has_key': bool(ep['api_key']) and ep['api_key'] != 'not-needed',
+        }, broadcast=True)
+    except Exception as e:
+        error(f"Error setting local endpoint: {e}", exception=e, category="web_interface")
+        emit('error', {'message': "Failed to save local endpoint"})
+
+
+@socketio.on('get_openai_key')
+def handle_get_openai_key():
+    """Report ONLY whether an OpenAI key is configured. Never sends the secret."""
+    try:
+        import model_config, config as _cfg
+        stored = model_config.has_openai_key()
+        live = bool(getattr(_cfg, "OPENAI_API_KEY", "")) and \
+            getattr(_cfg, "OPENAI_API_KEY", "") != "your_openai_api_key_here"
+        emit('openai_key_status', {'has_key': bool(stored or live)})
+    except Exception as e:
+        error(f"Error getting openai key status: {e}", exception=e, category="web_interface")
+        emit('openai_key_status', {'has_key': False})
+
+
+@socketio.on('set_openai_key')
+def handle_set_openai_key(data):
+    """Set the OpenAI key from the UI: update config live AND persist. No echo.
+
+    Scope of the live update: writing config.OPENAI_API_KEY reaches every reader
+    that reads it at call time (utils/openai_client.get_openai_client and the
+    per-request toolkit generators). A few long-lived managers cache an OpenAI
+    client in __init__ (e.g. campaign_manager, storage_processor); those keep the
+    previous key until the next restart -- a pre-existing pattern, not specific to
+    this feature. The PERSISTED key is applied at startup for ALL readers (see the
+    boot-time apply_persisted_openai_key above), so a player who sets the key in
+    Settings before starting a game -- the intended flow -- is fully covered.
+    """
+    try:
+        import model_config, config as _cfg
+        api_key = ((data or {}).get('api_key') or '').strip()
+        if not api_key:
+            # Blank submit: do NOT wipe an existing key (prevents accidental erase
+            # from a double-click after the field auto-clears). Report status only.
+            live = bool(getattr(_cfg, "OPENAI_API_KEY", "")) and \
+                getattr(_cfg, "OPENAI_API_KEY", "") != "your_openai_api_key_here"
+            emit('openai_key_status', {'has_key': model_config.has_openai_key() or live})
+            return
+        _cfg.OPENAI_API_KEY = api_key            # live: all config.OPENAI_API_KEY readers
+        model_config.persist_openai_key(api_key) # survive restart
+        debug("OpenAI API key updated via web UI", category="web_interface")
+        emit('openai_key_status', {'has_key': model_config.has_openai_key()}, broadcast=True)
+    except Exception as e:
+        error(f"Error setting openai key: {e}", exception=e, category="web_interface")
+        emit('error', {'message': "Failed to set OpenAI API key"})  # generic: no key leak
+
+@socketio.on('get_gemini_key')
+def handle_get_gemini_key():
+    """Report ONLY whether a Gemini key is configured. Never sends the secret."""
+    try:
+        import model_config, config as _cfg
+        stored = model_config.has_gemini_key()
+        live = bool(getattr(_cfg, "GEMINI_API_KEY", "")) and \
+            getattr(_cfg, "GEMINI_API_KEY", "") != "your_gemini_api_key_here"
+        emit('gemini_key_status', {'has_key': bool(stored or live)})
+    except Exception as e:
+        error(f"Error getting gemini key status: {e}", exception=e, category="web_interface")
+        emit('gemini_key_status', {'has_key': False})
+
+@socketio.on('set_gemini_key')
+def handle_set_gemini_key(data):
+    """Set the Gemini key from the UI: update config live AND persist. No echo.
+
+    The runtime Gemini client (utils/capture/gemini_caller._get_client) reads
+    config.GEMINI_API_KEY lazily on first use and caches the client. So a key set
+    in Settings BEFORE the first Gemini call -- the intended flow -- is fully
+    covered. If a Gemini client was already created earlier this session, the new
+    key applies after the next restart (the persisted key is re-applied at boot).
+    Mirrors handle_set_openai_key.
+    """
+    try:
+        import model_config, config as _cfg
+        api_key = ((data or {}).get('api_key') or '').strip()
+        if not api_key:
+            # Blank submit: do NOT wipe an existing key. Report status only.
+            live = bool(getattr(_cfg, "GEMINI_API_KEY", "")) and \
+                getattr(_cfg, "GEMINI_API_KEY", "") != "your_gemini_api_key_here"
+            emit('gemini_key_status', {'has_key': model_config.has_gemini_key() or live})
+            return
+        _cfg.GEMINI_API_KEY = api_key            # live: config.GEMINI_API_KEY readers
+        model_config.persist_gemini_key(api_key) # survive restart
+        debug("Gemini API key updated via web UI", category="web_interface")
+        emit('gemini_key_status', {'has_key': model_config.has_gemini_key()}, broadcast=True)
+    except Exception as e:
+        error(f"Error setting gemini key: {e}", exception=e, category="web_interface")
+        emit('error', {'message': "Failed to set Gemini API key"})  # generic: no key leak
+
+@socketio.on('test_local_endpoint')
+def handle_test_local_endpoint(data):
+    """Isolated liveness probe for the Local/Custom endpoint. Tests POSTED values
+    (not saved), cheapest-first (models.list, then a 1-token chat). Emits
+    {ok, detail}. Never echoes the key. Does NOT use capture_and_fanout/the 67
+    callsite paths.
+    """
+    data = data or {}
+    base_url = (data.get('base_url') or '').strip()
+    api_key = (data.get('api_key') or '').strip() or 'not-needed'
+    model = (data.get('model') or '').strip()
+
+    if not base_url:
+        emit('local_endpoint_test_result', {'ok': False, 'detail': 'Base URL is required.'})
+        return
+    try:
+        client = OpenAI(base_url=base_url, api_key=api_key, timeout=10.0)
+    except Exception as e:
+        emit('local_endpoint_test_result', {'ok': False, 'detail': f'Could not create client: {e}'})
+        return
+    try:
+        result = client.models.list()
+        names = [m.id for m in (getattr(result, 'data', None) or [])]
+        detail = (f'Connected. {len(names)} model(s) available.' if names
+                  else 'Connected. Server responded (no models listed).')
+        if model and names and model not in names:
+            detail += f' Warning: "{model}" not in the model list.'
+        emit('local_endpoint_test_result', {'ok': True, 'detail': detail})
+        return
+    except Exception as list_err:
+        last = str(list_err)
+        debug(f"test_local_endpoint: models.list failed: {last}", category="web_interface")
+    if not model:
+        emit('local_endpoint_test_result',
+             {'ok': False, 'detail': f'Could not list models and no model set. Last error: {last}'})
+        return
+    try:
+        client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "Reply with OK only."}],
+        )
+        emit('local_endpoint_test_result',
+             {'ok': True, 'detail': f'Connected. Chat completion succeeded with "{model}".'})
+    except Exception as chat_err:
+        emit('local_endpoint_test_result', {'ok': False, 'detail': f'Connection failed: {chat_err}'})
 
 @socketio.on('generate_image')
 def handle_generate_image(data):
@@ -3376,9 +3979,9 @@ def run_game_loop():
     except Exception as e:
         # Handle other errors with more detail
         import traceback
-        error_msg = f"Game error: {str(e)}"
+        internal_error = f"Game error: {str(e)}"
         try:
-            print(f"Game loop error: {error_msg}")
+            print(f"Game loop error: {internal_error}")
             print(f"Traceback: {traceback.format_exc()}")
         except Exception:
             pass
@@ -3386,7 +3989,7 @@ def run_game_loop():
         try:
             game_output_queue.put({
                 'type': 'error',
-                'content': error_msg,
+                'content': SAFE_ACTION_FAILURE_MESSAGE,
                 'timestamp': datetime.now().isoformat()
             })
         except Exception:
@@ -3415,13 +4018,7 @@ def send_output_to_clients():
     while True:
         try:
             # Send game output
-            while not game_output_queue.empty():
-                try:
-                    msg = game_output_queue.get()
-                    socketio.emit('game_output', msg)
-                except Exception:
-                    # If queue operation or emit fails, just continue
-                    break
+            _emit_pending_game_output(socketio.emit)
             
             # Send debug output
             while not debug_output_queue.empty():
@@ -3641,69 +4238,56 @@ def get_module_npcs(module_name):
         error(f"TOOLKIT: Failed to get NPCs for module {module_name}: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/toolkit/npcs/fetch-descriptions', methods=['POST'])
-def fetch_npc_descriptions():
-    """
-    Receives a list of NPC names and starts a background task to generate descriptions.
-    """
-    if not TOOLKIT_AVAILABLE:
-        return jsonify({'success': False, 'error': 'Toolkit not available'}), 503
-    
-    data = request.json
-    module_name = data.get('module_name')
-    npcs = data.get('npcs', [])
+def _run_npc_description_job(
+    module_name,
+    npcs,
+    provider_snapshot,
+    *,
+    job_id=None,
+    target_room=None,
+    compendium_path,
+    descriptions_file,
+    request_delay=2,
+):
+    """Run T095 with per-item isolation and one terminal event on every path."""
+    if not job_id:
+        job_id = f"npc-description-{uuid4().hex}"
+    total = len(npcs)
+    completed = 0
+    failures = []
+    job_error = None
 
-    if not module_name or not npcs:
-        return jsonify({'success': False, 'error': 'Missing module name or NPC list'}), 400
+    try:
+        if not _provider_credentials_available(provider_snapshot):
+            raise RuntimeError(
+                f"{provider_snapshot} provider credentials are not configured"
+            )
 
-    # Start background thread for description generation
-    def generate_descriptions():
-        try:
-            import time
-            from openai import OpenAI
-            from utils.file_operations import safe_read_json, safe_write_json
-            from utils.encoding_utils import sanitize_text
-            
-            # Get API key
+        import config
+        if provider_snapshot == "openai":
+            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif provider_snapshot == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
+        elif provider_snapshot == "lmstudio":
+            mini_cfg = config.MINI_UTIL_LMSTUDIO
+        elif provider_snapshot == "legacy":
+            mini_cfg = config.MINI_UTIL_LEGACY
+        else:
+            raise ValueError(f"Unsupported model provider: {provider_snapshot}")
+        module_context = extract_module_context_for_npcs(module_name)
+
+        for index, npc_data in enumerate(npcs):
+            npc_name = "Unknown NPC"
             try:
-                from config import OPENAI_API_KEY
-            except ImportError:
-                OPENAI_API_KEY = None
-                error("TOOLKIT: OpenAI API key not found")
-                return
-            
-            if not OPENAI_API_KEY:
-                error("TOOLKIT: OpenAI API key not configured")
-                return
-                
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            
-            # Load NPC compendium
-            npc_compendium_path = 'data/bestiary/npc_compendium.json'
-            npc_compendium = safe_read_json(npc_compendium_path) or {}
-            
-            # Ensure proper structure
-            if 'npcs' not in npc_compendium:
-                npc_compendium['npcs'] = {}
-            
-            # Also maintain temp file for backward compatibility
-            descriptions_file = f'temp/npc_descriptions_{module_name}.json'
-            os.makedirs('temp', exist_ok=True)
-            existing_descriptions = safe_read_json(descriptions_file) or {}
-            
-            # Extract module context
-            module_context = extract_module_context_for_npcs(module_name)
-            
-            # Generate description for each NPC
-            for i, npc_data in enumerate(npcs):
-                npc_name = npc_data['name']
-                npc_id = npc_data['id']
-                
-                # In toolkit mode, always regenerate descriptions
-                if npc_id in existing_descriptions:
-                    info(f"TOOLKIT: Overwriting existing description for {npc_name}")
-                
-                # Prepare a new, more directive prompt
+                if not isinstance(npc_data, dict):
+                    raise ValueError("NPC request item must be an object")
+                npc_name = npc_data.get("name")
+                npc_id = npc_data.get("id")
+                if not isinstance(npc_name, str) or not npc_name.strip():
+                    raise ValueError("NPC request item has no usable name")
+                if not isinstance(npc_id, str) or not npc_id.strip():
+                    raise ValueError("NPC request item has no usable ID")
+
                 prompt = f"""Generate a rich, descriptive prompt for an AI image generator to create a fantasy character portrait.
 
 NPC Name: {npc_name}
@@ -3716,90 +4300,170 @@ The output should be a single paragraph (150-200 words) that is itself a high-qu
 4.  **Atmosphere & Lighting:** Keywords for the mood (e.g., 'cinematic lighting', 'magical aura', 'dust motes in the air', 'soft morning light').
 
 The character must appear friendly, capable, and trustworthy, like a potential party ally. Do NOT use words like 'photorealistic', 'photo', 'cosplay', '3D render'. Focus on descriptive language for a digital painting.
+Use only standard ASCII characters in the prompt -- no smart quotes, no em-dashes, no Unicode symbols.
 
-Example Output Format:
-"A stunning digital painting of Elara, a female wood elf ranger with emerald green eyes and long braided auburn hair. She wears masterfully crafted green leather armor with leaf-like patterns. A longbow is slung over her shoulder and a sheathed shortsword hangs at her hip. She stands in a misty, ancient forest at dawn, with golden morning light filtering through the canopy, creating a magical and serene atmosphere."
+Return only the image prompt as prose, without JSON, headings, or commentary.
 """
 
-                try:
-                    # Call OpenAI API with the new system message and prompt
-                    response = client.chat.completions.create(
-                        model=DM_MINI_MODEL,
-                        messages=[
-                            {"role": "system", "content": "You are an expert AI prompt engineer specializing in fantasy character art. Your task is to write image generation prompts, not narrative descriptions. The prompts you write will be used to create digital paintings."},
-                            {"role": "user", "content": prompt}
-                        ],
-                        temperature=0.8
-                    )
-                    
-                    # Track token usage
-                    if USAGE_TRACKING_AVAILABLE:
-                        try:
-                            from utils.openai_usage_tracker import get_global_tracker
-                            tracker = get_global_tracker()
-                            tracker.track(response, context={'endpoint': 'web_validation', 'purpose': 'validate_web_response', 'interface': 'web'})
-                        except:
-                            pass
-                    
-                    description = response.choices[0].message.content
-                    description = sanitize_text(description)
-                    
-                    # Save to NPC compendium
-                    npc_compendium['npcs'][npc_id] = {
-                        'name': npc_name,
-                        'description': description,
-                        'module': module_name,
-                        'generated_at': datetime.now().isoformat()
-                    }
-                    
-                    # Also save to temp file for backward compatibility
-                    existing_descriptions[npc_id] = {
-                        'name': npc_name,
-                        'description': description,
-                        'generated_at': datetime.now().isoformat()
-                    }
-                    
-                    # Write both files
-                    npc_compendium['total_npcs'] = len(npc_compendium.get('npcs', {}))
-                    npc_compendium['last_updated'] = datetime.now().isoformat()
-                    safe_write_json(npc_compendium_path, npc_compendium)
-                    safe_write_json(descriptions_file, existing_descriptions)
-                    
-                    info(f"TOOLKIT: Generated description for {npc_name} ({i+1}/{len(npcs)})")
-                    
-                    # Emit progress via SocketIO
-                    socketio.emit('npc_description_progress', {
-                        'current': i + 1,
-                        'total': len(npcs),
+                response = capture_and_fanout(
+                    "T095",
+                    api_client.create_completion,
+                    _request_provider=provider_snapshot,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert AI prompt engineer specializing in fantasy character art. Your task is to write image generation prompts, not narrative descriptions. The prompts you write will be used to create digital paintings.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    model=mini_cfg["model"],
+                    temperature=0.8,
+                    response_format=None,
+                    **{k: v for k, v in mini_cfg.items() if k != "model"},
+                )
+
+                if USAGE_TRACKING_AVAILABLE:
+                    try:
+                        from utils.openai_usage_tracker import get_global_tracker
+                        tracker = get_global_tracker()
+                        tracker.track(
+                            response,
+                            context={
+                                'endpoint': 'web_validation',
+                                'purpose': 'validate_web_response',
+                                'interface': 'web',
+                            },
+                        )
+                    except Exception:
+                        pass
+
+                description = validate_generated_prose(
+                    sanitize_text(response.choices[0].message.content),
+                    minimum_words=30,
+                )
+                generated_at = datetime.now().isoformat()
+                entry = {
+                    'name': npc_name.strip(),
+                    'description': description,
+                    'module': module_name,
+                    'generated_at': generated_at,
+                }
+                legacy_entry = {
+                    'name': npc_name.strip(),
+                    'description': description,
+                    'generated_at': generated_at,
+                }
+                merge_npc_description_pair(
+                    compendium_path,
+                    descriptions_file,
+                    {npc_id: entry},
+                    {npc_id: legacy_entry},
+                )
+
+                completed += 1
+                info(
+                    f"TOOLKIT: Generated description for {npc_name} "
+                    f"({index + 1}/{total})"
+                )
+                _emit_job_event(
+                    'npc_description_progress',
+                    {
+                        'current': index + 1,
+                        'total': total,
                         'npc_name': npc_name,
-                        'status': 'success'
-                    })
-                    
-                    # Rate limiting
-                    time.sleep(2)  # Wait 2 seconds between requests
-                    
-                except Exception as e:
-                    error(f"TOOLKIT: Failed to generate description for {npc_name}: {e}")
-                    socketio.emit('npc_description_progress', {
-                        'current': i + 1,
-                        'total': len(npcs),
+                        'status': 'success',
+                    },
+                    job_id=job_id,
+                    target_room=target_room,
+                )
+            except Exception as exc:
+                failure = {'npc_name': npc_name, 'error': str(exc)}
+                failures.append(failure)
+                error(f"TOOLKIT: Failed to generate description for {npc_name}: {exc}")
+                _emit_job_event(
+                    'npc_description_progress',
+                    {
+                        'current': index + 1,
+                        'total': total,
                         'npc_name': npc_name,
                         'status': 'error',
-                        'error': str(e)
-                    })
-            
-            info(f"TOOLKIT: Completed description generation for module {module_name}")
-            
-        except Exception as e:
-            error(f"TOOLKIT: Description generation failed: {e}")
-    
-    # Start background thread
-    thread = threading.Thread(target=generate_descriptions)
-    thread.daemon = True
+                        'error': str(exc),
+                    },
+                    job_id=job_id,
+                    target_room=target_room,
+                )
+
+            if request_delay and index < total - 1:
+                time.sleep(request_delay)
+
+        info(f"TOOLKIT: Completed description generation for module {module_name}")
+    except Exception as exc:
+        job_error = str(exc)
+        error(f"TOOLKIT: Description generation failed: {exc}")
+    finally:
+        success = job_error is None and not failures and completed == total
+        terminal_payload = {
+            'job_id': job_id,
+            'success': success,
+            'status': 'complete' if success else 'failed',
+            'module_name': module_name,
+            'provider': provider_snapshot,
+            'completed': completed,
+            'failed': total - completed,
+            'total': total,
+        }
+        if job_error is not None:
+            terminal_payload['error'] = job_error
+        elif failures:
+            terminal_payload['errors'] = failures
+        _emit_job_event(
+            'npc_description_complete',
+            terminal_payload,
+            job_id=job_id,
+            target_room=target_room,
+        )
+
+    return terminal_payload
+
+
+@app.route('/api/toolkit/npcs/fetch-descriptions', methods=['POST'])
+def fetch_npc_descriptions():
+    """Start a background T095 NPC description generation job."""
+    if not TOOLKIT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Toolkit not available'}), 503
+
+    data = request.json or {}
+    module_name = data.get('module_name')
+    npcs = data.get('npcs', [])
+    if not module_name or not isinstance(npcs, list) or not npcs:
+        return jsonify({'success': False, 'error': 'Missing module name or NPC list'}), 400
+
+    from model_config import get_provider
+    provider_snapshot = get_provider()
+    job_id, target_room = _job_identity(data, 'npc-description')
+    npc_snapshot = [dict(item) if isinstance(item, dict) else item for item in npcs]
+    descriptions_file = f'temp/npc_descriptions_{module_name}.json'
+    thread = threading.Thread(
+        target=_run_npc_description_job,
+        kwargs={
+            'module_name': module_name,
+            'npcs': npc_snapshot,
+            'provider_snapshot': provider_snapshot,
+            'job_id': job_id,
+            'target_room': target_room,
+            'compendium_path': NPC_COMPENDIUM_PATH,
+            'descriptions_file': descriptions_file,
+        },
+        daemon=True,
+    )
     thread.start()
-    
+
     info(f"TOOLKIT: Started description generation for {len(npcs)} NPCs in {module_name}")
-    return jsonify({'success': True, 'message': 'Description generation started.'})
+    return jsonify({
+        'success': True,
+        'job_id': job_id,
+        'message': 'Description generation started.',
+    })
 
 def extract_module_context_for_npcs(module_name):
     """
@@ -3900,43 +4564,31 @@ def handle_npc_description():
             return jsonify({'success': False, 'error': 'Missing required fields'}), 400
         
         try:
-            from utils.file_operations import safe_read_json, safe_write_json
             from utils.encoding_utils import sanitize_text
             
             sanitized_description = sanitize_text(description)
-            
-            # Save to NPC compendium
-            npc_compendium_path = 'data/bestiary/npc_compendium.json'
-            npc_compendium = safe_read_json(npc_compendium_path) or {}
-            
-            if 'npcs' not in npc_compendium:
-                npc_compendium['npcs'] = {}
-            
-            npc_compendium['npcs'][npc_id] = {
-                'name': npc_name,
+            clean_name = npc_name or npc_id.replace('_', ' ').title()
+            updated_at = datetime.now().isoformat()
+            primary_entry = {
+                'name': clean_name,
                 'description': sanitized_description,
                 'module': module_name,
-                'updated_at': datetime.now().isoformat()
+                'updated_at': updated_at,
             }
-            
-            npc_compendium['total_npcs'] = len(npc_compendium.get('npcs', {}))
-            npc_compendium['last_updated'] = datetime.now().isoformat()
-            safe_write_json(npc_compendium_path, npc_compendium)
-            
-            # Also save to temp file for backward compatibility
             descriptions_file = f'temp/npc_descriptions_{module_name}.json'
-            os.makedirs('temp', exist_ok=True)
-            
-            descriptions = safe_read_json(descriptions_file) or {}
-            descriptions[npc_id] = {
-                'name': npc_name,
+            legacy_entry = {
+                'name': clean_name,
                 'description': sanitized_description,
-                'updated_at': datetime.now().isoformat()
+                'updated_at': updated_at,
             }
+            merge_npc_description_pair(
+                NPC_COMPENDIUM_PATH,
+                descriptions_file,
+                {npc_id: primary_entry},
+                {npc_id: legacy_entry},
+            )
             
-            safe_write_json(descriptions_file, descriptions)
-            
-            info(f"TOOLKIT: Description for NPC '{npc_name}' (ID: {npc_id}) was updated")
+            info(f"TOOLKIT: Description for NPC '{clean_name}' (ID: {npc_id}) was updated")
             return jsonify({'success': True})
             
         except Exception as e:
@@ -4443,141 +5095,48 @@ def handle_request_module_list():
         emit('module_list_response', [])  # Send an empty list on error
 
 def simulate_build_process(params):
-    """A target function for a thread that runs the actual module builder."""
+    """Run the toolkit build through the hidden managed lifecycle."""
     global cancel_build_flag
     cancel_build_flag.clear()
 
     try:
-        # Ensure proper imports by adding parent directory to path if needed
-        import sys
-        import os
-        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-        
-        from core.generators.module_builder import ModuleBuilder, BuilderConfig
-        
-        # Extract parameters
+        from core.generators.module_builder import ai_driven_module_creation
+
         module_name = params.get('module_name', 'New_Module')
         narrative = params.get('narrative', 'A classic fantasy adventure')
         num_areas = params.get('num_areas', 5)
         locations_per_area = params.get('locations_per_area', 3)
-        per_area_locations = params.get('per_area_locations', None)  # New parameter
-        
-        # Sanitize module name
+        per_area_locations = params.get('per_area_locations')
         module_name = module_name.replace(' ', '_')
-        
-        info(f"Starting actual module build for: {module_name}")
-        info(f"Parameters - Areas: {num_areas}, Default locations per area: {locations_per_area}")
-        info(f"Raw params received: {params}")  # Debug full params
-        if per_area_locations:
-            info(f"Custom locations per area: {per_area_locations}")
-            info(f"Type of per_area_locations: {type(per_area_locations)}")
-            info(f"Length: {len(per_area_locations) if isinstance(per_area_locations, list) else 'N/A'}")
-        
-        # Create progress callback to emit updates
-        def progress_callback(stage, message):
-            if cancel_build_flag.is_set():
-                return False  # Signal to stop
-            
-            stage_mapping = {
-                'initializing': 0,
-                'base_structure': 1,
-                'npcs': 2,
-                'monsters': 3,
-                'areas': 4,
-                'plots': 5,
-                'connections': 6,
-                'finalizing': 7,
-                'saving': 8
-            }
-            
-            stage_num = stage_mapping.get(stage.lower().replace(' ', '_'), 0)
-            percentage = ((stage_num + 1) / 9) * 100
-            
-            socketio.emit('module_progress', {
-                'stage': stage_num,
-                'stage_name': stage.replace('_', ' ').title(),
-                'percentage': percentage,
-                'message': message
-            })
-            return True  # Continue
-        
-        # Create builder configuration
-        config = BuilderConfig(
-            module_name=module_name,
-            num_areas=num_areas,
-            locations_per_area=locations_per_area,
-            output_directory=f"./modules/{module_name}",
-            verbose=True
-        )
-        
-        # Create the module builder with configuration
-        builder = ModuleBuilder(config)
-        
-        # Set per-area locations if provided
-        info(f"DEBUG: Checking per_area_locations before setting on builder")
-        info(f"  per_area_locations: {per_area_locations}")
-        info(f"  num_areas: {num_areas}")
-        if per_area_locations:
-            info(f"  Length check: {len(per_area_locations)} == {num_areas}? {len(per_area_locations) == num_areas}")
-        
-        if per_area_locations and len(per_area_locations) == num_areas:
-            builder.per_area_locations = per_area_locations
-            info(f"SUCCESS: Set builder.per_area_locations to: {per_area_locations}")
-        else:
-            info(f"WARNING: Not setting per_area_locations (condition not met)")
-        
-        # Set progress callback if the builder supports it
-        if hasattr(builder, 'progress_callback'):
-            builder.progress_callback = progress_callback
-        
-        # Emit initial progress
-        socketio.emit('module_progress', {
-            'stage': 0,
-            'stage_name': 'Initializing',
-            'percentage': 0,
-            'message': f'Starting module generation for "{module_name}"...'
-        })
-        
-        # Emit message that we're about to start building
-        socketio.emit('module_progress', {
-            'stage': 1,
-            'stage_name': 'Starting Build',
-            'percentage': 10,
-            'message': 'Module builder initialized, starting generation...'
-        })
-        
-        try:
-            # Call the actual build_module method with the narrative concept
-            info(f"Calling builder.build_module with narrative: {narrative[:100]}...")
-            builder.build_module(narrative)
-            info(f"Module build completed successfully")
-            
-            # Module generation complete
-            if per_area_locations and len(per_area_locations) == num_areas:
-                total_locations = sum(per_area_locations)
-                location_detail = ', '.join([f"Area {i+1}: {count} locations" for i, count in enumerate(per_area_locations)])
-                complete_message = f'Module "{module_name}" successfully generated with {num_areas} areas and {total_locations} total locations ({location_detail})'
-            else:
-                complete_message = f'Module "{module_name}" successfully generated with {num_areas} areas and {locations_per_area} locations per area.'
-            
-            socketio.emit('module_complete', {
-                'module_name': module_name,
-                'message': complete_message
-            })
-        except Exception as build_error:
-            error(f"Error during build_module execution: {build_error}")
-            import traceback
-            error(f"Build traceback: {traceback.format_exc()}")
-            socketio.emit('module_error', {'error': f'Build failed: {str(build_error)}'})
-            raise
 
-    except ImportError as e:
-        error(f"Failed to import module builder: {e}")
-        import traceback
-        error(f"Import traceback: {traceback.format_exc()}")
-        socketio.emit('module_error', {'error': f'Module builder not available: {str(e)}'})
+        def progress_callback(payload):
+            if cancel_build_flag.is_set():
+                raise RuntimeError("Module generation cancelled")
+            socketio.emit('module_progress', dict(payload))
+            return True
+
+        creation_params = {
+            'narrative': narrative,
+            'module_name': module_name,
+            'num_areas': num_areas,
+            'locations_per_area': locations_per_area,
+        }
+        if per_area_locations is not None:
+            creation_params['per_area_locations'] = per_area_locations
+        success, created_name = ai_driven_module_creation(
+            creation_params,
+            progress_callback=progress_callback,
+            policy="toolkit",
+        )
+        if not success or not created_name:
+            raise RuntimeError("Module generation failed")
+        socketio.emit(
+            'module_complete',
+            {
+                'module_name': created_name,
+                'message': f'Module "{created_name}" successfully generated.',
+            },
+        )
     except Exception as e:
         error(f"Module build failed: {e}")
         import traceback
@@ -4680,14 +5239,18 @@ def handle_generate_unified_assets(data):
                             try:
                                 description_found = False
                                 description_text = ""
+                                monster_data = None
+                                bestiary_entry = {}
                                 
                                 # First check if description exists in bestiary
-                                bestiary_path = 'data/bestiary/monster_compendium.json'
+                                bestiary_path = MONSTER_COMPENDIUM_PATH
                                 if os.path.exists(bestiary_path):
                                     bestiary_data = safe_read_json(bestiary_path) or {}
                                     monsters_dict = bestiary_data.get('monsters', {})
                                     if asset['id'] in monsters_dict:
                                         monster_entry = monsters_dict[asset['id']]
+                                        if isinstance(monster_entry, dict):
+                                            bestiary_entry.update(monster_entry)
                                         if monster_entry.get('description'):
                                             description_found = True
                                             description_text = monster_entry['description']
@@ -4713,21 +5276,21 @@ def handle_generate_unified_assets(data):
                                             existing_data['description'] = description_text
                                             safe_write_json(str(monster_file), existing_data)
                                     
-                                    # Also save to bestiary so MonsterGenerator can find it
-                                    bestiary_path = 'data/bestiary/monster_compendium.json'
-                                    bestiary_data = safe_read_json(bestiary_path) or {}
-                                    
-                                    if 'monsters' not in bestiary_data:
-                                        bestiary_data['monsters'] = {}
-                                    
-                                    # Add or update the monster in bestiary
-                                    if asset['id'] not in bestiary_data['monsters']:
-                                        bestiary_data['monsters'][asset['id']] = {}
-                                    
-                                    bestiary_data['monsters'][asset['id']]['name'] = asset['name']
-                                    bestiary_data['monsters'][asset['id']]['description'] = description_text
-                                    
-                                    safe_write_json(bestiary_path, bestiary_data)
+                                    # Also save transactionally so concurrent jobs
+                                    # cannot replace the complete compendium document.
+                                    bestiary_path = MONSTER_COMPENDIUM_PATH
+                                    if isinstance(monster_data, dict):
+                                        bestiary_entry.update(monster_data)
+                                    bestiary_entry.update({
+                                        'name': asset['name'],
+                                        'description': description_text,
+                                    })
+                                    merge_compendium_entries(
+                                        bestiary_path,
+                                        'monsters',
+                                        {asset['id']: bestiary_entry},
+                                        overwrite=True,
+                                    )
                                     info(f"Saved {asset['name']} description to both module and bestiary")
                                     
                                     completed += 1
@@ -4754,6 +5317,7 @@ def handle_generate_unified_assets(data):
                             try:
                                 description_found = False
                                 description_text = ""
+                                existing_npc_entry = {}
 
                                 # First check if description exists in NPC compendium
                                 npc_compendium_path = 'data/bestiary/npc_compendium.json'
@@ -4762,6 +5326,8 @@ def handle_generate_unified_assets(data):
                                     npcs_dict = compendium_data.get('npcs', {})
                                     if asset['id'] in npcs_dict:
                                         npc_entry = npcs_dict[asset['id']]
+                                        if isinstance(npc_entry, dict):
+                                            existing_npc_entry.update(npc_entry)
                                         if npc_entry.get('description'):
                                             description_found = True
                                             description_text = npc_entry['description']
@@ -4811,20 +5377,26 @@ def handle_generate_unified_assets(data):
 
                                 # Save to NPC compendium
                                 if description_text:
-                                    npc_compendium_path = 'data/bestiary/npc_compendium.json'
-                                    compendium_data = safe_read_json(npc_compendium_path) or {}
-
-                                    if 'npcs' not in compendium_data:
-                                        compendium_data['npcs'] = {}
-
-                                    # Add or update the NPC in compendium
-                                    if asset['id'] not in compendium_data['npcs']:
-                                        compendium_data['npcs'][asset['id']] = {}
-
-                                    compendium_data['npcs'][asset['id']]['name'] = asset['name']
-                                    compendium_data['npcs'][asset['id']]['description'] = description_text
-
-                                    safe_write_json(npc_compendium_path, compendium_data)
+                                    npc_compendium_path = NPC_COMPENDIUM_PATH
+                                    generated_at = datetime.now().isoformat()
+                                    primary_entry = dict(existing_npc_entry)
+                                    primary_entry.update({
+                                        'name': asset['name'],
+                                        'description': description_text,
+                                        'module': module_name,
+                                        'generated_at': generated_at,
+                                    })
+                                    legacy_entry = {
+                                        'name': asset['name'],
+                                        'description': description_text,
+                                        'generated_at': generated_at,
+                                    }
+                                    merge_npc_description_pair(
+                                        npc_compendium_path,
+                                        f'temp/npc_descriptions_{module_name}.json',
+                                        {asset['id']: primary_entry},
+                                        {asset['id']: legacy_entry},
+                                    )
                                     info(f"Saved {asset['name']} description to NPC compendium")
 
                                     completed += 1

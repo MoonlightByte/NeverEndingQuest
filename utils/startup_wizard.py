@@ -14,17 +14,29 @@ Uses module-centric architecture for self-contained adventures.
 Portions derived from SRD 5.2.1, licensed under CC BY 4.0.
 """
 
+import copy
 import json
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from openai import OpenAI
+from core.ai import api_client
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T092", "utils/startup_wizard.py", 1539)
+register_callsite("T093", "utils/startup_wizard.py", 1665)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
+from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
+from utils.character_sheet_contract import (
+    extract_json_object,
+    repair_required_ammunition_field,
+    repair_startup_character_sheet,
+)
 
 import config
-from utils.encoding_utils import safe_json_load, safe_json_dump
+from utils.encoding_utils import safe_json_load
+from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from core.managers.status_manager import (
@@ -90,34 +102,70 @@ def status_callback(message, is_processing):
 if not web_mode:
     status_manager.set_callback(status_callback)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=config.OPENAI_API_KEY)
-
 # Conversation file for character creation (separate from main game)
 STARTUP_CONVERSATION_FILE = "modules/conversation_history/startup_conversation.json"
+
+STARTUP_AI_MAX_ATTEMPTS = 3
+STARTING_LOCATION_FIELDS = (
+    "areaId",
+    "areaName",
+    "locationId",
+    "locationName",
+    "weather",
+    "politicalClimate",
+)
+
+
+class StartupAIResponseError(RuntimeError):
+    """Raised when a startup interview turn has no usable provider response."""
 
 # ===== MAIN ORCHESTRATION =====
 
 def initialize_game_files_from_bu():
     """Initialize game files from BU templates if they don't exist"""
     initialized_count = 0
-    
-    # Find all BU files in modules directory
-    for bu_file in Path("modules").rglob("*_BU.json"):
-        # Skip files in saved_games directories
-        if "saved_games" in str(bu_file):
-            continue
-            
-        # Determine the corresponding live file name
-        live_file = str(bu_file).replace("_BU.json", ".json")
-        
-        # Only copy if the live file doesn't exist
-        if not os.path.exists(live_file):
-            try:
-                shutil.copy2(bu_file, live_file)
-                initialized_count += 1
-            except Exception as e:
-                warning(f"Failed to initialize {live_file}: {e}", category="startup")
+
+    modules_root = Path("modules")
+    if not modules_root.is_dir():
+        return initialized_count
+
+    # Walk only public module roots. Hidden lifecycle/forensic trees may hold
+    # complete-looking candidates, but startup must never mutate or expose
+    # them before transaction recovery authorizes promotion.
+    support_roots = {
+        "backups",
+        "campaign_archives",
+        "campaign_summaries",
+        "conversation_history",
+        "encounters",
+        "logs",
+    }
+    public_module_roots = (
+        entry
+        for entry in modules_root.iterdir()
+        if entry.is_dir()
+        and not entry.name.startswith(".")
+        and entry.name not in support_roots
+    )
+    for module_root in public_module_roots:
+        for bu_file in module_root.rglob("*_BU.json"):
+            # Skip files in saved_games directories
+            if "saved_games" in bu_file.parts:
+                continue
+
+            # Determine the corresponding live file name
+            live_file = str(bu_file).replace("_BU.json", ".json")
+
+            # Only copy if the live file doesn't exist
+            if not os.path.exists(live_file):
+                try:
+                    shutil.copy2(bu_file, live_file)
+                    initialized_count += 1
+                except Exception as e:
+                    warning(
+                        f"Failed to initialize {live_file}: {e}",
+                        category="startup",
+                    )
     
     return initialized_count
 
@@ -196,6 +244,26 @@ def startup_required(party_file="party_tracker.json"):
 # ===== MODULE MANAGEMENT =====
 
 def scan_available_modules():
+    """Recover module lifecycle state, then read one stable public catalog."""
+    from utils.commit_state import recover_incomplete_refresh_commit
+    from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
+    from utils.module_refresh_lock import module_refresh_lock
+
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            return []
+        recover_incomplete_refresh_commit()
+        recovery = ModuleLifecycleStore("modules").recover()
+        if recovery.status is RecoveryStatus.INDETERMINATE:
+            warning(
+                "Module lifecycle recovery is required before startup scan",
+                category="startup",
+            )
+            return []
+        return _scan_available_modules_locked()
+
+
+def _scan_available_modules_locked():
     """Find all available modules in modules/ directory"""
     status_loading()
     modules = []
@@ -205,11 +273,35 @@ def scan_available_modules():
         status_ready()
         return modules
     
-    for item in os.listdir("modules"):
+    catalog_names = os.listdir("modules")
+    registry_path = os.path.join("modules", "world_registry.json")
+    if os.path.isfile(registry_path):
+        try:
+            registry = safe_json_load(registry_path)
+            if isinstance(registry, dict) and isinstance(
+                registry.get("modules"), dict
+            ):
+                catalog_names = list(registry["modules"])
+        except Exception:
+            catalog_names = []
+
+    for item in catalog_names:
         module_path = f"modules/{item}"
         if os.path.isdir(module_path):
-            # Skip system directories
-            if item in ['campaign_archives', 'campaign_summaries']:
+            if item.startswith('.'):
+                continue
+            # These directories contain runtime/support data, not playable
+            # modules.  Analyzing them is both noisy and (historically) could
+            # trigger an unnecessary creative travel-narration request.
+            if item in {
+                'backups',
+                'campaign_archives',
+                'campaign_summaries',
+                'conversation_history',
+                'default',
+                'encounters',
+                'logs',
+            }:
                 continue
             
             # Use module_stitcher detection method (current architecture)
@@ -217,7 +309,11 @@ def scan_available_modules():
             try:
                 from core.generators.module_stitcher import ModuleStitcher
                 stitcher = ModuleStitcher()
-                detected_data = stitcher.analyze_module(item)
+                # Module selection only needs local metadata. Travel narration
+                # belongs to integration/transition flows, not startup scans.
+                detected_data = stitcher.analyze_module(
+                    item, include_travel_narration=False
+                )
                 
                 if detected_data and detected_data.get('areas'):
                     # Calculate actual level range from area data
@@ -493,363 +589,203 @@ def select_or_create_character(conversation, module):
 def create_new_character(conversation, module):
     """Main character creation flow using AI interview with error recovery"""
     print("\nDungeon Master: Let's create your character!")
-    
-    max_retries = 3
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        # AI-powered character creation interview
-        character_data = ai_character_interview(conversation, module, retry_count)
-        
-        if not character_data:
-            retry_count += 1
-            if retry_count < max_retries:
-                print(f"Character creation failed. Retrying... (Attempt {retry_count + 1}/{max_retries})")
-                continue
-            else:
-                print("Error: Character creation failed after multiple attempts.")
-                return None
-        
-        # Validate character data with detailed error reporting
-        valid, error = validate_character_with_recovery(character_data)
-        if valid:
-            # Save character to module
-            character_name = character_data['name']
-            success = save_character_to_module(character_data, module['name'])
-            
-            if success:
-                print(f"Dungeon Master: Character {character_name} created successfully!")
-                from updates.update_character_info import normalize_character_name
-                return normalize_character_name(character_name)
-            else:
-                print(f"Error: Failed to save character {character_name}")
-                return None
-        else:
-            retry_count += 1
-            if retry_count < max_retries:
-                print(f"Character validation failed: {error}")
-                print(f"Attempting to fix and retry... (Attempt {retry_count + 1}/{max_retries})")
-                # Add validation error to conversation for AI to learn from
-                conversation.append({
-                    "role": "system", 
-                    "content": f"Previous character creation failed validation: {error}. Please create a valid character that follows the schema requirements."
-                })
-                continue
-            else:
-                print(f"Error: Character validation failed after {max_retries} attempts: {error}")
-                print("Dungeon Master: Let me try creating a simple backup character for you...")
-                # Try fallback character creation
-                fallback_character = create_fallback_character(module)
-                if fallback_character:
-                    character_name = fallback_character['name']
-                    success = save_character_to_module(fallback_character, module['name'])
-                    if success:
-                        print(f"Dungeon Master: I've created a basic {fallback_character['class']} character named {character_name} for you!")
-                        print("You can always create a new character later when the system is working better.")
-                        from updates.update_character_info import normalize_character_name
-                        return normalize_character_name(character_name)
-                
-                print("Error: All character creation methods failed. Please try again later.")
-                return None
-    
-    return None
 
-def create_fallback_character(module):
-    """Create a simple default character when AI creation fails"""
-    try:
-        fallback_char = {
-            "character_role": "player",
-            "character_type": "player",
-            "name": "Adventurer",
-            "type": "player",
-            "size": "Medium",
-            "level": 1,
-            "race": "Human",
-            "class": "Fighter",
-            "alignment": "neutral good",
-            "background": "Folk Hero",
-            "status": "alive",
-            "condition": "none",
-            "condition_affected": [],
-            "hitPoints": 12,
-            "maxHitPoints": 12,
-            "armorClass": 16,
-            "initiative": 1,
-            "speed": 30,
-            "abilities": {
-                "strength": 15,
-                "dexterity": 13,
-                "constitution": 14,
-                "intelligence": 12,
-                "wisdom": 13,
-                "charisma": 11
-            },
-            "savingThrows": ["Strength", "Constitution"],
-            "skills": ["Animal Handling", "Survival", "Athletics", "Intimidation"],
-            "proficiencyBonus": 2,
-            "senses": {
-                "darkvision": 0,
-                "passivePerception": 13
-            },
-            "languages": ["Common"],
-            "proficiencies": {
-                "armor": ["Light", "Medium", "Heavy", "Shields"],
-                "weapons": ["Simple", "Martial"],
-                "tools": []
-            },
-            "damageVulnerabilities": [],
-            "damageResistances": [],
-            "damageImmunities": [],
-            "conditionImmunities": [],
-            "classFeatures": [
-                {
-                    "name": "Fighting Style",
-                    "description": "Defense: +1 to AC while wearing armor",
-                    "source": "Fighter",
-                    "usage": {"current": 0, "max": 0, "refreshOn": "longRest"}
-                },
-                {
-                    "name": "Second Wind",
-                    "description": "Regain 1d10 + fighter level hit points as a bonus action",
-                    "source": "Fighter", 
-                    "usage": {"current": 1, "max": 1, "refreshOn": "shortRest"}
-                }
-            ],
-            "racialTraits": [
-                {
-                    "name": "Extra Language",
-                    "description": "You can speak, read, and write one extra language",
-                    "source": "Human"
-                }
-            ],
-            "backgroundFeature": {
-                "name": "Rustic Hospitality",
-                "description": "Since you come from the ranks of the common folk, you fit in among them with ease",
-                "source": "Folk Hero"
-            },
-            "temporaryEffects": [],
-            "injuries": [],
-            "equipment_effects": [],
-            "feats": [],
-            "equipment": [
-                {
-                    "item_name": "Chain Mail",
-                    "item_type": "armor",
-                    "item_subtype": "other",
-                    "description": "Heavy armor, base AC 16",
-                    "quantity": 1,
-                    "equipped": True,
-                    "magical": False,
-                    "consumable": False,
-                    "ac_base": 16,
-                    "ac_bonus": 0,
-                    "dex_limit": 0,
-                    "armor_category": "heavy",
-                    "stealth_disadvantage": True
-                },
-                {
-                    "item_name": "Longsword",
-                    "item_type": "weapon",
-                    "item_subtype": "other",
-                    "description": "Versatile melee weapon",
-                    "quantity": 1,
-                    "equipped": True,
-                    "magical": False,
-                    "consumable": False,
-                    "damage": "1d8",
-                    "attack_bonus": 4,
-                    "weapon_type": "melee",
-                    "effects": []
-                }
-            ],
-            "ammunition": [],
-            "attacksAndSpellcasting": [
-                {
-                    "name": "Longsword",
-                    "attackBonus": 4,
-                    "damageDice": "1d8",
-                    "damageBonus": 2,
-                    "damageType": "slashing",
-                    "type": "melee",
-                    "description": "Versatile (1d10 two-handed)"
-                }
-            ],
-            "spellcasting": {
-                "ability": "intelligence",
-                "spellSaveDC": 10,
-                "spellAttackBonus": 0,
-                "spells": {
-                    "cantrips": [], "level1": [], "level2": [], "level3": [],
-                    "level4": [], "level5": [], "level6": [], "level7": [],
-                    "level8": [], "level9": []
-                },
-                "spellSlots": {
-                    "level1": {"current": 0, "max": 0},
-                    "level2": {"current": 0, "max": 0},
-                    "level3": {"current": 0, "max": 0},
-                    "level4": {"current": 0, "max": 0},
-                    "level5": {"current": 0, "max": 0},
-                    "level6": {"current": 0, "max": 0},
-                    "level7": {"current": 0, "max": 0},
-                    "level8": {"current": 0, "max": 0},
-                    "level9": {"current": 0, "max": 0}
-                },
-                "preparedSpells": []
-            },
-            "currency": {
-                "gold": 15,
-                "silver": 0,
-                "copper": 0
-            },
-            "experience_points": 0,
-            "exp_required_for_next_level": 300,
-            "challengeRating": 0.25,
-            "personality_traits": "A reliable and sturdy adventurer ready for action",
-            "ideals": "Helping others and doing what's right",
-            "bonds": "Loyal to friends and companions",
-            "flaws": "Sometimes too eager to rush into danger"
-        }
-        
-        # Validate the fallback character
-        valid, error = validate_character(fallback_char)
-        if valid:
-            return fallback_char
-        else:
-            print(f"Warning: Even fallback character failed validation: {error}")
-            return None
-            
-    except Exception as e:
-        print(f"Error creating fallback character: {e}")
+    # The interview flow owns its own validation/requery loop.
+    character_data = ai_character_interview(conversation, module)
+    if not character_data:
+        print("Error: Character creation failed.")
         return None
 
-def ai_character_interview(conversation, module, retry_count=0):
+    # Final deterministic repair/validation pass before persistence.
+    character_data, _ = repair_startup_character_sheet(character_data)
+    valid, error = validate_character_with_recovery(character_data)
+    if not valid:
+        print(f"Error: Character validation failed after final repair: {error}")
+        return None
+
+    character_name = character_data['name']
+    success = save_character_to_module(character_data, module['name'])
+    if success:
+        print(f"Dungeon Master: Character {character_name} created successfully!")
+        from updates.update_character_info import normalize_character_name
+        return normalize_character_name(character_name)
+
+    print(f"Error: Failed to save character {character_name}")
+    return None
+
+def build_character_creation_system_prompt():
+    """Build and return the startup wizard character-creation system prompt."""
+    return _build_character_creation_system_prompt()
+
+def _is_confirmation_trigger(user_input):
+    if not isinstance(user_input, str):
+        return False
+
+    normalized = re.sub(r"\s+", " ", user_input.strip().lower())
+    if not normalized:
+        return False
+
+    explicit_phrases = {
+        "yes",
+        "confirm",
+        "confirmed",
+        "looks good",
+        "this looks good",
+        "yes this looks good",
+        "yes, this looks good",
+        "please finalize",
+        "finalize",
+        "approved",
+        "approve",
+    }
+    if normalized in explicit_phrases:
+        return True
+
+    if re.search(r"\b(confirm|finalize|approved?)\b", normalized):
+        return True
+
+    if re.fullmatch(r"yes[!. ]*", normalized):
+        return True
+
+    if re.search(r"\b(looks good|all looks good)\b", normalized):
+        return True
+
+    return False
+
+
+def _build_json_retry_message(error_text):
+    return (
+        "INTERNAL SYSTEM STEP: Previous character JSON failed validation: "
+        f"{error_text}. Return only a single valid JSON object that matches the "
+        "character schema exactly. Include top-level \"ammunition\" as an array."
+    )
+
+
+def ai_character_interview(conversation, module):
     """AI-powered character creation interview using agentic approach"""
     
     try:
-        # Load schema and rules information
-        schema = safe_json_load("schemas/char_schema.json")
-        if not schema:
-            print("Error: Could not load character schema")
-            return None
-        
-        leveling_info = load_text_file("prompts/leveling/leveling_info.txt")
-        npc_rules = load_text_file("prompts/generators/npc_builder_prompt.txt")
-        
-        # Build the character creation system prompt
-        base_system_content = """You are a friendly and knowledgeable character creation guide for 5th edition fantasy adventures, using only SRD 5.2.1-compliant rules. You help players build their 1st-level characters step by step by asking questions, offering helpful choices, and reflecting their answers clearly. You do not assume anything without asking. You do not create the character sheet until the player explicitly confirms their choices.
+        enhanced_system_prompt = build_character_creation_system_prompt()
 
-You will eventually output a finalized character sheet in a JSON format matching the provided schema, but ONLY after the player says they are ready.
-
-You MUST:
-1. Engage the player in a brief conversation to learn what kind of character they want to play (fantasy archetype, theme, race, class, personality, etc).
-2. Ask targeted follow-up questions to flesh out their background, class, abilities, race, and goals.
-3. Present summaries of each part of the character as it becomes clear, so the player can confirm or revise.
-4. Once the player explicitly confirms all choices and says they are ready, then and ONLY then, proceed to create the character using the provided JSON schema.
-
-NEVER output the final JSON unless the player says they are ready. If you're unsure of a choice, ask. Focus on helping the player make decisions they're excited about. Encourage fun, story-driven, rules-compliant choices. Keep it immersive, but not overwhelming."""
-        enhanced_system_prompt = f"""{base_system_content}
-
-IMPORTANT FORMATTING RULES:
-- Do NOT use emojis or special characters in any responses
-- Write in plain text only
-- When generating the final JSON, use ONLY standard ASCII characters
-- Do NOT include any Unicode characters, emojis, or special symbols
-- Keep all text responses clean and readable without special formatting
-
-Use the following SRD 5.2.1 rules information when helping create the character:
-
-LEVELING INFORMATION:
-{leveling_info}
-
-RACE AND CLASS RULES:
-{npc_rules}
-
-JSON OUTPUT REQUIREMENTS:
-When the player confirms they are ready to finalize their character, you MUST respond with ONLY a valid JSON object that matches the provided character schema exactly. 
-
-SKILL PROFICIENCY REQUIREMENTS:
-- The "skills" field MUST be an array of skill names, NOT an object with bonuses
-- Format example: ["Athletics", "Perception", "Stealth", "Arcana"]
-- Include ONLY skills the character is proficient in
-- During the interview, help the player select:
-  * Background skills (each background grants 2 specific skills)
-  * Class skills (number varies by class - Fighter: 2, Rogue: 4, Ranger: 3, Bard: 3, etc.)
-- Present skill choices naturally during character creation conversation
-- Example: "As a Fighter, you can choose 2 skills from: Acrobatics, Animal Handling, Athletics, History, Insight, Intimidation, Perception, or Survival. What skills would fit your character?"
-
-CRITICAL JSON FORMATTING RULES:
-- Use ONLY standard ASCII characters in the JSON
-- No emojis, Unicode symbols, or special characters anywhere in the JSON
-- No markdown formatting or additional text - just the raw JSON
-- All string values must use only plain text
-- Ensure all required schema fields are populated
-- Use proper JSON syntax with correct quotes and brackets
-- The "skills" field MUST be an array format: ["Skill1", "Skill2"]
-
-The character must be level 1 and have experience_points set to 0.
-The character should be marked as character_role: "player" and character_type: "player".
-All required schema fields must be populated appropriately.
-
-CHARACTER SCHEMA:
-{json.dumps(schema, indent=2)}"""
-
-        # Start the character creation conversation
-        creation_conversation = [
-            {"role": "system", "content": enhanced_system_prompt},
-            {"role": "user", "content": f"You are helping a new player create their first level 1 character for the {module['display_name']} adventure. Welcome them to the adventure, set an immersive tone that brings them into the game world, and begin the character creation process. Start by finding out what kind of hero they want to become. Use phrases like 'Let's get you started by finding out a little bit about you' to engage them in the process."}
-        ]
+        # Continue on the active startup conversation so retries and confirmations
+        # are preserved in the same history object the rest of startup uses.
+        creation_conversation = conversation if isinstance(conversation, list) else []
+        creation_conversation.append({"role": "system", "content": enhanced_system_prompt})
+        creation_conversation.append({
+            "role": "user",
+            "content": (
+                f"You are helping a new player create their first level 1 character for the "
+                f"{module['display_name']} adventure. Welcome them to the adventure, set an "
+                "immersive tone that brings them into the game world, and begin the character "
+                "creation process. Start by finding out what kind of hero they want to become. "
+                "Use phrases like 'Let's get you started by finding out a little bit about you' "
+                "to engage them in the process."
+            )
+        })
         
         print("\nDungeon Master: Starting character creation with AI assistant...")
         print("=" * 50)
         
+        awaiting_final_json = False
+        final_json_attempts = 0
+        nonfinal_json_attempts = 0
+
         # Interactive conversation loop
         while True:
             try:
                 # Get AI response
-                response = get_ai_response(creation_conversation)
-                print(f"\nDungeon Master: {response}")
-                
-                # Check if response looks like JSON (character finalization)
-                if response.strip().startswith('{') and response.strip().endswith('}'):
+                response = get_ai_response(
+                    creation_conversation,
+                    response_format={"type": "json_object"} if awaiting_final_json else None,
+                )
+
+                json_blob = extract_json_object(response)
+                if json_blob:
+                    nonfinal_json_attempts = 0
+                    if not awaiting_final_json:
+                        creation_conversation.append({
+                            "role": "system",
+                            "content": (
+                                "INTERNAL SYSTEM STEP: You emitted machine-readable JSON during interview mode. "
+                                "Do not expose JSON to the player. Continue in normal in-world prose and ask "
+                                "for the next character-creation choice."
+                            ),
+                        })
+                        continue
+
+                    print("\nDungeon Master: Finalizing your hero...")
                     try:
-                        import re
-                        # Clean up any markdown formatting
-                        cleaned_response = re.sub(r'^```json\s*|\s*```$', '', response.strip(), flags=re.MULTILINE)
-                        
                         # Additional JSON sanitization for safe character data
-                        cleaned_response = sanitize_json_string(cleaned_response)
-                        
+                        cleaned_response = sanitize_json_string(json_blob)
+
                         character_data = json.loads(cleaned_response)
-                        
+
                         # Further sanitize the loaded character data
                         character_data = sanitize_character_data(character_data)
-                        
-                        print("\nDungeon Master: Character data received! Finalizing your hero...")
-                        return character_data
+                        character_data, _ = repair_required_ammunition_field(character_data)
+                        character_data, _ = repair_startup_character_sheet(character_data)
+                        valid, error = validate_character_with_recovery(character_data)
+                        if valid:
+                            print("\nDungeon Master: Character data received! Finalizing your hero...")
+                            return character_data
+
+                        final_json_attempts += 1
+                        creation_conversation.append({
+                            "role": "system",
+                            "content": _build_json_retry_message(error),
+                        })
+                        awaiting_final_json = True
+                        if final_json_attempts >= 3:
+                            print(f"\nError: Unable to validate finalized character JSON after retries: {error}")
+                            return None
+                        continue
                     except json.JSONDecodeError as e:
                         print(f"\nError: Invalid JSON received: {e}")
                         print("Asking AI to try again...")
-                        creation_conversation.append({"role": "assistant", "content": response})
-                        creation_conversation.append({"role": "user", "content": "That didn't look like valid JSON. Please provide the character as a properly formatted JSON object with only standard ASCII characters and no emojis or special symbols."})
+                        final_json_attempts += 1
+                        creation_conversation.append({
+                            "role": "system",
+                            "content": _build_json_retry_message(
+                                f"Invalid JSON: {e}"
+                            ),
+                        })
+                        awaiting_final_json = True
+                        if final_json_attempts >= 3:
+                            return None
                         continue
                     except Exception as e:
                         print(f"\nError: Error processing character data: {e}")
-                        creation_conversation.append({"role": "assistant", "content": response})
-                        creation_conversation.append({"role": "user", "content": "There was an error processing the character data. Please provide a clean JSON object with only standard ASCII characters."})
+                        final_json_attempts += 1
+                        creation_conversation.append({
+                            "role": "system",
+                            "content": _build_json_retry_message(f"Processing error: {e}"),
+                        })
+                        awaiting_final_json = True
+                        if final_json_attempts >= 3:
+                            return None
                         continue
-                
-                # Add AI response to conversation immediately
-                creation_conversation.append({"role": "assistant", "content": response})
-                
-                # === CORRECTED INPUT HANDLING LOGIC ===
-                user_input = None
-                while not user_input:
-                    # Get user input and keep prompting if it's empty
-                    user_input = input("\nYour response: ").strip()
-                    if not user_input:
-                        # Silent continue - don't show any message to user
-                        continue # Re-prompt for input without calling AI
-                # =======================================
+
+                if awaiting_final_json:
+                    final_json_attempts += 1
+                    creation_conversation.append({
+                        "role": "system",
+                        "content": _build_json_retry_message(
+                            "The assistant returned prose instead of JSON."
+                        ),
+                    })
+                    if final_json_attempts >= 3:
+                        return None
+                    continue
+                else:
+                    nonfinal_json_attempts = 0
+
+                print(f"\nDungeon Master: {response}")
+
+                # Get user input - empty input handled by outer loop
+                user_input = input("\nYour response: ").strip()
+                if not user_input:
+                    # Empty input: continue outer loop without adding to conversation
+                    continue
                 
                 if user_input.lower() in ['quit', 'exit', 'cancel']:
                     print("Error: Character creation cancelled.")
@@ -857,6 +793,15 @@ CHARACTER SCHEMA:
                 
                 # Add valid user input to conversation
                 creation_conversation.append({"role": "user", "content": user_input})
+                if _is_confirmation_trigger(user_input):
+                    creation_conversation.append({
+                        "role": "system",
+                        "content": "INTERNAL SYSTEM STEP: The player has confirmed the character. Return only the finalized character JSON object. Use valid JSON only and include top-level \"ammunition\" as an array.",
+                    })
+                    awaiting_final_json = True
+                    final_json_attempts = 0
+                else:
+                    awaiting_final_json = False
                 
             except KeyboardInterrupt:
                 print("\nError: Character creation cancelled.")
@@ -1474,7 +1419,9 @@ def auto_fix_character_data(character_data):
     """Automatically fix common character data validation issues"""
     if not isinstance(character_data, dict):
         return character_data
-        
+
+    character_data, _ = repair_startup_character_sheet(character_data)
+
     # Fix equipment ac_base values that are too low
     if "equipment" in character_data and isinstance(character_data["equipment"], list):
         for item in character_data["equipment"]:
@@ -1521,6 +1468,7 @@ def save_character_to_module(character_data, module_name):
     """Save character file to module directory"""
     try:
         status_saving()
+        character_data, _ = repair_startup_character_sheet(character_data)
         # Use ModulePathManager for proper path handling
         path_manager = ModulePathManager(module_name)
         from updates.update_character_info import normalize_character_name
@@ -1531,9 +1479,11 @@ def save_character_to_module(character_data, module_name):
         char_dir = os.path.dirname(char_file)
         os.makedirs(char_dir, exist_ok=True)
         
-        # Save character file
-        safe_json_dump(character_data, char_file)
-        
+        # Save character file atomically
+        if not safe_write_json(char_file, character_data):
+            status_ready()
+            return False
+
         # Check if file was created successfully
         if os.path.exists(char_file):
             status_ready()
@@ -1565,6 +1515,10 @@ def update_party_tracker(module_name, character_name):
         if "worldConditions" not in party_data:
             # Get AI-determined starting location for the selected module
             starting_location = get_ai_starting_location({'moduleName': module_name})
+            starting_location = (
+                _validate_starting_location(starting_location)
+                or get_fallback_starting_location()
+            )
             
             party_data["worldConditions"] = {
                 "year": 1492,
@@ -1590,7 +1544,7 @@ def update_party_tracker(module_name, character_name):
         #     party_data["activeQuests"] = []
         
         # Save updated party tracker
-        success = safe_json_dump(party_data, "party_tracker.json")
+        success = safe_write_json("party_tracker.json", party_data)
         return success
         
     except Exception as e:
@@ -1610,70 +1564,89 @@ def initialize_startup_conversation():
     conversation = [
         {
             "role": "system",
-            "content": "You are a helpful 5th edition assistant guiding a new player through character creation and module selection. Be friendly, encouraging, and clear in your explanations. Keep responses concise but informative. Do not use emojis or special characters in your responses."
+            "content": "You are a helpful 5th edition assistant guiding a new player through character creation and module selection. Be friendly, encouraging, and clear in your explanations. Keep responses concise but informative. Do not use emojis or special characters in your responses. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."
         }
     ]
     
-    safe_json_dump(conversation, STARTUP_CONVERSATION_FILE)
+    safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
     return conversation
 
-def get_ai_response(conversation):
-    """Get AI response for character creation"""
+def get_ai_response(conversation, response_format=None):
+    """Return one persisted assistant turn, retrying provider failures safely.
+
+    Provider failures never become assistant prose. Each retry receives the same
+    message snapshot, and the live conversation is mutated only after a usable
+    response has been received.
+    """
+    status_processing_ai()
     try:
-        status_processing_ai()
-        response = client.chat.completions.create(
-            model=config.DM_MAIN_MODEL,
-            temperature=0.7,
-            messages=conversation
-        )
-        
-        content = response.choices[0].message.content.strip()
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            main_cfg = config.DM_MAIN_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            main_cfg = config.DM_MAIN_LMSTUDIO
+        else:  # legacy
+            main_cfg = config.DM_MAIN_LEGACY
+
+        request_messages = copy.deepcopy(conversation)
+        last_error = None
+        content = None
+        for attempt in range(1, STARTUP_AI_MAX_ATTEMPTS + 1):
+            try:
+                response = capture_and_fanout("T092", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=copy.deepcopy(request_messages),
+                    model=main_cfg["model"],
+                    temperature=0.7,
+                    response_format=response_format,
+                    **{k: v for k, v in main_cfg.items() if k != "model"})
+
+                raw_content = response.choices[0].message.content
+                if not isinstance(raw_content, str) or not raw_content.strip():
+                    raise ValueError("provider returned no usable text")
+                content = raw_content.strip()
+                break
+            except Exception as exc:
+                last_error = exc
+                warning(
+                    f"Startup AI turn failed for provider {MODEL_PROVIDER} "
+                    f"(attempt {attempt}/{STARTUP_AI_MAX_ATTEMPTS}): {exc}",
+                    category="startup",
+                )
+
+        if content is None:
+            raise StartupAIResponseError(
+                f"Startup AI turn failed for provider {MODEL_PROVIDER} after "
+                f"{STARTUP_AI_MAX_ATTEMPTS} attempts"
+            ) from last_error
+
         conversation.append({"role": "assistant", "content": content})
-        
+
         # Save conversation
         status_saving()
-        safe_json_dump(conversation, STARTUP_CONVERSATION_FILE)
-        
-        status_ready()
+        history_error = None
+        try:
+            history_saved = safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
+        except Exception as exc:
+            history_saved = False
+            history_error = exc
+        if not history_saved:
+            detail = f": {history_error}" if history_error is not None else ""
+            warning(
+                "Could not persist startup conversation; continuing with in-memory history"
+                f"{detail}",
+                category="startup",
+            )
+
         return content
-        
-    except Exception as e:
-        error_str = str(e)
-        print(f"Error: Error getting AI response: {e}")
-        
-        # Check if it's an API key authentication error
-        if "401" in error_str or "Incorrect API key" in error_str or "didn't provide an API key" in error_str or "your_openai_api_key_here" in error_str:
-            return ("*The magical energies fail to respond...*\n\n"
-                    "Adventurer, it seems the arcane connection to my consciousness has been severed! "
-                    "The mystical key that binds us - your OpenAI API key - appears to be missing or incorrect.\n\n"
-                    "To restore our link and begin your adventure:\n"
-                    "1. Open the 'config.py' scroll in your realm\n"
-                    "2. Replace 'your_openai_api_key_here' with your actual OpenAI API key\n"
-                    "3. Save the scroll and return to try again\n\n"
-                    "You can obtain a key from the Council of OpenAI at: https://platform.openai.com/api-keys\n\n"
-                    "Until then, I remain trapped in the void, unable to guide your journey...")
-        else:
-            # Check if API key might be the issue even for other errors
-            from config import OPENAI_API_KEY
-            if not OPENAI_API_KEY or OPENAI_API_KEY == '' or OPENAI_API_KEY == 'your_openai_api_key_here':
-                return ("*The crystal ball flickers and dims...*\n\n"
-                        "My apologies, brave adventurer. The mystical connection seems unstable.\n\n"
-                        "It appears your OpenAI API key has not been configured:\n"
-                        "1. Open the 'config.py' scroll in your realm\n"
-                        "2. Find the line: OPENAI_API_KEY = ''\n"
-                        "3. Replace the empty string with your actual OpenAI API key:\n"
-                        "   OPENAI_API_KEY = 'sk-your-actual-key-here'\n"
-                        "4. Save the scroll and return to try again\n\n"
-                        "You can obtain a key from the Council of OpenAI at: https://platform.openai.com/api-keys")
-            else:
-                # Generic error for other issues when API key is set
-                return ("*The crystal ball flickers and dims...*\n\n"
-                        "My apologies, brave adventurer. The mystical connection seems unstable at the moment. "
-                        "Please try again shortly, or check that your internet connection to the ethereal plane remains strong.")
+    finally:
+        status_ready()
 
 def save_startup_conversation(conversation):
     """Save startup conversation to file"""
-    safe_json_dump(conversation, STARTUP_CONVERSATION_FILE)
+    safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
 
 def cleanup_startup_conversation():
     """Remove startup conversation file after completion"""
@@ -1687,6 +1660,24 @@ def cleanup_startup_conversation():
         pass  # Don't fail startup if cleanup fails
 
 # ===== AI STARTING LOCATION DETECTION =====
+
+def _validate_starting_location(candidate):
+    """Return a clean, complete starting location or ``None``.
+
+    This is intentionally all-or-nothing: model fields are never merged into the
+    deterministic fallback that can be persisted to ``party_tracker.json``.
+    """
+    if type(candidate) is not dict or set(candidate) != set(STARTING_LOCATION_FIELDS):
+        return None
+
+    validated = {}
+    for field in STARTING_LOCATION_FIELDS:
+        value = candidate[field]
+        if type(value) is not str or not value.strip():
+            return None
+        validated[field] = value.strip()
+    return validated
+
 
 def get_ai_starting_location(module):
     """Use AI to determine the best starting location for a module"""
@@ -1708,6 +1699,8 @@ Please analyze the module's plot, areas, and locations to determine:
 2. The best starting location within that area (tavern, shop, or quest-giving location)
 3. Appropriate initial weather and political climate
 
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
+
 Respond with ONLY a JSON object in this exact format:
 {{
   "areaId": "area_id",
@@ -1718,31 +1711,37 @@ Respond with ONLY a JSON object in this exact format:
   "politicalClimate": "brief political situation"
 }}"""
 
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
-        response = client.chat.completions.create(
-            model=config.DM_MINI_MODEL,
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            mini_cfg = config.MINI_UTIL_LMSTUDIO
+        else:  # legacy
+            mini_cfg = config.MINI_UTIL_LEGACY
+
+        response = capture_and_fanout("T093", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
-        )
+            model=mini_cfg["model"],
+            temperature=0.7,
+            response_format=None,
+            **{k: v for k, v in mini_cfg.items() if k != "model"})
         
         # Parse AI response
         ai_response = response.choices[0].message.content.strip()
         debug(f"AI_RESPONSE: Raw AI response: {ai_response}", category="startup_wizard")
         
-        # Extract JSON from response
-        import re
-        json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
-        if json_match:
-            json_text = json_match.group()
-            debug(f"JSON_PROCESSING: Extracted JSON: {json_text}", category="startup_wizard")
-            starting_location = json.loads(json_text)
-            debug(f"JSON_PROCESSING: Parsed object: {starting_location}", category="startup_wizard")
-            print(f"AI selected starting location: {starting_location.get('areaName')} - {starting_location.get('locationName')}")
-            return starting_location
-        else:
-            print("Warning: Could not parse AI response, using fallback")
+        starting_location = _validate_starting_location(json.loads(ai_response))
+        if starting_location is None:
+            print("Warning: AI starting location was incomplete, using fallback")
             debug(f"AI_RESPONSE: Full AI response: {ai_response}", category="startup_wizard")
             return get_fallback_starting_location()
+
+        debug(f"JSON_PROCESSING: Parsed object: {starting_location}", category="startup_wizard")
+        print(f"AI selected starting location: {starting_location['areaName']} - {starting_location['locationName']}")
+        return starting_location
             
     except Exception as e:
         print(f"Warning: AI starting location failed ({e}), using fallback")
@@ -1777,7 +1776,7 @@ def load_module_for_ai_analysis(module_name):
         return None
 
 def get_fallback_starting_location():
-    """Fallback starting location if AI analysis fails"""
+    """Return the complete deterministic location persisted when T093 fails."""
     return {
         "areaId": "UNKNOWN", 
         "areaName": "Starting Area",

@@ -52,10 +52,14 @@ Features:
 import json
 import os
 import sys
-from openai import OpenAI
-from config import OPENAI_API_KEY, LEVEL_UP_MODEL, DM_VALIDATION_MODEL
+from core.ai import api_client
+import config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T047", "core/managers/level_up_manager.py", 287)
+register_callsite("T048", "core/managers/level_up_manager.py", 329)
 from utils.file_operations import safe_read_json
 from updates.update_character_info import update_character_info, normalize_character_name
+from utils.character_sheet_contract import extract_json_object
 from utils.encoding_utils import safe_json_dump
 from utils.module_path_manager import ModulePathManager
 
@@ -65,9 +69,6 @@ try:
     USAGE_TRACKING_AVAILABLE = True
 except ImportError:
     USAGE_TRACKING_AVAILABLE = False
-
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # --- Class-based Level Up Manager ---
 
@@ -84,6 +85,7 @@ class LevelUpSession:
         self.is_complete = False
         self.summary = ""
         self.success = False
+        self._started = False
         self.conversation_file = "modules/conversation_history/level_up_conversation.json"
 
     def start(self):
@@ -92,6 +94,10 @@ class LevelUpSession:
         Returns:
             str: The initial greeting/prompt from the AI.
         """
+        if self._started:
+            return self.summary or "The level up process has already started."
+
+        self._started = True
         print(f"[Level Up Session] Starting for {self.character_name}")
         # Load character data
         party_tracker = safe_read_json("party_tracker.json")
@@ -113,12 +119,7 @@ class LevelUpSession:
 
         # Get the first AI response
         ai_response = self._get_ai_response()
-        self.conversation.append({"role": "assistant", "content": ai_response})
-        
-        # Save state after the first turn
-        self._save_conversation()
-
-        return ai_response
+        return self._handle_assistant_response(ai_response)
 
     def handle_input(self, user_input):
         """
@@ -134,54 +135,128 @@ class LevelUpSession:
 
         # Get the next AI response
         ai_response = self._get_ai_response()
+        return self._handle_assistant_response(ai_response)
+
+    def _handle_assistant_response(self, ai_response, allow_correction=True):
+        """Persist and process one T047 assistant turn exactly once."""
         self.conversation.append({"role": "assistant", "content": ai_response})
 
-        # Check if the AI has concluded the interview
-        update_params = self._extract_update_action(ai_response)
-        if update_params:
-            print("[Level Up Session] AI returned final action. Validating...")
-            is_valid, validation_msg = self._validate_level_up_response(ai_response)
-
-            if is_valid:
-                changes = update_params.get("changes", "{}")
-                
-                # Strip experience_points from level-up changes to prevent XP bug
-                try:
-                    import json
-                    changes_dict = json.loads(changes)
-                    if "experience_points" in changes_dict:
-                        print(f"[Level Up Session] Removing experience_points from level-up changes")
-                        del changes_dict["experience_points"]
-                        changes = json.dumps(changes_dict)
-                except:
-                    pass  # If parsing fails, just pass through original
-                
-                if update_character_info(self.character_name, changes):
-                    print(f"[Level Up Session] SUCCESS! {self.character_name} updated.")
-                    self.is_complete = True
-                    self.success = True
-                    self.summary = self._generate_level_up_summary(ai_response)
-                    # Return the full AI response so the main DM can generate proper narration
-                    return ai_response
-                else:
-                    self.is_complete = True
-                    self.success = False
-                    self.summary = "Error: The final character update failed to apply."
-                    return self.summary
-            else:
-                # If validation fails, tell the AI to fix it
-                correction_prompt = f"That final JSON was not valid. Reason: {validation_msg}. Please correct the JSON and provide it again, containing ALL the level up changes."
-                self.conversation.append({"role": "user", "content": correction_prompt})
-                # Get the corrected response from the AI
-                corrected_response = self._get_ai_response()
-                self.conversation.append({"role": "assistant", "content": corrected_response})
-                # Save state and return the corrected response for the UI
-                self._save_conversation()
-                return corrected_response
-
-        # Save state and return the AI's next question
+        # The assistant turn is the recovery journal for this workflow. Persist it
+        # before validation or character mutation so a rejected response, process
+        # interruption, or failed update never disappears from the session record.
         self._save_conversation()
+
+        update_params = self._extract_update_action(ai_response)
+        if update_params is None:
+            return ai_response
+
+        print("[Level Up Session] AI returned final action. Validating...")
+        is_valid, validation_msg = self._validate_level_up_response(ai_response)
+        if not is_valid:
+            if allow_correction:
+                return self._request_single_correction(validation_msg)
+
+            self.success = False
+            self.summary = (
+                "Error: The corrected final level-up update was rejected. "
+                f"Reason: {validation_msg}"
+            )
+            self.conversation.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "The corrected final update was still invalid. Do not "
+                        "assume the level up was applied. Continue the interview "
+                        "and produce a new complete final action after resolving "
+                        f"this validation result: {validation_msg}"
+                    ),
+                }
+            )
+            self._save_conversation()
+            return ai_response
+
+        changes, preparation_error = self._prepare_level_up_changes(update_params)
+        if preparation_error:
+            return self._record_update_failure(preparation_error)
+
+        try:
+            update_succeeded = update_character_info(self.character_name, changes)
+        except Exception as exc:
+            print(f"[ERROR] Applying final level-up update: {exc}")
+            update_succeeded = False
+
+        if not update_succeeded:
+            return self._record_update_failure(
+                "The final character update failed to apply."
+            )
+
+        print(f"[Level Up Session] SUCCESS! {self.character_name} updated.")
+        self.is_complete = True
+        self.success = True
+        self.summary = self._generate_level_up_summary(ai_response)
+        # Return the full AI response so the main DM can generate proper narration.
         return ai_response
+
+    def _request_single_correction(self, validation_msg):
+        """Ask T047 for one correction and immediately process that response."""
+        correction_prompt = (
+            "That final JSON was not valid. "
+            f"Reason: {validation_msg}. Please correct the JSON and provide it "
+            "again, containing ALL the level up changes."
+        )
+        self.conversation.append({"role": "user", "content": correction_prompt})
+        self._save_conversation()
+
+        corrected_response = self._get_ai_response()
+        return self._handle_assistant_response(
+            corrected_response,
+            allow_correction=False,
+        )
+
+    def _record_update_failure(self, reason):
+        """Keep a failed final turn recoverable without replaying it automatically."""
+        self.is_complete = False
+        self.success = False
+        self.summary = f"Error: {reason}"
+        self.conversation.append(
+            {
+                "role": "user",
+                "content": (
+                    "The validated character update was not applied. Do not "
+                    "assume the level up succeeded and do not reuse the prior "
+                    "action implicitly. After the user asks to retry, provide a "
+                    "new complete updateCharacterInfo action."
+                ),
+            }
+        )
+        self._save_conversation()
+        return self.summary
+
+    @staticmethod
+    def _prepare_level_up_changes(update_params):
+        """Return a JSON delta with experience_points removed deterministically."""
+        if not isinstance(update_params, dict) or "changes" not in update_params:
+            return None, "The final action did not contain a changes object."
+
+        changes = update_params["changes"]
+        if isinstance(changes, str):
+            try:
+                changes = json.loads(changes)
+            except json.JSONDecodeError:
+                return None, "The final action changes value was not valid JSON."
+        elif isinstance(changes, dict):
+            changes = dict(changes)
+        else:
+            return None, "The final action changes value was not a JSON object."
+
+        if not isinstance(changes, dict):
+            return None, "The final action changes value was not a JSON object."
+
+        if "experience_points" in changes:
+            print("[Level Up Session] Removing experience_points from level-up changes")
+            changes.pop("experience_points", None)
+
+        return json.dumps(changes), None
 
     def _initialize_conversation(self):
         level_up_prompt, _, leveling_info = self._load_system_prompts()
@@ -198,21 +273,33 @@ class LevelUpSession:
 
     def _get_ai_response(self):
         try:
-            response = client.chat.completions.create(
-                model=LEVEL_UP_MODEL,
+            # Select model config per provider
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                conv_config = config.LEVELUP_CONV_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                conv_config = config.LEVELUP_CONV_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                conv_config = config.LEVELUP_CONV_LMSTUDIO
+            else:  # legacy
+                conv_config = config.LEVELUP_CONV_LEGACY
+
+            response = capture_and_fanout("T047", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=self.conversation,
-                temperature=0.7
-            )
-            
+                model=conv_config["model"],
+                temperature=0.7,
+                **{k: v for k, v in conv_config.items() if k != "model"})
+
             # Track token usage with context for telemetry
             if USAGE_TRACKING_AVAILABLE:
                 try:
                     from utils.openai_usage_tracker import get_global_tracker
                     tracker = get_global_tracker()
-                    tracker.track(response, context={'endpoint': 'level_up', 'purpose': 'level_up_processing', 'character': character_name})
+                    tracker.track(response, context={'endpoint': 'level_up', 'purpose': 'level_up_processing', 'character': self.character_name})
                 except:
                     pass
-            
+
             return response.choices[0].message.content
         except Exception as e:
             print(f"[ERROR] Getting AI response: {e}")
@@ -226,44 +313,138 @@ class LevelUpSession:
             {"role": "system", "content": f"LEVELING INFORMATION (Reference):\n{leveling_info}"},
             {"role": "user", "content": f"Validate this final level up action JSON. Is it a valid, complete, and rules-compliant update?\n\n{ai_response}"}
         ]
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            val_config = config.LEVELUP_VAL_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            val_config = config.LEVELUP_VAL_GEMINI_PRO_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            val_config = config.LEVELUP_VAL_LMSTUDIO
+        else:  # legacy
+            val_config = config.LEVELUP_VAL_LEGACY
+
         # Use a separate call to the validation model
         try:
-            response = client.chat.completions.create(
-                model=DM_VALIDATION_MODEL,
+            response = capture_and_fanout("T048", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=validation_messages,
-                temperature=0.2
-            )
+                model=val_config["model"],
+                temperature=0.2,
+                **{k: v for k, v in val_config.items() if k != "model"})
             
             # Track token usage with context for telemetry
             if USAGE_TRACKING_AVAILABLE:
                 try:
                     from utils.openai_usage_tracker import get_global_tracker
                     tracker = get_global_tracker()
-                    tracker.track(response, context={'endpoint': 'level_up', 'purpose': 'level_up_processing', 'character': character_name})
+                    tracker.track(response, context={'endpoint': 'level_up', 'purpose': 'level_up_processing', 'character': self.character_name})
                 except:
                     pass
-            
+
             validation_response = response.choices[0].message.content
-            if validation_response and "VALID" in validation_response.upper():
-                return True, validation_response
-            else:
-                return False, validation_response
         except Exception as e:
             print(f"[ERROR] Validating AI response: {e}")
             return False, "Validation system error."
+
+        try:
+            validation_result = self._parse_level_up_validation_response(
+                validation_response
+            )
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            print(f"[ERROR] Malformed level-up validation response: {e}")
+            return False, f"Malformed validation response: {e}"
+
+        return (
+            validation_result["valid"],
+            self._format_level_up_validation_message(validation_result),
+        )
+
+    @staticmethod
+    def _parse_level_up_validation_response(validation_response):
+        """Parse and validate T048's documented structured verdict contract."""
+        json_blob = extract_json_object(validation_response)
+        if json_blob is None:
+            raise ValueError("no JSON object found")
+
+        result = json.loads(json_blob)
+        if not isinstance(result, dict):
+            raise ValueError("validation result must be a JSON object")
+
+        required_fields = {"valid", "errors", "warnings", "recommendation"}
+        actual_fields = set(result)
+        if actual_fields != required_fields:
+            missing_fields = required_fields.difference(actual_fields)
+            unexpected_fields = actual_fields.difference(required_fields)
+            shape_errors = []
+            if missing_fields:
+                shape_errors.append(
+                    "missing required field(s): "
+                    + ", ".join(sorted(missing_fields))
+                )
+            if unexpected_fields:
+                shape_errors.append(
+                    "unexpected field(s): "
+                    + ", ".join(sorted(unexpected_fields))
+                )
+            raise ValueError("; ".join(shape_errors))
+
+        if type(result["valid"]) is not bool:
+            raise ValueError("'valid' must be a boolean")
+
+        for field in ("errors", "warnings"):
+            if not isinstance(result[field], list) or not all(
+                isinstance(item, str) for item in result[field]
+            ):
+                raise ValueError(f"'{field}' must be an array of strings")
+
+        if not isinstance(result["recommendation"], str):
+            raise ValueError("'recommendation' must be a string")
+
+        return result
+
+    @staticmethod
+    def _format_level_up_validation_message(validation_result):
+        """Create actionable correction text from a parsed T048 verdict."""
+        parts = []
+        if validation_result["errors"]:
+            parts.append("Errors: " + "; ".join(validation_result["errors"]))
+        if validation_result["warnings"]:
+            parts.append("Warnings: " + "; ".join(validation_result["warnings"]))
+        if validation_result["recommendation"].strip():
+            parts.append(
+                "Recommendation: " + validation_result["recommendation"].strip()
+            )
+
+        if parts:
+            return " ".join(parts)
+        return (
+            "Validation passed."
+            if validation_result["valid"]
+            else "Validation failed."
+        )
 
 
     @staticmethod
     def _extract_update_action(ai_response):
         try:
+            if not isinstance(ai_response, str):
+                return None
             if not (ai_response.strip().startswith('{') and ai_response.strip().endswith('}')):
                 return None
             response_data = json.loads(ai_response)
+            if not isinstance(response_data, dict):
+                return None
             actions = response_data.get("actions", [])
+            if not isinstance(actions, list):
+                return None
             for action in actions:
+                if not isinstance(action, dict):
+                    continue
                 if action.get("action") == "updateCharacterInfo":
-                    return action.get("parameters", {})
-        except (json.JSONDecodeError, AttributeError):
+                    parameters = action.get("parameters")
+                    return parameters if isinstance(parameters, dict) else {}
+        except (json.JSONDecodeError, AttributeError, TypeError):
             return None
         return None
 

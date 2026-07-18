@@ -120,7 +120,15 @@ import subprocess
 from model_config import USE_COMPRESSED_COMBAT
 from datetime import datetime
 from utils.xp import main as calculate_xp
-from openai import OpenAI
+from core.ai import api_client
+import config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T040", "core/managers/combat_manager.py", 918)
+register_callsite("T041", "core/managers/combat_manager.py", 1381)
+register_callsite("T042", "core/managers/combat_manager.py", 2402)
+register_callsite("T043", "core/managers/combat_manager.py", 2841)
+register_callsite("T044", "core/managers/combat_manager.py", 2977)
+register_callsite("T045", "core/managers/combat_manager.py", 3618)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -135,11 +143,6 @@ except Exception as e:
 # Import model configurations from config.py
 from config import (
     OPENAI_API_KEY,
-    COMBAT_MAIN_MODEL,
-    # Use the existing validation model instead of COMBAT_VALIDATION_MODEL
-    DM_VALIDATION_MODEL, 
-    COMBAT_DIALOGUE_SUMMARY_MODEL,
-    DM_MINI_MODEL
 )
 from updates.update_character_info import update_character_info, normalize_character_name
 import updates.update_encounter as update_encounter
@@ -149,6 +152,7 @@ from core.generators.generate_prerolls import generate_prerolls
 # Import safe JSON functions
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
+from utils.module_refresh_lock import module_refresh_lock
 import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 # Import combat message compressor for optimizing conversation history
@@ -164,6 +168,104 @@ set_script_name(__name__)
 
 # Temperature
 TEMPERATURE = 0.8
+
+T040_VALIDATION_UNAVAILABLE_FEEDBACK = (
+    "Your previous combat response could not be safely validated because the "
+    "validation service returned no usable verdict. Do not assume any actions "
+    "were applied. Re-evaluate the player's submitted action against the "
+    "authoritative combat state and return a fresh, complete response."
+)
+T043_RESUME_FALLBACK_NARRATION = "The battle continues! What will you do next?"
+T045_REJECTED_ACTION_NARRATION = (
+    "I could not safely resolve that combat action, so no combat state was "
+    "changed. Please submit the action again."
+)
+
+
+def _combat_history_matches_encounter(conversation_history, encounter_id):
+    """Return whether persisted combat history belongs to this encounter."""
+    if not isinstance(conversation_history, list) or not encounter_id:
+        return False
+
+    prefix = "Current Combat Encounter:"
+    recorded_ids = []
+    for message in conversation_history:
+        if not isinstance(message, dict) or message.get("role") != "system":
+            continue
+        content = message.get("content")
+        if isinstance(content, str) and content.strip().startswith(prefix):
+            recorded_ids.append(content.strip()[len(prefix):].strip())
+
+    # The newest encounter marker is authoritative. Missing markers are legacy
+    # ambiguity and must start fresh rather than replaying another fight.
+    return bool(recorded_ids) and recorded_ids[-1] == str(encounter_id).strip()
+
+
+def _finalize_t043_resume_exchange(
+    conversation_history,
+    resume_prompt,
+    response_content,
+    expected_combat_round,
+):
+    """Commit one answered resume exchange and return its visible narration.
+
+    The provider response is staged until its JSON narration is validated. A
+    provider failure or malformed response is represented by the same fixed
+    fallback in both the displayed narration and the assistant history entry.
+    This also repairs a resume prompt left unanswered by an older run without
+    duplicating that prompt.
+    """
+    parse_error = None
+    used_fallback = True
+    narration = T043_RESUME_FALLBACK_NARRATION
+    assistant_content = narration
+
+    if response_content is not None:
+        try:
+            parsed_response = json.loads(response_content)
+            if not isinstance(parsed_response, dict):
+                raise ValueError("T043 response must be a JSON object")
+            if set(parsed_response) != {"combat_round", "narration", "actions"}:
+                raise ValueError(
+                    "T043 requires exactly combat_round, narration, and actions"
+                )
+            if (
+                type(parsed_response["combat_round"]) is not int
+                or parsed_response["combat_round"] != expected_combat_round
+            ):
+                raise ValueError("T043 combat_round must preserve the current round")
+            if parsed_response["actions"] != []:
+                raise ValueError("T043 resume narration cannot contain unapplied actions")
+            candidate_narration = parsed_response.get("narration")
+            if (
+                not isinstance(candidate_narration, str)
+                or not candidate_narration.strip()
+            ):
+                raise ValueError("T043 response requires a non-empty narration")
+            narration = candidate_narration.strip()
+            assistant_content = json.dumps(
+                {"narration": narration},
+                ensure_ascii=False,
+            )
+            used_fallback = False
+        except json.JSONDecodeError as exc:
+            parse_error = exc
+        except (TypeError, ValueError) as exc:
+            parse_error = exc
+
+    prompt_is_pending = bool(
+        conversation_history
+        and isinstance(conversation_history[-1], dict)
+        and conversation_history[-1].get("role") == "user"
+        and conversation_history[-1].get("content") == resume_prompt
+    )
+    if not prompt_is_pending:
+        conversation_history.append({"role": "user", "content": resume_prompt})
+    conversation_history.append(
+        {"role": "assistant", "content": assistant_content}
+    )
+
+    return narration, used_fallback, parse_error
 
 def get_combat_temperature(encounter_data, validation_attempt=0):
     """
@@ -210,9 +312,6 @@ def get_combat_temperature(encounter_data, validation_attempt=0):
         print(f"[COMBAT_MANAGER] Lowering temperature from {base_temp:.1f} to {final_temp} after validation failure (attempt {validation_attempt + 1})")
     
     return final_temp
-
-# OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 conversation_history_file = "modules/conversation_history/combat_conversation_history.json"
 second_model_history_file = "modules/conversation_history/second_model_history.json"
@@ -549,6 +648,39 @@ def parse_json_safely(text):
     # If we still can't parse it, raise an exception
     raise json.JSONDecodeError("Unable to parse JSON from the given text", text, 0)
 
+
+def _parse_combat_validation_verdict(text):
+    """Parse T040 without allowing string truthiness to approve a response."""
+    result = parse_json_safely(text)
+    if not isinstance(result, dict) or set(result) != {"valid", "feedback"}:
+        raise ValueError("T040 requires exactly valid and feedback")
+    if type(result["valid"]) is not bool or not isinstance(result["feedback"], dict):
+        raise ValueError("T040 returned invalid verdict types")
+    feedback = result["feedback"]
+    if set(feedback) != {"positive", "negative", "recommendation"}:
+        raise ValueError("T040 feedback has missing or extra fields")
+    if not all(
+        isinstance(feedback[field], str)
+        for field in ("positive", "negative", "recommendation")
+    ):
+        raise ValueError("T040 feedback fields must be strings")
+
+    # The prompt's valid=true contract deliberately leaves failure-only
+    # feedback empty. Invalid verdicts, however, must explain both the defect
+    # and the correction so the parent combat call can make a useful retry.
+    if result["valid"]:
+        if not feedback["positive"].strip():
+            raise ValueError("T040 valid verdict requires positive feedback")
+        if feedback["negative"].strip() or feedback["recommendation"].strip():
+            raise ValueError(
+                "T040 valid verdict cannot contain failure-only feedback"
+            )
+    elif not (
+        feedback["negative"].strip() and feedback["recommendation"].strip()
+    ):
+        raise ValueError("T040 invalid verdict requires actionable feedback")
+    return result
+
 def check_multiple_update_encounter(actions):
     """Check if there are multiple updateEncounter actions that should be consolidated"""
     if not isinstance(actions, list):
@@ -770,14 +902,26 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
     print(f"DEBUG: [VALIDATION] Exported validation messages to validation_messages_to_api.json")
     print(f"DEBUG: [VALIDATION] Total validation context size: {validation_size:,} characters ({len(validation_conversation)} messages)")
 
+    # Select model config per provider
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        validation_config = config.COMBAT_VALID_GPT54_NONE
+    elif MODEL_PROVIDER == "gemini":
+        validation_config = config.COMBAT_VALID_GEMINI_FLASH_LOW
+    elif MODEL_PROVIDER == "lmstudio":
+        validation_config = config.COMBAT_VALID_LMSTUDIO
+    else:  # legacy
+        validation_config = config.COMBAT_VALID_LEGACY
+
     max_validation_retries = 5
     for attempt in range(max_validation_retries):
         try:
-            validation_result = client.chat.completions.create(
-                model=DM_VALIDATION_MODEL,
-                temperature=0.3,  # Lower temperature for more consistent validation
-                messages=validation_conversation
-            )
+            validation_result = capture_and_fanout("T040", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=validation_conversation,
+                model=validation_config["model"],
+                temperature=0.3,
+                **{k: v for k, v in validation_config.items() if k != "model"})
 
             # Log API call to master log
             try:
@@ -799,15 +943,17 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
             validation_response = validation_result.choices[0].message.content.strip()
             
             try:
-                validation_json = parse_json_safely(validation_response)
-                is_valid = validation_json.get("valid", False)
+                validation_json = _parse_combat_validation_verdict(
+                    validation_response
+                )
+                is_valid = validation_json["valid"]
                 
                 # Extract feedback components and sanitize them for Windows console
                 # CRITICAL: Must sanitize to prevent Unicode characters from crashing Windows console
-                feedback_obj = validation_json.get("feedback", {})
-                positive = sanitize_unicode_for_logging(feedback_obj.get("positive", "None."))
-                negative = sanitize_unicode_for_logging(feedback_obj.get("negative", "No reason provided."))
-                recommendation = sanitize_unicode_for_logging(feedback_obj.get("recommendation", "No recommendation provided."))
+                feedback_obj = validation_json["feedback"]
+                positive = sanitize_unicode_for_logging(feedback_obj["positive"])
+                negative = sanitize_unicode_for_logging(feedback_obj["negative"])
+                recommendation = sanitize_unicode_for_logging(feedback_obj["recommendation"])
 
                 # Log validation results with encounter context
                 # Create debug/combat directory if it doesn't exist
@@ -886,7 +1032,7 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
                     # Return the full, structured feedback
                     return full_feedback
                     
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 debug(f"VALIDATION: Invalid JSON from validation model (Attempt {attempt + 1}/{max_validation_retries})", category="combat_validation")
                 debug(f"VALIDATION: Problematic response: {validation_response}", category="combat_validation")
                 continue
@@ -895,9 +1041,15 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
             debug(f"VALIDATION: Validation error - {str(e)}", category="combat_validation")
             continue
     
-    # If we've exhausted all retries and still don't have a valid result
-    warning("VALIDATION: Validation failed after max retries, assuming response is valid", category="combat_validation")
-    return True
+    # Provider failures and malformed verdicts provide no evidence that the
+    # candidate is safe. Return correction text so the T045 caller retries and
+    # keeps this candidate outside the state-mutation boundary.
+    warning(
+        "VALIDATION: Validation unavailable after max retries; rejecting "
+        "the combat response",
+        category="combat_validation",
+    )
+    return T040_VALIDATION_UNAVAILABLE_FEEDBACK
 
 def normalize_encounter_status(encounter_data):
     """Normalizes status values in encounter data to lowercase"""
@@ -938,6 +1090,181 @@ def get_initiative_order(encounter_data):
     
     return " -> ".join(order_parts)
 
+
+def generate_available_initiative_tracker(encounter_data, conversation_history, current_round):
+    """Return an AI tracker when available, otherwise a deterministic tracker.
+
+    Missing encounter combatants remain an explicit failure because there is
+    no valid initiative order to format.
+    """
+    from .initiative_tracker_ai import (
+        format_fallback_initiative,
+        generate_live_initiative_tracker,
+    )
+
+    creatures = encounter_data.get("creatures", []) if isinstance(encounter_data, dict) else []
+    if not creatures:
+        return None
+
+    try:
+        tracker = generate_live_initiative_tracker(
+            encounter_data,
+            conversation_history,
+            current_round,
+        )
+    except Exception as exc:
+        debug(f"AI_TRACKER: Failed to generate live tracker: {exc}", category="combat_events")
+        tracker = None
+
+    if tracker:
+        if "**Live Initiative Tracker:**" in tracker:
+            debug("AI_TRACKER: Successfully generated live initiative tracker", category="combat_events")
+        else:
+            warning("AI_TRACKER: Using deterministic initiative tracker", category="combat_events")
+        return tracker
+
+    warning("AI_TRACKER: Falling back to deterministic initiative tracker", category="combat_events")
+    return format_fallback_initiative(creatures, current_round)
+
+
+def _tracker_conversation_with_player_action(
+    conversation_history, user_input_text, limit=6
+):
+    """Build tracker context that includes the just-submitted player turn."""
+    history = list(conversation_history or [])
+    if isinstance(user_input_text, str) and user_input_text.strip():
+        history.append(
+            {"role": "user", "content": user_input_text}
+        )
+    return history[-limit:] if len(history) > limit else history
+
+
+def _living_non_player_turns_before_player(encounter_data):
+    """Return living initiative actors that must act before the player."""
+    creatures = (
+        encounter_data.get("creatures", [])
+        if isinstance(encounter_data, dict)
+        else []
+    )
+    ordered = sorted(
+        (creature for creature in creatures if isinstance(creature, dict)),
+        key=lambda creature: creature.get("initiative", 0),
+        reverse=True,
+    )
+    player_index = next(
+        (
+            index
+            for index, creature in enumerate(ordered)
+            if creature.get("type") == "player"
+            and creature.get("status", "alive").lower()
+            not in {"dead", "defeated"}
+        ),
+        None,
+    )
+    if player_index is None:
+        return []
+    return [
+        creature.get("name", "Unknown")
+        for creature in ordered[:player_index]
+        if creature.get("type") != "player"
+        and creature.get("status", "alive").lower()
+        not in {"dead", "defeated"}
+    ]
+
+
+def _living_turn_window_from_player(encounter_data):
+    """Return the submitted player turn followed by every living later actor."""
+    creatures = (
+        encounter_data.get("creatures", [])
+        if isinstance(encounter_data, dict)
+        else []
+    )
+    ordered = sorted(
+        (
+            creature
+            for creature in creatures
+            if isinstance(creature, dict)
+            and creature.get("status", "alive").lower()
+            not in {"dead", "defeated"}
+        ),
+        key=lambda creature: creature.get("initiative", 0),
+        reverse=True,
+    )
+    player_index = next(
+        (
+            index
+            for index, creature in enumerate(ordered)
+            if creature.get("type") == "player"
+        ),
+        None,
+    )
+    if player_index is None:
+        return []
+    return [
+        creature.get("name", "Unknown")
+        for creature in ordered[player_index:]
+    ]
+
+
+def _finalize_combat_validation_history(
+    conversation_history,
+    initial_conversation_length,
+    ai_response,
+    valid_response,
+    current_round=1,
+):
+    """Discard every rejected T045 candidate and its validation feedback.
+
+    Only a response accepted by T040 may cross the state-mutation boundary.
+    The prefix includes the player's composed input, so a failed attempt remains
+    recoverable without persisting rejected assistant output.
+    """
+    cleaned_history = conversation_history[:initial_conversation_length]
+    if not valid_response or not ai_response:
+        cleaned_history.append(
+            {
+                "role": "assistant",
+                "content": json.dumps(
+                    {
+                        "plan": (
+                            "No combat action was applied because validation failed."
+                        ),
+                        "narration": T045_REJECTED_ACTION_NARRATION,
+                        "combat_round": current_round,
+                        "actions": [],
+                    }
+                ),
+            }
+        )
+        return cleaned_history, None
+
+    cleaned_history.append({"role": "assistant", "content": ai_response})
+    return cleaned_history, ai_response
+
+
+def _finalize_initial_combat_scene(
+    conversation_history,
+    initial_conversation_length,
+    candidate_response,
+    candidate_valid,
+    fallback_narration,
+):
+    """Persist only a validated T044 scene or a safe no-action fallback."""
+    cleaned_history = conversation_history[:initial_conversation_length]
+    if candidate_valid and candidate_response:
+        selected_response = candidate_response
+    else:
+        selected_response = json.dumps(
+            {
+                "narration": fallback_narration,
+                "combat_round": 1,
+                "actions": [],
+            }
+        )
+    cleaned_history.append({"role": "assistant", "content": selected_response})
+    return cleaned_history, selected_response
+
+
 def log_conversation_structure(conversation):
     """Log the structure of the conversation history for debugging"""
     debug("VALIDATION: Conversation Structure:", category="combat_validation")
@@ -954,6 +1281,153 @@ def log_conversation_structure(conversation):
     for role, count in roles.items():
         debug(f"  {role}: {count}", category="combat_validation")
     # Empty line for debug output
+
+
+_T041_FALLBACK_SUMMARY = (
+    "Combat concluded, but the automated narrative summary was unavailable. "
+    "The complete combat dialogue has been preserved in the combat history."
+)
+
+
+def _extract_t041_summary(response):
+    """Extract nonempty prose from a T041 response or raise ValueError."""
+    content = response.choices[0].message.content
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("T041 returned empty or non-text content")
+
+    content = content.strip()
+    try:
+        parsed_summary = json.loads(content)
+    except json.JSONDecodeError as exc:
+        # Ordinary prose is expected. Text that starts like structured JSON is
+        # instead a malformed wrapper and must use the safe fallback.
+        if content.startswith(("{", "[")):
+            raise ValueError("T041 returned malformed structured content") from exc
+        return content
+
+    if isinstance(parsed_summary, str) and parsed_summary.strip():
+        return parsed_summary.strip()
+    if isinstance(parsed_summary, dict):
+        for field in ("narration", "summary", "text", "content", "message"):
+            value = parsed_summary.get(field)
+            if isinstance(value, str) and value.strip():
+                debug(
+                    f"Extracted '{field}' from JSON combat summary",
+                    category="combat_summary",
+                )
+                return value.strip()
+
+    raise ValueError("T041 returned JSON without a supported prose field")
+
+
+def _append_combat_encounter_to_current_area(current_location_id, new_encounter):
+    """Merge one encounter into fresh area state under module refresh.
+
+    ``location_data`` is loaded before combat begins and can be hours old. A
+    whole-location replacement after T041 would therefore be able to undo a
+    completed T088 NPC reconciliation. Resolve the authoritative module/area
+    and change only its encounter list while holding the shared outer fence.
+    """
+    with module_refresh_lock() as refresh_acquired:
+        if not refresh_acquired:
+            warning(
+                "Combat summary area update skipped because module refresh "
+                "is busy",
+                category="encounter_setup",
+            )
+            return False
+
+        try:
+            authoritative_party = safe_json_load("party_tracker.json")
+        except Exception as exc:
+            error(
+                "FILE_OP: Failed to resolve authoritative party for combat summary",
+                exception=exc,
+                category="file_operations",
+            )
+            return False
+        if not isinstance(authoritative_party, dict):
+            error(
+                "FILE_OP: Authoritative party is unavailable for combat summary",
+                category="file_operations",
+            )
+            return False
+
+        world_conditions = authoritative_party.get("worldConditions")
+        if (
+            not isinstance(world_conditions, dict)
+            or world_conditions.get("currentLocationId") != current_location_id
+        ):
+            warning(
+                "Combat summary area update skipped because the party moved",
+                category="encounter_setup",
+            )
+            return False
+
+        current_module = authoritative_party.get("module", "")
+        if not isinstance(current_module, str):
+            return False
+        from utils.module_path_manager import ModulePathManager
+
+        path_manager = ModulePathManager(current_module.replace(" ", "_") or None)
+        current_area_id = world_conditions.get("currentAreaId")
+        if not isinstance(current_area_id, str) or not current_area_id:
+            return False
+        area_file = path_manager.get_area_path(current_area_id)
+
+        try:
+            area_data = safe_json_load(area_file)
+        except Exception as exc:
+            error(
+                f"FILE_OP: Failed to load area file: {area_file}",
+                exception=exc,
+                category="file_operations",
+            )
+            return False
+        if not isinstance(area_data, dict) or not isinstance(
+            area_data.get("locations"), list
+        ):
+            error(
+                f"FILE_OP: Failed to load area file: {area_file}",
+                category="file_operations",
+            )
+            return False
+
+        target_location = next(
+            (
+                location
+                for location in area_data["locations"]
+                if isinstance(location, dict)
+                and location.get("locationId") == current_location_id
+            ),
+            None,
+        )
+        if target_location is None:
+            warning(
+                "Combat summary area update skipped because the location "
+                "is no longer present",
+                category="encounter_setup",
+            )
+            return False
+
+        encounters = target_location.get("encounters")
+        if not isinstance(encounters, list):
+            encounters = []
+            target_location["encounters"] = encounters
+        encounters.append(new_encounter)
+
+        if not safe_write_json(area_file, area_data):
+            error(
+                f"FILE_OP: Failed to save area file: {area_file}",
+                category="file_operations",
+            )
+            return False
+        debug(
+            f"STATE_CHANGE: Encounter {new_encounter.get('encounterId')} "
+            f"added to {area_file}.",
+            category="encounter_setup",
+        )
+        return True
 
 
 def summarize_dialogue(conversation_history_param, location_data, party_tracker_data):
@@ -999,43 +1473,55 @@ def summarize_dialogue(conversation_history_param, location_data, party_tracker_
     clean_text = "\n\n".join(clean_conversation)
     
     dialogue_summary_prompt = [
-        {"role": "system", "content": "Your task is to create a vivid, colorful narrative summary of this combat encounter. Capture the dramatic highs and lows - critical hits, narrow misses, clever tactics, desperate moments, and heroic actions. Write it as an exciting story paragraph that captures the flow and feel of the battle. Include: the initial setup, key turning points, memorable moments, the final blow, total XP awarded, and what remains after combat (defeated foes, environmental changes). Write in past tense as a complete narrative summary, not a play-by-play. Make it engaging and memorable - this will be the permanent record of this battle."},
+        {"role": "system", "content": "Your task is to create a vivid, colorful narrative summary of this combat encounter. Capture the dramatic highs and lows - critical hits, narrow misses, clever tactics, desperate moments, and heroic actions. Write it as an exciting story paragraph that captures the flow and feel of the battle. Include: the initial setup, key turning points, memorable moments, the final blow, total XP awarded, and what remains after combat (defeated foes, environmental changes). Write in past tense as a complete narrative summary, not a play-by-play. Make it engaging and memorable - this will be the permanent record of this battle. Do NOT use markdown formatting (no **, no headers, no bullet points) -- weave XP totals and aftermath into the flowing narrative prose. Keep the summary to 1-2 paragraphs (150-250 words). Use only standard ASCII characters -- no smart quotes, no Unicode, no non-English words."},
         {"role": "user", "content": clean_text}
     ]
 
-    # Generate dialogue summary
-    response = client.chat.completions.create(
-        model=COMBAT_DIALOGUE_SUMMARY_MODEL, # Use imported model
-        temperature=TEMPERATURE,
-        messages=dialogue_summary_prompt
-    )
-
-    # Log API call to master log
     try:
-        from utils.api_logger import log_api_call
-        log_api_call("combat_summary", dialogue_summary_prompt, response,
-                    metadata={"temperature": TEMPERATURE, "context": "dialogue_summary"})
-    except Exception as e:
-        print(f"[API_LOG] Warning: Failed to log combat summary call: {e}")
+        # Generate dialogue summary -- select model config per provider.
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            summary_config = config.COMBAT_SUMMARY_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            summary_config = config.COMBAT_SUMMARY_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            summary_config = config.COMBAT_SUMMARY_LMSTUDIO
+        else:  # legacy
+            summary_config = config.COMBAT_SUMMARY_LEGACY
 
-    # Track usage
-    if USAGE_TRACKING_AVAILABLE:
+        response = capture_and_fanout("T041", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
+            messages=dialogue_summary_prompt,
+            model=summary_config["model"],
+            temperature=TEMPERATURE,
+            response_format=None,
+            **{k: v for k, v in summary_config.items() if k != "model"})
+
+        # Logging and telemetry are best effort and never control combat exit.
         try:
-            track_response(response)
-        except:
-            pass
+            from utils.api_logger import log_api_call
+            log_api_call(
+                "combat_summary",
+                dialogue_summary_prompt,
+                response,
+                metadata={"temperature": TEMPERATURE, "context": "dialogue_summary"},
+            )
+        except Exception as e:
+            print(f"[API_LOG] Warning: Failed to log combat summary call: {e}")
 
-    dialogue_summary = response.choices[0].message.content.strip()
-    
-    # Extract just the narration if the AI returned JSON
-    try:
-        parsed_summary = json.loads(dialogue_summary)
-        if isinstance(parsed_summary, dict) and "narration" in parsed_summary:
-            dialogue_summary = parsed_summary["narration"]
-            debug("Extracted narration from JSON combat summary", category="combat_summary")
-    except (json.JSONDecodeError, KeyError):
-        # Not JSON or doesn't have narration field, use as-is
-        pass
+        if USAGE_TRACKING_AVAILABLE:
+            try:
+                track_response(response)
+            except Exception:
+                pass
+
+        dialogue_summary = _extract_t041_summary(response)
+    except Exception as e:
+        warning(
+            f"T041 summary unavailable; preserving transcript and using fallback: {e}",
+            category="combat_summary",
+        )
+        dialogue_summary = _T041_FALLBACK_SUMMARY
 
     current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
     debug(f"STATE_CHANGE: Current location ID: {current_location_id}", category="encounter_setup")
@@ -1064,35 +1550,16 @@ def summarize_dialogue(conversation_history_param, location_data, party_tracker_
                 "time": party_tracker_data["worldConditions"]["time"]
             }
         }
-        if "encounters" not in location_data:
-            location_data["encounters"] = []
-        location_data["encounters"].append(new_encounter)
+        if _append_combat_encounter_to_current_area(
+            current_location_id,
+            new_encounter,
+        ):
+            encounters = location_data.get("encounters")
+            if not isinstance(encounters, list):
+                encounters = []
+                location_data["encounters"] = encounters
+            encounters.append(new_encounter)
         # adventureSummary field is deprecated - no longer updated to prevent data bloat
-
-        from utils.module_path_manager import ModulePathManager
-        from utils.encoding_utils import safe_json_load
-        # Get current module from party tracker for consistent path resolution
-        try:
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            path_manager = ModulePathManager(current_module)
-        except:
-            path_manager = ModulePathManager()  # Fallback to reading from file
-        current_area_id = get_current_area_id()
-        area_file = path_manager.get_area_path(current_area_id)
-        area_data = safe_json_load(area_file)
-        if not area_data:
-            error(f"FILE_OP: Failed to load area file: {area_file}", category="file_operations")
-            return dialogue_summary
-        
-        for i, loc in enumerate(area_data["locations"]):
-            if loc["locationId"] == current_location_id:
-                area_data["locations"][i] = location_data
-                break
-        
-        if not safe_write_json(area_file, area_data):
-            error(f"FILE_OP: Failed to save area file: {area_file}", category="file_operations")
-        debug(f"STATE_CHANGE: Encounter {encounter_id} added to {area_file}.", category="encounter_setup")
 
         conversation_history_param.append({"role": "assistant", "content": f"Combat Summary: {dialogue_summary}"})
         conversation_history_param.append({"role": "user", "content": "The combat has concluded. What would you like to do next?"})
@@ -1106,6 +1573,97 @@ def summarize_dialogue(conversation_history_param, location_data, party_tracker_
     else:
         error(f"VALIDATION: Location {current_location_id} not found in location data or location data is incorrect.", category="combat_events")
     return dialogue_summary
+
+
+def _finalize_combat_exit(
+    conversation_history,
+    location_info,
+    party_tracker_data,
+    encounter_id,
+    player_file,
+):
+    """Finalize an exit without allowing optional work to block the return.
+
+    The raw transcript is archived before active-combat state is cleared. If
+    either archiving or cleanup persistence fails, the active encounter stays
+    intact so startup can retry/recover it on the next run.
+    """
+    import copy
+
+    try:
+        dialogue_summary = summarize_dialogue(
+            conversation_history,
+            location_info,
+            party_tracker_data,
+        )
+    except Exception as e:
+        error(
+            "T041 failed unexpectedly during combat exit; using fallback",
+            exception=e,
+            category="combat_summary",
+        )
+        dialogue_summary = _T041_FALLBACK_SUMMARY
+
+    archive_succeeded = False
+    try:
+        archive_succeeded = bool(
+            generate_chat_history(conversation_history, encounter_id)
+        )
+    except Exception as e:
+        error(
+            "Failed to archive final combat dialogue; cleanup deferred",
+            exception=e,
+            category="combat_logs",
+        )
+
+    if archive_succeeded and isinstance(party_tracker_data, dict):
+        updated_party = copy.deepcopy(party_tracker_data)
+        world_conditions = updated_party.get("worldConditions")
+        if (
+            isinstance(world_conditions, dict)
+            and "activeCombatEncounter" in world_conditions
+        ):
+            last_encounter_id = world_conditions.get("activeCombatEncounter", "")
+            if last_encounter_id:
+                world_conditions["lastCompletedEncounter"] = last_encounter_id
+            world_conditions["activeCombatEncounter"] = ""
+            try:
+                if safe_write_json("party_tracker.json", updated_party):
+                    party_tracker_data.clear()
+                    party_tracker_data.update(updated_party)
+                    debug(
+                        "STATE_CHANGE: Cleared active combat encounter after transcript archive",
+                        category="combat_events",
+                    )
+                else:
+                    warning(
+                        "Combat cleanup write failed; active encounter preserved for retry",
+                        category="combat_events",
+                    )
+            except Exception as e:
+                error(
+                    "Combat cleanup raised; active encounter preserved for retry",
+                    exception=e,
+                    category="combat_events",
+                )
+    elif not archive_succeeded:
+        warning(
+            "Combat transcript archive failed; active encounter preserved for retry",
+            category="combat_logs",
+        )
+
+    try:
+        player_info = safe_json_load(player_file)
+    except Exception as e:
+        error(
+            "Failed to reload player after combat exit",
+            exception=e,
+            category="file_operations",
+        )
+        player_info = None
+
+    return dialogue_summary, player_info
+
 
 def merge_updates(original_data, updated_data):
     fields_to_update = ['hitPoints', 'equipment', 'attacksAndSpellcasting', 'experience_points']
@@ -1160,7 +1718,8 @@ def generate_chat_history(conversation_history, encounter_id):
         chat_history = [msg for msg in conversation_history if msg["role"] != "system"]
 
         # Write the filtered chat history to the output file
-        if not safe_write_json(output_file, chat_history):
+        archive_succeeded = bool(safe_write_json(output_file, chat_history))
+        if not archive_succeeded:
             error(f"FILE_OP: Failed to save chat history to {output_file}", category="file_operations")
 
         # Print statistics
@@ -1169,19 +1728,21 @@ def generate_chat_history(conversation_history, encounter_id):
         user_count = sum(1 for msg in chat_history if msg["role"] == "user")
         assistant_count = sum(1 for msg in chat_history if msg["role"] == "assistant")
 
-        info("SUCCESS: Combat chat history updated!", category="combat_events")
+        if archive_succeeded:
+            info("SUCCESS: Combat chat history updated!", category="combat_events")
+            info(f"SUCCESS: Output saved to: {output_file}", category="combat_logs")
         debug(f"Encounter ID: {encounter_id}", category="combat_events")
         debug(f"System messages removed: {system_count}", category="combat_events")
         debug(f"SUMMARY: User messages: {user_count}", category="combat_logs")
         debug(f"SUMMARY: Assistant messages: {assistant_count}", category="combat_logs")
         debug(f"SUMMARY: Total messages (including system): {total_count}", category="combat_logs")
-        info(f"SUCCESS: Output saved to: {output_file}", category="combat_logs")
 
         # Also create/update the latest version of this encounter for easy reference
         latest_file = f"{encounter_dir}/combat_chat_latest.json"
         if not safe_write_json(latest_file, chat_history):
             error("FILE_OP: Failed to save latest chat history", category="file_operations")
-        info(f"SUCCESS: Latest version also saved to: {latest_file}", category="combat_logs")
+        else:
+            info(f"SUCCESS: Latest version also saved to: {latest_file}", category="combat_logs")
 
         # Save a combined latest file for all encounters as well
         all_latest_file = f"combat_logs/all_combat_latest.json"
@@ -1207,8 +1768,11 @@ def generate_chat_history(conversation_history, encounter_id):
         except Exception as e:
             error(f"FAILURE: Error updating combined combat log", exception=e, category="combat_logs")
 
+        return archive_succeeded
+
     except Exception as e:
         error(f"FAILURE: Error generating combat chat history", exception=e, category="combat_logs")
+        return False
 
 def sync_active_encounter():
     """Sync player and NPC data to the active encounter file if one exists"""
@@ -1768,6 +2332,117 @@ def compress_old_combat_rounds(conversation_history, current_round, keep_recent_
         error(f"COMPRESSION: Error compressing combat rounds", exception=e, category="combat_events")
         return conversation_history
 
+
+def _is_valid_combat_round_summary(summary, expected_round):
+    """Return whether a T042 response satisfies its prompt-level contract.
+
+    This is intentionally a structural guard, not a semantic combat rules
+    validator.  Its purpose is to ensure that partial or wrong-shape model
+    output cannot cause ``compress_old_combat_rounds`` to discard the source
+    messages it was meant to summarize.
+    """
+    import math
+
+    if not isinstance(summary, dict):
+        return False
+
+    required_root_types = {
+        "round": int,
+        "actions": list,
+        "deaths": list,
+        "status_changes": list,
+        "resource_usage": dict,
+        "narrative_highlights": list,
+        "round_end_state": dict,
+    }
+    for field, expected_type in required_root_types.items():
+        if field not in summary or not isinstance(summary[field], expected_type):
+            return False
+
+    # bool is an int subclass in Python, but it is not a valid round number.
+    if type(summary["round"]) is not int or summary["round"] != expected_round:
+        return False
+
+    def _is_nonempty_string(value):
+        return isinstance(value, str) and bool(value.strip())
+
+    def _is_string_list(value):
+        return isinstance(value, list) and all(
+            _is_nonempty_string(item) for item in value
+        )
+
+    # Every action follows the mechanical record advertised in the prompt.
+    # Empty action lists remain valid for rounds containing narration only.
+    required_action_strings = (
+        "actor",
+        "action",
+        "target",
+        "roll",
+        "result",
+        "effects",
+    )
+    for action in summary["actions"]:
+        if not isinstance(action, dict):
+            return False
+        if not all(
+            field in action and _is_nonempty_string(action[field])
+            for field in required_action_strings
+        ):
+            return False
+
+        initiative = action.get("init")
+        if isinstance(initiative, bool) or not isinstance(initiative, (int, float)):
+            return False
+        if not math.isfinite(initiative):
+            return False
+
+        outcome_fields = [field for field in ("damage", "heal") if field in action]
+        if not outcome_fields or not all(
+            _is_nonempty_string(action[field]) for field in outcome_fields
+        ):
+            return False
+
+    for field in ("deaths", "status_changes", "narrative_highlights"):
+        if not _is_string_list(summary[field]):
+            return False
+
+    if not all(
+        _is_nonempty_string(character) and _is_nonempty_string(usage)
+        for character, usage in summary["resource_usage"].items()
+    ):
+        return False
+
+    # The prompt explicitly requests two to four narrative highlights.
+    highlights = summary["narrative_highlights"]
+    if not 2 <= len(highlights) <= 4:
+        return False
+
+    round_end_state = summary["round_end_state"]
+    required_end_state_types = {
+        "alive": list,
+        "dead": list,
+        "conditions": dict,
+    }
+    for field, expected_type in required_end_state_types.items():
+        if field not in round_end_state or not isinstance(
+            round_end_state[field], expected_type
+        ):
+            return False
+
+    if not _is_string_list(round_end_state["alive"]):
+        return False
+    if not _is_string_list(round_end_state["dead"]):
+        return False
+
+    if not all(
+        _is_nonempty_string(character) and _is_string_list(conditions)
+        for character, conditions in round_end_state["conditions"].items()
+    ):
+        return False
+
+    return True
+
+
 def generate_combat_round_summary(round_num, round_messages):
     """Generate a structured summary of a combat round using AI"""
     try:
@@ -1788,8 +2463,8 @@ Create a JSON summary with EXACTLY this structure:
   "actions": [
     {{"actor": "name", "init": number, "action": "action_type", "target": "target_name", "roll": "dice+mod=total vs AC/DC", "result": "hit/miss/save/fail", "damage": "X type" or "heal": "X", "effects": "HP changes, conditions, etc"}}
   ],
-  "deaths": ["list of creatures that died this round"],
-  "status_changes": ["new conditions or effects applied"],
+  "deaths": ["ALL creatures with HP 0 or listed as dead in the creature states -- include every dead creature regardless of when they died"],
+  "status_changes": ["new conditions or effects applied this round"],
   "resource_usage": {{"character": "resources used (spell slots, abilities, etc)"}},
   "narrative_highlights": ["2-4 evocative single sentences capturing key dramatic moments, critical hits, deaths, powerful spells, or memorable character actions"],
   "round_end_state": {{
@@ -1799,35 +2474,58 @@ Create a JSON summary with EXACTLY this structure:
   }}
 }}
 
-Focus on mechanical accuracy for the actions. For narrative_highlights, extract the most dramatic or memorable moments that happened this round - critical hits, character deaths, powerful spells, clutch saves, or impactful dialogue. Keep each highlight to one evocative sentence."""
+CRITICAL RULES:
+- The "deaths" array MUST include every creature shown as dead or at 0 HP in the creature states, even if they died in a prior round. This is a complete death list for state tracking.
+- Focus on mechanical accuracy for the actions -- exact roll values, damage numbers, and HP totals.
+- For narrative_highlights, extract the most dramatic moments. Keep each highlight to one evocative sentence.
+- Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
 
-        # Use the mini model for efficiency
-        response = client.chat.completions.create(
-            model=DM_MINI_MODEL,
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            mini_cfg = config.MINI_UTIL_LMSTUDIO
+        else:  # legacy
+            mini_cfg = config.MINI_UTIL_LEGACY
+
+        response = capture_and_fanout("T042", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": "You are a combat log analyzer. Extract mechanical game information and key narrative moments. Always return valid JSON."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.1
-            # Note: response_format removed for LM Studio compatibility
-            # The prompt already instructs the model to return JSON
-        )
+            model=mini_cfg["model"],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+            **{k: v for k, v in mini_cfg.items() if k != "model"})
         
         # Track usage with context for telemetry
         if USAGE_TRACKING_AVAILABLE:
             try:
                 from utils.openai_usage_tracker import get_global_tracker
                 tracker = get_global_tracker()
-                tracker.track(response, context={'endpoint': 'combat_dm', 'purpose': 'combat_turn_processing', 'model': selected_model})
+                tracker.track(response, context={'endpoint': 'combat_dm', 'purpose': 'combat_round_summary', 'model': mini_cfg["model"]})
             except:
                 pass
         
         summary = json.loads(response.choices[0].message.content)
+        if not _is_valid_combat_round_summary(summary, round_num):
+            raise ValueError(
+                f"T042 returned an invalid summary structure for round {round_num}"
+            )
         return summary
         
     except Exception as e:
-        error(f"COMPRESSION: Failed to generate round {round_num} summary", exception=e, category="combat_events")
+        error(
+            f"COMPRESSION: Failed to generate round {round_num} summary",
+            exception=e,
+            category="combat_events",
+        )
         return None
+
 
 def run_combat_simulation(encounter_id, party_tracker_data, location_info):
    """Main function to run the combat simulation"""
@@ -1846,12 +2544,23 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
    except:
        path_manager = ModulePathManager()
 
-   # Check if combat history file exists and has content to determine if we are resuming.
+   # Resume only history explicitly tagged for this encounter. File size alone
+   # allowed a stale completed/crashed fight to seed a different encounter.
+   existing_history = None
    if os.path.exists(conversation_history_file) and os.path.getsize(conversation_history_file) > 100:
-       conversation_history = load_json_file(conversation_history_file)
+       existing_history = load_json_file(conversation_history_file)
+
+   if _combat_history_matches_encounter(existing_history, encounter_id):
+       conversation_history = existing_history
        is_resuming = True
        print("[COMBAT_MANAGER] Resuming existing combat session.")
    else:
+       if existing_history:
+           warning(
+               "RESUME: Ignoring combat history that does not match "
+               f"encounter {encounter_id}.",
+               category="combat_events",
+           )
        is_resuming = False
        conversation_history = [
            {"role": "system", "content": read_prompt_from_file('combat/combat_sim_prompt.txt')},
@@ -2171,106 +2880,137 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        print("[COMBAT_MANAGER] Injecting 'player has returned' message to re-engage AI.")
        debug("RESUME: Starting combat resume flow", category="combat_events")
        print("DEBUG: [RESUME] Starting combat resume flow")
-       resume_prompt = "Dungeon Master Note: The game session is resuming after a pause. The player has returned. Please provide a brief narration to re-establish the scene and prompt the player for their next action, based on the last known state from the conversation history."
+       resume_prompt = f"""Dungeon Master Note: The game session is resuming after a pause. The player has returned. Re-establish the scene briefly and prompt the player for their next action from the last known state.
+
+Return exactly one JSON object with these fields and no others:
+- "combat_round": {round_num}
+- "narration": a non-empty string
+- "actions": []
+
+This is narration only. Do not advance the round or apply any combat action."""
        
-       # Add the resume prompt to the history only if it's not already the last message.
+       # Stage the prompt in memory so the model sees it, but do not persist an
+       # unanswered user message. The prompt and the selected assistant answer
+       # are committed together after validation below.
        if not conversation_history or conversation_history[-1].get('content') != resume_prompt:
            debug("RESUME: Adding resume prompt to conversation history", category="combat_events")
            print("DEBUG: [RESUME] Adding resume prompt to conversation history")
            conversation_history.append({"role": "user", "content": resume_prompt})
-           save_json_file(conversation_history_file, conversation_history)
        else:
            debug("RESUME: Resume prompt already exists, skipping", category="combat_events")
            print("DEBUG: [RESUME] Resume prompt already exists, skipping")
 
-       # Get the AI's re-engagement response
+       # Get the AI's re-engagement response.
+       # Error handling is split by failing stage so logs distinguish an API
+       # failure from a non-JSON response from generic post-processing errors.
+       # The user-facing fallback is identical in every stage.
+       resume_response = None
+       resume_response_content = None
+       resume_stage_failed = False
+
+       # Stage 1: API call (model never responded -> API failure)
        try:
            print("[COMBAT_MANAGER] Getting re-engagement narration from AI...")
            debug("RESUME: Requesting AI re-engagement response", category="combat_events")
            print("DEBUG: [RESUME] About to call AI for re-engagement")
            # Use base temperature for re-engagement (no validation failures)
-           # Import GPT-5 config
-           from config import USE_GPT5_MODELS, GPT5_MINI_MODEL
-           
-           if USE_GPT5_MODELS:
-               # GPT-5: Use mini model for re-engagement
-               print(f"DEBUG: [COMBAT RE-ENGAGE] Using GPT-5 model: {GPT5_MINI_MODEL}")
-               # Compress conversation history before sending to AI
-               messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-               
-               # Export compressed conversation for review
-               with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                   json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-               print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
-               
-               response = client.chat.completions.create(
-                   model=GPT5_MINI_MODEL,
-                   messages=messages_to_send
-               )
+           # Select model config per provider
+           from model_config import MODEL_PROVIDER
+           if MODEL_PROVIDER == "openai":
+               combat_config = config.COMBAT_MAIN_GPT54_NONE
+           elif MODEL_PROVIDER == "gemini":
+               combat_config = config.COMBAT_MAIN_GEMINI_PRO_LOW
+           elif MODEL_PROVIDER == "lmstudio":
+               combat_config = config.COMBAT_MAIN_LMSTUDIO
+           else:  # legacy
+               combat_config = config.COMBAT_MAIN_LEGACY
 
-               # Log API call to master log
-               try:
-                   from utils.api_logger import log_api_call
-                   log_api_call("combat", messages_to_send, response,
-                               metadata={"branch": "gpt5", "context": "re-engage"})
-               except Exception as e:
-                   print(f"[API_LOG] Warning: Failed to log combat call: {e}")
-           else:
-               # GPT-4.1: Use temperature
-               temperature_used = get_combat_temperature(encounter_data, validation_attempt=0)
-               
-               print(f"DEBUG: [COMBAT RE-ENGAGE] Using GPT-4.1 model: {COMBAT_MAIN_MODEL} (temp: {temperature_used})")
-               # Compress conversation history before sending to AI
-               messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-               
-               # Export compressed conversation for review
-               with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                   json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-               print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
-               
-               response = client.chat.completions.create(
-                   model=COMBAT_MAIN_MODEL,
-                   temperature=temperature_used,
-                   messages=messages_to_send
-               )
+           temperature_used = get_combat_temperature(encounter_data, validation_attempt=0)
 
-               # Log API call to master log
-               try:
-                   from utils.api_logger import log_api_call
-                   log_api_call("combat", messages_to_send, response,
-                               metadata={"temperature": temperature_used, "branch": "gpt4.1", "context": "re-engage"})
-               except Exception as e:
-                   print(f"[API_LOG] Warning: Failed to log combat call: {e}")
+           # Compress conversation history before sending to AI
+           messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
 
-           # Track usage if available
-           if USAGE_TRACKING_AVAILABLE:
-               try:
-                   track_response(response)
-               except:
-                   pass  # Silently ignore tracking errors
-           
-           resume_response_content = response.choices[0].message.content.strip()
-           debug(f"RESUME: Got AI response, length: {len(resume_response_content)}", category="combat_events")
-           print(f"DEBUG: [RESUME] Got AI response, length: {len(resume_response_content)}")
-           
-           conversation_history.append({"role": "assistant", "content": resume_response_content})
-           save_json_file(conversation_history_file, conversation_history)
-
-           parsed_response = json.loads(resume_response_content)
-           narration = parsed_response.get("narration", "The battle continues! What do you do?")
-           print(f"Dungeon Master: {narration}")
-           import sys
-           sys.stdout.flush()  # Ensure narration is displayed before waiting for input
-           debug("RESUME: Successfully displayed re-engagement narration", category="combat_events")
-           print("DEBUG: [RESUME] Successfully displayed re-engagement narration and flushed output")
+           resume_response = capture_and_fanout("T043", api_client.create_completion,
+               _request_provider=MODEL_PROVIDER,
+               messages=messages_to_send,
+               model=combat_config["model"],
+               temperature=temperature_used,
+               **{k: v for k, v in combat_config.items() if k != "model"})
 
        except Exception as e:
-           error("FAILURE: Could not get re-engagement narration.", exception=e, category="combat_events")
+           resume_stage_failed = True
+           error("FAILURE: T043 re-engagement API call failed.", exception=e, category="combat_events")
            print(f"DEBUG: [RESUME] Error getting re-engagement: {str(e)}")
-           print("Dungeon Master: The battle continues! What will you do next?")
-           import sys
-           sys.stdout.flush()
            debug(f"RESUME: Using fallback narration due to error: {str(e)}", category="combat_events")
+
+       # Stage 2: Extract the response while it is still uncommitted. Logging
+       # and telemetry are best effort and cannot select persisted content.
+       if not resume_stage_failed:
+           try:
+               # Log API call to master log
+               try:
+                   from utils.api_logger import log_api_call
+                   log_api_call("combat", messages_to_send, resume_response,
+                               metadata={"temperature": temperature_used, "branch": MODEL_PROVIDER, "context": "re-engage"})
+               except Exception as e:
+                   print(f"[API_LOG] Warning: Failed to log combat call: {e}")
+
+               # Track usage if available
+               if USAGE_TRACKING_AVAILABLE:
+                   try:
+                       track_response(resume_response)
+                   except:
+                       pass  # Silently ignore tracking errors
+
+               resume_response_content = resume_response.choices[0].message.content.strip()
+               debug(f"RESUME: Got AI response, length: {len(resume_response_content)}", category="combat_events")
+               print(f"DEBUG: [RESUME] Got AI response, length: {len(resume_response_content)}")
+
+           except Exception as e:
+               resume_stage_failed = True
+               error("FAILURE: T043 re-engagement post-processing failed.", exception=e, category="combat_events")
+               print(f"DEBUG: [RESUME] Error getting re-engagement: {str(e)}")
+               debug(f"RESUME: Using fallback narration due to error: {str(e)}", category="combat_events")
+
+       # Validate first, then commit exactly one answered exchange. Malformed
+       # raw assistant output never enters durable history.
+       narration, used_fallback, resume_parse_error = (
+           _finalize_t043_resume_exchange(
+               conversation_history,
+               resume_prompt,
+               resume_response_content,
+               round_num,
+           )
+       )
+       if resume_parse_error is not None:
+           if isinstance(resume_parse_error, json.JSONDecodeError):
+               failure_message = (
+                   "FAILURE: T043 returned non-JSON re-engagement response."
+               )
+           else:
+               failure_message = (
+                   "FAILURE: T043 returned malformed re-engagement response."
+               )
+           error(
+               failure_message,
+               exception=resume_parse_error,
+               category="combat_events",
+           )
+           print(f"DEBUG: [RESUME] Error getting re-engagement: {str(resume_parse_error)}")
+           debug(
+               f"RESUME: Using fallback narration due to error: {str(resume_parse_error)}",
+               category="combat_events",
+           )
+
+       save_json_file(conversation_history_file, conversation_history)
+       print(f"Dungeon Master: {narration}")
+       import sys
+       sys.stdout.flush()
+       if used_fallback:
+           debug("RESUME: Displayed and persisted fallback narration", category="combat_events")
+       else:
+           debug("RESUME: Successfully displayed re-engagement narration", category="combat_events")
+       print("DEBUG: [RESUME] Successfully displayed re-engagement narration and flushed output")
    else:
        # This is a new combat. Use the original logic to get the initial scene.
        debug("AI_CALL: Getting initial scene description...", category="combat_events")
@@ -2304,26 +3044,34 @@ Player: {initial_prompt_text}"""
 
        max_retries = 3
        initial_response = None
+       initial_response_valid = False
        initial_conversation_length = len(conversation_history)
-       
+
+       # Select model config per provider (before retry loop)
+       from model_config import MODEL_PROVIDER
+       if MODEL_PROVIDER == "openai":
+           combat_config = config.COMBAT_MAIN_GPT54_NONE
+       elif MODEL_PROVIDER == "gemini":
+           combat_config = config.COMBAT_MAIN_GEMINI_PRO_LOW
+       elif MODEL_PROVIDER == "lmstudio":
+           combat_config = config.COMBAT_MAIN_LMSTUDIO
+       else:  # legacy
+           combat_config = config.COMBAT_MAIN_LEGACY
+
        for attempt in range(max_retries):
            try:
                # Calculate temperature with attempt number for dynamic adjustment
                temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
-               
+
                # Compress conversation history before sending to AI
                messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-               
-               # Export compressed conversation for review
-               with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                   json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-               print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
-               
-               response = client.chat.completions.create(
-                   model=COMBAT_MAIN_MODEL, 
-                   temperature=temperature_used, 
-                   messages=messages_to_send
-               )
+
+               response = capture_and_fanout("T044", api_client.create_completion,
+                   _request_provider=MODEL_PROVIDER,
+                   messages=messages_to_send,
+                   model=combat_config["model"],
+                   temperature=temperature_used,
+                   **{k: v for k, v in combat_config.items() if k != "model"})
                
                # Track usage
                if USAGE_TRACKING_AVAILABLE:
@@ -2345,6 +3093,7 @@ Player: {initial_prompt_text}"""
                validation_result = validate_combat_response(initial_response, encounter_data, initial_prompt_text, conversation_history)
                
                if validation_result is True:
+                   initial_response_valid = True
                    break
                else:
                    if attempt < max_retries - 1:
@@ -2356,24 +3105,35 @@ Player: {initial_prompt_text}"""
                error(f"FAILURE: AI call for initial scene failed on attempt {attempt + 1}", exception=e, category="combat_events")
                if attempt >= max_retries - 1: break
        
-       # FIX: Simplified cleanup logic
-       conversation_history = conversation_history[:initial_conversation_length]
-       if initial_response:
-           conversation_history.append({"role": "assistant", "content": initial_response})
-           save_json_file(conversation_history_file, conversation_history)
-           try:
-               parsed_response = json.loads(initial_response)
-               print(f"Dungeon Master: {parsed_response['narration']}")
-               import sys
-               sys.stdout.flush()
-           except (json.JSONDecodeError, KeyError):
-               print(f"Dungeon Master: {initial_response}") # Print raw if parsing fails
-               import sys
-               sys.stdout.flush()
-       else:
-           error("FAILURE: Could not get a valid initial scene from AI.", category="combat_events")
-           return None, None # Exit if we can't start combat
+       fallback_narration = (
+           f"The battle lines are drawn. Initiative is {initiative_order}. "
+           f"{player_name_display}, steel yourself and choose your action."
+       )
+       conversation_history, initial_response = _finalize_initial_combat_scene(
+           conversation_history,
+           initial_conversation_length,
+           initial_response,
+           initial_response_valid,
+           fallback_narration,
+       )
+       if not initial_response_valid:
+           warning(
+               "VALIDATION: T044 exhausted without an accepted scene; using "
+               "a deterministic no-action fallback.",
+               category="combat_validation",
+           )
+       save_json_file(conversation_history_file, conversation_history)
+       parsed_response = json.loads(initial_response)
+       print(f"Dungeon Master: {parsed_response['narration']}")
+       import sys
+       sys.stdout.flush()
    # --- END: RESUMPTION AND INITIAL SCENE LOGIC ---
+
+   pending_initial_npc_turns = (
+       []
+       if is_resuming
+       else _living_non_player_turns_before_player(encounter_data)
+   )
    
    # Combat loop
    debug("[COMBAT_MANAGER] Entering main combat loop", category="combat_events")
@@ -2464,14 +3224,32 @@ Player: {initial_prompt_text}"""
        
        print("DEBUG: [COMBAT_LOOP] About to request player input")
        debug("COMBAT_LOOP: Requesting player input", category="combat_events")
-       try:
-           user_input_text = input(f"{stats_display} {player_name_display}: ")
-           print(f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text[:50]}..." if len(user_input_text) > 50 else f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text}")
-           debug(f"COMBAT_LOOP: Received player input of length {len(user_input_text)}", category="combat_events")
-       except EOFError:
-           error("FAILURE: EOF when reading a line in run_combat_simulation", category="combat_events")
-           print("DEBUG: [COMBAT_LOOP] EOF encountered, breaking loop")
-           break
+       automatic_initiative_step = bool(pending_initial_npc_turns)
+       automatic_turn_window = list(pending_initial_npc_turns)
+       if automatic_initiative_step:
+           required_actors = ", ".join(pending_initial_npc_turns)
+           user_input_text = (
+               "System combat continuation: resolve these living non-player "
+               "turns in strict initiative order before asking for the "
+               f"player's action: {required_actors}. Stop at "
+               f"{player_name_display} and request player input. This is not "
+               "a submitted player action."
+           )
+           pending_initial_npc_turns = []
+           debug(
+               "COMBAT_LOOP: Automatically resolving initial higher-initiative "
+               f"actors: {required_actors}",
+               category="combat_events",
+           )
+       else:
+           try:
+               user_input_text = input(f"{stats_display} {player_name_display}: ")
+               print(f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text[:50]}..." if len(user_input_text) > 50 else f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text}")
+               debug(f"COMBAT_LOOP: Received player input of length {len(user_input_text)}", category="combat_events")
+           except EOFError:
+               error("FAILURE: EOF when reading a line in run_combat_simulation", category="combat_events")
+               print("DEBUG: [COMBAT_LOOP] EOF encountered, breaking loop")
+               break
        
        # Skip empty input to prevent infinite loop
        if not user_input_text or not user_input_text.strip():
@@ -2483,15 +3261,18 @@ Player: {initial_prompt_text}"""
            player_file = path_manager.get_character_path(normalize_character_name(player_name_display))
            fresh_player_data = safe_json_load(player_file)
            
-           # Enhance the input with inventory context (combat mode)
-           user_input_text = enhance_player_input_with_inventory(
-               user_input_text,
-               fresh_player_data,  # character_data
-               party_tracker_data,  # party_tracker_data
-               None,  # characters_data not needed
-               in_combat=True  # This is combat context
-           )
-           debug(f"COMBAT_LOOP: Enhanced player input with inventory context", category="combat_events")
+           # Enhance real player input with inventory context. The automatic
+           # initiative continuation is a system instruction, not a player
+           # action, so inventory context would be misleading there.
+           if not automatic_initiative_step:
+               user_input_text = enhance_player_input_with_inventory(
+                   user_input_text,
+                   fresh_player_data,  # character_data
+                   party_tracker_data,  # party_tracker_data
+                   None,  # characters_data not needed
+                   in_combat=True  # This is combat context
+               )
+               debug(f"COMBAT_LOOP: Enhanced player input with inventory context", category="combat_events")
        except Exception as e:
            debug(f"COMBAT_LOOP: Failed to enhance input with inventory context: {e}", category="combat_events")
            # Continue with unenhanced input if enhancement fails
@@ -2650,16 +3431,16 @@ Player: {initial_prompt_text}"""
        
        # Generate initiative order for validation context
        # Try to use AI-powered live initiative tracker
-       live_tracker = None
-       try:
-           from .initiative_tracker_ai import generate_live_initiative_tracker
-           # Get recent conversation for analysis (last 6 messages - enough for current round context)
-           recent_conversation = conversation_history[-6:] if len(conversation_history) > 6 else conversation_history
-           live_tracker = generate_live_initiative_tracker(encounter_data, recent_conversation, current_round)
-           if live_tracker:
-               debug("AI_TRACKER: Successfully generated live initiative tracker", category="combat_events")
-       except Exception as e:
-           debug(f"AI_TRACKER: Failed to generate live tracker: {e}", category="combat_events")
+       # Get recent conversation for analysis (last 6 messages - enough for current round context)
+       recent_conversation = _tracker_conversation_with_player_action(
+           conversation_history,
+           user_input_text,
+       )
+       live_tracker = generate_available_initiative_tracker(
+           encounter_data,
+           recent_conversation,
+           current_round,
+       )
        
        # Parse the tracker output for both markdown and JSON
        turn_window_json = None
@@ -2681,8 +3462,8 @@ Player: {initial_prompt_text}"""
                # No JSON found, use whole output as markdown
                initiative_display = live_tracker
        else:
-           # Tracker is required for proper combat flow
-           error("AI_TRACKER: Failed to generate initiative tracker - combat cannot proceed properly", category="combat_events")
+           # Combatants are required for either AI or deterministic initiative.
+           error("AI_TRACKER: Encounter has no combatants - combat cannot proceed properly", category="combat_events")
            return None, None  # Exit early if tracker fails
        
        # Get the player's name from encounter data or turn_window JSON
@@ -2716,6 +3497,60 @@ Player: {initial_prompt_text}"""
 process_until: {turn_window_json.get('process_until', 'unknown')}
 turn_window: {json.dumps(turn_window_json.get('turn_window', []))}
 """
+
+       # A real player input is already the player's submitted turn. When the
+       # tracker points at that player, deterministically require the same
+       # response to resolve the player and every later living actor. This
+       # closes the round in one transaction instead of returning control
+       # while enemy turns remain unprocessed.
+       if automatic_turn_window:
+           turn_window_json = {
+               "player_name": player_character_name,
+               "process_until": automatic_turn_window[-1],
+               "turn_window": automatic_turn_window,
+               "resolve_submitted_player_action": False,
+               "allow_npc_turns": True,
+               "allow_round_advance": False,
+           }
+           turn_window_text = f"""
+--- TURN WINDOW ---
+process_until: {turn_window_json['process_until']}
+turn_window: {json.dumps(automatic_turn_window)}
+constraints:
+- Process every listed non-player actor exactly once in initiative order.
+- Stop at {player_character_name} and request player input.
+- Do not resolve a player action or increment combat_round.
+"""
+       elif (
+           not automatic_initiative_step
+           and current_turn_line
+           and player_character_name in current_turn_line
+       ):
+           submitted_window = _living_turn_window_from_player(encounter_data)
+           if submitted_window:
+               turn_window_json = {
+                   "player_name": player_character_name,
+                   "process_until": submitted_window[-1],
+                   "turn_window": submitted_window,
+                   "resolve_submitted_player_action": True,
+                   "allow_npc_turns": len(submitted_window) > 1,
+                   "allow_round_advance": True,
+               }
+               turn_window_text = f"""
+--- TURN WINDOW ---
+process_until: {turn_window_json['process_until']}
+turn_window: {json.dumps(submitted_window)}
+constraints:
+- Resolve the submitted player action first.
+- Then process every remaining actor in this window exactly once.
+- Increment combat_round after the final actor completes the round.
+- Stop before any actor in the next round.
+"""
+
+       if turn_window_text and "--- TURN WINDOW ---" in marked_initiative_display:
+           marked_initiative_display = marked_initiative_display.split(
+               "--- TURN WINDOW ---", 1
+           )[0].rstrip()
        
        # Generate AC block from encounter data
        ac_block = ""
@@ -2801,6 +3636,7 @@ All monsters have been defeated. Pass the exit action to end combat:
        # The tracker now always provides properly formatted output with ROUND INFO
        # Don't duplicate sections - use the tracker output as-is
        user_input_with_note = f"""{marked_initiative_display}
+{turn_window_text}
 --- CREATURE STATES ---
 {all_dynamic_state}
 
@@ -2853,62 +3689,30 @@ Rules:
                except Exception as e:
                    debug(f"Could not update status: {e}", category="status")
                
-               # Import GPT-5 config
-               from config import USE_GPT5_MODELS, GPT5_MINI_MODEL, GPT5_USE_HIGH_REASONING_ON_RETRY
-               
-               if USE_GPT5_MODELS:
-                   # GPT-5: Always use mini model, but increase reasoning effort after first failure
-                   combat_model = GPT5_MINI_MODEL
-                   
-                   # After first failure, use high reasoning effort
-                   if attempt >= 1 and GPT5_USE_HIGH_REASONING_ON_RETRY:
-                       print(f"DEBUG: [COMBAT] GPT-5 - Using HIGH reasoning effort after {attempt} attempts")
-                       # Compress conversation history before sending to AI
-                       messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-                       
-                       # Export compressed conversation for review
-                       with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                           json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-                       print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-                       
-                       response = client.chat.completions.create(
-                           model=combat_model,
-                           messages=messages_to_send,
-                           reasoning={"effort": "high"}
-                       )
-                   else:
-                       # Default is medium reasoning (no need to specify)
-                       print(f"DEBUG: [COMBAT] Using GPT-5 model: {combat_model} (default medium reasoning)")
-                       # Compress conversation history before sending to AI
-                       messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-                       
-                       # Export compressed conversation for review
-                       with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                           json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-                       print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-                       
-                       response = client.chat.completions.create(
-                           model=combat_model,
-                           messages=messages_to_send
-                       )
-               else:
-                   # GPT-4.1: Keep existing temperature escalation
-                   temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
-                   
-                   print(f"DEBUG: [COMBAT] Using GPT-4.1 model: {COMBAT_MAIN_MODEL} (temp: {temperature_used})")
-                   # Compress conversation history before sending to AI
-                   messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-                   
-                   # Export compressed conversation for review
-                   with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                       json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-                   print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-                   
-                   response = client.chat.completions.create(
-                       model=COMBAT_MAIN_MODEL,
-                       temperature=temperature_used,
-                       messages=messages_to_send
-                   )
+               # Select model config per provider
+               from model_config import MODEL_PROVIDER
+               if MODEL_PROVIDER == "openai":
+                   combat_config = config.COMBAT_MAIN_GPT54_NONE
+               elif MODEL_PROVIDER == "gemini":
+                   combat_config = config.COMBAT_MAIN_GEMINI_PRO_LOW
+               elif MODEL_PROVIDER == "lmstudio":
+                   combat_config = config.COMBAT_MAIN_LMSTUDIO
+               else:  # legacy
+                   combat_config = config.COMBAT_MAIN_LEGACY
+
+               temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
+
+               print(f"DEBUG: [COMBAT] Using model: {combat_config['model']} (temp: {temperature_used}, provider: {MODEL_PROVIDER}, attempt: {attempt + 1})")
+
+               # Compress conversation history before sending to AI
+               messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+
+               response = capture_and_fanout("T045", api_client.create_completion,
+                   _request_provider=MODEL_PROVIDER,
+                   messages=messages_to_send,
+                   model=combat_config["model"],
+                   temperature=temperature_used,
+                   **{k: v for k, v in combat_config.items() if k != "model"})
                
                # Track usage
                if USAGE_TRACKING_AVAILABLE:
@@ -2978,7 +3782,12 @@ Rules:
                        })
                        continue
                    else:
-                       warning("VALIDATION: Max retries exceeded for multiple updateEncounter correction. Using last response.", category="combat_validation")
+                       warning(
+                           "VALIDATION: Max retries exceeded for multiple "
+                           "updateEncounter correction. Rejecting last response.",
+                           category="combat_validation",
+                       )
+                       break
                
                # Validate the combat logic
                print(f"[COMBAT_MANAGER] Validating combat response (Attempt {attempt + 1}/{max_retries})")
@@ -3032,23 +3841,24 @@ Rules:
                    warning("VALIDATION: Max retries exceeded. Skipping this response.", category="combat_validation")
                    break
        
-       # Clean up conversation history based on validation outcome
-       if valid_response or ai_response:
-           # Remove all validation attempts from conversation history
-           conversation_history = conversation_history[:initial_conversation_length]
-           
-           # Add only the final assistant response
-           if ai_response:
-               conversation_history.append({"role": "assistant", "content": ai_response})
-           
-           # Log successful validation if it occurred
-           if valid_response and validation_attempts:
-               validation_attempts.append({
-                   "attempt": "final",
-                   "assistant_response": ai_response,
-                   "validation_result": "success",
-                   "temperature_used": temperature_used
-               })
+       # Remove all validation attempts. Rejected candidates never cross the
+       # state-mutation boundary, even when the final candidate is parseable.
+       conversation_history, ai_response = _finalize_combat_validation_history(
+           conversation_history,
+           initial_conversation_length,
+           ai_response,
+           valid_response,
+           current_round,
+       )
+
+       # Log successful validation if it occurred
+       if valid_response and validation_attempts:
+           validation_attempts.append({
+               "attempt": "final",
+               "assistant_response": ai_response,
+               "validation_result": "success",
+               "temperature_used": temperature_used
+           })
        
        # Write validation attempts to log file
        if validation_attempts:
@@ -3086,12 +3896,15 @@ Rules:
        # Save the cleaned conversation history
        save_json_file(conversation_history_file, conversation_history)
        
-       if not ai_response:
+       if not valid_response or not ai_response:
            error("FAILURE: Failed to get a valid AI response after multiple attempts", category="combat_events")
+           print(f"Dungeon Master: {T045_REJECTED_ACTION_NARRATION}")
+           sys.stdout.flush()
            continue
        
        # Process the validated response
        try:
+           round_advanced_this_response = False
            parsed_response = json.loads(ai_response)
            narration = parsed_response["narration"]
            actions = parsed_response["actions"]
@@ -3120,6 +3933,7 @@ Rules:
                
                # Only update if round advances (never go backward)
                if isinstance(new_round, int) and new_round > current_combat_round:
+                   round_advanced_this_response = True
                    debug(f"STATE_CHANGE: Combat advancing from round {current_combat_round} to round {new_round}", category="combat_events")
                    encounter_data['combat_round'] = new_round
                    # Also update current_round for backwards compatibility
@@ -3202,9 +4016,16 @@ Rules:
                changes = parameters.get("changes", "")
                info(f"STATE_UPDATE: Processing immediate encounter update: {changes}", category="encounter_management")
                try:
-                   updated_encounter_data = update_encounter.update_encounter(encounter_id_for_update, changes)
-                   if updated_encounter_data:
+                   encounter_updated, updated_encounter_data = update_encounter.update_encounter(
+                       encounter_id_for_update, changes
+                   )
+                   if encounter_updated:
                        encounter_data = normalize_encounter_status(updated_encounter_data)
+                   else:
+                       error(
+                           f"FAILURE: Encounter update rejected for {encounter_id_for_update}",
+                           category="encounter_management"
+                       )
                except Exception as e:
                    error(f"FAILURE: Failed to update encounter", exception=e, category="encounter_management")
            
@@ -3267,33 +4088,29 @@ Rules:
 
        # STEP 3: If combat ended, perform final cleanup and exit the simulation.
        if is_combat_ending:
-           # Store the encounter ID before clearing it
-           last_encounter_id = party_tracker_data.get("worldConditions", {}).get("activeCombatEncounter", "")
-           
-           # IMPORTANT: Generate summary BEFORE clearing the active encounter ID
            info("AI_CALL: Generating final combat summary...", category="ai_operations")
-           dialogue_summary_result = summarize_dialogue(conversation_history, location_info, party_tracker_data)
-           
-           # NOW clear the active encounter after summary is generated
-           if 'worldConditions' in party_tracker_data and 'activeCombatEncounter' in party_tracker_data['worldConditions']:
-               if last_encounter_id:
-                   party_tracker_data["worldConditions"]["lastCompletedEncounter"] = last_encounter_id
-               party_tracker_data['worldConditions']['activeCombatEncounter'] = ""
-               debug(f"STATE_CHANGE: Cleared active combat encounter. Last completed is now {last_encounter_id}", category="combat_events")
-               safe_write_json("party_tracker.json", party_tracker_data)
-           
-           info("FILE_OP: Saving final combat chat history log...", category="combat_logs")
-           generate_chat_history(conversation_history, encounter_id)
-           
-           # Reload the player_info object from disk one last time before returning it.
-           # This ensures the main loop receives the fully updated state.
-           player_info = safe_json_load(player_file)
-
+           final_result = _finalize_combat_exit(
+               conversation_history,
+               location_info,
+               party_tracker_data,
+               encounter_id,
+               player_file,
+           )
            info("SUCCESS: Combat complete. Exiting simulation.", category="combat_events")
-           return dialogue_summary_result, player_info
+           return final_result
 
        # Save updated conversation history after processing all actions
        save_json_file(conversation_history_file, conversation_history)
+
+       if round_advanced_this_response:
+           refreshed_encounter = safe_json_load(
+               f"modules/encounters/encounter_{encounter_id}.json"
+           )
+           if isinstance(refreshed_encounter, dict):
+               encounter_data = refreshed_encounter
+           pending_initial_npc_turns = (
+               _living_non_player_turns_before_player(encounter_data)
+           )
 
 def main():
     debug("INITIALIZATION: Starting main function in combat_manager", category="combat_events")

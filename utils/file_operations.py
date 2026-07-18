@@ -191,11 +191,10 @@ class AtomicFileWriter:
                     # fsync might not work on all systems, that's OK
                     pass
             
-            # Atomic rename (as atomic as possible on the platform)
-            # On Windows, we need to remove the target first if it exists
-            if os.name == 'nt' and os.path.exists(filepath):
-                os.unlink(filepath)
-            os.rename(temp_path, filepath)
+            # Replace the target in one filesystem operation. In particular,
+            # never unlink first on Windows: a crash in that gap loses the
+            # only committed copy of the JSON document.
+            os.replace(temp_path, filepath)
             # Suppress success messages - only log errors
             # logger.info(f"Successfully wrote {filepath}")
             

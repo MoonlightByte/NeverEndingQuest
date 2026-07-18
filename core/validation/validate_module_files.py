@@ -30,6 +30,8 @@ from collections import defaultdict
 from datetime import datetime
 import sys
 
+from utils.character_sheet_contract import repair_required_ammunition_field
+
 
 class ModuleValidator:
     """Validates all module files against their schemas"""
@@ -40,11 +42,28 @@ class ModuleValidator:
         self.results = defaultdict(lambda: {"files": [], "passed": 0, "failed": 0, "errors": []})
         self.schemas = {}
         
-    def load_schemas(self):
-        """Load all available schemas"""
+    def load_schemas(self, strict: bool = False):
+        """Load all available schemas.
+
+        VAL-C2: When strict=True, the area schema is swapped for
+        `locationfile_schema_strict.json`, which composes the top-level
+        wrapper requirements from `locationfile_schema.json`
+        (areaName/areaId/locations) with the full per-location
+        requirements from `loca_schema.json` (all 21 location fields).
+        This catches omissions (e.g. a missing `doors` array) that the
+        legacy 3-field schema silently allowed.
+
+        Default strict=False preserves backward compatibility with
+        existing callers; only new entry points (e.g. module_stitcher's
+        post-generation validation) opt in.
+        """
+        area_schema = (
+            "locationfile_schema_strict.json" if strict
+            else "locationfile_schema.json"
+        )
         schema_mappings = {
             "module": "module_schema.json",
-            "area": "locationfile_schema.json",  # Area files use locationfile schema
+            "area": area_schema,  # VAL-C2: strict swaps in composed schema
             "character": "char_schema.json",
             "monster": "mon_schema.json",  # Monsters have their own schema
             "map": "map_schema.json",
@@ -77,6 +96,9 @@ class ModuleValidator:
                 
             if schema_type not in self.schemas:
                 return False, f"No schema available for type: {schema_type}"
+
+            if schema_type == "character" and isinstance(data, dict):
+                data, _ = repair_required_ammunition_field(data)
                 
             # Create validator to get better error messages
             validator = Draft7Validator(self.schemas[schema_type])
@@ -294,10 +316,13 @@ class ModuleValidator:
 
         # Load all area files
         area_data = {}
-        area_files = list(areas_dir.glob("*_BU.json"))
-
-        if not area_files:
-            area_files = list(areas_dir.glob("*.json"))
+        # VAL-C1: exclude *_BU.json backups; live files are the source of truth.
+        # Previously globbed BU files first, which caused stale backups to poison
+        # connectivity validation by hiding the live (correct) area files.
+        area_files = [
+            f for f in areas_dir.glob("*.json")
+            if not f.name.endswith("_BU.json")
+        ]
 
         for file_path in area_files:
             try:
@@ -371,9 +396,241 @@ class ModuleValidator:
 
         return len(errors) == 0, errors
 
-    def validate_all_files(self):
-        """Validate all files and return results (required by module_stitcher)"""
-        self.run_all_validations()
+    def validate_bidirectional_connectivity(self, module_path=None):
+        """Validate that location-to-location connections are bidirectional.
+
+        For each location L with connection target T in its `connectivity`
+        array, verify that a location with ID T exists within the SAME area
+        and lists L's ID in its own `connectivity`. `connectivity` entries
+        are location IDs -- the generator, the ID remapper and the runtime
+        pathfinder all treat them as IDs, and real module data is
+        overwhelmingly ID-based (the schema description was corrected to
+        match). An earlier attempt matched by name and produced dozens of
+        false positives on valid modules; this is the ID-based version.
+
+        This addresses VAL-H2 / MP-H4: one-way connections strand players,
+        because navigation works A -> B but B does not list A so there is
+        no way back.
+
+        Vacuous case: if no location declares any connectivity, the
+        bidirectional property is trivially satisfied -> (True, []).
+        Unreachable-area detection is the job of
+        `validate_area_connectivity`, not this validator.
+
+        Args:
+            module_path: Optional path to override `self.module_path`.
+                When None, uses `self.module_path`.
+
+        Returns:
+            (passed, errors) tuple. `passed` is True iff `errors` is empty.
+            Error format:
+                "Location '<id>' connects to '<target_id>' but '<target_id>'
+                 does not connect back"
+            When `<target_id>` does not exist as a location at all, the error
+            instead reads:
+                "Location '<id>' connects to '<target_id>' but '<target_id>'
+                 does not exist"
+        """
+        import json
+
+        base_path = Path(module_path) if module_path is not None else self.module_path
+        areas_dir = base_path / "areas"
+
+        errors = []
+
+        if not areas_dir.exists():
+            return True, errors
+
+        # VAL-C1: exclude *_BU.json backups; live files are the source of truth.
+        area_files = [
+            f for f in areas_dir.glob("*.json")
+            if not f.name.endswith("_BU.json")
+        ]
+
+        for file_path in area_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                # Malformed area files are caught by schema validation
+                # elsewhere; skip them here so this validator stays focused.
+                continue
+
+            locations = data.get('locations', []) or []
+
+            # Build locationId -> connectivity-list map for THIS area only.
+            # connectivity entries are location IDs within the same area
+            # (areaConnectivity/areaConnectivityId handle cross-area links).
+            id_to_conns = {}
+            for loc in locations:
+                if not isinstance(loc, dict):
+                    continue
+                loc_id = loc.get('locationId')
+                if not loc_id:
+                    continue
+                conns = loc.get('connectivity', []) or []
+                id_to_conns[loc_id] = list(conns)
+
+            # Check each declared connection has a matching reverse edge.
+            for src_id, conn_list in id_to_conns.items():
+                for target_id in conn_list:
+                    if target_id not in id_to_conns:
+                        errors.append(
+                            f"Location '{src_id}' connects to "
+                            f"'{target_id}' but '{target_id}' does "
+                            f"not exist"
+                        )
+                        continue
+                    if src_id not in id_to_conns[target_id]:
+                        errors.append(
+                            f"Location '{src_id}' connects to "
+                            f"'{target_id}' but '{target_id}' does "
+                            f"not connect back"
+                        )
+
+        return len(errors) == 0, errors
+
+    def validate_encounter_creature_resolution(self, module_path=None):
+        """Validate that every enemy in every encounter resolves to a real
+        monster stat block.
+
+        Loads:
+          - data/bestiary/monster_compendium.json (global bestiary; keys
+            in the ``monsters`` dict are the snake_case monsterType ids)
+          - modules/<module>/monsters/*.json (module-local stat blocks;
+            the filename sans ``.json`` is the monsterType id)
+
+        For each encounter file under modules/<module>/encounters/,
+        iterates ``creatures[]``. Only creatures with ``type == 'enemy'``
+        are checked; player/npc entries are skipped. The lookup key is
+        ``creature['monsterType']`` (falling back to a snake_cased
+        ``creature['name']`` if monsterType is absent). If the key
+        resolves to neither the global bestiary nor a module-local
+        monster file, an error is recorded.
+
+        This addresses VAL-H4: the schema only requires ``monsterType``
+        to be a string -- it does not verify that the string identifies
+        a real monster. Encounters referencing nonexistent creatures
+        (e.g. "ancient_purple_dragon") otherwise pass validation.
+
+        Vacuous cases (no encounters dir, encounter with no enemy
+        creatures) return (True, []).
+
+        Args:
+            module_path: Optional path to override ``self.module_path``.
+                When None, uses ``self.module_path``.
+
+        Returns:
+            (passed, errors) tuple. ``passed`` is True iff ``errors``
+            is empty. Each error names the encounter filename and the
+            unresolved monsterType so a fixer can locate the bug.
+        """
+        import json
+        import os
+
+        base_path = Path(module_path) if module_path is not None else self.module_path
+        encounters_dir = base_path / "encounters"
+
+        errors = []
+
+        if not encounters_dir.exists():
+            return True, errors
+
+        # Load global bestiary keys. We tolerate the file being missing
+        # or malformed -- in that case resolution falls back to the
+        # module-local monsters dir only.
+        #
+        # Resolution order for the bestiary path:
+        #   1. cwd-relative ``data/bestiary/monster_compendium.json``
+        #      (used in production: the validator is run from repo root)
+        #   2. repo-root-relative, resolved from this file's location
+        #      (fallback for callers running from elsewhere)
+        # Tests can isolate via ``monkeypatch.chdir`` to a fixture root
+        # containing a fake ``data/bestiary/monster_compendium.json``.
+        global_monster_keys = set()
+        cwd_bestiary = Path.cwd() / "data" / "bestiary" / "monster_compendium.json"
+        # core/validation/validate_module_files.py -> parents[2] is repo root
+        repo_root = Path(__file__).resolve().parents[2]
+        repo_bestiary = repo_root / "data" / "bestiary" / "monster_compendium.json"
+        bestiary_path = cwd_bestiary if cwd_bestiary.exists() else repo_bestiary
+        if bestiary_path.exists():
+            try:
+                with open(bestiary_path, "r", encoding="utf-8") as f:
+                    bestiary_data = json.load(f)
+                monsters = bestiary_data.get("monsters", {}) or {}
+                if isinstance(monsters, dict):
+                    global_monster_keys = set(monsters.keys())
+            except Exception:
+                # Malformed bestiary -- treat as empty, fall back to
+                # module-local resolution only.
+                global_monster_keys = set()
+
+        # Load module-local monster file stems (filename sans .json).
+        local_monster_keys = set()
+        local_monsters_dir = base_path / "monsters"
+        if local_monsters_dir.exists():
+            for mon_file in local_monsters_dir.glob("*.json"):
+                if any(part in mon_file.name for part in ["_BU", ".bak", ".backup", ".tmp"]):
+                    continue
+                local_monster_keys.add(mon_file.stem)
+
+        known_keys = global_monster_keys | local_monster_keys
+
+        # Iterate every encounter file. Skip backups.
+        for enc_file in sorted(encounters_dir.glob("*.json")):
+            if any(part in enc_file.name for part in ["_BU", ".bak", ".backup", ".tmp"]):
+                continue
+
+            try:
+                with open(enc_file, "r", encoding="utf-8") as f:
+                    enc_data = json.load(f)
+            except Exception:
+                # Malformed JSON is caught by schema validation
+                # elsewhere; skip here so this validator stays focused.
+                continue
+
+            creatures = enc_data.get("creatures", []) or []
+            for creature in creatures:
+                if not isinstance(creature, dict):
+                    continue
+                ctype = creature.get("type")
+                if ctype != "enemy":
+                    # Only enemies need a monster stat block. Players
+                    # and NPCs are out of scope for this validator.
+                    continue
+
+                # Prefer explicit monsterType. Fall back to a
+                # snake_cased name if monsterType is absent (schema
+                # requires monsterType for enemies, but be defensive
+                # against legacy files that pre-date the requirement).
+                key = creature.get("monsterType")
+                if not key:
+                    name = creature.get("name") or ""
+                    key = name.strip().lower().replace(" ", "_")
+                if not key:
+                    # No identifier at all -- schema validator will
+                    # catch this; do not double-report.
+                    continue
+
+                if key not in known_keys:
+                    errors.append(
+                        f"{enc_file.name}: creature monsterType "
+                        f"'{key}' does not resolve to any monster in "
+                        f"data/bestiary/monster_compendium.json or "
+                        f"modules/{base_path.name}/monsters/"
+                    )
+
+        return len(errors) == 0, errors
+
+    def validate_all_files(self, strict: bool = False):
+        """Validate all files and return results (required by module_stitcher).
+
+        VAL-C2: Pass strict=True to enforce the composed
+        `locationfile_schema_strict.json` for area files. Default
+        strict=False preserves backward compatibility for existing
+        callers that invoke `validate_all_files()` with no arguments.
+        """
+        self.run_all_validations(strict=strict)
         return self.results
     
     def get_success_rate(self):
@@ -387,8 +644,14 @@ class ModuleValidator:
         
         return total_passed / total_files
 
-    def run_all_validations(self):
-        """Run all validation checks"""
+    def run_all_validations(self, strict: bool = False):
+        """Run all validation checks.
+
+        VAL-C2: Forwards `strict` to `load_schemas()` so the stricter
+        area schema is used when requested. Default strict=False keeps
+        existing callers unaffected.
+        """
+        self.load_schemas(strict=strict)
         self.validate_module_files()
         self.validate_area_files()
         self.validate_character_files()
@@ -406,13 +669,34 @@ class ModuleValidator:
         else:
             self.results["connectivity"]["failed"] = 1
             self.results["connectivity"]["errors"] = errors
-                
-    def run_validation(self):
-        """Run all validations"""
+
+        # VAL-H2 / MP-H4: bidirectional location-to-location connectivity
+        bi_success, bi_errors = self.validate_bidirectional_connectivity()
+        if bi_success:
+            self.results["bidirectional_connectivity"]["passed"] = 1
+        else:
+            self.results["bidirectional_connectivity"]["failed"] = 1
+            self.results["bidirectional_connectivity"]["errors"] = bi_errors
+
+        # VAL-H4: encounter creatures must resolve to real monster stat blocks
+        enc_success, enc_errors = self.validate_encounter_creature_resolution()
+        if enc_success:
+            self.results["encounter_creature_resolution"]["passed"] = 1
+        else:
+            self.results["encounter_creature_resolution"]["failed"] = 1
+            self.results["encounter_creature_resolution"]["errors"] = enc_errors
+
+    def run_validation(self, strict: bool = False):
+        """Run all validations.
+
+        VAL-C2: Pass strict=True to enforce the composed strict area
+        schema. Default strict=False preserves backward compatibility
+        with existing callers and the CLI entry point.
+        """
         print(f"\nValidating module: {self.module_path}")
         print("=" * 80)
-        
-        self.load_schemas()
+
+        self.load_schemas(strict=strict)
         print("\nRunning validations...")
         
         # Run all validation methods
@@ -425,7 +709,23 @@ class ModuleValidator:
         self.validate_party_tracker()
         self.validate_module_context()
         self.validate_encounter_files()
-        
+
+        # VAL-H2 / MP-H4: bidirectional location-to-location connectivity
+        bi_success, bi_errors = self.validate_bidirectional_connectivity()
+        if bi_success:
+            self.results["bidirectional_connectivity"]["passed"] = 1
+        else:
+            self.results["bidirectional_connectivity"]["failed"] = 1
+            self.results["bidirectional_connectivity"]["errors"] = bi_errors
+
+        # VAL-H4: encounter creatures must resolve to real monster stat blocks
+        enc_success, enc_errors = self.validate_encounter_creature_resolution()
+        if enc_success:
+            self.results["encounter_creature_resolution"]["passed"] = 1
+        else:
+            self.results["encounter_creature_resolution"]["failed"] = 1
+            self.results["encounter_creature_resolution"]["errors"] = enc_errors
+
     def print_report(self):
         """Print comprehensive validation report"""
         print("\n" + "=" * 80)
@@ -452,8 +752,9 @@ class ModuleValidator:
         print("-" * 80)
         
         file_type_order = ["module", "area", "character", "monster", "map", "plot",
-                          "party", "module_context", "encounter", "connectivity"]
-        
+                          "party", "module_context", "encounter", "connectivity",
+                          "bidirectional_connectivity", "encounter_creature_resolution"]
+
         for file_type in file_type_order:
             if file_type not in self.results:
                 continue
@@ -471,6 +772,42 @@ class ModuleValidator:
                         print(f"    - {error}")
                 else:
                     print(f"  Status: [SKIPPED] No multi-area module")
+                continue
+
+            # Special handling for bidirectional connectivity (no files list)
+            if file_type == "bidirectional_connectivity":
+                result = self.results[file_type]
+                print(f"\nBIDIRECTIONAL CONNECTIVITY CHECK")
+                if result.get("passed", 0) > 0:
+                    print(f"  Status: [OK] ALL CONNECTIONS BIDIRECTIONAL")
+                elif result.get("failed", 0) > 0:
+                    print(f"  Status: [ERROR] ONE-WAY CONNECTIONS DETECTED")
+                    print("  Errors:")
+                    for error in result.get("errors", [])[:10]:
+                        print(f"    - {error}")
+                    remaining = len(result.get("errors", [])) - 10
+                    if remaining > 0:
+                        print(f"    ... and {remaining} more errors")
+                else:
+                    print(f"  Status: [SKIPPED]")
+                continue
+
+            # Special handling for encounter creature resolution (no files list)
+            if file_type == "encounter_creature_resolution":
+                result = self.results[file_type]
+                print(f"\nENCOUNTER CREATURE RESOLUTION CHECK")
+                if result.get("passed", 0) > 0:
+                    print(f"  Status: [OK] ALL ENEMY CREATURES RESOLVE TO BESTIARY")
+                elif result.get("failed", 0) > 0:
+                    print(f"  Status: [ERROR] UNRESOLVED MONSTER REFERENCES DETECTED")
+                    print("  Errors:")
+                    for error in result.get("errors", [])[:10]:
+                        print(f"    - {error}")
+                    remaining = len(result.get("errors", [])) - 10
+                    if remaining > 0:
+                        print(f"    ... and {remaining} more errors")
+                else:
+                    print(f"  Status: [SKIPPED]")
                 continue
 
             if not self.results[file_type].get("files"):
@@ -567,8 +904,10 @@ def main():
     """Main execution function"""
     # Set paths
     module_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "modules", "Keep_of_Doom")
-    schema_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    
+    # issue #128: schemas live in repo_root/schemas, not repo_root. Without the
+    # "schemas" segment the standalone validator can't load any schema file.
+    schema_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "schemas")
+
     # Create validator and run
     validator = ModuleValidator(module_path, schema_dir)
     validator.run_validation()

@@ -52,10 +52,18 @@ See LICENSE file for full terms.
 # ============================================================================
 
 import json
+import hashlib
 import subprocess
 import os
+import threading
 from datetime import datetime
-from openai import OpenAI
+from uuid import uuid4
+from core.ai import api_client
+import model_config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T013", "core/ai/action_handler.py", 1255)
+register_callsite("T012", "core/ai/action_handler.py", 676)
+register_callsite("T014", "core/ai/action_handler.py", 2506)
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
@@ -89,6 +97,43 @@ except ImportError:
 # Set script name for logging
 set_script_name("action_handler")
 
+
+def _module_transition_completion_id(
+    from_module: str,
+    to_module: str,
+    conversation_history,
+) -> str:
+    """Derive one stable identity for the same persisted transition event."""
+    canonical_event = {
+        "from_module": from_module,
+        "to_module": to_module,
+        "conversation_history": conversation_history,
+    }
+    encoded = json.dumps(
+        canonical_event,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _completion_publication_state(campaign_manager, pending_archive):
+    """Classify whether failed publication left durable recovery work."""
+    try:
+        return campaign_manager.get_module_completion_publication_state(
+            pending_archive["from_module"],
+            pending_archive["completion_id"],
+        )
+    except Exception as state_exc:
+        warning(
+            "FAILURE: Could not classify module-transition publication "
+            f"state: {state_exc}",
+            category="module_management",
+        )
+        return "unknown"
+
 # Action type constants
 ACTION_CREATE_ENCOUNTER = "createEncounter"
 ACTION_UPDATE_ENCOUNTER = "updateEncounter"
@@ -109,8 +154,70 @@ ACTION_RESTORE_GAME = "restoreGame"
 ACTION_LIST_SAVES = "listSaves"
 ACTION_DELETE_SAVE = "deleteSave"
 
+
+_NPC_MOVEMENT_LOCKS = {}
+_NPC_MOVEMENT_LOCKS_GUARD = threading.Lock()
+
+
+def _npc_movement_lock(module_name):
+    """Return the shared transaction lock for one module's area files."""
+    with _NPC_MOVEMENT_LOCKS_GUARD:
+        return _NPC_MOVEMENT_LOCKS.setdefault(module_name, threading.RLock())
+
 # Module conversation segmentation has been moved to conversation_utils.py
 # to work with the regular conversation update cycle
+
+def _module_creation_error_result(*, recovery_required=False, message=None):
+    """Return one sanitized, non-automatic-retry module failure shape."""
+    if recovery_required:
+        error_message = message or (
+            "Module publication could not be confirmed. The party was not "
+            "moved. Do not retry until recovery resolves the module state."
+        )
+        response_data = {
+            "error_code": "module_publication_recovery_required",
+            "error_message": error_message,
+            "retryable": False,
+            "state_changed": None,
+            "recovery_required": True,
+        }
+    else:
+        error_message = message or (
+            "Module generation failed validation; no game state was changed. "
+            "It is safe to retry."
+        )
+        response_data = {
+            "error_code": "module_generation_not_published",
+            "error_message": error_message,
+            "retryable": True,
+            "state_changed": False,
+            "recovery_required": False,
+        }
+    return {
+        "status": "error",
+        "success": False,
+        "needs_update": False,
+        "needs_dm_response": False,
+        "response_data": response_data,
+    }
+
+
+def _module_creation_idempotency_key(action, conversation_history):
+    """Hash the accepted action and its pre-action history into an opaque key."""
+    payload = {
+        "action": action,
+        "history_prefix": conversation_history
+        if isinstance(conversation_history, list)
+        else [],
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def pre_validate_transition(parameters, party_tracker_data, conversation_history, location_graph, path_manager):
@@ -430,12 +537,15 @@ def get_module_starting_location(module_name: str) -> tuple:
             module_data = world_registry['modules'].get(module_name, {})
             cached_start = module_data.get('startingLocation')
             
-            if cached_start:
+            # INT-H5: only trust the cache if it has the real IDs. A partial
+            # cache (missing locationId/areaId) must NOT yield A01/AREA001
+            # placeholders that strand the player -- fall through to analysis.
+            if cached_start and cached_start.get('locationId') and cached_start.get('areaId'):
                 debug(f"FILE_OP: Using cached starting location for {module_name}", category="module_loading")
                 return (
-                    cached_start.get('locationId', 'A01'),
+                    cached_start['locationId'],
                     cached_start.get('locationName', 'Unknown Location'),
-                    cached_start.get('areaId', 'AREA001'),
+                    cached_start['areaId'],
                     cached_start.get('areaName', 'Unknown Area')
                 )
         
@@ -446,6 +556,8 @@ def get_module_starting_location(module_name: str) -> tuple:
         area_ids = path_manager.get_area_ids()
         
         if not area_ids:
+            error(f"FAILURE: Module {module_name} has no area files; cannot "
+                  f"determine a valid starting location.", category="module_loading")
             return ("A01", "Unknown Location", "AREA001", "Unknown Area")
         
         # Gather all module data for AI analysis
@@ -504,20 +616,31 @@ def get_module_starting_location(module_name: str) -> tuple:
                 'timestamp': datetime.now().isoformat()
             }
             
-            safe_json_dump(world_registry, world_registry_path)
-            info(f"SUCCESS: Cached AI-determined starting location for {module_name}", category="module_loading")
-        
+            try:
+                safe_json_dump(world_registry, world_registry_path)
+                info(f"SUCCESS: Cached AI-determined starting location for {module_name}", category="module_loading")
+            except Exception as cache_err:
+                # INT-H5: a cache-WRITE failure must not discard an already-valid
+                # starting location and strand the player; log and continue.
+                warning(f"FILE_OP: Could not cache starting location for {module_name}: {cache_err}", category="module_loading")
+
         return starting_location
-        
+
     except Exception as e:
         error(f"FAILURE: Could not get starting location for {module_name}: {e}", category="module_loading")
+        # INT-H5: recover a REAL location from the module's area files rather
+        # than writing placeholder IDs (A01/AREA001) that resolve to no area
+        # file and strand the player at a non-existent location.
+        real = _first_real_location_from_files(module_name)
+        if real:
+            warning(f"STARTING_LOCATION: falling back to first real location "
+                    f"{real[2]}:{real[0]} for {module_name}", category="module_loading")
+            return real
         return ("A01", "Unknown Location", "AREA001", "Unknown Area")
 
 def _ai_analyze_starting_location(module_data: dict) -> tuple:
     """Use AI to analyze module data and determine the best starting location"""
     try:
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
-        
         system_prompt = """You are an expert 5th edition adventure module analyst. Analyze the provided module data to determine the most logical starting location for player characters entering this adventure module.
 
 ANALYSIS CRITERIA:
@@ -546,14 +669,38 @@ MODULE DATA:
 
 Determine the most logical starting location based on adventure flow, area types, NPCs, and narrative logic."""
 
-        response = client.chat.completions.create(
-            model=config.DM_MINI_MODEL,
+        # T012: starting-location analysis helper (mini-tier JSON extraction).
+        # Route through the provider-aware router so MODEL_PROVIDER toggle
+        # actually drives which provider/model handles the call.
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            locstart_cfg = config.DM_LOCSTART_T012_GPT5MINI
+        elif MODEL_PROVIDER == "gemini":
+            locstart_cfg = config.DM_LOCSTART_T012_GEMINI_FLASHLITE_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            locstart_cfg = config.DM_LOCSTART_T012_LMSTUDIO
+        else:  # legacy
+            locstart_cfg = config.DM_LOCSTART_T012_LEGACY
+
+        # T012: fail loud (gemini-only) if response_schema is missing. Without it,
+        # gemini-flash-lite emits narration instead of the location JSON, forcing a
+        # degraded first-area fallback.
+        if MODEL_PROVIDER == "gemini" and locstart_cfg.get("response_schema") is None:
+            raise RuntimeError(
+                "T012 starting-location analysis aborted: Gemini response_schema is "
+                "None. Refusing to run -- Gemini would emit narration and force a "
+                "degraded fallback location."
+            )
+
+        response = capture_and_fanout("T012", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.1
-        )
+            model=locstart_cfg["model"],
+            temperature=0.1,
+            **{k: v for k, v in locstart_cfg.items() if k != "model"})
         
         # Track token usage
         if USAGE_TRACKING_AVAILABLE:
@@ -633,10 +780,40 @@ def _get_fallback_starting_location(module_data: dict) -> tuple:
                 )
         
         return ("A01", "Unknown Location", "AREA001", "Unknown Area")
-        
+
     except Exception as e:
         print(f"WARNING: Fallback location detection failed: {e}")
         return ("A01", "Unknown Location", "AREA001", "Unknown Area")
+
+def _first_real_location_from_files(module_name: str) -> tuple:
+    """Scan a module's area files on disk and return the first REAL
+    (locationId, locationName, areaId, areaName), or None if none exists.
+
+    INT-H5 safety net: used when get_module_starting_location's primary path
+    fails, so the player is never written into party_tracker.json at a
+    placeholder location (A01/AREA001) that resolves to no area file.
+    """
+    try:
+        path_manager = ModulePathManager(module_name)
+        for area_id in sorted(path_manager.get_area_ids() or []):
+            try:
+                area_data = safe_json_load(path_manager.get_area_path(area_id))
+            except Exception:
+                continue
+            if not area_data:
+                continue
+            locations = area_data.get("locations") or []
+            if locations and isinstance(locations[0], dict) and locations[0].get("locationId"):
+                loc = locations[0]
+                return (
+                    loc["locationId"],
+                    loc.get("name", "Unknown Location"),
+                    area_data.get("areaId", area_id),
+                    area_data.get("areaName", "Unknown Area"),
+                )
+    except Exception:
+        pass
+    return None
 
 def get_travel_narration(target_module: str) -> str:
     """Get AI-generated travel narration for module transition"""
@@ -955,15 +1132,91 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
         info(f"STATE_CHANGE: Transitioning from '{current_location_name}' to '{new_location_name_or_id}'", category="location_transitions")
         debug(f"VALIDATION: Current location string (hex): {current_location_name.encode('utf-8').hex()}", category="location_transitions")
         debug(f"VALIDATION: New location string (hex): {new_location_name_or_id.encode('utf-8').hex()}", category="location_transitions")
+
+        # Detect and prepare a cross-module completion before the location
+        # manager can persist the target location. This closes the earlier
+        # crash window where location moved but no completion intent existed.
+        pending_archive = None
+        campaign_manager = None
+        try:
+            from core.managers.campaign_manager import CampaignManager
+
+            campaign_manager = CampaignManager()
+            is_cross_module, from_module, to_module = (
+                campaign_manager.detect_module_transition(
+                    current_location_id,
+                    new_location_name_or_id,
+                )
+            )
+            if is_cross_module:
+                completion_id = _module_transition_completion_id(
+                    from_module,
+                    to_module,
+                    conversation_history,
+                )
+                pending_archive = {
+                    "from_module": from_module,
+                    "to_module": to_module,
+                    "party_tracker_data": party_tracker_data.copy(),
+                    "completion_id": completion_id,
+                }
+        except Exception as e:
+            error(
+                "FAILURE: Could not prepare cross-module transition",
+                exception=e,
+                category="module_management",
+            )
+            return create_return(
+                status="error",
+                needs_update=False,
+                response_data={"error_message": str(e)},
+            )
         
         # Use enhanced location manager with auto-generated area connectivity ID
-        transition_prompt = location_manager.handle_location_transition(
-            current_location_name, 
-            new_location_name_or_id, 
-            current_area_name, 
-            current_area_id, 
-            auto_area_connectivity_id
-        )
+        def run_location_transition():
+            return location_manager.handle_location_transition(
+                current_location_name,
+                new_location_name_or_id,
+                current_area_name,
+                current_area_id,
+                auto_area_connectivity_id,
+            )
+
+        if pending_archive is not None:
+            try:
+                transition_prompt, _transitioned_party = (
+                    campaign_manager.publish_location_module_transition(
+                        pending_archive["from_module"],
+                        pending_archive["to_module"],
+                        conversation_history,
+                        pending_archive["completion_id"],
+                        run_location_transition,
+                    )
+                )
+            except Exception as e:
+                error(
+                    "FAILURE: Could not publish cross-module location transition",
+                    exception=e,
+                    category="module_management",
+                )
+                publication_state = _completion_publication_state(
+                    campaign_manager,
+                    pending_archive,
+                )
+                return create_return(
+                    status="error",
+                    needs_update=False,
+                    response_data={
+                        "error_message": str(e),
+                        "pending_archive": pending_archive,
+                        "completion_publication_state": publication_state,
+                        "transition_recovery_required": (
+                            publication_state != "absent"
+                        ),
+                    },
+                )
+        else:
+            transition_prompt = run_location_transition()
 
         if transition_prompt:
             # Get the new location ID from party tracker after transition
@@ -987,23 +1240,49 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
             from main import save_conversation_history
-            save_conversation_history(conversation_history)
+            save_conversation_history(
+                conversation_history,
+                strict=True,
+                allow_compression=False,
+            )
 
             # GENERATE TRANSITION NARRATION using the transition_prompt
             info("STATE_CHANGE: Generating transition narration using AI", category="location_transitions")
             try:
-                client = OpenAI(api_key=config.OPENAI_API_KEY)
-
                 # Build prompt for transition narration
                 transition_messages = [
                     {"role": "system", "content": "You are a skilled Dungeon Master narrating a location transition."},
                     {"role": "user", "content": transition_prompt}
                 ]
 
-                transition_response = client.chat.completions.create(
-                    model=config.DM_MAIN_MODEL,
+                # T013: per-provider model selection via the shared DM_MAIN
+                # named-config dicts (same pattern/dicts as T031 et al). Legacy
+                # resolves to gpt-4.1-2025-04-14 -- identical to the prior
+                # get_model_for_callsite() path -- so existing games are unchanged.
+                # Named dicts also carry provider params (reasoning_effort /
+                # thinking_level) the bare-string helper could not.
+                from model_config import MODEL_PROVIDER
+                if MODEL_PROVIDER == "openai":
+                    transition_cfg = config.DM_MAIN_GPT52_NONE
+                elif MODEL_PROVIDER == "gemini":
+                    transition_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+                elif MODEL_PROVIDER == "lmstudio":
+                    transition_cfg = config.DM_MAIN_LMSTUDIO
+                else:  # legacy
+                    transition_cfg = config.DM_MAIN_LEGACY
+
+                transition_response = capture_and_fanout(
+                    "T013",
+                    api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
                     messages=transition_messages,
-                    temperature=0.7
+                    model=transition_cfg["model"],
+                    temperature=0.7,
+                    # CRIT-2: transition narration is plain prose. Without this the router
+                    # defaults to JSON mode (api_client.py), which 400s on a prompt that
+                    # never mentions "json" and silently falls back to a generic line.
+                    response_format=None,
+                    **{k: v for k, v in transition_cfg.items() if k != "model"}
                 )
 
                 transition_narration = transition_response.choices[0].message.content.strip()
@@ -1011,7 +1290,11 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
 
                 # Save transition narration to conversation history as assistant message
                 conversation_history.append({"role": "assistant", "content": transition_narration})
-                save_conversation_history(conversation_history)
+                save_conversation_history(
+                    conversation_history,
+                    strict=True,
+                    allow_compression=False,
+                )
                 debug("SUCCESS: Transition narration saved to conversation history", category="location_transitions")
 
             except Exception as e:
@@ -1019,41 +1302,72 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 transition_narration = f"The party travels to {new_location_name}."
                 # Save fallback narration too
                 conversation_history.append({"role": "assistant", "content": transition_narration})
-                save_conversation_history(conversation_history)
-            
-            # CAMPAIGN INTEGRATION: Check for cross-module transitions
-            try:
-                from core.managers.campaign_manager import CampaignManager
-                campaign_manager = CampaignManager()
-                
-                # Detect if this is a cross-module transition
-                is_cross_module, from_module, to_module = campaign_manager.detect_module_transition(
-                    current_location_id, new_location_id
+                save_conversation_history(
+                    conversation_history,
+                    strict=True,
+                    allow_compression=False,
                 )
-                
-                if is_cross_module:
-                    info(f"STATE_CHANGE: Cross-module transition detected during location change: {from_module} -> {to_module}", category="module_management")
-                    
-                    # DON'T generate summary here - it will be handled by updatePartyTracker
-                    # This prevents duplicate summaries for the same module transition
-                    debug("STATE_CHANGE: Deferring module summary generation to updatePartyTracker action", category="module_management")
-                    
-                    # Just update the module field in party tracker
-                    updated_party_tracker["module"] = to_module
-                    safe_json_dump(updated_party_tracker, "party_tracker.json")
-                    debug(f"STATE_CHANGE: Updated party tracker module to {to_module}", category="module_management")
-                    
-                    # Note: Campaign context injection will happen when updatePartyTracker is called
-                    # This ensures summaries are generated only once per transition
+            
+            # CAMPAIGN INTEGRATION: refresh the ready intent with T013 history.
+            try:
+                if pending_archive is not None:
+                    info(
+                        "STATE_CHANGE: Cross-module transition detected "
+                        f"during location change: {pending_archive['from_module']} "
+                        f"-> {pending_archive['to_module']}",
+                        category="module_management",
+                    )
+                    campaign_manager.mark_module_completion_intent_ready(
+                        pending_archive["from_module"],
+                        pending_archive["completion_id"],
+                        conversation_history=conversation_history,
+                    )
+                    debug(
+                        "STATE_CHANGE: Updated party tracker module to "
+                        f"{pending_archive['to_module']}",
+                        category="module_management",
+                    )
                 else:
                     debug(f"STATE_CHANGE: Within-module transition: {current_location_id} -> {new_location_id}", category="location_transitions")
                     
             except Exception as e:
-                print(f"Warning: Campaign transition check failed: {e}")
-                # Don't let campaign system errors break location transitions
+                error(
+                    "FAILURE: Campaign transition could not be durably staged",
+                    exception=e,
+                    category="module_management",
+                )
+                response_data = {
+                    "transition_narration": transition_narration,
+                    "error_message": str(e),
+                }
+                if pending_archive is not None:
+                    publication_state = _completion_publication_state(
+                        campaign_manager,
+                        pending_archive,
+                    )
+                    response_data["pending_archive"] = pending_archive
+                    response_data["completion_publication_state"] = (
+                        publication_state
+                    )
+                    response_data["transition_recovery_required"] = (
+                        publication_state != "absent"
+                    )
+                return create_return(
+                    status="error",
+                    needs_update=True,
+                    response_data=response_data,
+                )
             
             info("SUCCESS: Location transition complete", category="location_transitions")
             needs_conversation_history_update = True  # Trigger conversation history reload
+            # Return the exact T013 history value to the transition orchestrator.
+            # A different assistant completion can finish while T063/T064 are
+            # running, so the final narration must correlate by placeholder
+            # identity instead of replacing an arbitrary nearby assistant.
+            response_data = {"transition_narration": transition_narration}
+            if pending_archive is not None:
+                response_data["pending_archive"] = pending_archive
+            return create_return(needs_update=True, response_data=response_data)
              # After transition, the current_location_data in the main loop might be stale.
             # We need to ensure the AI response processing uses the *new* location data.
             # This might require process_ai_response to reload location data or for main_game_loop to handle it.
@@ -1209,9 +1523,11 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 from updates.update_encounter import update_encounter
                 
                 # Update the encounter
-                updated_encounter = update_encounter(encounter_id, changes)
+                encounter_updated, updated_encounter = update_encounter(
+                    encounter_id, changes
+                )
                 
-                if updated_encounter:
+                if encounter_updated:
                     info(f"SUCCESS: Encounter {encounter_id} updated successfully", category="combat_processing")
                     needs_conversation_history_update = True
                 else:
@@ -1225,106 +1541,430 @@ Please use a valid location that exists in the current area ({current_area_id}) 
 
     elif action_type == ACTION_CREATE_NEW_MODULE:
         debug("STATE_CHANGE: Processing createNewModule action", category="module_management")
+
+        # Allocate before any optional module imports so even import/contract
+        # failures have one correlated terminal payload. Reuse an already
+        # active usage identity when this action is nested in its build scope.
+        build_id = str(uuid4())
         try:
-            # Pass ALL parameters directly from AI to module builder
-            # The AI is fully in control of module creation
-            from core.generators.module_builder import ai_driven_module_creation
-            
-            # Define progress callback to send updates to web interface
-            def module_progress_callback(progress_data):
-                """Send module creation progress to web interface"""
-                from datetime import datetime
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                print(f"DEBUG: [Action Handler] [{timestamp}] module_progress_callback called - Stage {progress_data.get('stage')}")
-                
-                # Try to use the module progress queue if available (web mode)
-                try:
-                    from web.shared_state import module_progress_queue
-                    module_progress_queue.put(progress_data)
-                    print(f"DEBUG: [Action Handler] [{timestamp}] Successfully queued progress for stage {progress_data.get('stage')}")
-                    debug(f"MODULE_PROGRESS: Queued for web - Stage {progress_data.get('stage')}/{progress_data.get('total_stages')} - {progress_data.get('message')}", category="module_management")
-                except ImportError as e:
-                    print(f"DEBUG: [Action Handler] [{timestamp}] ImportError: {e}")
-                    # Terminal mode - just log progress
-                    debug(f"MODULE_PROGRESS: Stage {progress_data.get('stage')}/{progress_data.get('total_stages')} - {progress_data.get('message')}", category="module_management")
-                except Exception as e:
-                    print(f"DEBUG: [Action Handler] [{timestamp}] Unexpected error: {e}")
-            
-            # Check if this is a single narrative parameter (new format)
-            # or multiple parameters (old format)
-            if len(parameters) == 1 and isinstance(list(parameters.values())[0], str):
-                # Single narrative parameter - new format
-                narrative = list(parameters.values())[0]
-                parameters = {"narrative": narrative}
-            
-            # Let the module builder handle ALL parameter validation
-            # This makes the system fully agentic - AI decides everything
-            success, module_name = ai_driven_module_creation(parameters, progress_callback=module_progress_callback)
-            
-            if success:
-                # Module name is now returned from the AI parser
-                info(f"SUCCESS: Module '{module_name}' created successfully", category="module_management")
-                
-                # Auto-integrate with module stitcher
-                try:
-                    from core.generators.module_stitcher import get_module_stitcher
-                    stitcher = get_module_stitcher()
-                    # Run stitcher in fully autonomous mode
-                    integrated_modules = stitcher.scan_and_integrate_new_modules()
-                    info(f"SUCCESS: Module '{module_name}' integrated into world registry", category="module_management")
-                    debug(f"STATE_CHANGE: Integration summary: {integrated_modules}", category="module_management")
-                except Exception as e:
-                    print(f"WARNING: Module created but stitching failed: {e}")
-                
-                # Reset processing status to ready
-                try:
-                    from core.managers.status_manager import status_ready
-                    status_ready()
-                    debug("STATE_CHANGE: Status reset to ready", category="session_management")
-                except Exception as e:
-                    error(f"FAILURE: Error resetting status", exception=e, category="session_management")
-                
-                # Signal module creation complete
-                dm_note = f"Dungeon Master Note: New module '{module_name}' has been successfully created and integrated into the world. You may now guide the party to this new adventure."
-                conversation_history.append({"role": "user", "content": dm_note})
-                
-                # Save conversation history
-                import sys
+            from utils.openai_usage_tracker import (
+                get_module_build_usage_context,
+            )
 
-                if __name__ != "__main__":
+            active_build_context = get_module_build_usage_context()
+            if active_build_context is not None:
+                build_id = str(active_build_context.build_id)
+        except Exception:
+            # The fallback UUID still correlates progress if usage tracking is
+            # unavailable; the later protected import owns the safe failure.
+            pass
+        progress_lock = threading.Lock()
+        progress_state = {
+            "last_stage": -1,
+            "last_percentage": -1,
+            "total_stages": 9,
+            "terminal_emitted": False,
+        }
 
-                    sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
-                from main import save_conversation_history
-                save_conversation_history(conversation_history)
-                
-                needs_conversation_history_update = True
-                
-                # Return a special flag to trigger DM response generation
-                return {"success": True, "needs_update": True, "needs_dm_response": True}
-            else:
-                print(f"ERROR: Failed to create module")
-                
-                # Reset status even on failure  
-                try:
-                    from core.managers.status_manager import status_ready
-                    status_ready()
-                    debug("STATE_CHANGE: Status reset after failure", category="session_management")
-                except Exception as e:
-                    error(f"FAILURE: Error resetting status after failure", exception=e, category="session_management")
-                
-        except Exception as e:
-            print(f"ERROR: Exception while creating module: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            
-            # Reset status on exception
+        def _bounded_progress_int(value, default, minimum, maximum):
+            if isinstance(value, bool):
+                value = default
             try:
-                from core.managers.status_manager import status_ready  
+                value = int(value)
+            except (TypeError, ValueError, OverflowError):
+                value = default
+            return max(minimum, min(maximum, value))
+
+        def _progress_text(value, default):
+            if not isinstance(value, str) or not value.strip():
+                return default
+            return value.strip()[:500]
+
+        def _queue_module_progress(payload):
+            try:
+                from web.shared_state import module_progress_queue
+
+                module_progress_queue.put(payload)
+                debug(
+                    "MODULE_PROGRESS: Queued for web - Stage "
+                    f"{payload.get('stage')}/{payload.get('total_stages')} - "
+                    f"{payload.get('message')}",
+                    category="module_management",
+                )
+            except ImportError:
+                debug(
+                    f"MODULE_PROGRESS: {payload.get('message')}",
+                    category="module_management",
+                )
+            except Exception as progress_error:
+                warning(
+                    f"Could not queue module progress: {progress_error}",
+                    category="module_management",
+                )
+
+        def module_progress_callback(progress_data):
+            """Coerce child callbacks into one monotonic running envelope."""
+            if not isinstance(progress_data, dict):
+                return False
+            with progress_lock:
+                if progress_state["terminal_emitted"]:
+                    return False
+                total_stages = _bounded_progress_int(
+                    progress_data.get("total_stages"),
+                    progress_state["total_stages"],
+                    1,
+                    99,
+                )
+                stage = _bounded_progress_int(
+                    progress_data.get("stage"),
+                    progress_state["last_stage"] + 1,
+                    0,
+                    total_stages,
+                )
+                total_stages = max(
+                    progress_state["total_stages"], total_stages, stage
+                )
+                percentage = _bounded_progress_int(
+                    progress_data.get("percentage"),
+                    max(0, progress_state["last_percentage"]),
+                    0,
+                    99,
+                )
+                if (
+                    stage < progress_state["last_stage"]
+                    or percentage < progress_state["last_percentage"]
+                ):
+                    return False
+                if (
+                    stage == progress_state["last_stage"]
+                    and percentage == progress_state["last_percentage"]
+                ):
+                    return False
+                progress_state["last_stage"] = stage
+                progress_state["last_percentage"] = percentage
+                progress_state["total_stages"] = total_stages
+                payload = {
+                    "build_id": build_id,
+                    "stage": stage,
+                    "total_stages": total_stages,
+                    "stage_name": _progress_text(
+                        progress_data.get("stage_name"), "Processing"
+                    ),
+                    "percentage": percentage,
+                    "message": _progress_text(
+                        progress_data.get("message"), "Working..."
+                    ),
+                    "status": "running",
+                    "terminal": False,
+                }
+                # Keep queue order within the same lock that linearizes stage
+                # state so a terminal can never overtake accepted progress.
+                _queue_module_progress(payload)
+                return True
+
+        def terminal_progress(status, message, module_name=None):
+            terminal_status = (
+                status
+                if status in {"published", "generated", "failed"}
+                else "failed"
+            )
+            with progress_lock:
+                if progress_state["terminal_emitted"]:
+                    return False
+                progress_state["terminal_emitted"] = True
+                total_stages = max(progress_state["total_stages"], 9)
+                payload = {
+                    "build_id": build_id,
+                    "stage": total_stages,
+                    "total_stages": total_stages,
+                    "stage_name": {
+                        "published": "Published",
+                        "generated": "Generated",
+                        "failed": "Failed",
+                    }[terminal_status],
+                    "percentage": 100,
+                    "message": _progress_text(
+                        message,
+                        "Module creation finished.",
+                    ),
+                    "status": terminal_status,
+                    "terminal": True,
+                    "success": terminal_status in {"published", "generated"},
+                }
+                if isinstance(module_name, str) and module_name.strip():
+                    payload["module_name"] = module_name.strip()[:200]
+                _queue_module_progress(payload)
+                return True
+
+        def module_failure(**kwargs):
+            failure = _module_creation_error_result(**kwargs)
+            failure["build_id"] = build_id
+            failure["response_data"]["build_id"] = build_id
+            return failure
+
+        def published_result(receipt):
+            module_name = receipt.module_name
+            pending_message = (
+                f"Module {module_name} was published; follow-up narration is pending."
+            )
+            dm_note = (
+                "Dungeon Master Note: New module "
+                f"'{module_name}' has been successfully created and integrated "
+                "into the world. Provide a useful player-facing transition "
+                "narration and return no actions."
+            )
+            return {
+                "status": (
+                    "published_replay" if receipt.acknowledged else "published"
+                ),
+                "success": True,
+                "build_id": build_id,
+                "state_changed": True,
+                "retryable": False,
+                "needs_update": True,
+                "needs_dm_response": not receipt.acknowledged,
+                "response_data": {
+                    "build_id": build_id,
+                    "receipt_build_id": receipt.build_id,
+                    "module_name": module_name,
+                    "dm_note": dm_note,
+                    "message_id": receipt.message_id,
+                    "message_digest": receipt.message_digest,
+                    "idempotency_key": receipt.idempotency_key,
+                    "pending_message": pending_message,
+                },
+            }
+
+        # Establish the active build in the reducer before any optional import,
+        # contract check, or lock attempt can fail and emit its terminal event.
+        module_progress_callback(
+            {
+                "stage": 0,
+                "total_stages": 9,
+                "stage_name": "Initializing",
+                "percentage": 0,
+                "message": "Starting module creation...",
+            }
+        )
+
+        try:
+            from core.ai.module_creation_contract import (
+                ModuleCreationContractError,
+                validate_create_new_module_action,
+            )
+            from core.generators.module_builder import (
+                ModuleCreationRecoveryRequiredError,
+                ai_driven_module_creation,
+            )
+            from core.generators.managed_module_builder import (
+                get_ready_managed_candidate,
+            )
+            from core.generators.module_stitcher import get_module_stitcher
+            from utils.module_lifecycle import (
+                ModuleLifecycleStore,
+                RecoveryStatus,
+            )
+            from utils.openai_usage_tracker import (
+                mark_module_build_outcome,
+                module_build_usage_scope,
+            )
+            # Creation and registration are one publication unit. Reconcile
+            # must never discover a half-built action-created module.
+            from utils.module_refresh_lock import module_refresh_lock
+
+            with module_build_usage_scope(build_id=build_id) as build_context:
+                build_id = str(build_context.build_id)
+                try:
+                    validate_create_new_module_action(action)
+                except ModuleCreationContractError:
+                    mark_module_build_outcome("contract_rejected")
+                    failure = module_failure()
+                    terminal_progress(
+                        "failed", failure["response_data"]["error_message"]
+                    )
+                    return failure
+
+                with module_refresh_lock() as publication_acquired:
+                    if not publication_acquired:
+                        mark_module_build_outcome("lock_unavailable")
+                        failure = module_failure(
+                            message=(
+                                "Module creation is busy; no game state was "
+                                "changed. Please retry shortly."
+                            )
+                        )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    idempotency_key = _module_creation_idempotency_key(
+                        action,
+                        conversation_history,
+                    )
+                    from utils.commit_state import (
+                        recover_incomplete_refresh_commit,
+                    )
+
+                    recover_incomplete_refresh_commit()
+                    lifecycle = ModuleLifecycleStore("modules")
+                    recovery = lifecycle.recover()
+                    if recovery.status is RecoveryStatus.INDETERMINATE:
+                        mark_module_build_outcome("lifecycle_recovery_required")
+                        failure = module_failure(recovery_required=True)
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    existing_receipt = lifecycle.find_publication_receipt(
+                        idempotency_key=idempotency_key
+                    )
+                    if existing_receipt is not None:
+                        mark_module_build_outcome("published_replay")
+                        terminal_progress(
+                            "published",
+                            f"Module {existing_receipt.module_name} was already published.",
+                            existing_receipt.module_name,
+                        )
+                        return published_result(existing_receipt)
+
+                    unrelated_receipt = lifecycle.find_pending_receipt()
+                    if unrelated_receipt is not None:
+                        mark_module_build_outcome("delivery_pending")
+                        failure = module_failure(
+                            recovery_required=True,
+                            message=(
+                                "A previous module was published and its player "
+                                "message is still pending. Finish recovery before "
+                                "creating another module."
+                            ),
+                        )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    stitcher = get_module_stitcher()
+                    try:
+                        success, module_name = ai_driven_module_creation(
+                            parameters,
+                            progress_callback=module_progress_callback,
+                            policy="game",
+                            prepare_candidate=(
+                                stitcher.prepare_managed_candidate_locked
+                            ),
+                        )
+                    except ModuleCreationRecoveryRequiredError:
+                        mark_module_build_outcome("builder_recovery_required")
+                        failure = module_failure(
+                            recovery_required=True
+                        )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    if not success or not module_name:
+                        mark_module_build_outcome("not_generated")
+                        failure = module_failure()
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    active = get_ready_managed_candidate(module_name)
+                    if active is None:
+                        mark_module_build_outcome("ready_candidate_missing")
+                        failure = module_failure(recovery_required=True)
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    pending_message = (
+                        f"Module {module_name} was published; follow-up narration is pending."
+                    )
+                    message_id = "module-publication-" + hashlib.sha256(
+                        f"{active.build_id}:{idempotency_key}".encode("utf-8")
+                    ).hexdigest()[:32]
+                    message_digest = hashlib.sha256(
+                        pending_message.encode("utf-8")
+                    ).hexdigest()
+                    try:
+                        receipt = stitcher.publish_managed_candidate_locked(
+                            active,
+                            message_id=message_id,
+                            message_digest=message_digest,
+                            idempotency_key=idempotency_key,
+                        )
+                    except Exception as publication_error:
+                        warning(
+                            "Managed publication interrupted; classifying exact recovery state",
+                            category="module_management",
+                        )
+                        recovery = lifecycle.recover()
+                        if recovery.status is not RecoveryStatus.INDETERMINATE:
+                            receipt = lifecycle.find_pending_receipt(
+                                idempotency_key=idempotency_key
+                            )
+                            if receipt is not None:
+                                mark_module_build_outcome("published_recovered")
+                                terminal_progress(
+                                    "published",
+                                    f"Module {receipt.module_name} was published successfully.",
+                                    receipt.module_name,
+                                )
+                                return published_result(receipt)
+                            mark_module_build_outcome("not_published")
+                            failure = module_failure()
+                        else:
+                            error(
+                                "Managed publication recovery is indeterminate",
+                                exception=publication_error,
+                                category="module_management",
+                            )
+                            mark_module_build_outcome("publication_indeterminate")
+                            failure = module_failure(recovery_required=True)
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    mark_module_build_outcome("published")
+                    terminal_progress(
+                        "published",
+                        f"Module {module_name} was published successfully.",
+                        module_name,
+                    )
+                    info(
+                        f"SUCCESS: Module '{module_name}' created and published",
+                        category="module_management",
+                    )
+                    needs_conversation_history_update = True
+                    return published_result(receipt)
+        except Exception as module_error:
+            error(
+                "FAILURE: Unexpected module creation pipeline error",
+                exception=module_error,
+                category="module_management",
+            )
+            failure = module_failure(recovery_required=True)
+            terminal_progress(
+                "failed", failure["response_data"]["error_message"]
+            )
+            return failure
+        finally:
+            try:
+                from core.managers.status_manager import status_ready
+
                 status_ready()
-                debug("STATE_CHANGE: Status reset after exception", category="session_management")
-            except Exception as status_e:
-                error(f"FAILURE: Error resetting status after exception", exception=status_e, category="session_management")
+                debug(
+                    "STATE_CHANGE: Status reset after module creation",
+                    category="session_management",
+                )
+            except Exception:
+                pass
 
     elif action_type == ACTION_ESTABLISH_HUB:
         debug("STATE_CHANGE: Processing establishHub action", category="module_management")
@@ -1458,7 +2098,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     "role": "user",
                     "content": transition_text
                 }
-                conversation_history.append(transition_message)
+                transition_history = list(conversation_history)
+                transition_history.append(transition_message)
                 print(f"DEBUG: [Module Transition] Inserted transition marker: '{transition_text}'")
                 debug(f"STATE_CHANGE: Inserted module transition marker: '{transition_text}'", category="module_management")
                 
@@ -1477,26 +2118,40 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     pending_archive = {
                         "from_module": current_module,
                         "to_module": new_module,
-                        "party_tracker_data": current_party_data.copy()
+                        "party_tracker_data": current_party_data.copy(),
+                        # The appended transition marker makes this stable for
+                        # duplicate workers while later visits naturally hash
+                        # a longer/different history.
+                        "completion_id": _module_transition_completion_id(
+                            current_module,
+                            new_module,
+                            transition_history,
+                        ),
                     }
-                    
                     # Inject accumulated campaign context for the new module
                     debug(f"AI_CALL: Requesting campaign context for module: {new_module}", category="module_management")
                     campaign_context = campaign_manager.get_accumulated_summaries_context(new_module)
                     debug(f"AI_CALL: Campaign context received - Length: {len(campaign_context) if campaign_context else 0} characters", category="module_management")
                     if campaign_context:
-                        conversation_history.append({
+                        transition_history.append({
                             "role": "system", 
                             "content": f"=== CAMPAIGN CONTEXT ===\n{campaign_context}"
                         })
-                        save_conversation_history(conversation_history)
-                        info(f"SUCCESS: Campaign context injected for {new_module}", category="module_management")
+                        info(f"SUCCESS: Campaign context prepared for {new_module}", category="module_management")
                     else:
                         warning(f"STATE_CHANGE: No campaign context to inject for {new_module} - context was empty", category="module_management")
                 
-                # Auto-update to starting location if not explicitly provided
-                if ("currentAreaId" not in parameters and 
-                    "currentLocationId" not in parameters):
+                # A usable destination requires both real IDs. Models may emit
+                # the full field shape with empty strings; treating those keys
+                # as "provided" publishes a module with a blank world
+                # projection and strands the player at "()" in the web UI.
+                destination_area_id = str(
+                    parameters.get("currentAreaId") or ""
+                ).strip()
+                destination_location_id = str(
+                    parameters.get("currentLocationId") or ""
+                ).strip()
+                if not destination_area_id or not destination_location_id:
                     try:
                         location_id, location_name, area_id, area_name = get_module_starting_location(new_module)
                         info(f"STATE_CHANGE: Auto-setting starting location for {new_module}: {location_name} [{location_id}] in {area_name} [{area_id}]", category="module_management")
@@ -1521,8 +2176,32 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     # Handle any other party tracker fields
                     current_party_data[key] = value
             
-            # Save updated party tracker
-            safe_json_dump(current_party_data, "party_tracker.json")
+            # Publish cross-module state under one fresh party transaction so
+            # competing stale workers cannot both ready different intents.
+            if (
+                new_module
+                and new_module != current_module
+                and current_module != "Unknown"
+            ):
+                original_party, current_party_data = (
+                    campaign_manager.publish_party_module_transition(
+                        current_module,
+                        new_module,
+                        parameters,
+                        transition_history,
+                        pending_archive["completion_id"],
+                    )
+                )
+                pending_archive["party_tracker_data"] = original_party
+            else:
+                safe_json_dump(current_party_data, "party_tracker.json")
+            if new_module and new_module != current_module:
+                conversation_history[:] = transition_history
+                save_conversation_history(
+                    conversation_history,
+                    strict=True,
+                    allow_compression=False,
+                )
             print(f"DEBUG: [Party Tracker After Update] Module: {current_party_data.get('module', 'Unknown')}")
             info("SUCCESS: Party tracker updated successfully", category="party_management")
             # Always reload conversation history to pick up changes
@@ -1540,6 +2219,27 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             print(f"ERROR: Exception while updating party tracker: {str(e)}")
             import traceback
             traceback.print_exc()
+            response_data = {"error_message": str(e)}
+            if (
+                "pending_archive" in locals()
+                and "campaign_manager" in locals()
+            ):
+                publication_state = _completion_publication_state(
+                    campaign_manager,
+                    pending_archive,
+                )
+                response_data["pending_archive"] = pending_archive
+                response_data["completion_publication_state"] = (
+                    publication_state
+                )
+                response_data["transition_recovery_required"] = (
+                    publication_state != "absent"
+                )
+            return create_return(
+                status="error",
+                needs_update=True,
+                response_data=response_data,
+            )
 
     elif action_type == ACTION_MOVE_BACKGROUND_NPC:
         debug("STATE_CHANGE: Processing moveBackgroundNPC action", category="npc_management")
@@ -1728,30 +2428,39 @@ def move_background_npc(npc_name, context, current_location_hint=None, party_tra
     import shutil
     import os
     import time
-    import threading
     from datetime import datetime
     from utils.file_operations import safe_write_json, safe_read_json
     
     debug(f"STATE_CHANGE: moveBackgroundNPC called for {npc_name}", category="npc_management")
     debug(f"AI_CALL: Context: {context}", category="npc_management")
     
-    # File locking for atomic operations (similar to updateCharacterInfo)
-    lock = threading.Lock()
-    
-    with lock:
+    if not party_tracker_data:
+        party_tracker_data = safe_read_json("party_tracker.json")
+        if not party_tracker_data:
+            print("ERROR: Could not load party tracker data")
+            return False
+
+    module_name = party_tracker_data.get("module", "").replace(" ", "_")
+    if not module_name:
+        print("ERROR: No current module found in party tracker")
+        return False
+
+    # The complete read -> AI decision -> mutate -> write sequence is one
+    # transaction.  A lock created inside this function cannot protect two
+    # invocations, so share a re-entrant lock by module instead.
+    from contextlib import ExitStack
+    from utils.module_refresh_lock import module_refresh_lock
+
+    with ExitStack() as movement_locks:
+        refresh_acquired = movement_locks.enter_context(module_refresh_lock())
+        if not refresh_acquired:
+            warning(
+                "Background NPC movement deferred while modules are refreshing",
+                category="npc_management",
+            )
+            return False
+        movement_locks.enter_context(_npc_movement_lock(module_name))
         try:
-            # Get module context
-            if not party_tracker_data:
-                party_tracker_data = safe_read_json("party_tracker.json")
-                if not party_tracker_data:
-                    print("ERROR: Could not load party tracker data")
-                    return False
-            
-            module_name = party_tracker_data.get("module", "").replace(" ", "_")
-            if not module_name:
-                print("ERROR: No current module found in party tracker")
-                return False
-                
             path_manager = ModulePathManager(module_name)
             
             # Find the NPC in area files
@@ -1895,8 +2604,6 @@ def find_npc_in_areas(npc_name, path_manager, location_hint=None):
 def get_ai_npc_movement_decision(npc_name, context, npc_data, area_data, location_id, module_name, party_npcs=None, attempt=1):
     """Use AI to determine what to do with the NPC based on context"""
     try:
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
-        
         # Get available locations for potential moves
         available_locations = []
         for location in area_data.get("locations", []):
@@ -2012,14 +2719,40 @@ Based on this narrative context, determine the most appropriate action for this 
 
 Remember: This is a background NPC management action, not party NPC management."""
 
-        response = client.chat.completions.create(
-            model=config.NPC_INFO_UPDATE_MODEL,  # Use claude-sonnet-4-20250514 as specified
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            npc_config = config.NPC_INFO_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            # T014 uses its OWN gemini config (NPC_MOVEMENT_T014_*), NOT the shared
+            # NPC_INFO_GEMINI_FLASH_LOW -- that one is shared with T091 whose
+            # output is a JSON ARRAY; attaching this object schema there would corrupt
+            # T091's monster reconciliation.
+            npc_config = config.NPC_MOVEMENT_T014_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            npc_config = config.NPC_INFO_LMSTUDIO
+        else:  # legacy
+            npc_config = config.NPC_INFO_LEGACY
+
+        # T014: fail loud (gemini-only) if response_schema is missing. Without it,
+        # gemini-flash emits narration instead of the action/reasoning decision JSON
+        # and the NPC update is silently dropped.
+        if MODEL_PROVIDER == "gemini" and npc_config.get("response_schema") is None:
+            raise RuntimeError(
+                "T014 NPC movement decision aborted: Gemini response_schema is None. "
+                "Refusing to run -- Gemini would emit narration and silently drop the "
+                "NPC update."
+            )
+
+        response = capture_and_fanout("T014", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.7  # As specified by user
-        )
+            model=npc_config["model"],
+            temperature=0.3,  # MED-9 (#127): lower temp reduces JSON parse failures on NPC movement
+            **{k: v for k, v in npc_config.items() if k != "model"})
         
         # Track token usage
         if USAGE_TRACKING_AVAILABLE:

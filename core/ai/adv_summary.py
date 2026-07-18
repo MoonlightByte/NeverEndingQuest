@@ -13,16 +13,24 @@ Commercial competing use is prohibited for 2 years from release.
 See LICENSE file for full terms.
 """
 
+import copy
 import json
 import os
 import sys
+import threading
 import traceback
+from contextlib import contextmanager
 from datetime import datetime
+from uuid import uuid4
 
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from openai import OpenAI
+from core.ai import api_client
+import config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T015", "core/ai/adv_summary.py", 417)
+register_callsite("T016", "core/ai/adv_summary.py", 609)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -33,9 +41,10 @@ except:
     def track_response(r): pass
 
 from jsonschema import validate, ValidationError
-from config import OPENAI_API_KEY, ADVENTURE_SUMMARY_MODEL
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
+from utils.file_operations import FileLockError, atomic_writer
+from utils.module_refresh_lock import module_refresh_lock
 from core.managers.status_manager import status_generating_summary
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
@@ -43,7 +52,178 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 set_script_name("adv_summary")
 
 TEMPERATURE = 0.8
-client = OpenAI(api_key=OPENAI_API_KEY)
+PENDING_DEPARTURE_SUMMARY_FILE = (
+    "modules/conversation_history/pending_departure_summary.json"
+)
+
+
+class DepartureSummaryError(RuntimeError):
+    """An optional departure summary could not be staged or committed safely."""
+
+
+_DEPARTURE_TRANSACTION_LOCKS = {}
+_DEPARTURE_TRANSACTION_LOCKS_GUARD = threading.Lock()
+
+
+def _departure_transaction_thread_lock(pending_path):
+    canonical_path = os.path.abspath(os.path.normpath(pending_path))
+    with _DEPARTURE_TRANSACTION_LOCKS_GUARD:
+        return _DEPARTURE_TRANSACTION_LOCKS.setdefault(
+            canonical_path,
+            threading.RLock(),
+        )
+
+
+@contextmanager
+def _departure_transaction_lock(pending_path):
+    """Serialize marker, area, and journal state across threads/processes."""
+    canonical_path = os.path.abspath(os.path.normpath(pending_path))
+    lock_path = f"{canonical_path}.lock"
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+
+    with _departure_transaction_thread_lock(canonical_path):
+        with open(lock_path, "a+b") as lock_file:
+            if os.name == "nt":
+                import msvcrt
+
+                lock_file.seek(0, os.SEEK_END)
+                if lock_file.tell() == 0:
+                    lock_file.write(b"\0")
+                    lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                if os.name == "nt":
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _process_is_alive(pid):
+    if pid == os.getpid():
+        return True
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        process_query_limited_information = 0x1000
+        still_active = 259
+        error_invalid_parameter = 87
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = (
+            wintypes.DWORD,
+            wintypes.BOOL,
+            wintypes.DWORD,
+        )
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.GetExitCodeProcess.argtypes = (
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.DWORD),
+        )
+        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        process_handle = kernel32.OpenProcess(
+            process_query_limited_information,
+            False,
+            pid,
+        )
+        if not process_handle:
+            # Access denied can describe a protected but live process. Only an
+            # invalid PID is sufficient evidence that this lock is abandoned.
+            return ctypes.get_last_error() != error_invalid_parameter
+        try:
+            exit_code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(
+                process_handle,
+                ctypes.byref(exit_code),
+            ):
+                return True
+            return exit_code.value == still_active
+        finally:
+            kernel32.CloseHandle(process_handle)
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return True
+    return True
+
+
+def _remove_abandoned_atomic_writer_lock(filepath):
+    """Reclaim a target lock left by a process that exited mid-transaction."""
+    lock_path = f"{filepath}.lock"
+    try:
+        with open(lock_path, "r", encoding="ascii") as lock_file:
+            owner_pid = int(lock_file.read().strip())
+    except (FileNotFoundError, OSError, ValueError):
+        return
+    if _process_is_alive(owner_pid):
+        return
+    try:
+        os.remove(lock_path)
+    except FileNotFoundError:
+        pass
+
+
+@contextmanager
+def _departure_target_locks(area_path, journal_path, pending_path):
+    """Hold shared AtomicFileWriter locks in canonical path order."""
+    canonical_pending = os.path.abspath(os.path.normpath(pending_path))
+    canonical_targets = sorted(
+        {
+            os.path.abspath(os.path.normpath(area_path)),
+            os.path.abspath(os.path.normpath(journal_path)),
+        }
+    )
+    lock_resources = {
+        canonical_pending,
+        f"{canonical_pending}.lock",
+        canonical_targets[0],
+        f"{canonical_targets[0]}.lock",
+        canonical_targets[-1],
+        f"{canonical_targets[-1]}.lock",
+    }
+    if len(canonical_targets) != 2 or len(lock_resources) != 6:
+        raise DepartureSummaryError(
+            "departure transaction marker, area, journal, and their lock paths "
+            "must be distinct"
+        )
+
+    acquired = []
+    try:
+        for filepath in canonical_targets:
+            _remove_abandoned_atomic_writer_lock(filepath)
+            try:
+                atomic_writer.acquire_lock(filepath)
+            except FileLockError as exc:
+                raise DepartureSummaryError(
+                    "could not acquire departure transaction target lock for "
+                    f"{filepath}: {exc}"
+                ) from exc
+            except Exception as exc:
+                raise DepartureSummaryError(
+                    "unexpected failure acquiring departure transaction target "
+                    f"lock for {filepath}: {exc}"
+                ) from exc
+            acquired.append(filepath)
+        yield
+    finally:
+        for filepath in reversed(acquired):
+            atomic_writer.release_lock(filepath)
+
 
 def get_current_location():
     try:
@@ -77,17 +257,17 @@ def load_json_file(file_path):
         debug_print(error_msg)
         debug_print(f"JSON error at line {json_err.lineno}, column {json_err.colno}: {json_err.msg}")
         debug_print(traceback.format_exc())
-        sys.exit(1)
+        raise DepartureSummaryError(error_msg) from json_err
     except FileNotFoundError:
         error_msg = f"Error: File {file_path} not found."
         debug_print(error_msg)
         debug_print(traceback.format_exc())
-        sys.exit(1)
+        raise DepartureSummaryError(error_msg)
     except Exception as e:
         error_msg = f"Unexpected error loading {file_path}: {str(e)}"
         debug_print(error_msg)
         debug_print(traceback.format_exc())
-        sys.exit(1)
+        raise DepartureSummaryError(error_msg) from e
 
 def get_game_time():
     party_tracker = load_json_file("party_tracker.json")
@@ -99,11 +279,7 @@ def get_game_time():
     return f"{year} {month} {day}, {time}"
 
 def validate_location_json(location_data, schema):
-    try:
-        validate(instance=location_data, schema=schema)
-    except ValidationError as e:
-        debug_print(f"Error: Invalid location data structure. {e}")
-        sys.exit(1) # Or raise the error to be caught by the caller
+    validate(instance=location_data, schema=schema)
 
 def deep_update(original, updates):
     for key, value in updates.items():
@@ -151,35 +327,39 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
     # Check schema structure in detail with logging
     if loca_schema_full is None:
         debug_print("ERROR: loca_schema_full is None")
-        sys.exit("Fatal: loca_schema.json loaded as None")
+        raise DepartureSummaryError("loca_schema.json loaded as None")
         
     debug_print(f"Schema type: {type(loca_schema_full)}")
     
     if not isinstance(loca_schema_full, dict):
         debug_print(f"ERROR: loca_schema_full is not a dict but {type(loca_schema_full)}")
-        sys.exit("Fatal: loca_schema.json not a dictionary")
+        raise DepartureSummaryError("loca_schema.json is not a dictionary")
     
     debug_print(f"Schema keys: {list(loca_schema_full.keys())}")
     
     if 'properties' not in loca_schema_full:
         debug_print("ERROR: 'properties' key missing from schema")
-        sys.exit("Fatal: loca_schema.json missing 'properties' key")
+        raise DepartureSummaryError("loca_schema.json is missing 'properties'")
     
     debug_print(f"Properties keys: {list(loca_schema_full['properties'].keys())}")
     
     if 'locations' not in loca_schema_full['properties']:
         debug_print("ERROR: 'locations' key missing from schema properties")
-        sys.exit("Fatal: loca_schema.json missing 'properties.locations' key")
+        raise DepartureSummaryError(
+            "loca_schema.json is missing 'properties.locations'"
+        )
     
     if not isinstance(loca_schema_full['properties']['locations'], dict):
         debug_print(f"ERROR: 'locations' is not a dict but {type(loca_schema_full['properties']['locations'])}")
-        sys.exit("Fatal: 'properties.locations' is not a dictionary")
+        raise DepartureSummaryError("'properties.locations' is not a dictionary")
     
     debug_print(f"Location properties keys: {list(loca_schema_full['properties']['locations'].keys())}")
     
     if 'items' not in loca_schema_full['properties']['locations']:
         debug_print("ERROR: 'items' key missing from schema properties.locations")
-        sys.exit("Fatal: loca_schema.json missing 'properties.locations.items' key")
+        raise DepartureSummaryError(
+            "loca_schema.json is missing 'properties.locations.items'"
+        )
     
     # If we get here, all checks passed
     loca_single_item_schema = loca_schema_full['properties']['locations']['items']
@@ -225,11 +405,22 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
     for attempt in range(max_retries):
         debug_print(f"Attempt {attempt + 1} to update location JSON")
         try:
-            response = client.chat.completions.create(
-                model=ADVENTURE_SUMMARY_MODEL,
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                adv_config = config.ADV_SUMM_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                adv_config = config.ADV_SUMM_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                adv_config = config.ADV_SUMM_LMSTUDIO
+            else:  # legacy
+                adv_config = config.ADV_SUMM_LEGACY
+
+            response = capture_and_fanout("T015", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=location_updater_prompt,
+                model=adv_config["model"],
                 temperature=TEMPERATURE,
-                messages=location_updater_prompt
-            )
+                **{k: v for k, v in adv_config.items() if k != "model"})
             
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
@@ -260,68 +451,8 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
 
             validate_location_json(updated_location, loca_single_item_schema)
 
-            debug_print(f"Getting area path for ID: {current_area_id_from_main}")
-            # Get current module from party tracker for consistent path resolution
-            try:
-                from utils.encoding_utils import safe_json_load
-                party_tracker = safe_json_load("party_tracker.json")
-                current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-                path_manager = ModulePathManager(current_module)
-            except:
-                path_manager = ModulePathManager()  # Fallback to reading from file
-            # Add extra debug for path manager to see if we're getting the right module data
-            debug_print(f"ModulePathManager using module: {path_manager.module_name}")
-            debug_print(f"ModulePathManager directory: {path_manager.module_dir}")
-            
-            all_locations_file = path_manager.get_area_path(current_area_id_from_main)
-            debug_print(f"Area file path generated: {all_locations_file}")
-            
-            # Check if file exists before loading
-            if not os.path.exists(all_locations_file):
-                debug_print(f"ERROR: Area file does not exist: {all_locations_file}")
-                debug_print(f"Current area ID: {current_area_id_from_main}")
-                debug_print(f"Available files in module dir: {os.listdir(path_manager.module_dir) if os.path.exists(path_manager.module_dir) else 'Module directory not found'}")
-                sys.exit(f"Fatal: Area file not found: {all_locations_file}")
-            
-            all_locations = load_json_file(all_locations_file)
-            debug_print(f"All locations loaded from {all_locations_file}")
-            
-            # Check if locations key exists
-            if "locations" not in all_locations:
-                debug_print(f"ERROR: 'locations' key missing from {all_locations_file}")
-                debug_print(f"File keys: {list(all_locations.keys())}")
-                sys.exit(f"Fatal: 'locations' array missing from area file")
-            
-            debug_print(f"Locations count: {len(all_locations.get('locations', []))}")
-            debug_print(f"Looking for location name: {location_info.get('name')}")
-            
-            # Detailed logging of all location names
-            location_names = [loc.get('name', 'NO_NAME') for loc in all_locations.get("locations", [])]
-            debug_print(f"Available location names: {location_names}")
-
-            found_and_updated = False
-            for i, location in enumerate(all_locations.get("locations", [])): # Use .get for safety
-                debug_print(f"Checking location {i}: {location.get('name')}")
-                if location.get("name") == location_info.get("name"): # Use .get for safety
-                    debug_print(f"Found matching location at index {i}")
-                    changes = compare_and_update(all_locations["locations"][i], updated_location)
-                    debug_print(f"Changes to apply: {json.dumps(changes) if changes else 'No changes'}")
-                    deep_update(all_locations["locations"][i], changes)
-                    found_and_updated = True
-                    debug_print("Location updated successfully")
-                    break
-            
-            if not found_and_updated:
-                debug_print(f"ERROR: Could not find location '{location_info.get('name')}' in '{all_locations_file}' to update.")
-                debug_print(f"Looking for: {location_info.get('name')}")
-                debug_print(f"Available: {location_names}")
-                # We'll log the error but continue - this gives us more debugging info
-
-            try:
-                safe_json_dump(all_locations, all_locations_file)
-            except IOError as e:
-                debug_print(f"Error writing updated locations to {all_locations_file}: {e}")
-                sys.exit(1)
+            # T015 only stages a validated location object. Journal and area
+            # files are committed together later, after both AI calls succeed.
             return updated_location
         except json.JSONDecodeError:
             debug_print(f"Invalid JSON from AI. Attempt {attempt + 1}/{max_retries}. Response: {location_updates}")
@@ -330,7 +461,9 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
                 location_updater_prompt.append({"role": "user", "content": "The JSON schema you provided is invalid. Please try again and ensure the output is a valid JSON format."})
             else:
                 debug_print("Max retries reached. Unable to generate valid JSON.")
-                sys.exit(1)
+                raise DepartureSummaryError(
+                    "T015 exhausted retries after malformed JSON"
+                )
         except ValidationError as e_val: # Renamed to avoid conflict
             debug_print(f"JSON schema validation failed. Attempt {attempt + 1}/{max_retries}. Error: {e_val}")
             if attempt < max_retries - 1:
@@ -338,14 +471,18 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
                 location_updater_prompt.append({"role": "user", "content": f"The JSON schema you provided does not match the required structure. Error: {e_val}. Please try again."})
             else:
                 debug_print("Max retries reached. Unable to generate valid JSON matching schema.")
-                sys.exit(1)
+                raise DepartureSummaryError(
+                    "T015 exhausted retries after schema validation failures"
+                )
         except Exception as e_gen: # Renamed to avoid conflict
             debug_print(f"Unexpected error in update_location_json: {str(e_gen)}")
             if attempt < max_retries - 1:
                 debug_print(f"Retrying... Attempt {attempt + 2}/{max_retries}")
             else:
                 debug_print("Max retries reached. Unable to update location JSON.")
-                sys.exit(1)
+                raise DepartureSummaryError(
+                    f"T015 exhausted retries: {e_gen}"
+                ) from e_gen
     return None # Should only be reached if loop finishes without success (e.g. after retries)
 
 
@@ -429,7 +566,7 @@ Do NOT:
 - Include any JSON, schemas, or DM notes.
 - Editorialize or guess what characters were thinking beyond observable behavior.
 
-Your writing should feel immersive, literary, and grounded—like a historical entry capturing a poignant moment in time."""
+Your writing should feel immersive, literary, and grounded -- like a historical entry capturing a poignant moment in time. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode. Do NOT use markdown formatting (no **, no ###, no bullet points)."""
         },
         {"role": "user", "content": "Summarize this conversation per instructions:"},
         *conversation_history_data
@@ -460,11 +597,23 @@ Your writing should feel immersive, literary, and grounded—like a historical e
 
 
     try:
-        response = client.chat.completions.create(
-            model=ADVENTURE_SUMMARY_MODEL,
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            adv_config = config.ADV_SUMM_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            adv_config = config.ADV_SUMM_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            adv_config = config.ADV_SUMM_LMSTUDIO
+        else:  # legacy
+            adv_config = config.ADV_SUMM_LEGACY
+
+        response = capture_and_fanout("T016", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
+            messages=dialogue_data,
+            model=adv_config["model"],
             temperature=TEMPERATURE,
-            messages=dialogue_data
-        )
+            response_format=None,
+            **{k: v for k, v in adv_config.items() if k != "model"})
         
         # Track usage if available
         if USAGE_TRACKING_AVAILABLE:
@@ -481,40 +630,555 @@ Your writing should feel immersive, literary, and grounded—like a historical e
         debug_print(f"ERROR: Failed to generate adventure summary. Error: {str(e)}")
         return None
 
-def update_journal(adventure_summary, party_tracker_data, location_name):
+def build_journal_update(adventure_summary, party_tracker_data, location_name):
+    """Stage a validated journal update without writing runtime state."""
     journal_schema = load_json_file("schemas/journal_schema.json")
-    journal_data = {"entries": []} # Default to empty journal
+    if not isinstance(journal_schema, dict):
+        raise DepartureSummaryError("journal schema is unavailable or invalid")
 
     try:
-        journal_data = safe_json_load("journal.json")
-        if not journal_data or not isinstance(journal_data, dict) or "entries" not in journal_data or not isinstance(journal_data["entries"], list):
-            debug_print("journal.json has invalid structure, reinitializing.")
-            journal_data = {"module": "Keep_of_Doom", "entries": []}
-    except Exception as e:
-        debug_print(f"Error loading journal.json: {e}, creating new journal")
-        journal_data = {"module": "Keep_of_Doom", "entries": []}
-    
-    world_conditions = party_tracker_data.get('worldConditions', {}) # Use .get for safety
-    new_entry = {
-        "date": f"{world_conditions.get('year', 'N/A')} {world_conditions.get('month','N/A')} {world_conditions.get('day','N/A')}",
-        "time": world_conditions.get('time', 'N/A'),
-        "location": location_name,
-        "summary": adventure_summary
+        existing_journal = safe_json_load("journal.json")
+    except Exception as exc:
+        raise DepartureSummaryError(f"could not load journal.json: {exc}") from exc
+
+    if existing_journal is None:
+        journal_data = {
+            "module": party_tracker_data.get("module", "Keep_of_Doom"),
+            "entries": [],
+        }
+    elif (
+        not isinstance(existing_journal, dict)
+        or not isinstance(existing_journal.get("entries"), list)
+    ):
+        raise DepartureSummaryError(
+            "journal.json has invalid structure; prior state was preserved"
+        )
+    else:
+        journal_data = copy.deepcopy(existing_journal)
+
+    world_conditions = party_tracker_data.get("worldConditions", {})
+    journal_data["entries"].append(
+        {
+            "date": (
+                f"{world_conditions.get('year', 'N/A')} "
+                f"{world_conditions.get('month', 'N/A')} "
+                f"{world_conditions.get('day', 'N/A')}"
+            ),
+            "time": world_conditions.get("time", "N/A"),
+            "location": location_name,
+            "summary": adventure_summary,
+        }
+    )
+
+    try:
+        validate(instance=journal_data, schema=journal_schema)
+    except ValidationError as exc:
+        raise DepartureSummaryError(
+            f"staged journal update failed schema validation: {exc.message}"
+        ) from exc
+    return journal_data
+
+
+def update_journal(adventure_summary, party_tracker_data, location_name):
+    """Compatibility wrapper for callers that only need a journal write."""
+    journal_data = build_journal_update(
+        adventure_summary,
+        party_tracker_data,
+        location_name,
+    )
+    safe_json_dump(journal_data, "journal.json")
+    debug_print("Journal updated successfully")
+    return journal_data
+
+
+def _restore_json_snapshot(path, existed, snapshot):
+    if existed:
+        safe_json_dump(snapshot, path)
+    elif os.path.exists(path):
+        _durable_remove(path)
+
+
+def _fsync_parent_directory(path):
+    if os.name == "nt":
+        return
+    parent = os.path.dirname(os.path.abspath(path))
+    directory_fd = os.open(parent, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _durable_remove(path):
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        return
+    _fsync_parent_directory(path)
+
+
+def _load_json_snapshot(path):
+    existed = os.path.exists(path)
+    if not existed:
+        return False, None
+    try:
+        return True, safe_json_load(path)
+    except Exception as exc:
+        raise DepartureSummaryError(
+            f"could not read departure transaction state {path}: {exc}"
+        ) from exc
+
+
+def _validate_pending_record(pending, pending_path):
+    if not isinstance(pending, dict):
+        raise DepartureSummaryError(
+            f"invalid pending departure summary at {pending_path}"
+        )
+
+    required_values = (
+        "transaction_id",
+        "status",
+        "area_path",
+        "area_existed",
+        "journal_existed",
+        "area_before",
+        "journal_before",
+        "area_after",
+        "journal_after",
+    )
+    missing = [key for key in required_values if key not in pending]
+    if missing:
+        raise DepartureSummaryError(
+            "invalid pending departure summary at "
+            f"{pending_path}; missing {', '.join(missing)}"
+        )
+    if not isinstance(pending["transaction_id"], str) or not pending[
+        "transaction_id"
+    ].strip():
+        raise DepartureSummaryError(
+            f"invalid pending departure summary transaction id at {pending_path}"
+        )
+    if pending["status"] not in {"staged", "rollback_required"}:
+        raise DepartureSummaryError(
+            "invalid pending departure summary status "
+            f"{pending['status']!r} at {pending_path}"
+        )
+    if not isinstance(pending["area_path"], str) or not pending[
+        "area_path"
+    ].strip():
+        raise DepartureSummaryError(
+            f"pending departure summary at {pending_path} has no area path"
+        )
+    if (
+        not isinstance(pending.get("journal_path", "journal.json"), str)
+        or not pending.get("journal_path", "journal.json").strip()
+    ):
+        raise DepartureSummaryError(
+            f"pending departure summary at {pending_path} has no journal path"
+        )
+    if not isinstance(pending["area_existed"], bool) or not isinstance(
+        pending["journal_existed"], bool
+    ):
+        raise DepartureSummaryError(
+            f"invalid pending departure summary existence flags at {pending_path}"
+        )
+    if not isinstance(pending["area_after"], dict) or not isinstance(
+        pending["journal_after"], dict
+    ):
+        raise DepartureSummaryError(
+            f"invalid pending departure summary snapshots at {pending_path}"
+        )
+    for prefix in ("area", "journal"):
+        existed = pending[f"{prefix}_existed"]
+        before = pending[f"{prefix}_before"]
+        if (existed and not isinstance(before, dict)) or (
+            not existed and before is not None
+        ):
+            raise DepartureSummaryError(
+                "invalid pending departure summary before snapshot for "
+                f"{prefix} at {pending_path}"
+            )
+
+
+def _snapshot_matches(existed, value, expected_existed, expected_value):
+    return existed == expected_existed and (
+        not expected_existed or value == expected_value
+    )
+
+
+def _recover_pending_summary_targets(pending, pending_path, area_path, journal_path):
+    """Classify and repair target state while both target locks are held."""
+    area_existed, current_area = _load_json_snapshot(area_path)
+    journal_existed, current_journal = _load_json_snapshot(journal_path)
+
+    area_matches_before = _snapshot_matches(
+        area_existed,
+        current_area,
+        pending["area_existed"],
+        pending["area_before"],
+    )
+    journal_matches_before = _snapshot_matches(
+        journal_existed,
+        current_journal,
+        pending["journal_existed"],
+        pending["journal_before"],
+    )
+    area_matches_after = _snapshot_matches(
+        area_existed,
+        current_area,
+        True,
+        pending["area_after"],
+    )
+    journal_matches_after = _snapshot_matches(
+        journal_existed,
+        current_journal,
+        True,
+        pending["journal_after"],
+    )
+
+    if (
+        pending["status"] == "staged"
+        and area_matches_after
+        and journal_matches_after
+    ):
+        _durable_remove(pending_path)
+        return {"status": "already_committed"}
+    if area_matches_before and journal_matches_before:
+        _durable_remove(pending_path)
+        return {"status": "already_rolled_back"}
+    if not (
+        (area_matches_before or area_matches_after)
+        and (journal_matches_before or journal_matches_after)
+    ):
+        raise DepartureSummaryError(
+            "ambiguous departure summary recovery state; marker retained at "
+            f"{pending_path}"
+        )
+
+    if pending["status"] == "rollback_required":
+        targets = (
+            (
+                area_path,
+                pending["area_existed"],
+                pending["area_before"],
+            ),
+            (
+                journal_path,
+                pending["journal_existed"],
+                pending["journal_before"],
+            ),
+        )
+        recovered_status = "recovered_rollback"
+    else:
+        targets = (
+            (area_path, True, pending["area_after"]),
+            (journal_path, True, pending["journal_after"]),
+        )
+        recovered_status = "recovered_forward"
+
+    try:
+        for path, should_exist, snapshot in targets:
+            _restore_json_snapshot(path, should_exist, snapshot)
+        for path, should_exist, snapshot in targets:
+            actual_existed, actual_value = _load_json_snapshot(path)
+            if not _snapshot_matches(
+                actual_existed,
+                actual_value,
+                should_exist,
+                snapshot,
+            ):
+                raise DepartureSummaryError(
+                    f"recovery verification failed for {path}"
+                )
+    except Exception as exc:
+        if isinstance(exc, DepartureSummaryError):
+            detail = str(exc)
+        else:
+            detail = repr(exc)
+        raise DepartureSummaryError(
+            "departure summary recovery failed; marker retained at "
+            f"{pending_path}: {detail}"
+        ) from exc
+
+    _durable_remove(pending_path)
+    return {"status": recovered_status}
+
+
+def _resolve_prior_pending_summary_unlocked(pending_path):
+    if not os.path.exists(pending_path):
+        return {"status": "none"}
+    try:
+        pending = safe_json_load(pending_path)
+    except Exception as exc:
+        raise DepartureSummaryError(
+            f"unreadable pending departure summary at {pending_path}: {exc}"
+        ) from exc
+    _validate_pending_record(pending, pending_path)
+
+    area_path = pending["area_path"]
+    journal_path = pending.get("journal_path", "journal.json")
+    with _departure_target_locks(area_path, journal_path, pending_path):
+        return _recover_pending_summary_targets(
+            pending,
+            pending_path,
+            area_path,
+            journal_path,
+        )
+
+
+def _resolve_prior_pending_summary(pending_path=PENDING_DEPARTURE_SUMMARY_FILE):
+    """Resolve a prior transaction under the same lock used by commits."""
+    # Recovery may replace an area document, so module refresh must remain the
+    # outermost module-tree fence. The marker/target locks are lower-ranked.
+    with module_refresh_lock() as refresh_acquired:
+        if not refresh_acquired:
+            raise DepartureSummaryError(
+                "module refresh is busy; departure recovery made no changes"
+            )
+        with _departure_transaction_lock(pending_path):
+            return _resolve_prior_pending_summary_unlocked(pending_path)
+
+
+def _journal_before_from_appended_update(journal_after):
+    if not isinstance(journal_after, dict) or not isinstance(
+        journal_after.get("entries"), list
+    ):
+        raise DepartureSummaryError(
+            "staged journal update has no entries array"
+        )
+    if not journal_after["entries"]:
+        raise DepartureSummaryError(
+            "staged journal update contains no departure entry"
+        )
+    journal_before = copy.deepcopy(journal_after)
+    journal_before["entries"].pop()
+    return journal_before
+
+
+def _commit_departure_summary_targets_locked(
+    area_path,
+    area_before,
+    area_after,
+    journal_after,
+    pending_path,
+    journal_path,
+    expected_journal_before,
+):
+    """Commit after caller has acquired the shared target locks."""
+    area_existed, current_area = _load_json_snapshot(area_path)
+    journal_existed, journal_before = _load_json_snapshot(journal_path)
+
+    if not area_existed or current_area != area_before:
+        raise DepartureSummaryError(
+            "departure area changed concurrently; staged summary was not "
+            "committed"
+        )
+    if journal_existed:
+        journal_matches_base = journal_before == expected_journal_before
+    else:
+        journal_matches_base = not expected_journal_before.get("entries")
+    if not journal_matches_base:
+        raise DepartureSummaryError(
+            "departure journal changed concurrently; staged summary was not "
+            "committed"
+        )
+
+    pending_record = {
+        "transaction_id": uuid4().hex,
+        "status": "staged",
+        "area_path": os.path.abspath(area_path),
+        "journal_path": os.path.abspath(journal_path),
+        "area_existed": area_existed,
+        "journal_existed": journal_existed,
+        "area_before": copy.deepcopy(current_area),
+        "journal_before": copy.deepcopy(journal_before),
+        "area_after": copy.deepcopy(area_after),
+        "journal_after": copy.deepcopy(journal_after),
     }
-    journal_data["entries"].append(new_entry)
+    try:
+        safe_json_dump(pending_record, pending_path)
+    except Exception as exc:
+        raise DepartureSummaryError(
+            f"could not create departure summary recovery marker: {exc}"
+        ) from exc
 
     try:
-        if journal_schema: # Only validate if schema was loaded
-            validate(instance=journal_data, schema=journal_schema)
-    except ValidationError as e:
-        debug_print(f"Error: Invalid journal entry structure. {e}")
-        return # Or handle error, e.g., don't save if invalid
+        # A hard exit between these writes leaves a staged marker whose
+        # deterministic policy is to finish the recorded after snapshots.
+        safe_json_dump(area_after, area_path)
+        safe_json_dump(journal_after, journal_path)
+        committed_area = _load_json_snapshot(area_path)
+        committed_journal = _load_json_snapshot(journal_path)
+        if not _snapshot_matches(
+            *committed_area,
+            True,
+            area_after,
+        ) or not _snapshot_matches(
+            *committed_journal,
+            True,
+            journal_after,
+        ):
+            raise DepartureSummaryError(
+                "departure summary commit verification failed"
+            )
+    except Exception as commit_exc:
+        pending_record["status"] = "rollback_required"
+        pending_record["commit_error"] = str(commit_exc)
+        try:
+            safe_json_dump(pending_record, pending_path)
+        except Exception as marker_exc:
+            raise DepartureSummaryError(
+                "departure summary commit failed; staged recovery marker "
+                f"retained at {pending_path}: {marker_exc}"
+            ) from commit_exc
+
+        rollback_errors = []
+        for path, existed, snapshot in (
+            (area_path, area_existed, current_area),
+            (journal_path, journal_existed, journal_before),
+        ):
+            try:
+                _restore_json_snapshot(path, existed, snapshot)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"{path}: {rollback_exc}")
+
+        if rollback_errors:
+            pending_record["rollback_errors"] = rollback_errors
+            try:
+                safe_json_dump(pending_record, pending_path)
+            except Exception:
+                pass
+            raise DepartureSummaryError(
+                "departure summary commit failed; recovery marker retained at "
+                f"{pending_path}: {'; '.join(rollback_errors)}"
+            ) from commit_exc
+
+        try:
+            _durable_remove(pending_path)
+        except OSError:
+            pass
+        raise DepartureSummaryError(
+            f"departure summary commit failed; prior state restored: {commit_exc}"
+        ) from commit_exc
 
     try:
-        safe_json_dump(journal_data, "journal.json")
-        debug_print("Journal updated successfully")
-    except IOError as e:
-        debug_print(f"Error writing to journal.json: {e}")
+        _durable_remove(pending_path)
+    except OSError as exc:
+        debug_print(
+            "Summary committed, but the resolved recovery marker could not be "
+            f"removed: {exc}"
+        )
+    return {
+        "success": True,
+        "status": "committed",
+        "area_path": area_path,
+    }
+
+
+def commit_departure_summary(
+    area_path,
+    area_before,
+    area_after,
+    journal_after,
+    pending_path=PENDING_DEPARTURE_SUMMARY_FILE,
+):
+    """Commit one crash-recoverable area/journal pair under shared locks."""
+    journal_path = "journal.json"
+    expected_journal_before = _journal_before_from_appended_update(journal_after)
+
+    # Lock order is module refresh, marker, then canonical targets. Ordinary
+    # AtomicFileWriter callers acquire only target locks, so they cannot form
+    # a target -> marker cycle with this transaction.
+    with module_refresh_lock() as refresh_acquired:
+        if not refresh_acquired:
+            raise DepartureSummaryError(
+                "module refresh is busy; departure summary made no changes"
+            )
+        with _departure_transaction_lock(pending_path):
+            _resolve_prior_pending_summary_unlocked(pending_path)
+            with _departure_target_locks(area_path, journal_path, pending_path):
+                return _commit_departure_summary_targets_locked(
+                    area_path,
+                    area_before,
+                    area_after,
+                    journal_after,
+                    pending_path,
+                    journal_path,
+                    expected_journal_before,
+                )
+
+
+def run_departure_summary(
+    conversation_history_file,
+    current_location_file,
+    leaving_location_name,
+    current_area_id,
+):
+    """Run T016 then T015 and commit their derived state as one transaction."""
+    del current_location_file  # Kept in the CLI contract for caller compatibility.
+    # Repair any prior interrupted commit before reading state or invoking a
+    # provider for the next departure.
+    _resolve_prior_pending_summary()
+    conversation_history = load_json_file(conversation_history_file)
+    party_tracker = load_json_file("party_tracker.json")
+    if not isinstance(conversation_history, list):
+        raise DepartureSummaryError("conversation history is unavailable or invalid")
+    if not isinstance(party_tracker, dict):
+        raise DepartureSummaryError("party tracker is unavailable or invalid")
+
+    adventure_summary = generate_adventure_summary(
+        conversation_history,
+        party_tracker,
+        leaving_location_name,
+    )
+    if not isinstance(adventure_summary, str) or not adventure_summary.strip():
+        raise DepartureSummaryError("T016 did not produce an adventure summary")
+    debug_print("Adventure Summary generated")
+
+    current_module = party_tracker.get("module", "").replace(" ", "_")
+    path_manager = ModulePathManager(current_module or None)
+    area_path = path_manager.get_area_path(current_area_id)
+    area_before = load_json_file(area_path)
+    if not isinstance(area_before, dict) or not isinstance(
+        area_before.get("locations"), list
+    ):
+        raise DepartureSummaryError(f"area data is unavailable or invalid: {area_path}")
+
+    leaving_index = next(
+        (
+            index
+            for index, location in enumerate(area_before["locations"])
+            if isinstance(location, dict)
+            and location.get("name") == leaving_location_name
+        ),
+        None,
+    )
+    if leaving_index is None:
+        raise DepartureSummaryError(
+            f"could not find leaving location '{leaving_location_name}' in {area_path}"
+        )
+
+    updated_location = update_location_json(
+        adventure_summary,
+        copy.deepcopy(area_before["locations"][leaving_index]),
+        current_area_id,
+    )
+    if not isinstance(updated_location, dict):
+        raise DepartureSummaryError("T015 did not produce a location update")
+
+    area_after = copy.deepcopy(area_before)
+    area_after["locations"][leaving_index] = updated_location
+    journal_after = build_journal_update(
+        adventure_summary,
+        party_tracker,
+        leaving_location_name,
+    )
+    return commit_departure_summary(
+        area_path,
+        area_before,
+        area_after,
+        journal_after,
+    )
 
 
 if __name__ == "__main__":
@@ -522,64 +1186,15 @@ if __name__ == "__main__":
         debug_print("Usage: python adv_summary.py <conversation_history_file> <current_location_file> <leaving_location_name> <current_area_id>")
         sys.exit(1)
 
-    conversation_history_file_arg = sys.argv[1]
-    current_location_file_arg = sys.argv[2] # This is the JSON of the location *being left*
-    leaving_location_name_arg = sys.argv[3]
-    current_area_id_arg = sys.argv[4]
-
-    conversation_history_content = load_json_file(conversation_history_file_arg)
-    # The 'current_location_file_arg' contains the data for the location being left.
-    # 'leaving_location_obj' will be this data.
-    # We need to ensure `update_location_json` gets the correct `current_area_id` for loading `all_locations`.
-    
-    party_tracker_content = load_json_file("party_tracker.json")
-
-    adventure_summary_text = generate_adventure_summary(conversation_history_content, party_tracker_content, leaving_location_name_arg)
-    if adventure_summary_text is None:
-        debug_print("ERROR: Unable to generate adventure summary. Exiting.")
-        sys.exit(1)
-    debug_print("Adventure Summary generated")
-
-    update_journal(adventure_summary_text, party_tracker_content, leaving_location_name_arg)
-
-    # Load the full data for the area being updated
-    # Get current module from party tracker for consistent path resolution
     try:
-        from utils.encoding_utils import safe_json_load
-        party_tracker = safe_json_load("party_tracker.json")
-        current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-        path_manager = ModulePathManager(current_module)
-    except:
-        path_manager = ModulePathManager()  # Fallback to reading from file
-    area_file_to_update = path_manager.get_area_path(current_area_id_arg)
-    all_locations_in_area = load_json_file(area_file_to_update)
-    
-    # Find the specific location object within that area's data that matches the name of the location being left
-    leaving_location_obj_from_area = next((loc for loc in all_locations_in_area.get("locations", []) if loc.get("name") == leaving_location_name_arg), None)
-
-    if leaving_location_obj_from_area:
-        # Pass current_area_id_arg to update_location_json as it's needed to load the correct area file within that function
-        updated_location_data = update_location_json(adventure_summary_text, leaving_location_obj_from_area, current_area_id_arg)
-        
-        if updated_location_data: # If update was successful
-            # Update the main area file data in memory
-            found_in_all_locations = False
-            for i, location_in_list in enumerate(all_locations_in_area.get("locations", [])):
-                if location_in_list.get("name") == leaving_location_name_arg:
-                    all_locations_in_area["locations"][i] = updated_location_data
-                    found_in_all_locations = True
-                    break
-            
-            if found_in_all_locations:
-                try:
-                    safe_json_dump(all_locations_in_area, area_file_to_update)
-                    debug_print(f"Successfully updated {leaving_location_name_arg} in {area_file_to_update}")
-                except IOError as e:
-                    debug_print(f"Error writing updated area data to {area_file_to_update}: {e}")
-            else:
-                debug_print(f"ERROR: Could not find {leaving_location_name_arg} in {area_file_to_update} after attempting update.")
-        else:
-            debug_print(f"ERROR: update_location_json did not return updated data for {leaving_location_name_arg}.")
-    else:
-        debug_print(f"ERROR: Could not find location data for '{leaving_location_name_arg}' in '{area_file_to_update}'.")
-        sys.exit(1)
+        result = run_departure_summary(*sys.argv[1:5])
+        debug_print(
+            "Departure summary transaction committed: "
+            + json.dumps(result, sort_keys=True)
+        )
+    except DepartureSummaryError as exc:
+        debug_print(f"DEPARTURE SUMMARY UNAVAILABLE: {exc}")
+        sys.exit(2)
+    except Exception as exc:
+        debug_print(f"DEPARTURE SUMMARY FAILED UNEXPECTEDLY: {exc}")
+        sys.exit(2)

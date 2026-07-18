@@ -58,7 +58,7 @@ def main():
         try:
             # Copy config_template.py to config.py
             shutil.copy('config_template.py', 'config.py')
-            print("\n✓ Created config.py from template")
+            print("\n[OK] Created config.py from template")
             print("\n" + "="*60)
             print("IMPORTANT: OpenAI API Key Required")
             print("="*60)
@@ -67,6 +67,7 @@ def main():
             print("3. Replace \"your_openai_api_key_here\" with your actual OpenAI API key")
             print("4. Save the file and run the game again")
             print("\nGet your API key at: https://platform.openai.com/api-keys")
+            print("\nOr run fully local (no API key): install LM Studio/Ollama, then in Settings -> AI Provider pick Local and set your endpoint URL.")
             print("\n" + "="*60)
             input("\nPress Enter to exit...")
             return
@@ -138,7 +139,7 @@ if __name__ == "__main__":
 
         if status == 'update_available':
             print(f"\n{'='*60}")
-            print(f"  UPDATE AVAILABLE: v{local_ver} → v{remote_ver}")
+            print(f"  UPDATE AVAILABLE: v{local_ver} -> v{remote_ver}")
             print(f"{'='*60}")
             print("\nA new version is available!")
             print("\nTo update:")

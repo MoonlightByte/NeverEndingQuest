@@ -267,7 +267,13 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     sp = cur.get('silver') or 0
     cp = cur.get('copper') or 0
     currency_out = f"{{gp:{gp},sp:{sp},cp:{cp}}}"
-    # XP removed - already in DM Note
+    # --- Fields removed from flatlist (already in DM Note party stats) ---
+    # XP: Level, XP current/next in DM Note
+    # HP: HP current/max in DM Note
+    # SPELL SLOTS: L1:current/max etc. in DM Note
+    # LVL: removed from header line below
+    # STATS: STR/DEX/CON/INT/WIS/CHA removed from stats line below
+    # CURRENCY: GP/SP/CP removed from currency line below
 
     # Personality
     traits = character.get('personality_traits') or ''
@@ -276,8 +282,10 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     flaws  = character.get('flaws') or ''
 
     out = []
-    out.append(f"CHAR={name}; LVL={lvl}; RACE={race}; CLASS={cls}; ALIGN={align}; BG={bg}; AC={ac}; SPD={spd}; STATUS={status}; CONDITION={condition}; AFFECTED={affected};")
-    out.append(f"STATS={{STR:{STR},DEX:{DEX},CON:{CON},INT:{INT},WIS:{WIS},CHA:{CHA}}}; SAVES={saves_out}; SKILLS={{{skills_out}}}; PROF+{prof_bonus};")
+    # LVL removed - already in DM Note party stats
+    out.append(f"CHAR={name}; RACE={race}; CLASS={cls}; ALIGN={align}; BG={bg}; AC={ac}; SPD={spd}; STATUS={status}; CONDITION={condition}; AFFECTED={affected};")
+    # STATS removed - already in DM Note party stats (STR:X DEX:X etc.)
+    out.append(f"SAVES={saves_out}; SKILLS={{{skills_out}}}; PROF+{prof_bonus};")
     out.append(f"SENSES={{darkvision:{darkv},PP:{pp}}}; LANG={langs_out};")
     out.append(f"PROF={{{prof_out}}};")
     out.append(f"VULN={vuln}; RES={res_out}; IMM=; COND_IMM={cimm_out};")
@@ -286,7 +294,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     out.append(f"ATK={atk_out};")
     out.append(f"SPELLCAST={spellcast_out};")
     out.append(f"SPELLS={spells_out};")
-    out.append(f"CURRENCY={currency_out};")
+    # CURRENCY removed - already in DM Note party stats
     out.append(f"TRAITS={traits}; IDEALS={ideals}; BONDS={bonds}; FLAWS={flaws};")
     return '\n'.join(out)
 

@@ -39,11 +39,11 @@
 # ============================================================================
 
 import json
-from openai import OpenAI
-from config import OPENAI_API_KEY, ACTION_PREDICTION_MODEL
-
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+import traceback
+import config
+from core.ai import api_client
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T082", "utils/action_predictor.py", 167)
 
 # Action prediction system prompt (condensed from full system analysis)
 ACTION_PREDICTION_PROMPT = """You are an action prediction agent for the world's most popular 5th edition roleplaying game AI system. Analyze user input to determine if it requires JSON actions in the AI response.
@@ -64,6 +64,7 @@ ALWAYS RETURN TRUE for:
 - Requests to complete quests or plot points
 - Any mention of quest/plot completion or resolution
 - Questions about module completion status
+- Questions about inventory, currency, or equipment ("how much gold?", "what's in my inventory?", "check my equipment")
 
 NOTE: updateTime is excluded from prediction as it's called for almost every interaction.
 
@@ -92,8 +93,9 @@ TRUE INDICATORS:
 - Story-advancing dialogue that triggers responses → often updates plot
 - Calling out or initiating contact at new locations → often triggers NPC encounters and plot updates
 - Agreement to story directions ("let's do it", "aye") → often commits to plot advancement
-- NPC recruitment requests ("who can you spare?", "can anyone help?", "we need backup", "join us") → party composition changes
-- Responses accepting NPC offers ("yes", "sure", "that would be helpful") when context suggests NPC joining → updatePartyNPCs
+- NPC recruitment requests ("who can you spare?", "can anyone help?", "we need backup", "join us") -> party composition changes
+- Responses accepting NPC offers ("yes", "sure", "that would be helpful") when context suggests NPC joining -> updatePartyNPCs
+- Inventory/currency/equipment queries ("how much gold?", "what's in my inventory?", "check equipment") -> requires full model for data synthesis
 
 CRITICAL PATTERNS TO CATCH:
 - Dice roll outcomes ("natural 20", "I rolled") → Usually leads to updateCharacterInfo/updatePlot
@@ -131,7 +133,10 @@ Examples:
 - "What plots remain?" → TRUE (plot queries require full model for proper updatePlot handling)
 - "Who can you spare?" → TRUE (NPC recruitment request requires updatePartyNPCs action)
 - "Can anyone help us?" → TRUE (asking for NPC assistance likely results in party composition change)
-- "Join us, Kira" → TRUE (direct recruitment requires updatePartyNPCs action)"""
+- "Join us, Kira" → TRUE (direct recruitment requires updatePartyNPCs action)
+- "How much gold do I have?" -> TRUE (inventory/currency query requires cross-referencing character data)
+- "What's in my inventory?" -> TRUE (inventory status needs full model for accurate data synthesis)
+- "Check Kira's equipment" -> TRUE (party member inventory query needs full model)"""
 
 def predict_actions_required(user_input):
     """
@@ -147,29 +152,56 @@ def predict_actions_required(user_input):
             "confidence": str
         }
     """
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        pred_config = config.ACTION_PRED_GPT5MINI_LOW
+    elif MODEL_PROVIDER == "gemini":
+        pred_config = config.ACTION_PRED_GEMINI_FLASH_LOW
+    elif MODEL_PROVIDER == "lmstudio":
+        pred_config = config.ACTION_PRED_LMSTUDIO
+    else:  # legacy
+        pred_config = config.ACTION_PRED_LEGACY
+
     try:
         # Call action prediction model
-        response = client.chat.completions.create(
-            model=ACTION_PREDICTION_MODEL,
-            temperature=0.1,  # Low temperature for consistent predictions
+        response = capture_and_fanout("T082", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": ACTION_PREDICTION_PROMPT},
                 {"role": "user", "content": f"Analyze this user input: '{user_input}'"}
-            ]
-        )
+            ],
+            model=pred_config["model"],
+            temperature=0.1,
+            **{k: v for k, v in pred_config.items() if k != "model"})
         
         # Parse the prediction response
         prediction_text = response.choices[0].message.content.strip()
         
-        # Try to parse as JSON
+        # Treat routing as a strict boolean contract. Any malformed or
+        # ambiguous predictor output must choose the full model; routing a turn
+        # to the full model is safe, while a false mini-model decision can
+        # omit required state actions.
         try:
             prediction = json.loads(prediction_text)
-            requires_actions = prediction.get("requires_actions", False)
-            reason = prediction.get("reason", "No reason provided")
-        except json.JSONDecodeError:
-            # Fallback parsing if JSON format is malformed
-            requires_actions = "true" in prediction_text.lower()
-            reason = "Fallback parsing due to JSON error"
+            if (
+                not isinstance(prediction, dict)
+                or set(prediction) != {"requires_actions", "reason"}
+                or type(prediction["requires_actions"]) is not bool
+                or not isinstance(prediction["reason"], str)
+                or not prediction["reason"].strip()
+            ):
+                raise ValueError(
+                    "T082 requires exactly a boolean requires_actions and nonempty reason"
+                )
+            requires_actions = prediction["requires_actions"]
+            reason = prediction["reason"].strip()
+        except (json.JSONDecodeError, ValueError, TypeError) as parse_error:
+            print(
+                "DEBUG: [ACTION PREDICTOR] Invalid prediction; "
+                f"defaulting to full model: {parse_error}"
+            )
+            requires_actions = True
+            reason = "Invalid prediction response; using full model"
         
         return {
             "requires_actions": requires_actions,
@@ -178,6 +210,13 @@ def predict_actions_required(user_input):
         }
         
     except Exception as e:
+        # HIGH-7: print the FULL traceback (not just str(e)) so a persistent
+        # predictor failure -- which silently routes every turn to the full
+        # model and can mask NameError-class bugs -- is actually visible.
+        # requires_actions=True stays the safe default (correct output, only
+        # cost suffers); no circuit breaker (rejected as needless global state).
+        print(f"DEBUG: [ACTION PREDICTOR] Prediction failed; defaulting to full model: {e}")
+        print(traceback.format_exc())
         # Fallback to conservative prediction (assume actions required)
         return {
             "requires_actions": True,

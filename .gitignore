@@ -12,6 +12,24 @@ ENV/
 # Development and test files
 compression_development/
 development/
+tests/model_validation/
+tests/synthetic_results/
+tests/audit/
+docs/superpowers/plans/
+docs/plans/
+docs/audit/
+docs/issues/
+reviews/
+# scripts/ is dev-only EXCEPT compress_memories.py, which is invoked at runtime
+# via subprocess (core/ai/cumulative_summary.py:658, core/memories/initialize_memories.py:101).
+# Use /* + targeted negation so that one runtime file stays tracked (it is tracked on main);
+# everything else under scripts/ remains ignored. Re-included without git add -f.
+scripts/*
+!scripts/memory_management/
+scripts/memory_management/*
+!scripts/memory_management/compress_memories.py
+tools/openai_callsite_inventory.py
+AGENTS.md
 combat_conversation_compressed_output.json
 compress_monster_videos.py
 restore_character_backup.py
@@ -24,6 +42,7 @@ original_images/
 
 # Configuration files
 config.py
+user_settings.json
 
 # Logs
 *.log
@@ -86,6 +105,7 @@ backup_*/
 old_files/
 legacy/
 modules/backups/
+modules/.integration_backups/
 
 # Game state files - ignore live files, keep BU files
 modules/**/areas/*.json
@@ -183,6 +203,44 @@ install_gh.sh
 # Test files and folders
 testing/
 test_*.py
+!tests/test_startup_wizard_prompt_reliability.py
+!tests/test_startup_game_started_emission.py
+!tests/test_legacy_character_repair.py
+!tests/test_ai_driven_module_creation_cleanup.py
+!tests/test_module_builder_antagonist_injection.py
+!tests/test_module_builder_summary.py
+!tests/test_module_generator_validation_report_write.py
+!tests/test_validate_module_files_connectivity.py
+!tests/test_validate_bidirectional_connectivity.py
+!tests/test_validate_encounter_creatures.py
+!tests/test_module_debugger_area_detection.py
+!tests/test_module_debugger_connectivity_check.py
+!tests/test_module_debugger_areas_subdirectory.py
+!tests/test_t039_module_summary_export.py
+!tests/test_t012_starting_location_analyzer.py
+!tests/test_t049_storage_processor.py
+!tests/test_create_new_module_stitching_failure.py
+!tests/test_campaign_summary_failure.py
+!tests/test_module_stitcher_has_area_files_logging.py
+!tests/test_module_stitcher_safety_check_failclosed.py
+!tests/test_character_builders_party_level_cli.py
+!tests/test_monster_builder_failure_surfacing.py
+!tests/test_module_builder_atomic_writes.py
+!tests/test_character_builders_atomic_writes.py
+!tests/test_module_stitcher_atomic_registry_write.py
+!tests/test_module_stitcher_atomic_writes_all.py
+!tests/test_module_stitcher_backup_location.py
+!tests/test_module_stitcher_rollback.py
+!tests/test_schema_numeric_constraints.py
+!tests/test_validate_plot_nextpoints.py
+!tests/test_generate_plots_validation.py
+!tests/test_module_debugger_no_npc_schema_warning.py
+!tests/test_validate_module_files_strict.py
+!tests/test_location_generator_id_preservation.py
+!tests/test_combat_builder_npc_compendium_lookup.py
+!tests/test_character_builders_json_retry.py
+!tests/test_campaign_context_newlines.py
+!tests/test_module_builder_collision.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)
@@ -225,7 +283,7 @@ training_data.json
 
 # OpenAI capture and training scripts (working solution)
 openai_forwarder.py
-# openai_patcher.py - REMOVED FROM IGNORE: needed for LM Studio integration
+openai_patcher.py
 start_forwarder.sh
 run_game_with_capture.sh
 run_game_with_capture.bat
@@ -253,6 +311,12 @@ convo.txt
 correct_exit.txt
 gemini.txt
 
+# Persistent advisory lock namespace (runtime ownership, never source data)
+/.runtime_locks/
+*.advisory.lock
+*.module-transition.lock
+*.transaction.lock
+
 # Connection work backup
 connection_work_backup/
 
@@ -265,7 +329,7 @@ world_registry_backup_*.json
 *_week_old.py
 
 # Strange filename artifacts
-"2\\}\n  ],\n  \\deaths\\: [\\Malarok"
+/2*deaths*Malarok*
 
 # Files manually deleted from repository - do not re-add
 build_spell_repository.py
@@ -427,3 +491,30 @@ modules/validation_cache.json
 data/companion_memories_compressed/*_memories_*.json
 data/companion_memories_backup/
 data/companion_memories_pre_enhanced/
+
+# model_captures/ telemetry output folder
+model_captures/
+CLAUDE.md
+docs/branding/
+.worktrees/
+
+# Additional ignores
+.codex
+ANALYSIS_*.md
+tests/capture/
+tests/synthetic_data/
+tests/test_legacy_character_repair.py
+tests/test_startup_game_started_emission.py
+
+# Pre-merge hygiene (#13): dev/test-only artifacts are local-only, never shipped to
+# main. The whole tests/, tools/, validators/, reports/ trees plus the capture-review
+# evidence/scripts are development tooling, not runtime game code. (docs/reference/ is
+# already ignored above; the model-doc templates there were force-added.)
+tests/
+tools/
+validators/
+reports/
+test_validation_system.py
+verify_models.py
+FOR_CODEX_FILES_AND_EVIDENCE.md
+docs/CODEX_HANDOFF_VALIDATION_SYSTEM.md

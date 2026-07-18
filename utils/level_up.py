@@ -6,11 +6,11 @@
 # level_up.py - Simplified level up system that returns changes dict
 
 import json
-from openai import OpenAI
-from config import OPENAI_API_KEY, LEVEL_UP_MODEL
+from core.ai import api_client
+import config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T086", "utils/level_up.py", 162)
 from .file_operations import safe_read_json
-
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 def load_leveling_info():
     """Load leveling information from text file"""
@@ -41,6 +41,58 @@ Once all decisions are made, use the updateCharacterInfo action to apply ALL cha
 - Apply any other changes
 
 Remember to explain each new feature they gain!"""
+
+def _dedup_class_features(existing, new):
+    """Merge two classFeatures lists without duplicating entries.
+
+    HIGH-5 (#127): the old raw `existing + new` concat duplicated features when a
+    partial level-up was retried. Dedup by (name, source) for dict features and by
+    value for plain-string features, preserving order (existing first).
+    """
+    merged = []
+    seen = set()
+    for feat in (existing or []) + (new or []):
+        if isinstance(feat, dict):
+            key = (feat.get("name"), feat.get("source"))
+        else:
+            key = ("__str__", feat)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(feat)
+    return merged
+
+
+def _validate_npc_level_up_changes(changes, new_level):
+    """Validate T086's required state delta before reporting success."""
+    required = {
+        "level",
+        "hitPoints",
+        "maxHitPoints",
+        "experience_points",
+        "exp_required_for_next_level",
+        "classFeatures",
+    }
+    if not isinstance(changes, dict) or not required.issubset(changes):
+        raise ValueError("T086 response is missing required level-up fields")
+    if type(changes["level"]) is not int or changes["level"] != new_level:
+        raise ValueError("T086 level must exactly match the requested new level")
+    for field in ("hitPoints", "maxHitPoints", "experience_points", "exp_required_for_next_level"):
+        if type(changes[field]) is not int:
+            raise ValueError(f"T086 {field} must be an integer")
+    if changes["maxHitPoints"] < 1:
+        raise ValueError("T086 maxHitPoints must be positive")
+    if not 0 <= changes["hitPoints"] <= changes["maxHitPoints"]:
+        raise ValueError("T086 hitPoints must be within the new maximum")
+    if changes["experience_points"] != 0:
+        raise ValueError("T086 experience_points must reset to zero")
+    if changes["exp_required_for_next_level"] < 0:
+        raise ValueError("T086 next-level experience cannot be negative")
+    if not isinstance(changes["classFeatures"], list) or not all(
+        isinstance(feature, (dict, str)) for feature in changes["classFeatures"]
+    ):
+        raise ValueError("T086 classFeatures must be an array of features")
+    return changes
 
 def get_npc_level_up_changes(character_name, character_data, current_level, new_level):
     """Get automatic level up changes for an NPC"""
@@ -95,15 +147,27 @@ Example response format:
 }}"""
 
     try:
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            conv_config = config.LEVELUP_CONV_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            conv_config = config.LEVELUP_CONV_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            conv_config = config.LEVELUP_CONV_LMSTUDIO
+        else:  # legacy
+            conv_config = config.LEVELUP_CONV_LEGACY
+
         # Get AI response
-        response = client.chat.completions.create(
-            model=LEVEL_UP_MODEL,
+        response = capture_and_fanout("T086", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": "You are a 5th edition of the world's most popular roleplaying game rules expert. Provide only valid JSON responses."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3  # Low temperature for consistency
-        )
+            model=conv_config["model"],
+            temperature=0.3,
+            **{k: v for k, v in conv_config.items() if k != "model"})
         
         ai_response = response.choices[0].message.content.strip()
         
@@ -114,16 +178,14 @@ Example response format:
             ai_response = ai_response.split("```")[1].split("```")[0].strip()
         
         # Parse the changes
-        changes = json.loads(ai_response)
+        changes = _validate_npc_level_up_changes(json.loads(ai_response), new_level)
         
         # Handle classFeatures properly - we need to merge with existing
         if "classFeatures" in changes and character_data.get("classFeatures"):
             # Combine existing features with new ones
             existing_features = character_data["classFeatures"]
             new_features = changes["classFeatures"]
-            # Create combined list
-            all_features = existing_features + new_features
-            changes["classFeatures"] = all_features
+            changes["classFeatures"] = _dedup_class_features(existing_features, new_features)
         
         return {
             "success": True,
@@ -132,9 +194,12 @@ Example response format:
         }
         
     except Exception as e:
+        # HIGH-5 (#127): include attempted_changes so a batch caller can decide
+        # whether to roll back partially-applied NPCs.
         return {
             "success": False,
-            "error": f"Failed to generate level up changes: {str(e)}"
+            "error": f"Failed to generate level up changes: {str(e)}",
+            "attempted_changes": locals().get("changes")
         }
 
 def run_level_up_process(character_name, current_level=None, new_level=None):

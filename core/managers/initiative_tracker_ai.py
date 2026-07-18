@@ -12,8 +12,10 @@ Used to enhance the combat state display with live turn tracking.
 import json
 import re
 import os
-from openai import OpenAI
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
+from core.ai import api_client
+import config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T046", "core/managers/initiative_tracker_ai.py", 461)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,282 @@ try:
 except FileNotFoundError:
     logger.error(f"Initiative tracker prompt file not found at {INITIATIVE_TRACKER_PROMPT_PATH}")
     raise FileNotFoundError(f"Required prompt file missing: {INITIATIVE_TRACKER_PROMPT_PATH}")
+
+
+_INSTRUCTION_HEADERS = (
+    ">>> PROCESS ALL OF THESE IN ONE RESPONSE (Initiative Order):",
+    ">>> CURRENT:",
+    ">>> PROCESS TO END ROUND:",
+    ">>> ROUND COMPLETE",
+)
+
+
+def _normalize_ai_tracker_pointer(tracker_text, creatures):
+    """Repair one missing current-turn marker from an exact instruction block.
+
+    The compressed prompt's process-window examples historically used
+    ``[ ]`` on the first actor even though the strict runtime contract requires
+    ``[>]``. The instruction list is already authoritative, so this narrow
+    normalization aligns that marker without accepting an incomplete window.
+    """
+    if not isinstance(tracker_text, str) or "[>]" in tracker_text:
+        return tracker_text
+
+    target = None
+    for header in (
+        ">>> PROCESS ALL OF THESE IN ONE RESPONSE (Initiative Order):",
+        ">>> PROCESS TO END ROUND:",
+    ):
+        header_index = tracker_text.find(header)
+        if header_index < 0:
+            continue
+        instruction_text = tracker_text[header_index + len(header):]
+        for creature in sorted(
+            creatures,
+            key=lambda item: item.get("initiative", 0),
+            reverse=True,
+        ):
+            instruction_line = (
+                f"- {creature.get('name', 'Unknown')} "
+                f"({creature.get('initiative', 0)})"
+            )
+            line_index = instruction_text.find(instruction_line)
+            if line_index >= 0 and (target is None or line_index < target[0]):
+                target = (line_index, creature)
+        break
+
+    if target is None and ">>> CURRENT:" in tracker_text:
+        target_creature = _player_character(creatures)
+    else:
+        target_creature = target[1] if target is not None else None
+
+    if target_creature is None:
+        return tracker_text
+
+    name = target_creature.get("name", "Unknown")
+    initiative = target_creature.get("initiative", 0)
+    marker_pattern = re.compile(
+        rf"(?m)^- \[ \] ((?:\*\*)?{re.escape(name)} "
+        rf"\({re.escape(str(initiative))}\)(?:\*\*)? - .+)$"
+    )
+    return marker_pattern.sub(r"- [>] \1", tracker_text, count=1)
+
+
+def _player_character(creatures):
+    """Return the living player character required by the tracker contract."""
+    return next(
+        (
+            creature
+            for creature in creatures
+            if isinstance(creature, dict)
+            and creature.get("type") == "player"
+            and creature.get("status", "alive").lower() not in {"dead", "defeated"}
+        ),
+        None,
+    )
+
+
+def _valid_ai_tracker(tracker_text, creatures, current_round):
+    """Validate the structural T046 contract before handing output to T045."""
+    if not isinstance(tracker_text, str):
+        return False
+
+    player = _player_character(creatures)
+    if player is None:
+        return False
+
+    player_name = player.get("name", "")
+    player_initiative = player.get("initiative", 0)
+    required_sections = (
+        "--- ROUND INFO ---",
+        "--- LIVE TRACKER ---",
+        "**Live Initiative Tracker:**",
+    )
+    section_positions = [tracker_text.find(section) for section in required_sections]
+    if any(position < 0 for position in section_positions):
+        return False
+    if section_positions != sorted(section_positions):
+        return False
+
+    if not re.search(
+        rf"(?m)^combat_round:\s*{re.escape(str(current_round))}\s*$",
+        tracker_text,
+    ):
+        return False
+    if not re.search(
+        rf"(?m)^player_name:\s*{re.escape(player_name)}\s*$",
+        tracker_text,
+    ):
+        return False
+    if "--- CURRENT TURN ---" in tracker_text:
+        return False
+
+    instruction_counts = [tracker_text.count(header) for header in _INSTRUCTION_HEADERS]
+    if sum(instruction_counts) != 1:
+        return False
+    instruction_start = min(
+        tracker_text.find(header)
+        for header, count in zip(_INSTRUCTION_HEADERS, instruction_counts)
+        if count
+    )
+
+    tracker_start = tracker_text.find("**Live Initiative Tracker:**")
+    tracker_section = tracker_text[tracker_start:instruction_start]
+    tracker_lines = [
+        line.strip()
+        for line in tracker_section.splitlines()
+        if line.strip().startswith("- [")
+    ]
+    sorted_creatures = sorted(
+        creatures,
+        key=lambda creature: creature.get("initiative", 0),
+        reverse=True,
+    )
+    if len(tracker_lines) != len(sorted_creatures):
+        return False
+
+    markers = {}
+    for line, creature in zip(tracker_lines, sorted_creatures):
+        if "(player)" in line.lower() or "(npc)" in line.lower():
+            return False
+        name = creature.get("name", "Unknown")
+        initiative = creature.get("initiative", 0)
+        match = re.fullmatch(
+            rf"- \[(X|>| |D)\] (?:\*\*)?{re.escape(name)} "
+            rf"\({re.escape(str(initiative))}\)(?:\*\*)? - .+",
+            line,
+        )
+        if not match:
+            return False
+        marker = match.group(1)
+        markers[name] = marker
+        is_dead = creature.get("status", "alive").lower() in {"dead", "defeated"}
+        if is_dead != (marker == "D"):
+            return False
+
+    pointer_names = [name for name, marker in markers.items() if marker == ">"]
+    player_index = sorted_creatures.index(player)
+    living_before_player = [
+        creature
+        for creature in sorted_creatures[:player_index]
+        if creature.get("status", "alive").lower() not in {"dead", "defeated"}
+    ]
+    living_after_player = [
+        creature
+        for creature in sorted_creatures[player_index + 1:]
+        if creature.get("status", "alive").lower() not in {"dead", "defeated"}
+    ]
+
+    def marker_for(creature):
+        return markers.get(creature.get("name", "Unknown"))
+
+    def expected_window_lines(window_creatures):
+        return [
+            f"- {creature.get('name', 'Unknown')} ({creature.get('initiative', 0)})"
+            for creature in window_creatures
+        ]
+
+    def instruction_window(end_line):
+        end_index = tracker_text.find(end_line, instruction_start)
+        if end_index < 0:
+            return None
+        active_header = next(
+            header
+            for header, count in zip(_INSTRUCTION_HEADERS, instruction_counts)
+            if count
+        )
+        body_start = instruction_start + len(active_header)
+        body_lines = [
+            line.strip()
+            for line in tracker_text[body_start:end_index].splitlines()
+            if line.strip()
+        ]
+        if not body_lines or any(not line.startswith("- ") for line in body_lines):
+            return None
+        return body_lines
+
+    if instruction_counts[0]:
+        stop_line = f">>> THEN STOP AT: {player_name} (Player)"
+        window_lines = instruction_window(stop_line)
+        first_unacted_index = next(
+            (
+                index
+                for index, creature in enumerate(living_before_player)
+                if marker_for(creature) != "X"
+            ),
+            None,
+        )
+        if first_unacted_index is None:
+            return False
+        window_creatures = living_before_player[first_unacted_index:]
+        if not window_creatures or window_lines != expected_window_lines(window_creatures):
+            return False
+        if [marker_for(creature) for creature in window_creatures] != (
+            [">"] + [" "] * (len(window_creatures) - 1)
+        ):
+            return False
+        if pointer_names != [window_creatures[0].get("name", "Unknown")]:
+            return False
+        if markers.get(player_name) != " ":
+            return False
+        if any(marker_for(creature) != " " for creature in living_after_player):
+            return False
+    elif instruction_counts[1]:
+        expected_current = (
+            f">>> CURRENT: {player_name} ({player_initiative}) - "
+            "PLAYER TURN (await input)"
+        )
+        if expected_current not in tracker_text:
+            return False
+        if pointer_names != [player_name]:
+            return False
+        if any(marker_for(creature) != "X" for creature in living_before_player):
+            return False
+        if any(marker_for(creature) != " " for creature in living_after_player):
+            return False
+    elif instruction_counts[2]:
+        expected_footer = (
+            f">>> THEN: End Round {current_round}, Start Round {current_round + 1}"
+        )
+        window_lines = instruction_window(expected_footer)
+        if any(marker_for(creature) != "X" for creature in living_before_player):
+            return False
+        if markers.get(player_name) != "X":
+            return False
+        first_unacted_index = next(
+            (
+                index
+                for index, creature in enumerate(living_after_player)
+                if marker_for(creature) != "X"
+            ),
+            None,
+        )
+        if first_unacted_index is None:
+            return False
+        window_creatures = living_after_player[first_unacted_index:]
+        if not window_creatures or window_lines != expected_window_lines(window_creatures):
+            return False
+        if [marker_for(creature) for creature in window_creatures] != (
+            [">"] + [" "] * (len(window_creatures) - 1)
+        ):
+            return False
+        if pointer_names != [window_creatures[0].get("name", "Unknown")]:
+            return False
+    else:
+        if "All creatures have acted. Increment combat_round." not in tracker_text:
+            return False
+        living_names = {
+            creature.get("name", "Unknown")
+            for creature in creatures
+            if creature.get("status", "alive").lower() not in {"dead", "defeated"}
+        }
+        if any(markers.get(name) != "X" for name in living_names):
+            return False
+        if pointer_names:
+            return False
+
+    return True
+
 
 def extract_recent_combat_messages(conversation, current_round):
     """Extract messages relevant to the current and previous round."""
@@ -128,28 +406,32 @@ def generate_live_initiative_tracker(encounter_data, conversation_history, curre
         current_round: The current combat round (optional, will use encounter data if not provided)
     
     Returns:
-        str: Formatted initiative tracker or None if generation fails
+        str: AI-formatted initiative tracker, or a deterministic tracker when
+            AI generation is unavailable. Returns None when required encounter
+            combatants are missing.
     """
+    if not isinstance(encounter_data, dict):
+        logger.warning("Invalid encounter data supplied to initiative tracker")
+        return None
+
+    # Get current round and combatants before entering the fallible AI path so
+    # every downstream failure can use the same deterministic representation.
+    if current_round is None:
+        current_round = encounter_data.get("current_round", encounter_data.get("combat_round", 1))
+
+    creatures = encounter_data.get("creatures", [])
+    if not creatures:
+        logger.warning("No creatures found in encounter data")
+        return None
+
+    fallback_tracker = format_fallback_initiative(creatures, current_round)
+
     try:
-        if not OPENAI_API_KEY:
-            logger.warning("OpenAI API key not configured, cannot generate initiative tracker")
-            return None
-        
-        # Get current round
-        if current_round is None:
-            current_round = encounter_data.get("current_round", encounter_data.get("combat_round", 1))
-        
-        # Get creatures from encounter
-        creatures = encounter_data.get("creatures", [])
-        if not creatures:
-            logger.warning("No creatures found in encounter data")
-            return None
-        
         # Extract relevant messages
         relevant_messages = extract_recent_combat_messages(conversation_history, current_round)
         if not relevant_messages:
             logger.warning("No relevant combat messages found")
-            return None
+            return fallback_tracker
         
         # Create prompt
         prompt = create_initiative_prompt(relevant_messages, creatures, current_round)
@@ -165,13 +447,23 @@ def generate_live_initiative_tracker(encounter_data, conversation_history, curre
             json.dump(api_messages, f, indent=2, ensure_ascii=False)
         print(f"DEBUG: [INITIATIVE] Exported messages to debug/api_captures/initiative_messages_to_api.json")
         
-        # Query AI model
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            tracker_config = config.INIT_TRACKER_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            tracker_config = config.INIT_TRACKER_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            tracker_config = config.INIT_TRACKER_LMSTUDIO
+        else:  # legacy
+            tracker_config = config.INIT_TRACKER_LEGACY
+
+        response = capture_and_fanout("T046", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=api_messages,
-            temperature=0.1
-        )
+            model=tracker_config["model"],
+            temperature=0.1,
+            **{k: v for k, v in tracker_config.items() if k != "model"})
         
         # Extract the tracker from response
         tracker_text = response.choices[0].message.content
@@ -196,19 +488,21 @@ def generate_live_initiative_tracker(encounter_data, conversation_history, curre
         except Exception as e:
             logger.error(f"Failed to append initiative response: {e}")
         
+        tracker_text = _normalize_ai_tracker_pointer(tracker_text, creatures)
+
         # The compressed prompt returns the tracker with instruction blocks
         # Just return the full response as it includes important turn window info
-        if "**Live Initiative Tracker:**" in tracker_text:
+        if _valid_ai_tracker(tracker_text, creatures, current_round):
             # Return the full tracker output including instruction blocks
             # The combat sim needs the instruction blocks to know what to process
             return tracker_text.strip()
         else:
-            logger.warning("AI response did not contain properly formatted tracker")
-            return None
+            logger.warning("AI response did not satisfy the initiative tracker contract")
+            return fallback_tracker
             
     except Exception as e:
         logger.error(f"Error generating live initiative tracker: {e}")
-        return None
+        return fallback_tracker
 
 def format_fallback_initiative(creatures, current_round):
     """
@@ -219,20 +513,65 @@ def format_fallback_initiative(creatures, current_round):
         current_round: Current combat round
         
     Returns:
-        str: Formatted initiative order
+        str | None: Conservative player-only tracker, or None when no living
+            player exists
     """
-    lines = [f"Round: {current_round}", "Initiative Order:"]
-    
-    # Sort by initiative
+    player = _player_character(creatures)
+    if player is None:
+        logger.warning("Cannot build deterministic tracker without a living player")
+        return None
+
     sorted_creatures = sorted(creatures, key=lambda x: x.get("initiative", 0), reverse=True)
-    
-    # Format each creature
-    creature_strs = []
+    player_name = player.get("name", "Unknown")
+    player_initiative = player.get("initiative", 0)
+    lines = [
+        "--- ROUND INFO ---",
+        f"combat_round: {current_round}",
+        f"player_name: {player_name}",
+        "",
+        "--- LIVE TRACKER ---",
+        "**Live Initiative Tracker:**",
+    ]
+
     for creature in sorted_creatures:
         name = creature.get("name", "Unknown")
         init = creature.get("initiative", 0)
-        status = creature.get("status", "alive")
-        creature_strs.append(f"{name} ({init}, {status})")
-    
-    lines.append(" -> ".join(creature_strs))
+        status = creature.get("status", "alive").lower()
+        if status in {"dead", "defeated"}:
+            lines.append(f"- [D] {name} ({init}) - Dead")
+        elif creature is player:
+            lines.append(f"- [>] {name} ({init}) - CURRENT TURN")
+        else:
+            lines.append(f"- [ ] {name} ({init}) - Waiting")
+
+    metadata = {
+        "player_name": player_name,
+        "process_until": player_name,
+        "turn_window": [player_name],
+        "resolve_submitted_player_action": True,
+        "allow_npc_turns": False,
+        "allow_round_advance": False,
+    }
+    lines.extend([
+        "",
+        (
+            f">>> CURRENT: {player_name} ({player_initiative}) - PLAYER TURN "
+            "(resolve submitted action only)"
+        ),
+        "",
+        "--- TURN WINDOW ---",
+        f"turn_window: {json.dumps([player_name])}",
+        f"process_until: {player_name} (Player)",
+        f"stop_after: {player_name} (Player)",
+        "constraints:",
+        f"- Resolve only {player_name}'s submitted action in the PLAYER ACTION section.",
+        "- The player action is already submitted; do not ask for it again.",
+        "- Do not process NPC or allied NPC turns.",
+        "- Do not increment combat_round.",
+        f"- Stop immediately after resolving {player_name}'s submitted action.",
+        "",
+        "```json",
+        json.dumps(metadata, indent=2),
+        "```",
+    ])
     return "\n".join(lines)

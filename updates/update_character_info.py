@@ -101,9 +101,13 @@ import json
 import copy
 import shutil
 import os
+import threading
 from datetime import datetime
 from jsonschema import validate, ValidationError
-from openai import OpenAI
+import config
+from core.ai import api_client
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T079", "updates/update_character_info.py", 1692)
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Dict, Any, Optional
 
@@ -116,8 +120,7 @@ except:
     def track_response(r): pass
 import time
 import re
-# Import model configuration from config.py
-from config import OPENAI_API_KEY, PLAYER_INFO_UPDATE_MODEL, NPC_INFO_UPDATE_MODEL
+# Model configuration loaded via config dicts in model_config.py
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.encoding_utils import safe_json_load
@@ -128,11 +131,16 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 # Set script name for logging
 set_script_name(__name__)
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
 # Constants
 TEMPERATURE = 0.7
 VALIDATION_TEMPERATURE = 0.1  # Lower temperature for validation
+
+# A character update is a read -> model decision -> merge -> write transaction.
+# Atomic writes prevent truncated JSON, but they do not prevent two transactions
+# from reading the same snapshot and overwriting one another. Keep distinct
+# characters parallel while serializing the complete transaction per file.
+_CHARACTER_UPDATE_LOCKS = {}
+_CHARACTER_UPDATE_LOCKS_GUARD = threading.Lock()
 
 # ANSI escape codes - REMOVED per CLAUDE.md guidelines
 # All color codes have been removed to prevent Windows console encoding errors
@@ -483,13 +491,6 @@ When NPCs deal damage in combat, do NOT update their action arrays. Only update 
     
     return schema_info
 
-def get_model_for_character(character_role):
-    """Get the appropriate model based on character role"""
-    if character_role == 'player':
-        return PLAYER_INFO_UPDATE_MODEL
-    else:
-        return NPC_INFO_UPDATE_MODEL
-
 def normalize_status_and_condition(data, character_role):
     """Normalize status and condition fields based on character role"""
     # This fix applies to all character types
@@ -534,6 +535,11 @@ def deep_merge_dict(base_dict, update_dict):
         if key in complete_replacement_arrays:
             # Complete replacement for these arrays
             result[key] = copy.deepcopy(value)
+        elif key == "equipment_effects" and value == []:
+            # Delta-only responses omit unchanged fields. An explicitly
+            # present empty effect list therefore means all equipment effects
+            # were removed (for example, a destroyed shield), not "no-op".
+            result[key] = []
         elif key in result and isinstance(result[key], dict) and isinstance(value, dict):
             # Recursively merge nested dictionaries
             result[key] = deep_merge_dict(result[key], value)
@@ -1005,6 +1011,14 @@ def repair_character_data(character_data):
     Returns:
         dict: Repaired character data
     """
+    # Ensure the required top-level ammunition contract exists before validation.
+    if 'ammunition' not in character_data or character_data['ammunition'] is None:
+        character_data['ammunition'] = []
+        debug("REPAIR: Added missing top-level ammunition list", category="character_updates")
+    elif not isinstance(character_data['ammunition'], list):
+        character_data['ammunition'] = []
+        debug("REPAIR: Coerced invalid top-level ammunition field to list", category="character_updates")
+
     # Ensure ammunition has descriptions
     if 'ammunition' in character_data and isinstance(character_data['ammunition'], list):
         for ammo in character_data['ammunition']:
@@ -1053,7 +1067,198 @@ def repair_character_data(character_data):
     
     return character_data
 
+
+def _is_meaningful_character_delta(updates, schema):
+    """Return whether T079 produced at least one recognized field update."""
+    if not isinstance(updates, dict) or not updates:
+        return False
+    properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+    return isinstance(properties, dict) and any(
+        field in properties for field in updates
+    )
+
+
+def infer_requested_character_update_fields(changes):
+    """Infer only explicit, mechanically coupled T079 update categories.
+
+    This is deliberately narrower than general natural-language intent parsing.
+    It recognizes high-risk phrases where accepting only one part of the model's
+    delta would leave a character sheet internally inconsistent. Ambiguous
+    narration is left to the model and the existing schema validators.
+    """
+    if not isinstance(changes, str) or not changes.strip():
+        return set()
+
+    text = re.sub(r"\s+", " ", changes.strip().lower())
+    required = set()
+
+    currency_amount = re.search(
+        r"\b\d+\s*(?:gp|gold|sp|silver|cp|copper|g|s|c)\b",
+        text,
+    )
+    explicit_trade = re.search(r"\btrade(?:d|s)?\b.{0,100}\bfor\b", text)
+    negated_trade = re.search(
+        r"\b(?:do|does|did)\s+not\s+trade\b|"
+        r"\b(?:don't|doesn't|didn't)\s+trade\b",
+        text,
+    )
+    if explicit_trade and currency_amount and not negated_trade:
+        required.update(("currency", "equipment"))
+
+    hp_transition = re.search(r"\bhp\s*(?:\d+\s*)?->\s*\d+\b", text)
+    if hp_transition:
+        required.add("hitPoints")
+
+    potion_consumption = re.search(
+        r"\b(?:use[ds]?|drank|drink|consum(?:e|ed|es))\s+"
+        r"(?:\d+\s+|an?\s+)?(?:healing\s+)?potion\b",
+        text,
+    )
+    if potion_consumption:
+        required.add("equipment")
+
+    ammunition_spend = re.search(
+        r"\b(?:fire[ds]?|shot|shoots?|spen[dt]|use[ds]?|expends?)\s+\d+\s+"
+        r"(?:arrows?|bolts?|bullets?|darts?|needles?)\b",
+        text,
+    )
+    if ammunition_spend:
+        required.add("ammunition")
+
+    shield_destroyed = (
+        re.search(
+            r"\bshield\s+(?:(?:was|is)\s+|has\s+been\s+)?"
+            r"(?:destroyed|broken|dissolved|removed|lost)\b",
+            text,
+        )
+        or re.search(
+            r"\b(?:destroyed|broken|dissolved|removed|lost)\s+(?:the\s+)?shield\b",
+            text,
+        )
+    )
+    if shield_destroyed:
+        required.update(("equipment", "armorClass", "equipment_effects"))
+
+    weapon_swap = re.search(
+        r"\b(?:swapped?|replaced|exchanged)\b.{0,100}\b"
+        r"(?:weapon|(?:short|long|great)?sword|dagger|bow|axe|mace|staff|spear|crossbow)\b",
+        text,
+    )
+    if weapon_swap:
+        required.update(("equipment", "attacksAndSpellcasting"))
+
+    poison_applied = re.search(
+        r"(?:^|[.;]\s*)poisoned\b|\b(?:became|now|is|was)\s+poisoned\b",
+        text,
+    )
+    if poison_applied:
+        required.update(("condition", "condition_affected"))
+
+    if hp_transition and re.search(r"\bunconscious\b", text):
+        required.update(("status", "condition", "condition_affected"))
+
+    death_save_change = re.search(
+        r"\b(?:first|second|third|\d+(?:st|nd|rd|th)?)\s+death\s+save\s+"
+        r"(?:failed|succeeded|success|failure)\b",
+        text,
+    )
+    if death_save_change:
+        required.add("deathSaves")
+
+    spell_slot_change = (
+        "spell slot" in text
+        and (
+            re.search(r"\bspell slot\b.{0,80}\bcurrent\s+\d+\s*->\s*\d+\b", text)
+            or re.search(
+                r"\b(?:cast|casts|expended|expends|used|uses)\b.{0,100}\bspell slot\b",
+                text,
+            )
+        )
+    )
+    if spell_slot_change:
+        required.add("spellcasting")
+
+    return required
+
+
+def validate_requested_character_update_completeness(changes, updates):
+    """Return ``(is_complete, missing_fields)`` for explicit T079 requests."""
+    required = infer_requested_character_update_fields(changes)
+    present = set(updates) if isinstance(updates, dict) else set()
+    missing = sorted(required - present)
+    return not missing, missing
+
+
+def build_requested_character_delta_gemini_schema(changes, character_schema):
+    """Build a strict Gemini schema for the fields this update must return."""
+    from model_config import convert_to_gemini_schema
+
+    required_fields = sorted(infer_requested_character_update_fields(changes))
+    properties = character_schema.get("properties", {})
+    missing_schema_fields = [
+        field for field in required_fields if field not in properties
+    ]
+    if missing_schema_fields:
+        raise ValueError(
+            "T079 requested fields are missing from character schema: "
+            + ", ".join(missing_schema_fields)
+        )
+    if not required_fields:
+        return None
+
+    delta_schema = {
+        "type": "object",
+        "properties": {
+            field: copy.deepcopy(properties[field]) for field in required_fields
+        },
+        "required": required_fields,
+    }
+    return convert_to_gemini_schema(delta_schema, preserve_required=True)
+
+
+def _character_update_lock_key(character_name, character_role=None):
+    """Resolve aliases to the character file used as the transaction key."""
+    resolved_name = character_name
+    try:
+        character_path = get_character_path(resolved_name, character_role)
+        if not os.path.exists(character_path):
+            party_tracker_data = safe_json_load("party_tracker.json") or {}
+            fuzzy_name = fuzzy_match_character_name(resolved_name, party_tracker_data)
+            if fuzzy_name:
+                resolved_name = fuzzy_name
+            else:
+                resolved_name = normalize_character_name(resolved_name)
+        character_path = get_character_path(resolved_name, character_role)
+        return os.path.normcase(os.path.realpath(character_path))
+    except Exception:
+        # Locking must remain available even when path discovery is itself the
+        # reason the update will fail. The update implementation reports the
+        # underlying path/data error through its normal return contract.
+        return f"character:{normalize_character_name(str(resolved_name))}"
+
+
+def _get_character_update_lock(character_name, character_role=None):
+    key = _character_update_lock_key(character_name, character_role)
+    with _CHARACTER_UPDATE_LOCKS_GUARD:
+        lock = _CHARACTER_UPDATE_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _CHARACTER_UPDATE_LOCKS[key] = lock
+        return lock
+
+
 def update_character_info(character_name, changes, character_role=None):
+    """Run one complete character update transaction under a per-file lock."""
+    lock = _get_character_update_lock(character_name, character_role)
+    with lock:
+        return _update_character_info_unlocked(
+            character_name,
+            changes,
+            character_role=character_role,
+        )
+
+
+def _update_character_info_unlocked(character_name, changes, character_role=None):
     """
     Unified function to update character information for both players and NPCs
     
@@ -1443,18 +1648,53 @@ Character Role: {character_role}
     max_attempts = 3
     attempt = 1
     
-    # Get appropriate model for character type
-    model = get_model_for_character(character_role)
-    
+    # T079 MIGRATION NOTE: Gemini requires response_schema forcing on this callsite.
+    # The schema is auto-converted from schemas/char_schema.json at runtime and
+    # passed via the config dict. purge_invalid_fields() strips spurious extra keys.
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        char_update_config = config.CHAR_UPDATE_GPT5MINI_LOW
+    elif MODEL_PROVIDER == "gemini":
+        char_update_config = copy.deepcopy(
+            config.CHAR_UPDATE_GEMINI_FLASHLITE_LOW
+        )
+        requested_delta_schema = build_requested_character_delta_gemini_schema(
+            changes,
+            schema,
+        )
+        if requested_delta_schema is not None:
+            char_update_config["response_schema"] = requested_delta_schema
+    elif MODEL_PROVIDER == "lmstudio":
+        char_update_config = config.CHAR_UPDATE_LMSTUDIO
+    else:  # legacy
+        char_update_config = config.CHAR_UPDATE_LEGACY
+
+    # HIGH-6: fail loudly (not silently) if the Gemini char-update schema failed
+    # to load at import. Without response_schema, Gemini-flash-lite emits
+    # narration instead of a character delta, purge_invalid_fields strips
+    # everything, and the update silently no-ops (the False return is swallowed
+    # by the ThreadPoolExecutor consumer). This guard trips ONLY under the gemini
+    # provider, so openai/legacy/lmstudio are unaffected, and it lives at the
+    # callsite -- NOT a hard import raise, which would break every provider if the
+    # schema file were missing.
+    if MODEL_PROVIDER == "gemini" and char_update_config.get("response_schema") is None:
+        raise RuntimeError(
+            "T079 character update aborted: Gemini response_schema is None "
+            "(schemas/char_schema.json failed to load at import). Refusing to run "
+            "-- Gemini would emit narration and silently drop all character "
+            "updates. Restore the schema file or set MODEL_PROVIDER off gemini."
+        )
+
     while attempt <= max_attempts:
         try:
             debug(f"STATE_CHANGE: Attempt {attempt} of {max_attempts}", category="character_updates")
-            
-            response = client.chat.completions.create(
-                model=model,
+
+            response = capture_and_fanout("T079", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=messages,
-                temperature=TEMPERATURE
-            )
+                model=char_update_config["model"],
+                temperature=TEMPERATURE,
+                **{k: v for k, v in char_update_config.items() if k != "model"})
             
             # Track usage
             if USAGE_TRACKING_AVAILABLE:
@@ -1489,7 +1729,7 @@ Character Role: {character_role}
                 "attempt": attempt,
                 "changes_requested": changes,
                 "raw_ai_response": raw_response,
-                "model_used": model,
+                "model_used": char_update_config["model"],
                 "parsed_updates": None,
                 "validation_results": {},
                 "final_outcome": "pending"
@@ -1534,6 +1774,41 @@ Character Role: {character_role}
             
             clean_response = json_match.group()
             updates = json.loads(clean_response)
+            if not _is_meaningful_character_delta(updates, schema):
+                raise ValueError(
+                    "T079 returned an empty or unrecognized character delta"
+                )
+
+            is_complete, missing_fields = validate_requested_character_update_completeness(
+                changes,
+                updates,
+            )
+            if not is_complete:
+                missing_list = ", ".join(missing_fields)
+                feedback_message = (
+                    "\n\nPREVIOUS ATTEMPT INCOMPLETE: The requested change affects "
+                    f"these missing top-level fields: {missing_list}. Return one "
+                    "delta JSON object containing every listed field together with "
+                    "the fields you already returned. Do not apply only part of the "
+                    "requested state change."
+                )
+                messages[-1]["content"] += feedback_message
+                warning(
+                    f"T079 incomplete delta on attempt {attempt}; missing: {missing_list}",
+                    category="character_validation",
+                )
+                debug_data["validation_results"] = {
+                    "requested_fields_complete": False,
+                    "missing_requested_fields": missing_fields,
+                }
+                if attempt == max_attempts:
+                    error(
+                        "FAILURE: Max attempts reached with an incomplete character delta.",
+                        category="character_updates",
+                    )
+                    return False
+                attempt += 1
+                continue
             
             # Update debug data with parsed updates
             debug_data["parsed_updates"] = updates
@@ -1819,18 +2094,38 @@ Please provide the CORRECT currency values:
                     char_data = safe_read_json(character_path)
                     if char_data:
                         # Use smart validation that checks cache first
-                        validated_data = validator.validate_and_correct_character_smart(char_data)
+                        validation_result = (
+                            validator.validate_and_correct_character_smart_with_result(
+                                char_data
+                            )
+                        )
+                        validated_data = validation_result.data
 
                         # Save the validated data back with better error handling
-                        if validated_data != char_data:
+                        if validation_result.changed:
                             # Ensure write completes successfully
                             write_success = safe_write_json(character_path, validated_data)
                             if write_success:
-                                debug("VALIDATION: Character auto-validated with corrections (using cache where possible)...", category="character_validation")
-                                validation_success = True
+                                if validation_result.success:
+                                    debug("VALIDATION: Character auto-validated with corrections (using cache where possible)...", category="character_validation")
+                                else:
+                                    warning(
+                                        f"VALIDATION: Provider validation failed for "
+                                        f"{character_name}, but deterministic repairs "
+                                        f"were saved: {validation_result.error}",
+                                        category="character_validation",
+                                    )
+                                validation_success = validation_result.success
                             else:
                                 error(f"VALIDATION: Failed to write validated data for {character_name}", category="character_validation")
                                 validation_success = False
+                        elif not validation_result.success:
+                            warning(
+                                f"VALIDATION: Character validation failed for "
+                                f"{character_name}: {validation_result.error}",
+                                category="character_validation",
+                            )
+                            validation_success = False
                         else:
                             debug("VALIDATION: Character validated - no corrections needed (cache hits used)", category="character_validation")
                             validation_success = True

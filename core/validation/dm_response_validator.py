@@ -15,6 +15,27 @@ import re
 from typing import Dict, List, Tuple, Any, Optional
 from datetime import datetime
 
+try:
+    from core.ai.module_creation_contract import (
+        ModuleCreationContractError,
+        validate_create_new_module_actions,
+        validate_create_new_module_parameters,
+    )
+except ModuleNotFoundError:
+    # Preserve this file's documented direct CLI entry point.
+    import os
+    import sys
+
+    sys.path.insert(
+        0,
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    )
+    from core.ai.module_creation_contract import (
+        ModuleCreationContractError,
+        validate_create_new_module_actions,
+        validate_create_new_module_parameters,
+    )
+
 
 class DMResponseValidator:
     """Validates DM responses for format, content, and game rule compliance"""
@@ -100,6 +121,16 @@ class DMResponseValidator:
             return False, errors, parsed_data
         else:
             self.log_validation("Actions Type", True)
+
+        # A module build is an atomic publication attempt.  It cannot share a
+        # candidate response with another state-mutating action, and its
+        # parameters have one exact narrative-only shape.
+        try:
+            validate_create_new_module_actions(parsed_data["actions"])
+            self.log_validation("createNewModule Contract", True)
+        except ModuleCreationContractError as exc:
+            self.log_validation("createNewModule Contract", False, str(exc))
+            errors.append(str(exc))
         
         # 4. Validate Each Action
         for i, action in enumerate(parsed_data["actions"]):
@@ -174,7 +205,7 @@ class DMResponseValidator:
             "storageInteraction": ["description"],
             "createEncounter": [],  # Complex parameters handled by combat_builder
             "updateEncounter": ["encounterId", "changes"],
-            "createNewModule": [],  # Can have various parameter formats
+            "createNewModule": ["narrative"],
             "updatePartyTracker": [],  # Various fields allowed
             "exitGame": []  # No parameters required
         }
@@ -221,6 +252,18 @@ class DMResponseValidator:
                 except ValueError:
                     self.log_validation(f"Action {index} time value", False, "Not numeric")
                     errors.append(f"Action {index}: 'timeEstimate' must be numeric")
+
+        elif action_type == "createNewModule":
+            try:
+                validate_create_new_module_parameters(params)
+                self.log_validation(
+                    f"Action {index} createNewModule exact contract", True
+                )
+            except ModuleCreationContractError as exc:
+                self.log_validation(
+                    f"Action {index} createNewModule exact contract", False, str(exc)
+                )
+                errors.append(f"Action {index} (createNewModule): {exc}")
         
         return errors
     

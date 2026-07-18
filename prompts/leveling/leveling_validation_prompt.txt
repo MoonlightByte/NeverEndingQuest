@@ -13,13 +13,25 @@ CRITICAL VALIDATION POINTS:
    - Ensure the character has enough XP to level up
    - Check XP requirements match the leveling_info.txt table
 
-2. HIT POINTS:
+2. HIT POINTS -- YOU MUST DO THIS MATH YOURSELF:
    - Fighters/Paladins/Rangers: 1d10 (or 6) + CON modifier
    - Barbarians: 1d12 (or 7) + CON modifier
    - Rogues/Monks: 1d8 (or 5) + CON modifier
    - Wizards/Sorcerers: 1d6 (or 4) + CON modifier
    - Clerics/Druids/Warlocks: 1d8 (or 5) + CON modifier
    - Bards: 1d8 (or 5) + CON modifier
+
+   MANDATORY: Perform this calculation yourself:
+   a) CON modifier = (CON score - 10) / 2, rounded down
+   b) HP gain = die roll stated + CON modifier
+   c) New HP = old HP + HP gain
+   d) Compare to what the action states
+   e) If the FINAL HP NUMBER is wrong, set valid=false
+
+   You are checking whether old HP + roll + CON mod = new HP.
+   The action text does NOT need to spell out every intermediate step.
+   Example: "HP: 14->24 (rolled 7 on d12, +3 CON mod)" is VALID if 7+3=10 and 14+10=24.
+   Example: "HP: 14->22 (rolled 8 on d8)" is INVALID if CON mod is +1, because 8+1=9, 14+9=23, not 22.
 
 3. SPELL SLOTS (if applicable):
    - Must match the spell slot progression table in leveling_info.txt
@@ -56,6 +68,27 @@ ACCEPTABLE VARIATIONS:
 - Offering choice between ASI or feat (if DM allows feats)
 - Asking about subclass choice at appropriate level
 - Clarifying player preferences for spell selections
+
+OMISSION TOLERANCE -- these are WARNINGS, not ERRORS:
+- Not listing specific spell selections (spells known, prepared spells) is acceptable.
+  The level-up action records MECHANICAL changes (slots, features). Spell choices are
+  a separate player decision that happens after the level-up is applied.
+- Not mentioning domain/archetype sub-features in the change text is acceptable
+- Not listing every spell slot count change is acceptable
+- Not mentioning scaling feature upgrades (Sneak Attack dice) is acceptable
+- Pre-existing errors in the character data are NOT the level-up action's fault
+- The action is a SUMMARY of mechanical changes. It does not need to be exhaustive.
+
+VERDICT RULES:
+- valid=false ONLY for verifiable math errors or clearly wrong mechanics:
+  * HP final number doesn't match roll + CON mod + old HP
+  * Wrong proficiency bonus for the level
+  * Wrong or impossible class features for this level
+  * Insufficient XP for the level
+- valid=true when the numbers check out and the features are correct for the level,
+  even if optional details (spell picks, feat choices, slot counts) are not listed
+- CRITICAL: If your own math confirms the numbers are correct, you MUST set valid=true.
+  Do not set valid=false for formatting, verbosity, or missing optional selections.
 
 Respond with a JSON object:
 {

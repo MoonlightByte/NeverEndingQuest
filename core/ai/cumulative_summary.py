@@ -52,7 +52,11 @@
 import json
 import os
 from datetime import datetime
-from openai import OpenAI
+from core.ai import api_client
+import config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T018", "core/ai/cumulative_summary.py", 293)
+register_callsite("T019", "core/ai/cumulative_summary.py", 579)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -61,7 +65,6 @@ try:
 except:
     USAGE_TRACKING_AVAILABLE = False
     def track_response(r): pass
-from config import OPENAI_API_KEY, ADVENTURE_SUMMARY_MODEL
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
@@ -72,7 +75,6 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 set_script_name("cumulative_summary")
 
 TEMPERATURE = 0.8
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 def debug_print(text, log_to_file=True):
     """Print debug message and optionally log to file"""
@@ -272,25 +274,37 @@ Your summary should capture the following, as specifically as possible:
 7. Interpersonal moments—conflict, bonding, romantic tension, loyalty shifts, leadership, etc.
 8. Any event that would leave a lasting memory for a character or NPC (such as a heroic act, death, reconciliation, or symbolic gesture)
 
-Use past tense and third person. Be vivid, specific, and emotional where appropriate. Focus on what actually happened—not what might happen. Avoid generic phrases. Prioritize character-driven consequences and story-critical developments. Include emotional tone, narrative closure, and forward momentum for what might come next."""
+Use past tense and third person. Be vivid, specific, and emotional where appropriate. Focus on what actually happened -- not what might happen. Avoid generic phrases. Prioritize character-driven consequences and story-critical developments. Include emotional tone, narrative closure, and forward momentum for what might come next. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode. Do NOT use markdown formatting (no **, no ###, no bullet points)."""
 },
         {"role": "user", "content": dialogue}
     ]
     
     try:
-        response = client.chat.completions.create(
-            model=ADVENTURE_SUMMARY_MODEL,
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            adv_config = config.ADV_SUMM_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            adv_config = config.ADV_SUMM_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            adv_config = config.ADV_SUMM_LMSTUDIO
+        else:  # legacy
+            adv_config = config.ADV_SUMM_LEGACY
+
+        response = capture_and_fanout("T018", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
+            messages=messages,
+            model=adv_config["model"],
             temperature=TEMPERATURE,
-            messages=messages
-        )
-        
+            response_format=None,
+            **{k: v for k, v in adv_config.items() if k != "model"})
+
         # Track usage if available
         if USAGE_TRACKING_AVAILABLE:
             try:
                 track_response(response)
             except:
                 pass
-        
+
         summary = response.choices[0].message.content.strip()
         # Sanitize AI response to prevent encoding issues
         summary = sanitize_text(summary)
@@ -547,24 +561,36 @@ def generate_enhanced_adventure_summary(conversation_history_data, party_tracker
 - Decisions made and their immediate consequences
 - State of the party when leaving
 
-Keep the narrative engaging but factual."""},
+Keep the narrative engaging but factual. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode. Do NOT use markdown formatting (no **, no ###, no bullet points)."""},
             {"role": "user", "content": f"Original summary: {summary}\n\nPlease expand this into a comprehensive journal entry."}
         ]
         
         try:
-            response = client.chat.completions.create(
-                model=ADVENTURE_SUMMARY_MODEL,
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                adv_config = config.ADV_SUMM_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                adv_config = config.ADV_SUMM_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                adv_config = config.ADV_SUMM_LMSTUDIO
+            else:  # legacy
+                adv_config = config.ADV_SUMM_LEGACY
+
+            response = capture_and_fanout("T019", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=messages,
+                model=adv_config["model"],
                 temperature=TEMPERATURE,
-                messages=messages
-            )
-            
+                response_format=None,
+                **{k: v for k, v in adv_config.items() if k != "model"})
+
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
                 try:
                     track_response(response)
                 except:
                     pass
-            
+
             enhanced_summary = response.choices[0].message.content.strip()
             # Sanitize AI response to prevent encoding issues
             enhanced_summary = sanitize_text(enhanced_summary)

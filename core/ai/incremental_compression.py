@@ -9,7 +9,9 @@ import os
 import sys
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
-from openai import OpenAI
+from core.ai import api_client
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T020", "core/ai/incremental_compression.py", 198)
 import shutil
 
 # Add project root to path for standalone execution
@@ -24,8 +26,7 @@ class IncrementalLocationCompressor:
     """Handles incremental compression of messages at current location."""
     
     def __init__(self):
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
-        self.COMPRESSION_MODEL = "gpt-4.1-mini-2025-04-14"
+        # Model selection deferred to compress call; temperature stays at callsite
         self.COMPRESSION_TEMP = 0.3
         self.TRIGGER_THRESHOLD = 15  # Compress when reaching 15 pairs
         self.PRESERVE_RECENT = 5     # Always keep last 5 VALID pairs uncompressed
@@ -183,11 +184,24 @@ Create a compressed narrative that:
 Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not meta-game mechanics."""
 
         try:
-            response = self.client.chat.completions.create(
+            # Select model config per provider
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                compress_config = config.NARR_COMPRESS_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                compress_config = config.NARR_COMPRESS_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                compress_config = config.NARR_COMPRESS_LMSTUDIO
+            else:  # legacy
+                compress_config = config.NARR_COMPRESS_LEGACY
+
+            api_response = capture_and_fanout("T020", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[{"role": "user", "content": compression_prompt}],
-                model=self.COMPRESSION_MODEL,
-                temperature=self.COMPRESSION_TEMP
-            ).choices[0].message.content
+                model=compress_config["model"],
+                temperature=self.COMPRESSION_TEMP,
+                **{k: v for k, v in compress_config.items() if k != "model"})
+            response = api_response.choices[0].message.content
             
             if response and response.strip():
                 location_id = location_info.get('id', 'Unknown')

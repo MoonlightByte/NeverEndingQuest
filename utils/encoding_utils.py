@@ -30,7 +30,10 @@ Provides consistent text sanitization and encoding/decoding functions.
 import unicodedata
 import json
 import codecs
+import os
+import threading
 from typing import Any, Dict, Optional
+from uuid import uuid4
 
 
 # Comprehensive character mapping for problematic Unicode characters
@@ -151,7 +154,12 @@ def safe_json_load(filepath: str) -> Any:
 
 def safe_json_dump(data: Any, filepath: str, **kwargs) -> None:
     """
-    Save JSON file with proper encoding and sanitization.
+    Save JSON with sanitization and an atomic same-directory replacement.
+
+    A unique temporary file keeps concurrent writers from sharing scratch
+    state.  Flushing the file before ``os.replace`` means readers observe the
+    complete old document or the complete new one, never a partially-written
+    JSON document.
     """
     # Sanitize data before saving
     clean_data = sanitize_dict(data) if isinstance(data, (dict, list)) else data
@@ -164,8 +172,36 @@ def safe_json_dump(data: Any, filepath: str, **kwargs) -> None:
     }
     default_kwargs.update(kwargs)
     
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(clean_data, f, **default_kwargs)
+    filepath = os.fspath(filepath)
+    absolute_path = os.path.abspath(filepath)
+    parent = os.path.dirname(absolute_path)
+    os.makedirs(parent, exist_ok=True)
+    temporary_path = os.path.join(
+        parent,
+        (
+            f".{os.path.basename(absolute_path)}.{os.getpid()}."
+            f"{threading.get_ident()}.{uuid4().hex}.tmp"
+        ),
+    )
+
+    try:
+        with open(temporary_path, 'w', encoding='utf-8') as f:
+            json.dump(clean_data, f, **default_kwargs)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary_path, filepath)
+
+        # Persist the directory entry where the platform supports fsync on a
+        # directory. Windows does not expose an equivalent through os.open.
+        if os.name != 'nt':
+            directory_fd = os.open(parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
 
 
 def fix_corrupted_location_name(name: str) -> str:

@@ -75,15 +75,15 @@ import random
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
-from openai import OpenAI
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
+from core.ai import api_client
+import config
 import jsonschema
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json as save_json_safely
 from utils.enhanced_logger import debug, info, warning, error
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T031", "core/generators/module_generator.py", 585)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Location ID prefix mapping to ensure unique IDs across areas
 LOCATION_PREFIX_MAP = {
@@ -101,6 +101,59 @@ def get_location_prefix(area_index: int) -> str:
         first_letter = chr(65 + (area_index // 26) - 1)
         second_letter = chr(65 + (area_index % 26))
         return first_letter + second_letter
+
+
+def _strip_response_fence(content: str) -> str:
+    """Remove one complete Markdown fence without accepting surrounding prose."""
+    stripped = content.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    lines = stripped.splitlines()
+    if len(lines) < 3 or lines[-1].strip() != "```":
+        raise ValueError("incomplete fenced response")
+    return "\n".join(lines[1:-1]).strip()
+
+
+def _parse_generated_field_value(
+    content: Any,
+    field_path: str,
+    schema_info: Dict[str, Any],
+) -> Any:
+    """Decode and validate one T031 dynamic field against its actual schema."""
+    if not isinstance(content, str):
+        raise ValueError(f"{field_path} response content must be a string")
+    content = _strip_response_fence(content)
+    expected_type = schema_info.get("type")
+
+    if expected_type == "string":
+        if content.startswith('"'):
+            value = json.loads(content)
+        else:
+            value = content
+    else:
+        try:
+            value = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"{field_path} must be valid JSON for schema type {expected_type}"
+            ) from exc
+
+    try:
+        jsonschema.validate(value, schema_info)
+    except jsonschema.ValidationError as exc:
+        raise ValueError(
+            f"{field_path} did not match its {expected_type} schema: {exc.message}"
+        ) from exc
+
+    if isinstance(value, str):
+        value = value.strip()
+        if not value or value.casefold() in {"null", "none", "n/a"}:
+            raise ValueError(f"{field_path} must be a useful non-empty string")
+    elif isinstance(value, dict) and not value:
+        raise ValueError(f"{field_path} must be a useful non-empty object")
+    elif isinstance(value, list) and not value and field_path != "moduleConflicts":
+        raise ValueError(f"{field_path} must be a useful non-empty array")
+    return value
 
 @dataclass
 class ModulePromptGuide:
@@ -357,7 +410,7 @@ def update_location_references(file_path, id_mappings):
         
         # Save if modified
         if modified:
-            save_json_safely(data, file_path)
+            save_json_safely(file_path, data)
             print(f"DEBUG: [Module Generator] Updated location references in {file_path}")
     
     except (json.JSONDecodeError, IOError):
@@ -503,39 +556,65 @@ Return ONLY the value for this field in the correct format (not wrapped in a JSO
 If the field expects a string, return just the string.
 If the field expects an array, return just the array.
 If the field expects an object, return just the object.
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
         
-        print(f"DEBUG: [ModuleGenerator] Making API call to {DM_MAIN_MODEL}...")
+        print(f"DEBUG: [ModuleGenerator] Making API call for {field_path}...")
         print(f"DEBUG: [ModuleGenerator] Prompt length: {len(prompt)} characters")
         print(f"INFO: Calling OpenAI API for {field_path}... This may take 10-30 seconds.")
         start_time = time.time()
         try:
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                temperature=0.7,
-                messages=[
-                    {"role": "system", "content": "You are an expert 5e module designer. Return only the requested data in the exact format needed."},
-                    {"role": "user", "content": prompt}
-                ]
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                main_cfg = config.DM_MAIN_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                main_cfg = config.DM_MAIN_LMSTUDIO
+            else:  # legacy
+                main_cfg = config.DM_MAIN_LEGACY
+
+            last_error = None
+            for attempt in range(2):
+                retry_prompt = prompt
+                if last_error is not None:
+                    retry_prompt += (
+                        "\nPREVIOUS RESPONSE ERROR: "
+                        f"{last_error}\nReturn the field again in the exact schema type."
+                    )
+                response = capture_and_fanout("T031", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=[
+                        {"role": "system", "content": "You are an expert 5e module designer. Return only the requested data in the exact format needed."},
+                        {"role": "user", "content": retry_prompt}
+                    ],
+                    model=main_cfg["model"],
+                    temperature=0.7,
+                    response_format=None,
+                    **{k: v for k, v in main_cfg.items() if k != "model"})
+                try:
+                    value = _parse_generated_field_value(
+                        response.choices[0].message.content,
+                        field_path,
+                        schema_info,
+                    )
+                    elapsed = time.time() - start_time
+                    print(f"DEBUG: [ModuleGenerator] API call completed successfully in {elapsed:.1f} seconds")
+                    return value
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    last_error = exc
+                    print(
+                        f"WARNING: [ModuleGenerator] T031 {field_path} failed "
+                        f"validation (attempt {attempt + 1}/2): {exc}"
+                    )
+            raise ValueError(
+                f"T031 {field_path} failed validation after 2 attempts: {last_error}"
             )
-            elapsed = time.time() - start_time
-            print(f"DEBUG: [ModuleGenerator] API call completed successfully in {elapsed:.1f} seconds")
         except Exception as e:
             print(f"ERROR: [ModuleGenerator] API call failed: {e}")
             import traceback
             print(f"ERROR: [ModuleGenerator] Traceback: {traceback.format_exc()}")
             raise
-        
-        content = response.choices[0].message.content.strip()
-        
-        # Try to parse as JSON if it looks like JSON
-        if content.startswith(('[', '{')):
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                pass
-        
-        return content
     
     def generate_module(self, initial_concept: str, custom_values: Dict[str, Any] = None, context=None) -> Dict[str, Any]:
         """Generate a complete module from an initial concept"""
@@ -606,7 +685,7 @@ If the field expects an object, return just the object.
                     
                     # Create validation report
                     module_dir = f"modules/{module_name}"
-                    save_json_safely({"issues": issues}, f"{module_dir}/validation_report.json")
+                    save_json_safely(f"{module_dir}/validation_report.json", {"issues": issues})
                     print(f"DEBUG: [Module Generator] Validation report saved to {module_dir}/validation_report.json")
                 else:
                     print("DEBUG: [Module Generator] Module validation passed!")
@@ -622,20 +701,23 @@ If the field expects an object, return just the object.
     def get_field_schema(self, field_path: str) -> Dict[str, Any]:
         """Get schema information for a specific field"""
         parts = field_path.split(".")
-        current = self.schema["properties"]
-        
+        current = self.schema
+
         for part in parts:
-            if part in current:
-                current = current[part]
-                if "properties" in current:
-                    current = current["properties"]
-            else:
-                # Handle array items
-                parent = ".".join(parts[:parts.index(part)])
-                parent_schema = self.get_field_schema(parent)
-                if "items" in parent_schema:
-                    return parent_schema["items"]
-        
+            if not isinstance(current, dict):
+                return {}
+            properties = current.get("properties", {})
+            if part in properties:
+                current = properties[part]
+                continue
+            if current.get("type") == "array" and isinstance(current.get("items"), dict):
+                current = current["items"]
+                properties = current.get("properties", {})
+                if part in properties:
+                    current = properties[part]
+                    continue
+            return {}
+
         return current
     
     def get_nested_value(self, data: Dict[str, Any], path: str) -> Any:
@@ -726,8 +808,9 @@ If the field expects an object, return just the object.
                 num_locations=random.randint(5, 7)  # Explicitly set to 5-7 locations
             )
             
-            # Generate area data
-            area_data = area_gen.generate_area(area_name, area_id, context.to_dict(), config)
+            # Generate area data (issue #128: generate_area requires the location
+            # prefix as its 5th arg -- it was omitted here, which would TypeError)
+            area_data = area_gen.generate_area(area_name, area_id, context.to_dict(), config, location_prefix)
             
             # Add locations to context
             for location in area_data.get("locations", []):
@@ -932,7 +1015,7 @@ If the field expects an object, return just the object.
             module_plot["plotPoints"].append(plot_point)
         
         # Save unified plot file
-        save_json_safely(module_plot, f"{module_dir}/module_plot.json")
+        save_json_safely(f"{module_dir}/module_plot.json", module_plot)
         print(f"DEBUG: [Module Generator] Generated unified module plot file with {len(module_plot['plotPoints'])} plot points")
     
     def save_module(self, module_data: Dict[str, Any], filename: str = None):
@@ -997,7 +1080,7 @@ If the field expects an object, return just the object.
             "errors": debugger.errors,
             "warnings": debugger.warnings
         }
-        save_json_safely(validation_data, f"{module_dir}/validation_report.json")
+        save_json_safely(f"{module_dir}/validation_report.json", validation_data)
         
         print(f"DEBUG: [Module Generator] Validation complete - {len(debugger.errors)} errors, {len(debugger.warnings)} warnings")
         print(f"DEBUG: [Module Generator] Validation report saved to {module_dir}/validation_report.json")

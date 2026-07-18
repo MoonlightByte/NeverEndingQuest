@@ -38,12 +38,19 @@ import re
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from openai import OpenAI
 from jsonschema import validate, ValidationError
-# Import model configuration from config.py
-from config import OPENAI_API_KEY, NPC_BUILDER_MODEL # Assuming API key might also be in config eventually
+import config
+from core.ai import api_client
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.character_sheet_contract import repair_required_ammunition_field
+from utils.file_operations import safe_write_json
+from utils.single_target_generation import (
+    load_valid_generated_target,
+    single_target_generation,
+)
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T035", "core/generators/npc_builder.py", 185)
 
 # Token tracking import
 try:
@@ -60,11 +67,6 @@ RED = "\033[31m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
 
-# Use OPENAI_API_KEY from config
-client = OpenAI(api_key=OPENAI_API_KEY)
-# Note: The original npc_builder.py had a hardcoded API key here.
-# It's better practice to use the one from config.py.
-# If your config.py does not yet have OPENAI_API_KEY, you'll need to add it or adjust.
 # For now, I'll assume OPENAI_API_KEY is correctly defined in your config.py as used by other scripts.
 
 def load_schema(file_name):
@@ -90,14 +92,17 @@ def load_prompt(file_name):
         return None
 
 def save_json(file_name, data):
-    try:
-        with open(file_name, 'w') as file:
-            json.dump(data, file, indent=2)
+    """Atomically save JSON to file via safe_write_json.
+
+    Routes through utils.file_operations.safe_write_json so a crash
+    mid-write cannot corrupt the target file. Preserves the legacy
+    (file_name, data) call order used by existing callers.
+    """
+    if safe_write_json(file_name, data):
         info(f"SUCCESS: NPC save ({file_name}) - PASS", category="npc_creation")
         return True
-    except Exception as e:
-        print(f"{RED}Error saving to {file_name}: {str(e)}{RESET}")
-        return False
+    print(f"{RED}Error saving to {file_name}: atomic write failed{RESET}")
+    return False
 
 def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None, npc_background=None):
     system_prompt_text = load_prompt("prompts/generators/npc_builder_prompt.txt") # Renamed variable
@@ -106,7 +111,23 @@ def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None
 
     system_message = f"""You are an assistant that creates NPC schema JSON files from a master NPC schema template for a 5e game. Given an NPC name and optional details, create a JSON representation of the NPC's stats and abilities according to 5e rules following the NPC schema template exactly. Ensure your new NPC JSON adheres to the provided schema template. Do not include any additional properties or nested 'type' and 'value' fields. Return only the JSON content without any markdown formatting.
 
-If the input name contains a status descriptor (like 'corrupted', 'wounded', 'elite'), ensure the `name` field in the output JSON contains only the character's base name. For example, an input of 'Corrupted Ranger Thane' should result in a `name` field of 'Ranger Thane'.
+NAME HANDLING: The `name` field must preserve the NPC's full name including any title or role prefix (Scout, Guard, Captain, Ranger, etc.). ONLY strip status condition words: 'corrupted', 'wounded', 'elite', 'enhanced'. Examples:
+- 'Corrupted Ranger Thane' -> 'Ranger Thane'
+- 'Scout Kira' -> 'Scout Kira'
+- 'Guard Marcus' -> 'Guard Marcus'
+
+EQUIPMENT REQUIREMENTS: Equip the NPC fully. Minimum 5 equipped items including:
+- Armor appropriate for class (studded leather for rogues, chain mail for fighters, etc.)
+- Primary weapon (matching class proficiencies)
+- Secondary/ranged weapon
+- Shield (if class supports and build uses one)
+- Class tools (thieves' tools, holy symbol, component pouch, etc.)
+- At least 2 adventuring items (backpack, rope, rations, torches, etc.)
+
+RACIAL TRAITS: Include ALL racial traits as separate entries in the racialTraits array. Every trait the race grants must be listed, including ability score increases. Examples:
+- Human: [{{"name":"Ability Score Increase","description":"Your ability scores each increase by 1."}},{{"name":"Extra Language","description":"You can speak, read, and write one extra language of your choice."}}]
+- Wood Elf: Darkvision, Keen Senses, Fey Ancestry, Trance, Mask of the Wild (5 traits)
+- Hill Dwarf: Darkvision, Dwarven Resilience, Dwarven Combat Training, Stonecunning, Dwarven Toughness (5 traits)
 
 Use the following rules information when creating the NPC:
 
@@ -122,33 +143,99 @@ Adhere strictly to 5e rules and the provided schema."""
         {"role": "user", "content": f"Create an NPC named '{npc_name}' using 5e rules. Race: {npc_race or 'Any appropriate race'}, Class: {npc_class or 'Any appropriate class'}, Level: {level_guidance}, Background: {npc_background or 'Any appropriate background'}. Schema: {json.dumps(schema)}"}
     ]
 
+    # Select model config per provider
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        npc_config = config.NPC_BUILD_GPT52_NONE
+    elif MODEL_PROVIDER == "gemini":
+        npc_config = config.NPC_BUILD_GEMINI_FLASH_LOW
+    elif MODEL_PROVIDER == "lmstudio":
+        npc_config = config.NPC_BUILD_LMSTUDIO
+    else:  # legacy
+        npc_config = config.NPC_BUILD_LEGACY
+
+    # T035: force Gemini to emit the NPC character OBJECT, not DM narration. Reuse the
+    # char schema already passed in (the same one used for jsonschema.validate below)
+    # -- no second file load, no None risk. legacy/openai/lmstudio unaffected.
+    _extra = {k: v for k, v in npc_config.items() if k != "model"}
+    if MODEL_PROVIDER == "gemini":
+        from model_config import convert_to_gemini_schema
+        _extra["response_schema"] = convert_to_gemini_schema(schema)
+
+    # CH-H1: Retry on JSON parse / schema validation failures. The AI
+    # occasionally returns truncated or malformed JSON on the first try;
+    # retrying recovers without failing the whole combat/module build.
+    # Bound by model_config.MAX_VALIDATION_RETRIES (default 1 => 2 total
+    # attempts). Network/API exceptions are NOT retried -- only parse and
+    # validation errors. Defensive fallback to 1 if the constant is
+    # missing or model_config import fails.
     try:
-        response = client.chat.completions.create(
-            model=NPC_BUILDER_MODEL, # Use imported model name
-            temperature=0.7,
-            messages=prompt_messages
-        )
+        import model_config as _mc
+        _max_retries = getattr(_mc, "MAX_VALIDATION_RETRIES", 1)
+    except Exception:
+        _max_retries = 1
 
-        ai_response = response.choices[0].message.content.strip()
-        #print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
+    last_json_err = None
+    last_validation_err = None
+    last_ai_response = None
+    last_parsed_data = None
 
-        # Remove markdown code block if present
-        ai_response = re.sub(r'^```json\s*|\s*```$', '', ai_response, flags=re.MULTILINE)
-
+    for attempt in range(_max_retries + 1):
         try:
-            npc_data = json.loads(ai_response)
-            # Remove nested 'value' fields if they exist
-            npc_data = remove_nested_values(npc_data)
-            validate(instance=npc_data, schema=schema)
-            return npc_data
-        except json.JSONDecodeError as e:
-            print(f"{RED}Error: Invalid JSON in AI response. {str(e)}{RESET}")
-            print(f"{YELLOW}Processed AI response:{RESET}\n{ai_response}")
-        except ValidationError as e:
-            print(f"{RED}Error: Generated NPC data does not match schema. {str(e)}{RESET}")
-            print(f"{YELLOW}Problematic NPC data:{RESET}\n{json.dumps(npc_data, indent=2)}") # Log problematic data
-    except Exception as e:
-        print(f"{RED}Error: Failed to generate NPC data. {str(e)}{RESET}")
+            response = capture_and_fanout("T035", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=prompt_messages,
+                model=npc_config["model"],
+                temperature=0.7,
+                **_extra)
+
+            ai_response = response.choices[0].message.content.strip()
+            #print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
+
+            # Remove markdown code block if present
+            ai_response = re.sub(r'^```json\s*|\s*```$', '', ai_response, flags=re.MULTILINE)
+            last_ai_response = ai_response
+
+            try:
+                npc_data = json.loads(ai_response)
+                # Remove nested 'value' fields if they exist
+                npc_data = remove_nested_values(npc_data)
+                npc_data, _ = repair_required_ammunition_field(npc_data)
+                last_parsed_data = npc_data
+                validate(instance=npc_data, schema=schema)
+                return npc_data
+            except json.JSONDecodeError as e:
+                last_json_err = e
+                last_validation_err = None
+                warning(
+                    f"NPC build attempt {attempt + 1}/{_max_retries + 1} "
+                    f"returned invalid JSON: {str(e)}",
+                    category="npc_creation",
+                )
+                continue
+            except ValidationError as e:
+                last_json_err = None
+                last_validation_err = e
+                warning(
+                    f"NPC build attempt {attempt + 1}/{_max_retries + 1} "
+                    f"failed schema validation: {str(e)}",
+                    category="npc_creation",
+                )
+                continue
+        except Exception as e:
+            # Network / API failures are not retried here -- preserve the
+            # original outer-Exception contract.
+            print(f"{RED}Error: Failed to generate NPC data. {str(e)}{RESET}")
+            return None
+
+    # All retries exhausted -- emit the original-style final error
+    # messages so log scrapers and operators see the familiar output.
+    if last_json_err is not None:
+        print(f"{RED}Error: Invalid JSON in AI response. {str(last_json_err)}{RESET}")
+        print(f"{YELLOW}Processed AI response:{RESET}\n{last_ai_response}")
+    elif last_validation_err is not None:
+        print(f"{RED}Error: Generated NPC data does not match schema. {str(last_validation_err)}{RESET}")
+        print(f"{YELLOW}Problematic NPC data:{RESET}\n{json.dumps(last_parsed_data, indent=2)}")
 
     return None
 
@@ -173,27 +260,132 @@ def remove_nested_values(data):
     else:
         return data
 
+
+_NPC_STATUS_WORDS = ("corrupted", "wounded", "elite", "enhanced")
+
+
+def _expected_npc_target_name(npc_name):
+    """Mirror the prompt's deterministic status-word cleanup for lock identity."""
+    value = str(npc_name or "").strip()
+    status_pattern = r"\b(?:" + "|".join(_NPC_STATUS_WORDS) + r")\b"
+    cleaned = re.sub(status_pattern, " ", value, flags=re.IGNORECASE)
+    cleaned = " ".join(cleaned.split()).strip(" _-")
+    return cleaned or value
+
+
+def _active_module_path_manager():
+    """Resolve the same active-module snapshot historically used by main()."""
+    try:
+        from utils.encoding_utils import safe_json_load
+
+        party_tracker = safe_json_load("party_tracker.json")
+        current_module = (
+            party_tracker.get("module", "").replace(" ", "_")
+            if party_tracker
+            else None
+        )
+        return ModulePathManager(current_module)
+    except Exception:
+        return ModulePathManager()
+
+
+def build_npc_file(
+    npc_name,
+    schema,
+    npc_race=None,
+    npc_class=None,
+    npc_level=None,
+    npc_background=None,
+    path_manager=None,
+):
+    """Generate and save one NPC as a deduplicated target transaction."""
+    path_manager = path_manager or _active_module_path_manager()
+    expected_name = _expected_npc_target_name(npc_name)
+    logical_target = path_manager.get_character_unified_path(expected_name)
+
+    with single_target_generation(logical_target) as transaction:
+        candidates = [transaction.resolved_target, logical_target]
+        for candidate in dict.fromkeys(path for path in candidates if path):
+            existing = load_valid_generated_target(candidate, schema)
+            if existing is not None:
+                transaction.remember_target(candidate)
+                info(
+                    f"SUCCESS: NPC creation ({existing.get('name', expected_name)}) "
+                    "- already exists",
+                    category="npc_creation",
+                )
+                return existing
+
+        generated = generate_npc(
+            npc_name,
+            schema,
+            npc_race,
+            npc_class,
+            npc_level,
+            npc_background,
+        )
+        if not generated:
+            return None
+
+        clean_name = generated.get("name", expected_name)
+        actual_target = path_manager.get_character_unified_path(clean_name)
+        existing = load_valid_generated_target(actual_target, schema)
+        if existing is not None:
+            transaction.remember_target(actual_target)
+            return existing
+        # Record the intended path before the atomic save. This closes the
+        # post-replace/pre-marker crash window for cleaned NPC filenames.
+        transaction.remember_target(actual_target)
+        if not save_json(actual_target, generated):
+            return None
+        return generated
+
 def main():
-    if len(sys.argv) < 2:
-        print(f"{RED}Usage: python npc_builder.py <npc_name> [race] [class] [level] [background]{RESET}")
-        sys.exit(1)
+    # Use argparse so we can accept --party-level alongside the existing
+    # positional args. Positional args remain optional for backward
+    # compatibility with any legacy callers.
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Generate a 5e NPC JSON file.")
+    parser.add_argument("npc_name", help="Name of the NPC to generate.")
+    parser.add_argument("race", nargs="?", default=None,
+                        help="Optional race override.")
+    parser.add_argument("npc_class", nargs="?", default=None,
+                        help="Optional class override.")
+    parser.add_argument("level", nargs="?", default=None,
+                        help="Optional explicit NPC level (integer or "
+                             "empty string).")
+    parser.add_argument("background", nargs="?", default=None,
+                        help="Optional background override.")
+    parser.add_argument("--party-level", type=int, default=None,
+                        help="Average party level. When supplied, overrides "
+                             "the default 'level 1-3' guidance used for "
+                             "NPC creation if no explicit level is given.")
+    args = parser.parse_args()
 
-    npc_name_arg = sys.argv[1] # Renamed variable
-    npc_race_arg = sys.argv[2] if len(sys.argv) > 2 else None # Renamed variable
-    npc_class_arg = sys.argv[3] if len(sys.argv) > 3 else None # Renamed variable
-    npc_level_arg = None # Renamed variable
-    if len(sys.argv) > 4 and sys.argv[4].isdigit():
-        try:
-            npc_level_arg = int(sys.argv[4])
-        except ValueError:
-            print(f"{RED}Error: Level must be an integer.{RESET}")
+    npc_name_arg = args.npc_name
+    npc_race_arg = args.race
+    npc_class_arg = args.npc_class
+
+    # Parse explicit positional level (preserve legacy validation).
+    npc_level_arg = None
+    if args.level is not None and args.level != "":
+        if args.level.isdigit():
+            try:
+                npc_level_arg = int(args.level)
+            except ValueError:
+                print(f"{RED}Error: Level must be an integer.{RESET}")
+                sys.exit(1)
+        else:
+            print(f"{RED}Error: Level must be an integer or empty if not specified.{RESET}")
             sys.exit(1)
-    elif len(sys.argv) > 4 and not sys.argv[4].isdigit() and sys.argv[4] != '': # handle empty string for level
-        print(f"{RED}Error: Level must be an integer or empty if not specified.{RESET}")
-        sys.exit(1)
 
+    npc_background_arg = args.background
 
-    npc_background_arg = sys.argv[5] if len(sys.argv) > 5 else None # Renamed variable
+    # If no explicit positional level was supplied, use --party-level as
+    # the level guidance so the NPC is scaled to the party.
+    if npc_level_arg is None and args.party_level is not None:
+        npc_level_arg = args.party_level
 
     debug(f"INPUT_PROCESSING: Received arguments - Name: {npc_name_arg}, Race: {npc_race_arg}, Class: {npc_class_arg}, Level: {npc_level_arg}, Background: {npc_background_arg}", category="npc_creation")
 
@@ -201,33 +393,17 @@ def main():
     if not npc_schema_data:
         sys.exit(1)
 
-    generated_npc_data = generate_npc(npc_name_arg, npc_schema_data, npc_race_arg, npc_class_arg, npc_level_arg, npc_background_arg) # Renamed variable
+    generated_npc_data = build_npc_file(
+        npc_name_arg,
+        npc_schema_data,
+        npc_race_arg,
+        npc_class_arg,
+        npc_level_arg,
+        npc_background_arg,
+    )
     if generated_npc_data:
-        # Extract the clean name from the generated JSON data.
-        # This ensures the filename matches the character's actual name.
-        # It falls back to the original argument if the 'name' field is missing.
         clean_npc_name = generated_npc_data.get("name", npc_name_arg)
-        
-        # Get current module from party tracker for consistent path resolution
-        try:
-            from utils.encoding_utils import safe_json_load
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            path_manager = ModulePathManager(current_module)
-        except:
-            path_manager = ModulePathManager()  # Fallback to reading from file
-        
-        # Use the 'clean_npc_name' to generate the file path
-        full_path = path_manager.get_character_unified_path(clean_npc_name)  # Force unified path
-        
-        # Ensure characters directory exists
-        characters_dir = os.path.dirname(full_path)
-        os.makedirs(characters_dir, exist_ok=True)
-        if save_json(full_path, generated_npc_data):
-            info(f"SUCCESS: NPC creation ({clean_npc_name}) - PASS", category="npc_creation")
-        else:
-            error(f"FAILURE: NPC save ({clean_npc_name}) - FAIL", category="npc_creation")
-            sys.exit(1)
+        info(f"SUCCESS: NPC creation ({clean_npc_name}) - PASS", category="npc_creation")
     else:
         error(f"FAILURE: NPC creation ({npc_name_arg}) - FAIL", category="npc_creation")
         sys.exit(1)

@@ -17,6 +17,7 @@ import logging
 import shutil
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.file_operations import safe_write_json
 
 # Set script name for logging
 set_script_name("combat_builder")
@@ -45,6 +46,84 @@ def format_type_name(name):
     from updates.update_character_info import normalize_character_name
     return normalize_character_name(name)
 
+
+def _normalize_compendium_key(value):
+    """Normalize a name/key for compendium lookup.
+
+    Lowercases, drops anything that is not alphanumeric, and collapses
+    runs of whitespace/punctuation into single underscores. This lets
+    'Garrick the Innkeeper', 'garrick_the_innkeeper', and
+    'garrick the innkeeper' all match the same compendium key.
+    """
+    if not value:
+        return ""
+    out = []
+    prev_sep = False
+    for ch in str(value).lower():
+        if ch.isalnum():
+            out.append(ch)
+            prev_sep = False
+        else:
+            if not prev_sep and out:
+                out.append("_")
+            prev_sep = True
+    # Trim trailing underscore if present.
+    while out and out[-1] == "_":
+        out.pop()
+    return "".join(out)
+
+
+def _lookup_npc_in_compendium(requested_name,
+                              compendium_path="data/bestiary/npc_compendium.json"):
+    """Look the requested NPC up in the central compendium.
+
+    Returns the compendium entry dict on match, or None on miss /
+    missing file / malformed file. Never raises -- callers fall through
+    to AI generation when this returns None.
+
+    Match strategy: normalize the requested name and compare against
+    both each compendium key AND each entry's 'name' field, both
+    normalized the same way. This catches modules that reference an
+    NPC by either form.
+    """
+    try:
+        with open(compendium_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        # Missing or corrupt compendium must NEVER block production.
+        # Log and let the caller proceed with the existing AI path.
+        warning(
+            f"COMPENDIUM_LOOKUP: skipped (path={compendium_path!r}, "
+            f"reason={type(exc).__name__}: {exc})",
+            category="combat_builder",
+        )
+        return None
+    except Exception as exc:  # defensive: never raise out of this helper
+        warning(
+            f"COMPENDIUM_LOOKUP: unexpected error "
+            f"({type(exc).__name__}: {exc})",
+            category="combat_builder",
+        )
+        return None
+
+    npcs = data.get("npcs") if isinstance(data, dict) else None
+    if not isinstance(npcs, dict):
+        return None
+
+    needle = _normalize_compendium_key(requested_name)
+    if not needle:
+        return None
+
+    for key, entry in npcs.items():
+        if not isinstance(entry, dict):
+            continue
+        if _normalize_compendium_key(key) == needle:
+            return entry
+        entry_name = entry.get("name", "")
+        if _normalize_compendium_key(entry_name) == needle:
+            return entry
+    return None
+
 def load_json(file_name):
     try:
         with open(file_name, 'r', encoding='utf-8') as file:
@@ -69,13 +148,16 @@ def backup_player_file(player_file):
         logging.error(f"Failed to backup player file: {str(e)}")
 
 def save_json(file_name, data):
-    try:
-        with open(file_name, 'w', encoding='utf-8') as file:
-            json.dump(data, file, indent=2, ensure_ascii=False)
+    """Atomically save JSON to file via safe_write_json.
+
+    Routes through utils.file_operations.safe_write_json so a crash
+    mid-write cannot corrupt the target file. Preserves the legacy
+    (file_name, data) call order used by existing callers.
+    """
+    if safe_write_json(file_name, data):
         return True
-    except Exception as e:
-        print(colored(f"Error saving to {file_name}: {str(e)}", "red"))
-        return False
+    print(colored(f"Error saving to {file_name}: atomic write failed", "red"))
+    return False
 
 def get_current_area_id():
     with open("party_tracker.json", "r", encoding="utf-8") as file:
@@ -131,6 +213,49 @@ def update_party_tracker(encounter_id):
         return encounter_id
     return False
 
+def _get_party_level():
+    """Compute the average party level from party_tracker.json + character
+    files. Falls back to level 1 on any failure (file lock, missing files,
+    parse errors). This mirrors the legacy fallback in monster_builder.main()
+    but resolves the level in the parent process so we can forward it
+    explicitly on the subprocess command line via --party-level. That way
+    a transient read failure in the child does NOT silently degrade a
+    level-8 party to a level-1 encounter (bugs CH-C1, CH-M3).
+    """
+    try:
+        from utils.encoding_utils import safe_json_load
+        party_tracker = safe_json_load("party_tracker.json")
+        if not party_tracker or not party_tracker.get("partyMembers"):
+            return 1
+        levels = []
+        for character_name in party_tracker["partyMembers"]:
+            character_data = safe_json_load(f"characters/{character_name}.json")
+            if character_data:
+                levels.append(character_data.get("level", 1))
+        if levels:
+            return round(sum(levels) / len(levels))
+        # CH-C1: party_tracker had members but NONE of their character files
+        # loaded -- a read failure, not a genuinely level-1 party. Make it
+        # loud so a level-8 party silently getting CR 1/8 monsters is visible.
+        error(
+            "CH-C1: party_tracker lists members but no character files loaded; "
+            "falling back to party_level=1 (encounter difficulty will be wrong). "
+            f"members={party_tracker.get('partyMembers')}",
+            category="combat_builder",
+        )
+        return 1
+    except Exception as e:
+        # CH-C1: a genuine read/parse failure (file lock, malformed JSON) must
+        # not silently degrade the encounter to level 1. Surface it loudly.
+        error(
+            f"CH-C1: failed to compute party level ({e}); falling back to "
+            "party_level=1 -- encounter difficulty may be wrong.",
+            exception=e,
+            category="combat_builder",
+        )
+        return 1
+
+
 def load_or_create_monster(monster_type):
     formatted_monster_type = format_type_name(monster_type)
     print(f"[COMBAT_BUILDER] Monster load/create: '{monster_type}' -> '{formatted_monster_type}'")
@@ -150,7 +275,14 @@ def load_or_create_monster(monster_type):
         # Get the path to monster_builder.py relative to the current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
         monster_builder_path = os.path.join(current_dir, "monster_builder.py")
-        result = subprocess.run(["python", monster_builder_path, monster_type], capture_output=True, text=True)
+        # Resolve party level here and pass it explicitly so the child
+        # process is not vulnerable to a transient party_tracker.json read
+        # failure silently falling back to level 1 (bug CH-M3).
+        party_level = _get_party_level()
+        result = subprocess.run(
+            ["python", monster_builder_path, monster_type,
+             "--party-level", str(party_level)],
+            capture_output=True, text=True)
         if result.returncode == 0:
             print(f"[COMBAT_BUILDER] Monster creation successful: {monster_type}")
             info(f"SUCCESS: Monster builder ({monster_type}) - PASS", category="combat_builder")
@@ -163,10 +295,19 @@ def load_or_create_monster(monster_type):
                 print(colored(f"Error: Monster file {monster_file} was not created", "red"))
                 return None
         else:
+            # Non-zero return code from monster_builder subprocess
+            # MUST surface to the caller -- previously this returned
+            # None, which generate_encounter() then returned silently,
+            # leaving callers with no indication that the build failed
+            # (CH-C1). Raise RuntimeError so the failure propagates.
             print(f"[COMBAT_BUILDER] Monster creation failed: {monster_type}")
             print(f"[COMBAT_BUILDER] Error output: {result.stderr}")
             error(f"FAILURE: Monster builder ({monster_type}) - FAIL", category="combat_builder")
-            return None
+            raise RuntimeError(
+                f"monster_builder subprocess failed for "
+                f"'{monster_type}' (exit code {result.returncode}): "
+                f"{result.stderr}"
+            )
     else:
         print(f"[COMBAT_BUILDER] Monster loaded from file: {monster_type}")
     return monster_data
@@ -231,6 +372,41 @@ def load_or_create_npc(npc_name):
             print(f"[COMBAT_BUILDER] No suitable fuzzy match found (best score: {best_score:.2f})")
             warning(f"FUZZY_MATCH: NPC fuzzy match failed for '{npc_name}' (best score: {best_score:.2f})", category="combat_builder")
     
+    # CH-H2 (T5-4): consult the central NPC compendium BEFORE falling
+    # through to AI generation. The compendium carries identity-only
+    # records (canonical name + description); it does NOT contain stat
+    # blocks (HP, AC, abilities, actions). To prevent NAME DRIFT without
+    # losing the AI-generated stat block, on a compendium hit we PIN
+    # the canonical name and then defer stat generation to npc_builder
+    # by passing the canonical name into the subprocess. Future calls
+    # for the same canonical name will resolve via the module-local
+    # character file (named after the canonical form) and skip both
+    # compendium lookup and AI generation entirely.
+    if not npc_data:
+        compendium_entry = _lookup_npc_in_compendium(npc_name)
+        if compendium_entry is not None:
+            canonical_name = compendium_entry.get("name") or npc_name
+            print(f"[COMBAT_BUILDER] Compendium hit for '{npc_name}' "
+                  f"-> canonical name '{canonical_name}' "
+                  f"(stats deferred to npc_builder)")
+            info(
+                f"COMPENDIUM_HIT: NPC '{npc_name}' pinned to canonical "
+                f"name '{canonical_name}'; stat block will be generated "
+                f"by npc_builder",
+                category="combat_builder",
+            )
+            # Re-resolve the target file path using the canonical name
+            # so the subprocess output lands at the canonical location.
+            # Subsequent calls for any surface form that maps to this
+            # canonical name will find the file on disk.
+            formatted_npc_name = format_type_name(canonical_name)
+            npc_file = path_manager.get_character_path(formatted_npc_name)
+            # Use the canonical name as the npc_name fed to npc_builder.
+            # The subprocess prompt asks the AI to "create an NPC named
+            # '<name>'", so the canonical name flows into the generated
+            # JSON and the resulting filename.
+            npc_name = canonical_name
+
     if not npc_data:
         print(f"[COMBAT_BUILDER] NPC file not found, creating: {npc_file}")
         warning(f"NPC_LOADING: NPC loading ({npc_name}) - attempting creation", category="combat_builder")
@@ -238,7 +414,14 @@ def load_or_create_npc(npc_name):
         # Get the path to npc_builder.py relative to the current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
         npc_builder_path = os.path.join(current_dir, "npc_builder.py")
-        result = subprocess.run(["python", npc_builder_path, formatted_npc_name], capture_output=True, text=True)
+        # Resolve party level here and pass it explicitly so npc_builder
+        # does not silently fall back to "level 1-3" guidance for a
+        # high-level party (bug CH-C1).
+        party_level = _get_party_level()
+        result = subprocess.run(
+            ["python", npc_builder_path, formatted_npc_name,
+             "--party-level", str(party_level)],
+            capture_output=True, text=True)
         if result.returncode == 0:
             print(f"[COMBAT_BUILDER] NPC creation successful: {npc_name}")
             info(f"SUCCESS: NPC builder ({npc_name}) - PASS", category="combat_builder")

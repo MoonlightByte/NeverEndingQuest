@@ -52,6 +52,7 @@
 import json
 import subprocess
 import os
+import sys
 import unicodedata
 import re
 import traceback
@@ -208,6 +209,60 @@ def update_world_conditions(current_conditions, new_location, current_area, curr
     else:
         return current_conditions
 
+
+def _run_departure_summary(current_location, current_area_id):
+    """Run the optional departure summary and return an explicit status."""
+    project_root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    adv_summary_path = os.path.join(project_root, "core", "ai", "adv_summary.py")
+    command = [
+        sys.executable,
+        adv_summary_path,
+        "modules/conversation_history/conversation_history.json",
+        "current_location.json",
+        current_location,
+        current_area_id,
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        error(
+            "FAILURE: Departure summary was unavailable; travel will continue",
+            exception=exc,
+            category="summary_building",
+        )
+        debug(f"SUBPROCESS: stdout: {exc.stdout}", category="subprocess_output")
+        debug(f"SUBPROCESS: stderr: {exc.stderr}", category="subprocess_output")
+        return {
+            "success": False,
+            "status": "unavailable",
+            "returncode": exc.returncode,
+        }
+    except Exception as exc:
+        error(
+            "FAILURE: Could not launch departure summary; travel will continue",
+            exception=exc,
+            category="summary_building",
+        )
+        return {
+            "success": False,
+            "status": "unavailable",
+            "error": str(exc),
+        }
+
+    info("SUCCESS: Adventure summary transaction committed", category="summary_building")
+    return {
+        "success": True,
+        "status": "committed",
+        "stdout": result.stdout,
+    }
+
 def handle_location_transition(current_location, new_location, current_area, current_area_id, area_connectivity_id=None):
     """Handle transition between locations, prioritizing ID matching"""
     info(f"STATE_CHANGE: Location transition from '{current_location}' to '{new_location}'", category="location_transitions")
@@ -302,19 +357,9 @@ def handle_location_transition(current_location, new_location, current_area, cur
         # END OF NEW STEP
         # =================================================================
 
-        # Run adventure summary update
-        try:
-            # Get the path to adv_summary.py relative to the project root
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            adv_summary_path = os.path.join(project_root, "core", "ai", "adv_summary.py")
-            
-            result = subprocess.run(["python", adv_summary_path, "modules/conversation_history/conversation_history.json", "current_location.json", current_location, current_area_id],
-                        check=True, capture_output=True, text=True)
-            info("SUCCESS: Adventure summary updated successfully", category="summary_building")
-        except subprocess.CalledProcessError as e:
-            error(f"FAILURE: Failed to run adv_summary.py", exception=e, category="summary_building")
-            debug(f"SUBPROCESS: stdout: {e.stdout}", category="subprocess_output")
-            debug(f"SUBPROCESS: stderr: {e.stderr}", category="subprocess_output")
+        # Departure summarization is optional for travel. The subprocess itself
+        # owns the journal/location transaction and reports committed/unavailable.
+        summary_result = _run_departure_summary(current_location, current_area_id)
 
         # Log the transition for debugging
         debug_log_file = "transition_debug.log"
@@ -323,7 +368,10 @@ def handle_location_transition(current_location, new_location, current_area, cur
                 debug_file.write(f"\n--- TRANSITION DEBUG: {current_location} to {new_location} ---\n")
                 debug_file.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 debug_file.write(f"Area ID: {current_area_id}\n")
-                debug_file.write(f"Adventure summary has been generated\n")
+                debug_file.write(
+                    "Adventure summary status: "
+                    f"{summary_result['status']}\n"
+                )
         except Exception as e:
             error(f"FILE_OP: Failed to write to debug log", exception=e, category="file_operations")
 
@@ -353,8 +401,16 @@ def handle_location_transition(current_location, new_location, current_area, cur
             try:
                 safe_json_dump(party_tracker, "party_tracker.json")
                 info("SUCCESS: Updated party_tracker.json with new location", category="file_operations")
-                
-                # Log successful location transition as a game event
+            except Exception as e:
+                error(f"FAILURE: Failed to update party_tracker.json", exception=e, category="file_operations")
+                # The campaign publisher treats a truthy prompt as proof that
+                # the location write committed. Never report success after a
+                # persistence failure; its prepared intent must remain
+                # recoverable or be cancelled as a proven no-op.
+                raise
+
+            # Observability is best-effort after the authoritative write.
+            try:
                 game_event("location_transition", {
                     "from": current_location,
                     "to": new_location_info.get("location_name", new_location_info.get("name", "Unknown Location")),
@@ -363,7 +419,11 @@ def handle_location_transition(current_location, new_location, current_area, cur
                     "area_change": new_area_id_for_conditions != current_area_id
                 })
             except Exception as e:
-                error(f"FAILURE: Failed to update party_tracker.json", exception=e, category="file_operations")
+                error(
+                    "FILE_OP: Failed to log location transition event",
+                    exception=e,
+                    category="file_operations",
+                )
 
         # Get storage information for the new location
         storage_containers = get_storage_at_location(new_location)

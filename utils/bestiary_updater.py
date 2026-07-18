@@ -12,42 +12,89 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-# OpenAI imports
-try:
-    from openai import OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-    print("Warning: OpenAI library not available")
+from core.ai import api_client
+import config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T083", "utils/bestiary_updater.py", 268)
 
-# Import safe file operations
-from utils.file_operations import safe_read_json, safe_write_json
-from utils.encoding_utils import safe_json_load, safe_json_dump, sanitize_text
+from utils.compendium_store import (
+    MONSTER_COMPENDIUM_PATH,
+    compendium_entry_exists,
+    merge_compendium_entries,
+    validate_generated_prose,
+)
+from utils.encoding_utils import sanitize_text
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
-from model_config import DM_MINI_MODEL
-
-# Import API key
-try:
-    from config import OPENAI_API_KEY
-except ImportError:
-    OPENAI_API_KEY = None
-    print("Warning: Could not import OPENAI_API_KEY from config.py")
 
 # Set up logging
 set_script_name("bestiary_updater")
 
+_MONSTER_TYPES = frozenset({
+    "aberration", "beast", "celestial", "construct", "dragon",
+    "elemental", "fey", "fiend", "giant", "humanoid", "monstrosity",
+    "ooze", "plant", "undead",
+})
+
+
+def _monster_identity(value: str) -> str:
+    return "".join(character.lower() for character in value if character.isalnum())
+
+
+def _validate_monster_response(
+    monster_name: str, response_text: str
+) -> Dict[str, Any]:
+    """Validate T083's complete JSON contract before anything reaches disk."""
+    result = json.loads(response_text)
+    if not isinstance(result, dict):
+        raise ValueError("Monster description response must be a JSON object")
+
+    expected_fields = {"name", "type", "description", "tags"}
+    if set(result) != expected_fields:
+        raise ValueError(
+            "Monster description response must contain exactly "
+            f"{sorted(expected_fields)}"
+        )
+
+    generated_name = result["name"]
+    if not isinstance(generated_name, str) or not generated_name.strip():
+        raise ValueError("Monster description has no usable name")
+    if _monster_identity(generated_name) != _monster_identity(monster_name):
+        raise ValueError(
+            f"Monster description identity {generated_name!r} does not match "
+            f"requested monster {monster_name!r}"
+        )
+
+    monster_type = result["type"]
+    if (
+        not isinstance(monster_type, str)
+        or monster_type.strip().lower() not in _MONSTER_TYPES
+    ):
+        raise ValueError(f"Unsupported monster type: {monster_type!r}")
+
+    tags = result["tags"]
+    if (
+        not isinstance(tags, list)
+        or len(tags) > 12
+        or any(not isinstance(tag, str) or not tag.strip() for tag in tags)
+    ):
+        raise ValueError("Monster tags must be a list of non-empty strings")
+
+    description = validate_generated_prose(
+        sanitize_text(result["description"]), minimum_words=20
+    )
+    return {
+        "name": sanitize_text(generated_name).strip(),
+        "type": monster_type.strip().lower(),
+        "description": description,
+        "tags": [sanitize_text(tag).strip() for tag in tags],
+    }
+
+
 class BestiaryUpdater:
     """Handles automatic generation of monster descriptions from module context"""
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self):
         """Initialize the bestiary updater"""
-        self.api_key = api_key or OPENAI_API_KEY
-        if self.api_key and OPENAI_AVAILABLE:
-            self.client = OpenAI(api_key=self.api_key)
-        else:
-            self.client = None
-            error("OpenAI client not available - check API key and library installation")
-        
         # Rate limiting settings (being conservative)
         self.requests_per_minute = 30
         self.request_delay = 60.0 / self.requests_per_minute  # ~2 seconds between requests
@@ -170,10 +217,6 @@ class BestiaryUpdater:
         Returns:
             Dictionary with monster data or None if failed
         """
-        if not self.client:
-            error("OpenAI client not available")
-            return None
-        
         # Rate limiting
         current_time = time.time()
         time_since_last = current_time - self.last_request_time
@@ -188,7 +231,8 @@ class BestiaryUpdater:
         - Be suitable for use in image generation prompts
         - Maintain consistency with 5th edition of the world's most popular roleplaying game lore while adding creative details
         - Be approximately 150-250 words
-        
+        - Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols
+
         Return your response as a JSON object with these fields:
         {
             "name": "Proper Name",
@@ -211,63 +255,36 @@ image-generation-ready description that would fit this adventure."""
             try:
                 info(f"Generating description for: {monster_name} (attempt {attempt + 1}/{max_retries})")
                 
-                response = self.client.chat.completions.create(
-                    model=DM_MINI_MODEL,
+                from model_config import MODEL_PROVIDER
+                if MODEL_PROVIDER == "openai":
+                    mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+                elif MODEL_PROVIDER == "gemini":
+                    mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
+                elif MODEL_PROVIDER == "lmstudio":
+                    mini_cfg = config.MINI_UTIL_LMSTUDIO
+                else:  # legacy
+                    mini_cfg = config.MINI_UTIL_LEGACY
+
+                response = capture_and_fanout("T083", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
                     ],
+                    model=mini_cfg["model"],
                     temperature=0.7,
-                    response_format={"type": "json_object"}
-                )
+                    response_format={"type": "json_object"},
+                    **{k: v for k, v in mini_cfg.items() if k != "model"})
                 
                 # Update last request time
                 self.last_request_time = time.time()
                 
-                # Parse response
                 response_text = response.choices[0].message.content
-                
-                # Try to parse JSON
-                try:
-                    result = json.loads(response_text)
-                except json.JSONDecodeError as je:
-                    warning(f"JSON decode error on attempt {attempt + 1}: {je}")
-                    if attempt < max_retries - 1:
-                        # Add more explicit instructions for next attempt
-                        user_prompt = f"""{user_prompt}
-
-IMPORTANT: You MUST return valid JSON with exactly these fields:
-{{
-    "name": "{monster_name}",
-    "type": "one of: aberration, beast, celestial, construct, dragon, elemental, fey, fiend, giant, humanoid, monstrosity, ooze, plant, undead",
-    "description": "detailed description text here",
-    "tags": ["tag1", "tag2", "tag3"]
-}}"""
-                        continue
-                    else:
-                        raise je
-                
-                # Validate required fields
-                required_fields = ["name", "type", "description"]
-                missing_fields = [f for f in required_fields if f not in result]
-                if missing_fields:
-                    warning(f"Missing required fields on attempt {attempt + 1}: {missing_fields}")
-                    if attempt < max_retries - 1:
-                        continue
-                    else:
-                        # Try to patch missing fields
-                        result.setdefault("name", monster_name)
-                        result.setdefault("type", "monstrosity")
-                        result.setdefault("description", f"A mysterious creature known as {monster_name}")
-                        result.setdefault("tags", [])
+                result = _validate_monster_response(monster_name, response_text)
                 
                 # Add metadata
                 result["source_file"] = "bestiary_updater.py"
                 result["generated_date"] = datetime.now().isoformat()
-                
-                # Sanitize text fields
-                result["description"] = sanitize_text(result.get("description", ""))
-                result["name"] = sanitize_text(result.get("name", monster_name))
                 
                 info(f"Successfully generated description for: {result['name']}")
                 return result
@@ -282,7 +299,13 @@ IMPORTANT: You MUST return valid JSON with exactly these fields:
         
         return None
     
-    def update_bestiary_safe(self, new_monsters: Dict[str, Dict], test_mode: bool = False) -> bool:
+    def update_bestiary_safe(
+        self,
+        new_monsters: Dict[str, Dict],
+        test_mode: bool = False,
+        *,
+        bestiary_file: Optional[str] = None,
+    ) -> bool:
         """
         Safely update the bestiary with new monster entries
         
@@ -294,51 +317,27 @@ IMPORTANT: You MUST return valid JSON with exactly these fields:
             True if successful, False otherwise
         """
         try:
-            # Determine target file
-            if test_mode:
+            if bestiary_file is None and test_mode:
                 bestiary_file = "data/bestiary/test_monster_additions.json"
                 info("Running in TEST MODE - will not modify actual bestiary")
-            else:
-                bestiary_file = "data/bestiary/monster_compendium.json"
-            
-            # Read current bestiary
-            bestiary = safe_read_json(bestiary_file)
-            if not bestiary:
-                warning(f"Could not read bestiary from {bestiary_file}, creating new one")
-                bestiary = {
-                    "version": "1.0.0",
-                    "created": datetime.now().strftime("%Y-%m-%d"),
-                    "total_monsters": 0,
-                    "monsters": {}
-                }
-            
-            # Track additions
-            added_count = 0
-            skipped_count = 0
-            
-            # Add new monsters
-            for monster_id, monster_data in new_monsters.items():
-                if monster_id in bestiary.get("monsters", {}):
-                    info(f"Monster already exists, skipping: {monster_id}")
-                    skipped_count += 1
-                    continue
-                
-                # Add to bestiary
-                bestiary["monsters"][monster_id] = monster_data
-                added_count += 1
+            elif bestiary_file is None:
+                bestiary_file = MONSTER_COMPENDIUM_PATH
+
+            result = merge_compendium_entries(
+                bestiary_file,
+                "monsters",
+                new_monsters,
+                overwrite=False,
+            )
+            for monster_id in result.added:
                 info(f"Added monster to bestiary: {monster_id}")
-            
-            # Update total count
-            bestiary["total_monsters"] = len(bestiary["monsters"])
-            bestiary["last_updated"] = datetime.now().isoformat()
-            
-            # Write back to file
-            if safe_write_json(bestiary_file, bestiary, create_backup=True):
-                info(f"Successfully updated bestiary: {added_count} added, {skipped_count} skipped")
-                return True
-            else:
-                error("Failed to write bestiary file")
-                return False
+            for monster_id in result.skipped:
+                info(f"Monster already exists, skipping: {monster_id}")
+            info(
+                "Successfully updated bestiary: "
+                f"{len(result.added)} added, {len(result.skipped)} skipped"
+            )
+            return True
                 
         except Exception as e:
             error(f"Error updating bestiary: {e}")
@@ -352,62 +351,134 @@ IMPORTANT: You MUST return valid JSON with exactly these fields:
             module_name: Name of the module to extract context from
             monster_names: List of monster names to process
             test_mode: If True, write to test file instead of actual bestiary
+
+        Returns:
+            A result object with requested, added, skipped, and failed counts,
+            plus error and success fields. The counts always balance to requested.
         """
-        info(f"Starting bestiary update process for {len(monster_names)} monsters from {module_name}")
-        
-        # Extract ALL context from module areas
-        module_context = self.extract_all_area_context(module_name)
-        if not module_context:
-            error("Failed to extract module context")
-            return
-        
-        info(f"Extracted {len(module_context)} characters of context from module")
-        
-        # Generate descriptions for each monster
+        requested = len(monster_names)
+        result = {
+            "requested": requested,
+            "added": 0,
+            "skipped": 0,
+            "failed": 0,
+            "error": None,
+            "success": False,
+        }
+        info(
+            f"Starting bestiary update process for {requested} monsters "
+            f"from {module_name}"
+        )
+
+        bestiary_file = (
+            "data/bestiary/test_monster_additions.json"
+            if test_mode
+            else MONSTER_COMPENDIUM_PATH
+        )
+        pending = []
+        seen_ids = set()
+        for monster_name in monster_names:
+            if not isinstance(monster_name, str) or not monster_name.strip():
+                result["failed"] += 1
+                continue
+            clean_name = monster_name.strip()
+            monster_id = (
+                clean_name.lower()
+                .replace(" ", "_")
+                .replace("-", "_")
+                .replace("'", "")
+            )
+            if not monster_id or monster_id in seen_ids:
+                result["skipped"] += 1
+                continue
+            seen_ids.add(monster_id)
+            try:
+                if compendium_entry_exists(
+                    bestiary_file, "monsters", monster_id
+                ):
+                    result["skipped"] += 1
+                    continue
+            except Exception as exc:
+                result["failed"] += 1
+                result["error"] = f"Failed to inspect bestiary: {exc}"
+                error(result["error"])
+                continue
+            pending.append((monster_id, clean_name))
+
+        module_context = ""
+        if pending:
+            module_context = self.extract_all_area_context(module_name)
+            if not module_context:
+                result["failed"] += len(pending)
+                result["error"] = "Failed to extract module context"
+                error(result["error"])
+                pending = []
+            else:
+                info(f"Extracted {len(module_context)} characters of context from module")
+
         new_monsters = {}
         failed_monsters = []
-        
-        for i, monster_name in enumerate(monster_names, 1):
+        for index, (monster_id, monster_name) in enumerate(pending, 1):
             try:
-                info(f"Processing monster {i}/{len(monster_names)}: {monster_name}")
-                
-                # Normalize the monster ID for storage
-                monster_id = monster_name.lower().replace(" ", "_").replace("-", "_").replace("'", "")
-                
-                # Generate description
-                monster_data = await self.generate_monster_description(monster_name, module_context)
-                if monster_data:
-                    new_monsters[monster_id] = monster_data
-                    info(f"Successfully generated description for: {monster_name} -> {monster_id}")
-                else:
-                    warning(f"Failed to generate description for {monster_name}")
-                    failed_monsters.append(monster_name)
-                    
-            except Exception as e:
-                error(f"Exception processing {monster_name}: {e}")
+                info(
+                    f"Processing monster {index}/{len(pending)}: "
+                    f"{monster_name}"
+                )
+                monster_data = await self.generate_monster_description(
+                    monster_name, module_context
+                )
+                if not monster_data:
+                    raise ValueError("description generation returned no result")
+                new_monsters[monster_id] = monster_data
+                info(
+                    f"Successfully generated description for: {monster_name} "
+                    f"-> {monster_id}"
+                )
+            except Exception as exc:
+                warning(f"Failed to generate description for {monster_name}: {exc}")
                 failed_monsters.append(monster_name)
-                continue
-        
-        # Update bestiary - only with successfully generated descriptions
+                result["failed"] += 1
+
         if new_monsters:
-            success = self.update_bestiary_safe(new_monsters, test_mode)
-            if success:
-                info(f"Process complete! Added {len(new_monsters)} monsters to bestiary")
-            else:
-                error("Failed to update bestiary")
-        else:
-            warning("No new monsters to add - all descriptions failed to generate")
-        
-        # Generate summary report
+            try:
+                merge_result = merge_compendium_entries(
+                    bestiary_file,
+                    "monsters",
+                    new_monsters,
+                    overwrite=False,
+                )
+                result["added"] += len(merge_result.added)
+                result["skipped"] += len(merge_result.skipped)
+                info(
+                    "Bestiary persistence complete: "
+                    f"{len(merge_result.added)} added, "
+                    f"{len(merge_result.skipped)} skipped"
+                )
+            except Exception as exc:
+                result["failed"] += len(new_monsters)
+                result["error"] = f"Failed to update bestiary: {exc}"
+                error(result["error"])
+
+        if result["error"] is None and result["failed"]:
+            result["error"] = (
+                f"{result['failed']} monster description(s) failed"
+            )
+        result["success"] = result["error"] is None and result["failed"] == 0
+
         info("\n=== Bestiary Update Summary ===")
         info(f"Module scanned: {module_name}")
-        info(f"Monsters requested: {len(monster_names)}")
-        info(f"Descriptions generated: {len(new_monsters)}")
-        info(f"Failed to generate: {len(failed_monsters)}")
+        info(f"Monsters requested: {result['requested']}")
+        info(f"Monsters added: {result['added']}")
+        info(f"Monsters skipped: {result['skipped']}")
+        info(f"Monsters failed: {result['failed']}")
         if failed_monsters:
-            info(f"Failed monsters: {', '.join(failed_monsters[:5])}{'...' if len(failed_monsters) > 5 else ''}")
+            info(
+                f"Failed monsters: {', '.join(failed_monsters[:5])}"
+                f"{'...' if len(failed_monsters) > 5 else ''}"
+            )
         info(f"Test mode: {test_mode}")
         info("================================\n")
+        return result
 
 
 # Test function

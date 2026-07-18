@@ -70,7 +70,8 @@ import sys
 from collections import deque, defaultdict
 from typing import Dict, List, Tuple, Optional
 from utils.module_path_manager import ModulePathManager
-from utils.file_operations import safe_read_json
+from utils.file_operations import safe_read_json, safe_write_json
+from utils.module_refresh_lock import module_refresh_lock
 
 def write_debug(message: str):
     """Write debug message to debug.txt file"""
@@ -294,35 +295,60 @@ class LocationGraph:
                         self.edges[connected_location_id].append(location_id)
             
             # If we fixed any dict objects, update the file
-            if needs_fixing and 'area_file' in node_info:
+            if needs_fixing and node_info.get('area_file'):
                 try:
                     print(f"         Updating file {node_info['area_file']} with fixed areaConnectivity...")
                     
                     # Update the location data in memory
                     location_data['areaConnectivity'] = fixed_connectivity
-                    
-                    # Load the full area file
-                    import json
-                    with open(node_info['area_file'], 'r') as f:
-                        area_json = json.load(f)
-                    
-                    # Find and update the location in the file
-                    for loc in area_json.get('locations', []):
-                        if loc.get('locationId') == location_id:
-                            loc['areaConnectivity'] = fixed_connectivity
-                            break
-                    
-                    # Write back to file
-                    with open(node_info['area_file'], 'w') as f:
-                        json.dump(area_json, f, indent=2)
-                    
-                    # Also update backup file if it exists
-                    backup_file = node_info['area_file'].replace('.json', '_BU.json')
-                    if os.path.exists(backup_file):
-                        with open(backup_file, 'w') as f:
-                            json.dump(area_json, f, indent=2)
-                    
-                    print(f"         File updated successfully!")
+
+                    # This reader has a legacy self-healing write path. T088
+                    # consumes the same area file, so publish only a fresh
+                    # field-level merge while holding the outer module-tree
+                    # fence. Replacing the stale graph snapshot here could
+                    # otherwise undo a completed NPC reconciliation.
+                    with module_refresh_lock() as refresh_acquired:
+                        if not refresh_acquired:
+                            print(
+                                "         Module refresh is busy; skipped "
+                                "persisting the connectivity repair."
+                            )
+                        else:
+                            area_json = safe_read_json(node_info['area_file'])
+                            if not isinstance(area_json, dict):
+                                raise ValueError("area file is not a JSON object")
+
+                            target_found = False
+                            for loc in area_json.get('locations', []):
+                                if loc.get('locationId') == location_id:
+                                    loc['areaConnectivity'] = fixed_connectivity
+                                    target_found = True
+                                    break
+                            if not target_found:
+                                raise ValueError(
+                                    f"location {location_id} is no longer in the area"
+                                )
+
+                            if not safe_write_json(
+                                node_info['area_file'],
+                                area_json,
+                                create_backup=False,
+                            ):
+                                raise OSError("failed to write repaired area file")
+
+                            # Preserve the legacy behavior for an existing
+                            # module backup, under the same refresh boundary.
+                            backup_file = node_info['area_file'].replace(
+                                '.json', '_BU.json'
+                            )
+                            if os.path.exists(backup_file) and not safe_write_json(
+                                backup_file,
+                                area_json,
+                                create_backup=False,
+                            ):
+                                raise OSError("failed to write repaired area backup")
+
+                            print(f"         File updated successfully!")
                     
                 except Exception as e:
                     print(f"         Error updating file: {e}")

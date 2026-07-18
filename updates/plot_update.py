@@ -3,9 +3,11 @@
 # License: See LICENSE file in the repository root
 # This software is subject to the terms of the Fair Source License.
 
+import copy
 import json
 from jsonschema import validate, ValidationError
-from openai import OpenAI
+from core.ai import api_client
+import config
 import time
 
 # Import OpenAI usage tracking (safe - won't break if fails)
@@ -17,15 +19,16 @@ except:
     def track_response(r): pass
 
 # Import model configuration from config.py
-from config import OPENAI_API_KEY, PLOT_UPDATE_MODEL
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
+from utils.module_refresh_lock import module_refresh_lock
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
 set_script_name("plot_update")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T077", "updates/plot_update.py", 257)
 
 # Constants
 TEMPERATURE = 0.7
@@ -36,6 +39,87 @@ TEMPERATURE = 0.7
 def load_schema():
     with open("schemas/plot_schema.json", "r") as schema_file:
         return json.load(schema_file)
+
+
+def _find_plot_update_target(plot_info_data, plot_point_id):
+    """Return ``(parent_plot_id, is_side_quest)`` for a stable plot ID."""
+    for plot_point in plot_info_data.get("plotPoints", []):
+        if plot_point.get("id") == plot_point_id:
+            return plot_point_id, False
+        if any(
+            quest.get("id") == plot_point_id
+            for quest in plot_point.get("sideQuests", [])
+            if isinstance(quest, dict)
+        ):
+            return plot_point.get("id"), True
+    return None, None
+
+
+def _apply_plot_delta(
+    base_plot_info,
+    updated_sections,
+    target_id,
+    expected_status,
+    expected_impact,
+):
+    """Validate T077's exact delta contract and apply it to a fresh snapshot.
+
+    The model may update only the requested main plot point or side quest, and
+    it must echo the requested status and impact exactly. This prevents a
+    malformed retry from leaking unrelated or unsaved mutations into the
+    caller-visible object.
+    """
+    parent_id, is_side_quest = _find_plot_update_target(base_plot_info, target_id)
+    if parent_id is None:
+        raise ValueError(f"Unknown plot or side-quest ID: {target_id}")
+    if not isinstance(updated_sections, dict) or set(updated_sections) != {parent_id}:
+        raise ValueError("T077 must return exactly the parent plot-point ID")
+
+    update = updated_sections[parent_id]
+    if not isinstance(update, dict):
+        raise ValueError("T077 plot update must be an object")
+
+    if is_side_quest:
+        if set(update) != {"sideQuests"}:
+            raise ValueError("T077 side-quest update may contain only sideQuests")
+        side_quests = update["sideQuests"]
+        if not isinstance(side_quests, list) or len(side_quests) != 1:
+            raise ValueError("T077 must return exactly one side-quest delta")
+        delta = side_quests[0]
+        if not isinstance(delta, dict) or set(delta) != {
+            "id",
+            "status",
+            "plotImpact",
+        }:
+            raise ValueError("T077 side-quest delta has an invalid shape")
+        if delta["id"] != target_id:
+            raise ValueError("T077 returned the wrong side-quest ID")
+    else:
+        if set(update) != {"status", "plotImpact"}:
+            raise ValueError("T077 main-plot delta has an invalid shape")
+        delta = update
+
+    if delta.get("status") != expected_status:
+        raise ValueError("T077 returned a status other than the requested status")
+    if delta.get("plotImpact") != expected_impact:
+        raise ValueError("T077 returned a plot impact other than the requested impact")
+
+    candidate = copy.deepcopy(base_plot_info)
+    for plot_point in candidate.get("plotPoints", []):
+        if plot_point.get("id") != parent_id:
+            continue
+        if is_side_quest:
+            for side_quest in plot_point.get("sideQuests", []):
+                if side_quest.get("id") == target_id:
+                    side_quest["status"] = delta["status"]
+                    side_quest["plotImpact"] = delta["plotImpact"]
+                    return candidate
+        else:
+            plot_point["status"] = delta["status"]
+            plot_point["plotImpact"] = delta["plotImpact"]
+            return candidate
+
+    raise ValueError(f"Plot target disappeared while applying update: {target_id}")
 
 def update_party_tracker(plot_point_id, new_status, plot_impact, plot_filename):
     # DEPRECATED: activeQuests tracking has been deprecated in favor of using module_plot.json as the single source of truth
@@ -102,29 +186,66 @@ def update_party_tracker(plot_point_id, new_status, plot_impact, plot_filename):
     debug(f"STATE_CHANGE: Party tracker updated for plot point {plot_point_id}", category="plot_updates")
 
 def update_plot(plot_point_id_param, new_status_param, plot_impact_param, plot_filename_param, max_retries=3): # Renamed params
-    try:
-        # Use unified module plot file with current module from party tracker
-        party_tracker = safe_read_json("party_tracker.json")
-        current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-        path_manager = ModulePathManager(current_module)
-        plot_file_path = path_manager.get_plot_path()
-            
-        plot_info_data = safe_read_json(plot_file_path)
-        if not plot_info_data:
-            error("FAILURE: Could not read plot file", category="file_operations")
-            return None
-    except FileNotFoundError:
-        error(f"FAILURE: Plot file {plot_filename_param} not found", category="file_operations")
-        return None # Or raise error
-    except json.JSONDecodeError:
-        error(f"FAILURE: Invalid JSON in {plot_filename_param}", category="file_operations")
-        return None # Or raise error
+    # Party identity is the outermost boundary. This is reentrant when the
+    # response processor already owns it and preserves PARTY -> REFRESH order.
+    from core.managers.campaign_manager import _party_module_transition_lock
+    from utils.quest_player_formatter import (
+        _QuestSourceDriftError,
+        _capture_plot_source,
+        _plot_source_matches,
+        format_quests_for_player,
+    )
 
+    with _party_module_transition_lock():
+        plot_schema_data = load_schema()
+        last_snapshot = None
+        for attempt in range(max_retries):
+            try:
+                with module_refresh_lock() as snapshot_acquired:
+                    if not snapshot_acquired:
+                        warning(
+                            "T077 skipped because module refresh is busy",
+                            category="plot_updates",
+                        )
+                        return None
+                    party_tracker = safe_read_json("party_tracker.json")
+                    current_module = (
+                        party_tracker.get("module", "").replace(" ", "_")
+                        if isinstance(party_tracker, dict)
+                        else None
+                    )
+                    if not current_module:
+                        error(
+                            "FAILURE: Could not resolve current module",
+                            category="file_operations",
+                        )
+                        return None
+                    path_manager = ModulePathManager(current_module)
+                    plot_file_path = path_manager.get_plot_path()
+                    source = _capture_plot_source(
+                        path_manager.module_dir,
+                        plot_file_path,
+                    )
+                    _plot_pre_mutation = copy.deepcopy(source["payload"])
+                    last_snapshot = _plot_pre_mutation
+            except (OSError, _QuestSourceDriftError, FileNotFoundError) as exc:
+                error(
+                    f"FAILURE: Could not snapshot {plot_filename_param}: {exc}",
+                    category="file_operations",
+                )
+                return None
 
-    plot_schema_data = load_schema() # Renamed variable
+            parent_id, _is_side_quest = _find_plot_update_target(
+                _plot_pre_mutation, plot_point_id_param
+            )
+            if parent_id is None:
+                error(
+                    f"FAILURE: Plot target {plot_point_id_param} does not exist",
+                    category="plot_updates",
+                )
+                return copy.deepcopy(_plot_pre_mutation)
 
-    for attempt in range(max_retries):
-        prompt_messages = [ # Renamed variable
+            prompt_messages = [ # Renamed variable
             {"role": "system", "content": """You are an assistant that updates plot information for a role playing game. Given the current plot information and a plot point ID with its new status and plot impact, return only the updated sections of the JSON. Ensure that the updates adhere to the provided schema. Pay close attention to enum values and required fields. Be sure to update both the 'status' and 'plotImpact' fields for the specified plot point. Return the updated sections as a JSON object with the plot point ID as the key.
 
 Examples:
@@ -143,90 +264,122 @@ Examples:
 5. Input: Plot point to update: PP011, New status: in progress, Plot impact: The party is exploring the Crystal Cavern and deciphering hidden messages left by the dwarves.
    Output: {"PP011": {"status": "in progress", "plotImpact": "The party is exploring the Crystal Cavern and deciphering hidden messages left by the dwarves."}}"""
             },
-            {"role": "user", "content": f"Current plot info: {json.dumps(plot_info_data)}\n\nPlot point to update: {plot_point_id_param}\nNew status: {new_status_param}\nPlot impact: {plot_impact_param}"}
-        ]
+            {"role": "user", "content": f"Current plot info: {json.dumps(_plot_pre_mutation)}\n\nPlot point to update: {plot_point_id_param}\nNew status: {new_status_param}\nPlot impact: {plot_impact_param}"}
+            ]
 
-        response = client.chat.completions.create(
-            model=PLOT_UPDATE_MODEL, # Use imported model name
-            temperature=TEMPERATURE,
-            messages=prompt_messages
-        )
-        
-        # Track usage if available
-        if USAGE_TRACKING_AVAILABLE:
+            # Select model config per provider
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                plot_config = config.PLOT_UPD_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                plot_config = config.PLOT_UPD_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                plot_config = config.PLOT_UPD_LMSTUDIO
+            else:  # legacy
+                plot_config = config.PLOT_UPD_LEGACY
+
             try:
-                track_response(response)
-            except:
-                pass
+                response = capture_and_fanout("T077", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=prompt_messages,
+                model=plot_config["model"],
+                temperature=TEMPERATURE,
+                **{k: v for k, v in plot_config.items() if k != "model"})
 
-        ai_response_content = response.choices[0].message.content.strip() # Renamed variable
+                # Track usage if available
+                if USAGE_TRACKING_AVAILABLE:
+                    try:
+                        track_response(response)
+                    except Exception:
+                        pass
 
-        try:
-            if ai_response_content.startswith("```json"):
-                ai_response_content = ai_response_content.split("```json", 1)[1]
-            if ai_response_content.endswith("```"):
-                ai_response_content = ai_response_content.rsplit("```", 1)[0]
-            ai_response_content = ai_response_content.strip()
+                ai_response_content = response.choices[0].message.content.strip()
+                if ai_response_content.startswith("```json"):
+                    ai_response_content = ai_response_content.split("```json", 1)[1]
+                if ai_response_content.endswith("```"):
+                    ai_response_content = ai_response_content.rsplit("```", 1)[0]
+                ai_response_content = ai_response_content.strip()
 
-            updated_sections = json.loads(ai_response_content)
+                updated_sections = json.loads(ai_response_content)
+                candidate_plot = _apply_plot_delta(
+                    _plot_pre_mutation,
+                    updated_sections,
+                    plot_point_id_param,
+                    new_status_param,
+                    plot_impact_param,
+                )
+                validate(instance=candidate_plot, schema=plot_schema_data)
 
-            for current_plot_point_id, updates in updated_sections.items(): # Renamed plot_point_id loop var
-                for plot_point_obj in plot_info_data["plotPoints"]: # Renamed plot_point loop var
-                    if plot_point_obj["id"] == current_plot_point_id:
-                        if "sideQuests" in updates:
-                            for updated_quest_item in updates["sideQuests"]: # Renamed updated_quest loop var
-                                for quest_item in plot_point_obj.get("sideQuests", []): # Renamed quest loop var, added .get for safety
-                                    if quest_item["id"] == updated_quest_item["id"]:
-                                        quest_item.update(updated_quest_item)
-                                        break
-                        else:
-                            plot_point_obj.update(updates)
-                        break
+                info(f"SUCCESS: Updated and validated plot info on attempt {attempt + 1}", category="plot_updates")
 
-            validate(instance=plot_info_data, schema=plot_schema_data)
+                with module_refresh_lock() as commit_acquired:
+                    if not commit_acquired:
+                        warning(
+                            "T077 commit skipped because module refresh is busy",
+                            category="plot_updates",
+                        )
+                        return copy.deepcopy(_plot_pre_mutation)
+                    if not _plot_source_matches(source):
+                        warning(
+                            "T077 source changed during model work; discarding stale result",
+                            category="plot_updates",
+                        )
+                        # Keep the caller-visible fallback aligned with disk.
+                        # In particular, exhaustion must not return the stale
+                        # pre-provider object that just failed revalidation.
+                        try:
+                            last_snapshot = copy.deepcopy(
+                                _capture_plot_source(
+                                    path_manager.module_dir,
+                                    plot_file_path,
+                                )["payload"]
+                            )
+                        except (OSError, _QuestSourceDriftError):
+                            pass
+                        continue
+                    try:
+                        write_succeeded = safe_write_json(
+                            plot_file_path, candidate_plot
+                        )
+                    except Exception as write_error:
+                        write_succeeded = False
+                        error(
+                            f"FAILURE: Plot write raised an exception: {write_error}",
+                            category="file_operations",
+                        )
+                    if not write_succeeded:
+                        error(
+                            "FAILURE: Failed to save plot file; rolling back in-memory mutation",
+                            category="file_operations",
+                        )
+                        return copy.deepcopy(_plot_pre_mutation)
 
-            info(f"SUCCESS: Updated and validated plot info on attempt {attempt + 1}", category="plot_updates")
+                update_party_tracker(plot_point_id_param, new_status_param, plot_impact_param, plot_filename_param)
 
-            if not safe_write_json(plot_file_path, plot_info_data):
-                error("FAILURE: Failed to save plot file", category="file_operations")
-                return plot_info_data
+                debug(f"STATE_CHANGE: Plot information updated for plot point {plot_point_id_param}", category="plot_updates")
 
-            update_party_tracker(plot_point_id_param, new_status_param, plot_impact_param, plot_filename_param)
-
-            debug(f"STATE_CHANGE: Plot information updated for plot point {plot_point_id_param}", category="plot_updates")
-            
-            # Generate player-friendly quest descriptions
-            try:
-                from utils.quest_player_formatter import format_quests_for_player
+                # T090 performs its own snapshot/revalidate transaction. The
+                # party lock remains outermost while standalone refresh may be
+                # released during its provider call.
                 if current_module:
                     debug(f"QUEST_FORMAT: Updating player-friendly quests for module {current_module}", category="plot_updates")
                     format_quests_for_player(current_module)
+
+                return candidate_plot
+
+            except (json.JSONDecodeError, ValidationError, ValueError, TypeError, KeyError, AttributeError) as e:
+                warning(
+                    f"VALIDATION: T077 attempt {attempt + 1} rejected: {e}",
+                    category="plot_updates",
+                )
             except Exception as e:
-                warning(f"QUEST_FORMAT: Failed to update player-friendly quests: {e}", category="plot_updates")
-            
-            return plot_info_data
+                warning(
+                    f"AI_PROCESSING: T077 provider attempt {attempt + 1} failed: {e}",
+                    category="ai_processing",
+                )
 
-        except json.JSONDecodeError as e:
-            warning(f"VALIDATION: AI response is not valid JSON. Error: {e}", category="ai_processing")
-            warning(f"AI_PROCESSING: Attempting to fix malformed JSON response", category="ai_processing")
-            try:
-                fixed_response = ai_response_content.replace("'", '"')
-                fixed_response = fixed_response.replace("True", "true").replace("False", "false")
-                updated_sections = json.loads(fixed_response)
-                info(f"SUCCESS: Fixed malformed JSON response", category="ai_processing")
-                # Re-attempt update logic with fixed_response (simplified for now, original logic was more complex)
-                # This might need more robust re-processing if simple replace isn't enough.
-                # For this refactor, focusing on model name. The fix attempt is a placeholder.
-            except Exception as fix_e: # Catch any error during fixing
-                error(f"FAILURE: Failed to fix JSON. Error during fix: {fix_e}. Retrying original response processing", category="ai_processing")
-        except ValidationError as e:
-            error(f"VALIDATION: Updated info does not match the schema. Error: {e}", category="plot_updates")
-            # print(f"{YELLOW}Problematic plot_info_data:{RESET}\n{json.dumps(plot_info_data, indent=2)}") # Log data that failed validation
+            if attempt < max_retries - 1:
+                time.sleep(1)
 
-        if attempt == max_retries - 1:
-            error(f"FAILURE: Failed to update plot info after {max_retries} attempts. Returning original plot info", category="plot_updates")
-            return plot_info_data # Return original if all retries fail
-
-        time.sleep(1)
-
-    return plot_info_data # Should be unreachable if max_retries leads to return, but good for safety
+        error(f"FAILURE: Failed to update plot info after {max_retries} attempts. Returning original plot info", category="plot_updates")
+        return copy.deepcopy(last_snapshot) if last_snapshot is not None else None

@@ -2780,6 +2780,15 @@
         let videoQueue = [];
         let activePack = null;
         let fileToImport = null; // To hold the selected file
+        let activeBestiaryJobId = null;
+        let activeNpcDescriptionJobId = null;
+
+        function createClientJobId(prefix) {
+            const token = (window.crypto && window.crypto.randomUUID)
+                ? window.crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            return `${prefix}-${token}`;
+        }
         // Removed isInitialLoad flag - no longer needed with new event listener approach
         
         // Initialize
@@ -3287,6 +3296,7 @@
                 });
                 
                 const result = await response.json();
+                if (activeBestiaryJobId !== jobId) return;
                 
                 if (result.success) {
                     addLog('genLog', `Successfully created pack: ${displayName}`, 'success');
@@ -4125,6 +4135,7 @@
             
             // Bestiary update events
             socket.on('bestiary_update_progress', (data) => {
+                if (!activeBestiaryJobId || data.job_id !== activeBestiaryJobId) return;
                 console.log('[Bestiary Update Progress]', data);
                 const progressText = document.getElementById('bestiary-progress-text');
                 if (progressText) {
@@ -4133,11 +4144,13 @@
             });
             
             socket.on('bestiary_update_complete', (data) => {
+                if (!activeBestiaryJobId || data.job_id !== activeBestiaryJobId) return;
+                activeBestiaryJobId = null;
                 console.log('[Bestiary Update Complete]', data);
                 const progressDiv = document.getElementById('bestiary-progress');
                 if (progressDiv) {
                     progressDiv.innerHTML = `
-                        <h4 style="color: #4CAF50; margin: 0 0 10px 0;">✓ Bestiary Updated!</h4>
+                        <h4 style="color: ${data.success ? '#4CAF50' : '#f44336'}; margin: 0 0 10px 0;">${data.success ? '✓ Bestiary Updated!' : '✗ Bestiary Update Incomplete'}</h4>
                         <div>${data.message}</div>
                         <button onclick="this.parentElement.remove()" style="margin-top: 10px; padding: 5px 10px; background: #444; border: none; color: white; cursor: pointer; border-radius: 3px;">Close</button>
                     `;
@@ -4156,6 +4169,7 @@
             
             // NPC Management events
             socket.on('npc_description_progress', (data) => {
+                if (!activeNpcDescriptionJobId || data.job_id !== activeNpcDescriptionJobId) return;
                 console.log('[NPC Description Progress]', data);
                 
                 // Find the status box elements
@@ -4171,19 +4185,6 @@
                 if (data.status === 'success') {
                     // Update the message with the current progress
                     statusMessage.textContent = `(${data.current}/${data.total}) Generated description for: ${data.npc_name}`;
-                    
-                    // Check if the process is complete
-                    if (data.current === data.total) {
-                        statusBox.classList.remove('error');
-                        statusBox.classList.add('success');
-                        statusTitle.textContent = '✓ Process Complete';
-                        statusMessage.textContent = `Successfully processed all ${data.total} selected NPCs.`;
-                        
-                        // Auto-hide the box after 5 seconds
-                        setTimeout(() => {
-                            statusBox.style.display = 'none';
-                        }, 5000);
-                    }
                 } else { // Handle errors
                     statusBox.classList.add('error');
                     statusTitle.textContent = '✗ An Error Occurred';
@@ -4201,6 +4202,35 @@
                 document.getElementById('npcGenProgressFill').textContent = `${Math.round(percent)}%`;
                 document.getElementById('npcGenStatus').textContent = `Generating description for ${data.npc_name} (${data.current}/${data.total})`;
                 document.getElementById('npcGenProgress').style.display = 'block';
+            });
+
+            socket.on('npc_description_complete', (data) => {
+                if (!activeNpcDescriptionJobId || data.job_id !== activeNpcDescriptionJobId) return;
+                activeNpcDescriptionJobId = null;
+                console.log('[NPC Description Complete]', data);
+                const statusBox = document.getElementById('npc-description-status-box');
+                const statusTitle = document.getElementById('npc-status-title');
+                const statusMessage = document.getElementById('npc-status-message');
+                if (statusBox) {
+                    statusBox.classList.remove('success', 'error');
+                    statusBox.classList.add(data.success ? 'success' : 'error');
+                    statusTitle.textContent = data.success ? '✓ Process Complete' : '✗ Process Finished with Errors';
+                    statusMessage.textContent = data.success
+                        ? `Successfully processed all ${data.total} selected NPCs.`
+                        : `Generated ${data.completed} of ${data.total} descriptions; ${data.failed} failed.`;
+                }
+                addLog(
+                    'npcGenLog',
+                    data.success
+                        ? `NPC description generation complete (${data.completed}/${data.total}).`
+                        : `NPC description generation finished with ${data.failed} failure(s).`,
+                    data.success ? 'success' : 'error'
+                );
+                document.getElementById('npcGenProgressFill').style.width = '100%';
+                document.getElementById('npcGenProgressFill').textContent = '100%';
+                document.getElementById('npcGenStatus').textContent = data.success
+                    ? 'NPC description generation complete.'
+                    : 'NPC description generation completed with errors.';
             });
             
             socket.on('npc_portrait_progress', (data) => {
@@ -4266,6 +4296,8 @@
             });
             
             socket.on('bestiary_update_error', (data) => {
+                if (!activeBestiaryJobId || data.job_id !== activeBestiaryJobId) return;
+                activeBestiaryJobId = null;
                 console.error('[Bestiary Update Error]', data);
                 const progressDiv = document.getElementById('bestiary-progress');
                 if (progressDiv) {
@@ -4699,6 +4731,8 @@
             const button = document.getElementById('add-to-bestiary-btn');
             button.disabled = true;
             button.textContent = 'Processing...';
+            const jobId = createClientJobId('bestiary');
+            activeBestiaryJobId = jobId;
             
             try {
                 const response = await fetch('/api/toolkit/add-to-bestiary', {
@@ -4706,7 +4740,9 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         module_name: moduleName,
-                        monster_ids: selectedMonsterIds // Send IDs
+                        monster_ids: selectedMonsterIds,
+                        job_id: jobId,
+                        socket_sid: socket.id
                     })
                 });
                 
@@ -4723,9 +4759,11 @@
                     progressDiv.innerHTML = `<h4 id="bestiary-status-title">Bestiary Update</h4><p id="bestiary-status-message">${result.message}</p><button onclick="this.parentElement.remove()">Close</button>`;
                     progressDiv.style.display = 'block';
                 } else {
+                    if (activeBestiaryJobId === jobId) activeBestiaryJobId = null;
                     alert(`Error: ${result.error}`);
                 }
             } catch (error) {
+                if (activeBestiaryJobId === jobId) activeBestiaryJobId = null;
                 alert(`Failed to start bestiary update: ${error}`);
             } finally {
                 // Re-enable button
@@ -5282,17 +5320,26 @@
             document.getElementById('genProgressFill').style.width = '0%';
             document.getElementById('genProgressFill').textContent = '0%';
             document.getElementById('genStatus').textContent = 'Fetching NPC descriptions...';
+            const jobId = createClientJobId('npc-description');
+            activeNpcDescriptionJobId = jobId;
             
             try {
                 const response = await fetch('/api/toolkit/npcs/fetch-descriptions', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ module_name: moduleName, npcs: npcs })
+                    body: JSON.stringify({
+                        module_name: moduleName,
+                        npcs: npcs,
+                        job_id: jobId,
+                        socket_sid: socket.id
+                    })
                 });
                 const result = await response.json();
+                if (activeNpcDescriptionJobId !== jobId) return;
                 if (result.success) {
                     addLog('genLog', 'AI description generation process started. Descriptions will appear as they are generated.', 'success');
                 } else {
+                    if (activeNpcDescriptionJobId === jobId) activeNpcDescriptionJobId = null;
                     // If the initial request fails, show an error in the box
                     statusBox.classList.add('error');
                     statusTitle.textContent = 'Request Failed';
@@ -5300,6 +5347,7 @@
                     addLog('genLog', `Error starting description generation: ${result.error}`, 'error');
                 }
             } catch (error) {
+                if (activeNpcDescriptionJobId === jobId) activeNpcDescriptionJobId = null;
                 statusBox.classList.add('error');
                 statusTitle.textContent = 'Network Error';
                 statusMessage.textContent = 'Failed to communicate with the server.';

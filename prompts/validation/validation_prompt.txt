@@ -213,6 +213,7 @@ Here's the strict list of specific actions that the model should take when the s
 **VALIDATION RULE:** If user input is a vague question without specific commitment, createNewModule is INVALID regardless of what the AI response contains.
 
 Requires "narrative" parameter containing rich story description with embedded module parameters (name, type, level range, areas, themes).
+The parameters object MUST contain exactly the one key "narrative", whose value is a non-empty string. The exact action is {"action":"createNewModule","parameters":{"narrative":"[complete concept and labeled technical fields]"}}. Reject aliases such as moduleName/startingLocation, extra parameters, empty narrative, or any response that combines createNewModule with another action.
 "exitGame": Must be taken and only taken when the player requests to exit the play session.
 "storageInteraction": Used when players want to store, retrieve, or manage items in containers at locations. This action processes natural language storage requests and handles inventory transfers automatically. Should be used when players express intent to:
    - Store items in containers ("I put my gold in a chest", "I store extra gear here")

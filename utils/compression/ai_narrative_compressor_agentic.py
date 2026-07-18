@@ -8,22 +8,16 @@ AI-powered narrative compressor using GPT-4.1-mini (Agentic approach)
 Converts fantasy narrative to ultra-compact EVT notation format
 """
 
+import hashlib
 import json
 import sys
 import re
 from typing import Dict, Any, List
 from pathlib import Path
-from openai import OpenAI
-
-# Load API configuration
-try:
-    import config
-    from model_config import NARRATIVE_COMPRESSION_MODEL
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
-except ImportError as e:
-    print(f"ERROR: Missing configuration file - {e}")
-    print("Please ensure both config.py (with OPENAI_API_KEY) and model_config.py exist")
-    sys.exit(1)
+from core.ai import api_client
+import config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T084", "utils/compression/ai_narrative_compressor_agentic.py", 267)
 
 # Import token tracking
 try:
@@ -101,7 +95,7 @@ Notes:
 
 * **Tables**:
   * `@C` people only; reuse existing IDs where names match exactly.
-  * `@L` longest canonical names (e.g., "Black Lantern Hearth", not "Hearth").
+  * `@L` reuse existing canon location names EXACTLY as written in CANON.codebook.L. Do NOT rename, paraphrase, or expand them. Only create new @L entries for locations not in the canon. For new locations, use the longest canonical name from the passage.
   * `@S` small known list (Aid, Bless, Shield, Mage Armor, Cure Wounds, Guidance, Light, Detect Magic).
   * `@I` compact tokens (lowercase): `armor, boots, ssword×2, sbow, cloak, weapons, gear, stew, ale, porridge`.
 
@@ -122,6 +116,7 @@ Notes:
   * Example: "3) @L2 prep with:1,2,3,4. Eirik arranges gear; casts Aid spell twice; party readies for journey."
   * `with:` uses **IDs only**, up to 6.
   * End every beat with a period. Number beats `1)..N)`.
+  * **Game-mechanical values**: When the passage states specific numeric outcomes (damage dealt, HP healed, spell slots recovered, DC checks, dice rolls), preserve these numbers in the beat text. They are load-bearing game state, not expendable flavor. Example: "Aldric casts Cure Wounds on Tarin, healing 8 HP" NOT "Aldric heals Tarin".
   * If a known spell appears in the passage (e.g., Aid), include it in @S and reference it in at least one beat.
 
 ## Agentic freedoms (what you can decide)
@@ -148,6 +143,37 @@ Notes:
 7. **Beat quality**: Each beat should be meaningful. Prose descriptions help preserve narrative flow.
 
 If any check fails, **repair your block** and re-run the rubric. Return only the final JSON."""
+
+
+def resolve_agentic_compression_runtime(
+    mode: str = "agentic", provider: str = None
+) -> Dict[str, Any]:
+    """Snapshot the provider/config/prompt identity used by one T084 call.
+
+    The snapshot is shared with the outer cache so a provider switch cannot
+    cause a response from one provider to be stored under another provider's
+    cache key.
+    """
+    if provider is None:
+        from model_config import get_provider
+
+        provider = get_provider()
+
+    configs = {
+        "openai": config.AGENTIC_COMPRESS_GPT54MINI_NONE,
+        "gemini": config.AGENTIC_COMPRESS_GEMINI_PRO_LOW,
+        "lmstudio": config.AGENTIC_COMPRESS_LMSTUDIO,
+        "legacy": config.AGENTIC_COMPRESS_LEGACY,
+    }
+    provider_config = dict(configs.get(provider, configs["legacy"]))
+    return {
+        "callsite": "T084",
+        "provider": provider,
+        "config": provider_config,
+        "mode": mode,
+        "temperature": 0.1,
+        "prompt_sha256": hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest(),
+    }
 
 def validate_block_text_minimal(t: str) -> List[str]:
     """Minimal validation - relaxed for prose-enhanced beats"""
@@ -178,7 +204,14 @@ def validate_block_text_minimal(t: str) -> List[str]:
     
     return errs
 
-def compress_with_ai(narrative: str, canon: Dict[str, Any] = None, mode: str = "agentic") -> Dict[str, Any]:
+def compress_with_ai(
+    narrative: str,
+    canon: Dict[str, Any] = None,
+    mode: str = "agentic",
+    *,
+    provider_snapshot: str = None,
+    provider_config: Dict[str, Any] = None,
+) -> Dict[str, Any]:
     """
     Compress narrative text using GPT-4.1-mini with agentic approach
     
@@ -211,6 +244,10 @@ def compress_with_ai(narrative: str, canon: Dict[str, Any] = None, mode: str = "
         }
     }
     
+    runtime = resolve_agentic_compression_runtime(mode, provider_snapshot)
+    provider_snapshot = runtime["provider"]
+    compress_config = dict(provider_config or runtime["config"])
+
     max_retries = 1  # Keep retries minimal for agentic approach
     
     for attempt in range(max_retries + 1):
@@ -227,12 +264,12 @@ def compress_with_ai(narrative: str, canon: Dict[str, Any] = None, mode: str = "
                     "instruction": "Re-emit fixing the format issue. Ensure exactly one EVT block."
                 })})
             
-            response = client.chat.completions.create(
-                model=NARRATIVE_COMPRESSION_MODEL,
+            response = capture_and_fanout("T084", api_client.create_completion,
+                _request_provider=provider_snapshot,
                 messages=messages,
-                temperature=0.1,
-                top_p=1
-            )
+                model=compress_config["model"],
+                temperature=runtime["temperature"],
+                **{k: v for k, v in compress_config.items() if k != "model"})
             
             # Track token usage
             if USAGE_TRACKING_AVAILABLE:
@@ -259,9 +296,12 @@ def compress_with_ai(narrative: str, canon: Dict[str, Any] = None, mode: str = "
                 block_text = result["blocks"][0].get("text", "")
                 violations = validate_block_text_minimal(block_text)
                 
-                if violations and attempt < max_retries:
-                    print(f"Format issue detected: {violations}, retrying...")
-                    continue
+                if violations:
+                    if attempt < max_retries:
+                        print(f"Format issue detected: {violations}, retrying...")
+                        continue
+                    print(f"ERROR: Compression remained invalid: {violations}")
+                    return None
             
             return result
             

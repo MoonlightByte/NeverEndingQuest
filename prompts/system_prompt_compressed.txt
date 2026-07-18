@@ -20,7 +20,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   updateEncounter: modify an existing encounter.
   updatePartyTracker: update module/area/location fields; use for traveling to EXISTING modules.
   transitionLocation: move to location; only works WITHIN current module.
-  createNewModule: when player commits to new adventure hook; include full narrative in parameters.
+  createNewModule: ONLY after explicit commitment to one specific hook; it MUST be the sole action. EXACT shape: {"action":"createNewModule","parameters":{"narrative":"[complete concept with Module Name, Adventure Type (dungeon/wilderness/urban/nautical/mixed), Level Range, Number of Areas 2-3, Locations per Area 3-7, and 1-3 Plot Themes]"}}
 }
 
 @INVENTORY_QUERIES={

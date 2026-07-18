@@ -81,6 +81,7 @@ import os
 import re
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import safe_json_load
+from utils.character_sheet_contract import normalize_for_runtime
 from utils.plot_formatting import format_plot_for_ai
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from core.ai.atlas_builder import build_atlas_for_module, format_atlas_for_conversation
@@ -314,6 +315,7 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
     has_unprocessed_transition = False
     transition_from_module = None
     transition_to_module = None
+    transition_tail = []
     
     # Check last few messages for an unprocessed transition marker
     for i in range(max(0, len(conversation_history) - 5), len(conversation_history)):
@@ -327,6 +329,21 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
                     transition_from_module = match.group(1)
                     transition_to_module = match.group(2)
                     has_unprocessed_transition = True
+                    # Archive switching replaces the source-module history,
+                    # but messages produced after the marker belong to the
+                    # newly published destination turn. Preserve that
+                    # user/assistant tail (especially the seamless arrival)
+                    # after selecting the destination archive.
+                    transition_tail = [
+                        later_msg
+                        for later_msg in conversation_history[i + 1 :]
+                        if later_msg.get("role") in {"user", "assistant"}
+                        and not (
+                            later_msg.get("role") == "user"
+                            and "Module transition:"
+                            in later_msg.get("content", "")
+                        )
+                    ]
                     print(f"DEBUG: [update_conversation_history] Found unprocessed transition: {transition_from_module} -> {transition_to_module}")
                     break
     
@@ -485,16 +502,12 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
             print(f"DEBUG: [Module Transition] Archive directory not found - starting fresh")
             updated_history = []
 
+        updated_history.extend(transition_tail)
+
     # Insert world state information
     try:
         from core.managers.campaign_manager import CampaignManager
         campaign_manager = CampaignManager()
-
-        # CRITICAL: Use fresh party_tracker_data from campaign_manager if available
-        # CampaignManager reloads party_tracker after module integration, fixing stale location IDs
-        if hasattr(campaign_manager, 'party_tracker_data') and campaign_manager.party_tracker_data:
-            party_tracker_data = campaign_manager.party_tracker_data
-            print(f"DEBUG: [update_conversation_history] Using fresh party_tracker from CampaignManager. Location: {party_tracker_data.get('worldConditions', {}).get('currentLocationId', 'Unknown')}")
 
         available_modules = campaign_manager.campaign_data.get('availableModules', [])
 
@@ -506,6 +519,14 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
                 party_data = safe_json_load(party_tracker_file)
                 if party_data:
                     current_module = party_data.get('module', 'Unknown')
+                    # #19: refresh party_tracker_data from disk so the area/location
+                    # IDs read further below reflect any module-integration updates
+                    # (module_stitcher rewrites location IDs during integration).
+                    # Restores the protection lost when CampaignManager's constructor
+                    # became side-effect-free (its party_tracker_data is now always
+                    # None). Disk is the authoritative post-integration source; this
+                    # only rebinds the local, not the caller's variable.
+                    party_tracker_data = party_data
         except:
             # Fallback to parameter if file reading fails
             current_module = party_tracker_data.get('module', 'Unknown') if party_tracker_data else 'Unknown'
@@ -734,6 +755,13 @@ def update_character_data(conversation_history, party_tracker_data):
                     if not isinstance(member_data, dict):
                         print(f"Warning: {member_file} contains corrupted data (not a dictionary). Skipping.")
                         continue
+
+                    member_data, repaired_fields = normalize_for_runtime(member_data, character_type="player")
+                    if repaired_fields:
+                        debug(
+                            f"REPAIR: Normalized player sheet for {member_data.get('name', member)}: {', '.join(repaired_fields)}",
+                            category="conversation_management",
+                        )
                     
                     # Format equipment list with quantities
                     equipment_list = []
@@ -808,7 +836,7 @@ BG FEAT: {bg_feature_name}
 FEATS: {', '.join([f"{feat['name']}" for feat in member_data.get('feats', [])])}
 TEMP FX: {', '.join([f"{effect['name']}" for effect in member_data.get('temporaryEffects', [])])}
 EQUIP: {equipment_str}
-AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in member_data['ammunition']])}
+AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in member_data.get('ammunition', [])])}
 ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damageType']})" for atk in member_data['attacksAndSpellcasting']])}
 SPELLCASTING: {member_data.get('spellcasting', {}).get('ability', 'N/A')} | DC: {member_data.get('spellcasting', {}).get('spellSaveDC', 'N/A')} | ATK: +{member_data.get('spellcasting', {}).get('spellAttackBonus', 'N/A')}
 SPELLS: {', '.join([f"{level}: {', '.join(spells)}" for level, spells in member_data.get('spellcasting', {}).get('spells', {}).items() if spells])}
@@ -838,6 +866,13 @@ FLAWS: {member_data['flaws']}
                     if not isinstance(npc_data, dict):
                         print(f"Warning: {npc_file} contains corrupted data (not a dictionary). Skipping.")
                         continue
+
+                    npc_data, repaired_fields = normalize_for_runtime(npc_data, character_type="npc")
+                    if repaired_fields:
+                        debug(
+                            f"REPAIR: Normalized NPC sheet for {npc_data.get('name', npc_name)}: {', '.join(repaired_fields)}",
+                            category="conversation_management",
+                        )
                     
                     # Format equipment list with quantities
                     equipment_list = []

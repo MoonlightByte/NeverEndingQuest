@@ -749,6 +749,11 @@
             margin-left: 10px;
         }
         
+        .first-run-banner { display: flex; align-items: center; gap: 12px; margin: 8px; padding: 10px 14px; background: #2b3a55; border: 1px solid #4a6da7; border-radius: 6px; color: #dde6f5; font-size: 13px; line-height: 1.4; }
+        .first-run-banner-text { flex: 1; }
+        .first-run-banner-dismiss { background: #4a6da7; color: #fff; border: none; border-radius: 4px; padding: 5px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .first-run-banner-dismiss:hover { background: #5b80c0; }
+
         .panel-content {
             flex: 1;
             overflow-y: auto;
@@ -4207,7 +4212,42 @@
             outline: none;
             border-color: #4CAF50;
         }
-        
+
+        .settings-help {
+            font-size: 11px;
+            color: #888;
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+
+        .settings-btn { background:#444; color:#eee; border:1px solid #666; border-radius:4px;
+            padding:5px 10px; font-size:12px; cursor:pointer; }
+        .settings-btn:hover { background:#555; }
+        .settings-btn:disabled { opacity:0.6; cursor:default; }
+
+        /* Provider section needs a stacked layout so help text doesn't collapse */
+        .settings-item-provider {
+            display: block;
+            padding-top: 2px;
+        }
+
+        .settings-provider-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .settings-item-provider .settings-select {
+            width: 170px;
+            flex-shrink: 0;
+        }
+
+        .settings-provider-help {
+            margin-top: 8px;
+            margin-left: 0;
+        }
+
         .voice-controls {
             display: flex;
             align-items: center;
@@ -4406,13 +4446,73 @@
                         </div>
                     </div>
                     <div class="settings-section">
-                        <div class="settings-section-title">Model</div>
-                        <div class="settings-item" id="model-toggle-label">
-                            <span id="model-toggle-text">GPT-4.1</span>
-                            <label class="settings-toggle">
-                                <input type="checkbox" id="model-toggle">
-                                <span class="settings-toggle-slider"></span>
-                            </label>
+                        <div class="settings-section-title">AI Provider</div>
+                        <div class="settings-item settings-item-provider">
+                            <div class="settings-provider-row">
+                                <label for="model-provider-select">Provider</label>
+                                <select class="settings-select" id="model-provider-select"
+                                        title="Each AI task uses a model selected specifically for that task type based on quality testing">
+                                    <option value="legacy">Legacy (GPT-4.1) - Stable baseline</option>
+                                    <option value="openai">OpenAI (GPT-5.x) - Next-gen, tested per task</option>
+                                    <option value="gemini">Gemini 3.1 - Alternative provider, tested per task</option>
+                                    <option value="lmstudio">Local / Custom Server (LM Studio, Ollama, OpenRouter...)</option>
+                                </select>
+                            </div>
+                            <div class="settings-help settings-provider-help" id="provider-help-text">
+                                Models are selected per-task based on quality testing.
+                                Legacy is recommended for stability.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section" id="local-endpoint-settings" style="display:none;">
+                        <div class="settings-section-title">Local / Custom Server</div>
+                        <div class="settings-help">
+                            Point at any OpenAI-compatible server (LM Studio, Ollama, vLLM, OpenRouter,
+                            or a remote host). Leave blank to use the default local server at localhost:1234.
+                        </div>
+                        <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:6px;">
+                            <label for="local-base-url">Server URL</label>
+                            <input class="settings-select" type="text" id="local-base-url"
+                                   style="width:100%;" placeholder="http://localhost:1234/v1">
+                            <label for="local-model">Model name (optional)</label>
+                            <input class="settings-select" type="text" id="local-model"
+                                   style="width:100%;" placeholder="e.g. local-model or an OpenRouter model id">
+                            <label for="local-api-key">API key (optional)</label>
+                            <input class="settings-select" type="password" id="local-api-key"
+                                   style="width:100%;" placeholder="leave blank for local servers">
+                            <div class="settings-item" style="gap:8px;">
+                                <button class="settings-btn" id="local-save-btn">Save</button>
+                                <button class="settings-btn" id="local-test-btn">Test Connection</button>
+                            </div>
+                            <div class="settings-status" id="local-endpoint-status"
+                                 style="display:none; margin-top:6px; font-size:12px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section" id="openai-key-settings">
+                        <div class="settings-section-title">OpenAI API Key</div>
+                        <div class="settings-help">
+                            Needed for the Legacy and OpenAI providers. Stored locally on this machine.
+                            <span id="openai-key-status-text"></span>
+                        </div>
+                        <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:6px;">
+                            <input class="settings-select" type="password" id="openai-key-input"
+                                   style="width:100%;" placeholder="sk-...">
+                            <button class="settings-btn" id="openai-key-save-btn">Save Key</button>
+                        </div>
+                    </div>
+
+                    <div class="settings-section" id="gemini-key-settings" style="display:none;">
+                        <div class="settings-section-title">Gemini API Key</div>
+                        <div class="settings-help">
+                            Needed for the Gemini provider. Stored locally on this machine.
+                            Get a key at https://aistudio.google.com/apikey
+                            <span id="gemini-key-status-text"></span>
+                        </div>
+                        <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:6px;">
+                            <input class="settings-select" type="password" id="gemini-key-input"
+                                   style="width:100%;" placeholder="AIza...">
+                            <button class="settings-btn" id="gemini-key-save-btn">Save Key</button>
                         </div>
                     </div>
                 </div>
@@ -4485,6 +4585,10 @@
             <!-- Dice Results Area -->
             <div class="dice-results" id="dice-results" style="display: none;"></div>
             
+            <div class="first-run-banner" id="first-run-banner" style="display: none;">
+                <span class="first-run-banner-text">Welcome to NeverEndingQuest! Before you start, open <strong>Settings</strong> (gear icon, top right) to choose your AI provider. Want local/zero-cost or a custom server? Pick <strong>Local / Custom Server</strong>, paste your endpoint URL, then click <strong>Test Connection</strong>. You can also set your OpenAI API key there -- no file editing needed.</span>
+                <button class="first-run-banner-dismiss" id="first-run-banner-dismiss" type="button">Dismiss</button>
+            </div>
             <div class="panel-content" id="game-output"></div>
             <div class="input-container">
                 <input 
@@ -4566,6 +4670,9 @@
         const socket = io();
         let connected = false;
         let gameStarted = false;
+        let startupInputEnabled = false;
+        let serverRestartExpected = false;
+        let restartProbeActive = false;
         let initiativeOrder = []; // Store the ordered list of combatants
         let playerName = '';      // Store the player's name for highlighting
         let hoverTimer = null;    // For managing hover delay on video preview
@@ -5127,7 +5234,7 @@
                 messageDiv.appendChild(avatar);
                 messageDiv.appendChild(contentDiv);
                 
-            } else if (message.type === 'system' || message.type === 'error') {
+            } else if (message.type === 'system' || message.type === 'error' || message.type === 'startup') {
                 const contentDiv = document.createElement('div');
                 contentDiv.className = 'message-content';
                 const text = document.createElement('div');
@@ -5419,8 +5526,18 @@
             loadCharacterStats();
             requestPlotData(); // <--- ADD THIS
             requestPartyData(); // Load party display on connect
+            if (!gameStarted) {
+                addMessage('game-output', { type: 'system', content: 'Welcome to NeverEndingQuest. Press the button at the top right to begin. New here? Open Settings (gear icon) to pick your AI provider -- Legacy (GPT-4.1) is the recommended default.' });
+                if (!localStorage.getItem('neq_hasPlayed')) {
+                    document.getElementById('start-button').textContent = 'New Game';
+                }
+            }
+            if (!gameStarted && !localStorage.getItem('neq_bannerDismissed')) {
+                var _frb = document.getElementById('first-run-banner');
+                if (_frb) { _frb.style.display = 'flex'; }
+            }
         });
-        
+
         socket.on('disconnect', () => {
             connected = false;
             gameStarted = false;
@@ -5428,10 +5545,18 @@
             document.getElementById('status-indicator').classList.remove('connected');
             document.getElementById('user-input').disabled = true;
             document.getElementById('send-button').disabled = true;
+            if (serverRestartExpected && !restartProbeActive) {
+                restartProbeActive = true;
+                setTimeout(reloadWhenServerReady, 500);
+            }
         });
         
         socket.on('game_started', (data) => {
             gameStarted = true;
+            startupInputEnabled = false;
+            var _frbHide = document.getElementById('first-run-banner');
+            if (_frbHide) { _frbHide.style.display = 'none'; }
+            localStorage.setItem('neq_hasPlayed', 'true');
             document.getElementById('start-button').textContent = 'Game Running';
             document.getElementById('start-button').disabled = true;
             document.getElementById('user-input').disabled = false;
@@ -5440,7 +5565,7 @@
             document.getElementById('load-button').disabled = false;
             document.getElementById('reset-button').disabled = false;
             document.getElementById('user-input').focus();
-            addMessage('game-output', { type: 'system', content: 'Game started! You can now enter commands.' });
+            addMessage('game-output', { type: 'system', content: 'Game started! You can now enter commands. Try things like: "look around", "talk to the innkeeper", "check my inventory", or "head north".' });
             loadCharacterStats();
             loadLocationData();
             requestInitiativeData(); // Check for combat on game start
@@ -5472,6 +5597,59 @@
             requestInitiativeData();
         });
 
+        socket.on('startup_status', (data) => {
+            if (data.status === 'in_progress') {
+                startupInputEnabled = true;
+                document.getElementById('start-button').textContent = 'Starting...';
+                document.getElementById('start-button').disabled = true;
+                document.getElementById('user-input').disabled = true;
+                document.getElementById('send-button').disabled = true;
+            } else if (data.status === 'failed') {
+                startupInputEnabled = false;
+                addMessage('game-output', { type: 'error', content: 'Startup handoff failed. You can use recovery from settings.' });
+            }
+        });
+
+        socket.on('startup_recovery_response', (data) => {
+            const status = data?.status || 'failed';
+            if (status === 'recovered') {
+                addMessage('game-output', { type: 'system', content: 'Startup recovery completed. Adventure flow resumed.' });
+            } else if (status === 'already_ready') {
+                addMessage('game-output', { type: 'system', content: 'Startup is already complete.' });
+            } else if (status === 'in_progress') {
+                addMessage('game-output', { type: 'system', content: 'Startup recovery is already in progress.' });
+            } else if (status === 'not_recoverable') {
+                addMessage('game-output', { type: 'error', content: 'Startup recovery not allowed in current state.' });
+            } else {
+                const reason = data?.error ? ` (${data.error})` : '';
+                const retryHint = data?.retryAfterSeconds ? ` Retry in ${data.retryAfterSeconds}s.` : '';
+                addMessage('game-output', { type: 'error', content: `Startup recovery failed${reason}.${retryHint}` });
+            }
+        });
+
+        // GAME_OUTPUT_DEDUP_START
+        const displayedGameMessageIds = new Set();
+        const displayedGameMessageOrder = [];
+        function addGameOutputMessage(message) {
+            if (!message || typeof message !== 'object') return false;
+            const messageId = typeof message.message_id === 'string'
+                ? message.message_id.trim()
+                : '';
+            if (messageId) {
+                if (displayedGameMessageIds.has(messageId)) return false;
+                displayedGameMessageIds.add(messageId);
+                displayedGameMessageOrder.push(messageId);
+                while (displayedGameMessageOrder.length > 200) {
+                    displayedGameMessageIds.delete(
+                        displayedGameMessageOrder.shift()
+                    );
+                }
+            }
+            addMessage('game-output', message);
+            return true;
+        }
+        // GAME_OUTPUT_DEDUP_END
+
         // Handle cached messages from previous session
         socket.on('cached_messages', (messages) => {
             console.log(`[MESSAGE_CACHE] Restoring ${messages.length} cached messages`);
@@ -5482,7 +5660,7 @@
                     content: '--- Previous Session Messages ---'
                 });
                 messages.forEach(msg => {
-                    addMessage('game-output', msg);
+                    addGameOutputMessage(msg);
                 });
                 addMessage('game-output', {
                     type: 'system',
@@ -5492,7 +5670,7 @@
         });
 
         socket.on('game_output', (message) => {
-            addMessage('game-output', message);
+            if (!addGameOutputMessage(message)) return;
             // Check for combat immediately after any game output
             requestInitiativeData();
             // After any game output, refresh plot data with a slight delay
@@ -5639,7 +5817,7 @@
         function sendInput() {
             const input = document.getElementById('user-input');
             const value = input.value.trim();
-            if (value && connected && gameStarted) {
+            if (value && connected && (gameStarted || startupInputEnabled)) {
                 socket.emit('user_input', { input: value });
                 input.value = '';
                 input.focus();
@@ -6900,41 +7078,143 @@
                 };
             }
             
-            // Initialize model toggle
-            const modelToggle = document.getElementById('model-toggle');
-            const modelToggleText = document.getElementById('model-toggle-text');
-            const modelToggleLabel = document.getElementById('model-toggle-label');
-            
-            // Create model tooltip
-            const modelTooltip = document.createElement('div');
-            modelTooltip.className = 'model-tooltip';
-            modelTooltip.innerHTML = `
-                <div class="model-tooltip-header">GPT-5 Model Information</div>
-                <div class="model-tooltip-content">
-                    <strong>Testing as GPT-4.1 replacement</strong><br>
-                    • Significant cost savings in token usage<br>
-                    • Slower response times (especially full model)<br>
-                    • More accurate and detailed responses<br>
-                    • Very structured, may break immersion
-                </div>
-                <div class="model-tooltip-warning">
-                    Warning: Untested - may have unpredictable results
-                </div>
-            `;
-            document.body.appendChild(modelTooltip);
-            
-            // Show tooltip on hover
-            modelToggleLabel.addEventListener('mouseenter', function(e) {
-                const rect = this.getBoundingClientRect();
-                modelTooltip.style.left = rect.left + 'px';
-                modelTooltip.style.top = (rect.bottom + 5) + 'px';
-                modelTooltip.classList.add('visible');
+            (function () {
+                var _d = document.getElementById('first-run-banner-dismiss');
+                if (_d) _d.addEventListener('click', function () {
+                    var _b = document.getElementById('first-run-banner');
+                    if (_b) { _b.style.display = 'none'; }
+                    localStorage.setItem('neq_bannerDismissed', 'true');
+                });
+            })();
+
+            // Initialize provider dropdown
+            const providerSelect = document.getElementById('model-provider-select');
+
+            const PROVIDER_HINTS = {
+                legacy:   'Legacy (GPT-4.1): stable baseline, recommended. Uses your OpenAI API key.',
+                openai:   'OpenAI (GPT-5.x): next-gen cloud, tested per task. Uses your OpenAI API key.',
+                gemini:   'Gemini 3.1: alternative cloud provider, tested per task. Requires a Google API key.',
+                lmstudio: 'Local / Custom Server: point at any OpenAI-compatible server below. Zero cost when local.'
+            };
+            function updateProviderHint(p) {
+                const el = document.getElementById('provider-help-text');
+                if (el && PROVIDER_HINTS[p]) { el.textContent = PROVIDER_HINTS[p]; }
+            }
+            function toggleLocalFields(p) {
+                const box = document.getElementById('local-endpoint-settings');
+                if (box) { box.style.display = (p === 'lmstudio') ? 'block' : 'none'; }
+            }
+            function toggleGeminiField(p) {
+                const box = document.getElementById('gemini-key-settings');
+                if (box) { box.style.display = (p === 'gemini') ? 'block' : 'none'; }
+            }
+
+            // Local/Custom endpoint load + save + test
+            socket.emit('get_local_endpoint');
+            socket.on('local_endpoint_changed', function (d) {
+                d = d || {};
+                var u = document.getElementById('local-base-url');
+                var m = document.getElementById('local-model');
+                var k = document.getElementById('local-api-key');
+                if (u) { u.value = d.base_url || ''; }
+                if (m) { m.value = d.model || ''; }
+                if (k) { k.placeholder = d.has_key ? '(saved - leave blank to keep)' : 'leave blank for local servers'; }
             });
-            
-            modelToggleLabel.addEventListener('mouseleave', function() {
-                modelTooltip.classList.remove('visible');
+            (function () {
+                var saveBtn = document.getElementById('local-save-btn');
+                if (saveBtn) saveBtn.addEventListener('click', function () {
+                    socket.emit('set_local_endpoint', {
+                        base_url: (document.getElementById('local-base-url') || {}).value || '',
+                        model: (document.getElementById('local-model') || {}).value || '',
+                        api_key: (document.getElementById('local-api-key') || {}).value || ''
+                    });
+                    var _lk = document.getElementById('local-api-key');
+                    if (_lk) { _lk.value = ''; }  // do not keep the secret in the DOM
+                });
+                var testBtn = document.getElementById('local-test-btn');
+                var statusEl = document.getElementById('local-endpoint-status');
+                function setStatus(msg, ok, pending) {
+                    if (!statusEl) return;
+                    statusEl.style.display = 'block';
+                    statusEl.textContent = msg;
+                    statusEl.style.color = pending ? '#888' : (ok ? '#2e7d32' : '#c62828');
+                }
+                if (testBtn) testBtn.addEventListener('click', function () {
+                    var base = (document.getElementById('local-base-url') || {}).value || '';
+                    if (!base.trim()) { setStatus('Please enter a Server URL first.', false, false); return; }
+                    setStatus('Testing connection...', false, true);
+                    testBtn.disabled = true;
+                    socket.emit('test_local_endpoint', {
+                        base_url: base,
+                        model: (document.getElementById('local-model') || {}).value || '',
+                        api_key: (document.getElementById('local-api-key') || {}).value || ''
+                    });
+                });
+                socket.on('local_endpoint_test_result', function (res) {
+                    if (testBtn) testBtn.disabled = false;
+                    res = res || {};
+                    setStatus((res.ok ? 'PASS: ' : 'FAIL: ') + (res.detail || ''), !!res.ok, false);
+                });
+            })();
+
+            // OpenAI key save + status
+            socket.emit('get_openai_key');
+            socket.on('openai_key_status', function (d) {
+                var el = document.getElementById('openai-key-status-text');
+                if (el) { el.textContent = (d && d.has_key) ? ' (a key is set)' : ' (no key set)'; }
             });
-            
+            (function () {
+                var b = document.getElementById('openai-key-save-btn');
+                if (b) b.addEventListener('click', function () {
+                    var inp = document.getElementById('openai-key-input');
+                    socket.emit('set_openai_key', { api_key: inp ? inp.value : '' });
+                    if (inp) inp.value = '';  // do not keep the secret in the field
+                });
+            })();
+
+            // Gemini key save + status
+            socket.emit('get_gemini_key');
+            socket.on('gemini_key_status', function (d) {
+                var el = document.getElementById('gemini-key-status-text');
+                if (el) { el.textContent = (d && d.has_key) ? ' (a key is set)' : ' (no key set)'; }
+            });
+            (function () {
+                var b = document.getElementById('gemini-key-save-btn');
+                if (b) b.addEventListener('click', function () {
+                    var inp = document.getElementById('gemini-key-input');
+                    socket.emit('set_gemini_key', { api_key: inp ? inp.value : '' });
+                    if (inp) inp.value = '';  // do not keep the secret in the field
+                });
+            })();
+
+            // Fetch current provider from server on page load
+            socket.emit('get_model_provider');
+
+            // Handle provider selection changes
+            providerSelect.addEventListener('change', function() {
+                const provider = this.value;
+                updateProviderHint(provider);
+                toggleLocalFields(provider);
+                toggleGeminiField(provider);
+                // Show loading state
+                this.disabled = true;
+                this.style.opacity = '0.6';
+                socket.emit('set_model_provider', { provider: provider });
+                console.log('Provider changed to:', provider);
+            });
+
+            // Listen for provider change confirmation from server
+            socket.on('provider_changed', function(data) {
+                console.log('Provider change confirmed:', data);
+                providerSelect.value = data.provider;
+                updateProviderHint(data.provider);
+                toggleLocalFields(data.provider);
+                toggleGeminiField(data.provider);
+                // Clear loading state
+                providerSelect.disabled = false;
+                providerSelect.style.opacity = '1';
+            });
+
             // Create auto-play tooltip
             const autoplayTooltip = document.createElement('div');
             autoplayTooltip.className = 'autoplay-tooltip';
@@ -6959,61 +7239,150 @@
                 autoplayTooltip.classList.remove('visible');
             });
             
-            // Handle model toggle changes
-            modelToggle.addEventListener('change', function() {
-                const useGPT5 = this.checked;
-                
-                // Show warning when enabling GPT-5
-                if (useGPT5) {
-                    const hasSeenWarning = localStorage.getItem('gpt5WarningShown');
-                    if (!hasSeenWarning) {
-                        showGPT5Warning();
-                        localStorage.setItem('gpt5WarningShown', 'true');
-                    }
+            // MODULE_PROGRESS_REDUCER_START
+            const moduleProgressState = {
+                activeBuildId: null,
+                terminalBuildId: null,
+                lastStage: -1,
+                lastPercentage: -1,
+                lastEventKey: null,
+                hideTimer: null
+            };
+
+            function boundedProgressInteger(value, minimum, maximum) {
+                const number = Number(value);
+                if (!Number.isFinite(number)) return null;
+                return Math.max(minimum, Math.min(maximum, Math.trunc(number)));
+            }
+
+            function activateModuleBuild(buildId, modal) {
+                if (moduleProgressState.hideTimer !== null) {
+                    clearTimeout(moduleProgressState.hideTimer);
+                    moduleProgressState.hideTimer = null;
                 }
-                
-                modelToggleText.textContent = useGPT5 ? 'GPT-5' : 'GPT-4.1';
-                
-                // Send toggle state to backend
-                socket.emit('toggle_model', { use_gpt5: useGPT5 });
-                
-                // Log the change
-                console.log('Model toggled to:', useGPT5 ? 'GPT-5' : 'GPT-4.1');
-            });
-            
-            // Listen for model toggle confirmation from server
-            socket.on('model_toggled', function(data) {
-                console.log('Model toggle confirmed:', data);
-                modelToggle.checked = data.use_gpt5;
-                modelToggleText.textContent = data.use_gpt5 ? 'GPT-5' : 'GPT-4.1';
-            });
-            
-            // Listen for module creation progress updates
+                moduleProgressState.activeBuildId = buildId;
+                moduleProgressState.terminalBuildId = null;
+                moduleProgressState.lastStage = -1;
+                moduleProgressState.lastPercentage = -1;
+                moduleProgressState.lastEventKey = null;
+                modal.dataset.moduleBuildId = buildId;
+                delete modal.dataset.moduleTerminal;
+            }
+
             socket.on('module_creation_progress', function(data) {
-                console.log('Module creation progress:', data);
+                if (!data || typeof data !== 'object') return;
+                const buildId = typeof data.build_id === 'string'
+                    ? data.build_id.trim()
+                    : '';
+                if (!buildId) return;
+
+                const status = typeof data.status === 'string'
+                    ? data.status.toLowerCase()
+                    : '';
+                const isRunning = status === 'running';
+                const isTerminal = status === 'published'
+                    || status === 'generated'
+                    || status === 'failed';
+                if (!isRunning && !isTerminal) return;
+                if (data.terminal !== isTerminal) return;
+                if (isRunning && Object.prototype.hasOwnProperty.call(data, 'success')) return;
+                if (isTerminal) {
+                    const expectedSuccess = status !== 'failed';
+                    if (data.success !== expectedSuccess) return;
+                }
+
                 const modal = document.getElementById('module-progress-modal');
+                if (!modal) return;
+                if (moduleProgressState.activeBuildId === null) {
+                    activateModuleBuild(buildId, modal);
+                } else if (moduleProgressState.activeBuildId !== buildId) {
+                    // Only a running event may begin the build after a completed
+                    // one. Foreign events cannot interrupt an active build.
+                    if (
+                        moduleProgressState.terminalBuildId
+                            === moduleProgressState.activeBuildId
+                        && isRunning
+                    ) {
+                        activateModuleBuild(buildId, modal);
+                    } else {
+                        return;
+                    }
+                } else if (moduleProgressState.terminalBuildId === buildId) {
+                    return;
+                }
+
+                const totalStages = boundedProgressInteger(data.total_stages, 1, 99);
+                if (totalStages === null) return;
+                const stage = boundedProgressInteger(data.stage, 0, totalStages);
+                const percentage = boundedProgressInteger(
+                    data.percentage,
+                    0,
+                    isRunning ? 99 : 100
+                );
+                if (stage === null || percentage === null) return;
+                if (
+                    stage < moduleProgressState.lastStage
+                    || percentage < moduleProgressState.lastPercentage
+                ) return;
+
+                const stageLabel = typeof data.stage_name === 'string'
+                    ? data.stage_name
+                    : 'Processing...';
+                const message = typeof data.message === 'string'
+                    ? data.message
+                    : 'Working...';
+                const eventKey = [
+                    buildId, status, stage, totalStages, percentage,
+                    stageLabel, message
+                ].join('|');
+                if (eventKey === moduleProgressState.lastEventKey) return;
+
+                moduleProgressState.lastStage = stage;
+                moduleProgressState.lastPercentage = percentage;
+                moduleProgressState.lastEventKey = eventKey;
                 modal.style.display = 'block';
-                
-                // Update progress display
-                document.getElementById('current-stage').textContent = data.stage || 0;
-                document.getElementById('total-stages').textContent = data.total_stages || 9;
-                document.getElementById('stage-name').textContent = data.stage_name || 'Processing...';
-                document.getElementById('module-progress-bar').style.width = (data.percentage || 0) + '%';
-                document.getElementById('progress-percentage').textContent = (data.percentage || 0) + '%';
-                document.getElementById('progress-message').textContent = data.message || 'Working...';
-                
-                // Hide modal when complete
-                if (data.percentage >= 100) {
-                    setTimeout(() => {
-                        modal.style.display = 'none';
-                        // Show success message in game output
-                        addMessage({
-                            type: 'system',
-                            content: 'Module creation completed successfully!'
-                        });
-                    }, 3000); // Show completion for 3 seconds
+                modal.dataset.moduleBuildId = buildId;
+
+                const progressBar = document.getElementById('module-progress-bar');
+                const stageName = document.getElementById('stage-name');
+                const progressMessage = document.getElementById('progress-message');
+                document.getElementById('current-stage').textContent = String(stage);
+                document.getElementById('total-stages').textContent = String(totalStages);
+                stageName.textContent = stageLabel;
+                progressBar.style.width = String(percentage) + '%';
+                document.getElementById('progress-percentage').textContent
+                    = String(percentage) + '%';
+                progressMessage.textContent = message;
+
+                if (status === 'failed') {
+                    progressBar.style.background = 'linear-gradient(90deg, #b71c1c, #ef5350)';
+                    stageName.style.color = '#ff8a80';
+                    progressMessage.style.color = '#ff8a80';
+                } else {
+                    progressBar.style.background = 'linear-gradient(90deg, #4CAF50, #66BB6A)';
+                    stageName.style.color = '#d4d4d4';
+                    progressMessage.style.color = '#a0a0a0';
+                }
+
+                // Progress owns only this modal. Player chat is delivered by
+                // the safe game-output path with its own stable message ID.
+                if (isTerminal) {
+                    moduleProgressState.terminalBuildId = buildId;
+                    modal.dataset.moduleTerminal = buildId + ':' + status;
+                    const capturedBuildId = buildId;
+                    moduleProgressState.hideTimer = setTimeout(function() {
+                        if (
+                            moduleProgressState.activeBuildId === capturedBuildId
+                            && moduleProgressState.terminalBuildId === capturedBuildId
+                            && modal.dataset.moduleBuildId === capturedBuildId
+                        ) {
+                            modal.style.display = 'none';
+                            moduleProgressState.hideTimer = null;
+                        }
+                    }, 3000);
                 }
             });
+            // MODULE_PROGRESS_REDUCER_END
             
             // --- START: Additions for Robust Media Popup Closing ---
             const mediaPopup = document.getElementById('media-popup');
@@ -7334,14 +7703,6 @@
         function closeNPCDetails() { document.getElementById('npc-details-modal').style.display = 'none'; }
         
         // Full image display functions
-        function showGPT5Warning() {
-            document.getElementById('gpt5-warning-modal').style.display = 'block';
-        }
-        
-        function closeGPT5Warning() {
-            document.getElementById('gpt5-warning-modal').style.display = 'none';
-        }
-        
         function showNPCSpells(npcName, spellsData) {
             const modal = document.getElementById('npc-spells-modal');
             const title = document.getElementById('npc-spells-modal-title');
@@ -7543,50 +7904,6 @@
         </div>
     </div>
     
-    <!-- GPT-5 Warning Modal -->
-    <div id="gpt5-warning-modal" class="npc-details-modal" style="display: none;">
-        <div class="npc-details-modal-content" style="max-width: 600px;">
-            <div class="npc-details-header" style="border-bottom: 2px solid #FF6B35;">
-                <div class="npc-details-title" style="color: #FFA500;">GPT-5 Model Warning</div>
-                <span class="npc-details-close" onclick="closeGPT5Warning()">&times;</span>
-            </div>
-            <div class="npc-details-body" style="padding: 20px; line-height: 1.6;">
-                <p style="color: #4CAF50; font-weight: bold; margin-bottom: 15px;">
-                    GPT-5 mini is being tested as a replacement for GPT-4.1
-                </p>
-                <p style="margin-bottom: 15px;">
-                    This experimental model offers <strong style="color: #4CAF50;">significant cost savings</strong> in token utilization while potentially maintaining comparable performance.
-                </p>
-                <div style="background-color: #3a3a3a; padding: 15px; border-radius: 5px; border-left: 3px solid #4CAF50; margin: 15px 0;">
-                    <p style="color: #4CAF50; font-weight: bold; margin-bottom: 10px;">
-                        Performance Characteristics:
-                    </p>
-                    <ul style="margin: 0; padding-left: 20px;">
-                        <li><strong>Slower response times</strong> than GPT-4.1 (especially when using full model)</li>
-                        <li><strong>More accurate</strong> and detailed responses expected</li>
-                        <li>Please be patient while responses generate</li>
-                    </ul>
-                </div>
-                <div style="background-color: #3a3a3a; padding: 15px; border-radius: 5px; border-left: 3px solid #FFA500; margin: 15px 0;">
-                    <p style="color: #FFA500; font-weight: bold; margin-bottom: 10px;">
-                        IMPORTANT NOTICE:
-                    </p>
-                    <ul style="margin: 0; padding-left: 20px;">
-                        <li>This model is currently <strong>UNTESTED</strong> in production</li>
-                        <li>May produce <strong>unpredictable results</strong></li>
-                        <li>Combat and complex interactions may behave differently</li>
-                        <li>GPT-5 is very structured and may <strong>talk out of DM turn</strong>, breaking immersion</li>
-                        <li>Use at your own risk during this testing phase</li>
-                    </ul>
-                </div>
-                <p style="margin-top: 15px; text-align: center;">
-                    <button onclick="closeGPT5Warning()" style="background-color: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                        I Understand - Proceed
-                    </button>
-                </p>
-            </div>
-        </div>
-    </div>
     <div id="search-popup" class="search-popup"><div class="search-popup-content"><div class="search-popup-header"><div class="search-popup-title">Search Inventory</div><span class="search-popup-close" onclick="closeSearchPopup()">&times;</span></div><input type="text" class="search-popup-input" id="search-popup-input" placeholder="Search items..." onkeyup="performSearch()"></div></div>
     <div id="save-dialog-overlay" class="save-dialog-overlay">
         <div class="save-dialog enhanced-save-dialog">
@@ -7775,6 +8092,7 @@
         function performLoad() {
             if (!selectedSaveFolder) return;
             if (confirm('This will restore the selected save and restart the server. Your current progress will be lost. Continue?')) {
+                serverRestartExpected = true;
                 socket.emit('action', { action: 'restoreGame', parameters: { saveFolder: selectedSaveFolder } });
                 closeLoadDialog();
             }
@@ -8145,6 +8463,7 @@
             }
 
             addMessage('game-output', { type: 'system', content: 'Campaign reset initiated... The application will become unresponsive and may require a manual restart after the process completes.' });
+            serverRestartExpected = true;
             socket.emit('action', { action: 'nuclearReset', parameters: {} });
             closeResetDialog();
 
@@ -8177,22 +8496,39 @@
             addMessage('game-output', { type: 'system', content: data.content });
         });
 
+        function reloadWhenServerReady() {
+            fetch(`/?restart_probe=${Date.now()}`, { cache: 'no-store' })
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    window.location.replace(`/?restarted=${Date.now()}`);
+                })
+                .catch(() => setTimeout(reloadWhenServerReady, 1000));
+        }
+
         socket.on('restore_complete', (data) => {
+            serverRestartExpected = true;
             console.log('Restore complete signal received:', data.message);
             addMessage('game-output', { type: 'system', content: 'Game restored successfully. The page will now reload to sync with the new state.' });
             
-            setTimeout(() => {
-                window.location.reload();
-            }, 2000); 
+            // The server intentionally exits one second after this event and
+            // the launcher waits before restarting it. Poll after that gap so
+            // the browser cannot reload into a transient connection-refused
+            // page and remain stranded there.
+            if (!restartProbeActive) {
+                restartProbeActive = true;
+                setTimeout(reloadWhenServerReady, 2500);
+            }
         });
 
         socket.on('reset_complete', (data) => {
+            serverRestartExpected = true;
             console.log('Reset complete signal received:', data.message);
             addMessage('game-output', { type: 'system', content: 'Campaign has been reset. The page will now reload.' });
 
-            setTimeout(() => {
-                window.location.reload();
-            }, 2000);
+            if (!restartProbeActive) {
+                restartProbeActive = true;
+                setTimeout(reloadWhenServerReady, 2500);
+            }
         });
 
         // --- AUTO-UPDATE SOCKET HANDLERS ---
@@ -8281,4 +8617,4 @@
     </div>
     
 </body>
-</html>
+</html>

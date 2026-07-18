@@ -33,8 +33,10 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
-from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T049", "core/managers/storage_processor.py", 313)
 import config
+from core.ai import api_client
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
 import jsonschema
@@ -48,7 +50,9 @@ class StorageProcessor:
     
     def __init__(self):
         """Initialize storage processor"""
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
+        # No raw OpenAI client: all API calls route through api_client.create_completion()
+        # per the multi-provider migration. A direct OpenAI(api_key=...) here crashed at
+        # construction for Gemini/LM Studio users with no OPENAI_API_KEY (it was never used).
         self.model = config.DM_MAIN_MODEL  # Use full model, not mini
         self.schema_file = "schemas/storage_action_schema.json"
         # Get current module from party tracker for consistent path resolution
@@ -279,13 +283,39 @@ For "What's in our storage here?":
                 
                 # Create AI prompt
                 messages = self._create_processing_prompt(description, context)
-                
+
+                # T049: storage-action extraction (mini-tier JSON extraction).
+                # Route through the provider-aware router so MODEL_PROVIDER toggle
+                # actually drives which provider/model handles the call.
+                # HIGH-12 (#127): deferred import (read per call) so set_provider()
+                # changes propagate live -- never import MODEL_PROVIDER at module level.
+                from model_config import MODEL_PROVIDER
+                if MODEL_PROVIDER == "openai":
+                    sp_cfg = config.STORAGE_PROCESSOR_T049_GPT5MINI
+                elif MODEL_PROVIDER == "gemini":
+                    sp_cfg = config.STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_LOW
+                elif MODEL_PROVIDER == "lmstudio":
+                    sp_cfg = config.STORAGE_PROCESSOR_T049_LMSTUDIO
+                else:  # legacy
+                    sp_cfg = config.STORAGE_PROCESSOR_T049_LEGACY
+
+                # T049: fail loud (gemini-only) if the schema failed to load at import.
+                # Without response_schema, gemini-flash-lite emits narration instead of
+                # a storage operation and the action silently fails after retries.
+                if MODEL_PROVIDER == "gemini" and sp_cfg.get("response_schema") is None:
+                    raise RuntimeError(
+                        "T049 storage action aborted: Gemini response_schema is None "
+                        "(schemas/storage_action_schema.json failed to load at import). "
+                        "Restore the schema file or switch MODEL_PROVIDER off gemini."
+                    )
+
                 # Call AI model
-                response = self.client.chat.completions.create(
-                    model=self.model,
+                response = capture_and_fanout("T049", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
                     messages=messages,
-                    temperature=0.1  # Low temperature for consistency
-                )
+                    model=sp_cfg["model"],
+                    temperature=0.1,    # callsite owns temperature
+                    **{k: v for k, v in sp_cfg.items() if k != "model"})
                 
                 # Parse AI response
                 ai_response = response.choices[0].message.content.strip()
