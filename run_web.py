@@ -117,8 +117,8 @@ def parse_args(argv=None):
     parser.add_argument(
         "--ui",
         choices=("react", "legacy", "choose"),
-        default="react",
-        help="interface to open (default: react)",
+        default="legacy",
+        help="interface to open (default: legacy; use --ui react for the new player)",
     )
     return parser.parse_args(argv)
 
@@ -138,7 +138,7 @@ def create_default_party_tracker():
             return False
     return True
 
-def main(ui="react"):
+def main(ui="legacy"):
     # Check if config.py exists first
     if not os.path.exists('config.py'):
         print("[D20] Welcome to NeverEndingQuest! [D20]")

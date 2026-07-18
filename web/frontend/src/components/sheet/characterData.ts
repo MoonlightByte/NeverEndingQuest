@@ -236,6 +236,8 @@ export interface EquipmentItem {
   quantity: number
   equipped: boolean
   magical: boolean
+  consumable: boolean
+  spellLevel: number | null
   charges: { current: number; max: number } | null
 }
 
@@ -251,6 +253,8 @@ function toEquipmentItem(raw: unknown): EquipmentItem | null {
     quantity: num(item['quantity'], 1),
     equipped: item['equipped'] === true,
     magical: item['magical'] === true,
+    consumable: item['consumable'] === true,
+    spellLevel: typeof item['spellLevel'] === 'number' ? item['spellLevel'] : null,
     charges: charges ? { current: num(charges['current']), max: num(charges['max']) } : null,
   }
 }

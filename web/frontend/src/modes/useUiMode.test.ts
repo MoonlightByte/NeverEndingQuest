@@ -219,14 +219,12 @@ describe('mode machine driven through the stores', () => {
     expect(snapshotFromStores().mode).toBe('play')
     expect(snapshotFromStores().inputLocked).toBe(false)
 
-    // initiative_data_response active: the socket service writes BOTH stores.
+    // Initiative is the single authoritative combat owner.
     useWorld.getState().setInitiative({ active: true, combatants: [{}], round: 2 })
-    useSession.getState().setCombatActive(true)
     expect(snapshotFromStores().mode).toBe('combat')
 
     // initiative cleared
     useWorld.getState().setInitiative({ active: false, combatants: [] })
-    useSession.getState().setCombatActive(false)
     expect(snapshotFromStores().mode).toBe('play')
   })
 
@@ -266,7 +264,6 @@ describe('mode machine driven through the stores', () => {
     useSession.getState().setConnected(true)
     useSession.getState().gameStarted('go')
     useWorld.getState().setInitiative({ active: true, combatants: [{}], round: 1 })
-    useSession.getState().setCombatActive(true)
     expect(snapshotFromStores().mode).toBe('combat')
 
     useSession.getState().setConnected(false)

@@ -1,55 +1,23 @@
-/**
- * UpdateDialog (plan 4.4e, local edition) -- shown from the HeaderBar version
- * badge when version_status reports update_available. Informational only:
- * trigger_update is operator/toolkit scope (plan scope rules), so the player
- * app tells the operator where to update instead of emitting it.
- */
+import { useEffect } from 'react'
+import { emitC } from '../../services/socket'
+import { prepareForServerRestart, reloadWhenServerReady } from '../../services/restart'
 import { useDialogs, useSession } from '../../stores'
-import { DialogShell, dialogButtonPrimary } from './DialogShell'
+import { DialogShell, dialogButtonPrimary, dialogButtonSecondary } from './DialogShell'
 
 function UpdateDialogBody() {
   const version = useSession((s) => s.version)
+  const update = useDialogs((s) => s.update)
   const closeDialog = useDialogs((s) => s.closeDialog)
-
-  return (
-    <DialogShell title="Game Update" onClose={closeDialog}>
-      <div className="flex flex-col gap-3 font-body text-sm text-primary">
-        {version ? (
-          <>
-            <p>{version.message}</p>
-            <div className="rounded border-2 border-card bg-page p-3 font-log text-xs">
-              <div>
-                Installed version: <span className="text-accent">{version.local_version}</span>
-              </div>
-              <div>
-                Latest version: <span className="text-accent">{version.remote_version}</span>
-              </div>
-            </div>
-            {version.update_available ? (
-              <p className="text-secondary">
-                An update is available. Pull the latest release (git pull or the updater script)
-                and restart the server to apply it.
-              </p>
-            ) : (
-              <p className="text-secondary">You are running the latest version.</p>
-            )}
-          </>
-        ) : (
-          <p className="text-secondary">No version information received from the server yet.</p>
-        )}
-        <div className="mt-1 flex justify-end">
-          <button type="button" className={dialogButtonPrimary} onClick={closeDialog}>
-            Close
-          </button>
-        </div>
-      </div>
-    </DialogShell>
-  )
+  useEffect(() => { if (update.complete) void reloadWhenServerReady() }, [update.complete])
+  const proceed = async () => { await prepareForServerRestart(); useDialogs.getState().updateStarted(); emitC('trigger_update', undefined) }
+  return <DialogShell title="🔄 Update Available" onClose={closeDialog} maxWidth="500px" legacy>
+    <div className="font-chrome text-sm text-primary">
+      <p>{version ? `A new version is available: v${version.local_version} -> v${version.remote_version}` : 'A new version is available!'}</p>
+      <div className="my-4 rounded-md border-2 border-[#f44336] bg-[#4a1515] p-4 text-center"><strong className="block text-[#f44336]">⚠️ Backup Recommended</strong><p className="text-[#ffcdd2]">Before updating, we recommend backing up your saved games and any custom modules.</p></div>
+      <div className="grid grid-cols-2 gap-2"><button type="button" className={dialogButtonPrimary} disabled={update.running} onClick={() => void proceed()}>Proceed with Update</button><button type="button" className={dialogButtonSecondary} disabled={update.running} onClick={closeDialog}>Cancel</button></div>
+      {(update.running || update.log.length > 0 || update.error || update.complete) && <div className="mt-5 rounded border border-card bg-page p-3 font-log text-xs" role="status">{update.log.map((line, index) => <div key={`${line}-${index}`}>{line}</div>)}{update.error && <div className="text-red-400">{update.error}</div>}{update.complete && <div className="text-accent">{update.complete}</div>}</div>}
+    </div>
+  </DialogShell>
 }
 
-/** Self-gating on the dialogs store, like every other dialog. */
-export function UpdateDialog() {
-  const open = useDialogs((s) => s.open)
-  if (open !== 'update') return null
-  return <UpdateDialogBody />
-}
+export function UpdateDialog() { const open = useDialogs((s) => s.open); return open === 'update' ? <UpdateDialogBody /> : null }

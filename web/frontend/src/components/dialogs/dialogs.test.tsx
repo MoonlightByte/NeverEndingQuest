@@ -5,9 +5,10 @@
  * already in the stores render correctly.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 vi.mock('../../services/socket', () => ({ emitC: vi.fn() }))
+vi.mock('../../services/restart', () => ({ prepareForServerRestart: vi.fn(async () => 'server-a'), reloadWhenServerReady: vi.fn(async () => undefined) }))
 
 import { emitC } from '../../services/socket'
 import { useDialogs, useWorld } from '../../stores'
@@ -47,7 +48,7 @@ describe('SaveDialog', () => {
 })
 
 describe('LoadDialog', () => {
-  it('requests the save list on open and emits restoreGame for the selected save', () => {
+  it('requests the save list on open and emits restoreGame for the selected save', async () => {
     useDialogs.getState().openDialog('load')
     useDialogs.getState().setSaveList([
       { save_folder: 'save_001', save_mode: 'essential', module: 'Keep_of_Doom' },
@@ -59,10 +60,9 @@ describe('LoadDialog', () => {
     fireEvent.click(screen.getByText('save_001'))
     fireEvent.click(screen.getByRole('button', { name: 'Load Game' }))
 
-    expect(emitMock).toHaveBeenCalledWith('action', {
-      action: 'restoreGame',
-      parameters: { saveFolder: 'save_001' },
-    })
+    await waitFor(() => expect(emitMock).toHaveBeenCalledWith('action', {
+      action: 'restoreGame', parameters: { saveFolder: 'save_001' },
+    }))
   })
 
   it('emits deleteSave after confirmation', () => {
@@ -82,32 +82,31 @@ describe('LoadDialog', () => {
 })
 
 describe('ResetDialog', () => {
-  it('generates 6-char codes from the expected charset', () => {
+  it('generates legacy-compatible five-digit numeric codes', () => {
     for (let i = 0; i < 20; i++) {
-      expect(generateResetCode()).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/)
+      expect(generateResetCode()).toMatch(/^\d{5}$/)
     }
   })
 
-  it('keeps Confirm disabled until the code is retyped, then emits nuclearReset', () => {
+  it('keeps Confirm disabled until the code is retyped, then emits nuclearReset', async () => {
     useDialogs.getState().openDialog('reset')
     render(<ResetDialog />)
 
     const code = screen.getByTestId('reset-code').textContent ?? ''
-    expect(code).toHaveLength(6)
+    expect(code).toHaveLength(5)
 
     const input = screen.getByLabelText('Reset confirmation code')
     const confirm = screen.getByRole('button', { name: 'Confirm Reset' }) as HTMLButtonElement
 
     expect(confirm.disabled).toBe(true)
-    // 'WRONG1' contains O and 1, which the code charset excludes -- never a match.
-    fireEvent.change(input, { target: { value: 'WRONG1' } })
+    fireEvent.change(input, { target: { value: '1234' } })
     expect(confirm.disabled).toBe(true)
 
     fireEvent.change(input, { target: { value: code } })
     expect(confirm.disabled).toBe(false)
 
     fireEvent.click(confirm)
-    expect(emitMock).toHaveBeenCalledWith('action', { action: 'nuclearReset', parameters: {} })
+    await waitFor(() => expect(emitMock).toHaveBeenCalledWith('action', { action: 'nuclearReset', parameters: {} }))
     expect(useDialogs.getState().open).toBeNull()
   })
 })

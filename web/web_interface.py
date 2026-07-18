@@ -44,6 +44,7 @@ import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 import os
+import hashlib
 import sys
 import hmac
 import secrets
@@ -228,6 +229,11 @@ debug_output_queue = queue.Queue()
 user_input_queue = queue.Queue()
 # module_progress_queue imported from shared_state
 game_thread = None
+_ui_revision = 0
+_ui_revision_lock = threading.Lock()
+_server_instance_id = uuid4().hex
+_ui_operation_lock = threading.Lock()
+_ui_operations = {"compression": None, "module": None, "update": None}
 original_stdout = sys.stdout
 original_stderr = sys.stderr
 original_stdin = sys.stdin
@@ -243,6 +249,34 @@ MESSAGE_CACHE_SIZE = 15  # Keep last 15 messages
 message_cache = deque(maxlen=MESSAGE_CACHE_SIZE)
 message_cache_lock = threading.RLock()
 
+def _ui_response(request_data, payload):
+    """Add optional correlation and a monotonic response revision.
+
+    Legacy callers send no payload and ignore the extra response fields. React
+    uses them to reject delayed responses from an earlier request/connection.
+    """
+    global _ui_revision
+    with _ui_revision_lock:
+        _ui_revision += 1
+        revision = _ui_revision
+    result = dict(payload)
+    result['revision'] = revision
+    result['server_instance_id'] = _server_instance_id
+    if isinstance(request_data, dict) and request_data.get('request_id'):
+        result['request_id'] = request_data['request_id']
+    return result
+
+
+def _remember_ui_operation(kind, payload):
+    """Keep the latest operation state so reconnect snapshots can self-heal."""
+    with _ui_operation_lock:
+        _ui_operations[kind] = dict(payload) if isinstance(payload, dict) else None
+
+
+@app.get('/api/server-instance')
+def get_server_instance():
+    return jsonify({'server_instance_id': _server_instance_id})
+
 # Message cache functions
 def load_message_cache():
     """Load message cache from file"""
@@ -251,7 +285,16 @@ def load_message_cache():
         if os.path.exists(MESSAGE_CACHE_FILE):
             with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as f:
                 cached_messages = json.load(f)
+                migrated = False
+                for index, message in enumerate(cached_messages):
+                    if isinstance(message, dict) and not message.get("message_id"):
+                        canonical = json.dumps(message, sort_keys=True, ensure_ascii=False)
+                        digest = hashlib.sha256(f"{index}:{canonical}".encode("utf-8")).hexdigest()[:24]
+                        message["message_id"] = f"legacy-{digest}"
+                        migrated = True
                 message_cache = deque(cached_messages, maxlen=MESSAGE_CACHE_SIZE)
+                if migrated:
+                    save_message_cache()
                 print(f"[MESSAGE_CACHE] Loaded {len(message_cache)} cached messages")
                 return cached_messages
     except Exception as e:
@@ -281,6 +324,11 @@ def add_to_message_cache(message):
     cacheable = cacheable or message_id is not None
     if not cacheable:
         return False
+    if message_id is None:
+        # Cache/live/reconnect delivery must carry one identity. Mutating the
+        # payload is intentional: the same ID is persisted and emitted live.
+        message_id = f"msg-{uuid4().hex}"
+        message["message_id"] = message_id
     with message_cache_lock:
         if message_id is not None and any(
             cached.get("message_id") == message_id
@@ -345,6 +393,10 @@ set_status_callback(emit_status_update)
 # Set the compression callback
 def emit_compression_event(event_type, data):
     """Emit compression progress events to the web interface"""
+    operation = dict(data)
+    operation['event'] = event_type
+    operation['status'] = 'failed' if event_type == 'compression_error' else ('complete' if event_type == 'compression_complete' else 'running')
+    _remember_ui_operation('compression', operation)
     socketio.emit(event_type, data)
 
 set_compression_callback(emit_compression_event)
@@ -457,7 +509,12 @@ class WebOutputCapture:
                                     socketio.emit('game_started', {'message': 'Game started successfully'})
                         elif phase in {"startup_kickoff_failed", "startup_kickoff_stale_discarded"}:
                             startup_handoff_active = False
-                            socketio.emit("startup_status", {"status": "failed", "phase": phase})
+                            startup_state = dm_main.load_startup_state() or {}
+                            socketio.emit("startup_status", {
+                                "status": "failed",
+                                "phase": phase,
+                                "startupAttemptId": startup_state.get("startup_attempt_id"),
+                            })
                     except Exception:
                         pass
                     if marker_line:
@@ -838,6 +895,12 @@ def upload_portrait():
         if file.filename == '' or not character_name:
             return jsonify({'success': False, 'message': 'No selected file or character name'})
 
+        import re
+        if not re.fullmatch(r"[a-z0-9_'-]{1,100}", character_name):
+            return jsonify({'success': False, 'message': 'Invalid character name'}), 400
+        if request.content_length and request.content_length > 10 * 1024 * 1024:
+            return jsonify({'success': False, 'message': 'Portrait must be smaller than 10 MB'}), 413
+
         if file:
             # Create the portraits directory if it doesn't exist
             portraits_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'portraits')
@@ -845,6 +908,9 @@ def upload_portrait():
 
             # Open the image with Pillow
             img = Image.open(file.stream)
+            img.verify()
+            file.stream.seek(0)
+            img = Image.open(file.stream).convert('RGB')
 
             # --- Cropping Logic ---
             width, height = img.size
@@ -2282,6 +2348,32 @@ def _emit_game_resumed():
     })
 
 
+@socketio.on('request_ui_snapshot')
+def handle_ui_snapshot_request(data=None):
+    """Return one authoritative lifecycle/processing snapshot on reconnect."""
+    from core.managers.status_manager import status_manager
+    try:
+        status_message, is_processing = status_manager.get_status()
+    except Exception:
+        status_message, is_processing = '', False
+    running = bool(game_thread and game_thread.is_alive())
+    with _ui_operation_lock:
+        operations = {
+            key: dict(value) if isinstance(value, dict) else None
+            for key, value in _ui_operations.items()
+        }
+    emit('ui_state_snapshot', _ui_response(data, {
+        'game_running': running,
+        'is_processing': bool(is_processing),
+        'status_message': status_message or '',
+        'startup': {
+            'status': 'ready' if startup_ready_emitted or running else ('in_progress' if startup_handoff_active else 'idle'),
+            'phase': status_message or '',
+        },
+        'operations': operations,
+    }))
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
@@ -2342,21 +2434,22 @@ def handle_connect():
     # Check for module progress updates
     while not module_progress_queue.empty():
         progress_data = module_progress_queue.get()
+        _remember_ui_operation('module', progress_data)
         emit('module_creation_progress', progress_data)
 
 @socketio.on('user_input')
 def handle_user_input(data):
     """Handle input from the user"""
     user_input = data.get('input', '')
-    user_input_queue.put(user_input)
-    
-    # Echo the input back to the game output
+    # Commit the player-visible ledger entry before releasing the command to
+    # the game thread, so a fast local response cannot appear above its input.
     message = {
         'type': 'user-input',
         'content': user_input
     }
-    emit('game_output', message)
     add_to_message_cache(message)
+    emit('game_output', message)
+    user_input_queue.put(user_input)
 
 @socketio.on('action')
 def handle_action(data):
@@ -2592,7 +2685,7 @@ def handle_player_data_request(data):
             with open(party_tracker_path, 'r', encoding='utf-8') as f:
                 party_tracker = json.load(f)
         else:
-            emit('player_data_response', {'dataType': dataType, 'data': None, 'error': 'Party tracker not found'})
+            emit('player_data_response', _ui_response(data, {'dataType': dataType, 'data': None, 'error': 'Party tracker not found'}))
             return
         
         if dataType == 'stats' or dataType == 'inventory' or dataType == 'spells':
@@ -2644,13 +2737,13 @@ def handle_player_data_request(data):
             
             response_data = npcs
         
-        emit('player_data_response', {'dataType': dataType, 'data': response_data})
+        emit('player_data_response', _ui_response(data, {'dataType': dataType, 'data': response_data}))
     
     except Exception as e:
-        emit('player_data_response', {'dataType': dataType, 'data': None, 'error': str(e)})
+        emit('player_data_response', _ui_response(data, {'dataType': dataType, 'data': None, 'error': str(e)}))
 
 @socketio.on('request_location_data')
-def handle_location_data_request():
+def handle_location_data_request(data=None):
     """Handle requests for current location information"""
     try:
         # Load party tracker to get current location
@@ -2671,12 +2764,12 @@ def handle_location_data_request():
                 'year': world_conditions.get('year', '')
             }
             
-            emit('location_data_response', {'data': location_info})
+            emit('location_data_response', _ui_response(data, {'data': location_info}))
         else:
-            emit('location_data_response', {'data': None, 'error': 'Party tracker not found'})
+            emit('location_data_response', _ui_response(data, {'data': None, 'error': 'Party tracker not found'}))
     
     except Exception as e:
-        emit('location_data_response', {'data': None, 'error': str(e)})
+        emit('location_data_response', _ui_response(data, {'data': None, 'error': str(e)}))
 
 @socketio.on('request_npc_saves')
 def handle_npc_saves_request(data):
@@ -2829,7 +2922,7 @@ def handle_npc_inventory_request(data):
         emit('npc_inventory_response', {'npcName': npc_name, 'data': None, 'error': str(e)})
 
 @socketio.on('request_party_data')
-def handle_party_data_request():
+def handle_party_data_request(data=None):
     """Handle requests for party member display and current location NPCs (non-combat)."""
     try:
         from utils.file_operations import safe_read_json
@@ -2839,7 +2932,7 @@ def handle_party_data_request():
         # Load party tracker
         party_tracker = safe_read_json("party_tracker.json")
         if not party_tracker:
-            emit('party_data_response', {'members': []})
+            emit('party_data_response', _ui_response(data, {'members': []}))
             return
         
         # Get module info for path resolution
@@ -3065,11 +3158,11 @@ def handle_party_data_request():
                                     location_npcs.append(npc_data_dict)
         
         # Send both lists to the frontend
-        emit('party_data_response', {'members': party_members, 'location_npcs': location_npcs})
+        emit('party_data_response', _ui_response(data, {'members': party_members, 'location_npcs': location_npcs}))
         
     except Exception as e:
         error(f"Failed to get party data: {str(e)}", exception=e, category="web_interface")
-        emit('party_data_response', {'members': [], 'location_npcs': []})
+        emit('party_data_response', _ui_response(data, {'members': [], 'location_npcs': []}))
 
 def _overlay_authoritative_character_state(combatant_data, character_data):
     """Overlay character-file state onto an encounter UI projection."""
@@ -3085,7 +3178,7 @@ def _overlay_authoritative_character_state(combatant_data, character_data):
 
 
 @socketio.on('request_initiative_data')
-def handle_initiative_data_request():
+def handle_initiative_data_request(data=None):
     """Handles requests for the current combat initiative order."""
     try:
         from utils.file_operations import safe_read_json
@@ -3093,21 +3186,21 @@ def handle_initiative_data_request():
         # Check if combat is active via party_tracker.json
         party_tracker = safe_read_json("party_tracker.json")
         if not party_tracker:
-            emit('initiative_data_response', {'active': False, 'combatants': []})
+            emit('initiative_data_response', _ui_response(data, {'active': False, 'combatants': []}))
             return
 
         # Get the active combat encounter ID
         active_encounter_id = party_tracker.get("worldConditions", {}).get("activeCombatEncounter")
         if not active_encounter_id:
             # No combat is active
-            emit('initiative_data_response', {'active': False, 'combatants': []})
+            emit('initiative_data_response', _ui_response(data, {'active': False, 'combatants': []}))
             return
 
         # Load the specific encounter file
         encounter_file = f"modules/encounters/encounter_{active_encounter_id}.json"
         encounter_data = safe_read_json(encounter_file)
         if not encounter_data or "creatures" not in encounter_data:
-            emit('initiative_data_response', {'active': False, 'combatants': []})
+            emit('initiative_data_response', _ui_response(data, {'active': False, 'combatants': []}))
             return
 
         # Filter for living combatants only
@@ -3118,7 +3211,7 @@ def handle_initiative_data_request():
         
         if not living_combatants:
             # Combat is over if no one is alive
-            emit('initiative_data_response', {'active': False, 'combatants': []})
+            emit('initiative_data_response', _ui_response(data, {'active': False, 'combatants': []}))
             return
 
         # Sort by initiative (highest first)
@@ -3249,26 +3342,26 @@ def handle_initiative_data_request():
             combatant_list.append(combatant_data)
 
         # Send the data to the browser
-        emit('initiative_data_response', {
+        emit('initiative_data_response', _ui_response(data, {
             'active': True, 
             'combatants': combatant_list,
             'round': encounter_data.get('combat_round', 1)
-        })
+        }))
 
     except Exception as e:
         error(f"Error handling initiative data request: {e}", exception=e, category="web_interface")
-        emit('initiative_data_response', {'active': False, 'combatants': []})
+        emit('initiative_data_response', _ui_response(data, {'active': False, 'combatants': []}))
 
 # Add this entire function to web_interface.py
 
 @socketio.on('request_plot_data')
-def handle_plot_data_request():
+def handle_plot_data_request(data=None):
     """Handle requests for the current module's plot data."""
     try:
         # Step 1: Find out which module is currently active by checking the party tracker.
         party_tracker_path = 'party_tracker.json'
         if not os.path.exists(party_tracker_path):
-            emit('plot_data_response', {'data': None, 'error': 'Party tracker not found'})
+            emit('plot_data_response', _ui_response(data, {'data': None, 'error': 'Party tracker not found'}))
             return
 
         with open(party_tracker_path, 'r', encoding='utf-8') as f:
@@ -3276,7 +3369,7 @@ def handle_plot_data_request():
         
         current_module = party_tracker.get("module", "").replace(" ", "_")
         if not current_module:
-            emit('plot_data_response', {'data': None, 'error': 'Current module not set in party tracker'})
+            emit('plot_data_response', _ui_response(data, {'data': None, 'error': 'Current module not set in party tracker'}))
             return
 
         # Step 2: Use the ModulePathManager to get the correct path to the plot file for that module.
@@ -3324,7 +3417,7 @@ def handle_plot_data_request():
             plot_file_path = path_manager.get_plot_path()
 
             if not os.path.exists(plot_file_path):
-                emit('plot_data_response', {'data': None, 'error': f'Plot file not found for module: {current_module}'})
+                emit('plot_data_response', _ui_response(data, {'data': None, 'error': f'Plot file not found for module: {current_module}'}))
                 return
                 
             # Step 3: Read the plot file and send its data back to the browser.
@@ -3334,15 +3427,15 @@ def handle_plot_data_request():
             debug(f"WEB_INTERFACE: Using original plot data for {current_module} (player quests unavailable or stale)", category="web_interface")
         
         # The 'emit' function sends the data over the web socket connection to the player's browser.
-        emit('plot_data_response', {'data': plot_data})
+        emit('plot_data_response', _ui_response(data, {'data': plot_data}))
 
     except Exception as e:
         # If anything goes wrong, send an error message so we can debug it.
-        emit('plot_data_response', {'data': None, 'error': str(e)})
+        emit('plot_data_response', _ui_response(data, {'data': None, 'error': str(e)}))
 
 # CORRECTLY PLACED STORAGE HANDLER
 @socketio.on('request_storage_data')
-def handle_request_storage_data():
+def handle_request_storage_data(data=None):
     """Handles a request from the client to view all player storage."""
     debug("WEB_REQUEST: Received request for storage data from client", category="web_interface")
     try:
@@ -3352,13 +3445,13 @@ def handle_request_storage_data():
         storage_data = manager.view_storage()
         
         if storage_data.get("success"):
-            emit('storage_data_response', {'data': storage_data})
+            emit('storage_data_response', _ui_response(data, {'data': storage_data}))
         else:
-            emit('error', {'message': 'Failed to retrieve storage data.'})
+            emit('storage_data_response', _ui_response(data, {'data': {}, 'error': 'Failed to retrieve storage data.'}))
             
     except Exception as e:
         print(f"ERROR handling storage request: {e}")
-        emit('error', {'message': 'An internal error occurred while fetching storage data.'})
+        emit('storage_data_response', _ui_response(data, {'data': {}, 'error': 'An internal error occurred while fetching storage data.'}))
 
 @socketio.on('user_exit')
 def handle_user_exit():
@@ -3585,7 +3678,7 @@ def handle_generate_image(data):
     try:
         prompt = data.get('prompt', '')
         if not prompt:
-            emit('image_generation_error', {'message': 'No prompt provided'})
+            emit('image_generation_error', {'message': 'No prompt provided', 'request_id': data.get('request_id'), 'source_message_id': data.get('source_message_id')})
             return
         
         import config
@@ -3692,13 +3785,19 @@ def handle_generate_image(data):
         # Emit the image URL back to the client
         emit('image_generated', {
             'image_url': image_url,
-            'prompt': prompt
+            'prompt': prompt,
+            'request_id': data.get('request_id'),
+            'source_message_id': data.get('source_message_id')
         })
         
     except Exception as e:
         error_msg = f"Image generation failed: {str(e)}"
         print(f"ERROR: {error_msg}")
-        emit('image_generation_error', {'message': error_msg})
+        emit('image_generation_error', {
+            'message': error_msg,
+            'request_id': data.get('request_id') if isinstance(data, dict) else None,
+            'source_message_id': data.get('source_message_id') if isinstance(data, dict) else None,
+        })
 
 # REMOVED - Duplicate handler was here (lines 2725-2940)
 # The actual working implementation is in the second handle_generate_unified_assets function at line 4157
@@ -4085,6 +4184,7 @@ def send_output_to_clients():
                     timestamp = datetime.now().strftime("%H:%M:%S")
                     progress_data = module_progress_queue.get()
                     print(f"DEBUG: [Web Interface] [{timestamp}] Got progress data from queue: Stage {progress_data.get('stage')}")
+                    _remember_ui_operation('module', progress_data)
                     socketio.emit('module_creation_progress', progress_data)
                     print(f"DEBUG: [Web Interface] [{timestamp}] Emitted module_creation_progress - Stage {progress_data.get('stage')}/{progress_data.get('total_stages')}")
                 except Exception as e:
@@ -4192,9 +4292,9 @@ def open_browser():
         port = getattr(config, 'WEB_PORT', 8357)
     except ImportError:
         port = 8357
-    start_path = os.environ.get('NEQ_START_PATH', '/play/')
+    start_path = os.environ.get('NEQ_START_PATH', '/')
     if start_path not in {'/', '/play/'}:
-        start_path = '/play/'
+        start_path = '/'
     webbrowser.open(f'http://localhost:{port}{start_path}')
 
 
@@ -5775,27 +5875,39 @@ def handle_trigger_update():
     import sys
     import os
 
-    emit('update_log', {'message': 'Starting auto-update...'})
+    update_state = {'status': 'running', 'log': [], 'error': None, 'complete': None}
+
+    def emit_update(event_type, payload):
+        if event_type == 'update_log':
+            update_state['log'].append(payload.get('message', ''))
+        elif event_type == 'update_error':
+            update_state.update(status='failed', error=payload.get('error'))
+        elif event_type == 'update_complete':
+            update_state.update(status='complete', complete=payload.get('message'))
+        _remember_ui_operation('update', update_state)
+        emit(event_type, payload)
+
+    emit_update('update_log', {'message': 'Starting auto-update...'})
     print("[AUTO_UPDATE] Handler triggered")  # Console debug
 
     try:
         # Get the current working directory
         repo_path = os.getcwd()
         print(f"[AUTO_UPDATE] Current directory: {repo_path}")  # Console debug
-        emit('update_log', {'message': f'Repository path: {repo_path}'})
+        emit_update('update_log', {'message': f'Repository path: {repo_path}'})
 
         # Normalize path separators for Git (Git expects forward slashes even on Windows)
         # C:\dungeon_master_v1 -> C:/dungeon_master_v1
         git_safe_path = repo_path.replace('\\', '/')
         print(f"[AUTO_UPDATE] Git safe path: {git_safe_path}")  # Console debug
-        emit('update_log', {'message': f'Git path format: {git_safe_path}'})
+        emit_update('update_log', {'message': f'Git path format: {git_safe_path}'})
 
         # Step 1: Git pull with safe.directory config applied directly
         # Use -c flag to pass safe.directory config inline (avoids persistent config issues)
         git_cmd = ["git", "-c", f"safe.directory={git_safe_path}", "pull"]
         print(f"[AUTO_UPDATE] Git command: {' '.join(git_cmd)}")  # Console debug
-        emit('update_log', {'message': f'Running: git -c safe.directory={git_safe_path} pull'})
-        emit('update_log', {'message': 'Pulling latest code from GitHub...'})
+        emit_update('update_log', {'message': f'Running: git -c safe.directory={git_safe_path} pull'})
+        emit_update('update_log', {'message': 'Pulling latest code from GitHub...'})
 
         result = subprocess.run(
             git_cmd,
@@ -5806,13 +5918,13 @@ def handle_trigger_update():
         )
 
         if result.returncode != 0:
-            emit('update_error', {'error': f'Git pull failed: {result.stderr}'})
+            emit_update('update_error', {'error': f'Git pull failed: {result.stderr}'})
             return
 
-        emit('update_log', {'message': f'Git: {result.stdout.strip()}'})
+        emit_update('update_log', {'message': f'Git: {result.stdout.strip()}'})
 
         # Step 2: Pip install
-        emit('update_log', {'message': 'Updating dependencies...'})
+        emit_update('update_log', {'message': 'Updating dependencies...'})
 
         pip_cmd = [sys.executable, "-m", "pip", "install", "-r", "requirements.txt", "--upgrade"]
 
@@ -5824,13 +5936,22 @@ def handle_trigger_update():
         )
 
         if result.returncode != 0:
-            emit('update_error', {'error': f'Pip install failed: {result.stderr}'})
+            emit_update('update_error', {'error': f'Pip install failed: {result.stderr}'})
             return
 
-        emit('update_log', {'message': 'Dependencies updated successfully!'})
+        emit_update('update_log', {'message': 'Dependencies updated successfully!'})
+
+        # Keep /play/ deployable after an update. Reuse the same freshness
+        # check/build path as the normal launcher instead of re-execing a
+        # server that may point at stale or missing frontend assets.
+        from run_web import ensure_react_frontend
+        emit_update('update_log', {'message': 'Checking React player build...'})
+        if not ensure_react_frontend(repo_root=repo_path):
+            emit_update('update_error', {'error': 'React player build failed; server was not restarted.'})
+            return
 
         # Step 3: Restart server
-        emit('update_complete', {'message': 'Update complete! Server restarting...'})
+        emit_update('update_complete', {'message': 'Update complete! Server restarting...'})
 
         # Give client time to receive message
         socketio.sleep(1)
@@ -5839,7 +5960,7 @@ def handle_trigger_update():
         os.execv(sys.executable, ['python'] + sys.argv)
 
     except Exception as e:
-        emit('update_error', {'error': str(e)})
+        emit_update('update_error', {'error': str(e)})
 
 if __name__ == '__main__':
     # Create templates directory if it doesn't exist
@@ -5855,9 +5976,9 @@ if __name__ == '__main__':
         port = getattr(config, 'WEB_PORT', 8357)
     except ImportError:
         port = 8357
-    start_path = os.environ.get('NEQ_START_PATH', '/play/')
+    start_path = os.environ.get('NEQ_START_PATH', '/')
     if start_path not in {'/', '/play/'}:
-        start_path = '/play/'
+        start_path = '/'
     print(f"Opening browser at http://localhost:{port}{start_path}")
     
     # Run the Flask app with SocketIO

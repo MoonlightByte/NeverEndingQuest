@@ -8,18 +8,11 @@ import { useMemo, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, usePlayer } from '../../stores'
 import {
-  currencyOf,
   equipmentList,
   filterEquipment,
   sortEquipment,
   type InventorySort,
 } from './characterData'
-
-const COINS = [
-  { key: 'gold', label: 'GP', color: '#FFD700' },
-  { key: 'silver', label: 'SP', color: '#C0C0C0' },
-  { key: 'copper', label: 'CP', color: '#B87333' },
-] as const
 
 const SORT_OPTIONS: ReadonlyArray<{ value: InventorySort; label: string }> = [
   { value: 'name-asc', label: 'Sort: Name A-Z' },
@@ -33,12 +26,22 @@ export function InventoryTab() {
   const error = usePlayer((s) => s.dataErrors.inventory)
   const [sort, setSort] = useState<InventorySort>('name-asc')
   const [query, setQuery] = useState('')
+  const [category, setCategory] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const items = useMemo(() => (inventory ? equipmentList(inventory) : []), [inventory])
-  const visible = useMemo(
-    () => sortEquipment(filterEquipment(items, query), sort),
-    [items, query, sort],
-  )
+  const visible = useMemo(() => {
+    const searched = filterEquipment(items, query)
+    const filtered = searched.filter((item) => {
+      if (category === 'weapon') return item.type.toLowerCase().includes('weapon')
+      if (category === 'armor') return item.type.toLowerCase().includes('armor')
+      if (category === 'consumable') return /consumable|potion|scroll/.test(`${item.type} ${item.subtype}`.toLowerCase())
+      if (category === 'magical') return item.magical
+      if (category === 'equipped') return item.equipped
+      return true
+    })
+    return sortEquipment(filtered, sort)
+  }, [items, query, category, sort])
 
   if (error) {
     return <p className="p-4 font-body text-sm text-red-400">{error}</p>
@@ -47,48 +50,28 @@ export function InventoryTab() {
     return <p className="p-4 font-body text-sm text-secondary">Loading inventory...</p>
   }
 
-  const currency = currencyOf(inventory)
-
   const openStorage = () => {
     emitC('request_storage_data', undefined)
     useDialogs.getState().openDialog('storage')
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 p-3 font-body">
-      {/* currency grid */}
-      <section className="shrink-0">
-        <h3 className="font-display text-sm tracking-wide text-accent">Currency</h3>
-        <div className="mt-1 grid grid-cols-3 gap-2">
-          {COINS.map((coin) => (
-            <div
-              key={coin.key}
-              className="rounded border-2 border-card bg-page p-2 text-center"
-            >
-              <div className="text-base text-primary">{currency[coin.key]}</div>
-              <div className="font-display text-[10px]" style={{ color: coin.color }}>
-                {coin.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
+    <div className="flex h-full min-h-0 flex-col gap-[10px] bg-page p-[10px] font-body">
       <button
         type="button"
         onClick={openStorage}
-        className="shrink-0 rounded border-2 border-card bg-page px-3 py-1.5 font-chrome text-xs text-accent hover:border-accent"
+        className="shrink-0 rounded border-0 bg-[#4caf50] px-3 py-2 font-chrome text-sm font-bold text-white hover:bg-[#45a049]"
       >
         View Player Storage
       </button>
 
-      {/* sort + text filter controls */}
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-3 rounded border border-card bg-panel p-2">
+        <button type="button" onClick={() => setSearchOpen(true)} className="rounded border border-soft bg-[#444] px-3 py-1.5 font-chrome text-xs text-primary">Search</button>
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as InventorySort)}
           aria-label="Sort inventory"
-          className="min-w-0 flex-1 rounded border-2 border-card bg-page px-2 py-1 font-chrome text-xs text-primary outline-none focus:border-accent"
+          className="min-w-0 flex-1 rounded border border-soft bg-panel px-2 py-1.5 font-chrome text-xs text-primary"
         >
           {SORT_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -96,23 +79,16 @@ export function InventoryTab() {
             </option>
           ))}
         </select>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter items..."
-          aria-label="Filter inventory"
-          className="min-w-0 flex-1 rounded border-2 border-card bg-page px-2 py-1 font-chrome text-xs text-primary outline-none focus:border-accent"
-        />
+        <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter inventory" className="min-w-0 flex-1 rounded border border-soft bg-panel px-2 py-1.5 font-chrome text-xs text-primary">
+          <option value="">Filter</option><option value="weapon">Weapons</option><option value="armor">Armor</option><option value="consumable">Consumables</option><option value="magical">Magical</option><option value="equipped">Equipped</option>
+        </select>
+        <button type="button" onClick={() => { setQuery(''); setCategory(''); setSort('name-asc') }} className="rounded border border-soft bg-[#444] px-3 py-1.5 font-chrome text-xs text-primary">Clear</button>
       </div>
 
       {/* equipment list */}
-      <section className="flex min-h-0 flex-1 flex-col rounded border-2 border-card bg-page p-2">
+      <section className="flex min-h-0 flex-1 flex-col rounded border border-card bg-panel p-2">
         <div className="flex shrink-0 items-baseline justify-between">
           <h4 className="font-display text-xs text-accent">Equipment</h4>
-          <span className="font-chrome text-[10px] text-secondary">
-            {visible.length} / {items.length} items
-          </span>
         </div>
         <div className="mt-1 min-h-0 flex-1 overflow-y-auto">
           {visible.length === 0 ? (
@@ -143,6 +119,7 @@ export function InventoryTab() {
           )}
         </div>
       </section>
+      {searchOpen && <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70" onClick={() => setSearchOpen(false)}><div role="dialog" aria-label="Search Inventory" className="w-[500px] rounded border-2 border-card bg-panel p-3" onClick={(event) => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h3 className="font-display text-lg text-accent">Search Inventory</h3><button type="button" aria-label="Close" onClick={() => setSearchOpen(false)} className="text-xl text-secondary">×</button></div><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false) }} placeholder="Search items..." className="w-full rounded border border-card bg-page px-3 py-2 text-primary outline-none focus:border-accent" /></div></div>}
     </div>
   )
 }

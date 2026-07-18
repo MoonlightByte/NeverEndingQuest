@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import Mock
+import inspect
 import os
 
 import run_web
@@ -95,6 +96,20 @@ def test_ui_choice_defaults_to_react_and_respects_legacy():
     assert run_web.select_ui("choose", react_available=True, input_fn=lambda _: "2") == "legacy"
 
 
-def test_command_line_defaults_to_react_and_supports_choice():
-    assert run_web.parse_args([]).ui == "react"
+def test_command_line_defaults_to_legacy_and_supports_explicit_react_or_choice():
+    assert run_web.parse_args([]).ui == "legacy"
+    assert run_web.parse_args(["--ui", "react"]).ui == "react"
     assert run_web.parse_args(["--ui", "choose"]).ui == "choose"
+
+
+def test_programmatic_launcher_defaults_to_legacy():
+    assert inspect.signature(run_web.main).parameters["ui"].default == "legacy"
+
+
+def test_direct_server_browser_defaults_and_invalid_values_to_legacy():
+    source = (Path(run_web.__file__).parent / "web" / "web_interface.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert source.count("os.environ.get('NEQ_START_PATH', '/')") == 2
+    assert "start_path = '/play/'" not in source

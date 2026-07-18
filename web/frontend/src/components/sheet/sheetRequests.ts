@@ -12,10 +12,8 @@ export type NpcDetailTab = 'saves' | 'skills' | 'spells' | 'inventory'
 
 /**
  * Emit the contract request that backs a right-panel tab. The frozen
- * contract's request_player_data dataType union is 'stats' | 'inventory' |
- * 'spells', so the NPCs roster comes from request_party_data
- * (party_data_response members carry type: 'npc'). Debug is local-only
- * (debug_output ring) and needs no request.
+ * NPCs use the same full-character request as legacy. Party summaries are
+ * intentionally not accepted as a character-sheet data source.
  */
 export function requestTabData(tab: SheetTab): void {
   if (tab === 'character') {
@@ -25,7 +23,7 @@ export function requestTabData(tab: SheetTab): void {
   } else if (tab === 'spells') {
     emitC('request_player_data', { dataType: 'spells' })
   } else if (tab === 'npcs') {
-    emitC('request_party_data', undefined)
+    emitC('request_player_data', { dataType: 'npcs' })
   }
 }
 

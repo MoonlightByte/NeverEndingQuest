@@ -7,40 +7,34 @@
  * The pending state clears when either response lands.
  */
 import { useEffect, useRef, useState } from 'react'
-import type { GameMessage } from '../../contract/events'
 import { emitC } from '../../services/socket'
 import { useLog } from '../../stores'
 
 const buttonClass =
-  'cursor-pointer rounded border border-card bg-page px-1.5 py-0.5 font-chrome text-[11px] ' +
-  'text-secondary hover:border-accent disabled:cursor-not-allowed disabled:opacity-50'
+  'inline-flex h-[22px] cursor-pointer items-center justify-center rounded border-0 bg-[#4caf50] px-2 ' +
+  'font-chrome text-[11px] font-bold text-white hover:bg-[#45a049] disabled:cursor-not-allowed disabled:bg-[#666]'
 
-function countErrors(messages: readonly GameMessage[]): number {
-  return messages.filter((m) => m.type === 'error').length
-}
+const buildImagePrompt = (content: string) => `Epic fantasy RPG scene: ${content}. Medieval style, darker lighting, highly detailed fantasy art style, professional digital painting, atmospheric depth.`
 
-export function GenerateImageButton({ content }: { content: string }) {
+export function GenerateImageButton({ content, messageId }: { content: string; messageId?: string }) {
   const [pending, setPending] = useState(false)
-  const imagesAtRequest = useRef(0)
-  const errorsAtRequest = useRef(0)
+  const requestIdRef = useRef<string | undefined>(undefined)
   const images = useLog((s) => s.images)
   const messages = useLog((s) => s.messages)
 
   useEffect(() => {
     if (!pending) return
-    const matched = images
-      .slice(imagesAtRequest.current)
-      .some((image) => image.prompt === content)
-    const errored = countErrors(messages) > errorsAtRequest.current
+    const requestId = requestIdRef.current
+    const matched = images.some((image) =>
+      requestId ? image.request_id === requestId : image.source_message_id === messageId)
+    const errored = Boolean(requestId && messages.some((message) => message.message_id === `image-error-${requestId}`))
     if (matched || errored) setPending(false)
-  }, [pending, images, messages, content])
+  }, [pending, images, messages, content, messageId])
 
   const request = () => {
     if (pending) return
-    imagesAtRequest.current = useLog.getState().images.length
-    errorsAtRequest.current = countErrors(useLog.getState().messages)
     setPending(true)
-    emitC('generate_image', { prompt: content })
+    requestIdRef.current = emitC('generate_image', { prompt: buildImagePrompt(content), source_message_id: messageId })
   }
 
   return (

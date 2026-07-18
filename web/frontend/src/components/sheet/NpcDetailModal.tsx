@@ -1,238 +1,172 @@
-/**
- * NPC detail modal (plan Task 4.4d): tabbed Saves / Skills / Spells /
- * Inventory. Activating a tab emits the matching request_npc_* contract
- * event; the body renders npc_details_response (raw NPC character file,
- * keyed by modalType) and npc_inventory_response (equipment array) from the
- * player store. View derivations ported from the legacy showNPC* renderers.
- */
-import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { usePlayer } from '../../stores'
-import { requestNpcTabData, type NpcDetailTab } from './sheetRequests'
 import {
-  equipmentFromArray,
+  arr,
+  equipmentList,
   formatModifier,
+  rec,
   saveRows,
   skillRows,
   slotTone,
   spellcastingView,
+  str,
 } from './characterData'
 
-const NPC_TABS: ReadonlyArray<{ id: NpcDetailTab; label: string }> = [
-  { id: 'saves', label: 'Saves' },
-  { id: 'skills', label: 'Skills' },
-  { id: 'spells', label: 'Spells' },
-  { id: 'inventory', label: 'Inventory' },
-]
+export type NpcModalKind =
+  | 'saves'
+  | 'skills'
+  | 'inventory'
+  | 'features'
+  | 'traits'
+  | 'background'
+  | 'spells'
 
-// ASCII-only source: proficiency dots as escapes (filled / open circle).
-const PROFICIENT_DOT = '\u25CF'
-const UNPROFICIENT_DOT = '\u25CB'
-
-const TONE_COLOR: Record<'available' | 'low' | 'exhausted', string> = {
-  available: 'var(--accent)',
-  low: '#e67e22',
-  exhausted: '#e74c3c',
+const TITLES: Record<NpcModalKind, string> = {
+  saves: 'Saving Throws',
+  skills: 'Skills',
+  inventory: 'Inventory',
+  features: 'Key Abilities',
+  traits: 'Racial Traits',
+  background: 'Background',
+  spells: 'Spells',
 }
 
-function Loading() {
-  return <p className="p-3 text-sm text-secondary">Loading...</p>
+function Empty({ children }: { children: string }) {
+  return <p className="p-3 text-sm italic text-secondary">{children}</p>
 }
 
-function ErrorText({ message }: { message: string }) {
-  return <p className="p-3 text-sm text-red-400">{message}</p>
-}
-
-function SavesBody({ data }: { data: Record<string, unknown> }) {
+function Row({ name, detail, showDetail = false }: { name: string; detail?: ReactNode; showDetail?: boolean }) {
   return (
-    <div className="p-3">
-      {saveRows(data).map((save) => (
-        <div
-          key={save.name}
-          className="flex justify-between border-b border-card/60 py-1 text-sm last:border-b-0"
-        >
-          <span className={save.proficient ? 'text-primary' : 'text-secondary'}>
-            {save.name} {save.proficient ? PROFICIENT_DOT : UNPROFICIENT_DOT}
-          </span>
-          <span className="text-accent">{formatModifier(save.bonus)}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function SkillsBody({ data }: { data: Record<string, unknown> }) {
-  const rows = skillRows(data)
-  if (rows.length === 0) {
-    return <p className="p-3 text-sm italic text-secondary">No skills available.</p>
-  }
-  return (
-    <div className="p-3">
-      {rows.map((skill) => (
-        <div
-          key={skill.name}
-          className="flex justify-between border-b border-card/60 py-1 text-sm last:border-b-0"
-        >
-          <span className="text-primary">{skill.name}</span>
-          <span className="text-accent">{formatModifier(skill.bonus)}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function SpellsBody({ data }: { data: Record<string, unknown> }) {
-  const view = spellcastingView(data)
-  if (!view) {
-    return <p className="p-3 text-sm italic text-secondary">No spells available.</p>
-  }
-  return (
-    <div className="p-3">
-      {(view.saveDC !== null || view.attackBonus !== null) && (
-        <div className="flex gap-4 font-chrome text-xs text-secondary">
-          {view.saveDC !== null && (
-            <span>
-              Save DC: <span className="text-primary">{view.saveDC}</span>
-            </span>
-          )}
-          {view.attackBonus !== null && (
-            <span>
-              Attack: <span className="text-primary">{formatModifier(view.attackBonus)}</span>
-            </span>
-          )}
-        </div>
+    <div className="mb-1 rounded bg-[#1a1a1a] px-2 py-1.5 text-sm">
+      <div className="font-bold text-primary">{name}</div>
+      {showDetail && detail !== undefined && detail !== '' && (
+        <div className="mt-0.5 text-xs text-secondary">{detail}</div>
       )}
-      {view.levels.map((group) => (
-        <div key={group.levelIndex} className="mt-2">
-          <div className="flex items-baseline justify-between">
-            <span className="font-display text-xs text-accent">{group.levelName}</span>
-            {group.slots && (
-              <span
-                className="font-chrome text-[10px]"
-                style={{ color: TONE_COLOR[slotTone(group.slots)] }}
-              >
-                {group.slots.current}/{group.slots.max} slots
-              </span>
-            )}
+    </div>
+  )
+}
+
+function ListBody({ raw, empty }: { raw: unknown; empty: string }) {
+  const entries = arr(raw).map(rec).filter((item): item is Record<string, unknown> => item !== null)
+  if (entries.length === 0) return <Empty>{empty}</Empty>
+  return (
+    <div>
+      {entries.map((item, index) => (
+        <Row
+          key={`${str(item['name'], 'Item')}-${index}`}
+          name={str(item['name'], 'Unknown')}
+          detail={str(item['description'], str(item['detail']))}
+        />
+      ))}
+    </div>
+  )
+}
+
+function ModalBody({ npc, kind }: { npc: Record<string, unknown>; kind: NpcModalKind }) {
+  if (kind === 'saves') {
+    return (
+      <div>
+        {saveRows(npc).map((save) => (
+          <div key={save.name} className="flex justify-between border-b border-card/60 py-1 text-sm">
+            <span className={save.proficient ? 'text-primary' : 'text-secondary'}>
+              {save.name} {save.proficient ? '\u25CF' : '\u25CB'}
+            </span>
+            <span className="text-accent">{formatModifier(save.bonus)}</span>
           </div>
-          {group.spells.map((spell) => (
-            <div key={spell} className="border-b border-card/60 py-0.5 text-sm text-primary last:border-b-0">
-              {spell}
+        ))}
+      </div>
+    )
+  }
+  if (kind === 'skills') {
+    const skills = skillRows(npc)
+    if (skills.length === 0) return <Empty>No skills available.</Empty>
+    return (
+      <div>
+        {skills.map((skill) => (
+          <div key={skill.name} className="flex justify-between border-b border-card/60 py-1 text-sm">
+            <span className="text-primary">{skill.name}</span>
+            <span className="text-accent">{formatModifier(skill.bonus)}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (kind === 'inventory') {
+    const items = equipmentList(npc)
+    if (items.length === 0) return <Empty>No items in inventory.</Empty>
+    return (
+      <div>
+        {items.map((item, index) => (
+          <div key={`${item.name}-${index}`} className="mb-2 rounded-[5px] border-l-[3px] border-accent bg-page p-2">
+            <div className="mb-1 flex items-center justify-between">
+              <div className="text-[14px] font-bold leading-[normal] text-primary">{item.name}</div>
+              <div className="rounded bg-[#333] px-1.5 py-0.5 text-[12px] leading-[normal] text-accent">x{item.quantity}</div>
             </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function InventoryBody({ items }: { items: unknown[] }) {
-  const equipment = equipmentFromArray(items)
-  if (equipment.length === 0) {
-    return <p className="p-3 text-sm italic text-secondary">No items in inventory.</p>
-  }
-  return (
-    <div className="p-3">
-      {equipment.map((item, i) => (
-        <div key={`${item.name}-${i}`} className="border-b border-card/60 py-1 last:border-b-0">
-          <div className="flex justify-between text-sm">
-            <span className="text-primary">{item.name}</span>
-            <span className="text-secondary">x{item.quantity}</span>
+            <div className="mt-1 text-xs text-secondary">{item.type}</div>
+            {item.description && <div className="mt-0.5 text-[11px] italic text-[#ccc]">{item.description}</div>}
           </div>
-          <div className="font-chrome text-xs text-secondary">{item.type}</div>
-          {item.description !== '' && (
-            <div className="mt-0.5 text-xs text-secondary">{item.description}</div>
-          )}
+        ))}
+      </div>
+    )
+  }
+  if (kind === 'features') return <ListBody raw={npc['classFeatures']} empty="No key abilities." />
+  if (kind === 'traits') return <ListBody raw={npc['racialTraits']} empty="No racial traits." />
+  if (kind === 'background') {
+    const feature = rec(npc['backgroundFeature'])
+    return feature ? (
+      <div>
+        <Row name={str(feature['name'], 'Background')} detail={str(feature['description'])} />
+      </div>
+    ) : <Empty>No background feature.</Empty>
+  }
+
+  const casting = spellcastingView(npc)
+  if (!casting) return <Empty>No spells available.</Empty>
+  return (
+    <div>
+      <div className="flex gap-4 text-xs text-secondary">
+        {casting.saveDC !== null && <span>Save DC: <b className="text-primary">{casting.saveDC}</b></span>}
+        {casting.attackBonus !== null && <span>Attack: <b className="text-primary">{formatModifier(casting.attackBonus)}</b></span>}
+      </div>
+      {casting.levels.map((level) => (
+        <div key={level.levelIndex} className="mt-3">
+          <div className="flex justify-between font-display text-xs text-accent">
+            <span>{level.levelName}</span>
+            {level.slots && <span data-tone={slotTone(level.slots)}>{level.slots.current}/{level.slots.max} slots</span>}
+          </div>
+          {level.spells.map((spell) => <Row key={spell} name={spell} />)}
         </div>
       ))}
     </div>
   )
 }
 
-export function NpcDetailModal({ npcName, onClose }: { npcName: string; onClose: () => void }) {
-  const [tab, setTab] = useState<NpcDetailTab>('saves')
-  const npcDetails = usePlayer((s) => s.npcDetails)
-  const npcInventory = usePlayer((s) => s.npcInventory)
-
-  // Request the active tab's data whenever the tab or subject changes.
-  useEffect(() => {
-    requestNpcTabData(tab, npcName)
-  }, [tab, npcName])
-
-  // Drop stale modal payloads when the modal unmounts.
-  useEffect(() => () => usePlayer.getState().clearNpcModal(), [])
-
-  const details =
-    npcDetails && npcDetails.npcName === npcName && npcDetails.modalType === tab
-      ? npcDetails
-      : null
-  const inventory = npcInventory && npcInventory.npcName === npcName ? npcInventory : null
-
-  let body: ReactNode
-  if (tab === 'inventory') {
-    if (inventory?.error) body = <ErrorText message={inventory.error} />
-    else if (!inventory || inventory.data === null) body = <Loading />
-    else body = <InventoryBody items={inventory.data} />
-  } else if (details?.error) {
-    body = <ErrorText message={details.error} />
-  } else if (!details || details.data === null) {
-    body = <Loading />
-  } else if (tab === 'saves') {
-    body = <SavesBody data={details.data} />
-  } else if (tab === 'skills') {
-    body = <SkillsBody data={details.data} />
-  } else {
-    body = <SpellsBody data={details.data} />
-  }
-
+export function NpcDetailModal({
+  npc,
+  kind,
+  onClose,
+}: {
+  npc: Record<string, unknown>
+  kind: NpcModalKind
+  onClose: () => void
+}) {
+  const name = str(npc['name'], 'Unknown NPC')
+  const inventoryStyle = kind === 'inventory' || kind === 'spells'
+  const title = `${name}'s ${kind === 'spells' ? 'Spellcasting' : TITLES[kind]}`
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-40 bg-black/70" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`${npcName} details`}
-        onClick={(e) => e.stopPropagation()}
-        className="neq-card flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden font-body"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+        className="mx-auto flex w-[80%] flex-col overflow-hidden rounded-lg border-2 border-[#4caf50] bg-[#2c2c2c] p-5 font-chrome leading-[normal]"
+        style={{ marginTop: inventoryStyle ? '5%' : '10%', maxWidth: inventoryStyle ? '600px' : '500px', maxHeight: inventoryStyle ? '80%' : '70%' }}
       >
-        <div className="flex shrink-0 items-center justify-between border-b-2 border-card px-3 py-2">
-          <h3 className="font-display text-base text-accent">{npcName}</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded border-2 border-card px-2 font-chrome text-sm text-secondary hover:border-accent hover:text-primary"
-          >
-            X
-          </button>
+        <div className="mb-[15px] flex items-center justify-between border-b-2 border-card pb-[10px]">
+          <h3 className={inventoryStyle ? 'text-xl font-bold text-accent' : 'text-[18px] font-bold text-accent'}>{title}</h3>
+          <button type="button" onClick={onClose} aria-label="Close" className="border-0 bg-transparent text-2xl font-bold leading-none text-[#aaa] hover:text-white">&times;</button>
         </div>
-        <div role="tablist" aria-label="NPC details" className="flex shrink-0">
-          {NPC_TABS.map((t) => {
-            const selected = tab === t.id
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                onClick={() => setTab(t.id)}
-                className={
-                  'flex-1 border-b-2 px-1 py-1.5 font-display text-xs transition-colors ' +
-                  (selected
-                    ? 'border-accent bg-page text-accent'
-                    : 'border-card text-secondary hover:text-primary')
-                }
-              >
-                {t.label}
-              </button>
-            )
-          })}
-        </div>
-        <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto">
-          {body}
-        </div>
+        <div className="min-h-0 max-h-[300px] flex-1 overflow-y-auto"><ModalBody npc={npc} kind={kind} /></div>
       </div>
     </div>
   )

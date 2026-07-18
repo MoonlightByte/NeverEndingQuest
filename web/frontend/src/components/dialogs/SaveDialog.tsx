@@ -56,60 +56,60 @@ function SaveDialogBody() {
   const info = MODE_INFO[saveMode]
 
   return (
-    <DialogShell title="Save Game" onClose={closeDialog}>
-      <div className="flex flex-col gap-3 font-chrome text-sm">
-        <label htmlFor="save-description" className="text-secondary">
-          Description (optional):
-        </label>
-        <textarea
-          id="save-description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Enter a brief description of your current progress..."
-          rows={3}
-          className="w-full resize-y rounded border-2 border-card bg-page px-3 py-2 font-body text-sm text-primary outline-none focus:border-accent"
-        />
+    <DialogShell title="Save Game" onClose={closeDialog} maxWidth="600px" legacy>
+      <div className="font-chrome text-sm leading-[normal]">
+        <div className="mb-5">
+          <label htmlFor="save-description" className="mb-[5px] block text-primary">
+            Description (optional):
+          </label>
+          <textarea
+            id="save-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Enter a brief description of your current progress..."
+            rows={2}
+            className="mb-[10px] min-h-[60px] w-full resize-y rounded border border-[#555] bg-[#333] p-2 font-chrome text-sm text-primary outline-none focus:border-accent"
+          />
 
-        <label htmlFor="save-mode" className="text-secondary">
-          Save Type:
-        </label>
-        <select
-          id="save-mode"
-          value={saveMode}
-          onChange={(e) => setSaveMode(e.target.value as SaveMode)}
-          className="w-full rounded border-2 border-card bg-page px-2 py-2 font-chrome text-sm text-primary outline-none focus:border-accent"
-        >
-          <option value="essential">Game State - Complete Save (Recommended)</option>
-          <option value="full">Archive Edition - Includes Historical Data</option>
-        </select>
-
-        <div className="rounded border-2 border-card bg-page p-3">
-          <div className="flex items-center gap-2">
-            <strong className="text-primary">{info.title}</strong>
-            <span
-              className="rounded px-2 py-0.5 text-xs font-bold"
-              style={{
-                backgroundColor: saveMode === 'essential' ? 'rgba(76, 175, 80, 0.2)' : 'rgba(80, 200, 120, 0.15)',
-                color: 'var(--accent)',
-              }}
+          <label htmlFor="save-mode" className="mb-[5px] block text-primary">
+            Save Type:
+          </label>
+          <div className="mt-[10px]">
+            <select
+              id="save-mode"
+              value={saveMode}
+              onChange={(e) => setSaveMode(e.target.value as SaveMode)}
+              className="mb-[10px] w-full rounded border border-[#555] bg-[#333] p-2 font-chrome text-sm text-primary outline-none focus:border-accent"
             >
-              {info.badge}
-            </span>
+              <option value="essential">Game State - Complete Save (Recommended)</option>
+              <option value="full">Archive Edition - Includes Historical Data</option>
+            </select>
+
+            <div className="mt-[19px] h-[256px] rounded-md border border-card bg-page p-[15px]">
+              <div className="mb-3 flex items-center gap-2 text-base">
+                <span className="text-lg">{saveMode === 'essential' ? '💾' : '📚'}</span>
+                <strong className="text-primary">{info.title}</strong>
+                <span className="ml-auto rounded-xl bg-[#4caf50] px-2 py-0.5 text-[10px] font-bold tracking-[.5px] text-white">
+                  {info.badge}
+                </span>
+              </div>
+              <p className="text-primary">{saveMode === 'essential' ? 'Complete game restoration with all essential data:' : 'Everything from Game State Save plus:'}</p>
+              <ul className="my-[10px] list-none p-0 text-primary">
+                {info.includes.map((line) => (
+                  <li key={line} className="py-1">{saveMode === 'essential' ? '✅' : '📜'} {line}</li>
+                ))}
+              </ul>
+              <p className="mt-3 rounded border-l-4 border-accent bg-[#2d4a2d] px-3 py-2 text-xs italic text-[#c8e6c9]">{info.note}</p>
+            </div>
           </div>
-          <ul className="mt-2 list-disc pl-5 text-secondary">
-            {info.includes.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-secondary">{info.note}</p>
         </div>
 
-        <div className="mt-1 flex justify-end gap-2">
+        <div className="mt-[39px] flex justify-between gap-[10px]">
           <button type="button" className={dialogButtonSecondary} onClick={closeDialog}>
             Cancel
           </button>
-          <button type="button" className={dialogButtonPrimary} onClick={performSave}>
-            Save Game
+          <button type="button" aria-label="Save Game" className={dialogButtonPrimary} onClick={performSave}>
+            <span className="mr-1.5">💾</span> Save Game
           </button>
         </div>
       </div>

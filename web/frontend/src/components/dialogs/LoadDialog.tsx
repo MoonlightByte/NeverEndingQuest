@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs } from '../../stores'
+import { prepareForServerRestart, reloadWhenServerReady } from '../../services/restart'
 import {
   DialogShell,
   dialogButtonDanger,
@@ -53,9 +54,10 @@ function LoadDialogBody() {
     }
   }, [])
 
-  const performLoad = () => {
+  const performLoad = async () => {
     if (!selected || restoring) return
     setRestoring(true)
+    await prepareForServerRestart()
     emitC('action', { action: 'restoreGame', parameters: { saveFolder: selected } })
     // restore_complete triggers the page reload (see LoadDialog effect below).
   }
@@ -74,9 +76,9 @@ function LoadDialogBody() {
   const entries = (saveList ?? []).map(toSaveEntry).filter((e) => e.folder !== '')
 
   return (
-    <DialogShell title="Load Saved Game" onClose={closeDialog} maxWidth="40rem">
+    <DialogShell title="Load Saved Game" onClose={closeDialog} maxWidth="500px" legacy>
       <div className="flex flex-col gap-3 font-chrome text-sm">
-        <div className="max-h-[50vh] overflow-y-auto rounded border-2 border-card bg-page">
+        <div className="max-h-[400px] overflow-y-auto rounded border border-soft bg-page p-2">
           {saveList === null ? (
             <p className="p-8 text-center text-secondary">Loading save games...</p>
           ) : entries.length === 0 ? (
@@ -90,7 +92,7 @@ function LoadDialogBody() {
                   type="button"
                   onClick={() => setSelected(entry.folder)}
                   aria-pressed={isSelected}
-                  className="block w-full cursor-pointer border-b border-card bg-transparent p-3 text-left last:border-b-0"
+                  className="mb-2 block w-full cursor-pointer rounded-md border border-card bg-panel p-3 text-left last:mb-0"
                   style={{
                     backgroundColor: isSelected ? 'rgba(76, 175, 80, 0.12)' : undefined,
                     outline: isSelected ? '2px solid var(--accent)' : 'none',
@@ -98,7 +100,7 @@ function LoadDialogBody() {
                   }}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="font-log text-sm text-primary">{entry.folder}</span>
+                        <span className="font-chrome text-base font-bold text-accent">{entry.folder}</span>
                     {entry.mode && (
                       <span
                         className="rounded px-2 py-0.5 text-xs font-bold uppercase"
@@ -113,12 +115,12 @@ function LoadDialogBody() {
                     )}
                   </div>
                   <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-                    <dt className="text-secondary">Date:</dt>
-                    <dd className="text-primary">{entry.date}</dd>
+                    <dt className="w-[75px] font-semibold text-[#aaa]">Date:</dt>
+                    <dd className="text-[#FFA500]">{entry.date}</dd>
                     <dt className="text-secondary">Module:</dt>
-                    <dd className="text-primary">{entry.module}</dd>
+                    <dd className="font-semibold text-accent">{entry.module}</dd>
                     <dt className="text-secondary">Location:</dt>
-                    <dd className="text-primary">{entry.location}</dd>
+                    <dd className="text-[#87CEEB]">{entry.location}</dd>
                     {entry.description && (
                       <>
                         <dt className="text-secondary">Notes:</dt>
@@ -138,7 +140,7 @@ function LoadDialogBody() {
           </p>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <button type="button" className={dialogButtonSecondary} onClick={closeDialog}>
             Cancel
           </button>
@@ -153,7 +155,7 @@ function LoadDialogBody() {
           <button
             type="button"
             className={dialogButtonPrimary}
-            onClick={performLoad}
+            onClick={() => void performLoad()}
             disabled={!selected || restoring}
           >
             Load Game
@@ -176,7 +178,7 @@ export function LoadDialog() {
   // restarts itself after emitting it, so the client reloads to reattach.
   useEffect(() => {
     if (actionResult?.kind === 'restore') {
-      window.location.reload()
+      void reloadWhenServerReady()
     }
   }, [actionResult])
 

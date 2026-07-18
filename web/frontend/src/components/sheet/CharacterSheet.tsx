@@ -4,19 +4,22 @@
  * Renders player_data_response{stats} from the player store; field names
  * ported from the legacy displayCharacterStats renderer.
  */
-import { useState } from 'react'
-import { usePlayer } from '../../stores'
+import { useRef, useState } from 'react'
+import { useLog, usePlayer } from '../../stores'
 import {
   ABILITIES,
   SKILL_MAP,
+  arr,
   abilityModifier,
   abilityScores,
   capitalize,
   capitalizeWords,
+  currencyOf,
   formatModifier,
   hpPercent,
   hpTone,
   num,
+  rec,
   portraitSlug,
   proficientSkills,
   saveRows,
@@ -28,18 +31,57 @@ import {
 const PROFICIENT_DOT = '\u25CF'
 const UNPROFICIENT_DOT = '\u25CB'
 
+function SheetSection({ title, items, empty }: { title: string; items: Array<{ name: string; detail?: string; suffix?: string }>; empty?: string }) {
+  return (
+    <section className="mt-1 rounded border border-card bg-panel">
+      <h4 className="border-b border-card px-2 py-1 font-display text-sm uppercase text-[#ffa500]">{title}</h4>
+      <div className="px-2 py-1">
+        {items.length === 0 ? <div className="text-sm text-secondary">{empty}</div> : items.map((item, index) => (
+          <div key={`${item.name}-${index}`} title={item.detail || 'No description available.'} className="text-sm text-accent">
+            {item.name}{item.suffix ?? ''}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function Portrait({ name }: { name: string }) {
   const [failed, setFailed] = useState(false)
+  const [cacheBust, setCacheBust] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const slug = portraitSlug(name)
   const src = failed
     ? '/static/icons/default_portrait.png'
-    : `/static/portraits/${portraitSlug(name)}.png`
+    : `/static/portraits/${slug}.png${cacheBust}`
+  const upload = async (file: File | undefined) => {
+    if (!file || uploading) return
+    if (!file.type.startsWith('image/')) {
+      useLog.getState().append({ type: 'error', content: 'Upload failed: select an image file.' })
+      return
+    }
+    setUploading(true)
+    useLog.getState().append({ type: 'system', content: 'Uploading and processing portrait...' })
+    const body = new FormData(); body.append('portrait', file); body.append('characterName', slug)
+    try {
+      const response = await fetch('/upload-portrait', { method: 'POST', body })
+      const result = await response.json() as { success?: boolean; message?: string }
+      if (!response.ok || !result.success) throw new Error(result.message || 'Upload failed')
+      setFailed(false); setCacheBust(`?v=${Date.now()}`)
+      useLog.getState().append({ type: 'system', content: 'Portrait updated successfully!' })
+    } catch (error) {
+      useLog.getState().append({ type: 'error', content: `Upload failed: ${error instanceof Error ? error.message : String(error)}` })
+    } finally {
+      setUploading(false); if (inputRef.current) inputRef.current.value = ''
+    }
+  }
   return (
-    <img
-      src={src}
-      alt={`Portrait of ${name}`}
-      onError={() => setFailed(true)}
-      className="h-28 w-24 shrink-0 rounded border-2 border-card bg-page object-cover"
-    />
+    <div className="group relative h-28 w-24 shrink-0 overflow-hidden rounded border-2 border-card bg-page">
+      <img src={src} alt={`Portrait of ${name}`} onError={() => setFailed(true)} className="h-full w-full object-cover" />
+      <button type="button" disabled={uploading} onClick={() => inputRef.current?.click()} className="absolute inset-0 flex cursor-pointer items-center justify-center border-0 bg-black/70 px-2 text-center text-sm font-bold text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100">{uploading ? 'Uploading...' : 'Upload Portrait'}</button>
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" aria-label="Choose portrait image" onChange={(event) => void upload(event.target.files?.[0])} />
+    </div>
   )
 }
 
@@ -58,10 +100,26 @@ export function CharacterSheet() {
   const scores = abilityScores(stats)
   const skills = proficientSkills(stats)
   const saves = saveRows(stats)
+  const hasSavingThrows = Array.isArray(stats['savingThrows']) && stats['savingThrows'].length > 0
   const hp = num(stats['hitPoints'])
   const maxHp = num(stats['maxHitPoints'])
   const tone = hpTone(hp, maxHp)
   const hpColor = tone === 'low' ? '#e74c3c' : tone === 'medium' ? '#e67e22' : 'var(--accent)'
+  const currency = currencyOf(stats)
+  const attacks = arr(stats['attacksAndSpellcasting']).map(rec).filter((item): item is Record<string, unknown> => item !== null).map((weapon) => {
+    const damage = str(weapon['damage']) || `${str(weapon['damageDice'], '1d4')}+${num(weapon['damageBonus'])}`
+    return { name: str(weapon['name'], 'Unknown weapon'), suffix: ` (${damage})`, detail: str(weapon['description']) }
+  })
+  const ammunition = arr(stats['ammunition']).map(rec).filter((item): item is Record<string, unknown> => item !== null).map((ammo) => ({ name: str(ammo['name'], 'Unknown'), suffix: `×${num(ammo['quantity'])}` }))
+  const featureItems = (key: string) => arr(stats[key]).map(rec).filter((item): item is Record<string, unknown> => item !== null).map((item) => {
+    const usage = rec(item['usage'])
+    const duration = str(item['duration'])
+    const usageSuffix = usage && num(usage['max']) > 0 ? ` ${num(usage['current'])}/${num(usage['max'])}${str(usage['refreshOn']) ? ` (${str(usage['refreshOn'])})` : ''}` : ''
+    const suffix = `${duration ? ` — ${duration}` : ''}${usageSuffix}`
+    return { name: str(item['name'], 'Unknown'), detail: str(item['description']), suffix }
+  })
+  const racialTraits = featureItems('racialTraits').filter((trait) => !['Ability Score Increase', 'Languages', 'Extra Language'].includes(trait.name))
+  const background = rec(stats['backgroundFeature'])
 
   return (
     <div className="h-full overflow-y-auto p-3 font-body">
@@ -133,8 +191,8 @@ export function CharacterSheet() {
         })}
       </div>
 
-      {/* HP / AC / INIT */}
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      {/* HP / AC / INIT / currency */}
+      <div className="mt-3 grid grid-cols-6 gap-1">
         <div className="rounded border-2 border-card bg-page p-2 text-center">
           <div className="font-display text-[10px] text-secondary">HP</div>
           <div className="text-base text-primary">
@@ -157,10 +215,21 @@ export function CharacterSheet() {
             {formatModifier(num(stats['initiative']))}
           </div>
         </div>
+        {[['GP', currency.gold], ['SP', currency.silver], ['CP', currency.copper]].map(([label, value]) => (
+          <div key={label} className="rounded border-2 border-[#b8860b] bg-page p-2 text-center">
+            <div className="font-display text-[10px] text-secondary">{label}</div>
+            <div className="text-base text-accent">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-1">
+        <SheetSection title="Weapons & Attacks" items={attacks} empty="No weapons defined." />
+        <SheetSection title="Ammunition" items={ammunition} empty="No ammunition." />
       </div>
 
       {/* saving throws */}
-      <div className="mt-3 rounded border-2 border-card bg-page p-2">
+      {hasSavingThrows && <div className="mt-3 rounded border-2 border-card bg-page p-2">
         <h4 className="font-display text-xs text-accent">Saving Throws</h4>
         <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1">
           {saves.map((save) => (
@@ -172,7 +241,12 @@ export function CharacterSheet() {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
+      <SheetSection title="Class Features" items={featureItems('classFeatures')} />
+      {arr(stats['temporaryEffects']).length > 0 && <SheetSection title="Active Effects" items={featureItems('temporaryEffects')} />}
+      {racialTraits.length > 0 && <SheetSection title="Racial Traits" items={racialTraits} />}
+      {background?.['name'] !== undefined && <SheetSection title="Background" items={[{ name: str(background['name']), detail: str(background['description']) }]} />}
+      {arr(stats['feats']).length > 0 && <SheetSection title="Feats" items={featureItems('feats')} />}
     </div>
   )
 }

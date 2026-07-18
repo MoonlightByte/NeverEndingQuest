@@ -17,6 +17,7 @@ const BOTTOM_PIN_THRESHOLD_PX = 48
 export function GameLog() {
   const messages = useLog((s) => s.messages)
   const images = useLog((s) => s.images)
+  const previousSessionCount = useLog((s) => s.previousSessionCount)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const pinnedRef = useRef(true)
 
@@ -29,7 +30,11 @@ export function GameLog() {
       let matchIndex = -1
       for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i]
-        if (message !== undefined && message.type === 'narration' && message.content === image.prompt) {
+        if (message !== undefined && message.type === 'narration' && (
+          image.source_message_id
+            ? image.source_message_id === message.message_id
+            : image.prompt.includes(message.content)
+        )) {
           matchIndex = i
           break
         }
@@ -67,7 +72,7 @@ export function GameLog() {
       onScroll={handleScroll}
       role="log"
       aria-label="Game log"
-      className="neq-card h-full min-h-0 overflow-y-auto px-4 py-2"
+      className="h-full min-h-0 overflow-y-auto px-[10px] py-2"
     >
       {messages.length === 0 && orphanImages.length === 0 ? (
         <p className="my-4 text-center font-log text-sm text-secondary">
@@ -75,9 +80,9 @@ export function GameLog() {
         </p>
       ) : (
         <>
-          {messages.map((message, index) => (
-            <MessageCard key={index} message={message} images={imagesByMessage.get(index)} />
-          ))}
+          {previousSessionCount > 0 && <div className="mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Previous Session Messages ---</div>}
+          {messages.map((message, index) => <div key={message.message_id ?? index}>{index === previousSessionCount && <div className="mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Current Session ---</div>}<MessageCard message={message} images={imagesByMessage.get(index)} /></div>)}
+          {previousSessionCount === messages.length && previousSessionCount > 0 && <div className="mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Current Session ---</div>}
           {orphanImages.map((image, index) => (
             <div key={`${image.image_url}-${index}`} className="my-4 flex justify-center">
               <img

@@ -11,18 +11,20 @@ import { useSession } from '../../stores'
 
 export function InputBar() {
   const isProcessing = useSession((s) => s.isProcessing)
+  const connected = useSession((s) => s.connected)
+  const mode = useSession((s) => s.mode)
   const statusMessage = useSession((s) => s.statusMessage)
   const [draft, setDraft] = useState('')
 
   const send = () => {
     const input = draft.trim()
-    if (!input || isProcessing) return
+    if (!input || isProcessing || !connected || mode === 'disconnected') return
     emitC('user_input', { input })
     setDraft('')
   }
 
   return (
-    <div className="neq-card p-2">
+    <div className="shrink-0 border-t border-card bg-[#333] p-[10px]">
       {isProcessing && (
         <div
           role="status"
@@ -40,16 +42,16 @@ export function InputBar() {
           onKeyDown={(e) => {
             if (e.key === 'Enter') send()
           }}
-          disabled={isProcessing}
-          placeholder={isProcessing ? 'Waiting for the DM...' : 'What do you do?'}
+          disabled={isProcessing || !connected || mode === 'disconnected'}
+          placeholder={isProcessing ? 'Waiting for the DM...' : 'Enter your command...'}
           aria-label="Player input"
           className="min-w-0 flex-1 rounded border-2 border-card bg-page px-3 py-2 font-log text-sm text-primary outline-none focus:border-accent disabled:opacity-60"
         />
         <button
           type="button"
           onClick={send}
-          disabled={isProcessing}
-          className="cursor-pointer rounded border-2 border-card bg-panel px-4 py-2 font-chrome text-sm text-accent hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={isProcessing || !connected || mode === 'disconnected'}
+          className="cursor-pointer rounded border-0 bg-[#4caf50] px-5 py-2 font-chrome text-sm font-bold text-white hover:bg-[#45a049] disabled:cursor-not-allowed disabled:bg-[#555]"
         >
           Send
         </button>

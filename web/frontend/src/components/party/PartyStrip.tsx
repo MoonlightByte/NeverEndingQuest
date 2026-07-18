@@ -18,11 +18,13 @@ import type { MediaSource } from './media'
 /** Request party data now and after every new log message; returns unsubscribe. */
 function requestPartyOnLogActivity(): () => void {
   emitC('request_party_data', undefined)
-  return useLog.subscribe((state, previous) => {
+  const unsubscribe = useLog.subscribe((state, previous) => {
     if (state.messages !== previous.messages) {
       emitC('request_party_data', undefined)
     }
   })
+  const timer = window.setInterval(() => emitC('request_party_data', undefined), 5000)
+  return () => { unsubscribe(); window.clearInterval(timer) }
 }
 
 export function PartyStrip() {

@@ -163,7 +163,7 @@ describe('InitiativeTracker', () => {
     expect(requestCount('request_initiative_data')).toBe(2)
   })
 
-  it('renders typed combatant chips and the round badge during combat', () => {
+  it('renders typed combatant chips without duplicating the shell round badge', () => {
     act(() => {
       useWorld.getState().setInitiative({
         active: true,
@@ -185,8 +185,7 @@ describe('InitiativeTracker', () => {
     expect(screen.getByRole('button', { name: 'Skeleton' }).getAttribute('data-chip')).toBe(
       'init-enemy',
     )
-    expect(screen.getByText('Round')).toBeTruthy()
-    expect(screen.getByText('3')).toBeTruthy()
+    expect(screen.queryByText('Round')).toBeNull()
   })
 
   it('highlights the player chip only when input is unlocked', () => {

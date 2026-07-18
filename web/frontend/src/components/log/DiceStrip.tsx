@@ -28,12 +28,12 @@ interface DamageRoll {
 }
 
 const diceButtonClass =
-  'cursor-pointer rounded border-2 border-card bg-panel px-2 py-1 font-chrome text-xs font-bold ' +
-  'text-primary hover:border-accent hover:text-accent'
+  'relative min-w-[50px] cursor-pointer overflow-hidden rounded-md border border-white/50 px-3 py-1.5 ' +
+  'font-chrome text-[13px] font-bold text-white/90 shadow-[0_4px_6px_rgba(0,0,0,.2),inset_0_1px_0_rgba(255,255,255,.6)] ' +
+  'bg-[linear-gradient(145deg,rgba(38,97,156,.4),rgba(25,118,210,.5),rgba(13,71,161,.6))]'
 
 const clearButtonClass =
-  'cursor-pointer rounded border-2 border-card bg-panel px-2 py-1 font-chrome text-xs ' +
-  'text-secondary hover:border-soft'
+  'cursor-pointer rounded border-0 bg-[#f44336] px-3 py-1.5 font-chrome text-[13px] text-white hover:bg-[#d32f2f]'
 
 export function DiceStrip() {
   const [d20Rolls, setD20Rolls] = useState<number[]>([])
@@ -57,11 +57,11 @@ export function DiceStrip() {
   const hasResults = d20Rolls.length > 0 || damageRolls.length > 0
 
   return (
-    <div className="neq-card flex flex-wrap items-center gap-2 px-3 py-2">
-      <span className="font-display text-xs font-bold uppercase tracking-wider text-secondary">
-        Quick Rolls
-      </span>
-      <div className="flex items-center gap-1">
+    <div className="flex shrink-0 flex-col items-center gap-1">
+      <div className="relative w-full text-center before:absolute before:left-0 before:right-0 before:top-1/2 before:h-px before:bg-[#ffa500]">
+        <span className="relative z-10 inline-block rounded border border-[#ffa500] bg-[#333] px-5 py-0.5 font-chrome text-xs font-bold uppercase tracking-wider text-[#ffa500]">Quick Rolls</span>
+      </div>
+      <div className="flex items-center gap-1.5">
         {DICE_SIDES.map((sides) => (
           <button
             key={sides}
@@ -78,7 +78,7 @@ export function DiceStrip() {
         </button>
       </div>
       {hasResults && (
-        <div className="min-w-0 flex-1 truncate font-log text-sm" data-testid="dice-results">
+        <div className="absolute left-0 top-full min-w-0 truncate font-log text-sm" data-testid="dice-results">
           {d20Rolls.length > 0 && (
             <span style={{ color: 'var(--accent)' }}>
               {d20Rolls.map((r) => `d20: ${r}`).join(', ')}

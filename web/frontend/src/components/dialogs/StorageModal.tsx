@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, useWorld } from '../../stores'
-import { DialogShell } from './DialogShell'
 
 interface StorageItem {
   name: string
@@ -82,9 +81,21 @@ function StorageModalBody() {
   }
 
   return (
-    <DialogShell title="Player Storage" onClose={closeDialog} maxWidth="40rem">
-      {body}
-    </DialogShell>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="player-storage-title"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog() }}
+    >
+      <div className="flex h-[85%] max-h-[90vh] w-[80%] max-w-[90vw] flex-col rounded-lg border-2 border-[#4caf50] bg-[#2c2c2c] p-5 font-chrome">
+        <div className="mb-[15px] flex items-center justify-between border-b-2 border-card pb-[10px]">
+          <h3 id="player-storage-title" className="text-xl font-bold text-accent">Player Storage</h3>
+          <button type="button" onClick={closeDialog} aria-label="Close" className="border-0 bg-transparent text-[28px] font-bold leading-none text-[#aaa] hover:text-white">&times;</button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">{body}</div>
+      </div>
+    </div>
   )
 }
 

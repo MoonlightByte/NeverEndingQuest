@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { useLog, useSession } from '../../stores'
+import { useLog, useSession, useSettings } from '../../stores'
 import { emitC } from '../../services/socket'
 import { GameLog } from './GameLog'
 import { MessageCard } from './MessageCard'
@@ -18,10 +18,12 @@ vi.mock('../../services/socket', () => ({ emitC: vi.fn() }))
 
 const initialLog = useLog.getState()
 const initialSession = useSession.getState()
+const initialSettings = useSettings.getState()
 
 beforeEach(() => {
   useLog.setState(initialLog, true)
   useSession.setState(initialSession, true)
+  useSettings.setState(initialSettings, true)
   vi.clearAllMocks()
 })
 
@@ -37,18 +39,18 @@ describe('MessageCard', () => {
     )
     expect(screen.getByText('Dungeon Master')).toBeTruthy()
     expect(screen.getByText('A cold wind rises.')).toBeTruthy()
-    expect(screen.getByText('Play')).toBeTruthy()
+    expect(screen.getByTitle('Play DM Voice')).toBeTruthy()
     expect(screen.getByText('Generate Image')).toBeTruthy()
     expect(container.querySelector('[data-message-type="narration"]')).not.toBeNull()
   })
 
-  it('right-aligns user input', () => {
+  it('renders user input in the legacy left-aligned flow', () => {
     const { container } = render(
       <MessageCard message={{ type: 'user-input', content: 'I draw my sword.' }} />,
     )
     const card = container.querySelector('[data-message-type="user-input"]')
     expect(card).not.toBeNull()
-    expect(card!.className).toContain('flex-row-reverse')
+    expect(card!.className).not.toContain('flex-row-reverse')
     expect(screen.getByText('I draw my sword.')).toBeTruthy()
   })
 
@@ -69,7 +71,7 @@ describe('GameLog', () => {
     const { container } = render(<GameLog />)
     expect(screen.getByText('The dragon roars.')).toBeTruthy()
     expect(screen.getByText('I run.')).toBeTruthy()
-    const img = container.querySelector('img')
+    const img = container.querySelector('img[alt^="Generated scene:"]')
     expect(img).not.toBeNull()
     expect(img!.getAttribute('src')).toBe('/media/scene1.jpg')
     expect(img!.closest('[data-message-type="narration"]')).not.toBeNull()
@@ -79,17 +81,30 @@ describe('GameLog', () => {
     useLog.getState().append({ type: 'narration', content: 'A quiet village.' })
     useLog.getState().addImage({ image_url: '/media/orphan.jpg', prompt: 'different prompt' })
     const { container } = render(<GameLog />)
-    const img = container.querySelector('img')
+    const img = container.querySelector('img[alt^="Generated scene:"]')
     expect(img).not.toBeNull()
     expect(img!.getAttribute('src')).toBe('/media/orphan.jpg')
     expect(img!.closest('[data-message-type="narration"]')).toBeNull()
+  })
+
+  it('uses a stable source ID instead of attaching to newer duplicate narration text', () => {
+    useLog.getState().append({ type: 'narration', content: 'The same omen appears.', message_id: 'older' })
+    useLog.getState().append({ type: 'narration', content: 'The same omen appears.', message_id: 'newer' })
+    useLog.getState().addImage({ image_url: '/media/older.jpg', prompt: 'The same omen appears.', source_message_id: 'older', request_id: 'image-older' })
+    const { container } = render(<GameLog />)
+    const cards = container.querySelectorAll('[data-message-type="narration"]')
+    expect(cards).toHaveLength(2)
+    expect(cards[0]?.querySelector('img[alt^="Generated scene:"]')?.getAttribute('src')).toBe('/media/older.jpg')
+    expect(cards[1]?.querySelector('img[alt^="Generated scene:"]')).toBeNull()
   })
 })
 
 describe('InputBar', () => {
   it('emits user_input with the trimmed draft and clears the field', () => {
+    useSession.getState().setConnected(true)
+    useSession.getState().gameStarted('ready')
     render(<InputBar />)
-    const input = screen.getByPlaceholderText('What do you do?') as HTMLInputElement
+    const input = screen.getByPlaceholderText('Enter your command...') as HTMLInputElement
     fireEvent.change(input, { target: { value: '  look around  ' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(emitC).toHaveBeenCalledWith('user_input', { input: 'look around' })
@@ -138,9 +153,11 @@ describe('DiceStrip', () => {
 })
 
 describe('TtsButton', () => {
-  it('is disabled when the Web Speech API is unavailable', () => {
+  it('explains how to enable DM Voice when the feature is disabled', () => {
+    useSettings.setState({ ttsEnabled: false })
     render(<TtsButton content="hello" />)
-    expect((screen.getByText('Play') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByTitle('Play DM Voice'))
+    expect(useLog.getState().messages.at(-1)?.content).toMatch(/Enable "DM Voice"/)
   })
 
   it('speaks on click and stops on the second click', () => {
@@ -154,36 +171,64 @@ describe('TtsButton', () => {
         this.text = text
       }
     }
-    vi.stubGlobal('speechSynthesis', { speak, cancel })
+    useSettings.setState({ ttsEnabled: true, engine: 'browser' })
+    vi.stubGlobal('speechSynthesis', { speak, cancel, getVoices: () => [] })
     vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance)
     render(<TtsButton content="A cold wind rises." />)
-    fireEvent.click(screen.getByText('Play'))
+    fireEvent.click(screen.getByTitle('Play DM Voice'))
     expect(speak).toHaveBeenCalledTimes(1)
     expect((speak.mock.calls[0]![0] as FakeUtterance).text).toBe('A cold wind rises.')
-    fireEvent.click(screen.getByText('Stop'))
+    fireEvent.click(screen.getByTitle('Stop playback'))
     expect(cancel).toHaveBeenCalled()
-    expect(screen.getByText('Play')).toBeTruthy()
+    expect(screen.getByTitle('Play DM Voice')).toBeTruthy()
+  })
+
+  it('does not let a stale playback callback clear the newer playback owner', () => {
+    const utterances: FakeUtterance[] = []
+    class FakeUtterance {
+      onend: (() => void) | null = null
+      onerror: (() => void) | null = null
+      text: string
+      constructor(text: string) { this.text = text; utterances.push(this) }
+    }
+    useSettings.setState({ ttsEnabled: true, engine: 'browser' })
+    vi.stubGlobal('speechSynthesis', { speak: vi.fn(), cancel: vi.fn(), getVoices: () => [] })
+    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance)
+    render(<><TtsButton content="first" /><TtsButton content="second" /></>)
+    const playButtons = screen.getAllByTitle('Play DM Voice')
+    fireEvent.click(playButtons[0]!)
+    fireEvent.click(playButtons[1]!)
+    expect(screen.getAllByTitle('Stop playback')).toHaveLength(1)
+    act(() => utterances[0]?.onend?.())
+    expect(screen.getAllByTitle('Stop playback')).toHaveLength(1)
+    act(() => utterances[1]?.onend?.())
+    expect(screen.queryByTitle('Stop playback')).toBeNull()
   })
 })
 
 describe('GenerateImageButton', () => {
   it('emits generate_image with the message content and clears pending when the image arrives', () => {
+    vi.mocked(emitC).mockReturnValue('image-request-1')
     render(<GenerateImageButton content="The dragon roars." />)
     fireEvent.click(screen.getByText('Generate Image'))
-    expect(emitC).toHaveBeenCalledWith('generate_image', { prompt: 'The dragon roars.' })
+    expect(emitC).toHaveBeenCalledWith('generate_image', {
+      prompt: 'Epic fantasy RPG scene: The dragon roars.. Medieval style, darker lighting, highly detailed fantasy art style, professional digital painting, atmospheric depth.',
+      source_message_id: undefined,
+    })
     expect((screen.getByText('Generating...') as HTMLButtonElement).disabled).toBe(true)
     act(() => {
-      useLog.getState().addImage({ image_url: '/media/x.jpg', prompt: 'The dragon roars.' })
+      useLog.getState().addImage({ image_url: '/media/x.jpg', prompt: 'Epic fantasy RPG scene: The dragon roars.. Medieval style, darker lighting, highly detailed fantasy art style, professional digital painting, atmospheric depth.', request_id: 'image-request-1' })
     })
     expect(screen.getByText('Generate Image')).toBeTruthy()
   })
 
-  it('clears pending when a subsequent error message lands in the log', () => {
+  it('clears pending only when its correlated image error lands in the log', () => {
+    vi.mocked(emitC).mockReturnValue('image-request-2')
     render(<GenerateImageButton content="A quiet village." />)
     fireEvent.click(screen.getByText('Generate Image'))
     expect(screen.getByText('Generating...')).toBeTruthy()
     act(() => {
-      useLog.getState().append({ type: 'error', content: 'Image generation failed.' })
+      useLog.getState().imageFailed({ message: 'Image generation failed.', request_id: 'image-request-2' })
     })
     expect(screen.getByText('Generate Image')).toBeTruthy()
   })

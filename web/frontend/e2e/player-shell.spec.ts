@@ -38,7 +38,9 @@ test('legacy and React player routes coexist', async ({ request }) => {
 test('player shell does not overflow a phone viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/play/')
-  await expect(page.getByLabel('Connected')).toBeVisible({ timeout: 15_000 })
+  // The desktop connection label is intentionally collapsed at phone widths;
+  // live game content proves the socket contract reached the responsive shell.
+  await expect(page.getByText('The wind whispers across the Forsaken Crossroads.')).toBeVisible({ timeout: 15_000 })
 
   const dimensions = await page.evaluate(() => ({
     viewport: window.innerWidth,
@@ -57,7 +59,6 @@ test('first turn and combat mode render from the socket contract', async ({ page
   await expect(page.getByText('Begin combat validation', { exact: true })).toBeVisible()
   await expect(page.getByText('A Storm Wraith surges forward. Roll initiative!')).toBeVisible()
   await expect(page.getByLabel('Initiative order')).toBeVisible()
-  await expect(page.getByLabel('Combat round 1')).toBeVisible()
   await expect(page.getByLabel('Combat, round 1')).toBeVisible()
 })
 

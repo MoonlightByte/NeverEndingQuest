@@ -2,25 +2,13 @@ import { useEffect, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, useLog } from '../../stores'
 import { DialogShell, dialogButtonDanger, dialogButtonSecondary } from './DialogShell'
+import { prepareForServerRestart, reloadWhenServerReady } from '../../services/restart'
 
-/** Unambiguous ASCII charset (no 0/O, 1/I/L) for the confirmation code. */
-const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
-const CODE_LENGTH = 6
-
-/** Random 6-char confirmation code (rejection sampling, no modulo bias). */
+/** Legacy-compatible five-digit confirmation code (10000-99999). */
 export function generateResetCode(): string {
-  const limit = Math.floor(256 / CODE_CHARS.length) * CODE_CHARS.length
-  let out = ''
-  while (out.length < CODE_LENGTH) {
-    const buf = new Uint8Array(CODE_LENGTH * 2)
-    crypto.getRandomValues(buf)
-    for (const byte of buf) {
-      if (byte < limit && out.length < CODE_LENGTH) {
-        out += CODE_CHARS[byte % CODE_CHARS.length]
-      }
-    }
-  }
-  return out
+  const value = new Uint32Array(1)
+  crypto.getRandomValues(value)
+  return String(10000 + (value[0] % 90000))
 }
 
 const RESET_ACTIONS = [
@@ -39,71 +27,75 @@ function ResetDialogBody() {
 
   const confirmed = typed === code
 
-  const performReset = () => {
+  const performReset = async () => {
     if (!confirmed) return
     useLog.getState().append({
       type: 'info',
       content:
         'Campaign reset initiated... The application may become unresponsive while the server restarts.',
     })
+    await prepareForServerRestart()
     emitC('action', { action: 'nuclearReset', parameters: {} })
     closeDialog()
   }
 
   return (
-    <DialogShell title="CAMPAIGN RESET" onClose={closeDialog} maxWidth="36rem">
-      <div className="flex flex-col gap-3 font-chrome text-sm">
-        <div className="rounded border-2 border-[#c0392b] bg-page p-3">
-          <strong className="text-[#e74c3c]">WARNING: Complete Campaign Wipe</strong>
-          <p className="mt-1 text-secondary">
+    <DialogShell title={<><span className="text-[#f44336]">⚠️</span> CAMPAIGN RESET <span className="text-[#f44336]">⚠️</span></>} onClose={closeDialog} maxWidth="750px" legacy>
+      <div className="font-chrome text-sm leading-[normal]">
+        <div className="mb-5">
+          <div className="mb-[15px] rounded-md border-2 border-[#f44336] bg-[#4a1515] p-[15px] text-center">
+            <strong className="mb-2 block text-base text-[#f44336]">🔥 WARNING: Complete Campaign Wipe</strong>
+            <p className="m-0 text-sm text-[#ffcdd2]">
             This will permanently delete your current game progress and return to a fresh
             campaign start.
+            </p>
+          </div>
+
+          <div className="mb-[15px] rounded-md border border-[#4caf50] bg-[#1a2a1a] p-[15px]">
+            <h4 className="mb-[10px] text-[15px] font-bold text-accent">📋 What This Reset Does:</h4>
+            <ul className="m-0 list-none p-0 text-primary">
+              {RESET_ACTIONS.map((line, index) => (
+                <li key={line} className="py-[3px] text-[13px]">{['✅','🗑️','🔄','🏁','🔒'][index]} {line}</li>
+              ))}
+            </ul>
+          </div>
+
+          <p className="rounded border-l-4 border-accent bg-[#2d4a2d] p-3 text-[13px] text-[#c8e6c9]">
+            <strong className="text-accent">💡 Note:</strong> Your current progress will be backed up to{' '}
+            <code className="rounded bg-page px-1.5 py-0.5 font-log text-[#ffd54f]">modules/backups/campaign_backup_[timestamp]</code>{' '}
+            before reset. Module restore points (BU files) are protected and remain intact.
           </p>
         </div>
 
-        <div className="rounded border-2 border-card bg-page p-3">
-          <strong className="text-primary">What this reset does:</strong>
-          <ul className="mt-2 list-disc pl-5 text-secondary">
-            {RESET_ACTIONS.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="text-xs text-secondary">
-          Note: your current progress is backed up to{' '}
-          <code className="font-log">modules/backups/campaign_backup_[timestamp]</code> before
-          the reset. Module restore points (BU files) remain intact.
-        </p>
-
-        <div className="text-center">
-          <p className="text-secondary">To confirm, type the following code into the box below:</p>
+        <div className="mb-5 text-center">
+          <p className="text-secondary">To confirm, please type the following code into the box below:</p>
           <p
             data-testid="reset-code"
-            className="mx-auto my-2 select-none rounded bg-page px-3 py-1 font-log text-2xl font-bold text-accent"
-            style={{ letterSpacing: '5px', maxWidth: '14rem' }}
+            className="my-[10px] select-none rounded bg-page p-[5px] font-log text-2xl font-bold text-accent"
+            style={{ letterSpacing: '5px' }}
           >
             {code}
           </p>
           <input
             type="text"
             value={typed}
-            onChange={(e) => setTyped(e.target.value.toUpperCase())}
+            onChange={(e) => setTyped(e.target.value.replace(/\D/g, '').slice(0, 5))}
+            inputMode="numeric"
             placeholder="Enter code here"
             aria-label="Reset confirmation code"
             autoComplete="off"
-            className="w-full rounded border-2 border-card bg-page px-3 py-2 text-center font-log text-lg text-primary outline-none focus:border-accent"
+            className="w-full rounded border border-[#555] bg-[#333] p-2 text-center font-chrome text-lg text-primary outline-none focus:border-accent"
           />
         </div>
 
-        <div className="flex justify-end gap-2">
+        <div className="mt-6 flex justify-between gap-[10px]">
           <button type="button" className={dialogButtonSecondary} onClick={closeDialog}>
             Cancel
           </button>
           <button
             type="button"
             className={dialogButtonDanger}
-            onClick={performReset}
+            onClick={() => void performReset()}
             disabled={!confirmed}
           >
             Confirm Reset
@@ -125,7 +117,7 @@ export function ResetDialog() {
   // reset_complete -> the server restarts itself; reload to reattach.
   useEffect(() => {
     if (actionResult?.kind === 'reset') {
-      window.location.reload()
+      void reloadWhenServerReady()
     }
   }, [actionResult])
 

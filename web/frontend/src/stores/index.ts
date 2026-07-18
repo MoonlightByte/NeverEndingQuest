@@ -12,3 +12,6 @@ export type { PlayerState, PlayerDataType, NpcDetails, NpcInventory } from './pl
 
 export { useDialogs } from './dialogs'
 export type { DialogsState, DialogName, CompressionState, ActionResult, ProviderSettings } from './dialogs'
+
+export { useSettings } from './settings'
+export type { SettingsState, TtsEngine } from './settings'

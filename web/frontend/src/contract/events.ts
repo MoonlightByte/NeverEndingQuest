@@ -6,8 +6,42 @@
  */
 
 // ---------- shared shapes ----------
-export type MessageType = 'narration' | 'user-input' | 'info' | 'error' | 'startup' | 'debug';
-export interface GameMessage { type: MessageType; content: string; timestamp?: string }
+export type MessageType =
+  | 'narration'
+  | 'user-input'
+  | 'system'
+  | 'info'
+  | 'error'
+  | 'startup'
+  | 'debug';
+export interface GameMessage {
+  type: MessageType;
+  content: string;
+  timestamp?: string;
+  /** Stable server identity used to merge cache/live/reconnect delivery. */
+  message_id?: string;
+}
+
+export interface RequestMeta { request_id?: string }
+export interface ResponseMeta { request_id?: string; revision?: number; server_instance_id?: string }
+
+export type PlayerDataResponse =
+  | {
+      dataType: 'stats' | 'inventory' | 'spells';
+      data: Record<string, unknown> | null;
+      error?: string;
+      request_id?: string;
+      revision?: number;
+      server_instance_id?: string;
+    }
+  | {
+      dataType: 'npcs';
+      data: Array<Record<string, unknown>> | null;
+      error?: string;
+      request_id?: string;
+      revision?: number;
+      server_instance_id?: string;
+    };
 
 // ---------- client -> server (31) ----------
 export interface ClientEvents {
@@ -18,17 +52,18 @@ export interface ClientEvents {
   };
   start_game: undefined;
   user_exit: undefined;
-  request_player_data: { dataType: 'stats' | 'inventory' | 'spells' };
-  request_location_data: undefined;
-  request_party_data: undefined;
-  request_initiative_data: undefined;
-  request_plot_data: undefined;
-  request_storage_data: undefined;
+  request_player_data: { dataType: 'stats' | 'inventory' | 'spells' | 'npcs'; request_id?: string };
+  request_location_data: RequestMeta | undefined;
+  request_party_data: RequestMeta | undefined;
+  request_initiative_data: RequestMeta | undefined;
+  request_plot_data: RequestMeta | undefined;
+  request_storage_data: RequestMeta | undefined;
+  request_ui_snapshot: RequestMeta | undefined;
   request_npc_saves: { npcName: string };
   request_npc_skills: { npcName: string };
   request_npc_spells: { npcName: string };
   request_npc_inventory: { npcName: string };
-  generate_image: { prompt: string };
+  generate_image: { prompt: string; request_id?: string; source_message_id?: string };
   request_module_list: undefined;
   // --- local-edition operator settings (hidden when VITE_EDITION=hosted) ---
   get_model_provider: undefined;
@@ -57,37 +92,63 @@ export interface ServerEvents {
   game_output: GameMessage;
   debug_output: { type: 'debug'; content: string; timestamp: string };
   status_update: { message: string; is_processing: boolean };
-  startup_status: { status: 'in_progress' | 'ready' | 'failed'; phase: string };
+  startup_status: { status: 'in_progress' | 'ready' | 'failed'; phase: string; startupAttemptId?: string };
   game_started: { message: string };
   startup_recovery_response: { status: string; error?: string; retryAfterSeconds?: number; expectedStartupAttemptId?: string };
+  ui_state_snapshot: {
+    request_id?: string;
+    revision: number;
+    server_instance_id: string;
+    game_running: boolean;
+    is_processing: boolean;
+    status_message: string;
+    startup?: { status: 'idle' | 'in_progress' | 'ready' | 'failed'; phase: string; startupAttemptId?: string };
+    operations?: {
+      compression?: (Record<string, unknown> & { event?: string; status?: string }) | null;
+      module?: ServerEvents['module_creation_progress'] | null;
+      update?: { status: string; log: string[]; error?: string | null; complete?: string | null } | null;
+    };
+  };
   system_message: { content: string };
   error: { message: string };
   save_list_response: Array<Record<string, unknown>>;
   restore_complete: { message: string };
   reset_complete: { message: string };
-  player_data_response: { dataType: 'stats' | 'inventory' | 'spells'; data: Record<string, unknown> | null; error?: string };
-  location_data_response: { data: { currentLocation: string; currentArea: string; currentLocationId: string; currentAreaId: string; time: string; day: number | string; month: string; year: number | string } | null; error?: string };
+  player_data_response: PlayerDataResponse;
+  location_data_response: { data: { currentLocation: string; currentArea: string; currentLocationId: string; currentAreaId: string; time: string; day: number | string; month: string; year: number | string } | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   npc_details_response: { npcName: string; data: Record<string, unknown> | null; modalType: 'saves' | 'skills' | 'spells'; error?: string };
   npc_inventory_response: { npcName: string; data: unknown[] | null; error?: string };
-  party_data_response: { members: Array<Record<string, unknown>>; location_npcs?: Array<Record<string, unknown>> };
-  initiative_data_response: { active: boolean; combatants: Array<Record<string, unknown>>; round?: number };
-  plot_data_response: { data: { plotPoints: Array<{ id: string; title: string; description: string; status: string; sideQuests?: unknown[] }> } | null; error?: string };
-  storage_data_response: { data: Record<string, unknown> };
+  party_data_response: { members: Array<Record<string, unknown>>; location_npcs?: Array<Record<string, unknown>>; request_id?: string; revision?: number; server_instance_id?: string };
+  initiative_data_response: { active: boolean; combatants: Array<Record<string, unknown>>; round?: number; request_id?: string; revision?: number; server_instance_id?: string };
+  plot_data_response: { data: { plotPoints: Array<{ id: string; title: string; description: string; status: string; sideQuests?: unknown[] }> } | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
+  storage_data_response: { data: Record<string, unknown>; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   exit_acknowledged: { message: string };
   provider_changed: { provider: string };
   local_endpoint_changed: { base_url: string; model: string; has_key: boolean };
   openai_key_status: { has_key: boolean };
   gemini_key_status: { has_key: boolean };
   local_endpoint_test_result: { ok: boolean; detail: string };
-  image_generated: { image_url: string; prompt: string };
-  image_generation_error: { message: string };
+  image_generated: { image_url: string; prompt: string; request_id?: string; source_message_id?: string };
+  image_generation_error: { message: string; request_id?: string; source_message_id?: string };
   token_update: { tpm: number; rpm: number; total_tokens: number };
   compression_start: { total_sections: number };
   compression_progress: { completed: number; total: number; from_cache: boolean };
   compression_complete: { reduction_percentage: number; original_size: number; compressed_size: number };
+  compression_error: { error: string };
   module_list_response: Array<Record<string, unknown>>;
   // --- toolkit/operator scope (received only on toolkit page; typed for completeness) ---
-  module_creation_progress: { stage: number; total_stages: number; stage_name: string; percentage: number; message: string };
+  module_creation_progress: {
+    build_id?: string;
+    stage: number;
+    total_stages: number;
+    stage_name: string;
+    percentage: number;
+    message: string;
+    status?: string;
+    terminal?: boolean;
+    success?: boolean;
+    error?: string;
+  };
   generation_progress: { current: number; total: number; monster: string; percent: number };
   generation_complete: Record<string, unknown>;
   generation_error: { error: string };

@@ -11,6 +11,7 @@ import type { GameMessage } from '../../contract/events'
 import type { GeneratedImage } from '../../stores'
 import { TtsButton } from './TtsButton'
 import { GenerateImageButton } from './GenerateImageButton'
+import { useSettings } from '../../stores'
 
 export interface MessageCardProps {
   message: GameMessage
@@ -35,16 +36,14 @@ function InlineImages({ images }: { images: GeneratedImage[] }) {
 }
 
 export function MessageCard({ message, images = [] }: MessageCardProps) {
+  const aiImages = useSettings((s) => s.aiImages)
+  const autoplay = useSettings((s) => s.autoplay)
   switch (message.type) {
     case 'narration':
       return (
         <div className="my-5 flex items-start gap-3" data-message-type="narration">
-          <div
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full font-display text-sm font-bold text-white"
-            style={{ backgroundColor: '#8b4513' }}
-            aria-hidden="true"
-          >
-            DM
+          <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-full" aria-hidden="true">
+            <img src="/static/dm_logo.png" alt="" className="h-full w-full object-cover" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex items-center gap-2">
@@ -57,8 +56,8 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
               >
                 DM
               </span>
-              <TtsButton content={message.content} />
-              <GenerateImageButton content={message.content} />
+              <TtsButton content={message.content} autoplay={autoplay} />
+              {aiImages && <GenerateImageButton content={message.content} messageId={message.message_id} />}
             </div>
             <div
               className="whitespace-pre-wrap font-log text-[17px] leading-snug"
@@ -73,25 +72,22 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
 
     case 'user-input':
       return (
-        <div
-          className="my-5 flex flex-row-reverse items-start gap-3"
-          data-message-type="user-input"
-        >
+        <div className="my-5 flex items-start gap-3" data-message-type="user-input">
           <div
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full font-log text-xl text-white"
             style={{ backgroundColor: '#4a90e2' }}
             aria-hidden="true"
           >
-            {'>'}
+            {'⚔️'}
           </div>
-          <div className="flex min-w-0 flex-1 flex-col items-end">
+          <div className="min-w-0 flex-1">
             <div className="mb-1">
               <span className="font-chrome text-base font-bold" style={{ color: '#4a90e2' }}>
                 You
               </span>
             </div>
             <div
-              className="whitespace-pre-wrap text-right font-log text-[17px] leading-snug"
+              className="whitespace-pre-wrap font-log text-[17px] leading-snug"
               style={{ color: '#e8e8e8' }}
             >
               {message.content}
@@ -126,6 +122,7 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
       )
 
     case 'info':
+    case 'system':
     case 'startup':
       return (
         <div className="my-4 flex justify-center" data-message-type={message.type}>

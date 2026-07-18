@@ -1898,6 +1898,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         except Exception as e:
             # If compression fails, use original messages
             warning(f"VALIDATION: Compression failed, using original messages: {e}", category="ai_validation")
+            status_manager.emit_compression_event('compression_error', {'error': str(e)})
             validation_messages_to_send = validation_conversation
         finally:
             if temp_file is not None and temp_file.exists():
@@ -4374,6 +4375,7 @@ def get_ai_response(
     except Exception as e:
         # If compression fails, use original history
         print(f"WARNING: Compression failed: {e}")
+        status_manager.emit_compression_event('compression_error', {'error': str(e)})
         messages_to_send = conversation_history
     finally:
         if temp_file is not None and temp_file.exists():

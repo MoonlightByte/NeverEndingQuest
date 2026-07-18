@@ -1,65 +1,109 @@
-/**
- * TtsButton -- per-message Web Speech playback for DM narration (plan 4.4b).
- * Toggles speak/stop for this message's content via window.speechSynthesis.
- * Starting playback cancels any other utterance (one voice at a time), and
- * the cancelled button resets itself through its utterance onend/onerror.
- * Disabled when the browser has no Web Speech API support.
- */
 import { useEffect, useRef, useState } from 'react'
+import { useLog, useSettings } from '../../stores'
 
 const buttonClass =
-  'cursor-pointer rounded border border-card bg-page px-1.5 py-0.5 font-chrome text-[11px] ' +
-  'hover:border-accent disabled:cursor-not-allowed disabled:opacity-50'
+  'mr-1.5 inline-flex h-[22px] w-[22px] min-w-[22px] cursor-pointer items-center justify-center rounded ' +
+  'border-0 bg-[#4a4a4a] p-0 font-chrome text-xs leading-none hover:bg-[#666] disabled:cursor-not-allowed disabled:bg-[#666]'
 
-export function TtsButton({ content }: { content: string }) {
-  const supported = typeof window !== 'undefined' && 'speechSynthesis' in window
-  const [speaking, setSpeaking] = useState(false)
-  const speakingRef = useRef(false)
+let activeStop: (() => void) | null = null
+let activeOwner: symbol | null = null
+const audioCache = new Map<string, string>()
 
-  useEffect(() => {
-    speakingRef.current = speaking
-  }, [speaking])
+function stopActive(): void {
+  const stop = activeStop
+  activeStop = null
+  activeOwner = null
+  stop?.()
+}
 
-  // Stop our own playback when the message unmounts (e.g. log replaced).
-  useEffect(() => {
-    return () => {
-      if (speakingRef.current && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel()
-      }
-    }
-  }, [])
+function finishPlayback(owner: symbol, setIdle: () => void): void {
+  if (activeOwner !== owner) return
+  activeOwner = null
+  activeStop = null
+  setIdle()
+}
 
-  const toggle = () => {
-    if (!supported) return
-    if (speaking) {
-      window.speechSynthesis.cancel()
-      setSpeaking(false)
+async function createOpenAiAudio(text: string, voice: string, engine: 'openai' | 'openai-hd', signal: AbortSignal): Promise<string> {
+  const key = `${engine}:${voice}:${text}`
+  const cached = audioCache.get(key)
+  if (cached) return cached
+  const response = await fetch('/api/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice, model: engine === 'openai-hd' ? 'tts-1-hd' : 'tts-1' }),
+    signal,
+  })
+  if (!response.ok) {
+    let detail = 'TTS generation failed'
+    try { detail = (await response.json() as { error?: string }).error ?? detail } catch { /* non-JSON */ }
+    throw new Error(detail)
+  }
+  const url = URL.createObjectURL(await response.blob())
+  audioCache.set(key, url)
+  return url
+}
+
+export function TtsButton({ content, autoplay = false }: { content: string; autoplay?: boolean }) {
+  const enabled = useSettings((s) => s.ttsEnabled)
+  const engine = useSettings((s) => s.engine)
+  const voice = useSettings((s) => s.voices[s.engine])
+  const [state, setState] = useState<'idle' | 'loading' | 'playing'>('idle')
+  const mounted = useRef(true)
+  const playGeneration = useRef(0)
+
+  useEffect(() => () => { mounted.current = false }, [])
+
+  const play = async () => {
+    if (!enabled) {
+      useLog.getState().append({ type: 'system', content: 'Enable "DM Voice" toggle in Settings to use text-to-speech.' })
       return
     }
-    window.speechSynthesis.cancel() // one utterance at a time
-    const utterance = new SpeechSynthesisUtterance(content)
-    utterance.onend = () => setSpeaking(false)
-    utterance.onerror = () => setSpeaking(false)
-    setSpeaking(true)
-    window.speechSynthesis.speak(utterance)
+    if (state === 'playing' || state === 'loading') { stopActive(); return }
+    stopActive()
+    const owner = Symbol('tts-playback')
+    activeOwner = owner
+    const generation = ++playGeneration.current
+    try {
+      if (engine === 'browser') {
+        if (!('speechSynthesis' in window)) throw new Error('Your browser does not support text-to-speech.')
+        const utterance = new SpeechSynthesisUtterance(content)
+        const selected = window.speechSynthesis.getVoices().find((entry) => entry.name === voice)
+        if (selected) utterance.voice = selected
+        utterance.onend = () => finishPlayback(owner, () => { if (mounted.current) setState('idle') })
+        utterance.onerror = utterance.onend
+        activeStop = () => { window.speechSynthesis.cancel(); if (mounted.current) setState('idle') }
+        setState('playing')
+        window.speechSynthesis.speak(utterance)
+      } else {
+        const controller = new AbortController()
+        activeStop = () => {
+          controller.abort()
+          playGeneration.current += 1
+          if (mounted.current) setState('idle')
+        }
+        setState('loading')
+        const url = await createOpenAiAudio(content, voice || 'fable', engine, controller.signal)
+        if (!mounted.current || controller.signal.aborted || generation !== playGeneration.current || activeOwner !== owner) return
+        const audio = new Audio(url)
+        audio.onended = () => finishPlayback(owner, () => { if (mounted.current) setState('idle') })
+        audio.onerror = () => finishPlayback(owner, () => { if (mounted.current) setState('idle') })
+        activeStop = () => { audio.pause(); audio.currentTime = 0; if (mounted.current) setState('idle') }
+        setState('playing')
+        await audio.play()
+      }
+    } catch (error) {
+      finishPlayback(owner, () => { if (mounted.current) setState('idle') })
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      useLog.getState().append({ type: 'error', content: `Voice generation failed: ${error instanceof Error ? error.message : String(error)}` })
+    }
   }
 
-  return (
-    <button
-      type="button"
-      onClick={toggle}
-      disabled={!supported}
-      title={
-        supported
-          ? speaking
-            ? 'Stop DM voice'
-            : 'Play DM voice'
-          : 'Text-to-speech is not supported in this browser'
-      }
-      className={buttonClass}
-      style={{ color: speaking ? 'var(--accent)' : 'var(--text-secondary)' }}
-    >
-      {speaking ? 'Stop' : 'Play'}
-    </button>
-  )
+  useEffect(() => {
+    if (autoplay && enabled) { const timer = window.setTimeout(() => void play(), 100); return () => window.clearTimeout(timer) }
+    return undefined
+    // Only run once for a newly mounted narration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return <button type="button" onClick={() => void play()} title={state === 'playing' ? 'Stop playback' : 'Play DM Voice'} className={buttonClass} style={{ backgroundColor: state === 'playing' ? '#e74c3c' : state === 'loading' ? '#ffa500' : autoplay ? '#27ae60' : '#4a4a4a', color: '#ddd' }}>{state === 'loading' ? '...' : state === 'playing' ? '■' : '▶'}</button>
 }
