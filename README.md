@@ -4,7 +4,10 @@
 
 An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campaigns with infinite adventure potential. Experience the world's most popular roleplaying game with an intelligent AI that remembers every decision, adapts to your playstyle, and creates endless adventures tailored to your party.
 
-**🚀 NEW: Advanced Token Compression System** - Play longer, pay less! Revolutionary compression technology reduces API costs by 70-90% while maintaining full game fidelity. Run the game locally with open-source models or dramatically reduce OpenAI API expenses.
+**🚀 NEW: React Player and Multi-Provider AI** - Choose the established legacy
+player or the component-based React player, then run the game with the stable
+GPT-4.1 baseline, newer OpenAI models, Gemini, or an OpenAI-compatible local or
+remote server.
 
 ---
 
@@ -48,16 +51,17 @@ An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campa
    - **Right-click the link** and select **"Save link as..."** or **"Save target as..."**
    - Save the `.bat` file to your computer (e.g., Downloads folder)
 2. **Run the installer**: Double-click the `.bat` file
-3. **Add your OpenAI API key**: Enter your API key in the popup dialog
+3. **Choose whether to add an OpenAI API key**: Enter one in the popup, or skip
+   it and configure a provider later from the in-game Settings panel
 4. **Launch the game**: Run `launch_game.bat` in the `NeverEndingQuest` folder
 
 The installer automatically:
-- ✅ Checks for Python and Git (installs Git if missing)
+- ✅ Checks for Python, Git, and Node.js/npm (and attempts to install missing Git or Node.js)
 - ✅ Clones the repository to a `NeverEndingQuest` folder
 - ✅ Creates a virtual environment
 - ✅ Installs all dependencies
-- ✅ Sets up configuration with API key dialog
-- ✅ Creates `launch_game.bat` for easy launching
+- ✅ Creates the local configuration and offers an optional OpenAI-key dialog
+- ✅ Creates `launch_game.bat`, which lets you choose React or legacy at startup
 
 **To restart the game later:**
 - Run `launch_game.bat` in the `NeverEndingQuest` installation folder
@@ -66,27 +70,55 @@ The installer automatically:
 
 ### 🛠️ Manual Installation
 
-**Get playing in under 5 minutes!** The AI startup wizard handles everything automatically:
+The launcher handles React setup automatically after the Python environment is
+ready:
 
-1. **Install dependencies**: `pip install -r requirements.txt`
-2. **Install Node.js LTS**: Required for the new React player; includes `npm`
+1. **Install Python dependencies**: `pip install -r requirements.txt`
+2. **Install Node.js LTS**: Required only for the React player; it includes `npm`
 3. **Create local configuration**: Copy `config_template.py` to `config.py`
-4. **Launch the game**: `python run_web.py` - builds and opens the React player at http://localhost:8358/play/
-5. **Choose an AI provider**: Configure Legacy/OpenAI, Gemini, or a local OpenAI-compatible server from Settings
-6. **Start your adventure**: The AI will guide you through character creation and module selection
+4. **Choose an interface**: Run `python run_web.py --ui choose`
+5. **Choose an AI provider**: Open **Settings → AI Provider** in either player
+6. **Start your adventure**: The game guides you through character creation and module selection
 
 ### Additional Launch Options
 
-- **React Player (default)**: `python run_web.py` or `python run_web.py --ui react`
+- **Legacy Player (default)**: `python run_web.py` or `python run_web.py --ui legacy`
+- **React Player**: `python run_web.py --ui react`
 - **Choose at startup**: `python run_web.py --ui choose`
-- **Legacy Player**: `python run_web.py --ui legacy`
 - **Module Toolkit**: `python launch_toolkit.py` - Opens directly to the module creation interface
 - **Terminal Mode**: `python main.py` - Classic text-based interface (limited features)
 
-The launcher automatically runs `npm ci` and `npm run build` when the React
-frontend is missing or its source files have changed. If npm is unavailable or
-the build fails, startup falls back safely to the legacy player and prints the
-steps needed to enable React.
+When React is requested directly or through the chooser, the launcher runs
+`npm ci` and `npm run build` if the compiled frontend is missing or older than
+its source files. If npm is unavailable or the build fails, it safely starts
+the legacy player and prints instructions for enabling React. A plain
+`python run_web.py` intentionally starts legacy and does not require Node.js.
+
+The server prints the exact address when it starts. A fresh configuration uses
+`http://localhost:8357`; if you change `WEB_PORT` in `config.py`, use the port
+shown by the launcher. React is served at `/play/` and legacy at `/`.
+
+### AI Provider Setup
+
+Open **Settings → AI Provider** and choose one of these modes:
+
+- **Legacy (GPT-4.1)**: Stable, recommended baseline. Requires an OpenAI API key.
+- **OpenAI (GPT-5.x)**: Uses newer OpenAI models selected per call site. Requires an OpenAI API key.
+- **Gemini 3.1**: Uses Gemini models selected per call site. Requires a Google AI API key.
+- **Local / Custom Server**: Connects to an OpenAI-compatible endpoint such as
+  LM Studio, Ollama, vLLM, OpenRouter, or another remote server.
+
+For Local / Custom Server, the default endpoint is
+`http://localhost:1234/v1`. The model name and API key are optional for local
+servers; remote services may require both. Save the endpoint and select **Test
+Connection** before starting a game.
+
+The selected provider and non-secret endpoint settings persist in
+`user_settings.json`. Keys entered through Settings use the operating system's
+credential store when one is available. On a headless system without a usable
+credential store, keys remain only in memory for the current process and must
+be entered again after a restart. Existing keys in the local, gitignored
+`config.py` remain supported.
 
 > **Note**: The game is designed for the **web interface** which provides the optimal experience with real-time updates, character sheets, visual portraits, and the module toolkit.
 
@@ -148,7 +180,7 @@ Access the toolkit from the web interface or launch directly with `python launch
 - **Relationship Tracking** - NPCs remember interactions across modules
 - **Party Recruitment Ready** - Any NPC can potentially join the party
 
-### Monster Generator  
+### Monster Generator
 - **Custom Creature Creation** - Build unique monsters for your adventures
 - **Bestiary Management** - Import/export creatures from the master compendium
 - **CR Balancing** - Automatic challenge rating calculation
@@ -190,7 +222,7 @@ NeverEndingQuest is licensed under the **Fair Source License 1.0** with comprehe
 ### 🔒 **Fair Source License (5-year term)**
 The entire codebase including AI prompts, conversation compression, and all game systems are protected.
 - ✅ **Free for personal, educational, and non-commercial use**
-- ✅ **Community contributions welcome**  
+- ✅ **Community contributions welcome**
 - ✅ **Modify and customize freely for your campaigns**
 - ❌ **Commercial competing use prohibited for 5 years**
 - ⏰ **Becomes Apache 2.0 (fully open source) after 5 years**
@@ -223,42 +255,56 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 
 2. **Install dependencies**
    ```bash
+   python -m venv venv
+   # Linux/macOS: source venv/bin/activate
+   # Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
    Install Node.js LTS from [nodejs.org](https://nodejs.org/) if you want the
    React player. The launcher handles `npm ci` and the production build.
 
-3. **Configure an AI provider**
+3. **Create the local configuration**
    ```bash
+   # Linux/macOS
    cp config_template.py config.py
-   # Keys stay local. You can configure OpenAI, Gemini, or a local endpoint.
+
+   # Windows Command Prompt
+   copy config_template.py config.py
    ```
+
+   Provider selection and credentials can then be configured from **Settings →
+   AI Provider**. Do not commit `config.py` or any API keys.
 
 4. **Launch the game**
    ```bash
-   # React player (recommended; automatically builds frontend assets)
-   python run_web.py
-   # Opens at http://localhost:8358/play/
-
    # Prompt for React or legacy at startup
    python run_web.py --ui choose
 
-   # Explicit legacy fallback
+   # React player (automatically builds frontend assets when needed)
+   python run_web.py --ui react
+
+   # Legacy player (also the default for python run_web.py)
    python run_web.py --ui legacy
-   
+
    # Module Toolkit directly
    python launch_toolkit.py
-   # Opens at http://localhost:8358/toolkit
-   
+
    # Terminal interface (basic)
    python main.py
    ```
 
+   Follow the URL printed by the launcher. With the unchanged template, legacy
+   opens at `http://localhost:8357/`, React at
+   `http://localhost:8357/play/`, and the toolkit at
+   `http://localhost:8357/toolkit`.
+
 ### First Time Setup
+- Open Settings and select/test your AI provider before starting the game
 - The AI wizard will guide you through character creation
 - Choose from pre-built modules or generate a custom adventure
-- Web interface provides tutorial tooltips for new players
+- Both web players use the same game state; React provides the component-based
+  interface while legacy remains available as the stable fallback
 
 ## How It Overcomes AI Limitations
 
@@ -412,40 +458,31 @@ Original: "The orc chieftain raises his massive battle-axe high above his head, 
 Compressed: "Orc chieftain attacks with battle-axe. Hit: 18 vs AC 16. Damage: 2d8+5=13 slashing. You: 45->32 HP. Status: wounded, bleeding (1d4/turn)... [850 chars]"
 ```
 
-#### 5. Action Prediction & Model Routing (`utils/action_predictor.py`)
-Intelligent routing between AI models based on input complexity:
+#### 5. Action Prediction & Per-Call-Site Model Routing (`utils/action_predictor.py`)
 
-- **Input Analysis**: Predicts whether user input requires game actions
-- **Model Selection**: Routes to appropriate model tier
-  - Simple conversations → GPT-4o mini (cost-efficient)
-  - Action commands → Full model (quality-critical)
-- **Cost Optimization**: Significant savings for conversation-heavy gameplay
-- **Seamless Experience**: Automatic routing with no user intervention
+NeverEndingQuest no longer uses one model setting for every AI request. The
+selected provider supplies a tested model configuration for each call site,
+including narration, action prediction, structured character updates, combat,
+summaries, validation, module creation, and transitions.
 
-**Routing Logic:**
-```python
-if requires_game_action(user_input):
-    model = "gpt-4o"  # Full capabilities
-else:
-    model = "gpt-4o-mini"  # Conversational only
-```
+- **Legacy** preserves the GPT-4.1 behavior used as the stable baseline.
+- **OpenAI** and **Gemini** use task-specific models and reasoning settings.
+- **Local / Custom Server** sends the same gameplay contracts through an
+  OpenAI-compatible endpoint using the configured local model.
+- Provider changes apply at runtime and persist for the next launch.
+
+Action prediction still decides whether a turn requires structured game-state
+operations, but users do not need to assign models manually. The authoritative
+per-call-site configuration lives in `model_config.py`.
 
 ### Configuration & Setup
 
-#### Enable/Disable Compression
-Edit `config.py` to control compression settings:
+#### Compression Configuration
 
-```python
-# Token Compression Settings
-COMPRESSION_ENABLED = True        # Master switch for compression system
-COMPRESSION_CACHE_SIZE = 1000     # Number of compressed messages to cache
-COMPRESSION_PARALLEL_WORKERS = 5  # Parallel compression threads
-USE_COMPRESSED_PROMPTS = True     # Use compressed system prompts
-
-# Model Routing Settings
-ENABLE_ACTION_PREDICTION = True   # Enable intelligent model routing
-MINI_MODEL_THRESHOLD = 0.3        # Confidence threshold for mini model
-```
+Compression is enabled by default. Advanced developers can inspect its master
+switch and the provider/call-site model matrix in `model_config.py`. The older
+single-model and mini-model settings shown in previous README versions are no
+longer the source of truth.
 
 #### Monitoring & Telemetry
 The system includes comprehensive telemetry for optimization:
@@ -473,97 +510,53 @@ The compression system enables deployment with popular open-source models:
 - **Memory Usage**: 80% reduction in RAM requirements
 - **Batch Processing**: Support for multiple concurrent games
 
-#### Setup for Local Models
-1. Install local model runtime (Ollama, llama.cpp, etc.)
-2. Enable compression in `config.py`
-3. Configure model endpoint in `config.py`
-4. Adjust context window settings for your model
-5. Run game normally - compression handles adaptation
+#### Local / Custom Server Setup
 
-#### 🧪 EXPERIMENTAL: LM Studio Integration
+NeverEndingQuest can connect to LM Studio and other OpenAI-compatible servers
+without a special launcher:
 
-**Status**: EXPERIMENTAL - May experience issues with complex game mechanics
+1. Start the server and load a model.
+2. Launch either web player.
+3. Open **Settings → AI Provider** and choose **Local / Custom Server**.
+4. Enter the base URL, normally `http://localhost:1234/v1` for LM Studio.
+5. Optionally enter a model identifier and API key. Local servers commonly need
+   neither; hosted compatible services commonly require both.
+6. Select **Save**, then **Test Connection**.
 
-NeverEndingQuest now includes experimental support for running with [LM Studio](https://lmstudio.ai/) for completely local, offline gameplay with zero API costs.
+Connection success proves endpoint compatibility, not full gameplay quality.
+Local models must follow long prompts, compressed tags, and structured game
+contracts reliably; combat and game-state updates are the most demanding paths.
+The Legacy GPT-4.1 provider remains the recommended quality baseline.
 
-**⚠️ IMPORTANT LIMITATIONS:**
+#### 🧪 LM Studio Compatibility Notes
 
-This integration is **experimental** and has known limitations:
+NeverEndingQuest supports LM Studio through its OpenAI-compatible API. Local
+model behavior varies substantially by model, quantization, context size, and
+hardware.
 
-1. **Prompt Compatibility**: All system prompts and compression technology were designed and optimized exclusively for ChatGPT/GPT-4 architecture. Local models may:
-   - Produce malformed JSON action structures
-   - Fail to follow complex game mechanics properly
-   - Generate inconsistent SRD 5.2.1 rule interpretations
-   - Struggle with the compressed @TAG notation format
+**⚠️ Important limitations:**
 
-2. **Token Requirements**:
-   - **Minimum 32K context window required** (64K+ recommended)
-   - Models with smaller contexts will fail during extended gameplay
-   - Parallel request handling may exceed context limits
+- Local models may produce malformed structured actions or inconsistent rules interpretations.
+- Character updates, combat, module transitions, and parallel requests require strong instruction following.
+- Context and memory requirements grow during long campaigns; they cannot be inferred from a successful connection test.
+- Performance and required RAM/VRAM depend on the chosen model, quantization, context, and server configuration.
 
-3. **Memory & Performance**:
-   - **Use quantized models** (Q4_K_M or Q5_K_M) to reduce VRAM usage
-   - 7B models: Require 16GB+ system RAM
-   - 13B models: Require 32GB+ system RAM
-   - Parallel API requests may cause memory spikes
+Use the largest practical context window for your model and hardware. A small
+context can be enough to test the connection while still being insufficient for
+long sessions or complete prompt contracts. If you experience malformed JSON or
+poor prompt adherence, try a stronger instruction-following model, a larger
+context, or a lower server-side temperature.
 
-4. **Game Mechanics**:
-   - Combat system relies on precise JSON formatting from SRD 5.2.1 licensed game content
-   - Character progression uses SRD 5.2.1 rules (may not be in model training data)
-   - Module transitions require exact action detection
-   - NPC dialogue and quest tracking depend on GPT instruction-following
-
-**Recommended Models** (best compatibility):
-- **Mistral 7B Instruct v0.3** - 32K context, good instruction following
-- **Llama 3.1 8B Instruct** - 128K context, excellent for long sessions
-- **Mistral Nemo 12B** - 128K context, strong storytelling
-
-**Quick Start** (Windows):
-
-1. **Install LM Studio** from [lmstudio.ai](https://lmstudio.ai/)
-2. **Load a model** (recommended: Mistral 7B Instruct or Llama 3.1 8B)
-3. **Start LM Studio server** (click "Start Server" in Local Server tab)
-4. **Verify configuration**:
-   - Server address: `http://127.0.0.1:1234`
-   - Model loaded and active
-   - Context length set to maximum (32K+)
-5. **Launch**: Double-click `run_with_lmstudio_direct.bat` ✨ **RECOMMENDED - Simple & Fast**
-
-**Alternative: Advanced Launch with Request Logging**:
-
-For debugging or request/response logging, use the mitmproxy-based launcher:
-1. **Install proxy**: `pip install mitmproxy`
-2. **Launch**: Double-click `launch_lmstudio_mode.bat` (opens two terminals)
-3. Logs saved to `lmstudio_logs/` for troubleshooting
-
-**Configuration Verification**:
-
-Make sure your LM Studio settings match:
-```
-API Endpoint: http://127.0.0.1:1234/v1
-Model Identifier: <your-loaded-model>
-Context Length: 32768 or higher
-```
-
-**Direct Connection** (`run_with_lmstudio_direct.bat`): Connects directly to LM Studio on port 1234 with no proxy overhead. This is the simplest and fastest method.
-
-**Proxy Connection** (`launch_lmstudio_mode.bat`): Routes requests through mitmproxy for advanced logging and debugging. Use this if you need to troubleshoot API calls or capture request/response data.
-
-**Temperature Settings Note**: If you experience JSON formatting errors or poor prompt adherence, you can lower the temperature in LM Studio's server settings to improve accuracy, though this may reduce narrative creativity and storytelling immersion.
-
-**Known Issues**:
-- JSON parsing errors during complex combat
-- Inconsistent action detection compared to GPT-4
+**Possible local-model issues**:
+- JSON parsing errors during complex combat or state updates
+- Inconsistent action detection compared with the Legacy GPT-4.1 baseline
 - May require manual intervention for edge cases
 - Slower response times on CPU-only systems
 - Parallel requests may cause response delays or errors
 
-**Documentation**:
-- Complete setup guide: `LMSTUDIO_SETUP.md`
-- Quick reference: `LMSTUDIO_QUICKSTART.txt`
-- Configuration help: Edit `lmstudio_forwarder.py` lines 19-22
-
-**Support**: LM Studio mode is provided as-is for experimentation. For production gameplay, we recommend using OpenAI's API with the compression system for optimal experience.
+The older direct/proxy batch files and logging tools remain available for
+advanced diagnosis, but they are no longer the primary setup path. For normal
+play, configure and test the endpoint from Settings.
 
 ### Performance Metrics Summary
 
@@ -675,7 +668,7 @@ modules/[module_name]/
 All state modifications use atomic patterns:
 1. Create backup of affected files
 2. Perform operation with validation
-3. Verify final state integrity  
+3. Verify final state integrity
 4. Clean up on success OR restore on failure
 
 ### Web Interface Architecture
@@ -840,9 +833,14 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 
 ### Starting Your Adventure
 ```bash
-# Launch the web interface
-python run_web.py
-# Browser opens to http://localhost:8358
+# Choose React or legacy interactively
+python run_web.py --ui choose
+
+# Or launch one directly
+python run_web.py --ui react
+python run_web.py --ui legacy
+
+# Follow the URL printed in the terminal (normally localhost:8357)
 # Follow the AI wizard for character creation
 ```
 
@@ -850,7 +848,7 @@ python run_web.py
 ```bash
 # Open toolkit directly
 python launch_toolkit.py
-# Or navigate to http://localhost:8358/toolkit
+# Or open /toolkit on the server URL printed by the launcher
 
 # Create a new module:
 1. Click "Create Module"
@@ -870,7 +868,7 @@ python launch_toolkit.py
 4. Export pack as ZIP for sharing
 
 # Module Media Generation:
-1. Go to "Module Media Generator" tab  
+1. Go to "Module Media Generator" tab
 2. Select module and art style
 3. Review NPCs/monsters without images
 4. Click "Generate Selected" for batch creation
@@ -970,30 +968,31 @@ AI: "The explosion engulfs three goblins..."
 
 ## Configuration
 
-### OpenAI API Setup
-Edit `config.py` to configure AI models:
+### AI Provider and Credentials
 
-```python
-# Primary models
-DM_MAIN_MODEL = "gpt-4o-mini"  # Main storytelling
-DM_SUMMARIZATION_MODEL = "gpt-4o-mini"  # Compression
-DM_VALIDATION_MODEL = "gpt-4o-mini"  # Rule validation
+Use **Settings → AI Provider** in the web interface instead of assigning a
+single model in `config.py`. Choose Legacy, OpenAI, Gemini, or Local / Custom
+Server. The application maintains its tested per-call-site model matrix in
+`model_config.py`.
 
-# Specialized models
-DM_COMBAT_NARRATOR_MODEL = "gpt-4o-mini"  # Combat
-MODULE_CREATION_MODEL = "gpt-4o-mini"  # Content generation
-```
+- Legacy and OpenAI require an OpenAI API key.
+- Gemini requires a Google AI API key.
+- Local endpoints generally do not require a key; hosted compatible endpoints may.
+- Use **Test Connection** after configuring a Local / Custom Server.
+- Never commit `config.py`, `user_settings.json`, API keys, or captured provider traffic.
 
 ### Web Interface Settings
-- **Port**: 8358 (configurable in config.py)
-- **Host**: localhost (network accessible with --host 0.0.0.0)
+- **Port**: 8357 by default (set `WEB_PORT` in local `config.py` to change it)
+- **Host**: Loopback-only by default. Advanced operators can set `NEQ_WEB_HOST`;
+  exposing the server beyond the local computer also requires a long random
+  `NEQ_OPERATOR_TOKEN`.
 - **Debug Mode**: Disabled by default for production
 
 ### System Requirements
 - **Python**: 3.9 or higher
 - **RAM**: 4GB minimum, 8GB recommended
 - **Storage**: 2GB for base install, more for packs
-- **Network**: Internet connection for AI API
+- **Network**: Internet connection for cloud providers; not required for a fully local endpoint
 - **Browser**: Chrome, Firefox, or Edge (latest versions)
 
 ## Community Module Safety
@@ -1031,13 +1030,24 @@ New module detected → Security scan → Content safety check → Schema valida
 
 #### Installation
 - **Module not found**: Run `pip install -r requirements.txt`
-- **OpenAI API errors**: Check API key in `config.py`
+- **Provider authentication errors**: Open Settings, select the intended provider,
+  and save the corresponding OpenAI or Gemini key. Existing `config.py` keys
+  remain a supported fallback.
 - **Python version**: Requires 3.9+ (`python --version`)
+- **React says it is not built**: Install Node.js LTS, then relaunch with
+  `python run_web.py --ui react`. The launcher will run the required npm install
+  and build commands automatically.
+- **React build fails**: From `web/frontend`, run `npm ci` followed by
+  `npm run build`, or continue with `python run_web.py --ui legacy`.
 
 #### Startup Problems
 - **No modules**: Check `modules/` directory exists
-- **Web won't start**: Check port 8358 availability
+- **Web won't start**: Check the configured `WEB_PORT` (8357 by default) and
+  confirm that another process is not already using it
 - **Toolkit unavailable**: Ensure `core/toolkit/` exists
+- **Local server fails connection test**: Confirm the server is running, use an
+  OpenAI-compatible base URL ending in `/v1`, and verify the optional model name
+  and API key required by that server
 
 #### Performance
 - **Slow responses**: Normal (10-30s for AI)
@@ -1157,6 +1167,30 @@ This is unofficial Fan Content and is not affiliated with, endorsed, sponsored, 
 
 ## Recent Updates
 
+### Current Main - React Player, Multi-Provider AI, and Startup Improvements
+
+#### Player Interfaces
+- **Two supported web players**: Legacy remains at `/`; the component-based React player is available at `/play/`.
+- **Shared game state**: Both players connect to the same Python game engine, saves, modules, and Socket.IO events.
+- **Legacy feature/layout parity**: React includes the party and initiative strips,
+  character/inventory/spells/NPC/debug panels, journal, save/load/reset/settings,
+  combat state, and long-running operation overlays.
+- **Reconnect hydration**: React restores authoritative game state after a browser refresh or Socket.IO reconnect.
+
+#### Startup and Frontend Build
+- **Explicit interface selection**: Use `--ui react`, `--ui legacy`, or `--ui choose`; plain `python run_web.py` starts legacy.
+- **Automatic React preparation**: When React is requested, stale or missing assets trigger `npm ci` and `npm run build` automatically.
+- **Safe fallback**: Missing npm or a failed React build starts legacy and prints recovery instructions.
+- **Windows launcher choice**: New installer-generated `launch_game.bat` files prompt for React or legacy.
+
+#### AI Providers and Local Credentials
+- **Provider selection in Settings**: Choose Legacy GPT-4.1, newer OpenAI models, Gemini, or an OpenAI-compatible Local / Custom Server.
+- **Per-call-site model matrix**: Narration, combat, validation, summaries, updates,
+  and generation use provider-specific model settings selected for their task.
+- **Local endpoint testing**: Save and test LM Studio, Ollama, vLLM, OpenRouter, or other compatible endpoints from the UI.
+- **Secret separation**: Provider keys entered through Settings use an available OS
+  credential store and are not written to `user_settings.json`; headless fallback is process-memory only.
+
 ### Version 0.3.5 - DM Voice Text-to-Speech
 
 #### DM Voice Feature
@@ -1181,7 +1215,7 @@ New text-to-speech system for immersive DM narration:
 First iteration of conversation compression technology:
 - **Conversation compression**: Reduces token usage by approximately 70-90% in testing
 - **Compressed system prompt**: 101K tokens → 8K tokens (~93% reduction)
-- **Combat message compression**: ~70-85% compression rate  
+- **Combat message compression**: ~70-85% compression rate
 - **Validation prompt compression**: ~60-75% compression rate
 - **Goal**: Enable local LLM usage in future iterations
 
@@ -1218,7 +1252,7 @@ This is the first iteration of the compression system designed to reduce API cos
 - **Token Compression Pipeline** - 76-82% reduction per message with parallel processing
 - **Compressed Prompts** - System prompts reduced by 87-92% using @TAG notation
 - **Open-Source Compatibility** - Context reduced from 100K+ to <10K tokens for local models
-- **Intelligent Model Routing** - Automatic selection between GPT-4o and mini models
+- **Historical Model Routing** - At that release, automatic selection between GPT-4o and mini models (superseded by the current provider-aware call-site matrix)
 - **Combat Compression** - Special handling for verbose combat messages (82% reduction)
 - **Telemetry System** - Comprehensive usage tracking for optimization
 - **Cost Reduction** - 60-70% reduction in API costs through compression and routing
@@ -1257,7 +1291,7 @@ This is the first iteration of the compression system designed to reduce API cos
 
 ---
 
-**Created by MoonlightByte**  
+**Created by MoonlightByte**
 *An AI-powered adventure that never ends*
 
 For support, bug reports, or contributions, visit our [GitHub repository](https://github.com/MoonlightByte/NeverEndingQuest).
