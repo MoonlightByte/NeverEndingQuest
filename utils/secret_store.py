@@ -27,8 +27,9 @@ def _keyring():
     except Exception:
         if not _warned_about_keyring:
             logging.getLogger(__name__).warning(
-                "No OS credential store is available; provider keys will only "
-                "last for this NeverEndingQuest session."
+                "No OS credential store is available; provider keys stay in "
+                "user_settings.json (owner-only, gitignored). Install the "
+                "'keyring' package to use your OS credential manager instead."
             )
             _warned_about_keyring = True
         return None
@@ -48,21 +49,28 @@ def get_secret(name):
 
 
 def set_secret(name, value):
-    """Store a secret in the OS keyring, falling back to this process only."""
+    """Store a secret in the OS keyring, falling back to this process only.
+
+    Returns True only when the value reached a store that outlives this
+    process. A False return means the secret is memory-only, and the caller
+    MUST keep its own durable copy -- discarding it would lose the user's
+    credential at the next restart.
+    """
     value = (value or "").strip()
     if not value:
         delete_secret(name)
-        return
+        return True
 
     keyring = _keyring()
     if keyring is not None:
         try:
             keyring.set_password(_SERVICE_NAME, name, value)
             _session_secrets.pop(name, None)
-            return
+            return True
         except Exception:
             pass
     _session_secrets[name] = value
+    return False
 
 
 def delete_secret(name):

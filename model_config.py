@@ -1040,22 +1040,72 @@ def _save_user_settings(settings):
         pass
 
 
-def _migrate_plaintext_secrets(settings):
-    """Move legacy JSON credentials into the OS/session secret store.
+def _harden_settings_permissions():
+    """Best-effort owner-only permissions on an existing settings file."""
+    try:
+        os.chmod(_USER_SETTINGS_FILE, 0o600)
+    except OSError:
+        # Some Windows/WSL mounts do not implement POSIX permissions.
+        pass
 
-    The JSON file is rewritten without credentials even when an OS credential
-    backend is unavailable; the fallback keeps the migrated value alive only
-    until this process exits.
+
+def _migrate_plaintext_secrets(settings):
+    """Move legacy JSON credentials into the OS credential store when one exists.
+
+    A plaintext value is dropped from the JSON file ONLY after set_secret()
+    confirms it is stored somewhere that outlives this process. With no OS
+    credential store the fallback is memory-only, so the JSON copy is the only
+    durable one and MUST stay -- removing it destroyed the user's saved key on
+    the next restart (issue #129).
     """
     changed = False
+    retained_plaintext = False
     for setting_name, secret_name in _SECRET_SETTING_NAMES.items():
-        value = settings.pop(setting_name, None)
-        if value:
-            set_secret(secret_name, value)
-        changed = changed or value is not None
+        value = settings.get(setting_name)
+        if not value:
+            continue
+        if set_secret(secret_name, value):
+            settings.pop(setting_name, None)
+            changed = True
+        else:
+            retained_plaintext = True
     if changed:
         _save_user_settings(settings)
+    elif retained_plaintext:
+        # This file holds the only durable copy, so make sure other accounts on
+        # the machine cannot read it. _save_user_settings already does this on
+        # the rewrite path.
+        _harden_settings_permissions()
     return settings
+
+
+def _read_credential(name):
+    """Return a stored credential, preferring the OS store over the JSON copy."""
+    return get_secret(name) or _load_user_settings().get(name)
+
+
+def _store_credential(name, value):
+    """Store a credential so it survives a restart, wherever that is possible.
+
+    Uses the OS credential store when there is one and keeps plaintext out of
+    the JSON file. Otherwise the JSON file IS the durable store, so the value
+    is written there (owner-only, gitignored) rather than lost at exit.
+    """
+    settings = _load_user_settings()
+    if set_secret(name, value):
+        if settings.pop(name, None) is not None:
+            _save_user_settings(settings)
+        return
+    settings[name] = value
+    _save_user_settings(settings)
+
+
+def _forget_credential(name):
+    """Remove a credential from both the OS store and the JSON file."""
+    delete_secret(name)
+    settings = _load_user_settings()
+    if settings.pop(name, None) is not None:
+        _save_user_settings(settings)
 
 
 def persist_provider(provider_name):
@@ -1086,7 +1136,7 @@ def get_local_endpoint():
     s = _migrate_plaintext_secrets(_load_user_settings())
     return {
         "base_url": s.get("local_base_url") or DEFAULT_LOCAL_BASE_URL,
-        "api_key": get_secret("local_api_key") or DEFAULT_LOCAL_API_KEY,
+        "api_key": _read_credential("local_api_key") or DEFAULT_LOCAL_API_KEY,
         "model": (s.get("local_model") or "").strip(),
     }
 
@@ -1103,26 +1153,26 @@ def persist_local_endpoint(base_url="", api_key=None, model=""):
     s = _migrate_plaintext_secrets(_load_user_settings())
     s["local_base_url"] = (base_url or "").strip()
     s["local_model"] = (model or "").strip()
-    if api_key is not None:
-        set_secret("local_api_key", api_key)
     _save_user_settings(s)
+    if api_key is not None:
+        _store_credential("local_api_key", api_key)
 
 
 _OPENAI_KEY_PLACEHOLDER = "your_openai_api_key_here"
 
 
 def persist_openai_key(api_key):
-    """Store the OpenAI key in the OS credential store, never JSON."""
+    """Store the OpenAI key durably: OS credential store when one exists."""
     _migrate_plaintext_secrets(_load_user_settings())
     if api_key:
-        set_secret("openai_api_key", api_key)
+        _store_credential("openai_api_key", api_key)
     else:
-        delete_secret("openai_api_key")
+        _forget_credential("openai_api_key")
 
 
 def has_openai_key():
     """True if a real (non-placeholder) OpenAI key is stored. Never returns the key."""
-    key = get_secret("openai_api_key")
+    key = _read_credential("openai_api_key")
     return bool(key) and key != _OPENAI_KEY_PLACEHOLDER
 
 
@@ -1133,7 +1183,7 @@ def apply_persisted_openai_key():
     write via sys.modules['config'].
     """
     _migrate_plaintext_secrets(_load_user_settings())
-    key = get_secret("openai_api_key")
+    key = _read_credential("openai_api_key")
     if not key or key == _OPENAI_KEY_PLACEHOLDER:
         return
     import sys
@@ -1145,17 +1195,17 @@ _GEMINI_KEY_PLACEHOLDER = "your_gemini_api_key_here"
 
 
 def persist_gemini_key(api_key):
-    """Store the Gemini key in the OS credential store, never JSON."""
+    """Store the Gemini key durably: OS credential store when one exists."""
     _migrate_plaintext_secrets(_load_user_settings())
     if api_key:
-        set_secret("gemini_api_key", api_key)
+        _store_credential("gemini_api_key", api_key)
     else:
-        delete_secret("gemini_api_key")
+        _forget_credential("gemini_api_key")
 
 
 def has_gemini_key():
     """True if a real (non-placeholder) Gemini key is stored. Never returns the key."""
-    key = get_secret("gemini_api_key")
+    key = _read_credential("gemini_api_key")
     return bool(key) and key != _GEMINI_KEY_PLACEHOLDER
 
 
@@ -1167,7 +1217,7 @@ def apply_persisted_gemini_key():
     apply_persisted_openai_key's cross-module write via sys.modules['config'].
     """
     _migrate_plaintext_secrets(_load_user_settings())
-    key = get_secret("gemini_api_key")
+    key = _read_credential("gemini_api_key")
     if not key or key == _GEMINI_KEY_PLACEHOLDER:
         return
     import sys
