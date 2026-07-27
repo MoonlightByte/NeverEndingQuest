@@ -667,7 +667,81 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 errors.append(f"Plot point {pp['id']} is orphaned (no incoming connections)")
         
         return errors
-    
+
+    def repair_plot_locations(self, plot_data: Dict[str, Any],
+                              location_data: Dict[str, Any]) -> List[str]:
+        """Repair dangling references in place instead of discarding the build.
+
+        The model's habitual slip is writing the AREA id where a LOCATION id
+        belongs, which used to throw away an otherwise complete module after
+        every expensive generation step had already run (issue #133).
+
+        Only reference integrity is repaired:
+        - a plot point pointing at a non-existent location is reassigned across
+          the area's real locations in order, which keeps a sense of
+          progression rather than collapsing the plot into one room
+        - side quest and nextPoints entries that resolve to nothing are dropped
+
+        Structural problems (schema violations, orphaned plot points) are NOT
+        repaired; those still fail validation, because inventing plot topology
+        would be guesswork.
+
+        Returns human-readable descriptions of what was changed, empty when
+        nothing needed repair. Mutates plot_data in place.
+        """
+        locations = [
+            loc["locationId"]
+            for loc in location_data.get("locations", [])
+            if isinstance(loc, dict) and "locationId" in loc
+        ]
+        if not locations:
+            return []
+
+        available = set(locations)
+        plot_points = [
+            pp for pp in plot_data.get("plotPoints", []) if isinstance(pp, dict)
+        ]
+        known_ids = {pp["id"] for pp in plot_points if "id" in pp}
+        repairs = []
+
+        for index, pp in enumerate(plot_points):
+            if pp.get("location") not in available:
+                original = pp.get("location")
+                replacement = locations[index % len(locations)]
+                pp["location"] = replacement
+                repairs.append(
+                    f"plot point {pp.get('id', '?')} location "
+                    f"{original} -> {replacement}"
+                )
+
+            for sq in pp.get("sideQuests", []):
+                if not isinstance(sq, dict):
+                    continue
+                involved = sq.get("involvedLocations")
+                if not isinstance(involved, list):
+                    continue
+                kept = [loc for loc in involved if loc in available]
+                if len(kept) != len(involved):
+                    dropped = [loc for loc in involved if loc not in available]
+                    sq["involvedLocations"] = kept
+                    repairs.append(
+                        f"side quest {sq.get('id', '?')} dropped unknown "
+                        f"locations {', '.join(str(d) for d in dropped)}"
+                    )
+
+            next_points = pp.get("nextPoints")
+            if isinstance(next_points, list):
+                kept = [n for n in next_points if n in known_ids]
+                if len(kept) != len(next_points):
+                    dropped = [n for n in next_points if n not in known_ids]
+                    pp["nextPoints"] = kept
+                    repairs.append(
+                        f"plot point {pp.get('id', '?')} dropped unknown "
+                        f"nextPoints {', '.join(str(d) for d in dropped)}"
+                    )
+
+        return repairs
+
     def save_plot(self, plot_data: Dict[str, Any], filename: str = None):
         """Save plot data to file"""
         if filename is None:

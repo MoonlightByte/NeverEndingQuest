@@ -1753,6 +1753,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 validate_create_new_module_action,
             )
             from core.generators.module_builder import (
+                ModuleCreationCancelledError,
+                ModuleCreationFailedError,
                 ModuleCreationRecoveryRequiredError,
                 ai_driven_module_creation,
             )
@@ -1860,6 +1862,29 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         failure = module_failure(
                             recovery_required=True
                         )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+                    except ModuleCreationCancelledError:
+                        mark_module_build_outcome("not_generated")
+                        failure = module_failure()
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+                    except ModuleCreationFailedError as build_error:
+                        # The build now reports its reason instead of returning
+                        # a bare failure (issue #130). Log the detail, but keep
+                        # the player-facing message sanitized: provider output
+                        # must not leak into the DM conversation.
+                        error(
+                            f"Module creation failed: {build_error}",
+                            exception=build_error,
+                            category="module_creation",
+                        )
+                        mark_module_build_outcome("not_generated")
+                        failure = module_failure()
                         terminal_progress(
                             "failed", failure["response_data"]["error_message"]
                         )

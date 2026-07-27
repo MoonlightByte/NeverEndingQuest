@@ -41,6 +41,24 @@ class ModuleCreationRecoveryRequiredError(RuntimeError):
     """
 
 
+class ModuleCreationFailedError(RuntimeError):
+    """Raised when a module build fails, carrying the underlying reason.
+
+    A build used to report failure by returning ``(False, None)``, which threw
+    the cause away and left the operator with a bare "Module generation
+    failed" (issue #130). The message here is what the toolkit shows, so it
+    must say enough to act on.
+    """
+
+
+class ModuleCreationCancelledError(RuntimeError):
+    """Raised when the operator cancels an in-flight module build.
+
+    Distinct from a failure so the UI can say "cancelled" instead of blaming
+    the build for something the operator asked for.
+    """
+
+
 def validate_create_new_module_parameters(parameters: Any) -> str:
     """Validate and return the canonical DM-action narrative.
 
@@ -174,6 +192,25 @@ def _validate_plot_themes(value: Any) -> str:
             "plot_themes must contain 1 to 3 comma- or semicolon-separated goals"
         )
     return normalized
+
+
+def normalize_user_module_name(value: Any) -> str:
+    """Turn an operator-typed module name into a contract-valid one.
+
+    People type names like "Shadow's Keep", "Bell-Beneath-Tides" or
+    "Forest of Beasts (Levels 1-3)". Rejecting those outright gave them an
+    opaque failure before any work started (issue #131), so runs of
+    unsupported characters collapse into the single underscore separator the
+    contract expects.
+
+    Only operator input is normalized. Model-generated names still go through
+    _validate_module_name, where a violation is a real contract signal.
+
+    Returns "" when nothing usable remains, so the caller can fall back.
+    """
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"[^A-Za-z0-9]+", "_", value).strip("_")
 
 
 def _validate_module_name(value: Any) -> str:

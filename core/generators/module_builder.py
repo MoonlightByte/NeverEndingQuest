@@ -24,6 +24,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Callable, Dict, List, Any, Optional
 from dataclasses import dataclass
@@ -56,7 +57,9 @@ from core.ai.module_creation_contract import (
     GAME_MODULE_POLICY,
     MODULE_ADVENTURE_TYPES,
     MODULE_SPEC_FIELDS,
+    ModuleCreationCancelledError,
     ModuleCreationContractError,
+    ModuleCreationFailedError,
     ModuleCreationPolicy,
     ModuleCreationRecoveryRequiredError,
     ModuleCreationSpec,
@@ -70,6 +73,36 @@ register_callsite("T030", "core/generators/module_builder.py", 1906)
 
 # Set script name for logging
 set_script_name("module_builder")
+
+
+_AUTH_ERROR_TYPE_NAMES = {"AuthenticationError", "PermissionDeniedError"}
+
+
+def _is_auth_error(exc):
+    """True when a provider call failed over credentials rather than transport.
+
+    Credential failures never succeed on retry, so they are reported straight
+    away with an actionable message instead of being retried or collapsed into
+    a generic failure (issue #132).
+    """
+    original = getattr(exc, "original_error", None) or exc
+    if type(original).__name__ in _AUTH_ERROR_TYPE_NAMES:
+        return True
+    status = getattr(original, "status_code", None)
+    if status in (401, 403):
+        return True
+    text = str(original).lower()
+    return any(
+        marker in text
+        for marker in (
+            "invalid_api_key",
+            "incorrect api key",
+            "invalid api key",
+            "no api key",
+            "missing api key",
+            "unauthorized",
+        )
+    )
 
 
 def _flag_unknown_plot_ids(plot_hooks, valid_ids):
@@ -796,6 +829,23 @@ The area ID {area_id} is not a location ID and must never be used in those field
                     f"Plot validation failed for {area_id} "
                     f"(attempt {attempt + 1}/2): {'; '.join(errors)}"
                 )
+
+            if errors:
+                # Last resort before discarding a fully generated module:
+                # repair dangling references, then re-validate. Only a clean
+                # re-validation is accepted (issue #133).
+                repairs = self.plot_gen.repair_plot_locations(
+                    plot_data, module_location_data
+                )
+                if repairs:
+                    errors = self.plot_gen.validate_plot(
+                        plot_data, module_location_data
+                    )
+                    if not errors:
+                        self.log(
+                            f"Plot for {area_id} repaired rather than discarded: "
+                            + "; ".join(repairs)
+                        )
 
             if errors:
                 raise ValueError(
@@ -1705,15 +1755,23 @@ def main():
     if not concept:
         concept = "A classic fantasy adventure with dungeons, monsters, and ancient mysteries"
     
-    success, generated_name = ai_driven_module_creation(
-        {
-            "concept": concept,
-            "module_name": module_name,
-            "num_areas": num_areas,
-            "locations_per_area": locations_per_area,
-        },
-        policy="toolkit",
-    )
+    try:
+        success, generated_name = ai_driven_module_creation(
+            {
+                "concept": concept,
+                "module_name": module_name,
+                "num_areas": num_areas,
+                "locations_per_area": locations_per_area,
+            },
+            policy="toolkit",
+        )
+    except ModuleCreationCancelledError:
+        print("\nModule generation cancelled; no partial module was published.")
+        return
+    except ModuleCreationFailedError as build_error:
+        print(f"\nModule generation failed: {build_error}")
+        print("No partial module was published.")
+        return
     if not success or not generated_name:
         print("\nModule generation failed; no partial module was published.")
         return
@@ -1955,11 +2013,41 @@ Return ONLY the JSON object, no explanations or additional text.""" % (
                 continue
             else:
                 print(f"DEBUG: [Module Generator] ERROR: Failed to parse after {max_retries} attempts: {e}")
-                
+
+        except api_client.ProviderCallError as e:
+            # ProviderCallError subclasses RuntimeError, so it used to miss the
+            # retry branch above and abort the build on the first blip
+            # (issue #132).
+            last_error = e
+            if _is_auth_error(e):
+                raise ModuleCreationFailedError(
+                    "The AI provider rejected the request: the API key is "
+                    "missing or invalid. Add a valid key in Settings, then "
+                    "try again."
+                ) from e
+            if attempt < max_retries - 1:
+                backoff = 2 ** attempt
+                print(
+                    f"DEBUG: [Module Generator] Provider error on attempt "
+                    f"{attempt + 1}: {e}. Retrying in {backoff}s..."
+                )
+                time.sleep(backoff)
+                continue
+            print(
+                f"DEBUG: [Module Generator] ERROR: Provider still failing after "
+                f"{max_retries} attempts: {e}"
+            )
+
         except Exception as e:
             last_error = e
             print(f"DEBUG: [Module Generator] ERROR: Unexpected error parsing narrative: {e}")
             break
+
+    if isinstance(last_error, api_client.ProviderCallError):
+        # Do not blame the specification when the provider never answered.
+        raise ModuleCreationFailedError(
+            f"The AI provider failed after {max_retries} attempts: {last_error}"
+        ) from last_error
 
     raise ModuleCreationContractError(
         f"T030 could not produce a valid module specification after {max_retries} attempts"
@@ -2028,8 +2116,9 @@ def _ai_driven_module_creation_impl(
         # Check if we have a narrative to parse
         narrative = params.get("narrative") or params.get("concept")
         if not narrative:
-            print(f"DEBUG: [Module Generator] ERROR: No narrative or concept provided")
-            return False, None
+            raise ModuleCreationFailedError(
+                "A module concept or narrative is required."
+            )
 
         # Resolve labeled values before inference.  A complete explicit block
         # skips T030; otherwise validated explicit values override inference.
@@ -2195,7 +2284,7 @@ def _ai_driven_module_creation_impl(
         
         return True, module_name
 
-    except ModuleCreationRecoveryRequiredError:
+    except (ModuleCreationRecoveryRequiredError, ModuleCreationCancelledError):
         raise
     except Exception as e:
         print(f"DEBUG: [Module Generator] ERROR: AI-driven module creation failed: {str(e)}")
@@ -2204,7 +2293,11 @@ def _ai_driven_module_creation_impl(
         error(f"Module creation failed for '{module_name}': {e}", exception=e, category="module_creation")
         # ManagedModuleBuilder retires only its exact UUID-owned workspace.
         # No path-derived recursive cleanup is permitted here.
-        return False, None
+        #
+        # Carry the reason out instead of returning (False, None): callers used
+        # to receive a bare failure and could only report "Module generation
+        # failed" (issue #130).
+        raise ModuleCreationFailedError(str(e)) from e
 
 
 def ai_driven_module_creation(

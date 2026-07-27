@@ -141,12 +141,14 @@ def build_module_thread(module_name, narrative, num_areas, locations_per_area, s
         progress_callback({'stage': 0, 'total_stages': 9, 'stage_name': 'Initializing', 'percentage': 0})
         
         # Call the actual builder (we'll need to modify module_builder.py to report progress)
+        from core.ai.module_creation_contract import normalize_user_module_name
         from core.generators.module_builder import ai_driven_module_creation
-        
-        # Create parameters for AI-driven creation
+
+        # Create parameters for AI-driven creation. Operator-typed names are
+        # normalized rather than rejected (issue #131).
         params = {
             'narrative': narrative,
-            'module_name': module_name,
+            'module_name': normalize_user_module_name(module_name) or 'New_Module',
             'num_areas': num_areas,
             'locations_per_area': locations_per_area,
         }

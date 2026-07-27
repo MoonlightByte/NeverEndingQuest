@@ -5317,18 +5317,25 @@ def simulate_build_process(params):
     cancel_build_flag.clear()
 
     try:
-        from core.generators.module_builder import ai_driven_module_creation
+        from core.ai.module_creation_contract import normalize_user_module_name
+        from core.generators.module_builder import (
+            ModuleCreationCancelledError,
+            ModuleCreationFailedError,
+            ai_driven_module_creation,
+        )
 
         module_name = params.get('module_name', 'New_Module')
         narrative = params.get('narrative', 'A classic fantasy adventure')
         num_areas = params.get('num_areas', 5)
         locations_per_area = params.get('locations_per_area', 3)
         per_area_locations = params.get('per_area_locations')
-        module_name = module_name.replace(' ', '_')
+        # Accept apostrophes, hyphens and the like rather than rejecting the
+        # build outright (issue #131).
+        module_name = normalize_user_module_name(module_name) or 'New_Module'
 
         def progress_callback(payload):
             if cancel_build_flag.is_set():
-                raise RuntimeError("Module generation cancelled")
+                raise ModuleCreationCancelledError("Module generation cancelled")
             socketio.emit('module_progress', dict(payload))
             return True
 
@@ -5354,7 +5361,15 @@ def simulate_build_process(params):
                 'message': f'Module "{created_name}" successfully generated.',
             },
         )
+    except ModuleCreationCancelledError:
+        info("Module build cancelled by operator.")
+        socketio.emit(
+            'module_error',
+            {'error': 'Module generation cancelled.', 'cancelled': True},
+        )
     except Exception as e:
+        # str(e) now carries the actual reason instead of a generic string
+        # (issue #130), so the operator can see what to fix.
         error(f"Module build failed: {e}")
         import traceback
         error(f"Full traceback: {traceback.format_exc()}")
