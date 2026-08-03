@@ -270,6 +270,56 @@ def _parse_t026_response(raw: Any) -> Dict[str, Any]:
     return parsed
 
 
+class LocationBatchCapacityError(RuntimeError):
+    """T026 stopped because the selected model exhausted request capacity."""
+
+
+_T026_CAPACITY_MESSAGE = (
+    "Location generation stopped because the selected model reached its "
+    "output or context capacity. No invalid location batch was saved. "
+    "Increase the model's context/output limit, reduce the module size, or "
+    "choose another model."
+)
+
+_T026_INVALID_RESPONSE_MESSAGE = (
+    "Location batch generation returned invalid JSON or contract data after "
+    "2 attempts. The selected model could not produce the required location "
+    "data. No invalid location batch was saved. Retry, reconfigure the local "
+    "model, or select another model."
+)
+
+
+def _is_capacity_finish_reason(reason: Any) -> bool:
+    """Recognize explicit capacity stops without guessing from content."""
+    return isinstance(reason, str) and reason.strip().lower() in {
+        "length",
+        "max_tokens",
+    }
+
+
+def _is_structured_context_limit_error(
+    error: api_client.ProviderCallError,
+) -> bool:
+    """Recognize explicit context-limit codes from a provider exception."""
+    original = getattr(error, "original_error", None)
+    codes = [getattr(original, "code", None)]
+    body = getattr(original, "body", None)
+    if isinstance(body, dict):
+        codes.append(body.get("code"))
+        nested = body.get("error")
+        if isinstance(nested, dict):
+            codes.append(nested.get("code"))
+    known_codes = {
+        "context_length_exceeded",
+        "context_window_exceeded",
+        "max_context_length",
+    }
+    return any(
+        isinstance(code, str) and code.strip().lower() in known_codes
+        for code in codes
+    )
+
+
 def _validate_location_batch_contract(
     parsed: Any,
     location_stubs: List[Dict[str, Any]],
@@ -881,25 +931,46 @@ Return no commentary or Markdown.
                 self.schema,
                 expected_count,
             )
-            return capture_and_fanout(
-                "T026",
-                api_client.create_completion,
-                _request_provider=MODEL_PROVIDER,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are an expert 5e dungeon designer creating "
-                            "cohesive, interconnected locations."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                model=main_cfg["model"],
-                temperature=0.8,
-                response_format=response_format,
-                **extra_params,
-            )
+            try:
+                response = capture_and_fanout(
+                    "T026",
+                    api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are an expert 5e dungeon designer creating "
+                                "cohesive, interconnected locations."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    model=main_cfg["model"],
+                    temperature=0.8,
+                    response_format=response_format,
+                    **extra_params,
+                )
+            except api_client.ProviderEmptyResponse as exc:
+                if _is_capacity_finish_reason(exc.finish_reason):
+                    raise LocationBatchCapacityError(
+                        _T026_CAPACITY_MESSAGE
+                    ) from exc
+                # An unexplained empty response is a content failure. Converting
+                # it to ValueError deliberately routes it through T026's one
+                # existing semantic retry rather than adding another retry loop.
+                raise ValueError("$: response contained no usable text") from exc
+            except api_client.ProviderCallError as exc:
+                if _is_structured_context_limit_error(exc):
+                    raise LocationBatchCapacityError(
+                        _T026_CAPACITY_MESSAGE
+                    ) from exc
+                raise
+
+            finish_reason = getattr(response.choices[0], "finish_reason", None)
+            if _is_capacity_finish_reason(finish_reason):
+                raise LocationBatchCapacityError(_T026_CAPACITY_MESSAGE)
+            return response
 
         def _full_retry(first_error: ValueError) -> Dict[str, Any]:
             retry_prompt = batch_prompt + f"""
@@ -912,8 +983,11 @@ location objects in the original stub order with the exact original locationId
 at every index. Reapply the complete field and nested-object checklist above.
 Do not return commentary or Markdown.
 """
-            retry_response = _semantic_call(retry_prompt, len(location_stubs))
             try:
+                retry_response = _semantic_call(
+                    retry_prompt,
+                    len(location_stubs),
+                )
                 retry_parsed = _parse_t026_response(
                     retry_response.choices[0].message.content
                 )
@@ -924,16 +998,17 @@ Do not return commentary or Markdown.
                 )
             except ValueError as retry_error:
                 raise ValueError(
-                    "Location batch generation returned invalid JSON or "
-                    "contract data after 2 attempts (2 semantic calls); "
-                    "full retry "
+                    f"{_T026_INVALID_RESPONSE_MESSAGE} The full retry "
                     f"remained invalid: {retry_error}"
                 ) from retry_error
 
         # Call 1 always requests the complete batch. No generated state escapes
         # until the final full schema/count/exact-ID/order gate succeeds.
-        first_response = _semantic_call(batch_prompt, len(location_stubs))
         try:
+            first_response = _semantic_call(
+                batch_prompt,
+                len(location_stubs),
+            )
             first_parsed = _parse_t026_response(
                 first_response.choices[0].message.content
             )
@@ -1022,8 +1097,11 @@ Invalid locations and deterministic validation paths:
 {json.dumps(repair_payload, indent=2, sort_keys=True)}
 """
 
-        repair_response = _semantic_call(repair_prompt, len(repair_stubs))
         try:
+            repair_response = _semantic_call(
+                repair_prompt,
+                len(repair_stubs),
+            )
             repair_parsed = _parse_t026_response(
                 repair_response.choices[0].message.content
             )
@@ -1034,8 +1112,7 @@ Invalid locations and deterministic validation paths:
             )
         except ValueError as repair_error:
             raise ValueError(
-                "Location batch generation returned invalid JSON or contract "
-                "data after 2 attempts (2 semantic calls); targeted repair "
+                f"{_T026_INVALID_RESPONSE_MESSAGE} The targeted repair "
                 f"remained invalid: {repair_error}"
             ) from repair_error
 
@@ -1068,9 +1145,8 @@ Invalid locations and deterministic validation paths:
             )
         except ValueError as merged_error:
             raise ValueError(
-                "Location batch generation returned invalid JSON or contract "
-                "data after 2 attempts (2 semantic calls); targeted "
-                "replacement produced a merged batch that "
+                f"{_T026_INVALID_RESPONSE_MESSAGE} The targeted replacement "
+                "produced a merged batch that "
                 f"failed the final gate: {merged_error}"
             ) from merged_error
     
