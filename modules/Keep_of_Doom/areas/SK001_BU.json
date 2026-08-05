@@ -725,7 +725,7 @@
         }
       ],
       "dcChecks": [
-        "Acrobatics/Athletics DC 13: Safely navigate missing steps and unstable sections.",
+        "Strength DC 13: Safely navigate missing steps and unstable sections; Acrobatics or Athletics proficiency applies.",
         "Investigation DC 15: Interpret the celestial map's significance to the shadow relic.",
         "Perception DC 14: Spot the gargoyles before they animate.",
         "Arcana DC 16: Understand how to use the observatory's instruments for optimal timing against the relic."

@@ -133,7 +133,7 @@
             "items": {
               "type": "string",
               "description": "A string representing a DC check in the format: 'SkillName DC XX: Description of the check.'",
-              "pattern": "^[A-Z][a-z]+ DC [0-9]+: .+$"
+              "pattern": "^(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Acrobatics|Animal Handling|Arcana|Athletics|Deception|History|Insight|Intimidation|Investigation|Medicine|Nature|Perception|Performance|Persuasion|Religion|Sleight of Hand|Stealth|Survival) DC [0-9]+: .+$"
             },
             "examples": [
               "Perception DC 15: Notice signs of recent activity in the room.",
@@ -156,8 +156,15 @@
                   "type": "object",
                   "properties": {
                     "year": { "type": "integer" },
-                    "month": { "type": "string" },
-                    "day": { "type": "integer" },
+                    "month": {
+                      "type": "string",
+                      "enum": [
+                        "Firstmonth", "Coldmonth", "Thawmonth", "Springmonth",
+                        "Bloommonth", "Sunmonth", "Heatmonth", "Harvestmonth",
+                        "Autumnmonth", "Fademonth", "Frostmonth", "Yearend"
+                      ]
+                    },
+                    "day": { "type": "integer", "minimum": 1, "maximum": 28 },
                     "time": { "type": "string" }
                   },
                   "required": ["year", "month", "day", "time"]

@@ -12,6 +12,7 @@ Creates detailed location JSON files based on schema requirements and plot needs
 import copy
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
@@ -29,6 +30,48 @@ register_callsite("T025", "core/generators/location_generator.py", 693)
 register_callsite("T026", "core/generators/location_generator.py", 884)
 
 
+_T026_OFFICIAL_SKILLS = frozenset(
+    {
+        "Acrobatics",
+        "Animal Handling",
+        "Arcana",
+        "Athletics",
+        "Deception",
+        "History",
+        "Insight",
+        "Intimidation",
+        "Investigation",
+        "Medicine",
+        "Nature",
+        "Perception",
+        "Performance",
+        "Persuasion",
+        "Religion",
+        "Sleight of Hand",
+        "Stealth",
+        "Survival",
+    }
+)
+_T026_CALENDAR_MONTHS = (
+    "Firstmonth",
+    "Coldmonth",
+    "Thawmonth",
+    "Springmonth",
+    "Bloommonth",
+    "Sunmonth",
+    "Heatmonth",
+    "Harvestmonth",
+    "Autumnmonth",
+    "Fademonth",
+    "Frostmonth",
+    "Yearend",
+)
+_T026_ABILITY_SKILL_CHECK = re.compile(
+    r"^(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) "
+    r"\(([^)]+)\) (DC [0-9]+: .+)$"
+)
+
+
 def _location_stub_ids(location_stubs: List[Dict[str, Any]]) -> List[str]:
     """Return a unique, ordered stub-ID list or reject the input contract."""
     ids = []
@@ -42,6 +85,54 @@ def _location_stub_ids(location_stubs: List[Dict[str, Any]]) -> List[str]:
     if len(ids) != len(set(ids)):
         raise ValueError("location stub IDs must be unique")
     return ids
+
+
+def _canonicalize_t026_mechanical_fields(parsed: Any) -> Any:
+    """Correct only unambiguous, machine-owned T026 syntax on a deep copy."""
+    corrected = copy.deepcopy(parsed)
+    if not isinstance(corrected, dict):
+        return corrected
+    locations = corrected.get("locations")
+    if not isinstance(locations, list):
+        return corrected
+
+    for location in locations:
+        if not isinstance(location, dict):
+            continue
+        location_id = location.get("locationId")
+
+        # T026 creates a new module location before any play has occurred.
+        # adventureSummary is living runtime history populated only after the
+        # party leaves a location, so model-authored initial content is always
+        # incorrect regardless of its type. Keep the required downstream field
+        # while establishing its one valid initial state deterministically.
+        location["adventureSummary"] = ""
+
+        checks = location.get("dcChecks")
+        if isinstance(checks, list):
+            for index, check in enumerate(checks):
+                if not isinstance(check, str):
+                    continue
+                match = _T026_ABILITY_SKILL_CHECK.fullmatch(check)
+                if match and match.group(1) in _T026_OFFICIAL_SKILLS:
+                    checks[index] = f"{match.group(1)} {match.group(2)}"
+
+        encounters = location.get("encounters")
+        if not isinstance(encounters, list):
+            continue
+        for index, encounter in enumerate(encounters):
+            if not isinstance(encounter, dict):
+                continue
+            if isinstance(location_id, str) and location_id:
+                encounter["encounterId"] = f"{location_id}-E{index + 1}"
+            world_conditions = encounter.get("worldConditions")
+            if not isinstance(world_conditions, dict):
+                continue
+            month = world_conditions.get("month")
+            if type(month) is int and 1 <= month <= len(_T026_CALENDAR_MONTHS):
+                world_conditions["month"] = _T026_CALENDAR_MONTHS[month - 1]
+
+    return corrected
 
 
 @dataclass(frozen=True)
@@ -255,10 +346,25 @@ def _t026_request_options(
     return response_format, extra_params
 
 
+class LocationBatchReasoningContentError(ValueError):
+    """T026 received provider reasoning in the JSON content channel."""
+
+
+_T026_REASONING_CONTENT_MESSAGE = (
+    "$: model reasoning appeared in response content before the JSON. "
+    "For LM Studio, enable separation of reasoning_content and content, "
+    "or disable model thinking for this model/template."
+)
+
+
 def _parse_t026_response(raw: Any) -> Dict[str, Any]:
     """Parse one model response with a bounded, deterministic error message."""
     if not isinstance(raw, str):
         raise ValueError("$: response content must be a JSON string")
+    if re.match(r"<think(?:\s[^>]*)?>", raw.lstrip(), flags=re.IGNORECASE):
+        raise LocationBatchReasoningContentError(
+            _T026_REASONING_CONTENT_MESSAGE
+        )
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -617,7 +723,7 @@ class LocationPromptGuide:
         "impact": "Guardians destroyed, forge now accessible",
         "worldConditions": {
             "year": 1492,
-            "month": "Hammer",
+            "month": "Springmonth",
             "day": 15,
             "time": "14:30:00"
         }
@@ -839,6 +945,9 @@ CRITICAL COMPLETE LOCATION CHECKLIST -- field names and nesting must match EXACT
   areaConnectivityId, traps, features, dcChecks, encounters,
   adventureSummary, and doors. Never omit a required field; use [] for an
   empty array and "" for an intentionally empty string.
+- "adventureSummary" must be exactly "". This is a newly created module, so
+  no player events have occurred yet; runtime departure processing populates
+  this living-history field later.
 - "npcs" (NOT "notableNPCs") is an array of complete objects. Every NPC
   requires name (string), description (string), and attitude (string).
 - "monsters" (NOT "creatures") is an array of complete objects. Every
@@ -853,9 +962,34 @@ CRITICAL COMPLETE LOCATION CHECKLIST -- field names and nesting must match EXACT
 - Every encounter requires encounterId, summary, impact, and worldConditions.
   worldConditions is an object requiring year (integer), month (string),
   day (integer), and time (string).
+- Every encounterId must be the containing locationId followed by "-E" and a
+  number, for example "B01-E1". Never use underscores, an "E_" prefix, or a
+  different ordering.
+- Encounter month must be one of: Firstmonth, Coldmonth, Thawmonth,
+  Springmonth, Bloommonth, Sunmonth, Heatmonth, Harvestmonth, Autumnmonth,
+  Fademonth, Frostmonth, or Yearend. Never return a numeric month. Encounter
+  day must be an integer from 1 through 28.
 - Every door requires name, description, type, locked, lockDC, breakDC,
   keyname, trapped, and trap, using the types listed below.
-- "dcChecks" entries use "SkillName DC XX: Description".
+- "dcChecks" entries begin with an official skill or ability name only and use
+  "SkillOrAbility DC XX: Description". Use "Arcana DC 13:", not
+  "Intelligence (Arcana) DC 13:". Valid multiword examples include
+  "Animal Handling DC 12:" and "Sleight of Hand DC 15:". A raw ability
+  check such as "Wisdom DC 14:" is also valid.
+- SRD 5.2.1 check naming: an ability check is named for one of the six
+  abilities; a skill or tool proficiency can apply to that check. This output
+  contract also permits one official skill as shorthand, but the label before
+  "DC" must be exactly ONE of: Strength, Dexterity, Constitution,
+  Intelligence, Wisdom, Charisma, Acrobatics, Animal Handling, Arcana,
+  Athletics, Deception, History, Insight, Intimidation, Investigation,
+  Medicine, Nature, Perception, Performance, Persuasion, Religion,
+  Sleight of Hand, Stealth, or Survival.
+- Never put a slash, "or", parentheses, or a tool name in the check label. If
+  alternate skills or a tool proficiency apply, use the governing ability as
+  the label and state the applicable proficiencies in the description. For
+  example: "Strength DC 13: Cross the broken stairs; Acrobatics or Athletics
+  proficiency applies." Or: "Intelligence DC 16: Repair the timing gauge;
+  Tinker's Tools proficiency applies."
 - "coordinates" uses "X<number>Y<number>"; "dangerLevel" is exactly one of
   "Low", "Medium", "High", or "Very High".
 - Use "dmInstructions" for DM-only notes and "plotHooks" (NOT "clues")
@@ -988,8 +1122,10 @@ Do not return commentary or Markdown.
                     retry_prompt,
                     len(location_stubs),
                 )
-                retry_parsed = _parse_t026_response(
-                    retry_response.choices[0].message.content
+                retry_parsed = _canonicalize_t026_mechanical_fields(
+                    _parse_t026_response(
+                        retry_response.choices[0].message.content
+                    )
                 )
                 return _validate_location_batch_contract(
                     retry_parsed,
@@ -1009,8 +1145,10 @@ Do not return commentary or Markdown.
                 batch_prompt,
                 len(location_stubs),
             )
-            first_parsed = _parse_t026_response(
-                first_response.choices[0].message.content
+            first_parsed = _canonicalize_t026_mechanical_fields(
+                _parse_t026_response(
+                    first_response.choices[0].message.content
+                )
             )
             first_locations = _validate_location_envelope(
                 first_parsed,
@@ -1102,8 +1240,10 @@ Invalid locations and deterministic validation paths:
                 repair_prompt,
                 len(repair_stubs),
             )
-            repair_parsed = _parse_t026_response(
-                repair_response.choices[0].message.content
+            repair_parsed = _canonicalize_t026_mechanical_fields(
+                _parse_t026_response(
+                    repair_response.choices[0].message.content
+                )
             )
             validated_repair = _validate_location_batch_contract(
                 repair_parsed,
