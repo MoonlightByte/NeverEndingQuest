@@ -214,6 +214,104 @@ def cmd_new_game(args):
     return EXIT_OK
 
 
+def cmd_build_module(args):
+    from core.headless.bootstrap import (
+        BootstrapError, ensure_config, prepare_game_dir)
+    from core.headless.streams import HeadlessOutputCapture
+    from core.headless.protocol import ProtocolWriter
+
+    real_streams = (sys.stdout, sys.stderr)
+    writer = ProtocolWriter(real_streams[0])
+
+    narrative = args.narrative
+    if args.narrative_file:
+        try:
+            with open(args.narrative_file, "r", encoding="utf-8") as handle:
+                narrative = handle.read()
+        except OSError as exc:
+            writer.emit("build_error",
+                        error="cannot read narrative file: %s" % exc)
+            return EXIT_BOOTSTRAP
+    if not narrative or not narrative.strip():
+        writer.emit("build_error",
+                    error="--narrative or --narrative-file is required")
+        return EXIT_BOOTSTRAP
+
+    try:
+        ensure_config(REPO_ROOT)
+        if args.game_dir:
+            prepare_game_dir(args.game_dir, REPO_ROOT)
+            os.chdir(args.game_dir)
+    except BootstrapError as exc:
+        writer.emit("build_error", error=str(exc))
+        return EXIT_BOOTSTRAP
+
+    def on_stream(kind, **fields):
+        if args.debug:
+            if kind == "debug":
+                writer.emit("debug", **fields)
+            else:
+                writer.emit("debug", content=json.dumps(fields),
+                            is_error=False)
+
+    os.makedirs(os.path.join("modules", "logs"), exist_ok=True)
+    raw_log = open(os.path.join("modules", "logs", "headless_raw.log"),
+                   "a", encoding="utf-8", errors="replace")
+    sys.stdout = HeadlessOutputCapture(on_stream, raw_log)
+    sys.stderr = HeadlessOutputCapture(on_stream, raw_log, is_error=True)
+    try:
+        from core.ai.module_creation_contract import normalize_user_module_name
+        from core.generators.module_builder import (
+            ModuleCreationCancelledError,
+            ModuleCreationFailedError,
+            ai_driven_module_creation,
+        )
+        # These imports can pull in web_interface, which installs a
+        # newline-dropping stdout interceptor over our shim; remove it.
+        try:
+            from utils.redirect_debug_output import uninstall_debug_interceptor
+            uninstall_debug_interceptor()
+        except ImportError:
+            pass
+
+        module_name = normalize_user_module_name(args.name) or "New_Module"
+
+        def progress_callback(payload):
+            writer.emit("module_progress", **dict(payload))
+            return True
+
+        params = {
+            "narrative": narrative,
+            "module_name": module_name,
+            "num_areas": args.areas,
+            "locations_per_area": args.locations_per_area,
+        }
+        success, created_name = ai_driven_module_creation(
+            params, progress_callback=progress_callback, policy="toolkit")
+        if not success or not created_name:
+            raise RuntimeError("Module generation failed")
+        writer.emit("build_complete", module_name=created_name)
+        return EXIT_OK
+    except ModuleCreationCancelledError:
+        writer.emit("build_error", error="Module generation cancelled.",
+                    cancelled=True)
+        return EXIT_ENGINE_ERROR
+    except Exception as exc:
+        writer.emit("build_error", error=str(exc))
+        return EXIT_ENGINE_ERROR
+    finally:
+        flush_shim = sys.stdout
+        sys.stdout, sys.stderr = real_streams
+        try:
+            flush_shim.flush()
+        except Exception:
+            pass
+        try:
+            raw_log.close()
+        except Exception:
+            pass
+
+
 def cmd_saves(args):
     if args.game_dir:
         os.chdir(args.game_dir)
@@ -277,6 +375,20 @@ def build_parser():
     new_game.add_argument("--character", required=True)
     new_game.add_argument("--game-dir", default=None)
     new_game.set_defaults(func=cmd_new_game)
+
+    build = subparsers.add_parser(
+        "build-module", help="generate an adventure module (toolkit policy)")
+    build.add_argument("--name", required=True,
+                       help="module name (normalized to contract form)")
+    build.add_argument("--narrative", default=None,
+                       help="module concept text")
+    build.add_argument("--narrative-file", default=None,
+                       help="file containing the module concept")
+    build.add_argument("--areas", type=int, default=5)
+    build.add_argument("--locations-per-area", type=int, default=3)
+    build.add_argument("--game-dir", default=None)
+    build.add_argument("--debug", action="store_true")
+    build.set_defaults(func=cmd_build_module)
 
     saves = subparsers.add_parser("saves", help="save-game management")
     saves.add_argument("saves_action",

@@ -108,12 +108,16 @@ def prepare_game_dir(game_dir, repo_root, module=None):
             shutil.copytree(src, dst)
             copied.append(name)
     if module:
-        src = os.path.join(repo_root, "modules", module)
         dst = os.path.join(game_dir, "modules", module)
-        if not os.path.isdir(src):
-            raise BootstrapError(
-                "module %r not found at %s" % (module, src))
         if not os.path.exists(dst):
+            # Copy from the repo only when the game dir does not already
+            # hold the module (e.g. one just generated there by
+            # build-module).
+            src = os.path.join(repo_root, "modules", module)
+            if not os.path.isdir(src):
+                raise BootstrapError(
+                    "module %r found in neither %s nor %s"
+                    % (module, dst, src))
             shutil.copytree(src, dst)
             copied.append("modules/%s" % module)
     return copied

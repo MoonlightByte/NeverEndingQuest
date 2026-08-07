@@ -28,7 +28,33 @@ python run_headless.py state
 python run_headless.py saves list
 python run_headless.py saves create --description "before the cave"
 python run_headless.py saves restore --save-folder save_20260806_120000
+
+# Generate an adventure module (toolkit policy) with NDJSON progress events.
+python run_headless.py build-module --name "Forest of Beasts" \
+    --narrative-file concept.txt --areas 1 --locations-per-area 3
+# Events: module_progress (stage/percentage/message) ... then
+# build_complete {module_name} or build_error {error}.
 ```
+
+## Python client
+
+`core/headless/client.py` wraps `serve` for harnesses:
+
+```python
+from core.headless.client import HeadlessClient
+
+with HeadlessClient(module="The_Thornwood_Watch", character="pc.json",
+                    game_dir="/tmp/neq-test") as game:
+    print(game.opening.narration)        # startup kickoff narration
+    turn = game.play("I look around")    # blocks until the next prompt
+    print(turn.narration, turn.state["player"])
+    game.save("checkpoint")
+    print(game.list_saves())
+```
+
+`play()` returns a `TurnResult` (`narration`, `state`, `prompt`, `events`,
+`ended`). The old `core/ai/dm_wrapper.py` / `enhanced_dm_wrapper.py`
+subprocess scrapers are deprecated in favor of this client.
 
 Exit codes: `0` clean end (player exit, engine stop, or post-restore
 restart), `2` engine error, `3` per-turn silence timeout (script mode),
