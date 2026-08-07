@@ -58,8 +58,15 @@ class ServeDriver:
     def on_event(self, event):
         pass
 
-    def start(self, session):
+    def attach(self, session):
         self._session = session
+
+    def start(self):
+        # The reader must not run before the engine's stream shims are
+        # installed: a pre-buffered `state` command would trigger the first
+        # engine import while sys.stdout is still the real protocol stream,
+        # binding enhanced_logger's console handler to it and polluting the
+        # NDJSON output for the whole session.
         reader = threading.Thread(
             target=self._read_loop, name="headless-agent-stdin", daemon=True)
         reader.start()
@@ -116,8 +123,13 @@ class ScriptDriver:
         self._sent += 1
         self._session.dispatch_input(self._inputs.pop(0))
 
-    def start(self, session):
+    def attach(self, session):
+        # Must happen before the engine starts so no early prompt event can
+        # slip past on_event.
         self._session = session
+
+    def start(self):
+        pass
 
     def wait(self, done, last_activity, timeout_per_turn=None):
         while not done.wait(0.5):
@@ -161,10 +173,13 @@ def _run_session(args, driver, timeout_per_turn=None):
             session.bootstrap(
                 character_file=getattr(args, "character", None),
                 module=getattr(args, "module", None))
-            # Attach the driver before the engine starts so no early prompt
-            # event can slip past it.
-            driver.start(session)
+            # Attach before the engine starts (no early event escapes the
+            # driver); start any driver I/O threads only after the shims
+            # are installed (no pre-shim engine imports on the protocol
+            # stream).
+            driver.attach(session)
             session.start_engine()
+            driver.start()
         except BootstrapError as exc:
             session.emit_exit("error", str(exc))
             return EXIT_BOOTSTRAP
