@@ -5908,7 +5908,13 @@ def main_game_loop():
                     while not level_up_session.is_complete:
                         # Get player input
                         player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
-                        level_up_input = input(f"{player_name_display} (Leveling Up): ")
+                        try:
+                            level_up_input = input(f"{player_name_display} (Leveling Up): ")
+                        except EOFError:
+                            # Closed/piped stdin must abort the sub-loop, not
+                            # crash the game (same guard the combat loop has).
+                            warning("LEVELUP: Input stream ended during level up. Aborting session.", category="level_up")
+                            break
 
                         if not level_up_input or not level_up_input.strip():
                             continue

@@ -54,6 +54,7 @@ See LICENSE file for full terms.
 import json
 import hashlib
 import subprocess
+import sys
 import os
 import threading
 from datetime import datetime
@@ -474,7 +475,7 @@ def update_party_npcs(party_tracker_data, operation, npc):
                 debug(f"SUBPROCESS: Calling npc_builder.py with arguments: {npc['name']} {npc.get('race', '')} {npc.get('class', '')} {npc_level} {npc.get('background', '')}", category="character_updates")
 
                 subprocess.run([
-                    "python", "core/generators/npc_builder.py",
+                    sys.executable, "core/generators/npc_builder.py",
                     npc['name'],
                     npc.get('race', ''),
                     npc.get('class', ''),
@@ -877,7 +878,7 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
             combat_builder_path = os.path.join(project_root, "core", "generators", "combat_builder.py")
             
             result = subprocess.run(
-                ["python", combat_builder_path],
+                [sys.executable, combat_builder_path],
                 input=json.dumps(action),
                 check=True, capture_output=True, text=True
             )
