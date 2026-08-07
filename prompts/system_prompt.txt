@@ -324,6 +324,7 @@ CRITICAL LOCATION RESTRICTION RULES:
 
 Location Transition:
 - Trigger: Use 'transitionLocation' when the player chooses to move locations.
+- Action order: When present, transitionLocation MUST appear exactly once and MUST be the first action. Put updateTime, updatePlot, saveGame, and every other state action after it.
 - Confirm: Only transition to defined locations; avoid assumptions.
 - Resolve First: Ensure all events in the current location are resolved before transitioning.
 - Update Context: Provide a brief description of the new location immediately after transition.

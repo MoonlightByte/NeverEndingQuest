@@ -56,6 +56,12 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   deleteSave: remove saved game
 }
 
+@TRANSITION_ACTION_ORDER={
+  rule: transitionLocation MUST appear exactly once and MUST be the first action
+  after_transition: updateTime, updatePlot, saveGame, and all other state actions
+  invalid: Any action before transitionLocation OR multiple transitionLocation actions
+}
+
 @CREATEMODULE_VALIDATION={
   invalid_triggers: ["What next?","Where should we go?","Any ideas?","What happens next?","What's our next move?"]
   valid_triggers: ["Yes investigate barrow","We'll help villagers","Count us in","Let's go to Frostward Marches"]

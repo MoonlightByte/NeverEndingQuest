@@ -769,8 +769,13 @@ Now, provide the rewritten, seamless narration.
                 pass
         
         seamless_narration = response.choices[0].message.content.strip()
+        if not seamless_narration:
+            raise ValueError("T064 returned empty seamless narration")
         debug("SUCCESS: Seamless narration generated successfully.", category="narrative_generation")
-        return sanitize_text(seamless_narration)
+        sanitized_narration = sanitize_text(seamless_narration).strip()
+        if not sanitized_narration:
+            raise ValueError("T064 narration was empty after sanitization")
+        return sanitized_narration
     except Exception as e:
         error(f"FAILURE: Failed to generate seamless transition narration", exception=e, category="narrative_generation")
         # Fallback to simple concatenation if the API call fails
@@ -3244,7 +3249,14 @@ def _complete_committed_module_followup_locked(
         return _published_followup_pending_result(result, receipt)
 
 
-def process_ai_response(response, party_tracker_data, location_data, conversation_history):
+def process_ai_response(
+    response,
+    party_tracker_data,
+    location_data,
+    conversation_history,
+    *,
+    approved_transition_plan=None,
+):
     global needs_conversation_history_update
     from contextlib import ExitStack
 
@@ -3311,9 +3323,59 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                 "error": str(drain_exc),
             }
 
+        # Also drain the smaller within-module checkpoint before accepting a
+        # new turn. This covers a surviving server after an action exception;
+        # process restart uses the same helper during startup.
+        transition_recovery = (
+            action_handler.recover_pending_location_transition(
+                load_json_file("party_tracker.json") or party_tracker_data,
+                load_json_file(json_file) or conversation_history,
+            )
+        )
+        if transition_recovery.get("status") == "blocked":
+            return {
+                "status": "transition_context_pending",
+                "retryable": True,
+                "error": transition_recovery.get("reason"),
+            }
+        if transition_recovery.get("status") == "recovered":
+            if transition_recovery.get("deferred_actions_not_replayed"):
+                warning(
+                    "Recovered transition narration without replaying "
+                    f"{transition_recovery.get('deferred_action_count', 0)} "
+                    "non-idempotent deferred action(s); authoritative state "
+                    "must be reconciled by the next turn",
+                    category="location_transitions",
+                )
+            return {
+                "status": "transition_state_changed",
+                "retryable": True,
+            }
+
         json_content = extract_json_from_codeblock(response)
         parsed_response = json.loads(json_content)
         actions = parsed_response.get("actions", [])
+
+        # Movement is the transaction boundary for its response. Reject the
+        # entire candidate before level-up or any other action can mutate
+        # state when transitionLocation is not uniquely first.
+        transition_indexes = [
+            index
+            for index, action in enumerate(actions)
+            if isinstance(action, dict)
+            and action.get("action") == "transitionLocation"
+        ]
+        if transition_indexes and (
+            len(transition_indexes) != 1 or transition_indexes[0] != 0
+        ):
+            return {
+                "status": "invalid_transition_actions",
+                "retryable": True,
+                "error": (
+                    "A response containing transitionLocation must contain "
+                    "exactly one transition and it must be the first action"
+                ),
+            }
         
         # --- START OF FIX: Detect levelUp action before printing narration ---
         is_levelup_action = any(action.get("action") == "levelUp" for action in actions)
@@ -3372,17 +3434,14 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                 departure_narration = parsed_response.get("narration", "")
 
         if is_transition:
-            mixed_pre_transition_update = any(
-                action.get("action") == "updatePartyTracker"
-                for action in actions[:transition_action_index]
-            )
-            if mixed_pre_transition_update:
+            if transition_action_index != 0:
                 return {
                     "status": "invalid_transition_actions",
                     "retryable": True,
                     "error": (
-                        "updatePartyTracker may not precede transitionLocation "
-                        "in the same response"
+                        "transitionLocation must be the first action in a "
+                        "response; state changes may only follow a committed "
+                        "movement"
                     ),
                 }
         
@@ -3390,6 +3449,7 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         if is_transition:
             debug("STATE_CHANGE: Transition action detected. Holding departure narration.", category="location_transitions")
             transition_placeholder = None
+            location_transition_id = None
             pending_archive_info = None
 
             # Step 1: Process actions to update state (summary, party_tracker, etc.)
@@ -3408,7 +3468,17 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                         "content": response,
                     }
                     conversation_history.append(pre_transition_message)
-                result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
+                result = action_handler.process_action(
+                    action,
+                    party_tracker_data,
+                    location_data,
+                    conversation_history,
+                    approved_transition_plan=(
+                        approved_transition_plan
+                        if action.get("action") == "transitionLocation"
+                        else None
+                    ),
+                )
                 actions_processed = True
                 if isinstance(result, dict):
                     response_data = result.get("response_data", {})
@@ -3421,10 +3491,33 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                         placeholder = response_data.get("transition_narration")
                         if isinstance(placeholder, str) and placeholder:
                             transition_placeholder = placeholder
+                        checkpoint_id = response_data.get(
+                            "location_transition_id"
+                        )
+                        if isinstance(checkpoint_id, str) and checkpoint_id:
+                            location_transition_id = checkpoint_id
                     if result.get("needs_update"):
                         needs_conversation_history_update = True
                     result_status = result.get("status")
                     if result_status == "error":
+                        if (
+                            action.get("action") == "transitionLocation"
+                            and response_data.get("retryable") is True
+                            and response_data.get("error_code")
+                            == "transition_plan_stale"
+                        ):
+                            if pre_transition_message is not None:
+                                for index in range(
+                                    len(conversation_history) - 1, -1, -1
+                                ):
+                                    if conversation_history[index] is pre_transition_message:
+                                        del conversation_history[index]
+                                        break
+                            return {
+                                "status": "transition_plan_stale",
+                                "retryable": True,
+                                "error": response_data.get("error_message"),
+                            }
                         # A pending_archive on an error is recovery metadata,
                         # not proof that the party/location transition
                         # committed. Do not render arrival narration, cancel a
@@ -3562,10 +3655,28 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                             strict=True,
                             allow_compression=False,
                         )
+                    if location_transition_id is not None:
+                        action_handler.complete_location_transition_checkpoint(
+                            location_transition_id
+                        )
                     return {
                         "status": "transition_state_changed",
                         "retryable": True,
                     }
+
+            # Record deferred work before publishing final narration. If the
+            # process dies after the history write, restart recovery must still
+            # know that non-idempotent ordered actions were outstanding.
+            if location_transition_id is not None:
+                if not action_handler.mark_location_transition_deferred_pending(
+                    location_transition_id,
+                    deferred_actions,
+                ):
+                    warning(
+                        "Transition checkpoint could not record deferred-action "
+                        "state before final narration",
+                        category="location_transitions",
+                    )
 
             # Step 5: Replace the raw transition narration with the seamless version in history
             # This ensures conversation history matches what the player saw
@@ -3593,6 +3704,17 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                 strict=True,
                 allow_compression=False,
             )
+            def finish_location_transition_checkpoint():
+                if location_transition_id is None:
+                    return
+                if not action_handler.complete_location_transition_checkpoint(
+                    location_transition_id
+                ):
+                    warning(
+                        "Deferred transition actions finished, but checkpoint "
+                        "cleanup could not be correlated",
+                        category="location_transitions",
+                    )
 
             # Party movement and the exact narration the player is about to
             # but it must not create a history/display mismatch.
@@ -3768,10 +3890,13 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                                 )
                             )
                     if result_status == "exit":
+                        finish_location_transition_checkpoint()
                         return "exit"
                     if result_status == "restart":
+                        finish_location_transition_checkpoint()
                         return "restart"
                     if result_status == "enter_levelup_mode":
+                        finish_location_transition_checkpoint()
                         return result
                     if (
                         result.get("needs_dm_response")
@@ -3802,6 +3927,7 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                         ai_response = get_ai_response(followup_history)
                         if result_status == "needs_post_combat_narration":
                             process_ai_response._just_finished_combat = True
+                        finish_location_transition_checkpoint()
                         return process_ai_response(
                             ai_response,
                             party_tracker_data,
@@ -3809,6 +3935,7 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                             followup_history,
                         )
                 elif isinstance(result, str) and result in {"exit", "restart"}:
+                    finish_location_transition_checkpoint()
                     return result
                 elif isinstance(result, bool) and result:
                     needs_conversation_history_update = True
@@ -3824,6 +3951,10 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                                 party_tracker_data
                             )
                         )
+
+            # Every ordered action returned successfully. Only now is the
+            # within-module transition checkpoint safe to retire.
+            finish_location_transition_checkpoint()
 
             if needs_transition_dm_response:
                 followup_history = load_json_file(json_file) or fresh_conversation_history
@@ -4816,6 +4947,45 @@ def main_game_loop():
     location_graph.load_module_data()
     print(f"DEBUG: [LocationGraph] Reload complete. Total nodes: {len(location_graph.nodes)}, Total edges: {sum(len(edges) for edges in location_graph.edges.values())}")
     debug(f"INITIALIZATION: Location graph reloaded with {len(location_graph.nodes)} nodes", category="module_management")
+
+    # A within-module move can commit before its marker or T013 narration is
+    # saved. Close that gap before combat resumption, return narration, or any
+    # new provider request. Recovery is deterministic and never moves twice.
+    try:
+        pending_history = load_json_file(json_file) or []
+        pending_transition_recovery = (
+            action_handler.recover_pending_location_transition(
+                party_tracker_data, pending_history
+            )
+        )
+        if pending_transition_recovery.get("status") == "blocked":
+            error(
+                "FAILURE: Startup stopped because an interrupted location "
+                "transition does not match authoritative party state",
+                category="location_transitions",
+            )
+            return
+        if pending_transition_recovery.get("status") == "recovered":
+            if pending_transition_recovery.get(
+                "deferred_actions_not_replayed"
+            ):
+                warning(
+                    "Startup recovered transition narration but did not "
+                    "replay non-idempotent deferred actions",
+                    category="location_transitions",
+                )
+            debug(
+                "STATE_CHANGE: Recovered interrupted within-module transition",
+                category="location_transitions",
+            )
+    except Exception as transition_recovery_exc:
+        error(
+            "FAILURE: Startup stopped before AI response because location "
+            "transition recovery is unresolved",
+            exception=transition_recovery_exc,
+            category="location_transitions",
+        )
+        return
     
     # Load validation prompt for both paths - needed in main loop
     validation_prompt_text = load_validation_prompt()
@@ -5600,8 +5770,12 @@ def main_game_loop():
         consecutive_semantic_rejections = 0
         valid_response_received = False 
         ai_response_content = None
+        approved_transition_plan = None
     
         while retry_count < 5 and not valid_response_received:
+            # Authorization belongs only to this candidate response. A retry
+            # must obtain a new plan from the current atlas/evidence snapshot.
+            approved_transition_plan = None
             # Pass validation retry count for intelligent model escalation
             try:
                 ai_response_content = get_ai_response(
@@ -5725,8 +5899,34 @@ def main_game_loop():
                 response_data = json.loads(ai_response_content)  # Re-parse in case it was modified
                 actions = response_data.get("actions", [])
 
+                transition_indexes = [
+                    index
+                    for index, candidate_action in enumerate(actions)
+                    if isinstance(candidate_action, dict)
+                    and candidate_action.get("action") == "transitionLocation"
+                ]
+                if transition_indexes and (
+                    len(transition_indexes) != 1
+                    or transition_indexes[0] != 0
+                ):
+                    conversation_history.append({
+                        "role": "user",
+                        "content": (
+                            "Error Note: transitionLocation must be the first "
+                            "action and may appear only once. Put time, save, "
+                            "and all other state changes after it."
+                        ),
+                    })
+                    retry_count += 1
+                    transition_check_passed = False
+                    info(
+                        "VALIDATION: Rejected unsafe transition action order; "
+                        f"retry {retry_count}",
+                        category="location_transitions",
+                    )
+
                 # Check if any action is transitionLocation
-                for action in actions:
+                for action in actions if transition_check_passed else []:
                     if isinstance(action, dict) and action.get("action") == "transitionLocation":
                         # Quick check: Reject same-location transitions immediately (no agent needed)
                         new_location = action.get("parameters", {}).get("newLocation", "")
@@ -5751,12 +5951,17 @@ def main_game_loop():
                         # Found transitionLocation - call transition intelligence agent
                         from core.ai.action_handler import pre_validate_transition
 
-                        transition_approved, transition_error = pre_validate_transition(
+                        (
+                            transition_approved,
+                            transition_error,
+                            candidate_transition_plan,
+                        ) = pre_validate_transition(
                             action.get("parameters", {}),
                             party_tracker_data,
                             conversation_history,
                             location_graph,
-                            path_manager
+                            path_manager,
+                            return_plan=True,
                         )
 
                         if not transition_approved:
@@ -5771,10 +5976,28 @@ def main_game_loop():
                             transition_check_passed = False
                             info(f"VALIDATION: Transition blocked by intelligence agent, retry {retry_count}", category="location_transitions")
                             break  # Don't check other actions, retry immediately
+                        approved_transition_plan = candidate_transition_plan
 
-            except (json.JSONDecodeError, Exception) as e:
-                # If we can't parse the response, let the normal validator handle it
-                debug(f"Could not pre-validate transition: {e}", category="location_transitions")
+            except json.JSONDecodeError as e:
+                # Structural validation below owns malformed provider JSON.
+                debug(f"Could not parse response for transition planning: {e}", category="location_transitions")
+            except Exception as e:
+                # Planning failures are safety failures. Never let a provider,
+                # atlas, or evidence exception fall through into movement.
+                error(
+                    "FAILURE: Transition planning raised unexpectedly",
+                    exception=e,
+                    category="location_transitions",
+                )
+                conversation_history.append({
+                    "role": "user",
+                    "content": (
+                        "Error Note: Travel planning could not be completed "
+                        "safely. Do not move the party. Regenerate the response."
+                    ),
+                })
+                retry_count += 1
+                transition_check_passed = False
 
             if not transition_check_passed:
                 continue  # Skip to next retry iteration
@@ -5821,7 +6044,13 @@ def main_game_loop():
                 # - Level-up sessions (returned as enter_levelup_mode signal)
                 # - All conversation history updates
                 # The main loop is now just a thin orchestration layer.
-                final_result = process_ai_response(ai_response_content, party_tracker_data, location_data, conversation_history)
+                final_result = process_ai_response(
+                    ai_response_content,
+                    party_tracker_data,
+                    location_data,
+                    conversation_history,
+                    approved_transition_plan=approved_transition_plan,
+                )
                 (
                     final_result,
                     party_tracker_data,

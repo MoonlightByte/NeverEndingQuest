@@ -850,10 +850,18 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                         else:
                             all_location_ids[loc_id] = area_id
             except Exception as e:
-                print(f"DEBUG: [Module Generator] Warning: Could not validate area {area_id}: {e}")
+                raise ValueError(
+                    f"Could not validate generated area {area_id}: {e}"
+                ) from e
         
         if duplicate_ids:
-            print(f"DEBUG: [Module Generator] WARNING: Duplicate location IDs found across areas: {duplicate_ids}")
+            # A duplicate makes every bare location reference ambiguous. Do
+            # not return a seemingly successful generated module for the
+            # stitcher/runtime to guess at later.
+            raise ValueError(
+                "Duplicate location IDs found across generated areas: "
+                + ", ".join(duplicate_ids)
+            )
         else:
             print(f"DEBUG: [Module Generator] Validation passed: All {len(all_location_ids)} location IDs are unique across the module")
         

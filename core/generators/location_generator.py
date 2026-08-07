@@ -107,6 +107,7 @@ def _canonicalize_t026_mechanical_fields(parsed: Any) -> Any:
         # incorrect regardless of its type. Keep the required downstream field
         # while establishing its one valid initial state deterministically.
         location["adventureSummary"] = ""
+        location["explorationState"] = {"status": "unvisited"}
 
         checks = location.get("dcChecks")
         if isinstance(checks, list):
@@ -1403,6 +1404,8 @@ Invalid locations and deterministic validation paths:
                 location["encounters"] = []
             if "adventureSummary" not in location:
                 location["adventureSummary"] = ""
+            if "explorationState" not in location:
+                location["explorationState"] = {"status": "unvisited"}
         
         # Post-process: ensure name consistency between map and locations
         if "map" in area_data and "rooms" in area_data["map"]:

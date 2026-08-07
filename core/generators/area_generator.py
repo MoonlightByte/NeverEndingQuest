@@ -623,7 +623,8 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 "dangerLevel": config.danger_level.capitalize(),
                 "features": self.generate_location_features(room_type),
                 "encounters": [],
-                "adventureSummary": ""
+                "adventureSummary": "",
+                "explorationState": {"status": "unvisited"}
             }
             
             # Add some rare features like traps or hidden items

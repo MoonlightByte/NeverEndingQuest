@@ -111,6 +111,19 @@ class SaveGameManager:
         if os.path.isdir(metadata_dir):
             shutil.rmtree(metadata_dir)
 
+    @staticmethod
+    def _clear_location_transition_runtime_marker() -> None:
+        """Discard recovery authority belonging to the replaced timeline."""
+        marker = os.path.join(
+            "modules",
+            "conversation_history",
+            "pending_location_transition.json",
+        )
+        try:
+            os.remove(marker)
+        except FileNotFoundError:
+            pass
+
     def _restore_essential_backup(self, backup_dir: str) -> None:
         """Restore the complete pre-restore projection after any copy failure."""
         import glob
@@ -246,6 +259,7 @@ class SaveGameManager:
             "modules/.publication_transactions/",
             "modules/.module_orphan_quarantine/",
             ".runtime_locks/",
+            "modules/conversation_history/pending_location_transition.json",
             
             # CRITICAL: Exclude save directories to prevent recursive nesting
             "saved_games/",
@@ -805,6 +819,7 @@ class SaveGameManager:
             # restored timeline, while a pending WAL could resurrect newer
             # campaign data on the next CampaignManager construction.
             self._clear_campaign_completion_metadata()
+            self._clear_location_transition_runtime_marker()
             
             success_msg = f"Save game restored successfully from: {save_folder}"
             success_msg += f"\nRestored {len(restored_files)} files"

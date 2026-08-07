@@ -56,6 +56,7 @@ import hashlib
 import subprocess
 import os
 import threading
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import uuid4
 from core.ai import api_client
@@ -157,6 +158,266 @@ ACTION_DELETE_SAVE = "deleteSave"
 
 _NPC_MOVEMENT_LOCKS = {}
 _NPC_MOVEMENT_LOCKS_GUARD = threading.Lock()
+PENDING_LOCATION_TRANSITION_FILE = (
+    "modules/conversation_history/pending_location_transition.json"
+)
+
+
+@dataclass(frozen=True)
+class ApprovedTransitionPlan:
+    """Immutable authorization created by pre-validation for one exact move.
+
+    This object deliberately stays in memory.  It is passed with the accepted
+    provider response and is never persisted or placed in a process-global
+    cache where a later request could accidentally reuse it.
+    """
+
+    origin_location_id: str
+    destination_location_id: str
+    module_name: str
+    path: tuple
+    topology_identity: str
+    evidence_identity: str
+
+
+def _stable_transition_hash(value):
+    """Return a deterministic identity for JSON-like transition evidence."""
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _transition_topology_identity(location_graph, path, module_name):
+    """Adapter for the canonical snapshot API, with a legacy graph fallback."""
+    identity_provider = getattr(
+        location_graph, "get_transition_snapshot_identity", None
+    )
+    if callable(identity_provider):
+        identity = identity_provider(path=path, module_name=module_name)
+        if isinstance(identity, dict):
+            identity = identity.get("topology_identity") or identity.get("id")
+        if identity:
+            return str(identity)
+
+    relevant_nodes = {}
+    relevant_edges = {}
+    for location_id in path:
+        relevant_nodes[location_id] = location_graph.nodes.get(location_id)
+        relevant_edges[location_id] = sorted(
+            str(item) for item in location_graph.edges.get(location_id, [])
+        )
+    return _stable_transition_hash(
+        {
+            "module": module_name,
+            "path": list(path),
+            "nodes": relevant_nodes,
+            "edges": relevant_edges,
+        }
+    )
+
+
+def _transition_evidence_identity(path_analysis, plot_data):
+    """Adapter for analyzer-owned evidence identities, with a data fallback."""
+    if isinstance(path_analysis, dict):
+        supplied = (
+            path_analysis.get("evidence_identity")
+            or path_analysis.get("snapshot_identity")
+        )
+        if supplied:
+            return _stable_transition_hash(
+                {
+                    "route_evidence_identity": str(supplied),
+                    "plot_identity": _stable_transition_hash(plot_data),
+                }
+            )
+    return _stable_transition_hash(
+        {"path_analysis": path_analysis, "plot_data": plot_data}
+    )
+
+
+def _approved_transition_plan(
+    *,
+    origin_location_id,
+    destination_location_id,
+    module_name,
+    path,
+    path_analysis,
+    plot_data,
+    location_graph,
+    topology_identity=None,
+):
+    return ApprovedTransitionPlan(
+        origin_location_id=str(origin_location_id),
+        destination_location_id=str(destination_location_id),
+        module_name=str(module_name),
+        path=tuple(str(item) for item in path),
+        topology_identity=(
+            str(topology_identity)
+            if topology_identity
+            else _transition_topology_identity(
+                location_graph, path, module_name
+            )
+        ),
+        evidence_identity=_transition_evidence_identity(
+            path_analysis, plot_data
+        ),
+    )
+
+
+def _write_location_transition_checkpoint(checkpoint):
+    """Durably publish the small, non-secret within-module recovery record."""
+    safe_json_dump(checkpoint, PENDING_LOCATION_TRANSITION_FILE)
+
+
+def _remove_location_transition_checkpoint():
+    try:
+        os.remove(PENDING_LOCATION_TRANSITION_FILE)
+    except FileNotFoundError:
+        return
+
+
+def complete_location_transition_checkpoint(transition_id):
+    """Remove only the checkpoint correlated with durable final narration."""
+    if not transition_id:
+        return False
+    checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
+    if not isinstance(checkpoint, dict):
+        return False
+    if checkpoint.get("transition_id") != transition_id:
+        return False
+    checkpoint["phase"] = "completed"
+    _write_location_transition_checkpoint(checkpoint)
+    _remove_location_transition_checkpoint()
+    return True
+
+
+def mark_location_transition_deferred_pending(transition_id, deferred_actions):
+    """Record that final narration is durable but ordered actions remain.
+
+    Only an action count and hash are persisted. Generic actions are not
+    universally idempotent, so recovery must never replay them blindly.
+    """
+    if not transition_id:
+        return False
+    checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
+    if not isinstance(checkpoint, dict):
+        return False
+    if checkpoint.get("transition_id") != transition_id:
+        return False
+    checkpoint["phase"] = "deferred_actions_pending"
+    checkpoint["deferred_action_count"] = len(deferred_actions or [])
+    checkpoint["deferred_actions_identity"] = _stable_transition_hash(
+        deferred_actions or []
+    )
+    _write_location_transition_checkpoint(checkpoint)
+    return True
+
+
+def recover_pending_location_transition(party_tracker_data, conversation_history):
+    """Finish or cancel an interrupted within-module transition exactly once.
+
+    Movement itself is authoritative in party_tracker.json.  A planned record
+    with the party still at its origin made no movement and is discarded for a
+    fresh re-plan.  If the party reached the destination, missing history is
+    completed with deterministic prose; recovery never calls a provider.
+    """
+    checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
+    if not isinstance(checkpoint, dict):
+        return {"status": "none"}
+
+    origin_id = str(checkpoint.get("origin_location_id", ""))
+    destination_id = str(checkpoint.get("destination_location_id", ""))
+    phase = checkpoint.get("phase")
+    current_id = str(
+        party_tracker_data.get("worldConditions", {}).get(
+            "currentLocationId", ""
+        )
+    )
+    if phase == "completed":
+        _remove_location_transition_checkpoint()
+        return {"status": "completed"}
+    if current_id == origin_id and phase == "planned":
+        _remove_location_transition_checkpoint()
+        return {"status": "replan_required"}
+    if current_id != destination_id:
+        return {
+            "status": "blocked",
+            "reason": "party location does not match pending transition",
+        }
+
+    origin_name = checkpoint.get("origin_location_name") or origin_id
+    destination_name = checkpoint.get("destination_location_name") or destination_id
+    marker = (
+        f"Location transition: {sanitize_text(origin_name)} ({origin_id}) "
+        f"to {sanitize_text(destination_name)} ({destination_id})"
+    )
+    history_boundary = checkpoint.get("history_boundary", 0)
+    if not isinstance(history_boundary, int) or history_boundary < 0:
+        history_boundary = 0
+    history_boundary = min(history_boundary, len(conversation_history))
+    marker_index = next(
+        (
+            index
+            for index, message in enumerate(
+                conversation_history[history_boundary:],
+                start=history_boundary,
+            )
+            if isinstance(message, dict)
+            and message.get("role") == "user"
+            and message.get("content") == marker
+        ),
+        None,
+    )
+    if marker_index is None:
+        conversation_history.append({"role": "user", "content": marker})
+        marker_index = len(conversation_history) - 1
+
+    # A saved assistant message after our exact marker proves T013 completed.
+    # Otherwise deterministic prose closes the display/history gap without a
+    # provider call that could fail again during startup.
+    has_narration = any(
+        isinstance(message, dict)
+        and message.get("role") == "assistant"
+        and isinstance(message.get("content"), str)
+        and message.get("content").strip()
+        for message in conversation_history[marker_index + 1 :]
+    )
+    if not has_narration:
+        conversation_history.append(
+            {
+                "role": "assistant",
+                "content": f"The party travels to {destination_name}.",
+            }
+        )
+
+    from main import save_conversation_history
+
+    save_conversation_history(
+        conversation_history, strict=True, allow_compression=False
+    )
+    checkpoint["phase"] = "completed"
+    _write_location_transition_checkpoint(checkpoint)
+    _remove_location_transition_checkpoint()
+    result = {
+        "status": "recovered",
+        "transition_id": checkpoint.get("transition_id"),
+    }
+    if phase == "deferred_actions_pending":
+        result.update(
+            {
+                "deferred_actions_not_replayed": True,
+                "deferred_action_count": checkpoint.get(
+                    "deferred_action_count", 0
+                ),
+            }
+        )
+    return result
 
 
 def _npc_movement_lock(module_name):
@@ -220,7 +481,15 @@ def _module_creation_idempotency_key(action, conversation_history):
     return hashlib.sha256(encoded).hexdigest()
 
 
-def pre_validate_transition(parameters, party_tracker_data, conversation_history, location_graph, path_manager):
+def pre_validate_transition(
+    parameters,
+    party_tracker_data,
+    conversation_history,
+    location_graph,
+    path_manager,
+    *,
+    return_plan=False,
+):
     """
     Pre-validate a transitionLocation action using the transition intelligence agent.
     This runs BEFORE the main validator, similar to how validation runs before execution.
@@ -233,20 +502,38 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
         path_manager: ModulePathManager instance
 
     Returns:
-        Tuple (approved: bool, error_message: str)
+        Tuple (approved: bool, error_message: str), or a three-tuple ending
+        in ApprovedTransitionPlan when ``return_plan=True``.
         - If approved: (True, "")
         - If blocked: (False, "Detailed error message with instructions")
     """
-    from utils.path_encounter_analyzer import analyze_path_for_encounters
-    from core.ai.transition_atlas_builder import build_transition_atlas
+    from utils.path_encounter_analyzer import (
+        analyze_path_for_encounters,
+        build_active_module_snapshot,
+        find_path_in_snapshot,
+    )
     from core.ai.transition_validator import validate_transition_request
     from utils.file_operations import safe_read_json
+
+    def finish(approved, message, plan=None):
+        if return_plan:
+            return approved, message, plan
+        return approved, message
 
     try:
         new_location_id = parameters.get("newLocation", "")
         if not new_location_id:
             # No location specified, let normal validator handle it
-            return True, ""
+            return finish(True, "")
+
+        world_conditions = party_tracker_data.get("worldConditions", {})
+        if world_conditions.get("activeCombatEncounter"):
+            return finish(
+                False,
+                "[TRAVEL SYSTEM] Travel is unavailable while combat is active. "
+                "Resolve or explicitly end the active combat encounter before "
+                "using transitionLocation.",
+            )
 
         # Get current location from party tracker
         current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
@@ -254,40 +541,34 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
         current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
         current_area_name = party_tracker_data["worldConditions"]["currentArea"]
 
-        # Get path from location graph
-        success, path, path_message = location_graph.find_path(current_location_id, new_location_id)
+        current_module = party_tracker_data.get("module", "").replace(" ", "_")
+        snapshot = build_active_module_snapshot(current_module)
+        route = find_path_in_snapshot(
+            snapshot, current_location_id, new_location_id
+        )
+        success = route.get("success") is True
+        path = route.get("path", [])
+        path_message = route.get("reason", "")
 
         if not success:
-            # Path doesn't exist - let normal validation handle it
-            return True, ""
+            return finish(
+                False,
+                "[TRAVEL SYSTEM] Travel could not be planned safely: "
+                f"{path_message or 'no connected route exists'}. Choose a "
+                "reachable destination from the atlas.",
+            )
 
         # Analyze path for encounters and blocking
-        current_module = party_tracker_data.get("module", "").replace(" ", "_")
-        path_analysis = analyze_path_for_encounters(path, location_graph, current_module)
-
-        # RETREAT DETECTION: Check if this is a legitimate retreat vs fast-travel exploit
-        future_segments = [
-            seg for seg in path_analysis['path_segments']
-            if seg['location_id'] != current_location_id
-        ]
-
-        # Check if ALL future locations are visited (retreat to safety)
-        all_visited = all(seg['status'] == 'visited' for seg in future_segments) if future_segments else False
-
-        # Check if ANY future locations have unexplored monsters
-        has_unexplored_monsters = any(
-            seg['status'] == 'unexplored' and seg['has_monsters']
-            for seg in future_segments
+        path_analysis = analyze_path_for_encounters(
+            path,
+            location_graph,
+            current_module,
+            snapshot=snapshot,
         )
-
-        # ALLOW RETREAT: If all future locations are visited, this is a tactical retreat
-        if all_visited:
-            # Player fleeing through cleared areas - ALLOW even if current location has monsters
-            debug(f"RETREAT DETECTED: All future locations visited, allowing tactical retreat", category="transition_validation")
-            return True, ""  # Approve immediately, skip agent call
-
-        # Build transition atlas
-        transition_atlas = build_transition_atlas(location_graph, current_module)
+        # T021 now consumes route-scoped evidence. Keep the compatibility
+        # argument empty instead of building a second, potentially divergent
+        # atlas from the legacy global graph.
+        transition_atlas = ""
 
         # Load plot data
         plot_data = safe_read_json(path_manager.get_plot_path()) or {}
@@ -333,12 +614,19 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
         )
 
         # Log agent decision
-        agent_decision = "APPROVED" if transition_result.get("approved", True) else "BLOCKED"
+        agent_decision = "APPROVED" if transition_result.get("approved") is True else "BLOCKED"
         print(f"[TRANSITION AGENT] Decision: {agent_decision}")
         info(f"TRANSITION AGENT: {agent_decision} - {transition_result.get('reason', 'No reason')}", category="transition_validation")
 
         # Check if approved
-        if not transition_result.get("approved", True):
+        if transition_result.get("approved") is not True:
+            if transition_result.get("approved") is not False:
+                return finish(
+                    False,
+                    "[TRAVEL SYSTEM] The route review returned an uncertain "
+                    "or invalid decision. Do not move the party; regenerate "
+                    "the response and plan the route again.",
+                )
             # Build error message with explicit instructions
             stop_location = transition_result.get("stop_location", "")
             stop_location_name = transition_result.get("stop_location_name", "Unknown")
@@ -373,15 +661,110 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
             if transition_result.get("plot_guidance"):
                 error_msg += f"\n\nPLOT GUIDANCE: {transition_result['plot_guidance']}"
 
-            return False, error_msg
+            return finish(False, error_msg)
 
-        # Approved - return success
-        return True, ""
+        plan = _approved_transition_plan(
+            origin_location_id=current_location_id,
+            destination_location_id=new_location_id,
+            module_name=current_module,
+            path=path,
+            path_analysis=path_analysis,
+            plot_data=plot_data,
+            location_graph=location_graph,
+            topology_identity=snapshot.get("topology_identity")
+            or snapshot.get("snapshot_hash"),
+        )
+        return finish(True, "", plan)
 
     except Exception as e:
-        # On error, allow normal validation to proceed
         debug(f"Transition pre-validation error: {e}", category="location_transitions")
-        return True, ""
+        return finish(
+            False,
+            "[TRAVEL SYSTEM] Travel planning could not be completed safely. "
+            "Do not move the party; regenerate the response or ask the player "
+            "to try the route again.",
+        )
+
+
+def verify_approved_transition_plan(
+    approved_plan,
+    *,
+    party_tracker_data,
+    destination_location_id,
+    location_graph,
+    return_context=False,
+):
+    """Recheck one in-memory authorization against authoritative live inputs."""
+    if not isinstance(approved_plan, ApprovedTransitionPlan):
+        result = (False, "Transition has no approved in-memory travel plan")
+        return (*result, None) if return_context else result
+
+    world_conditions = party_tracker_data.get("worldConditions", {})
+    if world_conditions.get("activeCombatEncounter"):
+        result = (False, "Travel is unavailable while combat is active")
+        return (*result, None) if return_context else result
+
+    current_location_id = str(world_conditions.get("currentLocationId", ""))
+    current_module = str(party_tracker_data.get("module", "")).replace(" ", "_")
+    destination_location_id = str(destination_location_id)
+    if current_location_id != approved_plan.origin_location_id:
+        result = (False, "Travel plan origin is stale")
+        return (*result, None) if return_context else result
+    if destination_location_id != approved_plan.destination_location_id:
+        result = (False, "Travel plan destination does not match the action")
+        return (*result, None) if return_context else result
+    if current_module != approved_plan.module_name:
+        result = (False, "Travel plan module is stale")
+        return (*result, None) if return_context else result
+
+    from utils.path_encounter_analyzer import (
+        analyze_path_for_encounters,
+        build_active_module_snapshot,
+        find_path_in_snapshot,
+    )
+
+    snapshot = build_active_module_snapshot(current_module)
+    route = find_path_in_snapshot(
+        snapshot, current_location_id, destination_location_id
+    )
+    success = route.get("success") is True
+    path = route.get("path", [])
+    path_message = route.get("reason", "")
+    if not success:
+        result = (False, path_message or "The approved route no longer exists")
+        return (*result, None) if return_context else result
+    if tuple(str(item) for item in path) != approved_plan.path:
+        result = (False, "The approved route changed before movement")
+        return (*result, None) if return_context else result
+
+    path_analysis = analyze_path_for_encounters(
+        path, location_graph, current_module, snapshot=snapshot
+    )
+    plot_data = safe_read_json(
+        ModulePathManager(current_module).get_plot_path()
+    ) or {}
+    topology_identity = str(
+        snapshot.get("topology_identity") or snapshot.get("snapshot_hash") or ""
+    )
+    evidence_identity = _transition_evidence_identity(path_analysis, plot_data)
+    if topology_identity != approved_plan.topology_identity:
+        result = (False, "Atlas topology changed before movement")
+        return (*result, None) if return_context else result
+    if evidence_identity != approved_plan.evidence_identity:
+        result = (False, "Travel evidence changed before movement")
+        return (*result, None) if return_context else result
+    result = (True, "")
+    if not return_context:
+        return result
+    return (
+        *result,
+        {
+            "snapshot_hash": snapshot.get("snapshot_hash", ""),
+            "topology_identity": topology_identity,
+            "origin": snapshot.get("nodes", {}).get(current_location_id),
+            "destination": snapshot.get("nodes", {}).get(destination_location_id),
+        },
+    )
 
 
 def validate_location_transition(location_graph, current_location_id, destination_location_id):
@@ -827,7 +1210,14 @@ def get_travel_narration(target_module: str) -> str:
     except:
         return f"The party travels to the {target_module} region, where new adventures await."
 
-def process_action(action, party_tracker_data, location_data, conversation_history):
+def process_action(
+    action,
+    party_tracker_data,
+    location_data,
+    conversation_history,
+    *,
+    approved_transition_plan=None,
+):
     """Process an action based on its type
     
     Returns:
@@ -1053,32 +1443,70 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
         current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
         current_area_name = party_tracker_data["worldConditions"]["currentArea"]
         current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
+
+        if party_tracker_data["worldConditions"].get("activeCombatEncounter"):
+            return create_return(
+                status="error",
+                needs_update=False,
+                response_data={
+                    "error_message": (
+                        "Travel is unavailable while combat is active. "
+                        "Resolve or end combat before moving the party."
+                    ),
+                    "retryable": True,
+                },
+            )
         
-        # Use the global location graph for validation
-        from main import location_graph
-        if location_graph is None or len(location_graph.nodes) == 0:
-            print("DEBUG: [LocationGraph] WARNING - Global graph is empty or uninitialized. Triggering emergency reload.")
-            if location_graph is None:
-                # Graph was never initialized - create it now
-                location_graph = LocationGraph()
-                location_graph.load_module_data()
-            else:
-                # Graph exists but is empty - reload it
-                location_graph.reload()
-        print(f"DEBUG: [LocationGraph] Using global graph with {len(location_graph.nodes)} nodes")
-        
-        # MAP: Convert area ID to entry location ID if needed (TW001 -> TW01)
-        if not location_graph.validate_location_id_format(new_location_name_or_id):
-            # Try to find entry location for this area ID
-            entry_location = location_graph.get_entry_location_for_area(new_location_name_or_id)
-            if entry_location:
-                debug(f"VALIDATION: Mapped area ID '{new_location_name_or_id}' to entry location '{entry_location}'", category="location_transitions")
-                new_location_name_or_id = entry_location
-        
-        # VALIDATE: Check if location transition is valid
-        is_valid, error_message, auto_area_connectivity_id = validate_location_transition(
-            location_graph, current_location_id, new_location_name_or_id
+        # An authorized transition already has a canonical active-module ID.
+        # Do not load or consult the all-module legacy graph: duplicate IDs in
+        # another installed module must not reinterpret the approved action.
+        location_graph = None
+
+        # Re-read the same canonical active-module snapshot used during
+        # planning. The legacy global graph remains available for names and
+        # cross-module compatibility, but it is no longer a second authority
+        # for an approved within-module route.
+        authoritative_party = safe_json_load("party_tracker.json")
+        if not isinstance(authoritative_party, dict):
+            authoritative_party = party_tracker_data
+        plan_valid, plan_error, verified_transition_context = verify_approved_transition_plan(
+            approved_transition_plan,
+            party_tracker_data=authoritative_party,
+            destination_location_id=new_location_name_or_id,
+            location_graph=location_graph,
+            return_context=True,
         )
+        if plan_valid:
+            origin_node = verified_transition_context.get("origin") or {}
+            destination_node = verified_transition_context.get("destination") or {}
+            origin_area_id = origin_node.get("area_id")
+            destination_area_id = destination_node.get("area_id")
+            auto_area_connectivity_id = (
+                f"{destination_area_id}-{new_location_name_or_id}"
+                if origin_area_id
+                and destination_area_id
+                and origin_area_id != destination_area_id
+                else None
+            )
+            is_valid, error_message = True, ""
+        else:
+            is_valid = False
+            error_message = plan_error
+
+        if not plan_valid:
+            warning(
+                f"Rejected transition without a fresh authorization: {plan_error}",
+                category="location_transitions",
+            )
+            return create_return(
+                status="error",
+                needs_update=False,
+                response_data={
+                    "error_message": plan_error,
+                    "retryable": True,
+                    "error_code": "transition_plan_stale",
+                },
+            )
         
         if not is_valid:
             # Check if this is a cross-module transition attempt
@@ -1133,44 +1561,74 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
         debug(f"VALIDATION: Current location string (hex): {current_location_name.encode('utf-8').hex()}", category="location_transitions")
         debug(f"VALIDATION: New location string (hex): {new_location_name_or_id.encode('utf-8').hex()}", category="location_transitions")
 
-        # Detect and prepare a cross-module completion before the location
-        # manager can persist the target location. This closes the earlier
-        # crash window where location moved but no completion intent existed.
+        # A request-bound transition plan is created from one active-module
+        # snapshot, so both endpoints are already proven to belong to that
+        # module. Do not ask the global multi-module registry to classify the
+        # same IDs again: generated modules may legally reuse bare location
+        # IDs and could turn an authorized local move into a false module
+        # transition. Real module changes use updatePartyTracker and its
+        # existing publication transaction instead.
         pending_archive = None
         campaign_manager = None
-        try:
-            from core.managers.campaign_manager import CampaignManager
 
-            campaign_manager = CampaignManager()
-            is_cross_module, from_module, to_module = (
-                campaign_manager.detect_module_transition(
-                    current_location_id,
-                    new_location_name_or_id,
-                )
+        transition_checkpoint = None
+        if pending_archive is None:
+            existing_checkpoint = safe_json_load(
+                PENDING_LOCATION_TRANSITION_FILE
             )
-            if is_cross_module:
-                completion_id = _module_transition_completion_id(
-                    from_module,
-                    to_module,
-                    conversation_history,
+            if isinstance(existing_checkpoint, dict):
+                return create_return(
+                    status="error",
+                    needs_update=False,
+                    response_data={
+                        "error_message": (
+                            "A prior location transition is awaiting recovery"
+                        ),
+                        "retryable": True,
+                        "error_code": "transition_plan_stale",
+                    },
                 )
-                pending_archive = {
-                    "from_module": from_module,
-                    "to_module": to_module,
-                    "party_tracker_data": party_tracker_data.copy(),
-                    "completion_id": completion_id,
+            transition_id = _stable_transition_hash(
+                {
+                    "plan": {
+                        "origin": approved_transition_plan.origin_location_id,
+                        "destination": approved_transition_plan.destination_location_id,
+                        "module": approved_transition_plan.module_name,
+                        "path": approved_transition_plan.path,
+                        "topology": approved_transition_plan.topology_identity,
+                        "evidence": approved_transition_plan.evidence_identity,
+                    },
+                    # Bind identical route plans to the accepted turn without
+                    # persisting player text or provider prompts.
+                    "history_identity": _stable_transition_hash(
+                        conversation_history
+                    ),
                 }
-        except Exception as e:
-            error(
-                "FAILURE: Could not prepare cross-module transition",
-                exception=e,
-                category="module_management",
             )
-            return create_return(
-                status="error",
-                needs_update=False,
-                response_data={"error_message": str(e)},
-            )
+            transition_checkpoint = {
+                "version": 1,
+                "transition_id": transition_id,
+                "phase": "planned",
+                "origin_location_id": current_location_id,
+                "origin_location_name": current_location_name,
+                "destination_location_id": new_location_name_or_id,
+                "destination_location_name": destination_node.get(
+                    "location_name", new_location_name_or_id
+                ),
+                # Marker recovery searches only at/after this accepted-turn
+                # boundary, so an older identical A->B trip cannot satisfy it.
+                "history_boundary": len(conversation_history),
+                "history_prefix_identity": _stable_transition_hash(
+                    conversation_history
+                ),
+                "plan_identity": _stable_transition_hash(
+                    {
+                        "topology": approved_transition_plan.topology_identity,
+                        "evidence": approved_transition_plan.evidence_identity,
+                    }
+                ),
+            }
+            _write_location_transition_checkpoint(transition_checkpoint)
         
         # Use enhanced location manager with auto-generated area connectivity ID
         def run_location_transition():
@@ -1180,6 +1638,12 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 current_area_name,
                 current_area_id,
                 auto_area_connectivity_id,
+                authorized_destination={
+                    "module_name": approved_transition_plan.module_name,
+                    "snapshot_hash": verified_transition_context.get("snapshot_hash"),
+                    "topology_identity": verified_transition_context.get("topology_identity"),
+                    **destination_node,
+                },
             )
 
         if pending_archive is not None:
@@ -1217,8 +1681,14 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 )
         else:
             transition_prompt = run_location_transition()
+            if transition_prompt and transition_checkpoint is not None:
+                transition_checkpoint["phase"] = "movement_committed"
+                _write_location_transition_checkpoint(transition_checkpoint)
 
         if transition_prompt:
+            if transition_checkpoint is not None:
+                transition_checkpoint["phase"] = "marker_narration_pending"
+                _write_location_transition_checkpoint(transition_checkpoint)
             # Get the new location ID from party tracker after transition
             # The location manager updates party_tracker.json before we get here
             try:
@@ -1285,7 +1755,15 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                     **{k: v for k, v in transition_cfg.items() if k != "model"}
                 )
 
-                transition_narration = transition_response.choices[0].message.content.strip()
+                # Persist and correlate the same normalized value. safe_json_dump
+                # normalizes smart punctuation, so retaining the raw provider
+                # string here makes main.py unable to find and replace the T013
+                # placeholder after a real model uses curly quotes or em dashes.
+                transition_narration = sanitize_text(
+                    transition_response.choices[0].message.content.strip()
+                ).strip()
+                if not transition_narration:
+                    raise ValueError("T013 returned empty transition narration")
                 info("SUCCESS: Transition narration generated", category="location_transitions")
 
                 # Save transition narration to conversation history as assistant message
@@ -1299,7 +1777,9 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
 
             except Exception as e:
                 error(f"FAILURE: Failed to generate transition narration", exception=e, category="location_transitions")
-                transition_narration = f"The party travels to {new_location_name}."
+                transition_narration = sanitize_text(
+                    f"The party travels to {new_location_name}."
+                )
                 # Save fallback narration too
                 conversation_history.append({"role": "assistant", "content": transition_narration})
                 save_conversation_history(
@@ -1307,6 +1787,10 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                     strict=True,
                     allow_compression=False,
                 )
+
+            # Keep the checkpoint until main.py durably replaces T013 with the
+            # final T063/T064 narration. A restart can safely accept the saved
+            # T013 prose as its deterministic recovery narration.
             
             # CAMPAIGN INTEGRATION: refresh the ready intent with T013 history.
             try:
@@ -1365,6 +1849,10 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
             # running, so the final narration must correlate by placeholder
             # identity instead of replacing an arbitrary nearby assistant.
             response_data = {"transition_narration": transition_narration}
+            if transition_checkpoint is not None:
+                response_data["location_transition_id"] = (
+                    transition_checkpoint["transition_id"]
+                )
             if pending_archive is not None:
                 response_data["pending_archive"] = pending_archive
             return create_return(needs_update=True, response_data=response_data)
@@ -1373,6 +1861,13 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
             # This might require process_ai_response to reload location data or for main_game_loop to handle it.
             # For now, let's assume the main loop will reload it before the next AI call.
         else:
+            if transition_checkpoint is not None:
+                authoritative_after = safe_json_load("party_tracker.json") or {}
+                after_location = authoritative_after.get(
+                    "worldConditions", {}
+                ).get("currentLocationId")
+                if str(after_location or "") == str(current_location_id):
+                    _remove_location_transition_checkpoint()
             print("ERROR: Failed to handle location transition")
             # Create error message for the AI DM
             error_message = f"""SYSTEM ERROR: Location Transition Failed

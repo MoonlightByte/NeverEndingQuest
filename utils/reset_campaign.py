@@ -54,7 +54,13 @@ def create_backup():
             # Runtime transaction/forensic roots are local recovery authority,
             # not campaign save data. Copying them would make a later restore
             # replay stale or contradictory lifecycle state.
-            if os.path.basename(dir) != 'modules':
+            if os.path.basename(dir) == "conversation_history":
+                return (
+                    ["pending_location_transition.json"]
+                    if "pending_location_transition.json" in files
+                    else []
+                )
+            if os.path.basename(dir) != "modules":
                 return []
             return [
                 'backups',
@@ -284,6 +290,15 @@ def _reset_global_state_locked(*, lifecycle=None, reset_prepared=False):
         os.remove("world_registry.json")
         print("  ✓ Removed world_registry.json (will be created fresh)")
 
+    pending_transition = os.path.join(
+        "modules",
+        "conversation_history",
+        "pending_location_transition.json",
+    )
+    if os.path.exists(pending_transition):
+        os.remove(pending_transition)
+        print("  ✓ Removed stale location-transition recovery marker")
+
 def clear_all_files():
     """Phase 4: Delete all generated files"""
     print(f"\n{CYAN}PHASE 4: Clearing all generated files...{RESET}")
@@ -293,7 +308,8 @@ def clear_all_files():
         "modules/conversation_history/conversation_history.json", "modules/conversation_history/chat_history.json",
         "modules/conversation_history/combat_conversation_history.json", "player_conversation_history.json",
         "modules/conversation_history/game_interface_cache.json", "modules/conversation_history/compression_cache.json",
-        "modules/conversation_history/combat_user_message_cache.json"
+        "modules/conversation_history/combat_user_message_cache.json",
+        "modules/conversation_history/pending_location_transition.json",
     ]
     
     for file in conversation_files:

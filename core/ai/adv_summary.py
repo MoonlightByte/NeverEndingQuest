@@ -449,6 +449,11 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
                     latest_encounter["encounterId"] = encounter_id
                     debug_print(f"Fixed empty encounter ID to: {encounter_id}")
 
+            # Visit state is application-owned. T015 may omit or alter this
+            # optional compatibility field while rewriting the full location,
+            # so establish it deterministically before schema validation and
+            # before the area/journal transaction commits.
+            updated_location["explorationState"] = {"status": "visited"}
             validate_location_json(updated_location, loca_single_item_schema)
 
             # T015 only stages a validated location object. Journal and area
@@ -1113,6 +1118,7 @@ def run_departure_summary(
     current_location_file,
     leaving_location_name,
     current_area_id,
+    party_tracker_file="party_tracker.json",
 ):
     """Run T016 then T015 and commit their derived state as one transaction."""
     del current_location_file  # Kept in the CLI contract for caller compatibility.
@@ -1120,7 +1126,7 @@ def run_departure_summary(
     # provider for the next departure.
     _resolve_prior_pending_summary()
     conversation_history = load_json_file(conversation_history_file)
-    party_tracker = load_json_file("party_tracker.json")
+    party_tracker = load_json_file(party_tracker_file)
     if not isinstance(conversation_history, list):
         raise DepartureSummaryError("conversation history is unavailable or invalid")
     if not isinstance(party_tracker, dict):
@@ -1182,12 +1188,12 @@ def run_departure_summary(
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 5:
-        debug_print("Usage: python adv_summary.py <conversation_history_file> <current_location_file> <leaving_location_name> <current_area_id>")
+    if len(sys.argv) not in {5, 6}:
+        debug_print("Usage: python adv_summary.py <conversation_history_file> <current_location_file> <leaving_location_name> <current_area_id> [party_tracker_snapshot_file]")
         sys.exit(1)
 
     try:
-        result = run_departure_summary(*sys.argv[1:5])
+        result = run_departure_summary(*sys.argv[1:6])
         debug_print(
             "Departure summary transaction committed: "
             + json.dumps(result, sort_keys=True)

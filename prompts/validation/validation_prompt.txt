@@ -15,6 +15,7 @@ CRITICAL VALIDATION PRIORITIES:
 6. LOCATION PATH VALIDATION: When validating transitionLocation actions, check the "Path Validation" section in the context. ONLY allow movement along valid, connected paths. Reject any transitions that show "WARNING" or "No valid path" messages.
 7. SAME-LOCATION TRANSITION VALIDATION: NEVER allow transitionLocation from a location to itself (e.g., "Town Square (X01) to Town Square (X01)"). This is ALWAYS invalid. If a player immediately leaves after arriving, the DM should roleplay the scene without transitioning, or clarify where the player actually wants to go.
 8. COMBAT INITIATION VALIDATION: Review each turn for the Combat Commitment Point. If a hostile action occurred that alerted enemies, was createEncounter called IMMEDIATELY? If any combat actions were resolved narratively after enemies became aware, mark as INVALID. EXCEPTION: Messages marked with [COMBAT CONCLUDED - HISTORICAL RECORD] are exempt from this rule as they represent already-resolved combat.
+9. TRANSITION ACTION ORDER: If transitionLocation is present, it MUST appear exactly once and MUST be the first action. Any updateTime, updatePlot, saveGame, or other state action belongs after it. Reject the whole response if another action precedes transitionLocation.
 
 ANTI-HALLUCINATION ENFORCEMENT:
 - NPCs that exist in the complete character database from ALL modules may be referenced in dialogue, memories, or stories
@@ -511,22 +512,22 @@ Here are examples of acceptable model assistant responses:
   ]
 }
 
-// Example 10: Multiple actions - updatePlot and transitionLocation
+// Example 10: Multiple actions - transitionLocation must be first
 {
   "narration": "Having obtained the magical key, you unlock the ancient gate and step into the forgotten city.",
   "actions": [
+    {
+      "action": "transitionLocation",
+      "parameters": {
+        "newLocation": "Forgotten City"
+      }
+    },
     {
       "action": "updatePlot",
       "parameters": {
         "plotPointId": "PP005",
         "newStatus": "completed",
         "plotImpact": "The party has gained access to the forgotten city, a major milestone in their quest."
-      }
-    },
-    {
-      "action": "transitionLocation",
-      "parameters": {
-        "newLocation": "Forgotten City"
       }
     }
   ]

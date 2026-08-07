@@ -174,9 +174,18 @@
             },
             "description": "List of potential encounters in this location."
           },
-          "adventureSummary": { 
+          "adventureSummary": {
             "type": "string",
             "description": "A brief summary of any adventure events that have occurred in this location."
+          },
+          "explorationState": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "enum": ["unvisited", "visited"] }
+            },
+            "required": ["status"],
+            "additionalProperties": false,
+            "description": "Optional machine-owned visit state. Legacy locations may omit it."
           },
           "doors": {
             "type": "array",

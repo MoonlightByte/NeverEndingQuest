@@ -50,9 +50,11 @@
 # ============================================================================
 
 import json
+import copy
 import subprocess
 import os
 import sys
+import tempfile
 import unicodedata
 import re
 import traceback
@@ -71,6 +73,61 @@ from utils.enhanced_logger import debug, info, warning, error, game_event, set_s
 
 # Set script name for logging
 set_script_name(__name__)
+
+
+_TRANSITION_NARRATION_FIELDS = (
+    "type",
+    "description",
+    "features",
+    "npcs",
+    "monsters",
+    "encounters",
+    "adventureSummary",
+    "dmInstructions",
+    "doors",
+    "traps",
+    "accessibility",
+    "dangerLevel",
+    "weatherConditions",
+)
+
+
+def _build_transition_narration_prompt(
+    new_location_info,
+    *,
+    area_id,
+    area_name,
+    storage_description="",
+):
+    """Build a destination-grounded T013 prompt from verified location data."""
+    location_data = new_location_info.get("data")
+    if not isinstance(location_data, dict):
+        location_data = new_location_info
+
+    facts = {
+        "locationId": location_data.get("locationId"),
+        "name": new_location_info.get("location_name")
+        or location_data.get("name")
+        or "Unknown Location",
+        "areaId": area_id,
+        "areaName": area_name,
+    }
+    for field in _TRANSITION_NARRATION_FIELDS:
+        value = location_data.get(field)
+        if value not in (None, "", [], {}):
+            facts[field] = value
+
+    return (
+        "Narrate the party's immediate arrival at the destination. Use only "
+        "the supplied destination facts; do not invent technology, named "
+        "characters, creatures, hazards, history, or changes to game state. "
+        "Do not resolve or trigger an encounter. If the supplied facts are "
+        "sparse, keep the narration brief rather than filling gaps. Respect "
+        "the adventureSummary as the authoritative record of what has already "
+        "happened.\n\nDESTINATION FACTS:\n"
+        + json.dumps(facts, ensure_ascii=False, sort_keys=True)
+        + storage_description
+    )
 
 def get_storage_at_location(location_id):
     """Get all player storage containers at a specific location"""
@@ -179,13 +236,21 @@ def get_location_data(location_id, area_id):
         error(f"FILE_OP: Invalid JSON in {area_file}", category="file_operations")
     return None
 
-def update_world_conditions(current_conditions, new_location, current_area, current_area_id):
+def update_world_conditions(
+    current_conditions,
+    new_location,
+    current_area,
+    current_area_id,
+    location_info_override=None,
+):
     """Update world conditions based on location change"""
     from datetime import datetime, timedelta
     current_time = datetime.strptime(current_conditions["time"], "%H:%M:%S")
     new_time = current_time.strftime("%H:%M:%S")  # Don't automatically add time - let DM handle it
 
-    location_info = get_location_info(new_location, current_area, current_area_id)
+    location_info = location_info_override or get_location_info(
+        new_location, current_area, current_area_id
+    )
 
     if location_info:
         return {
@@ -210,20 +275,49 @@ def update_world_conditions(current_conditions, new_location, current_area, curr
         return current_conditions
 
 
-def _run_departure_summary(current_location, current_area_id):
+def _run_departure_summary(
+    current_location, current_area_id, origin_party_tracker=None
+):
     """Run the optional departure summary and return an explicit status."""
     project_root = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
     adv_summary_path = os.path.join(project_root, "core", "ai", "adv_summary.py")
-    command = [
-        sys.executable,
-        adv_summary_path,
-        "modules/conversation_history/conversation_history.json",
-        "current_location.json",
-        current_location,
-        current_area_id,
-    ]
+    tracker_snapshot_path = None
+    try:
+        if isinstance(origin_party_tracker, dict):
+            snapshot_file = tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                suffix=".json",
+                prefix="neq_departure_party_",
+                delete=False,
+            )
+            tracker_snapshot_path = snapshot_file.name
+            with snapshot_file:
+                json.dump(origin_party_tracker, snapshot_file, ensure_ascii=False)
+            try:
+                os.chmod(tracker_snapshot_path, 0o600)
+            except OSError:
+                pass
+
+        command = [
+            sys.executable,
+            adv_summary_path,
+            "modules/conversation_history/conversation_history.json",
+            "current_location.json",
+            current_location,
+            current_area_id,
+        ]
+        if tracker_snapshot_path:
+            command.append(tracker_snapshot_path)
+    except Exception as exc:
+        if tracker_snapshot_path:
+            try:
+                os.remove(tracker_snapshot_path)
+            except OSError:
+                pass
+        return {"success": False, "status": "unavailable", "error": str(exc)}
     try:
         result = subprocess.run(
             command,
@@ -256,14 +350,28 @@ def _run_departure_summary(current_location, current_area_id):
             "error": str(exc),
         }
 
-    info("SUCCESS: Adventure summary transaction committed", category="summary_building")
-    return {
-        "success": True,
-        "status": "committed",
-        "stdout": result.stdout,
-    }
+    else:
+        info("SUCCESS: Adventure summary transaction committed", category="summary_building")
+        return {
+            "success": True,
+            "status": "committed",
+            "stdout": result.stdout,
+        }
+    finally:
+        if tracker_snapshot_path:
+            try:
+                os.remove(tracker_snapshot_path)
+            except OSError:
+                pass
 
-def handle_location_transition(current_location, new_location, current_area, current_area_id, area_connectivity_id=None):
+def handle_location_transition(
+    current_location,
+    new_location,
+    current_area,
+    current_area_id,
+    area_connectivity_id=None,
+    authorized_destination=None,
+):
     """Handle transition between locations, prioritizing ID matching"""
     info(f"STATE_CHANGE: Location transition from '{current_location}' to '{new_location}'", category="location_transitions")
     debug(f"STATE_CHANGE: Current area: '{current_area}', Current area ID: '{current_area_id}'", category="location_transitions")
@@ -299,16 +407,55 @@ def handle_location_transition(current_location, new_location, current_area, cur
         new_area_data = None
         new_area_id_for_conditions = None
 
-        # Search all loaded areas to find the new location
-        from utils.location_path_finder import LocationGraph
-        graph = LocationGraph() # Use the graph to access all loaded data
-        graph.load_module_data()
+        if authorized_destination is not None:
+            if not isinstance(authorized_destination, dict):
+                error(
+                    "VALIDATION: Authorized destination metadata is invalid",
+                    category="location_transitions",
+                )
+                return None
+            authorized_module = authorized_destination.get("module_name")
+            authorized_location_id = authorized_destination.get("location_id")
+            authorized_area_id = authorized_destination.get("area_id")
+            authorized_location_data = authorized_destination.get("location_data")
+            if (
+                authorized_module != current_module
+                or authorized_location_id != new_location
+                or not isinstance(authorized_area_id, str)
+                or not authorized_area_id
+                or not isinstance(authorized_location_data, dict)
+                or authorized_location_data.get("locationId") != new_location
+            ):
+                error(
+                    "VALIDATION: Authorized destination does not match active module movement",
+                    category="location_transitions",
+                )
+                return None
+            new_area_id_for_conditions = authorized_area_id
+            new_area_data = {
+                "areaId": authorized_area_id,
+                "areaName": authorized_destination.get("area_name", "Unknown Area"),
+            }
+            new_location_info = {
+                "area_id": authorized_area_id,
+                "location_name": authorized_destination.get(
+                    "location_name", authorized_location_data.get("name", "Unknown Location")
+                ),
+                "data": authorized_location_data,
+            }
+        else:
+            # Compatibility path for legacy callers that have no request-bound
+            # authorization. Approved within-module travel never enters it.
+            from utils.location_path_finder import LocationGraph
 
-        new_location_info = graph.get_location_info(new_location)
+            graph = LocationGraph()
+            graph.load_module_data()
+            new_location_info = graph.get_location_info(new_location)
+            if new_location_info:
+                new_area_id_for_conditions = new_location_info['area_id']
+                new_area_data = graph.area_data.get(new_area_id_for_conditions)
 
         if new_location_info:
-            new_area_id_for_conditions = new_location_info['area_id']
-            new_area_data = graph.area_data.get(new_area_id_for_conditions)
             debug(f"VALIDATION: Found new location '{new_location_info['location_name']}' in area {new_area_id_for_conditions}", category="location_transitions")
             debug(f"SUCCESS: New location validated: {new_location_info['location_name']} (ID: {new_location})", category="location_transitions")
         else:
@@ -319,119 +466,170 @@ def handle_location_transition(current_location, new_location, current_area, cur
         return None
 
     if current_location_info:
-        # Update current_location.json with current location info
+        # Capture origin inputs before movement. Optional departure work runs
+        # only after the authoritative commit, but must describe the state and
+        # conversation segment from the location being left.
+        origin_party_tracker = copy.deepcopy(party_tracker)
+        origin_history = load_json_file(
+            "modules/conversation_history/conversation_history.json"
+        )
+        if not isinstance(origin_history, list):
+            origin_history = []
+        start_index = 0
+        for i in range(len(origin_history) - 1, -1, -1):
+            msg = origin_history[i]
+            content = msg.get("content", "") if isinstance(msg, dict) else ""
+            if isinstance(msg, dict) and msg.get("role") == "user" and (
+                "Location transition:" in content or "Module transition:" in content
+            ):
+                start_index = i + 1
+                break
+        origin_history_segment = copy.deepcopy(origin_history[start_index:])
+
+        # Commit party movement before any irreversible departure-side write.
+        area_for_conditions = new_area_data if new_area_data else current_area_data
+        area_id_for_conditions = (
+            new_area_id_for_conditions
+            if new_area_id_for_conditions
+            else current_area_id
+        )
+        world_condition_args = (
+            party_tracker["worldConditions"],
+            new_location_info.get(
+                "location_name", new_location_info.get("name", "Unknown Location")
+            ),
+            area_for_conditions.get(
+                "areaName",
+                current_area if not area_connectivity_id else "Unknown Area",
+            ),
+            area_id_for_conditions,
+        )
+        if isinstance(authorized_destination, dict):
+            party_tracker["worldConditions"] = update_world_conditions(
+                *world_condition_args,
+                location_info_override=authorized_destination.get("location_data"),
+            )
+        else:
+            party_tracker["worldConditions"] = update_world_conditions(
+                *world_condition_args
+            )
+        party_tracker["worldConditions"]["currentLocation"] = sanitize_text(
+            new_location_info.get(
+                "location_name", new_location_info.get("name", "Unknown Location")
+            )
+        )
+        party_tracker["worldConditions"]["currentLocationId"] = new_location
+        if new_area_id_for_conditions != current_area_id and new_area_data:
+            party_tracker["worldConditions"]["currentArea"] = new_area_data.get(
+                "areaName", "Unknown Area"
+            )
+            party_tracker["worldConditions"]["currentAreaId"] = (
+                new_area_id_for_conditions
+            )
+        try:
+            safe_json_dump(party_tracker, "party_tracker.json")
+            info(
+                "SUCCESS: Updated party_tracker.json with new location",
+                category="file_operations",
+            )
+        except Exception as e:
+            error(
+                "FAILURE: Failed to update party_tracker.json",
+                exception=e,
+                category="file_operations",
+            )
+            raise
+
+        # Everything below is optional post-commit departure processing.
         try:
             safe_json_dump(current_location_info, "current_location.json")
         except Exception as e:
-            error(f"FILE_OP: Failed to update current_location.json", exception=e, category="file_operations")
-
-        # =================================================================
-        # NEW RECONCILIATION STEP - INSERT THIS BLOCK
-        # =================================================================
-        try:
-            # Load the full conversation history to find the relevant segment
-            conversation_history = load_json_file("modules/conversation_history/conversation_history.json") or []
-            
-            # Find the start of this location's history by looking for the last transition message
-            start_index = 0
-            for i in range(len(conversation_history) - 1, -1, -1):
-                msg = conversation_history[i]
-                content = msg.get("content", "")
-                if msg.get("role") == "user" and ("Location transition:" in content or "Module transition:" in content):
-                    start_index = i + 1
-                    break
-            
-            history_segment = conversation_history[start_index:]
-
-            # Call the new reconciler for the location we are LEAVING
-            reconcile_location_state.run(
-                area_id=current_area_id, 
-                location_id=current_location_info['locationId'],
-                conversation_history_segment=history_segment
+            error(
+                "FILE_OP: Failed to update current_location.json",
+                exception=e,
+                category="file_operations",
             )
-            info(f"STATE_RECONCILIATION: Ran reconciler for {current_location_info['name']} ({current_location_info['locationId']}).")
-
-        except Exception as e:
-            error(f"FAILURE: Location State Reconciliation failed for {current_location_info['name']}", exception=e)
-        # =================================================================
-        # END OF NEW STEP
-        # =================================================================
-
-        # Departure summarization is optional for travel. The subprocess itself
-        # owns the journal/location transaction and reports committed/unavailable.
-        summary_result = _run_departure_summary(current_location, current_area_id)
-
-        # Log the transition for debugging
-        debug_log_file = "transition_debug.log"
         try:
-            with open(debug_log_file, "a", encoding="utf-8") as debug_file:
-                debug_file.write(f"\n--- TRANSITION DEBUG: {current_location} to {new_location} ---\n")
-                debug_file.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            reconcile_location_state.run(
+                area_id=current_area_id,
+                location_id=current_location_info["locationId"],
+                conversation_history_segment=origin_history_segment,
+            )
+            info(
+                f"STATE_RECONCILIATION: Ran reconciler for {current_location_info['name']} ({current_location_info['locationId']})."
+            )
+        except Exception as e:
+            error(
+                f"FAILURE: Location State Reconciliation failed for {current_location_info['name']}",
+                exception=e,
+            )
+        try:
+            summary_result = _run_departure_summary(
+                current_location,
+                current_area_id,
+                origin_party_tracker=origin_party_tracker,
+            )
+        except Exception as e:
+            error(
+                "FAILURE: Departure summary raised after committed travel",
+                exception=e,
+                category="summary_building",
+            )
+            summary_result = {"status": "unavailable", "error": str(e)}
+
+        try:
+            with open("transition_debug.log", "a", encoding="utf-8") as debug_file:
+                debug_file.write(
+                    f"\n--- TRANSITION DEBUG: {current_location} to {new_location} ---\n"
+                )
+                debug_file.write(
+                    f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                )
                 debug_file.write(f"Area ID: {current_area_id}\n")
                 debug_file.write(
-                    "Adventure summary status: "
-                    f"{summary_result['status']}\n"
+                    f"Adventure summary status: {summary_result['status']}\n"
                 )
         except Exception as e:
-            error(f"FILE_OP: Failed to write to debug log", exception=e, category="file_operations")
-
-        # Update party tracker with new location information
-        if party_tracker and new_location_info:
-            # Use the new area data if we're transitioning to a different area
-            area_for_conditions = new_area_data if new_area_data else current_area_data
-            area_id_for_conditions = new_area_id_for_conditions if new_area_id_for_conditions else current_area_id
-            
-            party_tracker["worldConditions"] = update_world_conditions(
-                party_tracker["worldConditions"],
-                new_location_info.get("location_name", new_location_info.get("name", "Unknown Location")),
-                area_for_conditions.get("areaName", current_area if not area_connectivity_id else "Unknown Area"),
-                area_id_for_conditions
+            error(
+                "FILE_OP: Failed to write to debug log",
+                exception=e,
+                category="file_operations",
             )
-            
-            # Explicitly set these values to ensure they're correct
-            # Sanitize the location name before saving
-            party_tracker["worldConditions"]["currentLocation"] = sanitize_text(new_location_info.get("location_name", new_location_info.get("name", "Unknown Location")))
-            party_tracker["worldConditions"]["currentLocationId"] = new_location
-
-            if new_area_id_for_conditions != current_area_id and new_area_data:
-                # We're transitioning to a new area
-                party_tracker["worldConditions"]["currentArea"] = new_area_data.get("areaName", "Unknown Area")
-                party_tracker["worldConditions"]["currentAreaId"] = new_area_id_for_conditions
-
-            try:
-                safe_json_dump(party_tracker, "party_tracker.json")
-                info("SUCCESS: Updated party_tracker.json with new location", category="file_operations")
-            except Exception as e:
-                error(f"FAILURE: Failed to update party_tracker.json", exception=e, category="file_operations")
-                # The campaign publisher treats a truthy prompt as proof that
-                # the location write committed. Never report success after a
-                # persistence failure; its prepared intent must remain
-                # recoverable or be cancelled as a proven no-op.
-                raise
-
-            # Observability is best-effort after the authoritative write.
-            try:
-                game_event("location_transition", {
+        try:
+            game_event(
+                "location_transition",
+                {
                     "from": current_location,
-                    "to": new_location_info.get("location_name", new_location_info.get("name", "Unknown Location")),
-                    "from_id": current_location_info.get("locationId", current_location) if current_location_info else current_location,
+                    "to": new_location_info.get(
+                        "location_name",
+                        new_location_info.get("name", "Unknown Location"),
+                    ),
+                    "from_id": current_location_info.get(
+                        "locationId", current_location
+                    ),
                     "to_id": new_location,
-                    "area_change": new_area_id_for_conditions != current_area_id
-                })
-            except Exception as e:
-                error(
-                    "FILE_OP: Failed to log location transition event",
-                    exception=e,
-                    category="file_operations",
-                )
+                    "area_change": new_area_id_for_conditions != current_area_id,
+                },
+            )
+        except Exception as e:
+            error(
+                "FILE_OP: Failed to log location transition event",
+                exception=e,
+                category="file_operations",
+            )
 
-        # Get storage information for the new location
         storage_containers = get_storage_at_location(new_location)
         storage_description = format_storage_description(storage_containers)
-        
-        base_prompt = f"Describe the immediate surroundings and any notable features or encounters in {new_location_info.get('location_name', new_location_info.get('name', 'this location'))}, based on its recent history and current state."
-        
-        return base_prompt + storage_description
+        return _build_transition_narration_prompt(
+            new_location_info,
+            area_id=new_area_id_for_conditions or current_area_id,
+            area_name=(
+                new_area_data.get("areaName", "Unknown Area")
+                if new_area_data
+                else current_area
+            ),
+            storage_description=storage_description,
+        )
     else:
         error(f"FAILURE: Could not find information for current location: {current_location}", category="location_transitions")
         return None

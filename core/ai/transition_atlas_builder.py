@@ -12,6 +12,7 @@ from typing import Dict, List, Any
 from utils.file_operations import safe_read_json
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug
+from utils.path_encounter_analyzer import derive_location_exploration_state
 
 
 def build_transition_atlas(location_graph, module_name: str) -> str:
@@ -31,8 +32,9 @@ def build_transition_atlas(location_graph, module_name: str) -> str:
         String atlas with exploration markers
 
     Note:
-        Visited status determined by checking encounters array.
-        Empty encounters = unexplored, Has encounters = visited.
+        New modules use the explicit machine-owned exploration state. Legacy
+        modules derive visits from a non-empty adventure summary or a runtime
+        encounter record; template encounter definitions alone do not count.
     """
     debug(f"Building transition atlas for {module_name}", category="transition_atlas")
 
@@ -63,7 +65,7 @@ def build_transition_atlas(location_graph, module_name: str) -> str:
         # Load area file to check for monsters/encounters
         area_file = path_manager.get_area_path(area_id)
         has_monsters = False
-        has_encounter_entries = False
+        is_visited = False
         monster_names = []
 
         if os.path.exists(area_file):
@@ -72,22 +74,10 @@ def build_transition_atlas(location_graph, module_name: str) -> str:
                 for location in area_json.get('locations', []):
                     if location.get('locationId') == loc_id:
                         monsters = location.get('monsters', [])
-                        encounters = location.get('encounters', [])
                         has_monsters = len(monsters) > 0
-
-                        # Check for GAMEPLAY encounters (have encounterId key)
-                        # Template encounters (type/description) don't count as visited
-                        has_encounter_entries = any(
-                            isinstance(e, dict) and 'encounterId' in e
-                            for e in encounters
-                        )
+                        is_visited = derive_location_exploration_state(location)["visited"]
                         monster_names = [m.get('name', 'Unknown') for m in monsters if isinstance(m, dict)]
                         break
-
-        # Determine visited status
-        # If encounters array has GAMEPLAY entries (with encounterId), location visited
-        # Template encounters (type/description) or empty array = not yet explored
-        is_visited = has_encounter_entries
 
         # Determine status marker
         if is_visited:
@@ -142,7 +132,7 @@ def build_transition_atlas(location_graph, module_name: str) -> str:
 
     # Add legend
     lines.append("LEGEND:")
-    lines.append("  [VISITED] - Location visited (has encounter entries in encounters array)")
+    lines.append("  [VISITED] - Location has explicit or legacy runtime visit evidence")
     lines.append("  [UNEXPLORED - SAFE] - Not visited, no monsters defined (safe passage)")
     lines.append("  [UNEXPLORED - HAS MONSTERS] - Not visited, has monsters defined (BLOCKS TRAVEL)")
 
