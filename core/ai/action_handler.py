@@ -1350,8 +1350,6 @@ def process_action(
                     }
                     conversation_history.append(modified_combat_summary)
                     # Import save_conversation_history from main
-                    import sys
-
                     if __name__ != "__main__":
 
                         sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -1424,8 +1422,6 @@ def process_action(
 
     elif action_type == ACTION_EXIT_GAME:
         # Don't add return message here - it will be added when the player actually returns
-        import sys
-
         if __name__ != "__main__":
 
             sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -1704,8 +1700,6 @@ def process_action(
                 conversation_history.append({"role": "user", "content": f"Location transition: {sanitize_text(current_location_name)} to {sanitize_text(new_location_name_or_id)}"})
             
             # Save conversation history immediately after adding transition marker
-            import sys
-
             if __name__ != "__main__":
 
                 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -1881,8 +1875,6 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             conversation_history.append({"role": "user", "content": error_message})
             
             # Import necessary functions from main
-            import sys
-
             if __name__ != "__main__":
 
                 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))

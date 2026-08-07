@@ -12,13 +12,18 @@ modified; headless uses this standalone copy so it carries no Flask or
 Socket.IO dependencies. Since narration is sink-routed (P2), this class
 is only a FALLBACK for print sites the sink does not cover.
 
-Three deliberate divergences from WebOutputCapture.write():
+Four deliberate divergences from WebOutputCapture.write():
 1. A prompt banner seen inside an open DM section flushes the section
    (web leaves it open and later merges across the prompt).
 2. An unparseable STARTUP_MARKER line is emitted as debug (web drops it).
 3. A noise marker inside a DM section flushes the narration BEFORE the
    debug line (web queues the debug line first) -- ordering on the debug
    stream differs, narration content does not.
+4. A line starting with a logger prefix (DEBUG:/INFO:/WARNING:/ERROR:)
+   is always debug, even when it contains "Dungeon Master:" in its body
+   (e.g. openai request logging that embeds conversation history). Web
+   never sees such lines because its debug interceptor files them away;
+   headless uninstalls that interceptor, so the guard lives here.
 
 Events are delivered as emit(kind, **fields) callbacks with kinds:
   startup   - parsed STARTUP_MARKER payload (fields: the marker dict)
@@ -123,6 +128,13 @@ class LineClassifier:
 
         if looks_like_prompt(clean_line):
             # Player prompt banner: end any open DM section, route to debug.
+            self._flush_dm_buffer()
+            self._debug(clean_line)
+            return
+
+        if clean_line.startswith(("DEBUG:", "INFO:", "WARNING:", "ERROR:")):
+            # Logger output is never narration, even when its payload embeds
+            # "Dungeon Master:" (openai request logging quotes the history).
             self._flush_dm_buffer()
             self._debug(clean_line)
             return
