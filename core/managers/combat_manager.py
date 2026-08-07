@@ -332,13 +332,16 @@ def _display_combat_narration(narration):
 
    Mirrors main.display_dm_narration: a frontend with a player-output sink
    gets structured delivery and the console print is skipped; the plain
-   terminal output is unchanged.
+   terminal output is unchanged. Empty content skips the sink (the
+   historical scrapers suppressed empty narration blocks).
    """
    from web.shared_state import emit_player_output
 
-   delivered = emit_player_output(
-       {"type": "narration", "channel": "combat", "content": narration}
-   )
+   delivered = False
+   if narration and narration.strip():
+       delivered = emit_player_output(
+           {"type": "narration", "channel": "combat", "content": narration}
+       )
    if delivered is not True:
        import sys
        print(f"Dungeon Master: {narration}")

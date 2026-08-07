@@ -97,11 +97,24 @@ class HeadlessInput:
     isatty attribute, by design (see module docstring).
     """
 
-    def __init__(self, input_queue, on_prompt=None):
+    def __init__(self, input_queue, on_prompt=None, is_quitting=None):
         self.queue = input_queue
         self.on_prompt = on_prompt
+        self.is_quitting = is_quitting
+
+    def _quit_requested(self):
+        try:
+            return self.is_quitting is not None and self.is_quitting()
+        except Exception:
+            return False
 
     def readline(self):
+        # Once quit is requested, EVERY readline returns EOF, not just the
+        # one that consumes the sentinel: the combat and level-up sub-loops
+        # swallow a single EOFError and drop back to the main loop, which
+        # would otherwise block forever on a fresh prompt.
+        if self._quit_requested():
+            return ""
         try:
             from core.managers.status_manager import status_ready
             status_ready()
@@ -113,6 +126,8 @@ class HeadlessInput:
             except Exception:
                 pass
         while True:
+            if self._quit_requested():
+                return ""
             try:
                 user_input = self.queue.get(timeout=0.5)
             except queue_module.Empty:

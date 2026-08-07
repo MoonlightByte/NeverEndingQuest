@@ -123,10 +123,13 @@ class ScriptDriver:
         while not done.wait(0.5):
             if timeout_per_turn and \
                     time.time() - last_activity[0] > timeout_per_turn:
-                self._session.writer.emit(
-                    "exit", reason="error",
-                    detail="no engine activity for %ss (per-turn timeout)"
-                           % timeout_per_turn)
+                # emit_exit dedupes: a late engine exit (e.g. the hung
+                # provider call finally failing during teardown) will not
+                # produce a second, contradictory exit event.
+                self._session.emit_exit(
+                    "error",
+                    "no engine activity for %ss (per-turn timeout)"
+                    % timeout_per_turn)
                 return EXIT_TIMEOUT
         return None
 
@@ -158,11 +161,20 @@ def _run_session(args, driver, timeout_per_turn=None):
             session.bootstrap(
                 character_file=getattr(args, "character", None),
                 module=getattr(args, "module", None))
+            # Attach the driver before the engine starts so no early prompt
+            # event can slip past it.
+            driver.start(session)
             session.start_engine()
         except BootstrapError as exc:
-            writer.emit("exit", reason="error", detail=str(exc))
+            session.emit_exit("error", str(exc))
             return EXIT_BOOTSTRAP
-        driver.start(session)
+        except Exception as exc:
+            # Unexpected startup failure: still hand the agent a terminal
+            # exit event and a documented exit code instead of a bare
+            # traceback and Python's default status.
+            session.emit_exit(
+                "error", "%s: %s" % (type(exc).__name__, exc))
+            return EXIT_ENGINE_ERROR
         forced_code = driver.wait(done, last_activity, timeout_per_turn)
         if forced_code is not None:
             return forced_code

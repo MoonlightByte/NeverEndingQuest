@@ -2397,7 +2397,12 @@ def handle_connect():
 
     # A process may have stopped after durable module publication but before
     # its narration receipt was acknowledged. Replay the stable-ID message
-    # before sending cache/queue state so reconnect is self-healing.
+    # before sending cache/queue state so reconnect is self-healing. The
+    # replay delivers through the player-output sink, so the sink must be
+    # claimed BEFORE the recovery call -- without it the message would fall
+    # back to a console print and the receipt would still be acknowledged,
+    # permanently losing the narration for web clients.
+    set_player_output_sink(_queue_safe_player_output)
     try:
         import main as game_main
 

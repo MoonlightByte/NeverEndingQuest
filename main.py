@@ -2713,16 +2713,22 @@ def display_dm_narration(content, channel="main", color="blue"):
     A frontend (web or headless) that installed a player-output sink gets
     the narration structured and the console print is skipped; with no sink
     (plain terminal) the print is identical to the historical output.
+
+    Empty content skips the sink: the historical scrapers suppressed empty
+    narration blocks, and routing "" through the sink would render empty
+    DM cards in the web UI.
     """
     from web.shared_state import emit_player_output
 
-    delivered = emit_player_output(
-        {
-            "type": "narration",
-            "channel": channel,
-            "content": content,
-        }
-    )
+    delivered = False
+    if content and content.strip():
+        delivered = emit_player_output(
+            {
+                "type": "narration",
+                "channel": channel,
+                "content": content,
+            }
+        )
     if delivered is not True:
         print(colored("Dungeon Master:", color), colored(content, color))
 

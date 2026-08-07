@@ -42,6 +42,12 @@ _WIZARD_PROMPT_MARKERS = (
     "Press Enter",
     "(y/n)",
     "Enter your",
+    # Deterministic character-creation prompts (utils/startup_wizard.py).
+    "Character name",
+    "Choose your",
+    "Assign score",
+    "Your character's",
+    "Your decision",
 )
 
 RAW_LOG_PATH = os.path.join("modules", "logs", "headless_raw.log")
@@ -111,7 +117,9 @@ class HeadlessSession:
             self._on_stream_event, self._raw_log)
         stderr_shim = HeadlessOutputCapture(
             self._on_stream_event, self._raw_log, is_error=True)
-        stdin_shim = HeadlessInput(self.input_queue, on_prompt=self._on_prompt)
+        stdin_shim = HeadlessInput(
+            self.input_queue, on_prompt=self._on_prompt,
+            is_quitting=lambda: self._quitting)
         sys.stdout = self._stdout_shim
         sys.stderr = stderr_shim
         sys.stdin = stdin_shim
@@ -154,9 +162,10 @@ class HeadlessSession:
             uninstall_debug_interceptor()
         except ImportError:
             pass
-        # web_interface's import also claims the status callback (via main)
-        # and the player-output sink (web_interface.py module scope); both
-        # must be re-registered so headless owns them for the session.
+        # main.py claims the status callback at import time, and web session
+        # handlers claim the sink when they run; re-register both so
+        # headless owns them for this session (defensive for the sink,
+        # load-bearing for the status callback).
         set_status_callback(self._on_status)
         set_player_output_sink(self._on_player_output)
         self._dm_main = dm_main
@@ -283,8 +292,10 @@ class HeadlessSession:
     def _parse_prompt_stats(self, clean_prompt):
         import re
         stats = {}
+        # Main prompts show [HH:MM (context)]; combat prompts show the raw
+        # [HH:MM:SS] with no context. Accept both.
         match = re.search(
-            r"\[(\d\d:\d\d)(?: \(([^)]*)\))?\]\[HP:([^/\]]+)/([^\]]+)\]"
+            r"\[(\d\d:\d\d)(?::\d\d)?(?: \(([^)]*)\))?\]\[HP:([^/\]]+)/([^\]]+)\]"
             r"\[XP:([^/\]]+)/([^\]]+)\]",
             clean_prompt)
         if match:
@@ -301,6 +312,8 @@ class HeadlessSession:
     def _on_prompt(self):
         # Runs on the engine thread from inside readline(), i.e. the engine
         # is idle and its post-turn saves are on disk.
+        if self._quitting:
+            return
         pending = ""
         if self._stdout_shim is not None:
             pending = self._stdout_shim.consume_pending()
@@ -309,13 +322,18 @@ class HeadlessSession:
         kind = self._classify_prompt(clean_prompt, snapshot)
         if kind in ("main", "combat", "levelup"):
             self._channel = kind
+        # Set BEFORE emitting: the prompt event's observers may dispatch an
+        # input (clearing the flag) synchronously from inside emit(), and a
+        # serve agent may react the instant it sees the event. Setting after
+        # would leave the flag stuck set for the whole following turn,
+        # defeating the save/restore busy-guard.
+        self.prompt_pending.set()
         self.writer.emit(
             "prompt",
             kind=kind,
             raw_prompt=clean_prompt,
             stats=self._parse_prompt_stats(clean_prompt))
         self.writer.emit("state", **snapshot)
-        self.prompt_pending.set()
 
     # -- runner-side API ---------------------------------------------------
 
