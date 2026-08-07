@@ -7,6 +7,11 @@
 """
 Enhanced NeverEndingQuest Wrapper Script
 
+DEPRECATED: superseded by headless mode (run_headless.py and
+core/headless/client.py), which drives the engine in-process over a
+structured NDJSON protocol instead of scraping a subprocess's stdout.
+See docs/HEADLESS_MODE.md. Kept only for reference.
+
 This script creates a more robust mediator between the user and the NeverEndingQuest application,
 allowing for gameplay in environments that don't support direct interactive terminals.
 

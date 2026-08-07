@@ -2712,6 +2712,32 @@ def _emit_committed_module_message(content, message_id):
     return delivered is True
 
 
+def display_dm_narration(content, channel="main", color="blue"):
+    """Deliver DM narration through the frontend sink, else the console.
+
+    A frontend (web or headless) that installed a player-output sink gets
+    the narration structured and the console print is skipped; with no sink
+    (plain terminal) the print is identical to the historical output.
+
+    Empty content skips the sink: the historical scrapers suppressed empty
+    narration blocks, and routing "" through the sink would render empty
+    DM cards in the web UI.
+    """
+    from web.shared_state import emit_player_output
+
+    delivered = False
+    if content and content.strip():
+        delivered = emit_player_output(
+            {
+                "type": "narration",
+                "channel": channel,
+                "content": content,
+            }
+        )
+    if delivered is not True:
+        print(colored("Dungeon Master:", color), colored(content, color))
+
+
 def _acknowledge_module_receipt(
     receipt,
     *,
@@ -3718,10 +3744,7 @@ def process_ai_response(
 
             # Party movement and the exact narration the player is about to
             # but it must not create a history/display mismatch.
-            print(
-                colored("Dungeon Master:", "blue"),
-                colored(full_narration, "blue"),
-            )
+            display_dm_narration(full_narration)
 
             if pending_archive_info:
                 try:
@@ -3983,7 +4006,7 @@ def process_ai_response(
         # If not a transition or levelup, proceed with normal processing
         narration = parsed_response.get("narration", "")
         sanitized_narration = sanitize_text(narration)
-        print(colored("Dungeon Master:", "blue"), colored(sanitized_narration, "blue"))
+        display_dm_narration(sanitized_narration)
 
         actions_processed = False
         
@@ -4254,7 +4277,7 @@ def process_ai_response(
         print(f"Error: Unable to parse AI response as JSON: {e}")
         print(f"Problematic response: {response}")
         sanitized_response = sanitize_text(response)
-        print(colored("Dungeon Master:", "blue"), colored(sanitized_response, "blue"))
+        display_dm_narration(sanitized_response)
         # Even in error case, append to history
         assistant_message = {"role": "assistant", "content": response}
         conversation_history.append(assistant_message)
@@ -6129,7 +6152,7 @@ def main_game_loop():
                     final_narration = first_display
 
                     # Display the first message and add to history
-                    print(colored("Dungeon Master:", "blue"), colored(first_display, "blue"))
+                    display_dm_narration(first_display, channel="levelup")
                     conversation_history.append({"role": "assistant", "content": first_display})
                     save_conversation_history(conversation_history)
 
@@ -6137,7 +6160,18 @@ def main_game_loop():
                     while not level_up_session.is_complete:
                         # Get player input
                         player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
-                        level_up_input = input(f"{player_name_display} (Leveling Up): ")
+                        try:
+                            level_up_input = input(f"{player_name_display} (Leveling Up): ")
+                        except EOFError:
+                            # Closed/piped stdin must abort the sub-loop, not
+                            # crash the game (same guard the combat loop has).
+                            warning("LEVELUP: Input stream ended during level up. Aborting session.", category="level_up")
+                            if not level_up_session.summary:
+                                # The post-loop failure path displays and
+                                # persists this; without it the player gets
+                                # an empty message.
+                                level_up_session.summary = "The level up was interrupted before it could finish. It can be attempted again."
+                            break
 
                         if not level_up_input or not level_up_input.strip():
                             continue
@@ -6150,11 +6184,11 @@ def main_game_loop():
                             # It's the final JSON response
                             parsed_data = json.loads(dm_response)
                             final_narration = parsed_data.get("narration", "Level up complete!")
-                            print(colored("Dungeon Master:", "blue"), colored(final_narration, "blue"))
+                            display_dm_narration(final_narration, channel="levelup")
                             # The session is now complete, loop will exit
                         except (json.JSONDecodeError, TypeError):
                             # It's a normal conversational response
-                            print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
+                            display_dm_narration(dm_response, channel="levelup")
 
                     # After the loop, the session is complete.
                     if level_up_session.success:
@@ -6176,7 +6210,7 @@ def main_game_loop():
                         save_conversation_history(conversation_history)
                     else:
                         # If the level up failed, inform the player and log it.
-                        print(colored("Dungeon Master:", "red"), colored(level_up_session.summary, "red"))
+                        display_dm_narration(level_up_session.summary, channel="levelup", color="red")
                         conversation_history.append({"role": "system", "content": level_up_session.summary})
                         save_conversation_history(conversation_history)
 
@@ -6237,7 +6271,7 @@ def main_game_loop():
             )
             save_conversation_history(conversation_history)
             fallback_text = conversation_history[-1]["content"]
-            print(colored("Dungeon Master:", "blue"), colored(fallback_text, "blue"))
+            display_dm_narration(fallback_text)
     
         status_ready()
 

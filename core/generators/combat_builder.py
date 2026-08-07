@@ -280,7 +280,7 @@ def load_or_create_monster(monster_type):
         # failure silently falling back to level 1 (bug CH-M3).
         party_level = _get_party_level()
         result = subprocess.run(
-            ["python", monster_builder_path, monster_type,
+            [sys.executable, monster_builder_path, monster_type,
              "--party-level", str(party_level)],
             capture_output=True, text=True)
         if result.returncode == 0:
@@ -419,7 +419,7 @@ def load_or_create_npc(npc_name):
         # high-level party (bug CH-C1).
         party_level = _get_party_level()
         result = subprocess.run(
-            ["python", npc_builder_path, formatted_npc_name,
+            [sys.executable, npc_builder_path, formatted_npc_name,
              "--party-level", str(party_level)],
             capture_output=True, text=True)
         if result.returncode == 0:

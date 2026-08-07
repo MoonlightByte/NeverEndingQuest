@@ -7,6 +7,12 @@
 # ============================================================================
 # DM_WRAPPER.PY - AI INTEGRATION LAYER
 # ============================================================================
+#
+# DEPRECATED: superseded by headless mode (run_headless.py and
+# core/headless/client.py), which drives the engine in-process over a
+# structured NDJSON protocol instead of regex-scraping a subprocess's
+# stdout. See docs/HEADLESS_MODE.md. Kept only for reference.
+# ============================================================================
 # 
 # ARCHITECTURE ROLE: AI Integration Abstraction Layer
 # 
