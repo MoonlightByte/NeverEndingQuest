@@ -159,6 +159,7 @@
                 },
                 "summary": { "type": "string" },
                 "impact": { "type": "string" },
+                "combatCompletionId": { "type": "string" },
                 "worldConditions": {
                   "type": "object",
                   "properties": {

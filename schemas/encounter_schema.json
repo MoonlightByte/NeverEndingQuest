@@ -16,6 +16,20 @@
           "name": {
             "type": "string"
           },
+          "combatantId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "faction": {
+            "type": "string"
+          },
+          "initiativeTieBreaker": {
+            "type": "integer"
+          },
+          "armorClass": {
+            "type": "integer",
+            "minimum": 0
+          },
           "type": {
             "type": "string",
             "enum": ["player", "enemy", "npc"]
@@ -37,6 +51,29 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "activeEffects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string"},
+                "description": {"type": "string"},
+                "source": {"type": "string"},
+                "sourceCombatantId": {"type": "string"},
+                "effectId": {"type": "string"},
+                "roundsRemaining": {"type": "integer", "minimum": 0},
+                "concentration": {"type": "boolean"},
+                "concentrationId": {"type": "string"},
+                "saveType": {"type": "string"},
+                "saveDC": {"type": "integer", "minimum": 0},
+                "tickTrigger": {
+                  "type": "string",
+                  "enum": ["start_of_turn", "end_of_turn", "end_of_round"]
+                }
+              },
+              "required": ["name", "description"]
             }
           },
           "actions": {
@@ -79,6 +116,99 @@
           }
         ]
       }
+    },
+    "combat_round": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "current_round": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "preroll_cache": {
+      "type": "object",
+      "properties": {
+        "round": {"type": "integer", "minimum": 1},
+        "preroll_id": {"type": "string"},
+        "rolls": {"type": "string"},
+        "combatantOrder": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "agenticRollReserve": {
+          "type": "object",
+          "properties": {
+            "generic": {"type": "object"},
+            "attacks": {"type": "object"},
+            "saves": {"type": "object"}
+          }
+        },
+        "consumed": {
+          "type": "object",
+          "properties": {
+            "generic": {"type": "object"},
+            "attacks": {"type": "object"},
+            "saves": {"type": "object"}
+          }
+        }
+      }
+    },
+    "combatState": {
+      "type": "object",
+      "properties": {
+        "version": {"type": "integer", "minimum": 1},
+        "pipelineMode": {"type": "string", "enum": ["legacy", "agentic"]},
+        "revision": {"type": "integer", "minimum": 0},
+        "phase": {
+          "type": "string",
+          "enum": ["initializing", "awaiting_actor", "resolving_turn", "complete", "recovery_required"]
+        },
+        "pauseReason": {"type": "string"},
+        "round": {"type": "integer", "minimum": 1},
+        "initiativeOrder": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "turnCursor": {"type": "integer", "minimum": 0},
+        "actedThisRound": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "pendingTurn": {
+          "type": ["object", "null"]
+        },
+        "appliedTurnIds": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "appliedEventIds": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "completion": {
+          "type": "object",
+          "properties": {
+            "recordId": {"type": "string"},
+            "status": {"type": "string"},
+            "rewardsApplied": {"type": "boolean"},
+            "summaryPublished": {"type": "boolean"},
+            "transcriptArchived": {"type": "boolean"},
+            "dialogueSummary": {"type": "string"},
+            "archiveFile": {"type": "string"}
+          },
+          "required": ["status", "rewardsApplied", "summaryPublished", "transcriptArchived"]
+        }
+      },
+      "required": [
+        "version", "pipelineMode", "revision", "phase", "round", "initiativeOrder",
+        "turnCursor", "actedThisRound", "pendingTurn", "appliedTurnIds",
+        "appliedEventIds", "completion"
+      ]
     }
   },
   "required": ["encounterId", "encounterSummary", "creatures"]

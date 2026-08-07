@@ -178,6 +178,34 @@ RESET_COLOR = "\033[0m"
 json_file = "modules/conversation_history/conversation_history.json"
 
 needs_conversation_history_update = False
+
+
+def _active_combat_recovery(party_tracker):
+    """Return persisted recovery metadata when ordinary DM turns must stop."""
+    if not isinstance(party_tracker, dict):
+        return None
+    encounter_id = (
+        (party_tracker.get("worldConditions") or {})
+        .get("activeCombatEncounter", "")
+    )
+    if not encounter_id:
+        return None
+    encounter = safe_json_load(
+        os.path.join("modules", "encounters", f"encounter_{encounter_id}.json")
+    )
+    if not isinstance(encounter, dict):
+        return None
+    state = encounter.get("combatState") or {}
+    if state.get("pipelineMode") != "agentic":
+        return None
+    if state.get("phase") != "recovery_required":
+        return None
+    if not state.get("pauseReason"):
+        return None
+    return {
+        "encounter_id": encounter_id,
+        "reason": state.get("pauseReason", "combat_recovery_required"),
+    }
 _conversation_history_dirty = False
 _dirty_conversation_history = None
 should_inject_creation_prompt = False  # Global flag for module creation prompt injection
@@ -5056,14 +5084,42 @@ def main_game_loop():
         from core.managers.combat_manager import run_combat_simulation
         dialogue_summary, _ = run_combat_simulation(active_encounter_id, party_tracker_data, location_data_resume)
 
-        print(colored("[SYSTEM] Combat resolved. Integrating summary and continuing adventure...", "yellow"))
-
         # After combat, reload everything to ensure state is fresh
         party_tracker_data = load_json_file("party_tracker.json")
         conversation_history = load_json_file(json_file) or []
+        combat_still_active = (
+            isinstance(party_tracker_data, dict)
+            and (party_tracker_data.get("worldConditions") or {}).get(
+                "activeCombatEncounter"
+            ) == active_encounter_id
+        )
+        if combat_still_active:
+            recovery = _active_combat_recovery(party_tracker_data)
+            if recovery:
+                display_dm_narration(
+                    "Combat remains paused. Load or restore a save before "
+                    "resuming encounter %s; no post-combat narration was "
+                    "requested." % active_encounter_id,
+                    channel="combat",
+                    color="yellow",
+                )
+            else:
+                display_dm_narration(
+                    "Combat did not reach a confirmed completion state. "
+                    "The active encounter was preserved for recovery and "
+                    "no post-combat narration was requested.",
+                    channel="combat",
+                    color="yellow",
+                )
+        else:
+            print(colored(
+                "[SYSTEM] Combat resolved. Integrating summary and "
+                "continuing adventure...",
+                "yellow",
+            ))
 
         # ** CRITICAL FIX: Integrate the combat summary into the main conversation history **
-        if dialogue_summary:
+        if dialogue_summary and not combat_still_active:
             # We create a clear, systemic message indicating combat is over.
             # This mimics the handoff from action_handler.
             combat_summary_message = f"[COMBAT CONCLUDED] The encounter has ended. The following is a summary of events:\n\n{dialogue_summary}"
@@ -5073,7 +5129,11 @@ def main_game_loop():
 
         # ** CRITICAL FIX: Get a new AI response for post-combat narration **
         # This makes the resumed flow behave exactly like the normal flow.
-        ai_response_after_combat = get_ai_response(conversation_history)
+        ai_response_after_combat = (
+            None
+            if combat_still_active
+            else get_ai_response(conversation_history)
+        )
         if ai_response_after_combat:
             # Process the AI's post-combat response to get the game moving again.
             # We need to load the fresh location data for this call.
@@ -5341,7 +5401,22 @@ def main_game_loop():
             empty_input_count = 0
     
         party_tracker_data = load_json_file("party_tracker.json") 
-    
+
+        combat_recovery = _active_combat_recovery(party_tracker_data)
+        if combat_recovery:
+            display_dm_narration(
+                "Combat is paused (%s). This input was not sent to the "
+                "Dungeon Master. Load or restore a save before resuming "
+                "encounter %s."
+                % (
+                    combat_recovery["reason"],
+                    combat_recovery["encounter_id"],
+                ),
+                channel="combat",
+                color="yellow",
+            )
+            continue
+
         # Remove duplicate NPCs if any exist
         party_tracker_data, npcs_were_cleaned = remove_duplicate_npcs(party_tracker_data)
         if npcs_were_cleaned:

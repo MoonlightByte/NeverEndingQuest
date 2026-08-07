@@ -71,7 +71,7 @@ from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
 from updates.plot_update import update_plot
 from utils.encoding_utils import sanitize_text, safe_json_dump, safe_json_load
-from utils.file_operations import safe_read_json
+from utils.file_operations import safe_read_json, safe_write_json
 from core.managers.status_manager import (
     status_transitioning_location, status_updating_character, status_updating_party,
     status_updating_plot, status_advancing_time, status_processing_levelup
@@ -1251,6 +1251,80 @@ def process_action(
         print("\n[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER START ==========")
         print(f"[DEBUG ACTION_HANDLER] Action received: {action}")
         debug("INITIALIZATION: Creating combat encounter", category="combat_processing")
+
+        # The model cannot replace or duplicate an encounter that is still
+        # authoritative. This is especially important when an agentic fight
+        # is paused for recovery: its tracker entry must survive until the
+        # player restores/heals/loads rather than being overwritten by a new
+        # createEncounter response.
+        authoritative_party = safe_json_load("party_tracker.json")
+        authoritative_party = authoritative_party or party_tracker_data
+        active_encounter = (
+            authoritative_party.get("worldConditions", {})
+            .get("activeCombatEncounter", "")
+        )
+        if active_encounter:
+            active_path = os.path.join(
+                "modules", "encounters", f"encounter_{active_encounter}.json"
+            )
+            active_data = safe_json_load(active_path)
+            stale_active = not isinstance(active_data, dict)
+            if isinstance(active_data, dict):
+                from core.managers.combat_state import (
+                    all_hostiles_resolved,
+                    all_party_resolved,
+                )
+                active_state = active_data.get("combatState") or {}
+                if active_state.get("pipelineMode") == "agentic":
+                    stale_active = (
+                        (active_state.get("completion") or {}).get("status")
+                        == "closed"
+                    )
+                else:
+                    stale_active = (
+                        all_hostiles_resolved(active_data)
+                        or all_party_resolved(active_data)
+                    )
+            if stale_active:
+                warning(
+                    "Clearing stale active encounter %s before creating a new one"
+                    % active_encounter,
+                    category="combat_processing",
+                )
+                authoritative_party.setdefault("worldConditions", {})[
+                    "activeCombatEncounter"
+                ] = ""
+                party_tracker_data.setdefault("worldConditions", {})[
+                    "activeCombatEncounter"
+                ] = ""
+                if not safe_write_json("party_tracker.json", authoritative_party):
+                    return create_return(
+                        status="combat_recovery_required",
+                        needs_update=False,
+                        response_data={
+                            "recovery_required": True,
+                            "active_encounter": active_encounter,
+                        },
+                    )
+            else:
+                warning(
+                    "Rejected createEncounter while %s remains active"
+                    % active_encounter,
+                    category="combat_processing",
+                )
+                return create_return(
+                    status="combat_recovery_required",
+                    needs_update=False,
+                    response_data={
+                        "recovery_required": True,
+                        "active_encounter": active_encounter,
+                        "player_message": (
+                            "The existing combat remains active. Wait for the "
+                            "player to load or restore a save; do not create "
+                            "another encounter."
+                        ),
+                    },
+                )
         
         # Update status to lock input during encounter building
         try:
@@ -1316,6 +1390,52 @@ def process_action(
                     error(f"FAILURE: Could not update status for combat start", exception=e, category="combat_processing")
                 
                 dialogue_summary, updated_player_info = run_combat_simulation(encounter_id, party_tracker_data, reloaded_location_data)
+
+                authoritative_party = safe_json_load("party_tracker.json")
+                active_after_combat = (
+                    (authoritative_party or party_tracker_data)
+                    .get("worldConditions", {})
+                    .get("activeCombatEncounter", "")
+                )
+                active_after_data = (
+                    safe_json_load(
+                        os.path.join(
+                            "modules",
+                            "encounters",
+                            f"encounter_{active_after_combat}.json",
+                        )
+                    )
+                    if active_after_combat
+                    else None
+                )
+                active_after_state = (
+                    active_after_data.get("combatState")
+                    if isinstance(active_after_data, dict)
+                    else {}
+                ) or {}
+                if (
+                    active_after_combat == encounter_id
+                    and active_after_state.get("pipelineMode") == "agentic"
+                    and active_after_state.get("phase") == "recovery_required"
+                    and active_after_state.get("pauseReason")
+                ):
+                    print(
+                        "[DEBUG ACTION_HANDLER] Combat remains active; "
+                        "skipping stale-summary and post-combat handling."
+                    )
+                    return create_return(
+                        status="combat_recovery_required",
+                        needs_update=False,
+                        response_data={
+                            "recovery_required": True,
+                            "active_encounter": encounter_id,
+                            "player_message": (
+                                "Combat is paused. Wait for the player to load "
+                                "or restore a save; do not request another "
+                                "encounter."
+                            ),
+                        },
+                    )
                 
                 print(f"[DEBUG ACTION_HANDLER] Combat simulation returned. Type of result: {type(dialogue_summary)}")
                 print(f"[DEBUG ACTION_HANDLER] Dialogue summary preview: {str(dialogue_summary)[:200]}...")

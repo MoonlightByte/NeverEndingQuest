@@ -75,6 +75,11 @@ USE_STORY_FIRST_GENERATOR = False
 # --- Web Interface Configuration ---
 WEB_PORT = 8357                                         # Port for the web interface (changed from 5000 for security)
 
+# Experimental deterministic combat pipeline. The mode is persisted per
+# encounter and cannot be switched while a fight is in progress. Headless
+# validation may opt in without editing config via NEQ_COMBAT_AGENTIC_PIPELINE=1.
+COMBAT_AGENTIC_PIPELINE = False
+
 
 # Apply web-set API keys from the OS credential store (overrides the values
 # above). No-op when no key has been saved via the web UI.

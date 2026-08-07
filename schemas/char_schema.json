@@ -216,7 +216,16 @@
           "duration": {"type": "string"},
           "expiration": {"type": "string", "format": "date-time"},
           "source": {"type": "string"},
-          "effectType": {"type": "string", "enum": ["spell", "potion", "magic", "environmental", "other"]}
+          "sourceCombatantId": {"type": "string"},
+          "effectType": {"type": "string", "enum": ["spell", "potion", "magic", "environmental", "other"]},
+          "effectId": {"type": "string"},
+          "roundsRemaining": {"type": "integer", "minimum": 0},
+          "concentration": {"type": "boolean"},
+          "concentrationId": {"type": "string"},
+          "saveType": {"type": "string"},
+          "saveDC": {"type": "integer", "minimum": 0},
+          "tickTrigger": {"type": "string", "enum": ["start_of_turn", "end_of_turn", "end_of_round"]},
+          "sourceEncounterId": {"type": "string"}
         },
         "required": ["name", "description"]
       }

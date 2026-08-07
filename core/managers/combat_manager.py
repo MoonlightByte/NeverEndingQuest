@@ -149,6 +149,18 @@ import updates.update_encounter as update_encounter
 import updates.update_party_tracker as update_party_tracker
 # Import the preroll generator
 from core.generators.generate_prerolls import generate_prerolls
+from core.managers.combat_state import (
+    all_party_resolved,
+    all_hostiles_resolved,
+    combatant_by_id,
+    ensure_combat_state,
+    expected_automatic_actor_ids,
+    expected_player_window_ids,
+    player_control_unavailable,
+    recovery_action,
+)
+from core.managers.combat_orchestrator import CombatTurnPaused, execute_agentic_turn
+from core.managers.combat_transaction import apply_combat_rewards, completion_lease
 # Import safe JSON functions
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
@@ -1227,6 +1239,51 @@ def _living_turn_window_from_player(encounter_data):
     ]
 
 
+def _agentic_actor_window(encounter_data):
+    """Return (actor IDs, automatic) from persisted state/recovery."""
+    state = ensure_combat_state(encounter_data)
+    recovery = recovery_action(encounter_data)
+    if recovery["action"] in {"regenerate_intent", "apply_staged_events"}:
+        actor_ids = list(recovery["pendingTurn"].get("actorIds", []))
+    else:
+        actor_ids = expected_automatic_actor_ids(encounter_data)
+        if not actor_ids:
+            actor_ids = expected_player_window_ids(encounter_data)
+    automatic = bool(actor_ids) and all(
+        (combatant_by_id(encounter_data, actor_id) or {}).get("type") != "player"
+        for actor_id in actor_ids
+    )
+    return actor_ids, automatic
+
+
+def _agentic_combat_context(encounter_data, path_manager, monster_templates):
+    """Build exact character paths plus read-only sheets for intent selection."""
+    character_paths = {}
+    context_sheets = {}
+    for creature in encounter_data.get("creatures", []):
+        name = creature.get("name")
+        if not name:
+            continue
+        if creature.get("type") == "player":
+            filename = normalize_character_name(name)
+            path = path_manager.get_character_path(filename)
+            sheet = safe_json_load(path)
+            if isinstance(sheet, dict):
+                character_paths[name] = path
+                context_sheets[name] = sheet
+        elif creature.get("type") == "npc":
+            sheet, filename = load_npc_with_fuzzy_match(name, path_manager)
+            if isinstance(sheet, dict) and filename:
+                character_paths[name] = path_manager.get_character_path(filename)
+                context_sheets[name] = sheet
+        elif creature.get("type") == "enemy":
+            monster_type = creature.get("monsterType")
+            sheet = monster_templates.get(monster_type)
+            if isinstance(sheet, dict):
+                context_sheets[name] = sheet
+    return character_paths, context_sheets
+
+
 def _finalize_combat_validation_history(
     conversation_history,
     initial_conversation_length,
@@ -1435,6 +1492,35 @@ def _append_combat_encounter_to_current_area(current_location_id, new_encounter)
         if not isinstance(encounters, list):
             encounters = []
             target_location["encounters"] = encounters
+        # Agentic completion has a stable record ID because encounter IDs can
+        # be recycled after resets. Legacy callers fall back to exact
+        # encounter-ID-and-summary matching. A reconnect after the area write
+        # but before the receipt must reuse the existing record.
+        completion_id = new_encounter.get("combatCompletionId")
+        existing = next(
+            (
+                item
+                for item in encounters
+                if isinstance(item, dict)
+                and (
+                    (
+                        completion_id
+                        and item.get("combatCompletionId") == completion_id
+                    )
+                    or (
+                        not completion_id
+                        and item.get("encounterId")
+                        == new_encounter.get("encounterId")
+                        and item.get("summary") == new_encounter.get("summary")
+                    )
+                )
+            ),
+            None,
+        )
+        if existing is not None:
+            if isinstance(existing.get("summary"), str):
+                new_encounter["summary"] = existing["summary"]
+            return True
         encounters.append(new_encounter)
 
         if not safe_write_json(area_file, area_data):
@@ -1451,7 +1537,13 @@ def _append_combat_encounter_to_current_area(current_location_id, new_encounter)
         return True
 
 
-def summarize_dialogue(conversation_history_param, location_data, party_tracker_data):
+def summarize_dialogue(
+    conversation_history_param,
+    location_data,
+    party_tracker_data,
+    require_persistence=False,
+    completion_record_id=None,
+):
     debug("AI_CALL: Activating the third model...", category="ai_operations")
     
     # Extract clean narrative content from conversation history
@@ -1571,28 +1663,61 @@ def summarize_dialogue(conversation_history_param, location_data, party_tracker_
                 "time": party_tracker_data["worldConditions"]["time"]
             }
         }
-        if _append_combat_encounter_to_current_area(
+        if completion_record_id:
+            new_encounter["combatCompletionId"] = completion_record_id
+        summary_persisted = _append_combat_encounter_to_current_area(
             current_location_id,
             new_encounter,
-        ):
+        )
+        if summary_persisted:
+            # A reconnect may have found the already-written encounter. In
+            # that case the stored summary is authoritative.
+            dialogue_summary = new_encounter.get("summary", dialogue_summary)
             encounters = location_data.get("encounters")
             if not isinstance(encounters, list):
                 encounters = []
                 location_data["encounters"] = encounters
-            encounters.append(new_encounter)
+            if not any(
+                isinstance(item, dict)
+                and item.get("encounterId") == new_encounter.get("encounterId")
+                for item in encounters
+            ):
+                encounters.append(new_encounter)
+        elif require_persistence:
+            raise RuntimeError("Combat summary could not be persisted to the current area")
         # adventureSummary field is deprecated - no longer updated to prevent data bloat
 
-        conversation_history_param.append({"role": "assistant", "content": f"Combat Summary: {dialogue_summary}"})
-        conversation_history_param.append({"role": "user", "content": "The combat has concluded. What would you like to do next?"})
+        summary_message = f"Combat Summary: {dialogue_summary}"
+        if not any(
+            message.get("role") == "assistant"
+            and message.get("content") == summary_message
+            for message in conversation_history_param
+        ):
+            conversation_history_param.append(
+                {"role": "assistant", "content": summary_message}
+            )
+        conclusion_message = "The combat has concluded. What would you like to do next?"
+        if not any(
+            message.get("role") == "user"
+            and message.get("content") == conclusion_message
+            for message in conversation_history_param
+        ):
+            conversation_history_param.append(
+                {"role": "user", "content": conclusion_message}
+            )
 
         debug(f"FILE_OP: Attempting to write to file: {conversation_history_file}", category="file_operations")
         if not safe_write_json(conversation_history_file, conversation_history_param):
             error("FILE_OP: Failed to save conversation history", category="file_operations")
+            if require_persistence:
+                raise RuntimeError("Combat summary conversation could not be persisted")
         else:
             debug("FILE_OP: Conversation history saved successfully", category="file_operations")
         info("SUCCESS: Conversation history updated with encounter summary.", category="combat_events")
     else:
         error(f"VALIDATION: Location {current_location_id} not found in location data or location data is incorrect.", category="combat_events")
+        if require_persistence:
+            raise RuntimeError("Combat summary location does not match active location")
     return dialogue_summary
 
 
@@ -1686,6 +1811,125 @@ def _finalize_combat_exit(
     return dialogue_summary, player_info
 
 
+def _complete_agentic_combat(
+    encounter_data,
+    encounter_path,
+    character_paths,
+    conversation_history,
+    location_info,
+    party_tracker_data,
+    encounter_id,
+    player_file,
+):
+    """Finish agentic combat as independently resumable, idempotent steps."""
+    import copy
+
+    xp_narrative, xp_awarded = calculate_xp()
+    encounter_data = apply_combat_rewards(
+        encounter_path,
+        character_paths,
+        xp_awarded,
+    )
+
+    # Step S: publish one permanent area summary and receipt it. The area
+    # append itself deduplicates by encounterId, covering a crash between the
+    # area write and this encounter receipt.
+    with completion_lease(encounter_path) as receipt_encounter:
+        completion = receipt_encounter["combatState"]["completion"]
+        if completion.get("summaryPublished"):
+            dialogue_summary = completion.get(
+                "dialogueSummary", _T041_FALLBACK_SUMMARY
+            )
+        else:
+            xp_message = f"XP Awarded: {xp_narrative}"
+            if not any(
+                message.get("role") == "user"
+                and message.get("content") == xp_message
+                for message in conversation_history
+            ):
+                conversation_history.append(
+                    {"role": "user", "content": xp_message}
+                )
+                if not safe_write_json(
+                    conversation_history_file,
+                    conversation_history,
+                ):
+                    raise RuntimeError(
+                        "Combat XP narrative could not be persisted"
+                    )
+            dialogue_summary = summarize_dialogue(
+                conversation_history,
+                location_info,
+                party_tracker_data,
+                require_persistence=True,
+                completion_record_id=completion.get("recordId"),
+            )
+            completion["dialogueSummary"] = dialogue_summary
+            completion["summaryPublished"] = True
+
+    # Step A: use one deterministic archive path for this final revision. A
+    # retry after the file write simply overwrites the same transcript.
+    with completion_lease(encounter_path) as receipt_encounter:
+        state = receipt_encounter["combatState"]
+        completion = state["completion"]
+        archive_filename = completion.get("archiveFile")
+        if not archive_filename:
+            archive_filename = "combat_chat_%s_%s.json" % (
+                encounter_id,
+                completion.get("recordId", state.get("revision", 0)),
+            )
+        if not completion.get("transcriptArchived"):
+            if not generate_chat_history(
+                conversation_history,
+                encounter_id,
+                archive_filename=archive_filename,
+            ):
+                raise RuntimeError("Combat transcript could not be archived")
+            completion["archiveFile"] = archive_filename
+            completion["transcriptArchived"] = True
+
+    # Step C: clear the active encounter only after both durable receipts.
+    # Reconnect can therefore skip completed work and retry only this write.
+    with completion_lease(encounter_path) as receipt_encounter:
+        completion = receipt_encounter["combatState"]["completion"]
+        if not completion.get("summaryPublished") or not completion.get(
+            "transcriptArchived"
+        ):
+            raise RuntimeError("Combat completion receipts are incomplete")
+
+        updated_party = copy.deepcopy(party_tracker_data)
+        world_conditions = updated_party.get("worldConditions")
+        if not isinstance(world_conditions, dict):
+            raise RuntimeError("Party tracker has no worldConditions")
+        active_encounter = world_conditions.get("activeCombatEncounter", "")
+        if active_encounter and active_encounter != encounter_id:
+            raise RuntimeError(
+                "A different combat encounter became active during cleanup"
+            )
+        if active_encounter == encounter_id:
+            world_conditions["lastCompletedEncounter"] = encounter_id
+            world_conditions["activeCombatEncounter"] = ""
+            if not safe_write_json("party_tracker.json", updated_party):
+                raise RuntimeError("Active combat encounter could not be cleared")
+            party_tracker_data.clear()
+            party_tracker_data.update(updated_party)
+        # If the process exits after clearing party_tracker but before this
+        # receipt lands, combat is already safely closed; only this diagnostic
+        # status can remain stale because startup will no longer re-enter it.
+        completion["status"] = "closed"
+
+    try:
+        player_info = safe_json_load(player_file)
+    except Exception as exc:
+        error(
+            "Failed to reload player after agentic combat exit",
+            exception=exc,
+            category="file_operations",
+        )
+        player_info = None
+    return dialogue_summary, player_info
+
+
 def merge_updates(original_data, updated_data):
     fields_to_update = ['hitPoints', 'equipment', 'attacksAndSpellcasting', 'experience_points']
 
@@ -1718,7 +1962,7 @@ def update_json_schema(ai_response, player_info, encounter_data, party_tracker_d
     warning("DEPRECATED: update_json_schema called but is no longer used", category="xp_tracking")
     return player_info  # Return unchanged data
 
-def generate_chat_history(conversation_history, encounter_id):
+def generate_chat_history(conversation_history, encounter_id, archive_filename=None):
     """
     Generate a lightweight combat chat history without system messages
     for a specific encounter ID
@@ -1731,8 +1975,13 @@ def generate_chat_history(conversation_history, encounter_id):
     encounter_dir = f"combat_logs/{encounter_id}"
     os.makedirs(encounter_dir, exist_ok=True)
 
-    # Create a unique filename based on encounter ID and timestamp
-    output_file = f"{encounter_dir}/combat_chat_{timestamp}.json"
+    # Agentic completion supplies a deterministic filename so a reconnect
+    # overwrites the same archive after a crash instead of creating siblings.
+    if archive_filename:
+        archive_filename = os.path.basename(str(archive_filename))
+        output_file = f"{encounter_dir}/{archive_filename}"
+    else:
+        output_file = f"{encounter_dir}/combat_chat_{timestamp}.json"
 
     try:
         # Filter out system messages and keep only user and assistant messages
@@ -2607,6 +2856,26 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            print(f"[COMBAT_MANAGER] Failed to load encounter file")
            error(f"FAILURE: Failed to load encounter file {json_file_path}", category="file_operations")
            return None, None
+       # Upgrade legacy encounters in place.  Keeping the ledger inside the
+       # encounter makes save/restore include the exact combat cursor without
+       # introducing a sidecar file that older saves would omit.
+       combat_state = ensure_combat_state(
+           encounter_data,
+           new_encounter=not is_resuming,
+           pipeline_mode=(
+               "agentic"
+               if (
+                   getattr(config, "COMBAT_AGENTIC_PIPELINE", False)
+                   or os.environ.get(
+                       "NEQ_COMBAT_AGENTIC_PIPELINE", ""
+                   ).strip().lower() in {"1", "true", "yes", "on"}
+               )
+               else "legacy"
+           ),
+       )
+       if combat_state["phase"] == "initializing" and is_resuming:
+           combat_state["phase"] = "awaiting_actor"
+       save_json_file(json_file_path, encounter_data)
        print(f"[COMBAT_MANAGER] Encounter loaded: {len(encounter_data.get('creatures', []))} creatures")
    except Exception as e:
        print(f"[COMBAT_MANAGER] Exception loading encounter: {str(e)}")
@@ -2885,15 +3154,32 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
    # Initialize round tracking and generate prerolls
    # Use combat_round as primary, fall back to current_round
    round_num = encounter_data.get('combat_round', encounter_data.get('current_round', 1))
-   preroll_text = generate_prerolls(encounter_data, round_num=round_num)
-   
-   encounter_data['preroll_cache'] = {
-       'round': round_num,
-       'rolls': preroll_text,
-       'preroll_id': f"{round_num}-{random.randint(1000,9999)}"
-   }
-   save_json_file(json_file_path, encounter_data)
-   debug(f"STATE_CHANGE: Saved prerolls for round {round_num}", category="combat_events")
+   existing_prerolls = encounter_data.get('preroll_cache') or {}
+   reuse_agentic_prerolls = (
+       combat_state.get("pipelineMode") == "agentic"
+       and existing_prerolls.get('round') == round_num
+       and bool(existing_prerolls.get('rolls'))
+   )
+   if reuse_agentic_prerolls:
+       preroll_text = existing_prerolls['rolls']
+       debug(
+           f"STATE_CHANGE: Reusing persisted agentic prerolls for round {round_num}",
+           category="combat_events",
+       )
+   else:
+       preroll_text = generate_prerolls(encounter_data, round_num=round_num)
+       encounter_data['preroll_cache'] = {
+           'round': round_num,
+           'rolls': preroll_text,
+           'preroll_id': f"{round_num}-{random.randint(1000,9999)}",
+           'combatantOrder': [
+               creature.get('combatantId')
+               for creature in encounter_data.get('creatures', [])
+               if creature.get('combatantId')
+           ],
+       }
+       save_json_file(json_file_path, encounter_data)
+       debug(f"STATE_CHANGE: Saved prerolls for round {round_num}", category="combat_events")
    
    # --- START: RESUMPTION AND INITIAL SCENE LOGIC ---
    if is_resuming:
@@ -3146,6 +3432,11 @@ Player: {initial_prompt_text}"""
        _display_combat_narration(parsed_response['narration'])
    # --- END: RESUMPTION AND INITIAL SCENE LOGIC ---
 
+   combat_state = ensure_combat_state(encounter_data)
+   if combat_state["phase"] == "initializing":
+       combat_state["phase"] = "awaiting_actor"
+       save_json_file(json_file_path, encounter_data)
+
    pending_initial_npc_turns = (
        []
        if is_resuming
@@ -3208,6 +3499,63 @@ Player: {initial_prompt_text}"""
                        break
        except Exception as e:
            error(f"FAILURE: Failed to reload encounter file {json_file_path}", exception=e, category="file_operations")
+
+       agentic_mode = (
+           (encounter_data.get("combatState") or {}).get("pipelineMode")
+           == "agentic"
+       )
+       # A disconnect may happen after the final mechanical commit but before
+       # rewards/archive cleanup. Resume that lifecycle before asking for a
+       # new player action.
+       if agentic_mode and all_hostiles_resolved(encounter_data):
+           character_paths, _context_sheets = _agentic_combat_context(
+               encounter_data,
+               path_manager,
+               monster_templates,
+           )
+           try:
+               return _complete_agentic_combat(
+                   encounter_data,
+                   json_file_path,
+                   character_paths,
+                   conversation_history,
+                   location_info,
+                   party_tracker_data,
+                   encounter_id,
+                   player_file,
+               )
+           except Exception as exc:
+               error(
+                   "AGENTIC_COMBAT: Resume completion failed; leaving active encounter intact",
+                   exception=exc,
+                   category="combat_events",
+               )
+               return None, None
+       if agentic_mode and player_control_unavailable(encounter_data):
+           state = encounter_data.get("combatState") or {}
+           state["phase"] = "recovery_required"
+           state["pauseReason"] = (
+               "party_defeated"
+               if all_party_resolved(encounter_data)
+               else "player_incapacitated"
+           )
+           if not safe_write_json(json_file_path, encounter_data):
+               raise RuntimeError("Could not persist the player-down combat pause")
+           pause_message = (
+               "Combat is paused because the player character cannot act. "
+               "No further model turns or state changes were made; restore, "
+               "or load a save before resuming this encounter."
+           )
+           _display_combat_narration(pause_message)
+           try:
+               from core.managers.status_manager import status_manager
+               status_manager.update_status(
+                   "Combat paused - player character is down",
+                   is_processing=False,
+               )
+           except Exception:
+               pass
+           return None, None
        
        # Reload NPC data
        for creature in encounter_data["creatures"]:
@@ -3241,10 +3589,22 @@ Player: {initial_prompt_text}"""
        
        print("DEBUG: [COMBAT_LOOP] About to request player input")
        debug("COMBAT_LOOP: Requesting player input", category="combat_events")
-       automatic_initiative_step = bool(pending_initial_npc_turns)
-       automatic_turn_window = list(pending_initial_npc_turns)
+       agentic_actor_ids = []
+       if agentic_mode:
+           agentic_actor_ids, automatic_initiative_step = _agentic_actor_window(
+               encounter_data
+           )
+           automatic_turn_window = [
+               (combatant_by_id(encounter_data, actor_id) or {}).get(
+                   "name", "Unknown"
+               )
+               for actor_id in agentic_actor_ids
+           ]
+       else:
+           automatic_initiative_step = bool(pending_initial_npc_turns)
+           automatic_turn_window = list(pending_initial_npc_turns)
        if automatic_initiative_step:
-           required_actors = ", ".join(pending_initial_npc_turns)
+           required_actors = ", ".join(automatic_turn_window)
            user_input_text = (
                "System combat continuation: resolve these living non-player "
                "turns in strict initiative order before asking for the "
@@ -3252,7 +3612,8 @@ Player: {initial_prompt_text}"""
                f"{player_name_display} and request player input. This is not "
                "a submitted player action."
            )
-           pending_initial_npc_turns = []
+           if not agentic_mode:
+               pending_initial_npc_turns = []
            debug(
                "COMBAT_LOOP: Automatically resolving initial higher-initiative "
                f"actors: {required_actors}",
@@ -3423,7 +3784,12 @@ Player: {initial_prompt_text}"""
            encounter_data['preroll_cache'] = {
                'round': current_round,
                'rolls': preroll_text,
-               'preroll_id': f"{current_round}-{random.randint(1000,9999)}"
+               'preroll_id': f"{current_round}-{random.randint(1000,9999)}",
+               'combatantOrder': [
+                   creature.get('combatantId')
+                   for creature in encounter_data.get('creatures', [])
+                   if creature.get('combatantId')
+               ],
            }
            # Save the encounter data with preroll cache to disk
            save_json_file(json_file_path, encounter_data)
@@ -3440,11 +3806,147 @@ Player: {initial_prompt_text}"""
                encounter_data['preroll_cache'] = {
                    'round': current_round,
                    'rolls': preroll_text,
-                   'preroll_id': f"{current_round}-{random.randint(1000,9999)}"
+                   'preroll_id': f"{current_round}-{random.randint(1000,9999)}",
+                   'combatantOrder': [
+                       creature.get('combatantId')
+                       for creature in encounter_data.get('creatures', [])
+                       if creature.get('combatantId')
+                   ],
                }
                # Save the encounter data with preroll cache to disk
                save_json_file(json_file_path, encounter_data)
                debug(f"STATE_CHANGE: Generated fallback prerolls for round {current_round}", category="combat_events")
+
+       # The agentic path replaces the legacy initiative/model/update block as
+       # one vertical slice. It chooses intents first, commits deterministic
+       # events, then narrates. The legacy T046/T045/T081/T079 writers below
+       # are never entered for this encounter mode.
+       if agentic_mode:
+           character_paths, context_sheets = _agentic_combat_context(
+               encounter_data,
+               path_manager,
+               monster_templates,
+           )
+           spell_repository = safe_json_load("data/spell_repository.json") or {}
+           try:
+               from core.ai.combat_agent import select_spell_references
+               spell_references = select_spell_references(
+                   context_sheets,
+                   spell_repository,
+               )
+           except Exception as exc:
+               warning(
+                   f"AGENTIC_COMBAT: Spell references unavailable: {exc}",
+                   category="combat_events",
+               )
+               spell_references = {}
+
+           try:
+               try:
+                   from core.managers.status_manager import status_manager
+                   status_manager.update_status(
+                       "Resolving combat intents...",
+                       is_processing=True,
+                   )
+               except Exception:
+                   pass
+               outcome = execute_agentic_turn(
+                   json_file_path,
+                   agentic_actor_ids,
+                   character_paths,
+                   context_sheets,
+                   user_input_text,
+                   spell_references=spell_references,
+               )
+           except CombatTurnPaused as exc:
+               pause_narration = str(exc)
+               conversation_history.append(
+                   {"role": "user", "content": user_input_text}
+               )
+               conversation_history.append(
+                   {
+                       "role": "assistant",
+                       "content": json.dumps(
+                           {
+                               "combat_round": current_round,
+                               "narration": pause_narration,
+                               "actions": [],
+                           },
+                           ensure_ascii=False,
+                       ),
+                   }
+               )
+               save_json_file(conversation_history_file, conversation_history)
+               _display_combat_narration(pause_narration)
+               continue
+           finally:
+               try:
+                   from core.managers.status_manager import status_manager
+                   status_manager.update_status("", is_processing=False)
+               except Exception:
+                   pass
+
+           encounter_data = outcome["encounter"]
+           narration = outcome["narration"]
+           committed_round = (encounter_data.get("combatState") or {}).get(
+               "round", current_round
+           )
+           conversation_history.append(
+               {"role": "user", "content": user_input_text}
+           )
+           conversation_history.append(
+               {
+                   "role": "assistant",
+                   "content": json.dumps(
+                       {
+                           "combat_round": committed_round,
+                           "narration": narration,
+                           "actions": [],
+                       },
+                       ensure_ascii=False,
+                   ),
+               }
+           )
+
+           # In agentic mode the committed state machine owns round
+           # advancement. Keep the existing history compression lifecycle,
+           # but trigger it from that durable round instead of model prose.
+           if committed_round > current_round and committed_round >= 2:
+               compressed_history = compress_old_combat_rounds(
+                   conversation_history,
+                   committed_round,
+                   keep_recent_rounds=1,
+               )
+               if compressed_history != conversation_history:
+                   conversation_history = compressed_history
+           save_json_file(conversation_history_file, conversation_history)
+           _display_combat_narration(narration)
+
+           if all_hostiles_resolved(encounter_data):
+               try:
+                   final_result = _complete_agentic_combat(
+                       encounter_data,
+                       json_file_path,
+                       character_paths,
+                       conversation_history,
+                       location_info,
+                       party_tracker_data,
+                       encounter_id,
+                       player_file,
+                   )
+               except Exception as exc:
+                   error(
+                       "AGENTIC_COMBAT: Completion failed; state remains recoverable",
+                       exception=exc,
+                       category="xp_tracking",
+                   )
+                   continue
+               info(
+                   "SUCCESS: Agentic combat complete. Exiting simulation.",
+                   category="combat_events",
+               )
+               return final_result
+           continue
        
        # Generate initiative order for validation context
        # Try to use AI-powered live initiative tracker
@@ -3612,29 +4114,8 @@ constraints:
                    ac_block += f"{name}: {ac_values[name]}\n"
            ac_block += "\n"
        
-       # Check if all monsters are defeated
-       def check_all_monsters_defeated(encounter):
-           """Check if all monsters/enemies have 0 or negative HP"""
-           if not encounter or 'combatants' not in encounter:
-               return False
-           
-           has_monsters = False
-           all_defeated = True
-           
-           for combatant in encounter['combatants']:
-               # Check if this is a monster/enemy (not player or allied NPC)
-               if combatant.get('type') == 'enemy':
-                   has_monsters = True
-                   current_hp = combatant.get('hitPoints', 0)
-                   if current_hp > 0:
-                       all_defeated = False
-                       break
-           
-           # Only return True if there were monsters and all are defeated
-           return has_monsters and all_defeated
-       
        # Determine the required response based on combat state
-       all_monsters_defeated = check_all_monsters_defeated(encounter_data)
+       all_monsters_defeated = all_hostiles_resolved(encounter_data)
        if all_monsters_defeated:
            debug("COMBAT_AUTO_EXIT: All monsters defeated, modifying required response", category="combat_events")
            print("[COMBAT_MANAGER] Auto-detecting combat end: All enemies defeated")

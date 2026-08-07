@@ -248,6 +248,67 @@ COMBAT_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14", "response_format":
 # LM Studio (local passthrough)
 COMBAT_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 
+# ----- T096/T097 Agentic Combat -----
+# T096 selects one ordered tactical intent per persisted actor window. T097
+# narrates already-committed events. Both avoid reasoning-heavy variants: code
+# owns arithmetic, ordering, validation, and recovery.
+_AGENTIC_COMBAT_INTENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "stateVersion": {"type": "integer"},
+        "intents": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "actorId": {"type": "string"},
+                    "mode": {"type": "string", "enum": ["known", "adjudicated"]},
+                    "action": {"type": "string"},
+                    "ability": {"type": "string"},
+                    "targetId": {"type": "string"},
+                    "description": {"type": "string"},
+                    "save": {"type": "object"},
+                    "targets": {"type": "array", "items": {"type": "object"}},
+                    "resources": {"type": "array", "items": {"type": "object"}},
+                    "effects": {"type": "array", "items": {"type": "object"}},
+                    "requiresPlayerInput": {"type": "object"},
+                },
+                "required": ["actorId", "mode"],
+            },
+        },
+    },
+    "required": ["stateVersion", "intents"],
+}
+_AGENTIC_COMBAT_NARRATION_SCHEMA = {
+    "type": "object",
+    "properties": {"narration": {"type": "string"}},
+    "required": ["narration"],
+}
+COMBAT_INTENT_GPT54_NONE = {"model": "gpt-5.4", "reasoning_effort": "none"}
+COMBAT_INTENT_GEMINI_FLASH_LOW = {
+    "model": "gemini-3-flash-preview",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(
+        _AGENTIC_COMBAT_INTENT_SCHEMA,
+        preserve_required=True,
+        preserve_constraints=True,
+    ),
+}
+COMBAT_INTENT_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+COMBAT_INTENT_LMSTUDIO = {"model": "local-model"}
+COMBAT_NARRATE_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
+COMBAT_NARRATE_GEMINI_FLASH_LOW = {
+    "model": "gemini-3-flash-preview",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(
+        _AGENTIC_COMBAT_NARRATION_SCHEMA,
+        preserve_required=True,
+        preserve_constraints=True,
+    ),
+}
+COMBAT_NARRATE_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+COMBAT_NARRATE_LMSTUDIO = {"model": "local-model"}
+
 # ----- T046 Initiative Tracker -----
 # Analytical combat utility: tracks turn order, determines who acts next.
 # Full-tier callsite, temperature=0.1, plain text output.
@@ -1325,6 +1386,8 @@ TASK_CAPTURE_CONFIGS = {
     "T093": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
     "T094": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
     "T095": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
+    "T096": ("COMBAT_INTENT_GPT54_NONE", "COMBAT_INTENT_GEMINI_FLASH_LOW"),
+    "T097": ("COMBAT_NARRATE_GPT54MINI_NONE", "COMBAT_NARRATE_GEMINI_FLASH_LOW"),
 }
 
 
