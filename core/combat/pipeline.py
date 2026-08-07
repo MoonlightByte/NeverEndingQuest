@@ -176,6 +176,7 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             next_characters,
             "end_of_round",
             encounter=next_encounter,
+            created_in_round=pending_turn.get("round", state.get("round", 1)),
         )
         if effect_ticks:
             events[-1]["effectTicks"] = effect_ticks

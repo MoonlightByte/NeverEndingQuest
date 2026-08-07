@@ -32,6 +32,9 @@ from core.managers.combat_state import (
 )
 
 _DICE_RE = re.compile(r"^\s*(\d+)d(\d+)\s*([+-]\s*\d+)?\s*$")
+_STAMPED_EFFECT_ROUND_RE = re.compile(
+    r"-R(\d+)-(?:[0-9a-f]{16}|.{1,8})-A\d+-\d+$"
+)
 
 PLAYER_UNCONSCIOUS = "unconscious"
 NONPLAYER_DEAD = "dead"
@@ -920,8 +923,30 @@ def apply_resolution(encounter, characters, resolution):
     return new_encounter, new_characters
 
 
-def plan_effect_ticks(characters, trigger, encounter=None):
-    """Return absolute, replay-safe duration changes for one trigger."""
+def _effect_was_created_in_round(effect, round_number):
+    """Recognize resolver-stamped effect IDs created in ``round_number``."""
+    if round_number is None or not isinstance(effect, dict):
+        return False
+    effect_id = effect.get("effectId")
+    if not isinstance(effect_id, str):
+        return False
+    match = _STAMPED_EFFECT_ROUND_RE.search(effect_id)
+    if not match:
+        return False
+    try:
+        return int(match.group(1)) == int(round_number)
+    except (TypeError, ValueError):
+        return False
+
+
+def plan_effect_ticks(characters, trigger, encounter=None, created_in_round=None):
+    """Return absolute, replay-safe duration changes for one trigger.
+
+    At an end-of-round boundary, effects created during that round have not
+    yet lasted for a full round.  Callers may identify that round so those
+    newly stamped effects begin aging at the following boundary.  Legacy or
+    unrecognized effect IDs retain their established tick behavior.
+    """
     ticks = []
     for owner, sheet in (characters or {}).items():
         if not isinstance(sheet, dict):
@@ -933,6 +958,8 @@ def plan_effect_ticks(characters, trigger, encounter=None):
             if not isinstance(rounds, int):
                 continue
             if effect.get("tickTrigger", "end_of_round") != trigger:
+                continue
+            if _effect_was_created_in_round(effect, created_in_round):
                 continue
             after = max(0, rounds - 1)
             ticks.append(
@@ -956,6 +983,8 @@ def plan_effect_ticks(characters, trigger, encounter=None):
             if not isinstance(rounds, int):
                 continue
             if effect.get("tickTrigger", "end_of_round") != trigger:
+                continue
+            if _effect_was_created_in_round(effect, created_in_round):
                 continue
             after = max(0, rounds - 1)
             ticks.append(

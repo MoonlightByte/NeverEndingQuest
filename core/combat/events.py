@@ -10,6 +10,8 @@ are staged through core.managers.combat_state.stage_turn_events and made
 durable by commit_turn; this module only defines their shape.
 """
 
+import hashlib
+
 REQUIRED_EVENT_FIELDS = ("eventId", "actorId", "intent", "outcome", "stateVersion")
 
 # outcome.targets[] entries carry before/after so replays and audits can
@@ -22,11 +24,17 @@ VALID_RESOURCE_KINDS = frozenset({"ammunition", "spellSlot", "featureUse", "item
 def make_event_id(encounter_id, round_number, turn_id, sequence):
     """Stable, human-readable event ID, unique within an encounter.
 
-    turn_id is already unique per turn claim (combat_state.begin_turn),
-    so encounterId-round-turnId-seq cannot collide across retries of a
-    regenerated turn either.
+    The fixed-width digest covers the complete persisted turn ID. It remains
+    deterministic across recovery without allowing free-form caller IDs to
+    inject delimiters or grow the bounded applied-event ledger indefinitely.
     """
-    return "%s-R%d-%s-A%d" % (encounter_id, int(round_number), str(turn_id)[:8], int(sequence))
+    turn_digest = hashlib.sha256(str(turn_id).encode("utf-8")).hexdigest()[:16]
+    return "%s-R%d-%s-A%d" % (
+        encounter_id,
+        int(round_number),
+        turn_digest,
+        int(sequence),
+    )
 
 
 def validate_event(event):
