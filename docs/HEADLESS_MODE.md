@@ -90,7 +90,7 @@ and `ts` (unix seconds).
 | `prompt` | `kind` (`main`/`combat`/`levelup`/`wizard`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available) | **the engine is waiting for input; the turn boundary** |
 | `state` | see below | snapshot taken right after `prompt` |
 | `system` | `content` | structured system messages (module transitions, safe-action failures, bootstrap notes) |
-| `debug` | `content`, `is_error` | raw engine chatter; only emitted with `--debug` |
+| `debug` | `content`, `is_error` | raw engine chatter; only emitted with `--debug`, except engine-crash tracebacks, which are always emitted |
 | `compression` | `event`, ... | history-compression progress |
 | `module_progress` | build progress fields | in-game module creation progress |
 | `result` | `id`, `ok`, `data`/`error` | reply to a `command` |

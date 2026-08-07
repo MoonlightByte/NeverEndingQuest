@@ -4,15 +4,21 @@
 
 """Transport-neutral stdout line classifier for headless mode.
 
-This is a mechanical extraction of the classification logic inside
+This is an extraction of the classification logic inside
 web/web_interface.py's WebOutputCapture.write() (the ~220-line heuristic
 that recovers DM narration, STARTUP_MARKER lines, prompt lines, and debug
 noise from the engine's mixed stdout stream). The web module is not
 modified; headless uses this standalone copy so it carries no Flask or
-Socket.IO dependencies. Phase 2 of the headless plan routes narration
-through web/shared_state.emit_player_output() and demotes this class to a
-fallback -- until then it is the primary narration source and its behavior
-must track WebOutputCapture's.
+Socket.IO dependencies. Since narration is sink-routed (P2), this class
+is only a FALLBACK for print sites the sink does not cover.
+
+Three deliberate divergences from WebOutputCapture.write():
+1. A prompt banner seen inside an open DM section flushes the section
+   (web leaves it open and later merges across the prompt).
+2. An unparseable STARTUP_MARKER line is emitted as debug (web drops it).
+3. A noise marker inside a DM section flushes the narration BEFORE the
+   debug line (web queues the debug line first) -- ordering on the debug
+   stream differs, narration content does not.
 
 Events are delivered as emit(kind, **fields) callbacks with kinds:
   startup   - parsed STARTUP_MARKER payload (fields: the marker dict)

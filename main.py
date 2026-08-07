@@ -5937,6 +5937,11 @@ def main_game_loop():
                             # Closed/piped stdin must abort the sub-loop, not
                             # crash the game (same guard the combat loop has).
                             warning("LEVELUP: Input stream ended during level up. Aborting session.", category="level_up")
+                            if not level_up_session.summary:
+                                # The post-loop failure path displays and
+                                # persists this; without it the player gets
+                                # an empty message.
+                                level_up_session.summary = "The level up was interrupted before it could finish. It can be attempted again."
                             break
 
                         if not level_up_input or not level_up_input.strip():
