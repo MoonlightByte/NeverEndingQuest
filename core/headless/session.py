@@ -154,10 +154,11 @@ class HeadlessSession:
             uninstall_debug_interceptor()
         except ImportError:
             pass
-        # main.py registers its own terminal status callback at import time;
-        # re-register ours so headless wins (web mode relies on the same
-        # ordering trick).
+        # web_interface's import also claims the status callback (via main)
+        # and the player-output sink (web_interface.py module scope); both
+        # must be re-registered so headless owns them for the session.
         set_status_callback(self._on_status)
+        set_player_output_sink(self._on_player_output)
         self._dm_main = dm_main
 
         self.writer.emit(
@@ -218,9 +219,13 @@ class HeadlessSession:
 
     def _on_stream_event(self, kind, **fields):
         if kind == "narration":
+            # With the player-output sink routing (P2) this path should stay
+            # quiet; anything arriving here is a print site the sink does
+            # not cover yet -- the source tag makes such stragglers findable.
             self.writer.emit(
                 "narration", channel=self._channel,
-                content=fields.get("content", ""))
+                content=fields.get("content", ""),
+                source="stdout_scrape")
         elif kind == "startup":
             # Each STARTUP_MARKER line is emitted twice by the engine (once
             # via print for the stream parser, once via the logger whose
@@ -248,15 +253,17 @@ class HeadlessSession:
         self.writer.emit("compression", event=event_type, **payload)
 
     def _on_player_output(self, payload):
-        # Structured sink messages (module transitions, safe-action
-        # failures). Returning normally marks the message handled, which
-        # suppresses the engine's fallback print -- no double delivery.
+        # Structured sink messages (all DM narration since P2, plus module
+        # transitions and safe-action failures). Returning normally marks
+        # the message handled, which suppresses the engine's fallback
+        # print -- no double delivery.
         msg_type = payload.get("type", "system")
         event_type = "narration" if msg_type == "narration" else "system"
         self.writer.emit(
             event_type,
-            channel="system",
-            content=payload.get("content", ""))
+            channel=payload.get("channel", "system"),
+            content=payload.get("content", ""),
+            source="sink")
 
     def _classify_prompt(self, clean_prompt, snapshot):
         if "(Leveling Up)" in clean_prompt:

@@ -59,7 +59,7 @@ and `ts` (unix seconds).
 |---|---|---|
 | `hello` | `protocol`, `game_dir`, `pid` | session started |
 | `startup` | `phase`, ... | startup readiness marker; `startup_kickoff_done` (or `startup_kickoff_skipped` with `result: "already_done"`) means the game is live |
-| `narration` | `channel` (`main`/`combat`/`levelup`/`system`), `content` | DM output for the player |
+| `narration` | `channel` (`main`/`combat`/`levelup`/`system`), `content`, `source` (`sink` or `stdout_scrape`) | DM output for the player. `source: "sink"` is the structured path all engine narration uses; `stdout_scrape` marks a fallback recovery from raw stdout and normally never appears |
 | `status` | `message`, `is_processing` | engine busy/idle heartbeat |
 | `prompt` | `kind` (`main`/`combat`/`levelup`/`wizard`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available) | **the engine is waiting for input; the turn boundary** |
 | `state` | see below | snapshot taken right after `prompt` |
@@ -152,12 +152,8 @@ process's stdin. A provider call in flight shows up as `status` events with
 `is_processing: true`; prolonged total silence means a hung provider call --
 script mode enforces `--timeout-per-turn` for exactly that case.
 
-## Limitations (phase 1)
+## Limitations
 
-- Narration is recovered by the stdout classifier; extremely unusual output
-  that fools the web UI's heuristics will fool this one identically. (The
-  planned phase 2 routes narration through the structured player-output
-  sink, making this lossless.)
 - One session per game directory. There is no lock yet -- do not point two
   sessions at the same directory.
 - `new-game` prints engine chatter before its final JSON line; parse the

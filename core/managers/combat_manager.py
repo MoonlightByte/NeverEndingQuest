@@ -327,6 +327,24 @@ combat_message_compressor = CombatUserMessageCompressor(api_key=OPENAI_API_KEY)
 HISTORY_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
 
 
+def _display_combat_narration(narration):
+   """Deliver combat narration through the frontend sink, else the console.
+
+   Mirrors main.display_dm_narration: a frontend with a player-output sink
+   gets structured delivery and the console print is skipped; the plain
+   terminal output is unchanged.
+   """
+   from web.shared_state import emit_player_output
+
+   delivered = emit_player_output(
+       {"type": "narration", "channel": "combat", "content": narration}
+   )
+   if delivered is not True:
+       import sys
+       print(f"Dungeon Master: {narration}")
+       sys.stdout.flush()
+
+
 def load_npc_with_fuzzy_match(npc_name, path_manager):
     """
     Load NPC data with fuzzy name matching support.
@@ -3003,9 +3021,7 @@ This is narration only. Do not advance the round or apply any combat action."""
            )
 
        save_json_file(conversation_history_file, conversation_history)
-       print(f"Dungeon Master: {narration}")
-       import sys
-       sys.stdout.flush()
+       _display_combat_narration(narration)
        if used_fallback:
            debug("RESUME: Displayed and persisted fallback narration", category="combat_events")
        else:
@@ -3124,9 +3140,7 @@ Player: {initial_prompt_text}"""
            )
        save_json_file(conversation_history_file, conversation_history)
        parsed_response = json.loads(initial_response)
-       print(f"Dungeon Master: {parsed_response['narration']}")
-       import sys
-       sys.stdout.flush()
+       _display_combat_narration(parsed_response['narration'])
    # --- END: RESUMPTION AND INITIAL SCENE LOGIC ---
 
    pending_initial_npc_turns = (
@@ -3898,8 +3912,7 @@ Rules:
        
        if not valid_response or not ai_response:
            error("FAILURE: Failed to get a valid AI response after multiple attempts", category="combat_events")
-           print(f"Dungeon Master: {T045_REJECTED_ACTION_NARRATION}")
-           sys.stdout.flush()
+           _display_combat_narration(T045_REJECTED_ACTION_NARRATION)
            continue
        
        # Process the validated response
@@ -3983,9 +3996,7 @@ Rules:
        is_combat_ending = any(a.get("action", "").lower() == "exit" for a in actions)
 
        # Display narration immediately, as it describes the events of the turn.
-       print(f"Dungeon Master: {narration}")
-       import sys
-       sys.stdout.flush()
+       _display_combat_narration(narration)
 
        # STEP 1: GATHER all intended changes from the AI's actions.
        for action in actions:

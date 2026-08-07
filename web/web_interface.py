@@ -357,7 +357,10 @@ def _queue_safe_player_output(message):
         return False
 
 
-set_player_output_sink(_queue_safe_player_output)
+# NOTE: the sink is installed in handle_start_game(), NOT here at import
+# time. This module is imported by action_handler even in terminal and
+# headless modes; claiming the sink at import would silently swallow
+# player output into game_output_queue where nothing drains it.
 
 
 def _emit_pending_game_output(emit_function):
@@ -2664,11 +2667,14 @@ def handle_start_game():
     
     # Uninstall debug interceptor to prevent competing stdout redirections
     uninstall_debug_interceptor()
-    
+
     # Set up output capture - both go to debug by default, filtering happens in write()
     sys.stdout = WebOutputCapture(debug_output_queue, original_stdout)
     sys.stderr = WebOutputCapture(debug_output_queue, original_stderr, is_error=True)
     sys.stdin = WebInput(user_input_queue)
+    # Claim the player-output sink only now that a web game session owns
+    # the frontend (see the note at the old import-time install site).
+    set_player_output_sink(_queue_safe_player_output)
     
     # Start the game in a separate thread
     startup_handoff_active = True
