@@ -362,12 +362,26 @@ def _parse_t026_response(raw: Any) -> Dict[str, Any]:
     """Parse one model response with a bounded, deterministic error message."""
     if not isinstance(raw, str):
         raise ValueError("$: response content must be a JSON string")
-    if re.match(r"<think(?:\s[^>]*)?>", raw.lstrip(), flags=re.IGNORECASE):
+
+    # Some OpenAI-compatible local models occasionally wrap an otherwise valid
+    # JSON response in one Markdown JSON fence despite the prompt contract.
+    # Accept only a single complete outer fence with whitespace outside it.
+    # This deliberately does not extract JSON from commentary, multiple code
+    # blocks, or a partial fence, so the downstream fail-closed contract stays
+    # intact.
+    fenced = re.fullmatch(
+        r"\s*```json[ \t]*\r?\n(?P<body>.*?)\r?\n```\s*",
+        raw,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    content = fenced.group("body") if fenced else raw
+
+    if re.match(r"<think(?:\s[^>]*)?>", content.lstrip(), flags=re.IGNORECASE):
         raise LocationBatchReasoningContentError(
             _T026_REASONING_CONTENT_MESSAGE
         )
     try:
-        parsed = json.loads(raw)
+        parsed = json.loads(content)
     except json.JSONDecodeError as exc:
         raise ValueError(
             f"$: malformed JSON at line {exc.lineno}, column {exc.colno}"
