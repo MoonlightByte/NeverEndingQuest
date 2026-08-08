@@ -171,6 +171,7 @@ Here's the strict list of specific actions that the model should take when the s
 **KEY ACTION DISTINCTIONS:**
 - **updatePartyNPCs**: For party composition changes (adding/removing traveling companions). This will create NPC character files automatically.
 - **updateCharacterInfo**: For character data changes (inventory, stats, conditions, effects) on existing characters only.
+- **removeEffect**: Deliberately end, dispel, or break concentration on one exact active temporary effect. Requires `characterName` plus `effectId` or `effectName`. Automatic duration expiry requires no action and its modifiers must never be manually reversed.
 
 "updateCharacterInfo": This is the unified action for making changes to ANY existing character's stats, inventory, condition, or other elements (both players and NPCs). Requires "characterName" parameter. When updating abilities, follow PHB structure:
    - classFeatures: Class/subclass abilities only

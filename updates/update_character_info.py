@@ -1247,18 +1247,123 @@ def _get_character_update_lock(character_name, character_role=None):
         return lock
 
 
-def update_character_info(character_name, changes, character_role=None):
+def _translate_declarative_effect_delta(character_data, updates, operation):
+    """Translate player-visible T079 values back to durable base storage.
+
+    The model reads effective values.  The character file stores base values,
+    while the lifecycle operation owns one-time resource adjustments.  Reverse
+    those adjustments here so applying the operation below reaches the exact
+    visible value once, never twice.
+    """
+    from core.effects.effective import storage_delta_from_effective
+    from core.effects.lifecycle import apply_effect_ops
+
+    operation = copy.deepcopy(operation) if isinstance(operation, dict) else None
+    resource_operations = []
+    managed_effect = None
+    if operation and operation.get("op") == "add":
+        managed_effect = operation.get("effect") or {}
+        resource_operations = managed_effect.get("onApply", []) or []
+    elif operation and operation.get("op") == "remove":
+        effect_id = operation.get("effectId")
+        name = operation.get("name")
+        for effect in character_data.get("temporaryEffects", []) or []:
+            if not isinstance(effect, dict):
+                continue
+            if (effect_id and effect.get("effectId") == effect_id) or (
+                not effect_id and name and effect.get("name") == name
+            ):
+                managed_effect = effect
+                resource_operations.extend(effect.get("onRemove", []) or [])
+
+    preview = apply_effect_ops(character_data, [operation]) if operation else character_data
+    translated = storage_delta_from_effective(preview, updates)
+    from core.effects.model import canonical_stat
+
+    stripped_effect_fields = []
+    for modifier in (managed_effect or {}).get("modifiers", []) or []:
+        stat = canonical_stat(modifier.get("stat")) if isinstance(modifier, dict) else None
+        if stat and stat.startswith("abilities."):
+            ability = stat.split(".", 1)[1]
+            abilities = translated.get("abilities")
+            if isinstance(abilities, dict):
+                if ability in abilities:
+                    stripped_effect_fields.append(
+                        "abilities.%s=%r" % (ability, abilities.get(ability))
+                    )
+                abilities.pop(ability, None)
+                if not abilities:
+                    translated.pop("abilities", None)
+        elif stat in ("armorClass", "speed", "hitPoints", "maxHitPoints"):
+            # Derived values belong to the effect overlay. T079 may describe
+            # the same visible change, but it cannot bake or cancel it.
+            if stat in translated:
+                stripped_effect_fields.append("%s=%r" % (stat, translated.get(stat)))
+                translated.pop(stat, None)
+    for resource in resource_operations:
+        if not isinstance(resource, dict):
+            continue
+        stat = resource.get("stat")
+        if stat in translated:
+            # The classifier's validated lifecycle operation is authoritative
+            # for this one-time resource change. Dropping T079's copy prevents
+            # both double application and a weaker model cancelling the
+            # deterministic operation by returning the pre-effect value.
+            stripped_effect_fields.append("%s=%r" % (stat, translated.get(stat)))
+            translated.pop(stat, None)
+    if stripped_effect_fields:
+        debug(
+            "EFFECTS: Removed T079 copies of engine-owned values: %s"
+            % ", ".join(stripped_effect_fields),
+            category="effects_tracking",
+        )
+    return translated
+
+
+def update_character_info(
+    character_name,
+    changes,
+    character_role=None,
+    managed_effect_operation=None,
+):
     """Run one complete character update transaction under a per-file lock."""
     lock = _get_character_update_lock(character_name, character_role)
     with lock:
-        return _update_character_info_unlocked(
-            character_name,
-            changes,
-            character_role=character_role,
-        )
+        resolved_role = character_role or detect_character_role(character_name)
+        character_path = get_character_path(character_name, resolved_role)
+        from utils.path_transaction_lock import path_transaction_lock
+
+        with path_transaction_lock(
+            character_path,
+            suffix=".effects.lock",
+            timeout_seconds=30.0,
+        ) as acquired:
+            if acquired is None:
+                warning(
+                    f"EFFECTS: Timed out acquiring character lease for {character_name}",
+                    category="effects_tracking",
+                )
+                return False
+            if managed_effect_operation is None:
+                return _update_character_info_unlocked(
+                    character_name,
+                    changes,
+                    character_role=character_role,
+                )
+            return _update_character_info_unlocked(
+                character_name,
+                changes,
+                character_role=character_role,
+                managed_effect_operation=managed_effect_operation,
+            )
 
 
-def _update_character_info_unlocked(character_name, changes, character_role=None):
+def _update_character_info_unlocked(
+    character_name,
+    changes,
+    character_role=None,
+    managed_effect_operation=None,
+):
     """
     Unified function to update character information for both players and NPCs
     
@@ -1339,6 +1444,44 @@ def _update_character_info_unlocked(character_name, changes, character_role=None
     # Format schema for prompt
     schema_info = format_schema_for_prompt(schema, character_role)
     
+    declarative_effects = False
+    effective_projection = any(
+        isinstance(effect, dict)
+        and effect.get("authoredBy") in ("engine", "classifier")
+        for effect in character_data.get("temporaryEffects", []) or []
+    )
+    prompt_character_data = character_data
+    try:
+        from core.managers.effects_state import campaign_effects_migrated
+        from core.effects.effective import effective_sheet
+
+        declarative_effects = campaign_effects_migrated()
+        effective_projection = declarative_effects or effective_projection
+        if effective_projection:
+            prompt_character_data = effective_sheet(character_data)
+    except Exception as effects_mode_exc:
+        warning(
+            f"EFFECTS: Could not prepare effective character view: {effects_mode_exc}",
+            category="effects_tracking",
+        )
+
+    if declarative_effects:
+        effects_update_rules = """19. DECLARATIVE EFFECT OWNERSHIP:
+    - The game engine owns temporaryEffects, their duration, and their numeric modifiers.
+    - NEVER return temporaryEffects.
+    - Read the supplied effective values as the character's current player-visible values.
+    - If the requested change adds or removes a temporary effect, return any other
+      one-time costs or permanent changes only. Do not manually reverse an expired effect."""
+    else:
+        effects_update_rules = """19. TEMPORARY EFFECTS - CRITICAL RULES:
+    - ONLY add effects with durations of 1 MINUTE OR LONGER to temporaryEffects
+    - Do NOT add round-based effects (less than 1 minute) to temporaryEffects
+    - Convert concentration spells to their maximum duration (e.g., "Bless for concentration" = "1 minute")
+    - When an effect expires, return the COMPLETE temporaryEffects array
+    - The returned array must contain ALL effects that should remain active
+    - Round-based effects should be narrated but NOT tracked in temporaryEffects
+    - Preserve any effect carrying authoredBy=engine exactly; its arithmetic is engine-owned"""
+
     # Build the prompt
     system_message = f"""You are an assistant that updates character information in a 5th Edition roleplaying game. Given the current character information and a description of changes, you must return only the updated sections as a JSON object. Do not include unchanged fields. Your response should be a valid JSON object representing only the modified parts of the character sheet.
 
@@ -1558,17 +1701,7 @@ CRITICAL INSTRUCTIONS:
     - The experience_points field must NOT be included in level up changes
     - XP is managed separately and should never be altered during level advancement
     - IMPORTANT: This restriction ONLY applies to level up operations. You MUST update experience_points when explicitly requested (e.g., "Add 50 experience points", "Award XP")
-19. TEMPORARY EFFECTS - CRITICAL RULES:
-    - ONLY add effects with durations of 1 MINUTE OR LONGER to temporaryEffects
-    - Do NOT add round-based effects (less than 1 minute) to temporaryEffects
-    - Convert concentration spells to their maximum duration (e.g., "Bless for concentration" = "1 minute")
-    - When an effect expires (e.g., "loses X as Y expires", "Y effect ends"), return the COMPLETE temporaryEffects array
-    - The returned array must contain ALL effects that should remain active
-    - DO NOT include the expired effect in the returned array
-    - Example: Character has Shield of Faith and Bless. Shield of Faith expires.
-      CORRECT: {{"temporaryEffects": [{{"name": "Bless", "description": "...", "source": "...", "duration": "..."}}]}}
-      WRONG: Not returning temporaryEffects (would leave expired effect in place)
-    - Round-based effects should be narrated but NOT tracked in temporaryEffects
+{effects_update_rules}
 
 EQUIPMENT UPDATE EXAMPLES:
 CORRECT (updating one item): {{"equipment": [{{"item_name": "Jeweled dagger", "description": "updated description", "magical": true}}]}}
@@ -1634,7 +1767,7 @@ Character Role: {character_role}
     
     messages = [
         {"role": "system", "content": system_message},
-        {"role": "user", "content": f"Current character data:\n{json.dumps(character_data, indent=2)}"},
+        {"role": "user", "content": f"Current character data:\n{json.dumps(prompt_character_data, indent=2)}"},
         {"role": "user", "content": f"Changes to make: {changes}"}
     ]
     
@@ -1774,9 +1907,29 @@ Character Role: {character_role}
             
             clean_response = json_match.group()
             updates = json.loads(clean_response)
-            if not _is_meaningful_character_delta(updates, schema):
+            if not _is_meaningful_character_delta(updates, schema) and not (
+                declarative_effects and managed_effect_operation
+            ):
                 raise ValueError(
                     "T079 returned an empty or unrecognized character delta"
+                )
+
+            if declarative_effects:
+                # T079 is never an effects authority after cutover, even when a
+                # weaker model ignores the ownership instruction.
+                updates.pop("temporaryEffects", None)
+            elif "temporaryEffects" in updates:
+                from core.effects.model import preserve_engine_effects
+
+                updates["temporaryEffects"] = preserve_engine_effects(
+                    character_data.get("temporaryEffects", []),
+                    updates.get("temporaryEffects", []),
+                )
+            if effective_projection:
+                updates = _translate_declarative_effect_delta(
+                    character_data,
+                    updates,
+                    managed_effect_operation if declarative_effects else None,
                 )
 
             is_complete, missing_fields = validate_requested_character_update_completeness(
@@ -1914,6 +2067,13 @@ Please provide the CORRECT currency values:
                 debug(f"HP_DEBUG: {character_name} - Before merge HP: {character_data.get('hitPoints')}/{character_data.get('maxHitPoints')}, Update wants HP: {updates.get('hitPoints')}", category="character_updates")
             
             updated_data = deep_merge_dict(character_data, updates)
+            if declarative_effects and managed_effect_operation:
+                from core.effects.lifecycle import apply_effect_ops
+
+                updated_data = apply_effect_ops(
+                    updated_data,
+                    [managed_effect_operation],
+                )
             
             # Debug HP changes AFTER merge
             if 'hitPoints' in updates:

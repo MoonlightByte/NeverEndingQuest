@@ -45,6 +45,8 @@ def normalize_status(value):
 def is_turn_eligible(creature):
     if not isinstance(creature, dict):
         return False
+    if creature.get("effectIncapacitated") is True:
+        return False
     if normalize_status(creature.get("status")) != ACTIVE_STATUS:
         return False
     hit_points = creature.get("currentHitPoints")

@@ -86,6 +86,31 @@ from utils.plot_formatting import format_plot_for_ai
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from core.ai.atlas_builder import build_atlas_for_module, format_atlas_for_conversation
 
+
+def _effects_runtime_view(character_data):
+    try:
+        from core.effects.effective import effective_sheet
+        return effective_sheet(character_data)
+    except Exception:
+        pass
+    return character_data
+
+
+def _format_temporary_effects(character_data):
+    values = []
+    for effect in character_data.get("temporaryEffects", []) or []:
+        if not isinstance(effect, dict) or not effect.get("name"):
+            continue
+        duration = effect.get("duration")
+        if effect.get("roundsRemaining") is not None:
+            duration = f"{effect['roundsRemaining']} rounds remaining"
+        elif effect.get("expiration"):
+            duration = f"until {effect['expiration']}"
+        values.append(
+            f"{effect['name']} ({duration})" if duration else str(effect["name"])
+        )
+    return ", ".join(values) if values else "none"
+
 # Set script name for logging
 set_script_name("conversation_utils")
 
@@ -757,6 +782,7 @@ def update_character_data(conversation_history, party_tracker_data):
                         continue
 
                     member_data, repaired_fields = normalize_for_runtime(member_data, character_type="player")
+                    member_data = _effects_runtime_view(member_data)
                     if repaired_fields:
                         debug(
                             f"REPAIR: Normalized player sheet for {member_data.get('name', member)}: {', '.join(repaired_fields)}",
@@ -834,7 +860,7 @@ CLASS FEAT: {', '.join([f"{feature['name']}" for feature in member_data['classFe
 RACIAL: {', '.join([f"{trait['name']}" for trait in member_data['racialTraits']])}
 BG FEAT: {bg_feature_name}
 FEATS: {', '.join([f"{feat['name']}" for feat in member_data.get('feats', [])])}
-TEMP FX: {', '.join([f"{effect['name']}" for effect in member_data.get('temporaryEffects', [])])}
+TEMP FX: {_format_temporary_effects(member_data)}
 EQUIP: {equipment_str}
 AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in member_data.get('ammunition', [])])}
 ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damageType']})" for atk in member_data['attacksAndSpellcasting']])}
@@ -868,6 +894,7 @@ FLAWS: {member_data['flaws']}
                         continue
 
                     npc_data, repaired_fields = normalize_for_runtime(npc_data, character_type="npc")
+                    npc_data = _effects_runtime_view(npc_data)
                     if repaired_fields:
                         debug(
                             f"REPAIR: Normalized NPC sheet for {npc_data.get('name', npc_name)}: {', '.join(repaired_fields)}",
@@ -947,7 +974,7 @@ CLASS FEAT: {', '.join([f"{feature['name']}" for feature in npc_data['classFeatu
 RACIAL: {', '.join([f"{trait['name']}" for trait in npc_data['racialTraits']])}
 BG FEAT: {bg_feature_name}
 FEATS: {', '.join([f"{feat['name']}" for feat in npc_data.get('feats', [])])}
-TEMP FX: {', '.join([f"{effect['name']}" for effect in npc_data.get('temporaryEffects', [])])}
+TEMP FX: {_format_temporary_effects(npc_data)}
 EQUIP: {equipment_str}
 AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in npc_data['ammunition']])}
 ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damageType']})" for atk in npc_data['attacksAndSpellcasting']])}

@@ -25,6 +25,9 @@ Two validation regimes:
 import re
 from copy import deepcopy
 
+from core.effects.effective import effective_sheet, modifier_total
+from core.effects.lifecycle import apply_effect_ops
+from core.effects.model import normalize_effect, validate_effect
 from core.managers.combat_state import (
     combatant_by_id,
     is_turn_eligible,
@@ -223,6 +226,53 @@ def _ammo_quantity(sheet, name=None):
     return total
 
 
+def _raw_combatant_sheet(encounter, characters, creature):
+    """Return the canonical effect input for any combatant.
+
+    Player/NPC effects live on their character sheet. Sheet-less encounter
+    actors keep a small base-stat snapshot plus ``activeEffects`` so the same
+    declarative arithmetic can protect monsters, summons, and hazards too.
+    """
+    creature = creature or {}
+    sheet = (characters or {}).get(creature.get("name"))
+    if creature.get("type") in ("player", "npc") and isinstance(sheet, dict):
+        return sheet
+    result = deepcopy(sheet) if isinstance(sheet, dict) else {}
+    base = creature.get("effectBaseStats") or {}
+    result["armorClass"] = base.get(
+        "armorClass",
+        creature.get("armorClass", result.get("armorClass", 10)),
+    )
+    result["maxHitPoints"] = base.get(
+        "maxHitPoints",
+        creature.get("maxHitPoints", result.get("maxHitPoints", 0)),
+    )
+    result["hitPoints"] = creature.get(
+        "currentHitPoints",
+        result.get("hitPoints", 0),
+    )
+    result["temporaryEffects"] = creature.get("activeEffects", []) or []
+    return result
+
+
+def _effective_combatant_sheet(encounter, characters, creature):
+    return effective_sheet(_raw_combatant_sheet(encounter, characters, creature))
+
+
+def _combatant_ac(encounter, characters, creature):
+    sheet = _effective_combatant_sheet(encounter, characters, creature)
+    if isinstance(sheet.get("armorClass"), (int, float)):
+        return int(sheet["armorClass"])
+    return int((creature or {}).get("armorClass", 10) or 10)
+
+
+def _combatant_max_hp(encounter, characters, creature):
+    sheet = _effective_combatant_sheet(encounter, characters, creature)
+    if isinstance(sheet.get("maxHitPoints"), (int, float)):
+        return int(sheet["maxHitPoints"])
+    return int((creature or {}).get("maxHitPoints", 0) or 0)
+
+
 def resolve_intent(encounter, characters, intent, rolls, event_id):
     """Resolve a validated attack intent into an event + deltas.
 
@@ -231,7 +281,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
     resolve_adjudicated. Inputs are not mutated.
     """
     actor = combatant_by_id(encounter, intent.get("actorId"))
-    sheet = (characters or {}).get(actor.get("name")) or {}
+    sheet = _raw_combatant_sheet(encounter, characters, actor)
     event = {
         "eventId": event_id,
         "actorId": intent["actorId"],
@@ -263,8 +313,10 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
 
     entry = _find_action(sheet, intent.get("ability")) or {}
     target = combatant_by_id(encounter, intent.get("targetId"))
-    attack_bonus = int(entry.get("attackBonus", 0) or 0)
-    target_ac = int((target or {}).get("armorClass", 10) or 10)
+    attack_bonus = int(entry.get("attackBonus", 0) or 0) + modifier_total(
+        sheet, "attackRolls"
+    )
+    target_ac = _combatant_ac(encounter, characters, target)
     attack_counter = getattr(rolls, "attack_count", None)
     attack_count = attack_counter(intent.get("actorId")) if callable(attack_counter) else 1
     attack_count = max(1, min(8, int(attack_count or 1)))
@@ -314,7 +366,8 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                 0,
                 sum(damage_rolls)
                 + modifier
-                + int(entry.get("damageBonus", 0) or 0),
+                + int(entry.get("damageBonus", 0) or 0)
+                + modifier_total(sheet, "damageRolls"),
             )
             hp_after = max(0, hp_after - damage)
             total_damage += damage
@@ -408,15 +461,20 @@ def _resource_snapshot(sheet, kind, name):
 
 
 def _save_bonus(encounter, characters, creature, save_type):
-    sheet = (characters or {}).get(creature.get("name")) or {}
+    raw_sheet = _raw_combatant_sheet(encounter, characters, creature)
+    sheet = effective_sheet(raw_sheet)
     saves = sheet.get("savingThrows") or []
     ability = str(save_type or "").strip().lower()
     if isinstance(saves, dict):
         try:
-            return int(saves.get(ability, saves.get(ability[:3], 0)) or 0)
+            return (
+                int(saves.get(ability, saves.get(ability[:3], 0)) or 0)
+                + modifier_total(raw_sheet, "savingThrows")
+                + modifier_total(raw_sheet, "savingThrow.%s" % ability)
+            )
         except (TypeError, ValueError):
             return 0
-    scores = sheet.get("abilityScores") or {}
+    scores = sheet.get("abilities") or sheet.get("abilityScores") or {}
     try:
         score = int(scores.get(ability, 10) or 10)
     except (AttributeError, TypeError, ValueError):
@@ -429,7 +487,11 @@ def _save_bonus(encounter, characters, creature, save_type):
             bonus += int(sheet.get("proficiencyBonus", 0) or 0)
         except (TypeError, ValueError):
             pass
-    return bonus
+    return (
+        bonus
+        + modifier_total(raw_sheet, "savingThrows")
+        + modifier_total(raw_sheet, "savingThrow.%s" % ability)
+    )
 
 
 def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
@@ -575,6 +637,32 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                 )
                 continue
             actor = combatant_by_id(encounter, proposal.get("actorId")) or {}
+            op["effect"]["authoredBy"] = "engine"
+            op["effect"]["sourceEncounterId"] = encounter.get("encounterId")
+            op["effect"].setdefault(
+                "source",
+                actor.get("name") or "combat",
+            )
+            if not op["effect"].get("durationKind"):
+                op["effect"]["durationKind"] = (
+                    "rounds"
+                    if isinstance(op["effect"].get("roundsRemaining"), int)
+                    else "encounter"
+                )
+            op["effect"].setdefault(
+                "duration",
+                (
+                    "%s rounds" % op["effect"].get("roundsRemaining")
+                    if op["effect"].get("durationKind") == "rounds"
+                    else "encounter"
+                ),
+            )
+            op["effect"].setdefault("modifiers", [])
+            op["effect"].setdefault("conditions", [])
+            op["effect"].setdefault(
+                "created",
+                {"encounterId": encounter.get("encounterId")},
+            )
             if actor.get("combatantId"):
                 op["effect"]["sourceCombatantId"] = actor.get("combatantId")
             if op["effect"].get("concentration"):
@@ -582,6 +670,22 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                 op["effect"]["source"] = actor.get(
                     "name", op["effect"].get("source", op.get("owner"))
                 )
+            try:
+                op["effect"] = normalize_effect(op["effect"])
+            except ValueError as exc:
+                resolution["violations"].append(
+                    "effect contract rejected: %s" % exc
+                )
+                continue
+            effect_problems = validate_effect(
+                op["effect"],
+                require_managed=True,
+            )
+            if effect_problems:
+                resolution["violations"].append(
+                    "effect contract rejected: %s" % "; ".join(effect_problems)
+                )
+                continue
         elif not (
             op.get("effectId")
             or op.get("name")
@@ -601,6 +705,44 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
         op["_applyOnExplicit"] = "applyOn" in op
         op["applyOn"] = apply_on
         normalized_effects.append(op)
+
+    # One-time effect resource changes and target HP deltas are alternative
+    # representations of the same mechanic. Reject a proposal that supplies
+    # both, otherwise a weak model can grant Aid-style current HP twice.
+    target_hp_changes = set()
+    for entry in targets:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            has_hp_change = int(entry.get("hpDelta", 0) or 0) != 0
+        except (TypeError, ValueError):
+            has_hp_change = False
+        if has_hp_change:
+            target_hp_changes.add(entry.get("combatantId"))
+    for op in normalized_effects:
+        if op.get("op") != "add":
+            continue
+        on_apply = (op.get("effect") or {}).get("onApply", []) or []
+        if not any(
+            isinstance(item, dict)
+            and item.get("stat") == "hitPoints"
+            and int(item.get("delta", 0) or 0) != 0
+            for item in on_apply
+        ):
+            continue
+        target_id = op.get("combatantId")
+        if not target_id and op.get("owner"):
+            matches = [
+                creature.get("combatantId")
+                for creature in encounter.get("creatures", []) or []
+                if creature.get("name") == op.get("owner")
+                and creature.get("type") in ("player", "npc")
+            ]
+            target_id = matches[0] if len(matches) == 1 else None
+        if target_id in target_hp_changes:
+            resolution["violations"].append(
+                "effect onApply and target hpDelta duplicate one HP change"
+            )
     save_spec = proposal.get("save") if isinstance(proposal.get("save"), dict) else None
     if save_spec and not targets:
         resolution["violations"].append(
@@ -637,7 +779,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             if saved and hp_delta < 0:
                 hp_delta = hp_delta // 2 if save_spec.get("halfOnSave") else 0
         hp_before = int(target.get("currentHitPoints", 0) or 0)
-        ceiling = int(target.get("maxHitPoints", hp_before) or 0)
+        ceiling = _combatant_max_hp(encounter, characters, target) or hp_before
         hp_after = max(0, min(hp_before + hp_delta, ceiling))
         status_after = normalize_status(target.get("status"))
         if hp_after == 0 and hp_delta < 0:
@@ -782,6 +924,124 @@ def _effect_destination(encounter, characters, op):
     return sheet.setdefault("temporaryEffects", [])
 
 
+def _apply_encounter_effect_operation(creature, operation):
+    """Apply one lifecycle operation to a sheet-less combatant safely."""
+    if not isinstance(creature, dict):
+        raise ValueError("Encounter effect target is unavailable")
+    effects = creature.setdefault("activeEffects", [])
+    if not isinstance(effects, list):
+        raise ValueError("Encounter activeEffects must be an array")
+    if operation.get("op") == "add" and not isinstance(
+        creature.get("effectBaseStats"), dict
+    ):
+        creature["effectBaseStats"] = {
+            "armorClass": int(creature.get("armorClass", 10) or 10),
+            "maxHitPoints": int(creature.get("maxHitPoints", 0) or 0),
+        }
+    raw = _raw_combatant_sheet(None, None, creature)
+    updated = apply_effect_ops(raw, [operation])
+    creature["activeEffects"] = updated.get("temporaryEffects", [])
+    rendered = effective_sheet(updated)
+    for sheet_field, encounter_field in (
+        ("hitPoints", "currentHitPoints"),
+        ("maxHitPoints", "maxHitPoints"),
+        ("armorClass", "armorClass"),
+    ):
+        value = rendered.get(sheet_field)
+        if isinstance(value, (int, float)):
+            creature[encounter_field] = int(value)
+    if not creature["activeEffects"]:
+        creature.pop("effectBaseStats", None)
+    return creature
+
+
+def _drop_concentration(encounter, characters, source_combatant_id, keep_id=None):
+    """Remove concentration owned by one source across all durable targets."""
+    for owner, sheet in list((characters or {}).items()):
+        if not isinstance(sheet, dict):
+            continue
+        remove_ops = []
+        for effect in sheet.get("temporaryEffects", []) or []:
+            if (
+                isinstance(effect, dict)
+                and effect.get("concentration")
+                and effect.get("sourceCombatantId") == source_combatant_id
+                and effect.get("concentrationId") != keep_id
+            ):
+                remove_ops.append(
+                    {
+                        "op": "remove",
+                        "effectId": effect.get("effectId"),
+                        "name": effect.get("name"),
+                    }
+                )
+        if remove_ops:
+            characters[owner] = apply_effect_ops(sheet, remove_ops)
+    for creature in (encounter or {}).get("creatures", []) or []:
+        effects = creature.get("activeEffects") if isinstance(creature, dict) else None
+        if not isinstance(effects, list):
+            continue
+        remove_ops = [
+            {
+                "op": "remove",
+                "effectId": effect.get("effectId"),
+                "name": effect.get("name"),
+            }
+            for effect in effects
+            if isinstance(effect, dict)
+            and effect.get("concentration")
+            and effect.get("sourceCombatantId") == source_combatant_id
+            and effect.get("concentrationId") != keep_id
+        ]
+        for operation in remove_ops:
+            _apply_encounter_effect_operation(creature, operation)
+
+
+def _refresh_effect_control_flags(encounter, characters):
+    """Project sheet effect control into encounter turn eligibility."""
+    for creature in (encounter or {}).get("creatures", []) or []:
+        if not isinstance(creature, dict):
+            continue
+        effects = []
+        if creature.get("type") in ("player", "npc"):
+            sheet = (characters or {}).get(creature.get("name")) or {}
+            effects = sheet.get("temporaryEffects", []) or []
+        else:
+            effects = creature.get("activeEffects", []) or []
+        creature["effectIncapacitated"] = any(
+            isinstance(effect, dict) and effect.get("incapacitates") is True
+            for effect in effects
+        )
+
+
+def _refresh_character_effect_projections(encounter, characters):
+    """Keep encounter display/cache fields aligned with canonical sheets.
+
+    Character sheets own current HP and declarative effects.  Encounter
+    copies are operational projections used by turn sequencing and narration;
+    refreshing them after every effect operation prevents an Aid-like maximum
+    HP change from producing contradictory values such as 15/10 HP.
+    """
+    for creature in (encounter or {}).get("creatures", []) or []:
+        if not isinstance(creature, dict) or creature.get("type") not in (
+            "player",
+            "npc",
+        ):
+            continue
+        sheet = (characters or {}).get(creature.get("name"))
+        if not isinstance(sheet, dict):
+            continue
+        rendered = effective_sheet(sheet)
+        for sheet_field, encounter_field in (
+            ("hitPoints", "currentHitPoints"),
+            ("maxHitPoints", "maxHitPoints"),
+            ("armorClass", "armorClass"),
+        ):
+            value = rendered.get(sheet_field)
+            if isinstance(value, (int, float)):
+                creature[encounter_field] = int(value)
+
+
 def apply_resolution(encounter, characters, resolution):
     """Copy-on-write application with hard bounds. Returns (enc, chars).
 
@@ -802,7 +1062,11 @@ def apply_resolution(encounter, characters, resolution):
         if creature is None:
             continue
         if "currentHitPoints" in delta:
-            ceiling = int(creature.get("maxHitPoints", delta["currentHitPoints"]) or 0)
+            ceiling = _combatant_max_hp(
+                new_encounter,
+                new_characters,
+                creature,
+            ) or int(creature.get("maxHitPoints", delta["currentHitPoints"]) or 0)
             creature["currentHitPoints"] = max(0, min(int(delta["currentHitPoints"]), ceiling))
         if "status" in delta:
             creature["status"] = delta["status"]
@@ -812,7 +1076,10 @@ def apply_resolution(encounter, characters, resolution):
         if not isinstance(sheet, dict):
             continue
         if "hitPoints" in delta:
-            ceiling = int(sheet.get("maxHitPoints", delta["hitPoints"]) or 0)
+            ceiling = int(
+                effective_sheet(sheet).get("maxHitPoints", delta["hitPoints"])
+                or 0
+            )
             sheet["hitPoints"] = max(0, min(int(delta["hitPoints"]), ceiling))
         if "status" in delta:
             sheet["status"] = delta["status"]
@@ -855,6 +1122,29 @@ def apply_resolution(encounter, characters, resolution):
                     break
 
     for op in (resolution.get("effectOps") or event.get("effects") or []):
+        if op.get("op") == "add" and isinstance(op.get("effect"), dict):
+            added_effect = op["effect"]
+            if added_effect.get("concentration") and added_effect.get(
+                "sourceCombatantId"
+            ):
+                _drop_concentration(
+                    new_encounter,
+                    new_characters,
+                    added_effect.get("sourceCombatantId"),
+                    keep_id=added_effect.get("concentrationId"),
+                )
+        if op.get("owner"):
+            sheet = new_characters.get(op.get("owner"))
+            if not isinstance(sheet, dict):
+                raise ValueError("Effect owner is not durably addressable")
+            new_characters[op.get("owner")] = apply_effect_ops(sheet, [op])
+            continue
+        if op.get("combatantId"):
+            creature = combatant_by_id(new_encounter, op.get("combatantId"))
+            if creature is None or creature.get("type") in ("player", "npc"):
+                raise ValueError("Effect combatant is not durably addressable")
+            _apply_encounter_effect_operation(creature, op)
+            continue
         effects = _effect_destination(new_encounter, new_characters, op)
         if effects is None:
             raise ValueError("Effect target is not durably addressable")
@@ -920,6 +1210,17 @@ def apply_resolution(encounter, characters, resolution):
         new_encounter,
         event.get("effectTicks") or [],
     )
+    down_sources = {
+        creature.get("combatantId")
+        for creature in new_encounter.get("creatures", []) or []
+        if isinstance(creature, dict)
+        and creature.get("currentHitPoints") == 0
+        and creature.get("combatantId")
+    }
+    for source_id in down_sources:
+        _drop_concentration(new_encounter, new_characters, source_id)
+    _refresh_character_effect_projections(new_encounter, new_characters)
+    _refresh_effect_control_flags(new_encounter, new_characters)
     return new_encounter, new_characters
 
 
@@ -1025,9 +1326,18 @@ def apply_effect_ticks(characters, ticks):
             )
         ]
         if tick.get("expired"):
-            sheet["temporaryEffects"] = [
-                effect for effect in effects if effect not in matching
-            ]
+            for effect in matching:
+                sheet = apply_effect_ops(
+                    sheet,
+                    [
+                        {
+                            "op": "remove",
+                            "effectId": effect.get("effectId"),
+                            "name": effect.get("name"),
+                        }
+                    ],
+                )
+            new_characters[tick.get("owner")] = sheet
         else:
             for effect in matching:
                 effect["roundsRemaining"] = max(
@@ -1061,9 +1371,15 @@ def apply_encounter_effect_ticks(encounter, ticks):
             )
         ]
         if tick.get("expired"):
-            creature["activeEffects"] = [
-                effect for effect in effects if effect not in matching
-            ]
+            for effect in matching:
+                _apply_encounter_effect_operation(
+                    creature,
+                    {
+                        "op": "remove",
+                        "effectId": effect.get("effectId"),
+                        "name": effect.get("name"),
+                    },
+                )
         else:
             for effect in matching:
                 effect["roundsRemaining"] = max(

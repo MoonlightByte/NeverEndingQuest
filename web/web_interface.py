@@ -889,6 +889,18 @@ def get_character_data():
         error(f"Error getting character data: {e}", exception=e, category="web_interface")
         return jsonify({'error': str(e)}), 500
 
+
+def _effective_character_for_ui(character_data):
+    """Project declarative modifiers without changing the saved sheet."""
+    if not isinstance(character_data, dict):
+        return character_data
+    try:
+        from core.effects.effective import effective_sheet
+        return effective_sheet(character_data)
+    except Exception:
+        pass
+    return character_data
+
 @app.route('/upload-portrait', methods=['POST'])
 def upload_portrait():
     """Handle character portrait upload, cropping, and saving."""
@@ -2724,12 +2736,14 @@ def handle_player_data_request(data=None):
                     if os.path.exists(player_file):
                         with open(player_file, 'r', encoding='utf-8') as f:
                             response_data = json.load(f)
+                            response_data = _effective_character_for_ui(response_data)
                 except:
                     # Fallback to characters directory
                     player_file = path_manager.get_character_path(player_name)
                     if os.path.exists(player_file):
                         with open(player_file, 'r', encoding='utf-8') as f:
                             response_data = json.load(f)
+                            response_data = _effective_character_for_ui(response_data)
         
         elif dataType == 'npcs':
             # Get NPC data from party tracker
@@ -2751,6 +2765,7 @@ def handle_player_data_request(data=None):
                         if os.path.exists(npc_file):
                             with open(npc_file, 'r', encoding='utf-8') as f:
                                 npc_data = json.load(f)
+                                npc_data = _effective_character_for_ui(npc_data)
                                 npcs.append(npc_data)
                 except:
                     pass
@@ -2823,6 +2838,7 @@ def handle_npc_saves_request(data):
         if os.path.exists(npc_file):
             with open(npc_file, 'r', encoding='utf-8') as f:
                 npc_data = json.load(f)
+            npc_data = _effective_character_for_ui(npc_data)
             
             emit('npc_details_response', {'npcName': npc_name, 'data': npc_data, 'modalType': 'saves'})
         else:
@@ -2860,6 +2876,7 @@ def handle_npc_skills_request(data):
         if os.path.exists(npc_file):
             with open(npc_file, 'r', encoding='utf-8') as f:
                 npc_data = json.load(f)
+            npc_data = _effective_character_for_ui(npc_data)
             
             emit('npc_details_response', {'npcName': npc_name, 'data': npc_data, 'modalType': 'skills'})
         else:
@@ -2897,6 +2914,7 @@ def handle_npc_spells_request(data):
         if os.path.exists(npc_file):
             with open(npc_file, 'r', encoding='utf-8') as f:
                 npc_data = json.load(f)
+            npc_data = _effective_character_for_ui(npc_data)
             
             emit('npc_details_response', {'npcName': npc_name, 'data': npc_data, 'modalType': 'spells'})
         else:
@@ -2934,6 +2952,7 @@ def handle_npc_inventory_request(data):
         if os.path.exists(npc_file):
             with open(npc_file, 'r', encoding='utf-8') as f:
                 npc_data = json.load(f)
+            npc_data = _effective_character_for_ui(npc_data)
             
             # Extract equipment for inventory display
             equipment = npc_data.get('equipment', [])
@@ -2978,6 +2997,7 @@ def handle_party_data_request(data=None):
                 if os.path.exists(player_file):
                     player_data = safe_read_json(player_file)
                     if player_data:
+                        player_data = _effective_character_for_ui(player_data)
                         # Extract spell data organized by level
                         spells_by_level = {}
                         spellcasting = player_data.get('spellcasting', {})
@@ -3059,6 +3079,7 @@ def handle_party_data_request(data=None):
                     if os.path.exists(npc_file):
                         npc_data = safe_read_json(npc_file)
                         if npc_data:
+                            npc_data = _effective_character_for_ui(npc_data)
                             # Extract spell data organized by level
                             spells_by_level = {}
                             spellcasting = npc_data.get('spellcasting', {})
@@ -3178,6 +3199,7 @@ def handle_party_data_request(data=None):
                                             if os.path.exists(npc_file):
                                                 npc_data = safe_read_json(npc_file)
                                                 if npc_data:
+                                                    npc_data = _effective_character_for_ui(npc_data)
                                                     npc_data_dict['currentHp'] = npc_data.get('hitPoints', npc_data.get('currentHp', 0))
                                                     npc_data_dict['maxHp'] = npc_data.get('maxHitPoints', npc_data.get('maxHp', 0))
                                     except:
@@ -3200,6 +3222,7 @@ def _overlay_authoritative_character_state(combatant_data, character_data):
     projected = dict(combatant_data or {})
     if not isinstance(character_data, dict):
         return projected
+    character_data = _effective_character_for_ui(character_data)
 
     if character_data.get("hitPoints") is not None:
         projected["currentHp"] = character_data["hitPoints"]

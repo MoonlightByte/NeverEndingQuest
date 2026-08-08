@@ -99,6 +99,11 @@ def get_dict(d: Dict[str, Any], *keys) -> Dict[str, Any]:
     return {}
 
 def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> str:
+    try:
+        from core.effects.effective import effective_sheet
+        character = effective_sheet(character)
+    except Exception:
+        pass
     # Basic header
     name = character.get('name') or 'Unknown'
     lvl  = character.get('level') or 1
@@ -280,6 +285,18 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     ideals = character.get('ideals') or ''
     bonds  = character.get('bonds') or ''
     flaws  = character.get('flaws') or ''
+    temporary_effects = []
+    for effect in character.get('temporaryEffects', []) or []:
+        if not isinstance(effect, dict) or not effect.get('name'):
+            continue
+        duration = effect.get('duration')
+        if effect.get('roundsRemaining') is not None:
+            duration = f"{effect['roundsRemaining']}r"
+        elif effect.get('expiration'):
+            duration = f"until:{effect['expiration']}"
+        temporary_effects.append(
+            f"{effect['name']}({duration})" if duration else str(effect['name'])
+        )
 
     out = []
     # LVL removed - already in DM Note party stats
@@ -290,6 +307,8 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     out.append(f"PROF={{{prof_out}}};")
     out.append(f"VULN={vuln}; RES={res_out}; IMM=; COND_IMM={cimm_out};")
     out.append(f"CLASSFEAT={classfeat_out};")
+    if temporary_effects:
+        out.append(f"TEMP_FX=[{','.join(temporary_effects)}];")
     out.append(f"EQUIP={equip_out};")
     out.append(f"ATK={atk_out};")
     out.append(f"SPELLCAST={spellcast_out};")

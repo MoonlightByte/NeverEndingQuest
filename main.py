@@ -111,7 +111,12 @@ from core.managers.combat_manager import run_combat_simulation
 from updates.plot_update import update_plot
 from utils.player_stats import get_player_stat
 from updates.update_world_time import update_world_time
-from core.ai.conversation_utils import update_conversation_history, update_character_data
+from core.ai.conversation_utils import (
+    _effects_runtime_view,
+    _format_temporary_effects,
+    update_conversation_history,
+    update_character_data,
+)
 from updates.update_character_info import update_character_info
 from core.managers.level_up_manager import LevelUpSession # Add this line
 from core.ai.incremental_compression import IncrementalLocationCompressor
@@ -4991,6 +4996,57 @@ def main_game_loop():
     path_manager = ModulePathManager(module_name)
     debug(f"INITIALIZATION: Path manager initialized for module: '{module_name}'", category="module_management")
 
+    # Convert legacy effect bookkeeping once, before combat resume or any new
+    # model context is built. Active combat is a deliberate safe-boundary
+    # deferral; a partially applied journal must recover before play continues.
+    try:
+        from core.managers.effects_migration import run_effects_migration
+
+        effects_migration = run_effects_migration(create_backup=True)
+        if effects_migration.get("status") == "migrated":
+            print(
+                "[SYSTEM] Temporary effects were upgraded safely. "
+                "A pre-conversion save was created automatically."
+            )
+            debug(
+                f"EFFECTS: Effects V2 migration completed: {effects_migration}",
+                category="effects_tracking",
+            )
+        elif effects_migration.get("status") == "blocked":
+            warning(
+                f"EFFECTS: Automatic conversion was refused safely: {effects_migration}",
+                category="effects_tracking",
+            )
+            print(
+                "[SYSTEM] Temporary-effect conversion needs review. "
+                "The campaign remains on its legacy effect handling for this session."
+            )
+    except Exception as effects_migration_exc:
+        error(
+            "FAILURE: Effects conversion/recovery did not reach a safe boundary",
+            exception=effects_migration_exc,
+            category="effects_tracking",
+        )
+        backup_folder = None
+        try:
+            from core.managers.effects_state import load_effects_state
+
+            backup_folder = (
+                (load_effects_state().get("migration") or {}).get("backupFolder")
+            )
+        except Exception:
+            pass
+        recovery = (
+            f" Restore save '{backup_folder}' before retrying."
+            if backup_folder
+            else " Retry startup; if it repeats, restore the automatic pre-conversion save."
+        )
+        print(
+            "[SYSTEM] Startup stopped because temporary-effect conversion "
+            "could not be recovered safely." + recovery
+        )
+        return
+
     # Reload global location_graph to ensure it's current for the active module
     global location_graph
     print("DEBUG: [LocationGraph] Reloading location graph for current module...")
@@ -5335,14 +5391,39 @@ def main_game_loop():
         # conversation_history = check_and_process_module_transitions(conversation_history, party_tracker_data)
         save_conversation_history(conversation_history)
     
-        # Check for expired temporary effects
+        # Retry a safe-boundary migration deferred by active combat, then run
+        # deterministic expiry and exactly-once notification delivery.
         try:
-            from updates.process_effect_expirations import process_all_effect_expirations
+            from core.managers.effects_migration import run_effects_migration
+            from core.managers.effects_runtime import (
+                acknowledge_effect_notifications,
+                process_effect_lifecycle,
+            )
+            from core.managers.effects_state import campaign_effects_migrated
+
             debug("EFFECTS: Checking for expired effects", category="effects_tracking")
-            process_all_effect_expirations()
+            if not campaign_effects_migrated():
+                run_effects_migration(create_backup=True)
+            if campaign_effects_migrated():
+                acknowledge_effect_notifications(conversation_history)
+                effect_notice = process_effect_lifecycle(conversation_history)
+                if effect_notice:
+                    conversation_history.append(effect_notice)
+                    save_conversation_history(
+                        conversation_history,
+                        strict=True,
+                        allow_compression=False,
+                    )
+                    acknowledge_effect_notifications(conversation_history)
+            else:
+                from updates.process_effect_expirations import process_all_effect_expirations
+
+                process_all_effect_expirations()
         except Exception as e:
-            debug(f"EFFECTS: Failed to process effect expirations: {str(e)}", category="effects_tracking")
-            # Don't break the game if effects processing fails
+            warning(
+                f"EFFECTS: Expiration processing failed safely: {str(e)}",
+                category="effects_tracking",
+            )
 
 
         # Set status to ready before accepting input
@@ -5372,6 +5453,8 @@ def main_game_loop():
         player_name_normalized = normalize_character_name(player_name_actual)
         player_data_file = path_manager.get_character_path(player_name_normalized)
         player_data_current = load_json_file(player_data_file)
+        if player_data_current:
+            player_data_current = _effects_runtime_view(player_data_current)
     
         # Display the prompt with the (now correct) stats.
         if player_data_current:
@@ -5429,6 +5512,7 @@ def main_game_loop():
             member_file_path = path_manager.get_character_path(member_name_iter)
             member_data_iter = load_json_file(member_file_path)
             if member_data_iter:
+                member_data_iter = _effects_runtime_view(member_data_iter)
                 stats = {
                     "name": member_name_iter,  # Keep original case to match file names
                     "display_name": member_name_iter.capitalize(),  # For display purposes
@@ -5448,6 +5532,7 @@ def main_game_loop():
                 npc_data_iter = load_json_file(npc_data_file)
                 debug(f"FILE_OP: NPC data loaded: {npc_data_iter is not None}", category="npc_management")
                 if npc_data_iter:
+                    npc_data_iter = _effects_runtime_view(npc_data_iter)
                     stats = {
                         "name": npc_info_iter["name"],
                         "display_name": npc_info_iter["name"].capitalize(),  # For display purposes
@@ -5485,6 +5570,7 @@ def main_game_loop():
                 else:
                     member_data_for_note = load_json_file(path_manager.get_character_path(stats_item['name']))
                 if member_data_for_note:
+                    member_data_for_note = _effects_runtime_view(member_data_for_note)
                     abilities = member_data_for_note.get("abilities", {})
                     ability_str = f"STR:{abilities.get('strength', 'N/A')} DEX:{abilities.get('dexterity', 'N/A')} CON:{abilities.get('constitution', 'N/A')} INT:{abilities.get('intelligence', 'N/A')} WIS:{abilities.get('wisdom', 'N/A')} CHA:{abilities.get('charisma', 'N/A')}"
                     next_level_xp_note = member_data_for_note.get("exp_required_for_next_level", "N/A")
@@ -5518,7 +5604,8 @@ def main_game_loop():
                     if cp: currency_parts.append(f"{cp}CP")
                     currency_str = f", Currency: {' '.join(currency_parts)}" if currency_parts else ", Currency: 0GP"
 
-                    party_stats_formatted.append(f"{display_name}: Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}")
+                    effects_str = _format_temporary_effects(member_data_for_note)
+                    party_stats_formatted.append(f"{display_name}: Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
 
             party_stats_str = "; ".join(party_stats_formatted)
             party_stats_str += ". (These values reflect the state before the player's current action.)"
@@ -5827,6 +5914,7 @@ def main_game_loop():
             # Add common instructions
             dm_note += (
                 "updateCharacterInfo for player and NPC character changes (inventory, stats, abilities), "
+                "removeEffect only to deliberately end or dispel an active effect (durations expire automatically), "
                 "updateTime for time passage, "
                 "updatePlot for story progression, discovers, and new information, "
                 "updatePartyNPCs for party composition changes to the party tracker, "

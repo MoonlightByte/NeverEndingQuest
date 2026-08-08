@@ -209,6 +209,7 @@ class SaveGameManager:
             "modules/campaign.json",
             "modules/world_registry.json",
             "modules/effects_tracker.json",
+            "modules/effects_state.json",
             "modules/default/effects_tracker.json",
         ])
         
@@ -730,6 +731,21 @@ class SaveGameManager:
 
             backup_complete = True
             restore_mutation_started = True
+
+            # A pre-V2 save intentionally has no effects_state.json.  Remove
+            # the newer live stamp before copying so startup re-detects and
+            # converts that restored timeline.  The rollback backup above
+            # restores the stamp if any later restore step fails.
+            saved_effects_state = os.path.join(
+                save_path,
+                "modules",
+                "effects_state.json",
+            )
+            if not os.path.isfile(saved_effects_state):
+                try:
+                    os.remove("modules/effects_state.json")
+                except FileNotFoundError:
+                    pass
             
             # IMPORTANT: Clean directories that need to be fully replaced
             # This prevents orphaned files from remaining after restore

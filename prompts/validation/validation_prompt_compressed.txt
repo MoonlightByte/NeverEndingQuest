@@ -37,6 +37,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 
 @ACTIONS={
   updateCharacterInfo: stats/inventory/condition changes on EXISTING chars (NOT for checking/reporting current state)
+  removeEffect: deliberately end/dispel one exact active temporary effect; automatic expiry needs no action
   updateTime: activities >=5min
   createEncounter: initialize combat (NOT for traps unless monsters)
   updateEncounter: modify active encounter state
@@ -160,6 +161,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 
 @ACTION_PARAMS={
   updateCharacterInfo: {"characterName":str,"changes":str} #SINGLE name only. Multiple chars = multiple actions in array
+  removeEffect: {"characterName":str,"effectId":str,"effectName":str,"reason":str} #requires effectId or effectName
   updateTime: {"timeEstimate":int} #integer only, not string
   updatePlot: {"plotPointId":str,"newStatus":str,"plotImpact":str}
   updatePartyNPCs: {"operation":str,"npc":obj} #npc is object: {"name":str,"level":str,"class":str}

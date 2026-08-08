@@ -43,6 +43,7 @@ class DMResponseValidator:
     def __init__(self):
         self.valid_actions = [
             "updateCharacterInfo",
+            "removeEffect",
             "transitionLocation",
             "createEncounter",
             "updateEncounter",
@@ -196,6 +197,7 @@ class DMResponseValidator:
         # Define required parameters for each action type
         required_params = {
             "updateCharacterInfo": ["characterName", "changes"],
+            "removeEffect": ["characterName"],
             "transitionLocation": ["newLocation"],
             "updatePlot": ["plotPointId", "newStatus"],
             "updateTime": ["timeEstimate"],
@@ -230,6 +232,12 @@ class DMResponseValidator:
                     except json.JSONDecodeError:
                         self.log_validation(f"Action {index} changes JSON", False, "Invalid JSON")
                         errors.append(f"Action {index}: 'changes' contains invalid JSON")
+
+        elif action_type == "removeEffect":
+            if not params.get("effectId") and not params.get("effectName"):
+                errors.append(
+                    f"Action {index} (removeEffect): requires effectId or effectName"
+                )
         
         elif action_type == "transitionLocation":
             if "newLocation" in params:

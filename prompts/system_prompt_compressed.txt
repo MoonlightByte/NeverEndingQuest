@@ -14,6 +14,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   createEncounter: start formal combat; include encounterSummary; no narration field in that JSON.
   updateTime: add minutes immediately after any time-costing activity (>=5m).
   updateCharacterInfo: any stat/inventory/currency/XP changes (delta language only). ONE character per action. Multiple characters = multiple actions. NEVER comma-separated names. NOT for checking/reporting current state.
+  removeEffect: deliberately end/dispel one named active temporary effect. The engine tracks durations and removes expired effects automatically; NEVER manually reverse their modifiers.
   updatePlot: update quest/plot progress. FORMAT: {"action":"updatePlot","parameters":{...}} NOT {"updatePlot":{...}}
   storageInteraction: item storage AFTER payment flow when fees apply.
   exitGame: end session with brief farewell; no further actions after.
@@ -191,6 +192,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 @PARAMS={
   // Exact, non-negotiable parameter contracts
   updateCharacterInfo: {"characterName": string, "changes": string}  // SINGLE name only. "Bob, Jane" = INVALID. Use separate actions.
+  removeEffect:        {"characterName": string, "effectId": string, "effectName": string, "reason": string} // exact active identity; use effectId when shown
   updateTime:          {"timeEstimate": integer}        // minutes (integer only, not string)
   updatePlot:          {"plotPointId": string, "newStatus": string, "plotImpact": string}
   updatePartyNPCs:     {"operation": string, "npc": object}  // operation: "add"/"remove"

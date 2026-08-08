@@ -64,7 +64,7 @@ def _relevant_sheet(sheet):
         return {}
     keys = (
         "name", "class", "level", "hitPoints", "maxHitPoints", "armorClass",
-        "status", "condition_affected", "abilityScores", "proficiencyBonus",
+        "status", "condition_affected", "abilities", "abilityScores", "proficiencyBonus",
         "savingThrows", "attacksAndSpellcasting", "actions", "specialAbilities",
         "spellcasting", "classFeatures", "ammunition", "temporaryEffects",
     )
@@ -110,7 +110,8 @@ actions. An adjudicated intent may contain:
 - resources: [{owner, kind, name, delta}], using exact sheet names; kind is
   ammunition, spellSlot, featureUse, or item
 - effects: [{op:'add', owner, effect:{name,description,roundsRemaining,
-  concentration,tickTrigger,...}}] or
+  concentration,tickTrigger,modifiers:[{stat,value}],conditions:[],
+  incapacitates:false,onApply:[],onRemove:[]}}] or
   [{op:'remove', owner, name/effectId}]. Use owner with the exact character
   sheet name for players/allied NPCs. Use combatantId instead of owner for an
   enemy/encounter creature so the effect is stored on that unique creature.
@@ -126,6 +127,12 @@ actions. An adjudicated intent may contain:
   applyOn belongs on the effect OP, not inside effect. Do not add a separate
   concentration marker to the caster; the target effect records concentration.
   Use tickTrigger='end_of_round' for effects measured in combat rounds.
+  For encounter-long effects omit roundsRemaining. Numeric bonuses must be
+  declared in modifiers; never bake them into HP, AC, or abilities. Current HP
+  is a resource: Aid-like max/current HP uses a maxHitPoints modifier plus
+  an onApply hitPoints delta and an empty onRemove (code clamps to the new max
+  when it ends). Set incapacitates=true only when
+  the target cannot act. Code owns duration conversion, arithmetic, and expiry.
   Code stamps concentration source/group IDs from actorId and enforces one
   concentration spell (which may affect multiple targets) per caster.
 

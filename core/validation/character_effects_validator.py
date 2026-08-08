@@ -86,6 +86,24 @@ class AICharacterEffectsValidator:
             AI-corrected character data with proper effect categorization
         """
         self.corrections_made = []
+
+        # Effects V2 owns categorization and expiry through its classifier and
+        # deterministic lifecycle.  T050 remains available only for unmigrated
+        # recovery mode; it must never replace engine-authored effect objects.
+        try:
+            from core.managers.effects_state import campaign_effects_migrated
+
+            if campaign_effects_migrated():
+                corrected_data = copy.deepcopy(character_data)
+                corrected_data = self.calculate_equipment_effects(corrected_data)
+                corrected_data = self.initialize_class_feature_usage(corrected_data)
+                return corrected_data
+        except Exception as exc:
+            self.logger.warning(
+                "Could not determine effects pipeline mode; preserving effects: %s",
+                exc,
+            )
+            return copy.deepcopy(character_data)
         
         # Get current game time from party tracker
         game_time = self.get_current_game_time()
@@ -502,7 +520,12 @@ Provide the corrected arrays following the response format."""
 
                 # Commit only after the complete response has passed validation.
                 corrected_data = copy.deepcopy(original_data)
-                corrected_data['temporaryEffects'] = parsed_response['temporaryEffects']
+                from core.effects.model import preserve_engine_effects
+
+                corrected_data['temporaryEffects'] = preserve_engine_effects(
+                    original_data.get('temporaryEffects', []),
+                    parsed_response['temporaryEffects'],
+                )
                 corrected_data['injuries'] = parsed_response['injuries']
 
                 for removed in parsed_response['removed_effects']:

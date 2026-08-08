@@ -1824,6 +1824,28 @@ def _complete_agentic_combat(
     """Finish agentic combat as independently resumable, idempotent steps."""
     import copy
 
+    try:
+        from core.effects.clock import scalar_from_calendar
+        from core.managers.combat_transaction import exit_effect_clock
+
+        # Always close the agentic combat clock. This also covers a legacy
+        # campaign whose V2 migration was deliberately deferred because this
+        # encounter was already active when the upgraded game first started.
+        # Any surviving engine-created round effect reaches world time before
+        # the clean-boundary migration runs on the next main-loop iteration.
+        exit_effect_clock(
+            encounter_path,
+            character_paths,
+            scalar_from_calendar(
+                (party_tracker_data.get("worldConditions") or {})
+            ),
+        )
+        encounter_data = safe_json_load(encounter_path) or encounter_data
+    except Exception as exc:
+        raise RuntimeError(
+            "Combat effects could not reach their recoverable exit boundary"
+        ) from exc
+
     xp_narrative, xp_awarded = calculate_xp()
     encounter_data = apply_combat_rewards(
         encounter_path,

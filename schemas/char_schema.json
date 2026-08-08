@@ -226,9 +226,65 @@
           "saveDC": {"type": "integer", "minimum": 0},
           "tickTrigger": {"type": "string", "enum": ["start_of_turn", "end_of_turn", "end_of_round"]},
           "sourceEncounterId": {"type": "string"}
+          ,"authoredBy": {"type": "string", "enum": ["engine", "classifier", "legacy"]}
+          ,"durationKind": {"type": "string", "enum": ["rounds", "minutes", "hours", "days", "until_rest", "encounter", "permanent", "special"]}
+          ,"restKind": {"type": "string", "enum": ["short_rest", "long_rest"]}
+          ,"incapacitates": {"type": "boolean"}
+          ,"conditions": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+          ,"modifiers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "stat": {"type": "string"},
+                "value": {"type": "integer"},
+                "affectsMax": {"type": "boolean"}
+              },
+              "required": ["stat", "value"]
+            }
+          }
+          ,"created": {"type": "object"}
+          ,"onApply": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "stat": {"type": "string", "enum": ["hitPoints"]},
+                "delta": {"type": "integer"},
+                "minimum": {"type": "integer"},
+                "maximum": {"type": "integer"}
+              },
+              "required": ["stat", "delta"]
+            }
+          }
+          ,"onRemove": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "stat": {"type": "string", "enum": ["hitPoints"]},
+                "delta": {"type": "integer"},
+                "minimum": {"type": "integer"},
+                "maximum": {"type": "integer"}
+              },
+              "required": ["stat", "delta"]
+            }
+          }
         },
         "required": ["name", "description"]
       }
+    },
+    "effectsMigration": {
+      "type": "object",
+      "properties": {
+        "version": {"type": "integer", "minimum": 2},
+        "migrationId": {"type": "string"}
+      },
+      "required": ["version", "migrationId"],
+      "additionalProperties": false
     },
     "injuries": {
       "type": "array",

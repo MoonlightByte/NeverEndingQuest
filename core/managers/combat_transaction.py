@@ -19,6 +19,8 @@ from core.combat import (
     ensure_agentic_roll_reserve,
     resolution_from_event,
 )
+from core.effects.lifecycle import enter_combat_effect, exit_combat_effect
+from core.effects.effective import effective_sheet
 from core.managers.combat_state import (
     CombatStateConflict,
     begin_turn,
@@ -69,6 +71,26 @@ def _load_object(path, label):
 def _write_object(path, value, label):
     if not safe_write_json(path, value):
         raise CombatTransactionError("Could not persist %s to %s" % (label, path))
+
+
+def _project_character_effect_stats(encounter, name, character):
+    """Refresh the encounter's character cache from an effective sheet."""
+    rendered = effective_sheet(character)
+    for creature in encounter.get("creatures", []) or []:
+        if (
+            not isinstance(creature, dict)
+            or creature.get("type") not in ("player", "npc")
+            or creature.get("name") != name
+        ):
+            continue
+        for sheet_field, encounter_field in (
+            ("hitPoints", "currentHitPoints"),
+            ("maxHitPoints", "maxHitPoints"),
+            ("armorClass", "armorClass"),
+        ):
+            value = rendered.get(sheet_field)
+            if isinstance(value, (int, float)):
+                creature[encounter_field] = int(value)
 
 
 def claim_turn(encounter_path, actor_ids, turn_id=None, timeout_seconds=5.0):
@@ -124,6 +146,77 @@ def inspect_recovery(encounter_path):
     """Read the durable recovery decision without modifying the encounter."""
     encounter = _load_object(encounter_path, "encounter")
     return recovery_action(encounter)
+
+
+def enter_effect_clock(
+    encounter_path,
+    character_paths,
+    now_scalar,
+    timeout_seconds=5.0,
+):
+    """Idempotently convert world deadlines to combat rounds before a turn."""
+    with path_transaction_lock(
+        encounter_path,
+        suffix=".combat.lock",
+        timeout_seconds=timeout_seconds,
+    ) as acquired:
+        if acquired is None:
+            raise CombatTransactionError("Timed out acquiring the combat lease")
+        encounter = _load_object(encounter_path, "encounter")
+        state = ensure_combat_state(encounter)
+        if state.get("effectsClockEntered"):
+            return
+        for name, path in (character_paths or {}).items():
+            character = _load_object(path, "character %s" % name)
+            character["temporaryEffects"] = [
+                enter_combat_effect(effect, now_scalar)
+                if isinstance(effect, dict)
+                else effect
+                for effect in character.get("temporaryEffects", []) or []
+            ]
+            _write_object(path, character, "combat effect clock for %s" % name)
+            _project_character_effect_stats(encounter, name, character)
+        state["effectsClockEntered"] = True
+        state["effectsClockExited"] = False
+        state["effectsClockScalar"] = int(now_scalar)
+        _write_object(encounter_path, encounter, "combat effect-clock receipt")
+
+
+def exit_effect_clock(
+    encounter_path,
+    character_paths,
+    now_scalar,
+    timeout_seconds=5.0,
+):
+    """Idempotently return surviving round effects to the world clock."""
+    with path_transaction_lock(
+        encounter_path,
+        suffix=".combat.lock",
+        timeout_seconds=timeout_seconds,
+    ) as acquired:
+        if acquired is None:
+            raise CombatTransactionError("Timed out acquiring the combat lease")
+        encounter = _load_object(encounter_path, "encounter")
+        state = ensure_combat_state(encounter)
+        if state.get("effectsClockExited"):
+            return
+        for name, path in (character_paths or {}).items():
+            character = _load_object(path, "character %s" % name)
+            surviving = []
+            for effect in character.get("temporaryEffects", []) or []:
+                converted = (
+                    exit_combat_effect(effect, now_scalar)
+                    if isinstance(effect, dict)
+                    else effect
+                )
+                if converted is not None:
+                    surviving.append(converted)
+            character["temporaryEffects"] = surviving
+            _write_object(path, character, "world effect clock for %s" % name)
+            _project_character_effect_stats(encounter, name, character)
+        state["effectsClockExited"] = True
+        state["effectsClockExitScalar"] = int(now_scalar)
+        _write_object(encounter_path, encounter, "world effect-clock receipt")
 
 
 def apply_staged_turn(

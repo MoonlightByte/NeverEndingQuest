@@ -145,6 +145,7 @@ ACTION_EXIT_GAME = "exitGame"
 ACTION_TRANSITION_LOCATION = "transitionLocation"
 ACTION_LEVEL_UP = "levelUp"
 ACTION_UPDATE_CHARACTER_INFO = "updateCharacterInfo"
+ACTION_REMOVE_EFFECT = "removeEffect"
 ACTION_UPDATE_PARTY_NPCS = "updatePartyNPCs"
 ACTION_CREATE_NEW_MODULE = "createNewModule"
 ACTION_ESTABLISH_HUB = "establishHub"
@@ -2071,32 +2072,37 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         if character_name:
             debug(f"STATE_CHANGE: Updating character info for {character_name}", category="character_updates")
             try:
-                debug(f"STATE_CHANGE: Calling update_character_info for {character_name}", category="character_updates")
-                success = update_character_info(character_name, changes)
-                debug(f"STATE_CHANGE: update_character_info returned {success}", category="character_updates")
+                from core.managers.effects_runtime import update_character_with_effects
+
+                debug(f"STATE_CHANGE: Calling effects-aware character update for {character_name}", category="character_updates")
+                success = update_character_with_effects(
+                    character_name,
+                    changes,
+                    party_tracker_data,
+                )
+                debug(f"STATE_CHANGE: effects-aware character update returned {success}", category="character_updates")
                 if success:
                     info("SUCCESS: Character info updated successfully", category="character_updates")
                     needs_conversation_history_update = True
-                    
-                    # Track temporary effects in parallel
-                    try:
-                        from updates.update_character_effects import update_character_effects
-                        debug(f"EFFECTS: Tracking potential effect for {character_name}: {changes}", category="effects_tracking")
-                        effects_success = update_character_effects(character_name, changes)
-                        if effects_success:
-                            debug(f"EFFECTS: Successfully tracked effect", category="effects_tracking")
-                        else:
-                            debug(f"EFFECTS: Effect not tracked (not applicable or failed)", category="effects_tracking")
-                    except Exception as e:
-                        warning(f"EFFECTS: Failed to track effect: {str(e)}", category="effects_tracking")
-                        # Don't break the game if effects tracking fails
                 else:
                     error(f"FAILURE: Failed to update character info for {character_name}", category="character_updates")
                     print(f"ERROR: Failed to update character info for {character_name}")
+                    return create_return(
+                        status="error",
+                        response_data={
+                            "error_message": "Character update failed safely; no partial effect was applied."
+                        },
+                    )
             except Exception as e:
                 error(f"FAILURE: Exception in character update", exception=e, category="character_updates")
                 # Use print with separate arguments to avoid format string interpretation
                 print("ERROR: Failed to update character info:", str(e))
+                return create_return(
+                    status="error",
+                    response_data={
+                        "error_message": "Character effect classification or update failed safely."
+                    },
+                )
             finally:
                 # Always reset status after character update completes
                 try:
@@ -2108,6 +2114,49 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         else:
             print("ERROR: No character name provided and no player found in party tracker.")
             # Reset status even if no character was found
+            try:
+                from core.managers.status_manager import status_ready
+                status_ready()
+            except Exception:
+                pass
+
+    elif action_type == ACTION_REMOVE_EFFECT:
+        status_updating_character()
+        try:
+            from core.managers.effects_state import campaign_effects_migrated
+
+            if not campaign_effects_migrated():
+                return create_return(
+                    status="error",
+                    response_data={
+                        "error_message": (
+                            "removeEffect is available after the campaign's "
+                            "temporary-effect conversion completes."
+                        )
+                    },
+                )
+            from core.managers.effects_runtime import remove_effect
+
+            character_name = parameters.get("characterName")
+            if not character_name:
+                return create_return(
+                    status="error",
+                    response_data={"error_message": "removeEffect requires characterName."},
+                )
+            remove_effect(
+                character_name,
+                effect_id=parameters.get("effectId"),
+                name=parameters.get("effectName"),
+                reason=parameters.get("reason") or "removed",
+            )
+            return create_return(needs_update=True)
+        except Exception as exc:
+            error("FAILURE: removeEffect failed safely", exception=exc, category="effects_tracking")
+            return create_return(
+                status="error",
+                response_data={"error_message": "The requested effect could not be removed safely."},
+            )
+        finally:
             try:
                 from core.managers.status_manager import status_ready
                 status_ready()

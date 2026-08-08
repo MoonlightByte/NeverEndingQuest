@@ -615,6 +615,8 @@ When monster quantities are given as a range (e.g., "2-3" or "1d4"):
   - INCORRECT: "Guidance" (instant-use cantrip), "Insight from documents", "Knowledge of location", "Understanding gained"
   - If it's not a spell, blessing, curse, or magical effect with an ongoing duration, it does NOT belong in temporaryEffects
   - Guidance cantrip provides immediate benefit and should NOT be tracked as a temporary effect
+  - The engine automatically tracks temporary-effect durations and removes expired effects. Never manually reverse their stat changes.
+  - To deliberately end, dispel, or break concentration on an active effect, use `removeEffect` with the exact character and active effect identity: `{"action":"removeEffect","parameters":{"characterName":"...","effectId":"...","effectName":"...","reason":"..."}}`.
 
 ### Character Data Management
 

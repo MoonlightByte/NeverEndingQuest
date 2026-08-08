@@ -16,6 +16,7 @@ from core.managers.combat_state import combatant_by_id, ensure_combat_state
 from core.managers.combat_transaction import (
     apply_staged_turn,
     claim_turn,
+    enter_effect_clock,
     inspect_recovery,
     stage_events,
 )
@@ -98,6 +99,23 @@ def execute_agentic_turn(
     if (encounter.get("combatState") or {}).get("pipelineMode") != "agentic":
         raise CombatTurnPaused("Cannot run the agentic pipeline on a legacy combat encounter")
 
+    try:
+        from core.effects.clock import scalar_from_calendar
+        from core.managers.effects_state import campaign_effects_migrated
+
+        if campaign_effects_migrated():
+            party = safe_json_load("party_tracker.json") or {}
+            enter_effect_clock(
+                encounter_path,
+                character_paths,
+                scalar_from_calendar(party.get("worldConditions") or {}),
+            )
+            encounter = safe_json_load(encounter_path)
+    except Exception as exc:
+        raise CombatTurnPaused(
+            "Could not establish the recoverable combat effect clock: %s" % exc
+        ) from exc
+
     recovery = inspect_recovery(encounter_path)
     if recovery["action"] == "apply_staged_events":
         pending = recovery["pendingTurn"]
@@ -128,6 +146,20 @@ def execute_agentic_turn(
         encounter, pending = claim_turn(encounter_path, actor_ids)
 
     characters = _load_characters(character_paths, context_sheets)
+    provider_characters = characters
+    try:
+        from core.effects.effective import effective_sheet
+        from core.managers.effects_state import campaign_effects_migrated
+
+        if campaign_effects_migrated():
+            provider_characters = {
+                name: effective_sheet(sheet)
+                if isinstance(sheet, dict) and name in (character_paths or {})
+                else deepcopy(sheet)
+                for name, sheet in characters.items()
+            }
+    except Exception:
+        provider_characters = characters
     correction = None
     events = None
     roll_consumption = None
@@ -136,7 +168,7 @@ def execute_agentic_turn(
         try:
             batch = intent_provider(
                 encounter,
-                characters,
+                provider_characters,
                 pending,
                 player_input,
                 spell_references=spell_references,

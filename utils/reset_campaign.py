@@ -81,7 +81,7 @@ def create_backup():
         "debug_npc_update.json", "debug_player_update.json", "debug_second_model.json",
         "npc_update_debug_log.json", "npc_update_detailed_log.json", "prompt_validation.json",
         "training_data.json", "debug.txt", "claude.txt",
-        "modules/effects_tracker.json", "modules/default/effects_tracker.json"
+        "modules/effects_tracker.json", "modules/effects_state.json", "modules/default/effects_tracker.json"
     ]
     
     for file in root_files:
@@ -252,7 +252,11 @@ def _reset_global_state_locked(*, lifecycle=None, reset_prepared=False):
         print("  ✓ Removed world_registry.json (will be created fresh)")
     
     # Delete effects_tracker.json files
-    effects_tracker_files = ["modules/effects_tracker.json", "modules/default/effects_tracker.json"]
+    effects_tracker_files = [
+        "modules/effects_tracker.json",
+        "modules/effects_state.json",
+        "modules/default/effects_tracker.json",
+    ]
     for file in effects_tracker_files:
         if os.path.exists(file):
             os.remove(file)
