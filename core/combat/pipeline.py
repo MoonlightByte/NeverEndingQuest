@@ -21,7 +21,11 @@ from core.combat.resolver import (
     resolve_intent,
     validate_intent,
 )
-from core.managers.combat_state import combatant_by_id, is_turn_eligible
+from core.managers.combat_state import (
+    combatant_by_id,
+    is_combatant_targetable,
+    is_turn_eligible,
+)
 
 
 class CombatIntentError(ValueError):
@@ -60,6 +64,168 @@ def _intent_for_actor(intents, index, actor_id):
     return deepcopy(intent)
 
 
+def _recover_stale_known_target(original_encounter, current_encounter, actor, intent):
+    """Repair only a target invalidated by an earlier event in this batch.
+
+    The provider made its whole ordered proposal from the original snapshot.
+    A later non-player attack can therefore name a target that was legal when
+    proposed but was defeated by an earlier resolved intent. If exactly one
+    opposing target remains, retargeting is unambiguous. Otherwise Defend is
+    the conservative no-call fallback. Pre-existing bad targets and player
+    actions still reject normally.
+    """
+    if (
+        actor.get("type") == "player"
+        or intent.get("mode", "known") != "known"
+        or intent.get("action") != "attack"
+        or not intent.get("targetId")
+    ):
+        return intent, None
+    target_id = intent["targetId"]
+    original_target = combatant_by_id(original_encounter, target_id)
+    current_target = combatant_by_id(current_encounter, target_id)
+    if (
+        not is_combatant_targetable(original_target)
+        or is_combatant_targetable(current_target)
+        or original_target.get("faction") == actor.get("faction")
+    ):
+        return intent, None
+
+    legal_targets = [
+        creature.get("combatantId")
+        for creature in current_encounter.get("creatures", [])
+        if is_combatant_targetable(creature)
+        and creature.get("faction") != actor.get("faction")
+    ]
+    normalization = {
+        "kind": "staleBatchTargetFallback",
+        "actorId": actor.get("combatantId"),
+        "fromTargetId": target_id,
+    }
+    if len(legal_targets) == 1:
+        recovered = deepcopy(intent)
+        recovered["targetId"] = legal_targets[0]
+        normalization["action"] = "retarget"
+        normalization["toTargetId"] = legal_targets[0]
+        return recovered, normalization
+
+    recovered = {
+        "actorId": actor.get("combatantId"),
+        "mode": "known",
+        "action": "defend",
+        "description": (
+            "The planned target fell earlier in this turn window, so the "
+            "combatant takes a defensive stance."
+        ),
+    }
+    normalization["action"] = "defend"
+    normalization["remainingLegalTargets"] = len(legal_targets)
+    return recovered, normalization
+
+
+def _record_character_state_after(event, before, after):
+    """Attach absolute post-event character fields needed for crash replay.
+
+    Character files are persisted before the encounter receipt. If a process
+    dies between those writes, replay starts with already-updated sheets and
+    an old encounter journal. Effect onApply/onRemove deltas are intentionally
+    idempotent and will not run twice, so the staged event also records the
+    final consumed HP/status values that replay must converge to.
+    """
+    snapshots = event.setdefault("characterStateAfter", {})
+    for name in sorted(set(before or {}).union(after or {})):
+        old_sheet = (before or {}).get(name)
+        new_sheet = (after or {}).get(name)
+        if not isinstance(old_sheet, dict) or not isinstance(new_sheet, dict):
+            continue
+        snapshot = dict(snapshots.get(name) or {})
+        for field in ("hitPoints", "status"):
+            if old_sheet.get(field) != new_sheet.get(field):
+                snapshot[field] = deepcopy(new_sheet.get(field))
+        if snapshot:
+            snapshots[name] = snapshot
+    if not snapshots:
+        event.pop("characterStateAfter", None)
+
+
+def resolve_effect_clock_window(encounter, characters, pending_turn):
+    """Build one provider-free event when no living combatant can act."""
+    if not isinstance(pending_turn, dict) or pending_turn.get("clockOnly") is not True:
+        raise CombatIntentError("A persisted clock-only turn is required")
+    state = encounter.get("combatState") or {}
+    if pending_turn.get("baseRevision") != state.get("revision"):
+        raise CombatIntentError("Effect-clock turn no longer matches combat revision")
+    ticks = plan_effect_ticks(
+        characters,
+        "end_of_round",
+        encounter=encounter,
+        created_in_round=pending_turn.get("round", state.get("round", 1)),
+    )
+    if not ticks:
+        # If every timed effect was created during this same round, the first
+        # boundary must advance without decrementing it. Rejecting that legal
+        # zero-tick boundary would permanently pause a fight immediately after
+        # a control effect landed. With no end-of-round candidate at all, keep
+        # the existing stable pause rather than spinning on an indefinite
+        # incapacitation.
+        future_ticks = plan_effect_ticks(
+            characters,
+            "end_of_round",
+            encounter=encounter,
+        )
+        if not future_ticks:
+            raise CombatIntentError(
+                "All living combatants are incapacitated, but no timed effect can advance"
+            )
+    event = {
+        "eventId": make_event_id(
+            encounter.get("encounterId", "encounter"),
+            pending_turn.get("round", state.get("round", 1)),
+            pending_turn.get("turnId"),
+            0,
+        ),
+        "actorId": "combat-clock",
+        "stateVersion": state.get("revision"),
+        "intent": {"action": "advanceEffectClock"},
+        "outcome": {
+            "kind": "effectClock",
+            "description": (
+                "Every living combatant is temporarily unable to act; "
+                + (
+                    "timed effects advance to the next round."
+                    if ticks
+                    else "the round ends without shortening effects created this round."
+                )
+            ),
+            "targets": [],
+        },
+        "resources": [],
+        "effects": [],
+        "effectTicks": ticks,
+    }
+    resolution = {
+        "event": event,
+        "charDeltas": {},
+        "creatureDeltas": {},
+        "effectOps": [],
+        "violations": [],
+    }
+    next_encounter, next_characters = apply_resolution(
+        encounter,
+        characters,
+        resolution,
+    )
+    _record_character_state_after(event, characters, next_characters)
+    problems = validate_event(event)
+    if problems:
+        raise CombatIntentError(
+            "; ".join(problems),
+            "combat-clock",
+            {"violations": problems},
+        )
+    return [event], next_encounter, next_characters
+
+
 def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_source):
     """Resolve a provider batch sequentially and return staged events.
 
@@ -85,8 +251,61 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
         intent = _intent_for_actor(intents, intent_index, actor_id)
         intent_index += 1
         actor = combatant_by_id(next_encounter, actor_id)
-        if not actor or not is_turn_eligible(actor):
+        if not actor:
             continue
+        if not is_turn_eligible(actor):
+            # A living actor can become incapacitated from an earlier event in
+            # this same ordered batch. Persist an explicit no-mutation event so
+            # staging can prove the claimed initiative position was consumed,
+            # narration can explain the skipped action, and any end-of-round
+            # ticks attach to a durable event. Defeated actors remain omitted.
+            if (
+                is_combatant_targetable(actor)
+                and actor.get("effectIncapacitated") is True
+            ):
+                skipped_event = {
+                    "eventId": make_event_id(
+                        next_encounter.get("encounterId", "encounter"),
+                        pending_turn.get("round", state.get("round", 1)),
+                        pending_turn.get("turnId"),
+                        sequence,
+                    ),
+                    "actorId": actor_id,
+                    "stateVersion": revision,
+                    "intent": {
+                        "action": "skipTurn",
+                        "reason": "effectIncapacitated",
+                    },
+                    "outcome": {
+                        "kind": "skipped",
+                        "description": "%s is incapacitated and cannot act."
+                        % actor.get("name", "The combatant"),
+                        "targets": [],
+                    },
+                    "resources": [],
+                    "effects": [],
+                    "normalizations": [
+                        {
+                            "kind": "actorIncapacitatedEarlierInBatch",
+                            "actorId": actor_id,
+                        }
+                    ],
+                }
+                skipped_problems = validate_event(skipped_event)
+                if skipped_problems:
+                    raise CombatIntentError(
+                        "; ".join(skipped_problems),
+                        actor_id,
+                        {"violations": skipped_problems},
+                    )
+                events.append(skipped_event)
+            continue
+        intent, stale_target_normalization = _recover_stale_known_target(
+            encounter,
+            next_encounter,
+            actor,
+            intent,
+        )
         intent["stateVersion"] = revision
         mode = intent.get("mode", "known")
         if actor.get("type") == "player" and mode != "adjudicated":
@@ -139,6 +358,11 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
         else:
             raise CombatIntentError("Unknown intent mode %r" % mode, actor_id)
 
+        if stale_target_normalization:
+            resolution["event"].setdefault("normalizations", []).append(
+                stale_target_normalization
+            )
+
         if resolution.get("violations"):
             raise CombatIntentError(
                 "; ".join(resolution["violations"]),
@@ -152,11 +376,24 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 actor_id,
                 {"violations": event_problems},
             )
+        before_characters = next_characters
         next_encounter, next_characters = apply_resolution(
             next_encounter,
             next_characters,
             resolution,
         )
+        _record_character_state_after(
+            resolution["event"],
+            before_characters,
+            next_characters,
+        )
+        snapshot_problems = validate_event(resolution.get("event"))
+        if snapshot_problems:
+            raise CombatIntentError(
+                "; ".join(snapshot_problems),
+                actor_id,
+                {"violations": snapshot_problems},
+            )
         events.append(resolution["event"])
 
     if intent_index != len(intents):
@@ -164,14 +401,15 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
 
     state = next_encounter.get("combatState") or {}
     acted_after = set(state.get("actedThisRound") or []).union(
-        pending_turn.get("actorIds") or []
+        pending_turn.get("skippedActorIds") or [],
+        pending_turn.get("actorIds") or [],
     )
-    eligible_after = {
+    targetable_after = {
         creature.get("combatantId")
         for creature in next_encounter.get("creatures", [])
-        if is_turn_eligible(creature)
+        if is_combatant_targetable(creature)
     }
-    if events and eligible_after and eligible_after.issubset(acted_after):
+    if events and targetable_after and targetable_after.issubset(acted_after):
         effect_ticks = plan_effect_ticks(
             next_characters,
             "end_of_round",
@@ -187,9 +425,22 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                     events[-1].get("actorId"),
                     {"violations": tick_problems},
                 )
+            before_ticks = next_characters
             next_characters = apply_effect_ticks(next_characters, effect_ticks)
             next_encounter = apply_encounter_effect_ticks(
                 next_encounter,
                 effect_ticks,
             )
+            _record_character_state_after(
+                events[-1],
+                before_ticks,
+                next_characters,
+            )
+            tick_snapshot_problems = validate_event(events[-1])
+            if tick_snapshot_problems:
+                raise CombatIntentError(
+                    "; ".join(tick_snapshot_problems),
+                    events[-1].get("actorId"),
+                    {"violations": tick_snapshot_problems},
+                )
     return events, next_encounter, next_characters

@@ -64,6 +64,7 @@ import os
 import shutil
 import zipfile
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
@@ -76,6 +77,43 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
 set_script_name(__name__)
+
+# Versioned rules guidance ships with the application. It is never campaign
+# state, and an older saved-game folder must not overwrite a newer installation.
+APPLICATION_OWNED_REFERENCE_FILES = frozenset(
+    (
+        "data/spell_repository.json",
+        "data/srd_common_rules.json",
+    )
+)
+
+
+@contextmanager
+def _active_combat_snapshot_lease(timeout_seconds=30.0):
+    """Keep a save/restore snapshot outside every combat commit window."""
+    party = safe_json_load("party_tracker.json") or {}
+    encounter_id = (party.get("worldConditions") or {}).get(
+        "activeCombatEncounter"
+    )
+    encounter_path = (
+        os.path.join("modules", "encounters", "encounter_%s.json" % encounter_id)
+        if encounter_id
+        else None
+    )
+    if not encounter_path or not os.path.isfile(encounter_path):
+        yield
+        return
+
+    from utils.path_transaction_lock import path_transaction_lock
+
+    with path_transaction_lock(
+        encounter_path,
+        suffix=".combat.lock",
+        timeout_seconds=timeout_seconds,
+    ) as acquired:
+        if acquired is None:
+            raise RuntimeError("Combat is currently committing; retry this operation")
+        yield
 
 class SaveGameManager:
     """Manages save and restore operations for the Dungeon Master system"""
@@ -169,8 +207,8 @@ class SaveGameManager:
             "journal.json",
             "player_storage.json",
             
-            # Critical game data files
-            "data/spell_repository.json",
+            # Installed SRD reference data is application-owned, not campaign
+            # state. Restoring an old save must never downgrade current rules.
             "training_data.json",
             "modules/conversation_history/combat_conversation_history.json",
             
@@ -434,9 +472,11 @@ class SaveGameManager:
                 _party_module_transition_lock,
             )
 
-            # Global lock order: party transition -> module (when needed) ->
-            # campaign. Hold the party lock while draining so no ready intent
-            # can appear between the drain and the snapshot.
+            # Global lock order here is party transition -> active combat ->
+            # module refresh -> campaign. Combat completion itself acquires
+            # combat before module refresh, so this preserves that ordering.
+            # Hold the party lock while draining so no ready intent can appear
+            # between the drain and the snapshot.
             with _party_module_transition_lock():
                 drain_outcome = (
                     CampaignManager().drain_module_completion_intents()
@@ -458,21 +498,22 @@ class SaveGameManager:
                 )
                 from utils.module_refresh_lock import module_refresh_lock
 
-                with module_refresh_lock() as refresh_acquired:
-                    if not refresh_acquired:
-                        return False, "Module refresh is active; retry save"
-                    recover_incomplete_refresh_commit()
-                    recovery = ModuleLifecycleStore("modules").recover()
-                    if recovery.status is RecoveryStatus.INDETERMINATE:
-                        return False, "Module lifecycle recovery is required"
-                    with _campaign_transaction_lock("modules/campaign.json"):
-                        _assert_no_active_campaign_completion(
-                            "modules/campaign.json"
-                        )
-                        return self._create_save_game_locked(
-                            description,
-                            save_mode,
-                        )
+                with _active_combat_snapshot_lease():
+                    with module_refresh_lock() as refresh_acquired:
+                        if not refresh_acquired:
+                            return False, "Module refresh is active; retry save"
+                        recover_incomplete_refresh_commit()
+                        recovery = ModuleLifecycleStore("modules").recover()
+                        if recovery.status is RecoveryStatus.INDETERMINATE:
+                            return False, "Module lifecycle recovery is required"
+                        with _campaign_transaction_lock("modules/campaign.json"):
+                            _assert_no_active_campaign_completion(
+                                "modules/campaign.json"
+                            )
+                            return self._create_save_game_locked(
+                                description,
+                                save_mode,
+                            )
         except Exception as exc:
             error(
                 "FAILURE: Could not establish consistent save boundary",
@@ -626,38 +667,39 @@ class SaveGameManager:
             )
 
             with _party_module_transition_lock():
-                with module_refresh_lock() as refresh_acquired:
-                    if not refresh_acquired:
-                        return False, "Module refresh is active; retry restore"
-                    recover_incomplete_refresh_commit()
-                    lifecycle = ModuleLifecycleStore("modules")
-                    recovery = lifecycle.recover()
-                    if recovery.status is RecoveryStatus.INDETERMINATE:
-                        return False, "Module lifecycle recovery is required"
-                    if any(
-                        not receipt.acknowledged
-                        for receipt in lifecycle.list_publication_receipts()
-                    ):
-                        return (
-                            False,
-                            "A published module message is pending; retry restore after delivery",
-                        )
-                    with _campaign_transaction_lock("modules/campaign.json"):
-                        save_path = os.path.join(
-                            self.get_save_directory(),
-                            save_folder,
-                        )
-                        if not os.path.isdir(save_path):
-                            return False, f"Save game not found: {save_path}"
-                        if not safe_read_json(
-                            os.path.join(save_path, "save_metadata.json")
+                with _active_combat_snapshot_lease():
+                    with module_refresh_lock() as refresh_acquired:
+                        if not refresh_acquired:
+                            return False, "Module refresh is active; retry restore"
+                        recover_incomplete_refresh_commit()
+                        lifecycle = ModuleLifecycleStore("modules")
+                        recovery = lifecycle.recover()
+                        if recovery.status is RecoveryStatus.INDETERMINATE:
+                            return False, "Module lifecycle recovery is required"
+                        if any(
+                            not receipt.acknowledged
+                            for receipt in lifecycle.list_publication_receipts()
                         ):
-                            return False, "Could not read save game metadata"
-                        _assert_no_active_campaign_completion(
-                            "modules/campaign.json"
-                        )
-                        _bump_campaign_lifecycle_epoch("modules/campaign.json")
-                        return self._restore_save_game_locked(save_folder)
+                            return (
+                                False,
+                                "A published module message is pending; retry restore after delivery",
+                            )
+                        with _campaign_transaction_lock("modules/campaign.json"):
+                            save_path = os.path.join(
+                                self.get_save_directory(),
+                                save_folder,
+                            )
+                            if not os.path.isdir(save_path):
+                                return False, f"Save game not found: {save_path}"
+                            if not safe_read_json(
+                                os.path.join(save_path, "save_metadata.json")
+                            ):
+                                return False, "Could not read save game metadata"
+                            _assert_no_active_campaign_completion(
+                                "modules/campaign.json"
+                            )
+                            _bump_campaign_lifecycle_epoch("modules/campaign.json")
+                            return self._restore_save_game_locked(save_folder)
         except Exception as exc:
             error(
                 "FAILURE: Could not establish consistent restore boundary",
@@ -805,6 +847,13 @@ class SaveGameManager:
                     # Calculate relative path from save directory
                     rel_path = os.path.relpath(source_file, save_path)
                     dest_file = rel_path.replace("\\", "/")
+                    if dest_file in APPLICATION_OWNED_REFERENCE_FILES:
+                        debug(
+                            "FILE_OP: Preserving installed reference data: "
+                            f"{dest_file}",
+                            category="save_game",
+                        )
+                        continue
                     
                     try:
                         # Ensure destination directory exists

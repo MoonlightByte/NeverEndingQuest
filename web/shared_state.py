@@ -30,6 +30,12 @@ def set_player_output_sink(sink):
         _player_output_sink = sink
 
 
+def has_player_output_sink():
+    """Return whether an active frontend currently owns player delivery."""
+    with _player_output_sink_lock:
+        return _player_output_sink is not None
+
+
 def emit_player_output(message):
     """Best-effort output delivery; an absent or failed sink is never fatal."""
     try:
@@ -41,8 +47,9 @@ def emit_player_output(message):
     if sink is None:
         return False
     try:
-        sink(payload)
-        return True
+        # ``False`` means the sink could not durably accept the message. None
+        # remains a successful legacy sink result; modern sinks return True.
+        return sink(payload) is not False
     except Exception:
         return False
 

@@ -44,6 +44,7 @@ class ProtocolWriter:
     def emit(self, event_type, **fields):
         payload = {"type": event_type}
         payload.update(fields)
+        delivered = True
         with self._lock:
             self._seq += 1
             payload["seq"] = self._seq
@@ -52,13 +53,16 @@ class ProtocolWriter:
                 self._stream.write(json.dumps(payload, ensure_ascii=True) + "\n")
                 self._stream.flush()
             except (BrokenPipeError, OSError, ValueError):
-                # The agent went away; nothing useful to do about it here.
-                pass
+                # Callers that own a durable delivery receipt need to know the
+                # agent went away so they do not acknowledge output it never
+                # received. Existing fire-and-forget callers may ignore this.
+                delivered = False
         if self._observer is not None:
             try:
                 self._observer(payload)
             except Exception:
                 pass
+        return delivered
 
 
 def parse_command_line(line):

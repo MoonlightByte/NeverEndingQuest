@@ -281,8 +281,14 @@ _AGENTIC_COMBAT_INTENT_SCHEMA = {
 }
 _AGENTIC_COMBAT_NARRATION_SCHEMA = {
     "type": "object",
-    "properties": {"narration": {"type": "string"}},
-    "required": ["narration"],
+    "properties": {
+        "narration": {"type": "string"},
+        "coveredEventIds": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+    "required": ["narration", "coveredEventIds"],
 }
 COMBAT_INTENT_GPT54_NONE = {"model": "gpt-5.4", "reasoning_effort": "none"}
 COMBAT_INTENT_GEMINI_FLASH_LOW = {
@@ -297,9 +303,20 @@ COMBAT_INTENT_GEMINI_FLASH_LOW = {
 COMBAT_INTENT_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 COMBAT_INTENT_LMSTUDIO = {"model": "local-model"}
 COMBAT_NARRATE_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
+COMBAT_NARRATE_GPT54MINI_LOW = {"model": "gpt-5.4-mini", "reasoning_effort": "low"}
+COMBAT_NARRATE_GPT54MINI_MEDIUM = {"model": "gpt-5.4-mini", "reasoning_effort": "medium"}
 COMBAT_NARRATE_GEMINI_FLASH_LOW = {
     "model": "gemini-3-flash-preview",
     "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(
+        _AGENTIC_COMBAT_NARRATION_SCHEMA,
+        preserve_required=True,
+        preserve_constraints=True,
+    ),
+}
+COMBAT_NARRATE_GEMINI_FLASH_MEDIUM = {
+    "model": "gemini-3-flash-preview",
+    "thinking_level": "medium",
     "response_schema": convert_to_gemini_schema(
         _AGENTIC_COMBAT_NARRATION_SCHEMA,
         preserve_required=True,

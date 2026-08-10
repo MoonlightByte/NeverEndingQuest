@@ -5,10 +5,12 @@ Provides functions to enhance player inputs with inventory context before adding
 """
 
 from core.ai.inventory_context_matcher_v2 import InventoryContextMatcherV2
+from core.ai.srd_reference import SRDContextMatcher
 from utils.enhanced_logger import debug, warning
 
 # Global matcher instance to avoid re-initialization
 _inventory_matcher = None
+_srd_context_matcher = None
 
 def initialize_inventory_matcher():
     """Initialize the global inventory matcher instance"""
@@ -17,6 +19,36 @@ def initialize_inventory_matcher():
         _inventory_matcher = InventoryContextMatcherV2(similarity_threshold=0.65, max_matches=5)
         debug("Inventory context matcher initialized", category="inventory_matcher")
     return _inventory_matcher
+
+
+def initialize_srd_context_matcher():
+    """Initialize the cached deterministic SRD matcher."""
+    global _srd_context_matcher
+    if _srd_context_matcher is None:
+        _srd_context_matcher = SRDContextMatcher()
+        debug("SRD context matcher initialized", category="srd_context")
+    return _srd_context_matcher
+
+
+def build_srd_context(user_input_text, character_data=None, structured_names=None):
+    """Build a bounded SRD block for an explicit rule mention, if any."""
+    try:
+        result = initialize_srd_context_matcher().context_for(
+            user_input_text,
+            actor_sheet=character_data,
+            structured_names=structured_names,
+        )
+        matches = result.get("matches") or []
+        if matches:
+            debug(
+                "Added SRD context for rule IDs: %s"
+                % ", ".join(match["ruleId"] for match in matches),
+                category="srd_context",
+            )
+        return result.get("context") or ""
+    except Exception as exc:
+        warning("SRD context unavailable: %s" % exc, category="srd_context")
+        return ""
 
 def extract_character_inventory(character_data):
     """
@@ -166,8 +198,10 @@ def enhance_player_input_with_inventory(user_input_text, character_data=None, pa
         warning(f"Error enhancing input with inventory: {e}", category="inventory_matcher")
         return user_input_text
 
-def build_enhanced_dm_note(dm_note, user_input_text, character_data=None, 
-                          party_tracker_data=None, characters_data=None, in_combat=False):
+def build_enhanced_dm_note(
+    dm_note, user_input_text, character_data=None, party_tracker_data=None,
+    characters_data=None, in_combat=False, srd_context=None,
+):
     """
     Build the complete DM note with inventory-enhanced player input
     
@@ -212,6 +246,13 @@ def build_enhanced_dm_note(dm_note, user_input_text, character_data=None,
         characters_data,
         in_combat
     )
+
+    # Match only the raw player text. Inventory descriptions can contain rule
+    # names and must never create a false authoritative SRD match.
+    if srd_context is None:
+        srd_context = build_srd_context(user_input_text, character_data)
+    if srd_context:
+        enriched_input = "%s\n\n%s" % (enriched_input, srd_context)
     
     # Build the final message
     return f"{dm_note} Player: {enriched_input}"

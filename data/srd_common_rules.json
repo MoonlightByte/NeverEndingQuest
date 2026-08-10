@@ -1,0 +1,263 @@
+{
+  "_metadata": {
+    "created": "2026-08-07",
+    "description": "Compact SRD 5.2.1 environment, senses, light, and common combat guidance",
+    "source": "System Reference Document 5.2.1, CC BY 4.0",
+    "source_file": "SRD/SRD_CC_v5.2.1.pdf",
+    "entry_kind": "rule",
+    "total_entries": 15,
+    "version": "1.0",
+    "srd_version": "5.2.1"
+  },
+  "lightly_obscured": {
+    "name": "Lightly Obscured",
+    "aliases": [
+      "lightly obscured area"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "exploration",
+      "vision"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "A creature has Disadvantage on Wisdom (Perception) checks made to see something in a Lightly Obscured space. Dim Light, patchy fog, and moderate foliage are common examples."
+  },
+  "heavily_obscured": {
+    "name": "Heavily Obscured",
+    "aliases": [
+      "heavily obscured area"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "exploration",
+      "vision"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "A creature has the Blinded condition while trying to see something in a Heavily Obscured space. Darkness, heavy fog, and dense foliage are common examples."
+  },
+  "dim_light_and_darkness": {
+    "name": "Dim Light and Darkness",
+    "aliases": [
+      "vision in dim light and darkness",
+      "dim light",
+      "area of darkness",
+      "ambient darkness"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "exploration",
+      "vision"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "Bright Light is normal illumination. Dim Light creates a Lightly Obscured area. Darkness creates a Heavily Obscured area. Apply a creature's special senses separately."
+  },
+  "blindsight": {
+    "name": "Blindsight",
+    "aliases": [
+      "blindsight rules"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "exploration",
+      "sense"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "Within its specified range, Blindsight lets a creature see without physical sight anything not behind Total Cover, even while the creature is Blinded or in Darkness. It also sees Invisible creatures and objects in range."
+  },
+  "darkvision": {
+    "name": "Darkvision",
+    "aliases": [
+      "darkvision rules"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "exploration",
+      "sense"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "Within its specified range, Darkvision treats Dim Light as Bright Light and Darkness as Dim Light. In that Darkness, the creature discerns colors only as shades of gray."
+  },
+  "tremorsense": {
+    "name": "Tremorsense",
+    "aliases": [
+      "tremorsense rules"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "exploration",
+      "sense"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "Within its specified range, Tremorsense pinpoints creatures and moving objects only when sensor and target contact the same surface or the same liquid. It cannot detect creatures or objects in the air and is not a form of sight."
+  },
+  "truesight": {
+    "name": "Truesight",
+    "aliases": [
+      "truesight rules"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "exploration",
+      "sense"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "Within its specified range, Truesight sees in normal and magical Darkness, sees Invisible creatures and objects, recognizes visual illusions, discerns magically transformed true forms, and sees into the Ethereal Plane."
+  },
+  "cover": {
+    "name": "Cover",
+    "aliases": [
+      "half cover",
+      "three-quarters cover",
+      "total cover",
+      "degrees of cover"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "targeting"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "Cover applies when an attack or effect originates on the opposite side of an obstacle. Half Cover grants +2 AC and Dexterity saves; Three-Quarters Cover grants +5; Total Cover prevents direct targeting. Multiple degrees do not add—use only the most protective."
+  },
+  "difficult_terrain": {
+    "name": "Difficult Terrain",
+    "aliases": [
+      "moving through difficult terrain"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "exploration",
+      "movement"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "Every foot moved through Difficult Terrain costs 1 extra foot, so 5 feet costs 10 feet of movement. Difficult Terrain is not cumulative. The Dash action grants extra movement equal to your Speed; this extra movement pays the same increased cost, so a Dashing creature with Speed 30 can cross 30 feet of Difficult Terrain. Examples include non-Tiny enemies, suitably sized furniture, heavy snow or rubble, shin- to waist-deep liquid, narrow openings, and slopes of 20 degrees or more."
+  },
+  "falling": {
+    "name": "Falling",
+    "aliases": [
+      "falling damage",
+      "fall damage"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "exploration",
+      "hazard"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "At the end of a fall, a creature takes 1d6 Bludgeoning damage per 10 feet fallen, maximum 20d6, and lands Prone unless it took no damage. When falling into water or another liquid, it may use its Reaction for a DC 15 Strength (Athletics) or Dexterity (Acrobatics) check; success halves the fall damage."
+  },
+  "suffocation": {
+    "name": "Suffocation",
+    "aliases": [
+      "holding your breath",
+      "hold my breath",
+      "running out of breath"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "exploration",
+      "hazard"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "A creature can hold its breath for 1 + Constitution modifier minutes, minimum 30 seconds. Once out of breath or choking, it gains 1 Exhaustion level at the end of each turn. When it can breathe again, it removes all Exhaustion levels gained from suffocating."
+  },
+  "underwater_combat": {
+    "name": "Underwater Combat",
+    "aliases": [
+      "fight underwater",
+      "fighting underwater"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "environment"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "Underwater, a creature without a Swim Speed has Disadvantage on melee weapon attacks unless the weapon deals Piercing damage. Ranged weapon attacks have Disadvantage within normal range and automatically miss beyond it. Anything underwater has Resistance to Fire damage."
+  },
+  "mounted_combat": {
+    "name": "Mounted Combat",
+    "aliases": [
+      "controlled mount",
+      "independent mount"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "movement"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "A willing creature at least one size larger with suitable anatomy can be a mount. Mounting or dismounting a creature within 5 feet costs half the rider's Speed. A controlled mount shares the rider's Initiative, moves on that turn, and can Dash, Disengage, or Dodge; an independent mount retains its own Initiative and choices. Forced movement or being knocked Prone while mounted can require a DC 10 Dexterity save to avoid falling off and landing Prone within 5 feet."
+  },
+  "breaking_objects": {
+    "name": "Breaking Objects",
+    "aliases": [
+      "object armor class",
+      "object hit points",
+      "damage an object"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "objects"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "Objects can be attacked or affected by some spells. Suggested AC by substance: cloth/paper/rope 11; crystal/glass/ice 13; wood 15; stone 17; iron/steel 19; mithral 21; adamantine 23. Suggested fragile/resilient HP: Tiny 2/5, Small 3/10, Medium 4/18, Large 5/27; divide larger objects into sections. Objects are immune to Poison and Psychic damage, may have other situational defenses, lack ability scores unless assigned, and otherwise fail saving throws."
+  },
+  "prone": {
+    "name": "Prone",
+    "aliases": [
+      "knocked prone",
+      "drop prone",
+      "stand up from prone"
+    ],
+    "kind": "rule",
+    "scope": [
+      "combat",
+      "condition",
+      "movement"
+    ],
+    "source": "SRD 5.2.1",
+    "version": "5.2.1",
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+    "compactGuidance": "While Prone, a creature can only crawl or spend movement equal to half its Speed, rounded down, to stand; Speed 0 prevents standing. Its attack rolls have Disadvantage. Attacks against it have Advantage from within 5 feet and Disadvantage from farther away."
+  }
+}

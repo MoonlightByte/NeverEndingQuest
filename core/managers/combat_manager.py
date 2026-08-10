@@ -158,9 +158,15 @@ from core.managers.combat_state import (
     expected_player_window_ids,
     player_control_unavailable,
     recovery_action,
+    valid_pending_delivery,
 )
 from core.managers.combat_orchestrator import CombatTurnPaused, execute_agentic_turn
-from core.managers.combat_transaction import apply_combat_rewards, completion_lease
+from core.managers.combat_transaction import (
+    acknowledge_delivery,
+    apply_combat_rewards,
+    CombatTransactionError,
+    completion_lease,
+)
 # Import safe JSON functions
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
@@ -169,8 +175,11 @@ import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 # Import combat message compressor for optimizing conversation history
 from core.ai.combat_compressor import CombatUserMessageCompressor
-# Import inventory context matcher for enhancing player combat actions
-from core.ai.inventory_context_integration import enhance_player_input_with_inventory
+# Import deterministic context matchers for enhancing player combat actions
+from core.ai.inventory_context_integration import (
+    build_srd_context,
+    enhance_player_input_with_inventory,
+)
 
 # Set script name for logging
 set_script_name(__name__)
@@ -339,7 +348,7 @@ combat_message_compressor = CombatUserMessageCompressor(api_key=OPENAI_API_KEY)
 HISTORY_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
 
 
-def _display_combat_narration(narration):
+def _display_combat_narration(narration, message_id=None):
    """Deliver combat narration through the frontend sink, else the console.
 
    Mirrors main.display_dm_narration: a frontend with a player-output sink
@@ -347,17 +356,38 @@ def _display_combat_narration(narration):
    terminal output is unchanged. Empty content skips the sink (the
    historical scrapers suppressed empty narration blocks).
    """
-   from web.shared_state import emit_player_output
+   from web.shared_state import emit_player_output, has_player_output_sink
 
+   has_sink = has_player_output_sink()
    delivered = False
    if narration and narration.strip():
-       delivered = emit_player_output(
-           {"type": "narration", "channel": "combat", "content": narration}
+       payload = {
+           "type": "narration",
+           "channel": "combat",
+           "content": narration,
+       }
+       if message_id:
+           payload["message_id"] = message_id
+       delivered = emit_player_output(payload)
+   if delivered is True:
+       return True
+   if has_sink:
+       # Do not print the narration through a frontend's stdout scraper after
+       # its structured sink rejected delivery. That would create an
+       # untracked second message without the stable delivery ID. Leave the
+       # durable receipt pending so reconnect can replay it exactly once.
+       warning(
+           "COMBAT_DELIVERY: Frontend sink did not durably accept narration",
+           category="combat_events",
        )
-   if delivered is not True:
+       return False
+   if narration and narration.strip():
        import sys
        print(f"Dungeon Master: {narration}")
        sys.stdout.flush()
+   # A plain terminal has no external sink, so the synchronous print is the
+   # delivery boundary.
+   return True
 
 
 def load_npc_with_fuzzy_match(npc_name, path_manager):
@@ -1245,15 +1275,107 @@ def _agentic_actor_window(encounter_data):
     recovery = recovery_action(encounter_data)
     if recovery["action"] in {"regenerate_intent", "apply_staged_events"}:
         actor_ids = list(recovery["pendingTurn"].get("actorIds", []))
+    elif recovery["action"] in {
+        "deliver_committed_events",
+        "pause_invalid_delivery",
+        "pause_untimed_incapacitation",
+    }:
+        actor_ids = []
     else:
         actor_ids = expected_automatic_actor_ids(encounter_data)
         if not actor_ids:
             actor_ids = expected_player_window_ids(encounter_data)
-    automatic = bool(actor_ids) and all(
-        (combatant_by_id(encounter_data, actor_id) or {}).get("type") != "player"
-        for actor_id in actor_ids
+    automatic = recovery["action"] in {
+        "apply_staged_events",
+        "advance_effect_clock",
+        "deliver_committed_events",
+        "pause_invalid_delivery",
+        "pause_untimed_incapacitation",
+    } or (
+        recovery["action"] == "regenerate_intent"
+        and recovery["pendingTurn"].get("clockOnly") is True
+    ) or (
+        bool(actor_ids)
+        and all(
+            (combatant_by_id(encounter_data, actor_id) or {}).get("type")
+            != "player"
+            for actor_id in actor_ids
+        )
     )
     return actor_ids, automatic
+
+
+def _combat_delivery_marker(message):
+    """Return the durable combat delivery ID embedded in assistant history."""
+    if not isinstance(message, dict) or message.get("role") != "assistant":
+        return None
+    top_level = message.get("message_id")
+    if isinstance(top_level, str) and top_level:
+        return top_level
+    content = message.get("content")
+    if not isinstance(content, str):
+        return None
+    try:
+        payload = json.loads(content)
+    except (TypeError, ValueError):
+        return None
+    marker = payload.get("_combatDeliveryId") if isinstance(payload, dict) else None
+    return marker if isinstance(marker, str) and marker else None
+
+
+def _history_has_combat_delivery(conversation_history, delivery_id):
+    return any(
+        _combat_delivery_marker(message) == delivery_id
+        for message in (conversation_history or [])
+    )
+
+
+def recover_pending_combat_output():
+    """Replay one persisted combat narration into the active player sink.
+
+    This is safe to call from a web reconnect. It never invokes a model or
+    reapplies mechanics. A receipt is acknowledged only when both the combat
+    history marker and the stable-ID player-output delivery exist.
+    """
+    party = safe_json_load("party_tracker.json") or {}
+    encounter_id = (party.get("worldConditions") or {}).get(
+        "activeCombatEncounter"
+    )
+    if not isinstance(encounter_id, str) or not encounter_id:
+        return False
+    if ".." in encounter_id or "/" in encounter_id or "\\" in encounter_id:
+        return False
+    encounter_path = os.path.join(
+        "modules", "encounters", "encounter_%s.json" % encounter_id
+    )
+    encounter = safe_json_load(encounter_path)
+    if not isinstance(encounter, dict):
+        return False
+    delivery = (encounter.get("combatState") or {}).get("pendingDelivery")
+    if not valid_pending_delivery(delivery):
+        return False
+    delivery_id = delivery.get("deliveryId")
+    narration = delivery.get("narration")
+    if not (
+        isinstance(delivery_id, str)
+        and delivery_id
+        and isinstance(narration, str)
+        and narration.strip()
+    ):
+        return False
+    prefix = delivery.get("displayPrefix")
+    rendered = (
+        "%s\n\n%s" % (prefix.strip(), narration.strip())
+        if isinstance(prefix, str) and prefix.strip()
+        else narration.strip()
+    )
+    if not _display_combat_narration(rendered, message_id=delivery_id):
+        return False
+    # Reconnect owns durable player-output replay only. The combat loop remains
+    # the sole receipt acknowledger, avoiding a race where this handler clears
+    # a receipt after the loop selects it but before orchestration re-inspects
+    # state. Stable cache IDs make repeated reconnect delivery idempotent.
+    return True
 
 
 def _agentic_combat_context(encounter_data, path_manager, monster_templates):
@@ -1282,6 +1404,25 @@ def _agentic_combat_context(encounter_data, path_manager, monster_templates):
             if isinstance(sheet, dict):
                 context_sheets[name] = sheet
     return character_paths, context_sheets
+
+
+def _combat_prompt_stats(player_info, fresh_player_data=None):
+    """Read prompt numbers from fresh state without replacing legacy in-memory data."""
+    source = fresh_player_data if isinstance(fresh_player_data, dict) else player_info
+    source = source if isinstance(source, dict) else {}
+    try:
+        from core.effects.effective import effective_sheet
+
+        source = effective_sheet(source)
+    except Exception:
+        pass
+    return {
+        "name": source.get("name") or (player_info or {}).get("name", "Player"),
+        "hitPoints": source.get("hitPoints", 0),
+        "maxHitPoints": source.get("maxHitPoints", 0),
+        "experience_points": source.get("experience_points", 0),
+        "exp_required_for_next_level": source.get("exp_required_for_next_level", 0),
+    }
 
 
 def _finalize_combat_validation_history(
@@ -2108,19 +2249,26 @@ def sync_active_encounter():
                     player_data = safe_json_load(player_file)
                     if not player_data:
                         error(f"FAILURE: Failed to load player file: {player_file}", category="file_operations")
-                        # Update combat-relevant fields
-                        if creature.get("currentHitPoints") != player_data.get("hitPoints"):
-                            creature["currentHitPoints"] = player_data.get("hitPoints")
-                            changes_made = True
-                        if creature.get("maxHitPoints") != player_data.get("maxHitPoints"):
-                            creature["maxHitPoints"] = player_data.get("maxHitPoints")
-                            changes_made = True
-                        if creature.get("status") != player_data.get("status"):
-                            creature["status"] = player_data.get("status")
-                            changes_made = True
-                        if creature.get("conditions") != player_data.get("condition_affected"):
-                            creature["conditions"] = player_data.get("condition_affected", [])
-                            changes_made = True
+                        continue
+                    try:
+                        from core.effects.effective import effective_sheet
+
+                        player_data = effective_sheet(player_data)
+                    except Exception:
+                        pass
+                    # Update combat-relevant fields
+                    if creature.get("currentHitPoints") != player_data.get("hitPoints"):
+                        creature["currentHitPoints"] = player_data.get("hitPoints")
+                        changes_made = True
+                    if creature.get("maxHitPoints") != player_data.get("maxHitPoints"):
+                        creature["maxHitPoints"] = player_data.get("maxHitPoints")
+                        changes_made = True
+                    if creature.get("status") != player_data.get("status"):
+                        creature["status"] = player_data.get("status")
+                        changes_made = True
+                    if creature.get("conditions") != player_data.get("condition_affected"):
+                        creature["conditions"] = player_data.get("condition_affected", [])
+                        changes_made = True
                 except Exception as e:
                     error(f"FAILURE: Failed to sync player data to encounter", exception=e, category="encounter_setup")
                     
@@ -2131,6 +2279,12 @@ def sync_active_encounter():
                     if not npc_data:
                         error(f"FAILURE: Failed to load NPC file for: {creature['name']}", category="file_operations")
                     else:
+                        try:
+                            from core.effects.effective import effective_sheet
+
+                            npc_data = effective_sheet(npc_data)
+                        except Exception:
+                            pass
                         # Update combat-relevant fields
                         if creature.get("currentHitPoints") != npc_data.get("hitPoints"):
                             creature["currentHitPoints"] = npc_data.get("hitPoints")
@@ -2878,22 +3032,13 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            print(f"[COMBAT_MANAGER] Failed to load encounter file")
            error(f"FAILURE: Failed to load encounter file {json_file_path}", category="file_operations")
            return None, None
-       # Upgrade legacy encounters in place.  Keeping the ledger inside the
-       # encounter makes save/restore include the exact combat cursor without
-       # introducing a sidecar file that older saves would omit.
+       # Upgrade legacy encounters in place. New builders now stamp the
+       # selected mode when the encounter is created. An old active encounter
+       # without that stamp must stay legacy even if its transcript is absent;
+       # history presence is not safe migration authority.
        combat_state = ensure_combat_state(
            encounter_data,
-           new_encounter=not is_resuming,
-           pipeline_mode=(
-               "agentic"
-               if (
-                   getattr(config, "COMBAT_AGENTIC_PIPELINE", False)
-                   or os.environ.get(
-                       "NEQ_COMBAT_AGENTIC_PIPELINE", ""
-                   ).strip().lower() in {"1", "true", "yes", "on"}
-               )
-               else "legacy"
-           ),
+           new_encounter=False,
        )
        if combat_state["phase"] == "initializing" and is_resuming:
            combat_state["phase"] = "awaiting_actor"
@@ -3204,7 +3349,15 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        debug(f"STATE_CHANGE: Saved prerolls for round {round_num}", category="combat_events")
    
    # --- START: RESUMPTION AND INITIAL SCENE LOGIC ---
-   if is_resuming:
+   pending_agentic_recovery = bool(
+       is_resuming
+       and combat_state.get("pipelineMode") == "agentic"
+       and (
+           combat_state.get("pendingTurn") is not None
+           or combat_state.get("pendingDelivery") is not None
+       )
+   )
+   if is_resuming and not pending_agentic_recovery:
        # This is a resumed session. Inject a message to get a re-engagement narration.
        print("[COMBAT_MANAGER] Injecting 'player has returned' message to re-engage AI.")
        debug("RESUME: Starting combat resume flow", category="combat_events")
@@ -3238,6 +3391,7 @@ This is narration only. Do not advance the round or apply any combat action."""
        resume_stage_failed = False
 
        # Stage 1: API call (model never responded -> API failure)
+       fresh_player_data = None
        try:
            print("[COMBAT_MANAGER] Getting re-engagement narration from AI...")
            debug("RESUME: Requesting AI re-engagement response", category="combat_events")
@@ -3338,7 +3492,7 @@ This is narration only. Do not advance the round or apply any combat action."""
        else:
            debug("RESUME: Successfully displayed re-engagement narration", category="combat_events")
        print("DEBUG: [RESUME] Successfully displayed re-engagement narration and flushed output")
-   else:
+   elif not is_resuming:
        # This is a new combat. Use the original logic to get the initial scene.
        debug("AI_CALL: Getting initial scene description...", category="combat_events")
        initiative_order = get_initiative_order(encounter_data)
@@ -3452,6 +3606,15 @@ Player: {initial_prompt_text}"""
        save_json_file(conversation_history_file, conversation_history)
        parsed_response = json.loads(initial_response)
        _display_combat_narration(parsed_response['narration'])
+   else:
+       # Staged mechanics are more authoritative than a generic re-engagement
+       # scene. Recover/apply them in the loop first, then narrate that exact
+       # committed event without spending a T043 call against stale state.
+       debug(
+           "RESUME: Deferring re-engagement narration until pending agentic "
+           "combat recovery completes",
+           category="combat_events",
+       )
    # --- END: RESUMPTION AND INITIAL SCENE LOGIC ---
 
    combat_state = ensure_combat_state(encounter_data)
@@ -3529,7 +3692,13 @@ Player: {initial_prompt_text}"""
        # A disconnect may happen after the final mechanical commit but before
        # rewards/archive cleanup. Resume that lifecycle before asking for a
        # new player action.
-       if agentic_mode and all_hostiles_resolved(encounter_data):
+       if (
+           agentic_mode
+           and (encounter_data.get("combatState") or {}).get(
+               "pendingDelivery"
+           ) is None
+           and all_hostiles_resolved(encounter_data)
+       ):
            character_paths, _context_sheets = _agentic_combat_context(
                encounter_data,
                path_manager,
@@ -3553,7 +3722,13 @@ Player: {initial_prompt_text}"""
                    category="combat_events",
                )
                return None, None
-       if agentic_mode and player_control_unavailable(encounter_data):
+       if (
+           agentic_mode
+           and (encounter_data.get("combatState") or {}).get(
+               "pendingDelivery"
+           ) is None
+           and player_control_unavailable(encounter_data)
+       ):
            state = encounter_data.get("combatState") or {}
            state["phase"] = "recovery_required"
            state["pauseReason"] = (
@@ -3600,11 +3775,12 @@ Player: {initial_prompt_text}"""
        save_json_file(conversation_history_file, conversation_history)
        
        # Display player stats and get input
-       player_name_display = player_info["name"]
-       current_hp = player_info.get("hitPoints", 0)
-       max_hp = player_info.get("maxHitPoints", 0)
-       current_xp = player_info.get("experience_points", 0)
-       next_level_xp = player_info.get("exp_required_for_next_level", 0)
+       prompt_stats = _combat_prompt_stats(player_info, fresh_player_data)
+       player_name_display = prompt_stats["name"]
+       current_hp = prompt_stats["hitPoints"]
+       max_hp = prompt_stats["maxHitPoints"]
+       current_xp = prompt_stats["experience_points"]
+       next_level_xp = prompt_stats["exp_required_for_next_level"]
        current_time_str = party_tracker_data["worldConditions"].get("time", "Unknown")
        
        stats_display = f"[{current_time_str}][HP:{current_hp}/{max_hp}][XP:{current_xp}/{next_level_xp}]"
@@ -3612,7 +3788,9 @@ Player: {initial_prompt_text}"""
        print("DEBUG: [COMBAT_LOOP] About to request player input")
        debug("COMBAT_LOOP: Requesting player input", category="combat_events")
        agentic_actor_ids = []
+       skipped_player_notice = None
        if agentic_mode:
+           agentic_recovery = recovery_action(encounter_data)
            agentic_actor_ids, automatic_initiative_step = _agentic_actor_window(
                encounter_data
            )
@@ -3622,18 +3800,78 @@ Player: {initial_prompt_text}"""
                )
                for actor_id in agentic_actor_ids
            ]
+           state = encounter_data.get("combatState") or {}
+           already_acted = set(state.get("actedThisRound") or [])
+           skipped_player = next(
+               (
+                   creature
+                   for creature in encounter_data.get("creatures", [])
+                   if isinstance(creature, dict)
+                   and creature.get("type") == "player"
+                   and creature.get("combatantId") not in already_acted
+                   and creature.get("effectIncapacitated") is True
+                   and str(creature.get("status", "alive")).lower() == "alive"
+                   and (
+                       not isinstance(
+                           creature.get("currentHitPoints"), (int, float)
+                       )
+                       or creature.get("currentHitPoints") > 0
+                   )
+               ),
+               None,
+           )
+           if automatic_initiative_step and skipped_player is not None:
+               skipped_player_notice = (
+                   f"{skipped_player.get('name', 'The player character')} is "
+                   "temporarily incapacitated and cannot act this turn. "
+                   "Combat and effect durations continue."
+               )
        else:
            automatic_initiative_step = bool(pending_initial_npc_turns)
            automatic_turn_window = list(pending_initial_npc_turns)
        if automatic_initiative_step:
            required_actors = ", ".join(automatic_turn_window)
-           user_input_text = (
-               "System combat continuation: resolve these living non-player "
-               "turns in strict initiative order before asking for the "
-               f"player's action: {required_actors}. Stop at "
-               f"{player_name_display} and request player input. This is not "
-               "a submitted player action."
+           skipped_context = (
+               f" {skipped_player_notice}" if skipped_player_notice else ""
            )
+           if agentic_mode and agentic_recovery["action"] == "apply_staged_events":
+               user_input_text = (
+                   "System combat recovery: apply and narrate the already-staged "
+                   "events from the interrupted turn. Do not request, infer, or "
+                   "resolve a new player action."
+               )
+           elif agentic_mode and agentic_recovery["action"] == "deliver_committed_events":
+               user_input_text = (
+                   "System combat recovery: deliver the narration receipt for "
+                   "the already-committed turn. Do not apply mechanics, request "
+                   "input, or resolve another action."
+               )
+           elif agentic_mode and agentic_recovery["action"] == "pause_invalid_delivery":
+               user_input_text = (
+                   "System combat recovery is paused because the committed "
+                   "narration receipt is invalid. Do not request input or "
+                   "resolve another action."
+               )
+           elif agentic_mode and agentic_recovery["action"] == "pause_untimed_incapacitation":
+               user_input_text = (
+                   "System combat recovery remains paused because every living "
+                   "combatant is incapacitated and no timed effect can advance. "
+                   "Do not request input or resolve another action."
+               )
+           elif agentic_mode and agentic_recovery["action"] == "advance_effect_clock":
+               user_input_text = (
+                   "System combat continuation: every living combatant is "
+                   "temporarily incapacitated. Advance only the deterministic "
+                   "effect clock; do not request or resolve a new action."
+               )
+           else:
+               user_input_text = (
+                   "System combat continuation: resolve these living non-player "
+                   "turns in strict initiative order before asking for the "
+                   f"player's action: {required_actors}. Stop at "
+                   f"{player_name_display} and request player input. This is not "
+                   f"a submitted player action.{skipped_context}"
+               )
            if not agentic_mode:
                pending_initial_npc_turns = []
            debug(
@@ -3654,8 +3892,13 @@ Player: {initial_prompt_text}"""
        # Skip empty input to prevent infinite loop
        if not user_input_text or not user_input_text.strip():
            continue
+
+       # Preserve the actual submission for deterministic rule matching. The
+       # enriched text below contains code-authored inventory/SRD annotations
+       # and must never be treated as a fresh player mention.
+       raw_combat_input_text = user_input_text
        
-       # Enhance player input with inventory context for combat
+       # Enhance player input with inventory and relevant SRD context for combat
        try:
            # Load fresh player data for inventory
            player_file = path_manager.get_character_path(normalize_character_name(player_name_display))
@@ -3666,15 +3909,25 @@ Player: {initial_prompt_text}"""
            # action, so inventory context would be misleading there.
            if not automatic_initiative_step:
                user_input_text = enhance_player_input_with_inventory(
-                   user_input_text,
+                   raw_combat_input_text,
                    fresh_player_data,  # character_data
                    party_tracker_data,  # party_tracker_data
                    None,  # characters_data not needed
                    in_combat=True  # This is combat context
                )
-               debug(f"COMBAT_LOOP: Enhanced player input with inventory context", category="combat_events")
+               if not agentic_mode:
+                   srd_context = build_srd_context(
+                       raw_combat_input_text,
+                       fresh_player_data,
+                   )
+                   if srd_context:
+                       user_input_text = "%s\n\n%s" % (user_input_text, srd_context)
+               debug(
+                   "COMBAT_LOOP: Enhanced player input with inventory/SRD context",
+                   category="combat_events",
+               )
        except Exception as e:
-           debug(f"COMBAT_LOOP: Failed to enhance input with inventory context: {e}", category="combat_events")
+           debug(f"COMBAT_LOOP: Failed to enhance player context: {e}", category="combat_events")
            # Continue with unenhanced input if enhancement fails
        
        # Prepare dynamic state info for all creatures - compact format
@@ -3849,12 +4102,22 @@ Player: {initial_prompt_text}"""
                path_manager,
                monster_templates,
            )
-           spell_repository = safe_json_load("data/spell_repository.json") or {}
            try:
-               from core.ai.combat_agent import select_spell_references
-               spell_references = select_spell_references(
+               from core.ai.combat_agent import build_contextual_spell_payload
+
+               spell_references = build_contextual_spell_payload(
                    context_sheets,
-                   spell_repository,
+                   raw_combat_input_text,
+                   actor_names=automatic_turn_window,
+                   encounter_context="\n".join(
+                       str(value)
+                       for value in (
+                           encounter_data.get("encounterSummary", ""),
+                           location_info.get("description", ""),
+                           location_info.get("dmInstructions", ""),
+                       )
+                       if value
+                   ),
                )
            except Exception as exc:
                warning(
@@ -3879,9 +4142,20 @@ Player: {initial_prompt_text}"""
                    context_sheets,
                    user_input_text,
                    spell_references=spell_references,
+                   delivery_context={
+                       "historyInput": user_input_text,
+                       "displayPrefix": skipped_player_notice or "",
+                   },
                )
-           except CombatTurnPaused as exc:
-               pause_narration = str(exc)
+           except (CombatTurnPaused, CombatTransactionError) as exc:
+               # Technical exception text may contain internal state terms,
+               # paths, or provider details. Only explicitly approved player
+               # messages cross the UI boundary; every other safe pause uses
+               # one neutral recovery instruction.
+               pause_narration = getattr(exc, "player_message", None) or (
+                   "Combat paused safely. Your turn is preserved. Please try "
+                   "the action again, or save and resume the game."
+               )
                conversation_history.append(
                    {"role": "user", "content": user_input_text}
                )
@@ -3900,6 +4174,40 @@ Player: {initial_prompt_text}"""
                )
                save_json_file(conversation_history_file, conversation_history)
                _display_combat_narration(pause_narration)
+               if (
+                   agentic_recovery["action"] == "apply_staged_events"
+                   and isinstance(exc, CombatTransactionError)
+               ):
+                   paused_encounter = safe_json_load(json_file_path) or encounter_data
+                   paused_state = ensure_combat_state(paused_encounter)
+                   paused_state["phase"] = "recovery_required"
+                   paused_state["pauseReason"] = "staged_turn_replay_failed"
+                   if not safe_write_json(json_file_path, paused_encounter):
+                       raise RuntimeError(
+                           "Could not persist the staged-turn recovery pause"
+                       )
+                   return None, None
+               if (
+                   not agentic_actor_ids
+                   and agentic_recovery["action"] in {
+                       "advance_effect_clock",
+                       "pause_invalid_delivery",
+                       "pause_untimed_incapacitation",
+                   }
+               ):
+                   paused_encounter = safe_json_load(json_file_path) or encounter_data
+                   paused_state = ensure_combat_state(paused_encounter)
+                   paused_state["phase"] = "recovery_required"
+                   paused_state["pauseReason"] = (
+                       "invalid_combat_delivery_receipt"
+                       if agentic_recovery["action"] == "pause_invalid_delivery"
+                       else "untimed_total_incapacitation"
+                   )
+                   if not safe_write_json(json_file_path, paused_encounter):
+                       raise RuntimeError(
+                           "Could not persist the total-incapacitation pause"
+                       )
+                   return None, None
                continue
            finally:
                try:
@@ -3910,39 +4218,77 @@ Player: {initial_prompt_text}"""
 
            encounter_data = outcome["encounter"]
            narration = outcome["narration"]
+           history_input = outcome.get("historyInput") or user_input_text
+           display_prefix = (
+               outcome.get("displayPrefix")
+               if "displayPrefix" in outcome
+               else skipped_player_notice
+           )
+           if display_prefix:
+               narration = f"{display_prefix}\n\n{narration}"
            committed_round = (encounter_data.get("combatState") or {}).get(
                "round", current_round
            )
-           conversation_history.append(
-               {"role": "user", "content": user_input_text}
-           )
-           conversation_history.append(
-               {
-                   "role": "assistant",
-                   "content": json.dumps(
-                       {
-                           "combat_round": committed_round,
-                           "narration": narration,
-                           "actions": [],
-                       },
-                       ensure_ascii=False,
-                   ),
-               }
-           )
-
-           # In agentic mode the committed state machine owns round
-           # advancement. Keep the existing history compression lifecycle,
-           # but trigger it from that durable round instead of model prose.
-           if committed_round > current_round and committed_round >= 2:
-               compressed_history = compress_old_combat_rounds(
-                   conversation_history,
-                   committed_round,
-                   keep_recent_rounds=1,
+           delivery_id = outcome.get("deliveryId")
+           assistant_payload = {
+               "combat_round": committed_round,
+               "narration": narration,
+               "actions": [],
+           }
+           if delivery_id:
+               # Keep the durable marker inside content. Top-level internal
+               # fields are forwarded unchanged by OpenAI-compatible clients
+               # and can make later provider calls reject the message list.
+               assistant_payload["_combatDeliveryId"] = delivery_id
+           history_already_persisted = bool(
+               delivery_id
+               and _history_has_combat_delivery(
+                   conversation_history, delivery_id
                )
-               if compressed_history != conversation_history:
-                   conversation_history = compressed_history
-           save_json_file(conversation_history_file, conversation_history)
-           _display_combat_narration(narration)
+           )
+           if not history_already_persisted:
+               conversation_history.append(
+                   {"role": "user", "content": history_input}
+               )
+               assistant_message = {
+                   "role": "assistant",
+                   "content": json.dumps(assistant_payload, ensure_ascii=False),
+               }
+               conversation_history.append(assistant_message)
+
+               # In agentic mode the committed state machine owns round
+               # advancement. Keep the existing history compression lifecycle,
+               # but trigger it from that durable round instead of model prose.
+               if committed_round > current_round and committed_round >= 2:
+                   compressed_history = compress_old_combat_rounds(
+                       conversation_history,
+                       committed_round,
+                       keep_recent_rounds=1,
+                   )
+                   if compressed_history != conversation_history:
+                       conversation_history = compressed_history
+               if delivery_id and not _history_has_combat_delivery(
+                   conversation_history, delivery_id
+               ):
+                   raise RuntimeError(
+                       "Combat narration marker was lost before history persistence"
+                   )
+               if not safe_write_json(
+                   conversation_history_file, conversation_history
+               ):
+                   raise RuntimeError(
+                       "Could not persist committed combat narration history"
+                   )
+           if not _display_combat_narration(
+               narration, message_id=delivery_id
+           ):
+               raise RuntimeError(
+                   "Could not durably deliver committed combat narration"
+               )
+           if delivery_id:
+               encounter_data = acknowledge_delivery(
+                   json_file_path, delivery_id
+               )
 
            if all_hostiles_resolved(encounter_data):
                try:

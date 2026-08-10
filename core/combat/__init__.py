@@ -27,6 +27,7 @@ from core.combat.resolver import (
 from core.combat.pipeline import (
     CombatIntentError,
     CombatPlayerInputRequired,
+    resolve_effect_clock_window,
     resolve_claimed_window,
 )
 from core.combat.rolls import PersistedPrerollSource, ensure_agentic_roll_reserve
@@ -46,6 +47,7 @@ __all__ = [
     "validate_intent",
     "CombatIntentError",
     "CombatPlayerInputRequired",
+    "resolve_effect_clock_window",
     "resolve_claimed_window",
     "PersistedPrerollSource",
     "ensure_agentic_roll_reserve",

@@ -176,6 +176,8 @@ def normalize_effect(effect, *, default_author=None):
             result[field] = [
                 normalize_resource_operation(item) for item in result[field]
             ]
+    if result.get("roundsRemaining") is None:
+        result.pop("roundsRemaining", None)
     if result.get("durationKind") == "rounds" and "roundsRemaining" not in result:
         raise ValueError("round duration requires roundsRemaining")
     return result

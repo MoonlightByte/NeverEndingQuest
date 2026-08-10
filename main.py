@@ -142,7 +142,10 @@ from core.managers.status_manager import (
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.module_path_manager import ModulePathManager
 from core.managers.campaign_manager import CampaignManager
-from core.ai.inventory_context_integration import build_enhanced_dm_note
+from core.ai.inventory_context_integration import (
+    build_enhanced_dm_note,
+    build_srd_context,
+)
 from utils.reconcile_campaign_state import reconcile_campaign_state
 
 # Import training data collection
@@ -1547,6 +1550,7 @@ def _validate_required_transition_action(
 _ENHANCED_DM_NOTE_PREFIX = "Dungeon Master Note:"
 _ENHANCED_PLAYER_MARKER = " Player: "
 _INVENTORY_CONTEXT_MARKER = "\n[Inventory Context:"
+_SRD_CONTEXT_MARKER = "\n[SRD CONTEXT"
 
 
 def _extract_raw_player_message(content):
@@ -1559,9 +1563,16 @@ def _extract_raw_player_message(content):
         return ""
 
     player_text = content.rsplit(_ENHANCED_PLAYER_MARKER, 1)[1]
-    inventory_index = player_text.rfind(_INVENTORY_CONTEXT_MARKER)
-    if inventory_index >= 0 and player_text.rstrip().endswith("]"):
-        player_text = player_text[:inventory_index]
+    generated_context_indexes = [
+        index
+        for index in (
+            player_text.find(_INVENTORY_CONTEXT_MARKER),
+            player_text.find(_SRD_CONTEXT_MARKER),
+        )
+        if index >= 0
+    ]
+    if generated_context_indexes:
+        player_text = player_text[: min(generated_context_indexes)]
     return player_text.strip()
 
 
@@ -1632,11 +1643,14 @@ def _assemble_validation_messages(
     raw_user_input,
     candidate_response,
     compress_prefix=None,
+    srd_context=None,
 ):
     """Compress context first, then preserve the raw intent/candidate pair."""
     prefix = [dict(message) for message in validation_prefix]
     if compress_prefix is not None:
         prefix = compress_prefix(prefix)
+    if srd_context:
+        prefix.append({"role": "system", "content": srd_context})
     return prefix + [
         {"role": "user", "content": str(raw_user_input or "")},
         {"role": "assistant", "content": candidate_response},
@@ -1659,7 +1673,14 @@ def _advance_semantic_rejection_streak(previous_reason, count, reason):
     next_count = count + 1 if normalized == previous_reason else 1
     return normalized, next_count, next_count >= 2
 
-def validate_ai_response(primary_response, user_input, validation_prompt_text, conversation_history, party_tracker_data):
+def validate_ai_response(
+    primary_response,
+    user_input,
+    validation_prompt_text,
+    conversation_history,
+    party_tracker_data,
+    srd_context=None,
+):
     print("DEBUG: NPC validation running...")
     status_validating()
     
@@ -1956,6 +1977,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         validation_messages_to_send,
         user_input,
         response_to_validate,
+        srd_context=srd_context,
     )
 
     if '"action": "createNewModule"' in response_to_validate:
@@ -3308,6 +3330,63 @@ def _complete_committed_module_followup_locked(
         return _published_followup_pending_result(result, receipt)
 
 
+def _agentic_post_combat_narration_pass(party_tracker_data):
+    """Return whether this response follows an agentic authoritative commit."""
+    if not getattr(process_ai_response, "_just_finished_combat", False):
+        return False
+    # One combat-return path recurses before the caller's in-memory tracker is
+    # refreshed.  The committed tracker on disk is authoritative at this
+    # boundary; otherwise a valid post-combat echo can bypass this gate.
+    committed_tracker = safe_json_load("party_tracker.json")
+    if isinstance(committed_tracker, dict):
+        party_tracker_data = committed_tracker
+    world = (party_tracker_data or {}).get("worldConditions") or {}
+    encounter_id = world.get("lastCompletedEncounter")
+    if not encounter_id:
+        return False
+    encounter = safe_json_load(
+        os.path.join("modules", "encounters", "encounter_%s.json" % encounter_id)
+    )
+    return (
+        isinstance(encounter, dict)
+        and ((encounter.get("combatState") or {}).get("pipelineMode") == "agentic")
+        and ((encounter.get("combatState") or {}).get("phase") == "complete")
+    )
+
+
+def _agentic_post_combat_engine_echo(action):
+    """Block character mutations in the historical post-combat narration pass.
+
+    Agentic combat has already committed HP, effects, resources, and rewards.
+    This automatic provider response is based only on that historical summary,
+    never on a new player action, so every character update it emits is an
+    unsafe replay regardless of how the model phrases or combines the changes.
+    """
+    return (
+        isinstance(action, dict)
+        and action.get("action") == "updateCharacterInfo"
+    )
+
+
+_AGENTIC_POST_COMBAT_DROP_NOTICE = (
+    "Character updates in this post-combat pass were ignored because combat "
+    "already committed all changes. Re-issue genuinely new changes with the "
+    "player's next action."
+)
+
+
+def _record_agentic_post_combat_updates_dropped(count):
+    """Record one bounded post-combat guard outcome without gameplay data."""
+    from core.ai.combat_diagnostics import record_combat_diagnostic
+
+    return record_combat_diagnostic(
+        record_type="window_outcome",
+        callsite="POST_COMBAT",
+        outcome="post_combat_update_dropped",
+        dropped_actions=count,
+    )
+
+
 def process_ai_response(
     response,
     party_tracker_data,
@@ -4053,6 +4132,38 @@ def process_ai_response(
         # Separate updateCharacterInfo actions from the other action families.
         char_update_actions = [action for action in actions if action.get("action") == "updateCharacterInfo"]
         other_actions = [action for action in actions if action.get("action") != "updateCharacterInfo"]
+        if char_update_actions and _agentic_post_combat_narration_pass(
+            party_tracker_data
+        ):
+            retained_updates = []
+            dropped_update_count = 0
+            for action in char_update_actions:
+                if _agentic_post_combat_engine_echo(action):
+                    dropped_update_count += 1
+                    debug(
+                        "STATE_CHANGE: Ignoring an agentic post-combat "
+                        "character-state echo; the committed combat state "
+                        "is authoritative",
+                        category="character_updates",
+                    )
+                else:
+                    retained_updates.append(action)
+            char_update_actions = retained_updates
+            if dropped_update_count:
+                drop_notice = {
+                    "role": "system",
+                    "content": _AGENTIC_POST_COMBAT_DROP_NOTICE,
+                }
+                conversation_history.append(drop_notice)
+                save_conversation_history(conversation_history)
+                display_dm_narration(
+                    _AGENTIC_POST_COMBAT_DROP_NOTICE,
+                    channel="system",
+                    color="yellow",
+                )
+                _record_agentic_post_combat_updates_dropped(
+                    dropped_update_count
+                )
         
         debug(f"STATE_CHANGE: Separated into {len(char_update_actions)} character updates and {len(other_actions)} other actions", category="character_updates")
         print(f"DEBUG: STATE_CHANGE: Separated into {len(char_update_actions)} character updates and {len(other_actions)} other actions")
@@ -5178,7 +5289,13 @@ def main_game_loop():
         if dialogue_summary and not combat_still_active:
             # We create a clear, systemic message indicating combat is over.
             # This mimics the handoff from action_handler.
-            combat_summary_message = f"[COMBAT CONCLUDED] The encounter has ended. The following is a summary of events:\n\n{dialogue_summary}"
+            combat_summary_message = (
+                "[COMBAT CONCLUDED] The encounter has ended. The following "
+                "is a summary of events:\n\n%s\n\nIMPORTANT: This historical "
+                "summary describes changes already applied by the combat "
+                "system. Do not re-emit updateCharacterInfo actions for them."
+                % dialogue_summary
+            )
             conversation_history.append({"role": "user", "content": combat_summary_message})
             debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
             save_conversation_history(conversation_history)
@@ -5199,6 +5316,10 @@ def main_game_loop():
                 party_tracker_data["worldConditions"]["currentArea"],
                 current_area_id_post_combat
             )
+            # Match the uninterrupted-combat handoff: the committed combat
+            # state owns HP/XP, so the immediate narration pass must not
+            # reapply a model-authored echo after reconnect recovery.
+            process_ai_response._just_finished_combat = True
             post_combat_result = process_ai_response(
                 ai_response_after_combat,
                 party_tracker_data,
@@ -5934,17 +6055,24 @@ def main_game_loop():
         else:
             dm_note = "Dungeon Master Note: Remember to take actions if necessary such as updating the plot, time, character sheets, and location if changes occur."
 
-        # Enhance player input with inventory context
-        # Using 'general' context for main conversation (combat has separate manager)
-        # Note: We pass None for character_data/characters_data as the integration 
-        # function will extract inventory from party_tracker_data
+        # Resolve the named rule once. The same exact bounded block guides the
+        # primary call, semantic validator, and any correction retry.
+        turn_srd_context = build_srd_context(
+            user_input_text,
+            player_data_current,
+        )
+
+        # Enhance player input with the established inventory context. The
+        # player sheet was already used above for SRD availability/resource
+        # hints; keep the legacy inventory inputs unchanged on no-match turns.
         user_input_with_note = build_enhanced_dm_note(
             dm_note,
             user_input_text,
-            None,  # character_data not available at this scope
+            None,
             party_tracker_data,
             None,  # characters_data not available at this scope
-            in_combat=False  # Always use general context for main conversation
+            in_combat=False,  # Always use general context for main conversation
+            srd_context=turn_srd_context,
         )
         
         conversation_history.append({"role": "user", "content": user_input_with_note})
@@ -6188,7 +6316,14 @@ def main_game_loop():
             if not transition_check_passed:
                 continue  # Skip to next retry iteration
 
-            validation_result = validate_ai_response(ai_response_content, user_input_text, validation_prompt_text, conversation_history, party_tracker_data)
+            validation_result = validate_ai_response(
+                ai_response_content,
+                user_input_text,
+                validation_prompt_text,
+                conversation_history,
+                party_tracker_data,
+                srd_context=turn_srd_context,
+            )
         
             # Unpack the validation result tuple
             is_valid = False
@@ -6406,7 +6541,17 @@ def main_game_loop():
                 # CRITICAL: Save the failed assistant response so the AI can see what it did wrong
                 if ai_response_content:
                     conversation_history.append({"role": "assistant", "content": ai_response_content})
-                conversation_history.append({"role": "user", "content": f"Error Note: Your previous response failed validation. Reason: {validation_reason}. Please adjust your response accordingly."})
+                correction_context = (
+                    "\n\n%s" % turn_srd_context if turn_srd_context else ""
+                )
+                conversation_history.append({
+                    "role": "user",
+                    "content": (
+                        "Error Note: Your previous response failed validation. "
+                        f"Reason: {validation_reason}. Please adjust your response "
+                        f"accordingly.{correction_context}"
+                    ),
+                })
                 save_conversation_history(conversation_history)
                 retry_count += 1
                 if repeated_semantic_rejection:

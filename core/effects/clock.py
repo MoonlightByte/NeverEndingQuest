@@ -5,6 +5,7 @@
 """One game-time scalar with calculation and fantasy-display adapters."""
 
 from datetime import datetime
+import re
 
 
 MONTHS = (
@@ -21,13 +22,36 @@ MONTHS = (
     "Frostmonth",
     "Yearend",
 )
-SECONDS_PER_DAY = 24 * 60 * 60
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE
+SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
 DAYS_PER_MONTH = 28
 MONTHS_PER_YEAR = 12
 
 
 class GameTimeError(ValueError):
     """Persisted fantasy calendar data cannot be converted safely."""
+
+
+def fixed_duration_seconds(duration):
+    """Return (durationKind, seconds) for one simple fixed rules duration."""
+    if not isinstance(duration, str):
+        return None
+    match = re.fullmatch(
+        r"\s*(?:concentration\s*,\s*)?(?:up to\s+)?"
+        r"(\d+)\s+(minute|minutes|hour|hours|day|days)\s*",
+        duration,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    amount = int(match.group(1))
+    unit = match.group(2).lower()
+    if unit.startswith("minute"):
+        return "minutes", amount * SECONDS_PER_MINUTE
+    if unit.startswith("hour"):
+        return "hours", amount * SECONDS_PER_HOUR
+    return "days", amount * SECONDS_PER_DAY
 
 
 def _time_parts(value):

@@ -25,11 +25,17 @@ Two validation regimes:
 import re
 from copy import deepcopy
 
+from core.combat.attacks import (
+    attack_sequence,
+    executable_attack_names,
+    is_executable_attack,
+)
 from core.effects.effective import effective_sheet, modifier_total
 from core.effects.lifecycle import apply_effect_ops
 from core.effects.model import normalize_effect, validate_effect
 from core.managers.combat_state import (
     combatant_by_id,
+    is_combatant_targetable,
     is_turn_eligible,
     normalize_status,
 )
@@ -41,6 +47,42 @@ _STAMPED_EFFECT_ROUND_RE = re.compile(
 
 PLAYER_UNCONSCIOUS = "unconscious"
 NONPLAYER_DEAD = "dead"
+
+# These are corruption/safety envelopes, not implementations of individual
+# SRD spells. Normal play sits far below them; values outside the envelope are
+# almost certainly a malformed weak-model proposal and must be retried before
+# they can become durable state.
+_COMBAT_EFFECT_MODIFIER_LIMITS = {
+    "armorClass": 20,
+    "speed": 300,
+    "maxHitPoints": 500,
+    "attackRolls": 30,
+    "damageRolls": 30,
+    "abilityChecks": 30,
+    "savingThrows": 30,
+    "initiative": 30,
+    "spellSaveDC": 30,
+    "spellAttackBonus": 30,
+}
+
+
+def _combat_modifier_problem(modifier):
+    """Return a retryable problem for an implausibly large effect modifier."""
+    stat = modifier.get("stat") if isinstance(modifier, dict) else None
+    value = modifier.get("value") if isinstance(modifier, dict) else None
+    if type(value) is not int:
+        return None
+    if isinstance(stat, str) and stat.startswith("abilities."):
+        limit = 30
+    else:
+        limit = _COMBAT_EFFECT_MODIFIER_LIMITS.get(stat, 30)
+    if abs(value) > limit:
+        return "effect modifier %s=%s exceeds combat safety bound +/- %s" % (
+            stat,
+            value,
+            limit,
+        )
+    return None
 
 
 class Rejection(dict):
@@ -120,7 +162,7 @@ def _find_action(actor_sheet, name):
 
 def _living_target_ids(encounter):
     return [c["combatantId"] for c in encounter.get("creatures", [])
-            if is_turn_eligible(c)]
+            if is_combatant_targetable(c)]
 
 
 def validate_intent(encounter, characters, intent, strict=None):
@@ -181,7 +223,7 @@ def validate_intent(encounter, characters, intent, strict=None):
                 reason="unknown targetId: %r" % target_id,
                 legalTargets=_living_target_ids(encounter), retryable=True)
         target = combatant_by_id(encounter, target_id) if target_id else None
-        if target is not None and not is_turn_eligible(target):
+        if target is not None and not is_combatant_targetable(target):
             return False, Rejection(
                 reason="target %s is already down" % target_id,
                 legalTargets=_living_target_ids(encounter), retryable=True)
@@ -194,10 +236,10 @@ def validate_intent(encounter, characters, intent, strict=None):
                 retryable=True)
         if strict:
             entry = _find_action(sheet, intent.get("ability"))
-            if entry is None:
+            if entry is None or not is_executable_attack(entry):
                 return False, Rejection(
                     reason="%s does not have %r" % (actor.get("name"), intent.get("ability")),
-                    legalActions=_known_actions(sheet), retryable=True)
+                    legalActions=executable_attack_names(sheet), retryable=True)
             if entry.get("type") == "ranged" and _ammo_quantity(sheet) == 0:
                 return False, Rejection(
                     reason="%s has no ammunition left" % actor.get("name"),
@@ -311,25 +353,29 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
     if intent.get("action") != "attack":
         return resolution
 
-    entry = _find_action(sheet, intent.get("ability")) or {}
-    target = combatant_by_id(encounter, intent.get("targetId"))
-    attack_bonus = int(entry.get("attackBonus", 0) or 0) + modifier_total(
-        sheet, "attackRolls"
+    selected_entry = _find_action(sheet, intent.get("ability")) or {}
+    attack_entries = attack_sequence(
+        sheet,
+        selected_name=selected_entry.get("name"),
+        num_attacks=actor.get("numAttacks"),
+        sequence=actor.get("multiattackSequence"),
     )
+    target = combatant_by_id(encounter, intent.get("targetId"))
     target_ac = _combatant_ac(encounter, characters, target)
-    attack_counter = getattr(rolls, "attack_count", None)
-    attack_count = attack_counter(intent.get("actorId")) if callable(attack_counter) else 1
-    attack_count = max(1, min(8, int(attack_count or 1)))
-    if entry.get("type") == "ranged":
-        attack_count = min(attack_count, _ammo_quantity(sheet))
 
     hp_before = int((target or {}).get("currentHitPoints", 0) or 0)
     hp_after = hp_before
     swings = []
     total_damage = 0
-    for swing_number in range(1, attack_count + 1):
+    ranged_swings = 0
+    for swing_number, entry in enumerate(attack_entries, start=1):
         if target is None or hp_after <= 0:
             break
+        if entry.get("type") == "ranged" and ranged_swings >= _ammo_quantity(sheet):
+            continue
+        attack_bonus = int(entry.get("attackBonus", 0) or 0) + modifier_total(
+            sheet, "attackRolls"
+        )
         attack_die = _take_roll(
             rolls,
             "d20",
@@ -374,6 +420,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
         swings.append(
             {
                 "number": swing_number,
+                "ability": entry.get("name"),
                 "attackRoll": attack_die,
                 "totalAttack": total,
                 "targetAC": target_ac,
@@ -382,6 +429,8 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                 "damage": damage,
             }
         )
+        if entry.get("type") == "ranged":
+            ranged_swings += 1
 
     event["outcome"]["swings"] = swings
     event["outcome"]["hit"] = any(swing["hit"] for swing in swings)
@@ -419,11 +468,11 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
             if status_after != normalize_status(target.get("status")):
                 resolution["charDeltas"][target_name]["status"] = status_after
 
-    if entry.get("type") == "ranged" and swings:
+    if ranged_swings:
         for item in sheet.get("ammunition", []):
             if isinstance(item, dict) and int(item.get("quantity", 0) or 0) > 0:
                 before = int(item.get("quantity", 0) or 0)
-                spent = min(len(swings), before)
+                spent = min(ranged_swings, before)
                 event["resources"].append({
                     "owner": actor.get("name"), "kind": "ammunition",
                     "name": item.get("name"), "delta": -spent,
@@ -530,7 +579,10 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
 
     resources = proposal.get("resources", []) or []
     effects = proposal.get("effects", []) or []
-    targets = proposal.get("targets", []) or []
+    # Targets may be normalized below when a weak model supplies one exact,
+    # provably redundant HP representation. Never mutate the provider payload
+    # retained in event.intent.
+    targets = deepcopy(proposal.get("targets", []) or [])
     if not isinstance(resources, list) or len(resources) > 16:
         resolution["violations"].append("resources must be an array of at most 16 records")
         resources = []
@@ -548,17 +600,42 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
     target_ids = [
         entry.get("combatantId") for entry in targets if isinstance(entry, dict)
     ]
-    if len(target_ids) != len(set(target_ids)):
+    if any(
+        not isinstance(target_id, str) or not target_id
+        for target_id in target_ids
+    ):
+        resolution["violations"].append(
+            "every adjudicated target requires a string combatantId"
+        )
+        targets = []
+    elif len(target_ids) != len(set(target_ids)):
         resolution["violations"].append("duplicate adjudicated targets are not allowed")
         targets = []
 
     # Resources: validate owner/kind/name, reject overspend, and record
     # absolute before/after so a crash-replay of this event is idempotent.
+    resource_identities = set()
     for record in resources:
         if not isinstance(record, dict):
             resolution["violations"].append("non-object resource record dropped")
             continue
         owner, kind, name = record.get("owner"), record.get("kind"), record.get("name")
+        if not all(
+            isinstance(value, str) and bool(value)
+            for value in (owner, kind, name)
+        ):
+            resolution["violations"].append(
+                "resource owner, kind, and name must be nonempty strings"
+            )
+            continue
+        identity = (owner, kind, name)
+        if identity in resource_identities:
+            resolution["violations"].append(
+                "duplicate resource record rejected: %r/%r/%r"
+                % (owner, kind, name)
+            )
+            continue
+        resource_identities.add(identity)
         sheet = (characters or {}).get(owner)
         try:
             delta = int(record.get("delta"))
@@ -593,6 +670,14 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
         op = deepcopy(op)
         owner = op.get("owner")
         combatant_id = op.get("combatantId")
+        if owner is not None and not isinstance(owner, str):
+            resolution["violations"].append("effect owner must be a string")
+            continue
+        if combatant_id is not None and not isinstance(combatant_id, str):
+            resolution["violations"].append(
+                "effect combatantId must be a string"
+            )
+            continue
         if bool(owner) == bool(combatant_id):
             resolution["violations"].append(
                 "effect op requires exactly one owner or combatantId"
@@ -677,25 +762,134 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                     "effect contract rejected: %s" % exc
                 )
                 continue
+            effect_target = (
+                combatant_by_id(encounter, combatant_id)
+                if combatant_id
+                else next(
+                    (
+                        creature
+                        for creature in encounter.get("creatures", [])
+                        if creature.get("name") == owner
+                        and creature.get("type") in ("player", "npc")
+                    ),
+                    None,
+                )
+            )
+            grants_current_hp = any(
+                operation.get("stat") == "hitPoints"
+                and operation.get("delta", 0) > 0
+                for operation in op["effect"].get("onApply", [])
+            )
+            if (
+                grants_current_hp
+                and effect_target
+                and normalize_status(effect_target.get("status")) == NONPLAYER_DEAD
+            ):
+                resolution["violations"].append(
+                    "ordinary healing effect cannot restore dead target %s"
+                    % effect_target["combatantId"]
+                )
+                continue
             effect_problems = validate_effect(
                 op["effect"],
                 require_managed=True,
+            )
+            effect_problems.extend(
+                problem
+                for problem in (
+                    _combat_modifier_problem(modifier)
+                    for modifier in op["effect"].get("modifiers", [])
+                )
+                if problem
             )
             if effect_problems:
                 resolution["violations"].append(
                     "effect contract rejected: %s" % "; ".join(effect_problems)
                 )
                 continue
-        elif not (
-            op.get("effectId")
-            or op.get("name")
-            or (isinstance(op.get("effect"), dict)
-                and (op["effect"].get("effectId") or op["effect"].get("name")))
-        ):
-            resolution["violations"].append(
-                "effect remove requires a name or effectId"
-            )
-            continue
+        else:
+            nested_effect = op.get("effect") if isinstance(op.get("effect"), dict) else {}
+            supplied_effect_id = op.get("effectId") or nested_effect.get("effectId")
+            supplied_name = op.get("name") or nested_effect.get("name")
+            if not supplied_effect_id and not supplied_name:
+                resolution["violations"].append(
+                    "effect remove requires a name or effectId"
+                )
+                continue
+
+            if owner:
+                current_effects = (
+                    ((characters or {}).get(owner) or {}).get("temporaryEffects", [])
+                    or []
+                )
+            else:
+                current_effects = (
+                    (combatant_by_id(encounter, combatant_id) or {}).get(
+                        "activeEffects", []
+                    )
+                    or []
+                )
+            if not isinstance(current_effects, list):
+                current_effects = []
+
+            id_matches = [
+                effect
+                for effect in current_effects
+                if isinstance(effect, dict)
+                and supplied_effect_id
+                and effect.get("effectId") == supplied_effect_id
+            ]
+            matched_by_id_in_name = False
+            if supplied_effect_id:
+                matches = id_matches
+            else:
+                matches = [
+                    effect
+                    for effect in current_effects
+                    if isinstance(effect, dict)
+                    and effect.get("name") == supplied_name
+                ]
+                if not matches:
+                    matches = [
+                        effect
+                        for effect in current_effects
+                        if isinstance(effect, dict)
+                        and effect.get("effectId") == supplied_name
+                    ]
+                    matched_by_id_in_name = bool(matches)
+
+            if len(matches) != 1:
+                label = supplied_effect_id or supplied_name
+                reason = "ambiguous" if len(matches) > 1 else "unknown"
+                resolution["violations"].append(
+                    "%s effect removal reference %r" % (reason, label)
+                )
+                continue
+
+            matched_effect = matches[0]
+            matched_effect_id = matched_effect.get("effectId")
+            matched_name = matched_effect.get("name")
+            op.pop("effect", None)
+            if matched_effect_id:
+                op["effectId"] = matched_effect_id
+            else:
+                op.pop("effectId", None)
+            if matched_name:
+                op["name"] = matched_name
+            else:
+                op.pop("name", None)
+            if matched_by_id_in_name:
+                normalization = {
+                    "kind": "canonicalizeEffectRemovalReference",
+                    "suppliedField": "name",
+                    "suppliedValue": supplied_name,
+                    "effectId": matched_effect_id,
+                    "name": matched_name,
+                }
+                normalization["owner" if owner else "combatantId"] = (
+                    owner or combatant_id
+                )
+                event.setdefault("normalizations", []).append(normalization)
         apply_on = op.get("applyOn", "always")
         if apply_on not in ("always", "failedSave", "successfulSave"):
             resolution["violations"].append(
@@ -707,18 +901,21 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
         normalized_effects.append(op)
 
     # One-time effect resource changes and target HP deltas are alternative
-    # representations of the same mechanic. Reject a proposal that supplies
-    # both, otherwise a weak model can grant Aid-style current HP twice.
-    target_hp_changes = set()
-    for entry in targets:
-        if not isinstance(entry, dict):
-            continue
-        try:
-            has_hp_change = int(entry.get("hpDelta", 0) or 0) != 0
-        except (TypeError, ValueError):
-            has_hp_change = False
-        if has_hp_change:
-            target_hp_changes.add(entry.get("combatantId"))
+    # representations of the same mechanic. An exact Aid-like duplicate can
+    # be canonicalized without another provider call: the effect operation is
+    # retained because it runs after the maximum-HP modifier, while target
+    # hpDelta becomes zero. Every ambiguous/mismatched shape still rejects.
+    save_spec = (
+        proposal.get("save")
+        if isinstance(proposal.get("save"), dict)
+        else None
+    )
+    target_entries = {
+        entry.get("combatantId"): entry
+        for entry in targets
+        if isinstance(entry, dict) and entry.get("combatantId")
+    }
+    overlapping_effects = {}
     for op in normalized_effects:
         if op.get("op") != "add":
             continue
@@ -739,11 +936,76 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                 and creature.get("type") in ("player", "npc")
             ]
             target_id = matches[0] if len(matches) == 1 else None
-        if target_id in target_hp_changes:
+        target_entry = target_entries.get(target_id)
+        if not isinstance(target_entry, dict):
+            continue
+        if type(target_entry.get("hpDelta")) is int and target_entry["hpDelta"] != 0:
+            overlapping_effects.setdefault(target_id, []).append(op)
+
+    canonical_records = []
+    can_canonicalize = bool(overlapping_effects) and save_spec is None
+    for target_id, target_entry in target_entries.items():
+        effect_ops = overlapping_effects.get(target_id)
+        if not effect_ops:
+            continue
+        if len(effect_ops) != 1:
+            can_canonicalize = False
+            continue
+        op = effect_ops[0]
+        effect = op.get("effect") or {}
+        on_apply = effect.get("onApply", []) or []
+        on_remove = effect.get("onRemove", []) or []
+        modifiers = effect.get("modifiers", []) or []
+        maximum_modifiers = [
+            modifier
+            for modifier in modifiers
+            if isinstance(modifier, dict)
+            and modifier.get("stat") == "maxHitPoints"
+        ]
+        target_delta = target_entry.get("hpDelta")
+        exact = (
+            op.get("applyOn") == "always"
+            and len(on_apply) == 1
+            and on_apply[0].get("stat") == "hitPoints"
+            and type(on_apply[0].get("delta")) is int
+            and on_apply[0]["delta"] > 0
+            and type(target_delta) is int
+            and target_delta == on_apply[0]["delta"]
+            and len(modifiers) == 1
+            and len(maximum_modifiers) == 1
+            and maximum_modifiers[0].get("value") == target_delta
+            and not on_remove
+        )
+        if not exact:
+            can_canonicalize = False
+            continue
+        canonical_records.append((target_id, target_entry, target_delta))
+
+    canonical_wake_targets = set()
+    if overlapping_effects and can_canonicalize:
+        for target_id, target_entry, delta in canonical_records:
+            target_entry["hpDelta"] = 0
+            target = combatant_by_id(encounter, target_id)
+            if (
+                target is not None
+                and normalize_status(target.get("status")) == PLAYER_UNCONSCIOUS
+            ):
+                canonical_wake_targets.add(target_id)
+            event.setdefault("normalizations", []).append(
+                {
+                    "kind": "deduplicateEffectHitPoints",
+                    "combatantId": target_id,
+                    "delta": delta,
+                    "kept": "effect.onApply",
+                    "removed": "target.hpDelta",
+                }
+            )
+    else:
+        for target_id in overlapping_effects:
             resolution["violations"].append(
                 "effect onApply and target hpDelta duplicate one HP change"
             )
-    save_spec = proposal.get("save") if isinstance(proposal.get("save"), dict) else None
+
     if save_spec and not targets:
         resolution["violations"].append(
             "a declared save requires at least one target (use hpDelta 0 for control)"
@@ -761,6 +1023,12 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             resolution["violations"].append(
                 "non-integer hpDelta for %s dropped" % target["combatantId"])
             continue
+        if hp_delta > 0 and normalize_status(target.get("status")) == NONPLAYER_DEAD:
+            resolution["violations"].append(
+                "ordinary healing cannot restore dead target %s"
+                % target["combatantId"]
+            )
+            continue
         saved = None
         if save_spec and hp_delta <= 0:
             die = _take_roll(
@@ -777,7 +1045,14 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                                    "combatantId": target["combatantId"],
                                    "bonus": bonus, "success": saved})
             if saved and hp_delta < 0:
-                hp_delta = hp_delta // 2 if save_spec.get("halfOnSave") else 0
+                # SRD division rounds damage down. The stored delta is
+                # negative, so Python's ``//`` would round away from zero
+                # (-7 // 2 == -4) and accidentally deal one extra damage.
+                hp_delta = (
+                    -((-hp_delta) // 2)
+                    if save_spec.get("halfOnSave")
+                    else 0
+                )
         hp_before = int(target.get("currentHitPoints", 0) or 0)
         ceiling = _combatant_max_hp(encounter, characters, target) or hp_before
         hp_after = max(0, min(hp_before + hp_delta, ceiling))
@@ -785,6 +1060,8 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
         if hp_after == 0 and hp_delta < 0:
             status_after = (PLAYER_UNCONSCIOUS if target.get("type") == "player"
                             else NONPLAYER_DEAD)
+        elif target["combatantId"] in canonical_wake_targets:
+            status_after = "alive"
         elif hp_after > 0 and status_after == PLAYER_UNCONSCIOUS and hp_delta > 0:
             status_after = "alive"
         record = {"combatantId": target["combatantId"], "hpBefore": hp_before,
@@ -1219,6 +1496,29 @@ def apply_resolution(encounter, characters, resolution):
     }
     for source_id in down_sources:
         _drop_concentration(new_encounter, new_characters, source_id)
+
+    # Character files are written before the encounter journal receipt. A
+    # replay can therefore begin with an already-applied effect/resource file.
+    # These absolute post-event values make one-time effect HP operations
+    # converge instead of being lost or applied twice after that partial write.
+    for name, snapshot in (event.get("characterStateAfter") or {}).items():
+        sheet = new_characters.get(name)
+        if not isinstance(sheet, dict) or not isinstance(snapshot, dict):
+            raise ValueError("Character replay snapshot is not durably addressable")
+        if "hitPoints" in snapshot:
+            ceiling = int(
+                effective_sheet(sheet).get(
+                    "maxHitPoints",
+                    snapshot["hitPoints"],
+                )
+                or 0
+            )
+            sheet["hitPoints"] = max(
+                0,
+                min(int(snapshot["hitPoints"]), ceiling),
+            )
+        if "status" in snapshot:
+            sheet["status"] = snapshot["status"]
     _refresh_character_effect_projections(new_encounter, new_characters)
     _refresh_effect_control_flags(new_encounter, new_characters)
     return new_encounter, new_characters
@@ -1425,6 +1725,12 @@ def check_invariants(encounter, characters):
             violations.append("%s HP %s outside [0, %s]" % (cid, hp, max_hp))
         if isinstance(hp, int) and hp == 0 and normalize_status(creature.get("status")) == "alive":
             violations.append("%s has 0 HP but status alive" % cid)
+        if (
+            isinstance(hp, int)
+            and hp > 0
+            and normalize_status(creature.get("status")) == NONPLAYER_DEAD
+        ):
+            violations.append("%s has positive HP but status dead" % cid)
         name = creature.get("name")
         sheet = (characters or {}).get(name) if creature.get("type") in ("player", "npc") else None
         if isinstance(sheet, dict) and isinstance(hp, int):

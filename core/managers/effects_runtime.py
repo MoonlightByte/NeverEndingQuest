@@ -85,7 +85,11 @@ def _remove_operation(result, sheet):
     }
 
 
-def update_character_with_effects(character_name, changes, party_tracker_data=None):
+def update_character_with_effects(
+    character_name,
+    changes,
+    party_tracker_data=None,
+):
     """Classifier-first T078 -> T079 character update for a migrated campaign."""
     if not campaign_effects_migrated():
         # Explicit recovery fallback for campaigns whose automatic conversion

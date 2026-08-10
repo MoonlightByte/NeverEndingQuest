@@ -78,6 +78,12 @@ def build_snapshot():
         character = _load_json(char_path)
         snapshot["files"]["character"] = _mtime(char_path)
         if isinstance(character, dict):
+            try:
+                from core.effects.effective import effective_sheet
+
+                character = effective_sheet(character)
+            except Exception:
+                pass
             snapshot["player"] = {
                 "name": character.get("name"),
                 "class": character.get("class"),

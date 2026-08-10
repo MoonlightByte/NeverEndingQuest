@@ -1,0 +1,4087 @@
+{
+  "_metadata": {
+    "schemaVersion": 1,
+    "created": "2026-08-08",
+    "description": "Typed SRD 5.2.1 spell-roll contracts for verified-only combat request validation",
+    "source": "System Reference Document 5.2.1, CC BY 4.0",
+    "sourceRepository": "data/spell_repository.json",
+    "sourceSha256": "5fafd1c79e869dbca686e3efbc18e9e680119b55a662400b1e1513892c9068ee",
+    "totalSpells": 339,
+    "classificationCounts": {
+      "verified": 8,
+      "ambiguous": 124,
+      "no_player_roll": 207
+    },
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+  },
+  "contracts": {
+    "acid_arrow": {
+      "name": "Acid Arrow",
+      "classification": "verified",
+      "reason": "Manually typed and reviewed against the SRD 5.2.1 repository entry.",
+      "evidenceDice": [
+        "1d4",
+        "2d4",
+        "4d4"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+      "phases": [
+        {
+          "id": "spell_attack",
+          "purpose": "attack",
+          "playerRoll": true,
+          "baseDice": {
+            "count": 1,
+            "sides": 20
+          },
+          "modifier": "spellAttackBonus"
+        },
+        {
+          "id": "initial_damage",
+          "purpose": "damage",
+          "playerRoll": true,
+          "trigger": "hit_or_miss_half",
+          "baseDice": {
+            "count": 4,
+            "sides": 4
+          },
+          "scaling": {
+            "kind": "slot_level",
+            "baseLevel": 2,
+            "perLevel": {
+              "count": 1,
+              "sides": 4
+            }
+          }
+        },
+        {
+          "id": "later_damage",
+          "purpose": "damage",
+          "playerRoll": true,
+          "trigger": "end_of_target_next_turn_on_hit",
+          "baseDice": {
+            "count": 2,
+            "sides": 4
+          },
+          "scaling": {
+            "kind": "slot_level",
+            "baseLevel": 2,
+            "perLevel": {
+              "count": 1,
+              "sides": 4
+            }
+          }
+        }
+      ]
+    },
+    "acid_splash": {
+      "name": "Acid Splash",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "2d6",
+        "3d6",
+        "4d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "aid": {
+      "name": "Aid",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "alarm": {
+      "name": "Alarm",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "alter_self": {
+      "name": "Alter Self",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "animal_friendship": {
+      "name": "Animal Friendship",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "animal_messenger": {
+      "name": "Animal Messenger",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "animal_shapes": {
+      "name": "Animal Shapes",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "animate_dead": {
+      "name": "Animate Dead",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "animate_objects": {
+      "name": "Animate Objects",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4",
+        "1d6",
+        "2d6",
+        "1d12",
+        "2d12"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "antilife_shell": {
+      "name": "Antilife Shell",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "antimagic_field": {
+      "name": "Antimagic Field",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "antipathy_sympathy": {
+      "name": "Antipathy/Sympathy",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "arcane_eye": {
+      "name": "Arcane Eye",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "arcane_hand": {
+      "name": "Arcane Hand",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d6",
+        "4d6",
+        "2d8",
+        "5d8"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "arcane_lock": {
+      "name": "Arcane Lock",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "arcane_sword": {
+      "name": "Arcane Sword",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "4d12"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "arcanist_s_magic_aura": {
+      "name": "Arcanist’s Magic Aura",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "astral_projection": {
+      "name": "Astral Projection",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "augury": {
+      "name": "Augury",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "aura_of_life": {
+      "name": "Aura of Life",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "awaken": {
+      "name": "Awaken",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "bane": {
+      "name": "Bane",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "banishment": {
+      "name": "Banishment",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "barkskin": {
+      "name": "Barkskin",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "beacon_of_hope": {
+      "name": "Beacon of Hope",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "befuddlement": {
+      "name": "Befuddlement",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "10d12"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "bestow_curse": {
+      "name": "Bestow Curse",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8"
+      ],
+      "evidenceRollCues": [
+        "ability check"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "black_tentacles": {
+      "name": "Black Tentacles",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "3d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "blade_barrier": {
+      "name": "Blade Barrier",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "6d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "bless": {
+      "name": "Bless",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "blight": {
+      "name": "Blight",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "8d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "blindness_deafness": {
+      "name": "Blindness/Deafness",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "blink": {
+      "name": "Blink",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "blur": {
+      "name": "Blur",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "burning_hands": {
+      "name": "Burning Hands",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "3d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "call_lightning": {
+      "name": "Call Lightning",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d10",
+        "3d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "calm_emotions": {
+      "name": "Calm Emotions",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "chain_lightning": {
+      "name": "Chain Lightning",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "10d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "charm_monster": {
+      "name": "Charm Monster",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "charm_person": {
+      "name": "Charm Person",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "chill_touch": {
+      "name": "Chill Touch",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d10",
+        "2d10",
+        "3d10",
+        "4d10"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "chromatic_orb": {
+      "name": "Chromatic Orb",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "3d8"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "circle_of_death": {
+      "name": "Circle of Death",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d8",
+        "8d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "clairvoyance": {
+      "name": "Clairvoyance",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "clone": {
+      "name": "Clone",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "cloudkill": {
+      "name": "Cloudkill",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "5d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "color_spray": {
+      "name": "Color Spray",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "command": {
+      "name": "Command",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "commune": {
+      "name": "Commune",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "commune_with_nature": {
+      "name": "Commune with Nature",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "comprehend_languages": {
+      "name": "Comprehend Languages",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "compulsion": {
+      "name": "Compulsion",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "cone_of_cold": {
+      "name": "Cone of Cold",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "8d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "confusion": {
+      "name": "Confusion",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4",
+        "1d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "conjure_animals": {
+      "name": "Conjure Animals",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d10",
+        "3d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "conjure_celestial": {
+      "name": "Conjure Celestial",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d12",
+        "4d12",
+        "6d12"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "conjure_elemental": {
+      "name": "Conjure Elemental",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "4d8",
+        "8d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "conjure_fey": {
+      "name": "Conjure Fey",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d12",
+        "3d12"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "conjure_minor_elementals": {
+      "name": "Conjure Minor Elementals",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "conjure_woodland_beings": {
+      "name": "Conjure Woodland Beings",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "5d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "contact_other_plane": {
+      "name": "Contact Other Plane",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "6d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "contagion": {
+      "name": "Contagion",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "11d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "contingency": {
+      "name": "Contingency",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "continual_flame": {
+      "name": "Continual Flame",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "control_water": {
+      "name": "Control Water",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "control_weather": {
+      "name": "Control Weather",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "counterspell": {
+      "name": "Counterspell",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "create_food_and_water": {
+      "name": "Create Food and Water",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "create_or_destroy_water": {
+      "name": "Create or Destroy Water",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "create_undead": {
+      "name": "Create Undead",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "creation": {
+      "name": "Creation",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "cure_wounds": {
+      "name": "Cure Wounds",
+      "classification": "verified",
+      "reason": "Manually typed and reviewed against the SRD 5.2.1 repository entry.",
+      "evidenceDice": [
+        "2d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+      "phases": [
+        {
+          "id": "healing",
+          "purpose": "healing",
+          "playerRoll": true,
+          "baseDice": {
+            "count": 2,
+            "sides": 8
+          },
+          "scaling": {
+            "kind": "slot_level",
+            "baseLevel": 1,
+            "perLevel": {
+              "count": 2,
+              "sides": 8
+            }
+          },
+          "modifier": "spellcastingAbility"
+        }
+      ]
+    },
+    "dancing_lights": {
+      "name": "Dancing Lights",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "darkness": {
+      "name": "Darkness",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "darkvision": {
+      "name": "Darkvision",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "daylight": {
+      "name": "Daylight",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "death_ward": {
+      "name": "Death Ward",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "delayed_blast_fireball": {
+      "name": "Delayed Blast Fireball",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "12d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "demiplane": {
+      "name": "Demiplane",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "detect_evil_and_good": {
+      "name": "Detect Evil and Good",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "detect_magic": {
+      "name": "Detect Magic",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "detect_poison_and_disease": {
+      "name": "Detect Poison and Disease",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "detect_thoughts": {
+      "name": "Detect Thoughts",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "dimension_door": {
+      "name": "Dimension Door",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "4d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "disguise_self": {
+      "name": "Disguise Self",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "disintegrate": {
+      "name": "Disintegrate",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "3d6",
+        "10d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "dispel_evil_and_good": {
+      "name": "Dispel Evil and Good",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "dispel_magic": {
+      "name": "Dispel Magic",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [],
+      "evidenceRollCues": [
+        "ability check"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "dissonant_whispers": {
+      "name": "Dissonant Whispers",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "3d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "divination": {
+      "name": "Divination",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "divine_favor": {
+      "name": "Divine Favor",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "divine_smite": {
+      "name": "Divine Smite",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "divine_word": {
+      "name": "Divine Word",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "dominate_beast": {
+      "name": "Dominate Beast",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "dominate_monster": {
+      "name": "Dominate Monster",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "dominate_person": {
+      "name": "Dominate Person",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "dragon_s_breath": {
+      "name": "Dragon’s Breath",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "3d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "dream": {
+      "name": "Dream",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "3d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "druidcraft": {
+      "name": "Druidcraft",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "earthquake": {
+      "name": "Earthquake",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "12d6",
+        "1d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "eldritch_blast": {
+      "name": "Eldritch Blast",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d10"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "elementalism": {
+      "name": "Elementalism",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "enhance_ability": {
+      "name": "Enhance Ability",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [],
+      "evidenceRollCues": [
+        "ability check"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "enlarge_reduce": {
+      "name": "Enlarge/Reduce",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "ensnaring_strike": {
+      "name": "Ensnaring Strike",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "entangle": {
+      "name": "Entangle",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "enthrall": {
+      "name": "Enthrall",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "etherealness": {
+      "name": "Etherealness",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "expeditious_retreat": {
+      "name": "Expeditious Retreat",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "eyebite": {
+      "name": "Eyebite",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "fabricate": {
+      "name": "Fabricate",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "faerie_fire": {
+      "name": "Faerie Fire",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "faithful_hound": {
+      "name": "Faithful Hound",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "4d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "false_life": {
+      "name": "False Life",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "fear": {
+      "name": "Fear",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "feather_fall": {
+      "name": "Feather Fall",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "find_familiar": {
+      "name": "Find Familiar",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "find_steed": {
+      "name": "Find Steed",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "find_the_path": {
+      "name": "Find the Path",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "find_traps": {
+      "name": "Find Traps",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "finger_of_death": {
+      "name": "Finger of Death",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "7d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "fire_bolt": {
+      "name": "Fire Bolt",
+      "classification": "verified",
+      "reason": "Manually typed and reviewed against the SRD 5.2.1 repository entry.",
+      "evidenceDice": [
+        "1d10",
+        "2d10",
+        "3d10",
+        "4d10"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+      "phases": [
+        {
+          "id": "spell_attack",
+          "purpose": "attack",
+          "playerRoll": true,
+          "baseDice": {
+            "count": 1,
+            "sides": 20
+          },
+          "modifier": "spellAttackBonus"
+        },
+        {
+          "id": "damage",
+          "purpose": "damage",
+          "playerRoll": true,
+          "trigger": "hit",
+          "baseDice": {
+            "count": 1,
+            "sides": 10
+          },
+          "scaling": {
+            "kind": "character_level",
+            "breakpoints": {
+              "1": {
+                "count": 1,
+                "sides": 10
+              },
+              "5": {
+                "count": 2,
+                "sides": 10
+              },
+              "11": {
+                "count": 3,
+                "sides": 10
+              },
+              "17": {
+                "count": 4,
+                "sides": 10
+              }
+            }
+          }
+        }
+      ]
+    },
+    "fire_shield": {
+      "name": "Fire Shield",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "fire_storm": {
+      "name": "Fire Storm",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "7d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "fireball": {
+      "name": "Fireball",
+      "classification": "verified",
+      "reason": "Manually typed and reviewed against the SRD 5.2.1 repository entry.",
+      "evidenceDice": [
+        "1d6",
+        "8d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+      "phases": [
+        {
+          "id": "damage",
+          "purpose": "damage",
+          "playerRoll": true,
+          "trigger": "save_for_half",
+          "baseDice": {
+            "count": 8,
+            "sides": 6
+          },
+          "scaling": {
+            "kind": "slot_level",
+            "baseLevel": 3,
+            "perLevel": {
+              "count": 1,
+              "sides": 6
+            }
+          }
+        }
+      ]
+    },
+    "flame_blade": {
+      "name": "Flame Blade",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "3d6"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "flame_strike": {
+      "name": "Flame Strike",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "5d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "flaming_sphere": {
+      "name": "Flaming Sphere",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "2d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "flesh_to_stone": {
+      "name": "Flesh to Stone",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "floating_disk": {
+      "name": "Floating Disk",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "fly": {
+      "name": "Fly",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "fog_cloud": {
+      "name": "Fog Cloud",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "forbiddance": {
+      "name": "Forbiddance",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "5d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "forcecage": {
+      "name": "Forcecage",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "foresight": {
+      "name": "Foresight",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "freedom_of_movement": {
+      "name": "Freedom of Movement",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "freezing_sphere": {
+      "name": "Freezing Sphere",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "10d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "gaseous_form": {
+      "name": "Gaseous Form",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "gate": {
+      "name": "Gate",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "geas": {
+      "name": "Geas",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "5d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "gentle_repose": {
+      "name": "Gentle Repose",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "giant_insect": {
+      "name": "Giant Insect",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4",
+        "1d6",
+        "1d10"
+      ],
+      "evidenceRollCues": [
+        "spell attack",
+        "ability check"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "glibness": {
+      "name": "Glibness",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "globe_of_invulnerability": {
+      "name": "Globe of Invulnerability",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "glyph_of_warding": {
+      "name": "Glyph of Warding",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "5d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "goodberry": {
+      "name": "Goodberry",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "grease": {
+      "name": "Grease",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "greater_invisibility": {
+      "name": "Greater Invisibility",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "greater_restoration": {
+      "name": "Greater Restoration",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "guardian_of_faith": {
+      "name": "Guardian of Faith",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "guards_and_wards": {
+      "name": "Guards and Wards",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "guidance": {
+      "name": "Guidance",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4"
+      ],
+      "evidenceRollCues": [
+        "ability check"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "guiding_bolt": {
+      "name": "Guiding Bolt",
+      "classification": "verified",
+      "reason": "Manually typed and reviewed against the SRD 5.2.1 repository entry.",
+      "evidenceDice": [
+        "1d6",
+        "4d6"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+      "phases": [
+        {
+          "id": "spell_attack",
+          "purpose": "attack",
+          "playerRoll": true,
+          "baseDice": {
+            "count": 1,
+            "sides": 20
+          },
+          "modifier": "spellAttackBonus"
+        },
+        {
+          "id": "damage",
+          "purpose": "damage",
+          "playerRoll": true,
+          "trigger": "hit",
+          "baseDice": {
+            "count": 4,
+            "sides": 6
+          },
+          "scaling": {
+            "kind": "slot_level",
+            "baseLevel": 1,
+            "perLevel": {
+              "count": 1,
+              "sides": 6
+            }
+          }
+        }
+      ]
+    },
+    "gust_of_wind": {
+      "name": "Gust of Wind",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "hallow": {
+      "name": "Hallow",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "hallucinatory_terrain": {
+      "name": "Hallucinatory Terrain",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "harm": {
+      "name": "Harm",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "14d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "haste": {
+      "name": "Haste",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "heal": {
+      "name": "Heal",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "healing_word": {
+      "name": "Healing Word",
+      "classification": "verified",
+      "reason": "Manually typed and reviewed against the SRD 5.2.1 repository entry.",
+      "evidenceDice": [
+        "2d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+      "phases": [
+        {
+          "id": "healing",
+          "purpose": "healing",
+          "playerRoll": true,
+          "baseDice": {
+            "count": 2,
+            "sides": 4
+          },
+          "scaling": {
+            "kind": "slot_level",
+            "baseLevel": 1,
+            "perLevel": {
+              "count": 2,
+              "sides": 4
+            }
+          },
+          "modifier": "spellcastingAbility"
+        }
+      ]
+    },
+    "heat_metal": {
+      "name": "Heat Metal",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8"
+      ],
+      "evidenceRollCues": [
+        "ability check"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "hellish_rebuke": {
+      "name": "Hellish Rebuke",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d10",
+        "2d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "heroes_feast": {
+      "name": "Heroes’ Feast",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "heroism": {
+      "name": "Heroism",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "hex": {
+      "name": "Hex",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6"
+      ],
+      "evidenceRollCues": [
+        "ability check"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "hideous_laughter": {
+      "name": "Hideous Laughter",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "hold_monster": {
+      "name": "Hold Monster",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "hold_person": {
+      "name": "Hold Person",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "holy_aura": {
+      "name": "Holy Aura",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "hunter_s_mark": {
+      "name": "Hunter’s Mark",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "hypnotic_pattern": {
+      "name": "Hypnotic Pattern",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "ice_knife": {
+      "name": "Ice Knife",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "2d6",
+        "1d10"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "ice_storm": {
+      "name": "Ice Storm",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "4d6",
+        "1d10",
+        "2d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "identify": {
+      "name": "Identify",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "illusory_script": {
+      "name": "Illusory Script",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "imprisonment": {
+      "name": "Imprisonment",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "incendiary_cloud": {
+      "name": "Incendiary Cloud",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "10d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "inflict_wounds": {
+      "name": "Inflict Wounds",
+      "classification": "verified",
+      "reason": "Manually typed and reviewed against the SRD 5.2.1 repository entry.",
+      "evidenceDice": [
+        "1d10",
+        "2d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+      "phases": [
+        {
+          "id": "damage",
+          "purpose": "damage",
+          "playerRoll": true,
+          "trigger": "save_for_half",
+          "baseDice": {
+            "count": 2,
+            "sides": 10
+          },
+          "scaling": {
+            "kind": "slot_level",
+            "baseLevel": 1,
+            "perLevel": {
+              "count": 1,
+              "sides": 10
+            }
+          }
+        }
+      ]
+    },
+    "insect_plague": {
+      "name": "Insect Plague",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d10",
+        "4d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "instant_summons": {
+      "name": "Instant Summons",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "invisibility": {
+      "name": "Invisibility",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "irresistible_dance": {
+      "name": "Irresistible Dance",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "jump": {
+      "name": "Jump",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "knock": {
+      "name": "Knock",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "legend_lore": {
+      "name": "Legend Lore",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "lesser_restoration": {
+      "name": "Lesser Restoration",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "levitate": {
+      "name": "Levitate",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "light": {
+      "name": "Light",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "lightning_bolt": {
+      "name": "Lightning Bolt",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "8d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "locate_animals_or_plants": {
+      "name": "Locate Animals or Plants",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "locate_creature": {
+      "name": "Locate Creature",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "locate_object": {
+      "name": "Locate Object",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "longstrider": {
+      "name": "Longstrider",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mage_armor": {
+      "name": "Mage Armor",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mage_hand": {
+      "name": "Mage Hand",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "magic_circle": {
+      "name": "Magic Circle",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "magic_jar": {
+      "name": "Magic Jar",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "magic_missile": {
+      "name": "Magic Missile",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "magic_mouth": {
+      "name": "Magic Mouth",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "magic_weapon": {
+      "name": "Magic Weapon",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "magnificent_mansion": {
+      "name": "Magnificent Mansion",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "major_image": {
+      "name": "Major Image",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mass_cure_wounds": {
+      "name": "Mass Cure Wounds",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "5d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mass_heal": {
+      "name": "Mass Heal",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mass_healing_word": {
+      "name": "Mass Healing Word",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4",
+        "2d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mass_suggestion": {
+      "name": "Mass Suggestion",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "maze": {
+      "name": "Maze",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "meld_into_stone": {
+      "name": "Meld into Stone",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "6d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mending": {
+      "name": "Mending",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "message": {
+      "name": "Message",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "meteor_swarm": {
+      "name": "Meteor Swarm",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "20d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mind_blank": {
+      "name": "Mind Blank",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mind_spike": {
+      "name": "Mind Spike",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "3d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "minor_illusion": {
+      "name": "Minor Illusion",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mirage_arcane": {
+      "name": "Mirage Arcane",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mirror_image": {
+      "name": "Mirror Image",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "mislead": {
+      "name": "Mislead",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "misty_step": {
+      "name": "Misty Step",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "modify_memory": {
+      "name": "Modify Memory",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "moonbeam": {
+      "name": "Moonbeam",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d10",
+        "2d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "move_earth": {
+      "name": "Move Earth",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "nondetection": {
+      "name": "Nondetection",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "pass_without_trace": {
+      "name": "Pass without Trace",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "passwall": {
+      "name": "Passwall",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "phantasmal_force": {
+      "name": "Phantasmal Force",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "phantasmal_killer": {
+      "name": "Phantasmal Killer",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d10",
+        "4d10"
+      ],
+      "evidenceRollCues": [
+        "ability check"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "phantom_steed": {
+      "name": "Phantom Steed",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "planar_ally": {
+      "name": "Planar Ally",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "planar_binding": {
+      "name": "Planar Binding",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "plane_shift": {
+      "name": "Plane Shift",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "plant_growth": {
+      "name": "Plant Growth",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "poison_spray": {
+      "name": "Poison Spray",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d12",
+        "2d12",
+        "3d12",
+        "4d12"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "polymorph": {
+      "name": "Polymorph",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "power_word_heal": {
+      "name": "Power Word Heal",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "power_word_kill": {
+      "name": "Power Word Kill",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "12d12"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "power_word_stun": {
+      "name": "Power Word Stun",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "prayer_of_healing": {
+      "name": "Prayer of Healing",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "prestidigitation": {
+      "name": "Prestidigitation",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "prismatic_spray": {
+      "name": "Prismatic Spray",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "12d6",
+        "1d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "prismatic_wall": {
+      "name": "Prismatic Wall",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "12d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "private_sanctum": {
+      "name": "Private Sanctum",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "produce_flame": {
+      "name": "Produce Flame",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8",
+        "3d8",
+        "4d8"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "programmed_illusion": {
+      "name": "Programmed Illusion",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "project_image": {
+      "name": "Project Image",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "protection_from_energy": {
+      "name": "Protection from Energy",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "protection_from_evil_and_good": {
+      "name": "Protection from Evil and Good",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "protection_from_poison": {
+      "name": "Protection from Poison",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "purify_food_and_drink": {
+      "name": "Purify Food and Drink",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "raise_dead": {
+      "name": "Raise Dead",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "ray_of_enfeeblement": {
+      "name": "Ray of Enfeeblement",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "ray_of_frost": {
+      "name": "Ray of Frost",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8",
+        "3d8",
+        "4d8"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "ray_of_sickness": {
+      "name": "Ray of Sickness",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "regenerate": {
+      "name": "Regenerate",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "4d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "reincarnate": {
+      "name": "Reincarnate",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "remove_curse": {
+      "name": "Remove Curse",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "resilient_sphere": {
+      "name": "Resilient Sphere",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "resistance": {
+      "name": "Resistance",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "resurrection": {
+      "name": "Resurrection",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "reverse_gravity": {
+      "name": "Reverse Gravity",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "revivify": {
+      "name": "Revivify",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "rope_trick": {
+      "name": "Rope Trick",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "sacred_flame": {
+      "name": "Sacred Flame",
+      "classification": "verified",
+      "reason": "Manually typed and reviewed against the SRD 5.2.1 repository entry.",
+      "evidenceDice": [
+        "1d8",
+        "2d8",
+        "3d8",
+        "4d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+      "phases": [
+        {
+          "id": "damage",
+          "purpose": "damage",
+          "playerRoll": true,
+          "trigger": "failed_save",
+          "baseDice": {
+            "count": 1,
+            "sides": 8
+          },
+          "scaling": {
+            "kind": "character_level",
+            "breakpoints": {
+              "1": {
+                "count": 1,
+                "sides": 8
+              },
+              "5": {
+                "count": 2,
+                "sides": 8
+              },
+              "11": {
+                "count": 3,
+                "sides": 8
+              },
+              "17": {
+                "count": 4,
+                "sides": 8
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sanctuary": {
+      "name": "Sanctuary",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "scorching_ray": {
+      "name": "Scorching Ray",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d6"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "scrying": {
+      "name": "Scrying",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "searing_smite": {
+      "name": "Searing Smite",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "secret_chest": {
+      "name": "Secret Chest",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "see_invisibility": {
+      "name": "See Invisibility",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "seeming": {
+      "name": "Seeming",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "sending": {
+      "name": "Sending",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "sequester": {
+      "name": "Sequester",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "shapechange": {
+      "name": "Shapechange",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "shatter": {
+      "name": "Shatter",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "3d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "shield": {
+      "name": "Shield",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "shield_of_faith": {
+      "name": "Shield of Faith",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "shillelagh": {
+      "name": "Shillelagh",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "shining_smite": {
+      "name": "Shining Smite",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "2d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "shocking_grasp": {
+      "name": "Shocking Grasp",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8",
+        "3d8",
+        "4d8"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "silence": {
+      "name": "Silence",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "silent_image": {
+      "name": "Silent Image",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "simulacrum": {
+      "name": "Simulacrum",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "sleep": {
+      "name": "Sleep",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "sleet_storm": {
+      "name": "Sleet Storm",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "slow": {
+      "name": "Slow",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "sorcerous_burst": {
+      "name": "Sorcerous Burst",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8",
+        "3d8",
+        "4d8"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "spare_the_dying": {
+      "name": "Spare the Dying",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "speak_with_animals": {
+      "name": "Speak with Animals",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "speak_with_dead": {
+      "name": "Speak with Dead",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "speak_with_plants": {
+      "name": "Speak with Plants",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "spider_climb": {
+      "name": "Spider Climb",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "spike_growth": {
+      "name": "Spike Growth",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "spirit_guardians": {
+      "name": "Spirit Guardians",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "3d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "spiritual_weapon": {
+      "name": "Spiritual Weapon",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "starry_wisp": {
+      "name": "Starry Wisp",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8",
+        "3d8",
+        "4d8"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "stinking_cloud": {
+      "name": "Stinking Cloud",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "stone_shape": {
+      "name": "Stone Shape",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "stoneskin": {
+      "name": "Stoneskin",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "storm_of_vengeance": {
+      "name": "Storm of Vengeance",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "2d6",
+        "4d6",
+        "10d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "suggestion": {
+      "name": "Suggestion",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "summon_dragon": {
+      "name": "Summon Dragon",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "2d6"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "sunbeam": {
+      "name": "Sunbeam",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "6d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "sunburst": {
+      "name": "Sunburst",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "12d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "symbol": {
+      "name": "Symbol",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "10d10"
+      ],
+      "evidenceRollCues": [
+        "ability check"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "telekinesis": {
+      "name": "Telekinesis",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "telepathic_bond": {
+      "name": "Telepathic Bond",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "teleport": {
+      "name": "Teleport",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "3d10",
+        "2d12",
+        "1d100"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "teleportation_circle": {
+      "name": "Teleportation Circle",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "thaumaturgy": {
+      "name": "Thaumaturgy",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "thunderwave": {
+      "name": "Thunderwave",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "2d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "time_stop": {
+      "name": "Time Stop",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "tiny_hut": {
+      "name": "Tiny Hut",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "tongues": {
+      "name": "Tongues",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "transport_via_plants": {
+      "name": "Transport via Plants",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "tree_stride": {
+      "name": "Tree Stride",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "true_polymorph": {
+      "name": "True Polymorph",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "true_resurrection": {
+      "name": "True Resurrection",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "true_seeing": {
+      "name": "True Seeing",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "true_strike": {
+      "name": "True Strike",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "2d6",
+        "3d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "tsunami": {
+      "name": "Tsunami",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d10",
+        "5d10",
+        "6d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "unseen_servant": {
+      "name": "Unseen Servant",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "vampiric_touch": {
+      "name": "Vampiric Touch",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "3d6"
+      ],
+      "evidenceRollCues": [
+        "spell attack"
+      ],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "vicious_mockery": {
+      "name": "Vicious Mockery",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "2d6",
+        "3d6",
+        "4d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "vitriolic_sphere": {
+      "name": "Vitriolic Sphere",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d4",
+        "5d4",
+        "10d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "wall_of_fire": {
+      "name": "Wall of Fire",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "5d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "wall_of_force": {
+      "name": "Wall of Force",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "wall_of_ice": {
+      "name": "Wall of Ice",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d6",
+        "2d6",
+        "5d6",
+        "10d6"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "wall_of_stone": {
+      "name": "Wall of Stone",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "wall_of_thorns": {
+      "name": "Wall of Thorns",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "1d8",
+        "7d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "warding_bond": {
+      "name": "Warding Bond",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "water_breathing": {
+      "name": "Water Breathing",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "water_walk": {
+      "name": "Water Walk",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "web": {
+      "name": "Web",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d4"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "weird": {
+      "name": "Weird",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "5d10",
+        "10d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "wind_walk": {
+      "name": "Wind Walk",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "wind_wall": {
+      "name": "Wind Wall",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "4d8"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "wish": {
+      "name": "Wish",
+      "classification": "ambiguous",
+      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "evidenceDice": [
+        "2d4",
+        "1d10"
+      ],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "word_of_recall": {
+      "name": "Word of Recall",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "zone_of_truth": {
+      "name": "Zone of Truth",
+      "classification": "no_player_roll",
+      "reason": "No caster/player dice expression, spell-attack cue, or ability-check cue was found in the approved SRD text.",
+      "evidenceDice": [],
+      "evidenceRollCues": [],
+      "source": "SRD 5.2.1",
+      "version": "5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    }
+  }
+}

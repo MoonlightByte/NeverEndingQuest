@@ -145,7 +145,11 @@ def enter_combat_effect(effect, now_scalar):
     """Switch one wall-clock effect to the combat-round clock."""
     result = deepcopy(effect)
     expiration = result.get("expiration")
-    if not expiration or result.get("roundsRemaining") is not None:
+    if result.get("roundsRemaining") is not None:
+        if not result.get("tickTrigger"):
+            result["tickTrigger"] = "end_of_round"
+        return result
+    if not expiration:
         return result
     try:
         remaining = max(0, scalar_from_display_iso(expiration) - int(now_scalar))
@@ -155,17 +159,20 @@ def enter_combat_effect(effect, now_scalar):
     result["durationKind"] = "rounds"
     result.setdefault("created", {})["priorExpiration"] = expiration
     result.pop("expiration", None)
-    result.setdefault("tickTrigger", "end_of_round")
+    if not result.get("tickTrigger"):
+        result["tickTrigger"] = "end_of_round"
     return result
 
 
 def exit_combat_effect(effect, now_scalar):
     """Switch one combat-round effect back to the world-time clock."""
     result = deepcopy(effect)
+    if result.get("durationKind") == "encounter":
+        return None
     rounds = result.get("roundsRemaining")
     if type(rounds) is not int:
         return result
-    if result.get("durationKind") == "encounter" or rounds <= 0:
+    if rounds <= 0:
         return None
     result["expiration"] = display_iso_from_scalar(int(now_scalar) + rounds * 6)
     result["durationKind"] = "minutes"

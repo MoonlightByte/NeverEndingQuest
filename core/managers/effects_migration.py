@@ -326,8 +326,24 @@ def _convert_sheet(owner, original, modifiers, world, migration_id):
         converted.setdefault("modifiers", [])
         converted.setdefault("conditions", [])
         converted.setdefault("created", {})["migrationId"] = migration_id
-        if converted.get("roundsRemaining") is not None:
-            if type(converted.get("roundsRemaining")) is int:
+        rounds_remaining = converted.get("roundsRemaining")
+        if (
+            converted.get("durationKind") == "rounds"
+            and type(rounds_remaining) is not int
+        ):
+            converted.pop("roundsRemaining", None)
+            converted.pop("tickTrigger", None)
+            converted.pop("expiration", None)
+            converted["durationKind"] = "special"
+            converted["duration"] = str(
+                converted.get("duration")
+                or "legacy round duration needs review"
+            )
+            report.append(
+                "missing legacy round counter retained as special; expiry was not guessed"
+            )
+        elif rounds_remaining is not None:
+            if type(rounds_remaining) is int:
                 exited = exit_combat_effect(converted, now_scalar)
                 if exited is None:
                     report.append(

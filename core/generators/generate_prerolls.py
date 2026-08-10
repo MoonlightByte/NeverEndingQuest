@@ -51,6 +51,8 @@ import random
 import json
 import os
 
+from core.combat.attacks import attack_sequence
+
 def generate_generic_dice_pool():
     """Generate a pool of various dice types for flexible use"""
     dice_pool = {
@@ -83,23 +85,13 @@ def get_monster_attacks(monster_type):
         with open(monster_file, "r") as file:
             monster_data = json.load(file)
         
-        # Monsters use 'actions' array
-        actions = monster_data.get("actions", [])
-        if not actions:
+        # Use the same exact/safe sequence contract as the resolver. A blank
+        # Multiattack marker is never itself counted as an executable attack.
+        sequence = attack_sequence(monster_data)
+        if not sequence:
             return [{"name": f"{monster_type} attack"}], 1
-            
-        # Filter to only attack actions (exclude utility abilities)
-        attack_actions = []
-        for action in actions:
-            # Consider it an attack if it has attackBonus > 0 or damage
-            if (action.get("attackBonus", 0) > 0 or 
-                action.get("damageDice", "0") != "0" or
-                "attack" in action.get("name", "").lower()):
-                attack_actions.append({"name": action.get("name", "attack")})
-        
-        if not attack_actions:
-            return [{"name": f"{monster_type} attack"}], 1
-            
+
+        attack_actions = [{"name": action.get("name", "attack")} for action in sequence]
         return attack_actions, len(attack_actions)
         
     except Exception as e:
@@ -135,22 +127,11 @@ def get_npc_attacks(npc_name):
         with open(npc_file, "r") as file:
             npc_data = json.load(file)
         
-        # NPCs use 'attacksAndSpellcasting' array
-        attacks = npc_data.get("attacksAndSpellcasting", [])
-        if not attacks:
+        sequence = attack_sequence(npc_data)
+        if not sequence:
             return [{"name": "weapon attack"}], 1
-            
-        # Filter to only attacks (exclude spells/utilities)
-        attack_list = []
-        for attack in attacks:
-            # Consider it an attack if it has attackBonus or is weapon type
-            if (attack.get("attackBonus", 0) > 0 or 
-                attack.get("type", "").lower() in ["melee", "ranged"]):
-                attack_list.append({"name": attack.get("name", "attack")})
-        
-        if not attack_list:
-            return [{"name": "weapon attack"}], 1
-            
+
+        attack_list = [{"name": attack.get("name", "attack")} for attack in sequence]
         return attack_list, len(attack_list)
         
     except Exception as e:

@@ -308,12 +308,51 @@ def load_message_cache():
 def save_message_cache():
     """Save message cache to file"""
     try:
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(MESSAGE_CACHE_FILE), exist_ok=True)
-        with open(MESSAGE_CACHE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(list(message_cache), f, indent=2)
+        from utils.file_operations import safe_write_json
+
+        return safe_write_json(
+            MESSAGE_CACHE_FILE,
+            list(message_cache),
+            create_backup=False,
+        )
     except Exception as e:
         print(f"[MESSAGE_CACHE] Failed to save cache: {e}")
+        return False
+
+
+def _message_cache_matches(message):
+    """Accept replay only when durable stable identity and content match."""
+    if not isinstance(message, dict):
+        return False
+    message_id = message.get("message_id")
+    if not isinstance(message_id, str) or not message_id:
+        return False
+    with message_cache_lock:
+        from utils.file_operations import atomic_writer
+
+        acquired = False
+        try:
+            atomic_writer.acquire_lock(MESSAGE_CACHE_FILE)
+            acquired = True
+            if not os.path.exists(MESSAGE_CACHE_FILE):
+                return False
+            with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
+                durable = json.load(handle)
+            if not isinstance(durable, list):
+                return False
+            message_cache.clear()
+            message_cache.extend(durable[-MESSAGE_CACHE_SIZE:])
+            for cached in durable:
+                if not isinstance(cached, dict):
+                    continue
+                if cached.get("message_id") == message_id:
+                    return cached == message
+        except Exception:
+            return False
+        finally:
+            if acquired:
+                atomic_writer.release_lock(MESSAGE_CACHE_FILE)
+    return False
 
 def add_to_message_cache(message):
     """Add a message once; stable IDs deduplicate replayable safe output."""
@@ -334,14 +373,46 @@ def add_to_message_cache(message):
         message_id = f"msg-{uuid4().hex}"
         message["message_id"] = message_id
     with message_cache_lock:
-        if message_id is not None and any(
-            cached.get("message_id") == message_id
-            for cached in message_cache
-            if isinstance(cached, dict)
-        ):
+        from utils.file_operations import atomic_writer, safe_write_json
+
+        acquired = False
+        try:
+            # The file lock makes read/merge/write one cross-process operation.
+            # Atomic replacement alone prevents torn JSON but cannot prevent
+            # two server processes from overwriting each other's stable IDs.
+            atomic_writer.acquire_lock(MESSAGE_CACHE_FILE)
+            acquired = True
+            if os.path.exists(MESSAGE_CACHE_FILE):
+                with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
+                    durable = json.load(handle)
+                if not isinstance(durable, list):
+                    return False
+                base = durable[-MESSAGE_CACHE_SIZE:]
+            else:
+                base = list(message_cache)
+            if message_id is not None and any(
+                cached.get("message_id") == message_id
+                for cached in base
+                if isinstance(cached, dict)
+            ):
+                message_cache.clear()
+                message_cache.extend(base)
+                return False
+            candidate = (base + [dict(message)])[-MESSAGE_CACHE_SIZE:]
+            if not safe_write_json(
+                MESSAGE_CACHE_FILE,
+                candidate,
+                create_backup=False,
+                acquire_lock=False,
+            ):
+                return False
+            message_cache.clear()
+            message_cache.extend(candidate)
+        except Exception:
             return False
-        message_cache.append(dict(message))
-        save_message_cache()
+        finally:
+            if acquired:
+                atomic_writer.release_lock(MESSAGE_CACHE_FILE)
     return True
 
 
@@ -350,7 +421,9 @@ def _queue_safe_player_output(message):
     try:
         payload = dict(message)
         if not add_to_message_cache(payload):
-            return False
+            # Stable-ID replay is successful when the exact message already
+            # exists in the durable cache; do not enqueue a duplicate.
+            return _message_cache_matches(payload)
         game_output_queue.put(payload)
         return True
     except Exception:
@@ -982,10 +1055,11 @@ def upload_portrait():
 def get_spell_data():
     """Serve spell repository data for tooltips"""
     try:
-        with open('data/spell_repository.json', 'r') as f:
-            spell_data = json.load(f)
+        from core.ai.srd_reference import load_srd_reference_index
+
+        spell_data = load_srd_reference_index().compatibility_spell_map()
         return jsonify(spell_data)
-    except FileNotFoundError:
+    except (FileNotFoundError, OSError, ValueError):
         return jsonify({})
 
 # ============================================================================
@@ -2407,6 +2481,11 @@ def handle_connect():
         'server_instance_id': _server_instance_id,
     })
 
+    # Load the durable player ledger before any stable-ID recovery writes.
+    # Otherwise a first recovered message could overwrite an older on-disk
+    # cache from an empty process-local deque.
+    cached_messages = load_message_cache()
+
     # A process may have stopped after durable module publication but before
     # its narration receipt was acknowledged. Replay the stable-ID message
     # before sending cache/queue state so reconnect is self-healing. The
@@ -2428,6 +2507,19 @@ def handle_connect():
             category="module_management",
         )
 
+    # Combat uses the same stable-ID player-output boundary. This recovery is
+    # provider-free and mechanics-free; it only replays prose already stored
+    # in the active encounter receipt.
+    try:
+        from core.managers.combat_manager import recover_pending_combat_output
+
+        recover_pending_combat_output()
+    except Exception as combat_receipt_error:
+        error(
+            f"Pending combat delivery recovery deferred: {combat_receipt_error}",
+            category="combat_events",
+        )
+
     # Check for updates and notify client
     try:
         from utils.version_checker import check_for_updates
@@ -2443,7 +2535,8 @@ def handle_connect():
         print(f"[VERSION_CHECK] Error checking for updates: {e}")
 
     # Load and send cached messages from previous session
-    cached_messages = load_message_cache()
+    with message_cache_lock:
+        cached_messages = list(message_cache)
     if cached_messages:
         emit('cached_messages', cached_messages)
         print(f"[MESSAGE_CACHE] Sent {len(cached_messages)} cached messages to client")
@@ -2485,6 +2578,23 @@ def handle_action(data):
     action_type = data.get('action')
     parameters = data.get('parameters', {})
     debug(f"WEB_REQUEST: Received direct action from client: {action_type}", category="web_interface")
+
+    if action_type in {'saveGame', 'restoreGame', 'nuclearReset'}:
+        try:
+            from core.managers.status_manager import status_manager
+
+            if status_manager.is_processing():
+                emit('error', {
+                    'message': (
+                        'The game is finishing the current action. '
+                        'Please retry when it is ready for input.'
+                    )
+                })
+                return
+        except Exception:
+            # The persistence layer also takes the active combat lease, so a
+            # status-service problem cannot bypass the consistency boundary.
+            pass
 
     if action_type == 'listSaves':
         try:

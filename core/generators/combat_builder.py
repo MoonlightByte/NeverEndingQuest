@@ -560,6 +560,30 @@ def generate_encounter(encounter_data):
         # Add the NPC to the encounter's creatures array
         encounter["creatures"].append(npc)
 
+    # Persist the pipeline choice at creation time. Runtime history is not a
+    # reliable new-vs-existing marker: an old active encounter can outlive or
+    # lose its transcript. Stamping here lets those old unstamped encounters
+    # remain on the legacy reader while every genuinely new encounter keeps
+    # the configured, immutable mode across disconnects and restores.
+    from core.managers.combat_state import ensure_combat_state
+    try:
+        import config
+
+        agentic_enabled = bool(
+            getattr(config, "COMBAT_AGENTIC_PIPELINE", False)
+            or os.environ.get("NEQ_COMBAT_AGENTIC_PIPELINE", "")
+            .strip()
+            .lower()
+            in {"1", "true", "yes", "on"}
+        )
+    except Exception:
+        agentic_enabled = False
+    ensure_combat_state(
+        encounter,
+        new_encounter=True,
+        pipeline_mode="agentic" if agentic_enabled else "legacy",
+    )
+
     return encounter
 
 def main():

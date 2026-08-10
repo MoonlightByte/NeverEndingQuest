@@ -20,6 +20,98 @@ RESOLVED_HOSTILE_STATUSES = frozenset({"dead", "defeated", "unconscious"})
 VALID_PHASES = frozenset(
     {"initializing", "awaiting_actor", "resolving_turn", "complete", "recovery_required"}
 )
+NARRATION_ATTEMPT_STATUSES = frozenset(
+    {"rejected", "provider_error", "parse_error", "contract_error"}
+)
+_NARRATION_CODE_RE = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+
+
+def valid_pending_delivery(delivery):
+    """Return whether a committed narration receipt has the exact safe shape.
+
+    Delivery receipts are new-format transaction data, so there is no legacy
+    partial shape to repair. The delivery ID is derived from the turn ID and
+    every persisted event needs its own stable identity; accepting anything
+    looser risks acknowledging corrupt or colliding output.
+    """
+    if not isinstance(delivery, dict):
+        return False
+    turn_id = delivery.get("turnId")
+    delivery_id = delivery.get("deliveryId")
+    events = delivery.get("events")
+    if not isinstance(turn_id, str) or not turn_id:
+        return False
+    if delivery_id != "combat-turn:%s" % turn_id:
+        return False
+    if not isinstance(events, list) or not events:
+        return False
+    event_ids = []
+    for event in events:
+        if (
+            not isinstance(event, dict)
+            or not isinstance(event.get("eventId"), str)
+            or not event.get("eventId")
+            or not isinstance(event.get("actorId"), str)
+            or not event.get("actorId")
+            or type(event.get("stateVersion")) is not int
+            or not isinstance(event.get("intent"), dict)
+            or not isinstance(event.get("outcome"), dict)
+            or (
+                "resources" in event
+                and not isinstance(event.get("resources"), list)
+            )
+            or (
+                "effects" in event
+                and not isinstance(event.get("effects"), list)
+            )
+        ):
+            return False
+        event_ids.append(event["eventId"])
+    if len(set(event_ids)) != len(event_ids):
+        return False
+    for field in ("roundBefore", "roundAfter"):
+        if type(delivery.get(field)) is not int or delivery[field] < 1:
+            return False
+    if not isinstance(delivery.get("historyInput"), str):
+        return False
+    if not isinstance(delivery.get("displayPrefix"), str):
+        return False
+    narration = delivery.get("narration")
+    if narration is not None and (
+        not isinstance(narration, str) or not narration.strip()
+    ):
+        return False
+    fallback = delivery.get("narrationFallback")
+    if fallback is not None and not isinstance(fallback, bool):
+        return False
+    attempts = delivery.get("narrationAttempts", [])
+    if not isinstance(attempts, list) or len(attempts) > 12:
+        return False
+    for index, attempt in enumerate(attempts, start=1):
+        if not isinstance(attempt, dict) or set(attempt) != {
+            "attempt", "status", "candidate", "violations", "warnings"
+        }:
+            return False
+        if attempt.get("attempt") != index:
+            return False
+        if attempt.get("status") not in NARRATION_ATTEMPT_STATUSES:
+            return False
+        candidate = attempt.get("candidate")
+        if not isinstance(candidate, str) or len(candidate) > 12000:
+            return False
+        for field in ("violations", "warnings"):
+            codes = attempt.get(field)
+            if (
+                not isinstance(codes, list)
+                or len(codes) > 24
+                or any(
+                    not isinstance(code, str)
+                    or not _NARRATION_CODE_RE.fullmatch(code)
+                    for code in codes
+                )
+            ):
+                return False
+    return True
 
 
 class CombatStateConflict(ValueError):
@@ -42,15 +134,20 @@ def normalize_status(value):
     }.get(status, status)
 
 
-def is_turn_eligible(creature):
+def is_combatant_targetable(creature):
+    """Return whether a combatant is alive and remains a legal target."""
     if not isinstance(creature, dict):
-        return False
-    if creature.get("effectIncapacitated") is True:
         return False
     if normalize_status(creature.get("status")) != ACTIVE_STATUS:
         return False
     hit_points = creature.get("currentHitPoints")
     return not isinstance(hit_points, (int, float)) or hit_points > 0
+
+
+def is_turn_eligible(creature):
+    if not is_combatant_targetable(creature):
+        return False
+    return creature.get("effectIncapacitated") is not True
 
 
 def is_hostile(creature):
@@ -69,24 +166,44 @@ def all_hostiles_resolved(encounter):
 
 
 def player_control_unavailable(encounter):
-    """Return whether the encounter's player cannot take an ordinary turn."""
+    """Return whether the encounter's player is physically down.
+
+    A temporary ``effectIncapacitated`` projection means the player loses an
+    ordinary action, but combat and the effect clock still have to advance.
+    The shipped recovery pause is reserved for a player who is actually at
+    zero HP or has a resolved non-active status.
+    """
     players = [
         creature
         for creature in encounter.get("creatures", [])
         if isinstance(creature, dict) and creature.get("type") == "player"
     ]
-    return bool(players) and all(not is_turn_eligible(player) for player in players)
+    return bool(players) and all(
+        normalize_status(player.get("status")) != ACTIVE_STATUS
+        or (
+            isinstance(player.get("currentHitPoints"), (int, float))
+            and player["currentHitPoints"] <= 0
+        )
+        for player in players
+    )
 
 
 def all_party_resolved(encounter):
-    """Return whether every player/NPC combatant has been taken out."""
+    """Return whether every player/NPC combatant is physically down."""
     party = [
         creature
         for creature in encounter.get("creatures", [])
         if isinstance(creature, dict)
         and (creature.get("type") in ("player", "npc") or creature.get("faction") == "party")
     ]
-    return bool(party) and all(not is_turn_eligible(creature) for creature in party)
+    return bool(party) and all(
+        normalize_status(creature.get("status")) != ACTIVE_STATUS
+        or (
+            isinstance(creature.get("currentHitPoints"), (int, float))
+            and creature["currentHitPoints"] <= 0
+        )
+        for creature in party
+    )
 
 
 def ensure_combatant_ids(encounter):
@@ -175,8 +292,11 @@ def ensure_combat_state(encounter, new_encounter=False, pipeline_mode=None):
     state.setdefault("turnCursor", 0)
     state.setdefault("actedThisRound", [])
     state.setdefault("pendingTurn", None)
+    state.setdefault("pendingDelivery", None)
     state.setdefault("appliedTurnIds", [])
     state.setdefault("appliedEventIds", [])
+    state.setdefault("deliveredDeliveryIds", [])
+    state.setdefault("narrationActivity", {})
     state["completion"] = _completion_state(state.get("completion"))
 
     valid_ids = {c["combatantId"] for c in encounter["creatures"]}
@@ -204,6 +324,16 @@ def ensure_combat_state(encounter, new_encounter=False, pipeline_mode=None):
     state["appliedEventIds"] = list(dict.fromkeys(
         str(item) for item in state.get("appliedEventIds", []) if item
     ))[-1000:]
+    state["deliveredDeliveryIds"] = list(dict.fromkeys(
+        str(item) for item in state.get("deliveredDeliveryIds", []) if item
+    ))[-200:]
+    if not isinstance(state.get("narrationActivity"), dict):
+        state["narrationActivity"] = {}
+
+    delivery = state.get("pendingDelivery")
+    if delivery is not None and not valid_pending_delivery(delivery):
+        state["phase"] = "recovery_required"
+        state["pauseReason"] = "invalid_combat_delivery_receipt"
 
     encounter["combatState"] = state
     encounter["combat_round"] = state["round"]
@@ -270,6 +400,55 @@ def expected_player_window_ids(encounter):
     return result
 
 
+def _skipped_actor_ids_through_window(encounter, actor_ids):
+    """Return already-passed ineligible actors covered by one legal window.
+
+    Incapacitated combatants are omitted from model work, but their initiative
+    position still has to be consumed. Persisting that fact with the turn claim
+    prevents an effect that ends later in the same transaction from granting a
+    retroactive turn or making the round clock tick twice.
+    """
+    state = ensure_combat_state(encounter)
+    order = state["initiativeOrder"]
+    if not order:
+        return []
+    if not actor_ids:
+        # A clock-only window is legal only when every unresolved living
+        # combatant is temporarily unable to act. Consume those initiative
+        # positions so a deterministic duration tick can advance the round.
+        return [
+            actor_id
+            for offset in range(len(order))
+            for actor_id in (order[(state["turnCursor"] + offset) % len(order)],)
+            if actor_id not in state["actedThisRound"]
+            and is_combatant_targetable(combatant_by_id(encounter, actor_id))
+            and not is_turn_eligible(combatant_by_id(encounter, actor_id))
+        ]
+    claimed = set(actor_ids)
+    last_actor = actor_ids[-1]
+    remaining_eligible = {
+        actor_id
+        for actor_id in order
+        if actor_id not in state["actedThisRound"]
+        and actor_id not in claimed
+        and is_turn_eligible(combatant_by_id(encounter, actor_id))
+    }
+    consume_full_round = not remaining_eligible
+    skipped = []
+    for offset in range(len(order)):
+        actor_id = order[(state["turnCursor"] + offset) % len(order)]
+        if actor_id in state["actedThisRound"]:
+            continue
+        if actor_id in claimed:
+            if actor_id == last_actor and not consume_full_round:
+                break
+            continue
+        creature = combatant_by_id(encounter, actor_id)
+        if creature is None or not is_turn_eligible(creature):
+            skipped.append(actor_id)
+    return skipped
+
+
 def begin_turn(encounter, actor_ids, turn_id=None, expected_revision=None):
     """Persist a recoverable turn claim before any model or mechanical work."""
     state = ensure_combat_state(encounter)
@@ -280,9 +459,11 @@ def begin_turn(encounter, actor_ids, turn_id=None, expected_revision=None):
         if turn_id and pending.get("turnId") == turn_id:
             return pending
         raise CombatStateConflict("Another combat turn is already pending recovery")
+    if state.get("pendingDelivery") is not None:
+        raise CombatStateConflict(
+            "The previous committed combat turn must be delivered first"
+        )
     actor_ids = list(actor_ids)
-    if not actor_ids:
-        raise CombatStateConflict("A turn must contain at least one eligible actor")
     legal_windows = [
         window
         for window in (
@@ -291,7 +472,13 @@ def begin_turn(encounter, actor_ids, turn_id=None, expected_revision=None):
         )
         if window
     ]
-    if actor_ids not in legal_windows:
+    skipped_actor_ids = _skipped_actor_ids_through_window(encounter, actor_ids)
+    clock_only = not actor_ids
+    if clock_only and (legal_windows or not skipped_actor_ids):
+        raise CombatStateConflict(
+            "An empty turn is allowed only to advance timed incapacitation"
+        )
+    if not clock_only and actor_ids not in legal_windows:
         raise CombatStateConflict(
             f"Out-of-order actors: expected one of {legal_windows!r}, received {actor_ids!r}"
         )
@@ -300,6 +487,8 @@ def begin_turn(encounter, actor_ids, turn_id=None, expected_revision=None):
         "baseRevision": state["revision"],
         "round": state["round"],
         "actorIds": actor_ids,
+        "skippedActorIds": skipped_actor_ids,
+        "clockOnly": clock_only,
         "stage": "intent_pending",
         "events": [],
     }
@@ -326,6 +515,28 @@ def stage_turn_events(encounter, turn_id, events):
             raise ValueError(f"Duplicate eventId in turn: {event_id}")
         event_ids.append(event_id)
         normalized.append(deepcopy(event))
+    # A clock-only claim has one engine event and no model actor. It exists
+    # solely to durably tick timed effects when every living combatant is
+    # temporarily incapacitated.
+    if not pending.get("actorIds"):
+        if not (
+            pending.get("clockOnly") is True
+            and len(normalized) == 1
+            and normalized[0].get("actorId") == "combat-clock"
+            and (normalized[0].get("outcome") or {}).get("kind")
+            == "effectClock"
+        ):
+            raise CombatStateConflict(
+                "Clock-only turns require exactly one engine effect-clock event"
+            )
+        if normalized[0].get("stateVersion") != pending.get("baseRevision"):
+            raise CombatStateConflict(
+                "The effect-clock event was resolved from a stale combat revision"
+            )
+        pending["events"] = normalized
+        pending["stage"] = "events_staged"
+        return pending
+
     # Every still-capable actor needs exactly one event in initiative order.
     # An earlier event may defeat a later actor before that actor's turn; that
     # actor is then legitimately absent instead of receiving a fabricated turn.
@@ -383,22 +594,46 @@ def commit_turn(encounter, turn_id, applied_event_ids):
         raise CombatStateConflict(f"Combat events were already applied: {sorted(duplicate)!r}")
 
     actor_ids = pending["actorIds"]
-    for actor_id in actor_ids:
+    consumed_actor_ids = list(pending.get("skippedActorIds") or []) + actor_ids
+    for actor_id in consumed_actor_ids:
         if actor_id not in state["actedThisRound"]:
             state["actedThisRound"].append(actor_id)
-    eligible_ids = {
-        c["combatantId"] for c in encounter["creatures"] if is_turn_eligible(c)
+    round_actor_ids = {
+        c["combatantId"]
+        for c in encounter["creatures"]
+        if is_combatant_targetable(c)
     }
-    if eligible_ids and eligible_ids.issubset(set(state["actedThisRound"])):
+    if round_actor_ids and round_actor_ids.issubset(set(state["actedThisRound"])):
         state["round"] += 1
         state["actedThisRound"] = []
         state["turnCursor"] = 0
     else:
-        last_index = state["initiativeOrder"].index(actor_ids[-1])
+        last_consumed = (actor_ids or consumed_actor_ids)[-1]
+        last_index = state["initiativeOrder"].index(last_consumed)
         state["turnCursor"] = (last_index + 1) % len(state["initiativeOrder"])
 
     state["appliedTurnIds"] = (state["appliedTurnIds"] + [turn_id])[-200:]
     state["appliedEventIds"] = (state["appliedEventIds"] + staged_ids)[-1000:]
+    from core.ai.combat_narration import update_narration_activity
+
+    state["narrationActivity"] = update_narration_activity(
+        state.get("narrationActivity"), pending.get("events") or []
+    )
+    delivery_context = pending.get("deliveryContext")
+    if not isinstance(delivery_context, dict):
+        delivery_context = {}
+    state["pendingDelivery"] = {
+        "deliveryId": "combat-turn:%s" % turn_id,
+        "turnId": str(turn_id),
+        "roundBefore": pending.get("round"),
+        "roundAfter": state["round"],
+        "events": deepcopy(pending.get("events") or []),
+        "historyInput": str(delivery_context.get("historyInput") or "")[:24000],
+        "displayPrefix": str(delivery_context.get("displayPrefix") or "")[:4000],
+        "narration": None,
+        "narrationFallback": None,
+        "narrationAttempts": [],
+    }
     state["pendingTurn"] = None
     state["revision"] += 1
     if all_hostiles_resolved(encounter):
@@ -415,10 +650,39 @@ def recovery_action(encounter):
     """Describe the only safe action after reconnecting during a pending turn."""
     state = ensure_combat_state(encounter)
     pending = state.get("pendingTurn")
+    delivery = state.get("pendingDelivery")
     if not pending:
+        if valid_pending_delivery(delivery):
+            return {
+                "action": "deliver_committed_events",
+                "pendingDelivery": deepcopy(delivery),
+            }
+        if delivery is not None:
+            return {
+                "action": "pause_invalid_delivery",
+                "actorIds": [],
+                "reason": "invalid_combat_delivery_receipt",
+            }
         automatic = expected_automatic_actor_ids(encounter)
         actors = automatic or expected_player_window_ids(encounter)
+        if not actors:
+            skipped = _skipped_actor_ids_through_window(encounter, [])
+            if skipped:
+                return {
+                    "action": "advance_effect_clock",
+                    "actorIds": [],
+                    "skippedActorIds": skipped,
+                }
         return {"action": "continue", "actorIds": actors}
+    if (
+        pending.get("clockOnly") is True
+        and state.get("phase") == "recovery_required"
+        and state.get("pauseReason") == "untimed_total_incapacitation"
+    ):
+        return {
+            "action": "pause_untimed_incapacitation",
+            "pendingTurn": deepcopy(pending),
+        }
     if pending.get("stage") == "events_staged":
         return {"action": "apply_staged_events", "pendingTurn": deepcopy(pending)}
     return {"action": "regenerate_intent", "pendingTurn": deepcopy(pending)}

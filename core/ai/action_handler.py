@@ -80,6 +80,14 @@ from utils.location_path_finder import LocationGraph
 from core.ai.conversation_utils import handle_module_conversation_segmentation
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _generator_script_path(filename):
+    """Resolve generator subprocesses independently of the active game cwd."""
+    return os.path.join(_PROJECT_ROOT, "core", "generators", filename)
+
 # Import token tracking
 try:
     from utils.openai_usage_tracker import track_response
@@ -859,7 +867,7 @@ def update_party_npcs(party_tracker_data, operation, npc):
                 debug(f"SUBPROCESS: Calling npc_builder.py with arguments: {npc['name']} {npc.get('race', '')} {npc.get('class', '')} {npc_level} {npc.get('background', '')}", category="character_updates")
 
                 subprocess.run([
-                    sys.executable, "core/generators/npc_builder.py",
+                    sys.executable, _generator_script_path("npc_builder.py"),
                     npc['name'],
                     npc.get('race', ''),
                     npc.get('class', ''),
@@ -1339,8 +1347,7 @@ def process_action(
             print("[DEBUG ACTION_HANDLER] Calling combat_builder.py...")
             debug(f"SUBPROCESS: Sending to combat_builder.py: {json.dumps(action)}", category="combat_processing")
             # Get the path to combat_builder.py relative to the project root
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            combat_builder_path = os.path.join(project_root, "core", "generators", "combat_builder.py")
+            combat_builder_path = _generator_script_path("combat_builder.py")
             
             result = subprocess.run(
                 [sys.executable, combat_builder_path],
@@ -1467,7 +1474,7 @@ def process_action(
                     # Add clear historical marker to prevent Combat Commitment Point confusion
                     modified_combat_summary = {
                         "role": "user",
-                        "content": "[COMBAT CONCLUDED - HISTORICAL RECORD]\n" + combat_summary["content"] + "\n[END OF COMBAT RECORD - Please continue the narrative after this combat]\n\nIMPORTANT: All XP, treasure, currency, items, and other rewards mentioned above have already been distributed by the combat system. Do NOT award them again."
+                        "content": "[COMBAT CONCLUDED - HISTORICAL RECORD]\n" + combat_summary["content"] + "\n[END OF COMBAT RECORD - Please continue the narrative after this combat]\n\nIMPORTANT: This historical record describes character changes already applied by the combat system, including HP, spell slots, effects, XP, treasure, currency, items, and other rewards. Do not re-emit updateCharacterInfo actions for those changes."
                     }
                     conversation_history.append(modified_combat_summary)
                     # Import save_conversation_history from main

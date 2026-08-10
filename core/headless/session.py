@@ -268,10 +268,11 @@ class HeadlessSession:
         # print -- no double delivery.
         msg_type = payload.get("type", "system")
         event_type = "narration" if msg_type == "narration" else "system"
-        self.writer.emit(
+        return self.writer.emit(
             event_type,
             channel=payload.get("channel", "system"),
             content=payload.get("content", ""),
+            message_id=payload.get("message_id"),
             source="sink")
 
     def _classify_prompt(self, clean_prompt, snapshot):

@@ -117,4 +117,39 @@ def validate_event(event):
                 problems.append(
                     "effect tick %s must be a nonnegative integer" % field
                 )
+    character_state = event.get("characterStateAfter")
+    if character_state is not None:
+        if not isinstance(character_state, dict):
+            problems.append("characterStateAfter must be an object")
+        else:
+            for owner, snapshot in character_state.items():
+                if not isinstance(owner, str) or not owner:
+                    problems.append("characterStateAfter owner must be a name")
+                    continue
+                if not isinstance(snapshot, dict):
+                    problems.append(
+                        "characterStateAfter %s must be an object" % owner
+                    )
+                    continue
+                if any(
+                    field not in ("hitPoints", "status")
+                    for field in snapshot
+                ):
+                    problems.append(
+                        "characterStateAfter %s has an unknown field" % owner
+                    )
+                if "hitPoints" in snapshot and (
+                    type(snapshot["hitPoints"]) is not int
+                    or snapshot["hitPoints"] < 0
+                ):
+                    problems.append(
+                        "characterStateAfter %s hitPoints must be nonnegative"
+                        % owner
+                    )
+                if "status" in snapshot and not isinstance(
+                    snapshot["status"], str
+                ):
+                    problems.append(
+                        "characterStateAfter %s status must be a string" % owner
+                    )
     return problems
