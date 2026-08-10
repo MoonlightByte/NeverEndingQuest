@@ -4073,11 +4073,42 @@ Create atmospheric travel narration that leads into this adventure."""
                     # Remove old file
                     os.remove(area_file)
 
+                    # Keep the reset snapshot addressable under the normalized
+                    # area identity. The later BU refresh copies the fully
+                    # rewritten primary over this renamed file. Without this
+                    # rename, conflict resolution leaves an orphaned
+                    # <old_area>_BU.json and creates no reset point for the
+                    # published <new_area>.json.
+                    old_area_backup = os.path.join(
+                        os.path.dirname(area_file), f"{old_id}_BU.json"
+                    )
+                    if os.path.lexists(old_area_backup):
+                        new_area_backup = os.path.join(
+                            os.path.dirname(area_file), f"{new_id}_BU.json"
+                        )
+                        if os.path.lexists(new_area_backup):
+                            raise FileExistsError(
+                                "Normalized area backup path is occupied"
+                            )
+                        os.rename(old_area_backup, new_area_backup)
+
                     # Update corresponding map file if it exists
                     old_map_file = os.path.join(module_path, f"map_{old_id}.json")
                     if os.path.exists(old_map_file):
                         new_map_file = os.path.join(module_path, f"map_{new_id}.json")
                         os.rename(old_map_file, new_map_file)
+                        old_map_backup = os.path.join(
+                            module_path, f"map_{old_id}_BU.json"
+                        )
+                        if os.path.lexists(old_map_backup):
+                            new_map_backup = os.path.join(
+                                module_path, f"map_{new_id}_BU.json"
+                            )
+                            if os.path.lexists(new_map_backup):
+                                raise FileExistsError(
+                                    "Normalized map backup path is occupied"
+                                )
+                            os.rename(old_map_backup, new_map_backup)
 
                     # Update party_tracker.json if location IDs were changed
                     if location_id_mapping:
@@ -4261,8 +4292,12 @@ Create atmospheric travel narration that leads into this adventure."""
     
     def _recursively_update_ids_in_json(self, data: Any, id_mapping: Dict[str, str], exclude_keys: List[str] = None) -> Any:
         """
-        Safely traverses a JSON structure (dict/list) and applies the id_mapping to string values,
-        while skipping any keys specified in exclude_keys.
+        Safely traverse JSON and apply exact ID mappings to object keys and
+        string values while skipping values beneath ``exclude_keys``.
+
+        Module context indexes areas and locations by their IDs, so rewriting
+        only values leaves those authoritative lookup keys stale after conflict
+        normalization. Key collisions fail closed rather than discarding data.
         """
         if exclude_keys is None:
             exclude_keys = []
@@ -4270,10 +4305,17 @@ Create atmospheric travel narration that leads into this adventure."""
         if isinstance(data, dict):
             new_dict = {}
             for key, value in data.items():
+                new_key = id_mapping.get(key, key)
+                if new_key in new_dict:
+                    raise ValueError(
+                        f"ID rewrite creates duplicate object key: {new_key}"
+                    )
                 if key in exclude_keys:
-                    new_dict[key] = value  # Keep original value without recursion
+                    new_dict[new_key] = value  # Keep original value without recursion
                 else:
-                    new_dict[key] = self._recursively_update_ids_in_json(value, id_mapping, exclude_keys)
+                    new_dict[new_key] = self._recursively_update_ids_in_json(
+                        value, id_mapping, exclude_keys
+                    )
             return new_dict
         elif isinstance(data, list):
             return [self._recursively_update_ids_in_json(item, id_mapping, exclude_keys) for item in data]

@@ -28,9 +28,7 @@ from utils.module_refresh_lock import module_refresh_lock
 
 PayloadT = TypeVar("PayloadT")
 BuildCandidate = Callable[[Path, str], PayloadT]
-PrepareCandidate = Callable[
-    [Path, str], Optional[RegistryPreparation]
-]
+PrepareCandidate = Callable[[Path, str], Optional[RegistryPreparation]]
 
 
 @dataclass(frozen=True)
@@ -69,6 +67,7 @@ class ManagedModuleBuilder:
         build_candidate: BuildCandidate[PayloadT],
         prepare_candidate: Optional[PrepareCandidate] = None,
         defer_promotion: bool = False,
+        retain_story_first_failure: bool = False,
     ) -> ManagedBuildResult[PayloadT]:
         """Run one build under the cross-process module-refresh boundary.
 
@@ -93,6 +92,8 @@ class ManagedModuleBuilder:
             raise ValueError(
                 "ACTION/DISCOVERY builds must remain hidden for publication"
             )
+        if type(retain_story_first_failure) is not bool:
+            raise TypeError("retain_story_first_failure must be boolean")
 
         with module_refresh_lock(
             max_wait_seconds=self.lock_timeout_seconds
@@ -106,15 +107,26 @@ class ManagedModuleBuilder:
                     "Module lifecycle recovery is required before retrying."
                 )
 
-            final_name = self.store.allocate_final_name(requested_name)
-            workspace = self.store.begin_build(
-                requested_name,
-                kind,
-                final_name=final_name,
+            workspace = (
+                self.store.claim_story_first_resume(requested_name, kind)
+                if retain_story_first_failure
+                else None
             )
+            resumed = workspace is not None
+            if workspace is None:
+                final_name = self.store.allocate_final_name(requested_name)
+                workspace = self.store.begin_build(
+                    requested_name,
+                    kind,
+                    final_name=final_name,
+                )
+            else:
+                final_name = workspace.final_name
             activated = False
             try:
                 payload = build_candidate(workspace.candidate_path, final_name)
+                if resumed:
+                    self.store.finish_story_first_resume(workspace)
                 if prepare_candidate is not None:
                     preparation = prepare_candidate(
                         workspace.candidate_path,
@@ -162,6 +174,19 @@ class ManagedModuleBuilder:
             except BaseException as build_error:
                 if not activated:
                     try:
+                        if retain_story_first_failure:
+                            from core.generators.story_first.pipeline import (
+                                StoryFirstPipelineError,
+                            )
+
+                            if isinstance(build_error, StoryFirstPipelineError):
+                                self.store.stage_story_first_resume(
+                                    workspace,
+                                    stage=build_error.stage,
+                                    failure_class=build_error.failure_class,
+                                    issues=build_error.diagnostics,
+                                    retries_remaining=0 if resumed else 1,
+                                )
                         self.store.abort_build(
                             workspace,
                             reason_code="BUILD_FAILED",

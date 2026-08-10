@@ -527,8 +527,13 @@ class ModuleGenerator:
             "npc_pattern": lambda npc_name: path_manager.get_character_path(npc_name)
         }
     
-    def generate_field(self, field_path: str, schema_info: Dict[str, Any], 
-                      context: Dict[str, Any]) -> Any:
+    def generate_field(
+        self,
+        field_path: str,
+        schema_info: Dict[str, Any],
+        context: Dict[str, Any],
+        story_context_header: str = "",
+    ) -> Any:
         """Generate content for a specific field"""
         import time
         field_name = field_path.split(".")[-1]
@@ -558,6 +563,8 @@ If the field expects an array, return just the array.
 If the field expects an object, return just the object.
 Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
+        if story_context_header:
+            prompt = story_context_header.rstrip() + "\n\n" + prompt
         
         print(f"DEBUG: [ModuleGenerator] Making API call for {field_path}...")
         print(f"DEBUG: [ModuleGenerator] Prompt length: {len(prompt)} characters")
@@ -616,7 +623,13 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             print(f"ERROR: [ModuleGenerator] Traceback: {traceback.format_exc()}")
             raise
     
-    def generate_module(self, initial_concept: str, custom_values: Dict[str, Any] = None, context=None) -> Dict[str, Any]:
+    def generate_module(
+        self,
+        initial_concept: str,
+        custom_values: Dict[str, Any] = None,
+        context=None,
+        story_context_header: str = "",
+    ) -> Dict[str, Any]:
         """Generate a complete module from an initial concept"""
         print(f"DEBUG: [ModuleGenerator] Starting generate_module")
         print(f"DEBUG: [ModuleGenerator] Initial concept: {initial_concept[:100]}...")
@@ -657,7 +670,15 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             print(f"MODULE_GENERATION_PROGRESS: Generating field {idx}/{total_fields}: {field_path}")
             
             # Generate the field
-            value = self.generate_field(field_path, schema_info, context)
+            if story_context_header:
+                value = self.generate_field(
+                    field_path,
+                    schema_info,
+                    context,
+                    story_context_header=story_context_header,
+                )
+            else:
+                value = self.generate_field(field_path, schema_info, context)
             
             # Set the value in module_data
             self.set_nested_value(module_data, field_path, value)

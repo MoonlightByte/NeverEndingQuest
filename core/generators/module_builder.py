@@ -414,6 +414,174 @@ MODULE INDEPENDENCE RULES:
         
         self.log("Module generation complete!")
         self.log(f"Output saved to: {self.config.output_directory}")
+
+    def _build_story_first_module(self, initial_concept: str, seed, provider: str):
+        """Build the dev-flagged path without invoking legacy content stages."""
+        from core.generators.story_first.contracts import mutable_copy
+        from core.generators.story_first.compatibility import (
+            context_npc_name,
+            expected_context_projection,
+            project_overview,
+        )
+        from core.generators.story_first.execution import production_completion_gateway
+        from core.generators.story_first.pipeline import StoryFirstPipeline
+        from core.generators.story_first.settings import (
+            GOLD_PRIOR_BLOCKLIST,
+            gold_model_config,
+        )
+        from core.generators.story_first.compilers import safe_filename
+
+        stage_names = (
+            "outline",
+            "area_binding",
+            "plot_derivation",
+            "npc_repair",
+            "candidate_hardening",
+            "creature_compile",
+        )
+        # Resolve provider support before creating any candidate content. In
+        # particular, the not-yet-supported LM Studio path must be side-effect free.
+        stage_model_configs = {
+            stage: gold_model_config(provider, stage) for stage in stage_names
+        }
+
+        self.log("Starting story-first module build process...")
+        if self.progress_callback:
+            self.progress_callback("initializing", "Preparing story-first workspace...")
+        self.context_header = self.create_context_header(
+            list(seed.campaign_context.get("partyNames", ()))
+        )
+        if self._is_resumable_story_first_workspace():
+            self.log("Resuming the exact retained story-first workspace...")
+        else:
+            self.create_module_directories()
+        self.context.module_name = self.config.module_name.replace("_", " ")
+        self.context.module_id = self.config.module_name
+
+        schema_names = {
+            "map": "map_schema.json",
+            "plot": "plot_schema.json",
+            "location": "loca_schema.json",
+            "locationfile": "locationfile_schema.json",
+            "monster": "mon_schema.json",
+        }
+        schemas = {}
+        for key, filename in schema_names.items():
+            with open(os.path.join("schemas", filename), encoding="utf-8") as handle:
+                schemas[key] = json.load(handle)
+        pipeline = StoryFirstPipeline(
+            candidate_dir=Path(self.config.output_directory),
+            provider=provider,
+            stage_model_configs=stage_model_configs,
+            schemas=schemas,
+            blocklist=GOLD_PRIOR_BLOCKLIST,
+            gateway=production_completion_gateway,
+        )
+
+        if self.progress_callback:
+            self.progress_callback(
+                "base_structure", "Authoring accepted story outline..."
+            )
+        accepted_outline = pipeline.accept_outline(seed)
+        if self.progress_callback:
+            self.progress_callback(
+                "base_structure", "Projecting compatible module overview..."
+            )
+        self.module_data = mutable_copy(project_overview(accepted_outline.value, seed))
+
+        if self.progress_callback:
+            self.progress_callback(
+                "areas", "Compiling accepted story into game files..."
+            )
+        result = pipeline.run(seed)
+        areas = mutable_copy(result.areas)
+        maps = mutable_copy(result.maps)
+        plot = mutable_copy(result.plot)
+        monsters = mutable_copy(result.monsters)
+        if len(areas) != len(maps):
+            raise ValueError("story-first area/map cardinality mismatch")
+
+        self.areas_data = {area["areaId"]: area for area in areas}
+        self.locations_data = {
+            area["areaId"]: {"locations": area["locations"]} for area in areas
+        }
+        location_to_area = {}
+        for area, area_map in zip(areas, maps):
+            area_id = area["areaId"]
+            if not self._atomic_save_json(f"areas/{area_id}.json", area):
+                raise OSError(f"Could not save story-first area {area_id}")
+            if not self._atomic_save_json(f"map_{area_id}.json", area_map):
+                raise OSError(f"Could not save story-first map {area_id}")
+            self.context.add_area(area_id, area["areaName"], area.get("areaType", ""))
+            for location in area["locations"]:
+                location_id = location["locationId"]
+                location_to_area[location_id] = area_id
+                self.context.add_location(location_id, location["name"], area_id)
+                self.context.locations[location_id]["connections"] = list(
+                    location.get("connectivity", [])
+                ) + list(location.get("areaConnectivityId", []))
+                for npc in location.get("npcs", []):
+                    self.context.add_npc(
+                        npc["name"],
+                        area_id,
+                        location_id,
+                        description=npc.get("description", ""),
+                    )
+                    canonical_name = context_npc_name(self.context, npc["name"])
+                    if (
+                        canonical_name
+                        not in self.context.locations[location_id]["npcs"]
+                    ):
+                        self.context.locations[location_id]["npcs"].append(
+                            canonical_name
+                        )
+
+        if not self._atomic_save_json("module_plot.json", plot):
+            raise OSError("Could not save the story-first module plot")
+        self.plots_data = {
+            area_id: {
+                "plotTitle": plot["plotTitle"],
+                "mainObjective": plot["mainObjective"],
+                "plotPoints": [],
+            }
+            for area_id in self.areas_data
+        }
+        for point in plot["plotPoints"]:
+            area_id = location_to_area[point["location"]]
+            self.plots_data[area_id]["plotPoints"].append(point)
+            self.context.add_plot_point(point["id"], area_id, point["location"])
+
+        for monster in monsters:
+            if not self._atomic_save_json(
+                f"monsters/{safe_filename(monster['name'])}.json", monster
+            ):
+                raise OSError(f"Could not save story-first monster {monster['name']}")
+
+        entry = mutable_copy(result.entry)
+        self.create_party_tracker(
+            start_area_id=entry["entryAreaId"],
+            start_location_id=entry["entryLocationId"],
+        )
+        self.create_module_summary(
+            story_first_data={
+                "outline": mutable_copy(result.outline),
+                "plot": plot,
+                "areas": areas,
+                "monsters": monsters,
+                "entry": entry,
+            }
+        )
+        expected_context = expected_context_projection(
+            module_name=self.config.module_name.replace("_", " "),
+            module_id=self.config.module_name,
+            areas=areas,
+            plot=plot,
+        )
+        self._reconcile_and_validate_context(expected_context=expected_context)
+        self.create_bu_backups()
+        pipeline.cleanup_workspace()
+        self.log("Story-first module generation complete!")
+        self.log(f"Output saved to: {self.config.output_directory}")
     
     def _inject_antagonist_into_climactic_location(self):
         """
@@ -689,6 +857,69 @@ MODULE INDEPENDENCE RULES:
             if not os.path.exists(gitkeep_path):
                 with open(gitkeep_path, 'w') as f:
                     f.write("# Keep this directory in git\n")
+
+    def _is_resumable_story_first_workspace(self) -> bool:
+        """Validate the narrow pre-file-emission tree retained by the pipeline."""
+        output = Path(self.config.output_directory)
+        if not output.is_dir() or output.is_symlink():
+            return False
+        entries = {entry.name for entry in output.iterdir()}
+        if not entries:
+            return False
+        expected = {
+            ".story_first",
+            "areas",
+            "characters",
+            "encounters",
+            "media",
+            "monsters",
+        }
+        if entries != expected:
+            raise FileExistsError(
+                "Retained story-first workspace contains unexpected entries"
+            )
+        required_directories = (
+            ".story_first",
+            "areas",
+            "characters",
+            "encounters",
+            "media",
+            "media/environment",
+            "media/monsters",
+            "media/npcs",
+            "monsters",
+        )
+        for relative in required_directories:
+            path = output / relative
+            if not path.is_dir() or path.is_symlink():
+                raise FileExistsError(
+                    "Retained story-first workspace directory is unsafe"
+                )
+        state = output / ".story_first/pipeline_state.json"
+        if not state.is_file() or state.is_symlink():
+            raise FileExistsError(
+                "Retained story-first workspace has no safe pipeline state"
+            )
+        allowed_entries = {
+            "areas": {".gitkeep"},
+            "characters": {".gitkeep"},
+            "encounters": {".gitkeep"},
+            "media": {".gitkeep", "environment", "monsters", "npcs"},
+            "media/environment": {".gitkeep"},
+            "media/monsters": {".gitkeep"},
+            "media/npcs": {".gitkeep"},
+            "monsters": {".gitkeep"},
+        }
+        for relative, allowed in allowed_entries.items():
+            directory = output / relative
+            unexpected = [
+                item.name for item in directory.iterdir() if item.name not in allowed
+            ]
+            if unexpected:
+                raise FileExistsError(
+                    "Retained story-first workspace contains emitted game files"
+                )
+        return True
     
     def generate_area_map(self, area_id: str) -> Dict[str, Any]:
         """Generate a map layout for an area"""
@@ -1380,25 +1611,52 @@ IMPORTANT:
         except Exception as e:
             self.log(f"Warning: Could not cleanup old backups: {e}")
     
-    def create_party_tracker(self):
+    def create_party_tracker(self, start_area_id=None, start_location_id=None):
         """Create the initial party tracker file"""
-        # Use the first area as the starting location
-        first_area_id = list(self.areas_data.keys())[0]
-        first_area = self.areas_data[first_area_id]
-        
-        # Get the first location from the locations data
-        first_locations_data = self.locations_data.get(first_area_id, {})
-        locations_list = first_locations_data.get("locations", [])
-        
-        if not locations_list:
-            # Fallback to a default location
-            first_location = {
-                "name": "Starting Location",
-                "locationId": "R01"
-            }
+        explicit_start = start_area_id is not None or start_location_id is not None
+        if explicit_start:
+            if not (
+                isinstance(start_area_id, str)
+                and start_area_id
+                and isinstance(start_location_id, str)
+                and start_location_id
+            ):
+                raise ValueError("explicit party start requires both accepted IDs")
+            first_area_id = start_area_id
+            first_area = self.areas_data.get(first_area_id)
+            if (
+                not isinstance(first_area, dict)
+                or first_area.get("areaId") != first_area_id
+            ):
+                raise ValueError("explicit party start area is missing or ambiguous")
+            first_locations_data = self.locations_data.get(first_area_id, {})
+            locations_list = first_locations_data.get("locations", [])
+            matches = [
+                location
+                for location in locations_list
+                if isinstance(location, dict)
+                and location.get("locationId") == start_location_id
+            ]
+            if len(matches) != 1:
+                raise ValueError(
+                    "explicit party start location is missing or ambiguous"
+                )
+            first_location = matches[0]
         else:
-            first_location = locations_list[0]
-        
+            # Use the first area as the starting location
+            first_area_id = list(self.areas_data.keys())[0]
+            first_area = self.areas_data[first_area_id]
+
+            # Get the first location from the locations data
+            first_locations_data = self.locations_data.get(first_area_id, {})
+            locations_list = first_locations_data.get("locations", [])
+
+            if not locations_list:
+                # Fallback to a default location
+                first_location = {"name": "Starting Location", "locationId": "R01"}
+            else:
+                first_location = locations_list[0]
+
         party_tracker = {
             "module": self.config.module_name.replace("_", " "),
             "partyMembers": [],  # Will be populated when players join
@@ -1421,16 +1679,35 @@ IMPORTANT:
                 "activeEncounter": "",
                 "activeCombatEncounter": "",
                 "weatherConditions": "",
-                "lastCompletedEncounter": ""
+                "lastCompletedEncounter": "",
             },
-            "activeQuests": []
+            "activeQuests": [],
         }
-        
-        self._atomic_save_json("party_tracker.json", party_tracker)
+
+        if explicit_start:
+            import jsonschema
+
+            with open("schemas/party_schema.json", encoding="utf-8") as handle:
+                jsonschema.validate(party_tracker, json.load(handle))
+        saved = self._atomic_save_json("party_tracker.json", party_tracker)
+        if explicit_start and not saved:
+            raise OSError("Could not save story-first party tracker")
         self.log("Created party tracker")
     
-    def create_module_summary(self):
+    def create_module_summary(self, story_first_data=None):
         """Create a human-readable module summary"""
+        if story_first_data is not None:
+            from core.generators.story_first.compatibility import (
+                atomic_write_ascii,
+                build_story_first_summary,
+            )
+
+            summary = build_story_first_summary(**story_first_data)
+            summary_path = Path(self.config.output_directory) / "MODULE_SUMMARY.md"
+            atomic_write_ascii(summary_path, summary)
+            self.log("Created module summary")
+            return
+
         summary = f"""# {self.module_data['moduleName']} - Module Summary
 
 ## Overview
@@ -1439,10 +1716,10 @@ IMPORTANT:
 ## Module Conflicts
 """
         # Add module conflicts if they exist
-        if 'moduleConflicts' in self.module_data:
-            for conflict in self.module_data['moduleConflicts']:
+        if "moduleConflicts" in self.module_data:
+            for conflict in self.module_data["moduleConflicts"]:
                 summary += f"- **{conflict['conflictName']}** ({conflict['scope']}): {conflict['description']}\n"
-        
+
         summary += f"""
 
 ## Main Plot
@@ -1451,7 +1728,7 @@ IMPORTANT:
 
 ## Areas
 """
-        
+
         for area_id, area_data in self.areas_data.items():
             plot_data = self.plots_data.get(area_id, {})
             summary += f"""
@@ -1463,7 +1740,7 @@ IMPORTANT:
 - **Plot**: {plot_data.get('plotTitle', 'TBD')}
 - **Objective**: {plot_data.get('mainObjective', 'TBD')}
 """
-        
+
         summary += f"""
 ## Module Structure
 - **Total Areas**: {len(self.areas_data)}
@@ -1475,11 +1752,11 @@ IMPORTANT:
 
 Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
-        
+
         summary_path = os.path.join(self.config.output_directory, "MODULE_SUMMARY.md")
         with open(summary_path, "w") as f:
             f.write(summary)
-        
+
         self.log("Created module summary")
     
     def _extract_module_entities(self):
@@ -1492,7 +1769,7 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         
         # Note: Faction NPCs removed - location-generated NPCs are sufficient
 
-    def _reconcile_and_validate_context(self):
+    def _reconcile_and_validate_context(self, expected_context=None):
         """Publish, reconcile, reload, and validate one coherent context."""
         context_path = os.path.join(
             self.config.output_directory,
@@ -1504,6 +1781,40 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         # the process working directory.
         reconciler.path_manager.module_dir = self.config.output_directory
         reconciler.context_path = context_path
+
+        if expected_context is not None:
+            from core.generators.story_first.compatibility import (
+                validate_reconciled_context,
+            )
+            from utils.module_refresh_lock import module_refresh_lock
+
+            with module_refresh_lock() as refresh_acquired:
+                if not refresh_acquired:
+                    raise OSError("Module refresh is busy during story-first context")
+                with path_transaction_lock(context_path):
+                    recovery = reconciler._recover_pending_transaction()
+                    if recovery:
+                        self.log(
+                            "Step 6.5: Recovered interrupted NPC reconciliation "
+                            f"({recovery})."
+                        )
+                        self.context = ModuleContext.load(context_path)
+                    elif not safe_write_json(context_path, self.context.to_dict()):
+                        raise OSError(
+                            "Could not publish module context before NPC reconciliation"
+                        )
+
+                    self.log("Step 6.5: Reconciling NPC names for consistency...")
+                    if not reconciler._reconcile_all_areas_unlocked():
+                        raise OSError("NPC identity reconciliation did not commit")
+                    self.context = ModuleContext.load(context_path)
+                    self.log("Step 7: Validating module consistency...")
+                    self.validate_module()
+                    validate_reconciled_context(
+                        expected_context,
+                        self.context.to_dict(),
+                    )
+            return
 
         with path_transaction_lock(context_path):
             # Resolve a prior interrupted T088 before considering the builder's
@@ -1877,10 +2188,10 @@ def parse_narrative_to_module_params(
     policy: Any = GAME_MODULE_POLICY,
 ) -> Dict[str, Any]:
     """Use AI to parse a narrative description into module parameters
-    
+
     Args:
         narrative: The rich narrative description of the new module
-        
+
     Returns:
         Dict containing parsed module parameters
     """
@@ -1946,12 +2257,13 @@ Return ONLY the JSON object, no explanations or additional text.""" % (
         resolved_policy.min_locations_per_area,
         resolved_policy.max_locations_per_area,
     )
-    
+
     max_retries = 3
     current_prompt = parsing_prompt
 
     # Select model config per provider (before retry loop)
     from model_config import MODEL_PROVIDER
+
     if MODEL_PROVIDER == "openai":
         summ_config = config.DM_SUMM_GPT54MINI_NONE
     elif MODEL_PROVIDER == "gemini":
@@ -1980,39 +2292,53 @@ Return ONLY the JSON object, no explanations or additional text.""" % (
     last_error = None
     for attempt in range(max_retries):
         try:
-            response = capture_and_fanout("T030", api_client.create_completion,
+            response = capture_and_fanout(
+                "T030",
+                api_client.create_completion,
                 _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": current_prompt},
-                    {"role": "user", "content": f"Parse this module narrative:\n\n{narrative}"}
+                    {
+                        "role": "user",
+                        "content": f"Parse this module narrative:\n\n{narrative}",
+                    },
                 ],
                 model=summ_config["model"],
                 temperature=0.3,
-                **_extra)
-            
+                **_extra,
+            )
+
             result = response.choices[0].message.content.strip()
             # Clean up potential code blocks
             if "```json" in result:
                 result = result.split("```json")[1].split("```")[0].strip()
             elif "```" in result:
                 result = result.split("```")[1].split("```")[0].strip()
-                
-            parsed = _validate_parsed_module_params(
-                json.loads(result), resolved_policy
+
+            parsed = _validate_parsed_module_params(json.loads(result), resolved_policy)
+
+            debug(
+                f"AI_PROCESSING: AI parsed narrative into: {json.dumps(parsed, indent=2)}",
+                category="module_creation",
             )
-            
-            debug(f"AI_PROCESSING: AI parsed narrative into: {json.dumps(parsed, indent=2)}", category="module_creation")
             return parsed
-            
+
         except (json.JSONDecodeError, ValueError) as e:
             last_error = e
             if attempt < max_retries - 1:
-                print(f"DEBUG: [Module Generator] Parse attempt {attempt + 1} failed: {e}")
+                print(
+                    f"DEBUG: [Module Generator] Parse attempt {attempt + 1} failed: {e}"
+                )
                 # Update prompt with error feedback for next attempt
-                current_prompt = parsing_prompt + f"\n\nPREVIOUS ERROR: {e}\nPlease ensure all fields are present with correct types."
+                current_prompt = (
+                    parsing_prompt
+                    + f"\n\nPREVIOUS ERROR: {e}\nPlease ensure all fields are present with correct types."
+                )
                 continue
             else:
-                print(f"DEBUG: [Module Generator] ERROR: Failed to parse after {max_retries} attempts: {e}")
+                print(
+                    f"DEBUG: [Module Generator] ERROR: Failed to parse after {max_retries} attempts: {e}"
+                )
 
         except api_client.ProviderCallError as e:
             # ProviderCallError subclasses RuntimeError, so it used to miss the
@@ -2026,7 +2352,7 @@ Return ONLY the JSON object, no explanations or additional text.""" % (
                     "try again."
                 ) from e
             if attempt < max_retries - 1:
-                backoff = 2 ** attempt
+                backoff = 2**attempt
                 print(
                     f"DEBUG: [Module Generator] Provider error on attempt "
                     f"{attempt + 1}: {e}. Retrying in {backoff}s..."
@@ -2040,7 +2366,9 @@ Return ONLY the JSON object, no explanations or additional text.""" % (
 
         except Exception as e:
             last_error = e
-            print(f"DEBUG: [Module Generator] ERROR: Unexpected error parsing narrative: {e}")
+            print(
+                f"DEBUG: [Module Generator] ERROR: Unexpected error parsing narrative: {e}"
+            )
             break
 
     if isinstance(last_error, api_client.ProviderCallError):
@@ -2112,7 +2440,15 @@ def _ai_driven_module_creation_impl(
 
         # Report progress if callback provided
         if progress_callback:
-            progress_callback({'stage': 0, 'total_stages': 9, 'stage_name': 'Initializing', 'percentage': 0, 'message': 'Starting module creation...'})
+            progress_callback(
+                {
+                    "stage": 0,
+                    "total_stages": 9,
+                    "stage_name": "Initializing",
+                    "percentage": 0,
+                    "message": "Starting module creation...",
+                }
+            )
         # Check if we have a narrative to parse
         narrative = params.get("narrative") or params.get("concept")
         if not narrative:
@@ -2123,10 +2459,24 @@ def _ai_driven_module_creation_impl(
         # Resolve labeled values before inference.  A complete explicit block
         # skips T030; otherwise validated explicit values override inference.
         if progress_callback:
-            progress_callback({'stage': 1, 'total_stages': 9, 'stage_name': 'Parsing narrative', 'percentage': 11, 'message': 'Analyzing narrative to extract module parameters...'})
-        spec = _resolve_module_creation_spec(
-            narrative, params, resolved_policy
-        )
+            progress_callback(
+                {
+                    "stage": 1,
+                    "total_stages": 9,
+                    "stage_name": "Parsing narrative",
+                    "percentage": 11,
+                    "message": "Analyzing narrative to extract module parameters...",
+                }
+            )
+        spec = _resolve_module_creation_spec(narrative, params, resolved_policy)
+        from core.generators.story_first.settings import story_first_enabled
+
+        use_story_first = story_first_enabled()
+        story_first_provider = None
+        if use_story_first:
+            from model_config import get_provider
+
+            story_first_provider = get_provider()
         module_name = spec.module_name
         num_areas = spec.num_areas
         locations_per_area = spec.locations_per_area
@@ -2155,7 +2505,11 @@ def _ai_driven_module_creation_impl(
                 raise ModuleCreationContractError(
                     "per_area_locations must contain one valid integer per area"
                 )
-        
+            if use_story_first:
+                raise ModuleCreationContractError(
+                    "per_area_locations is not supported by the story-first path yet"
+                )
+
         # Enhance the concept with AI-provided context
         enhanced_concept = f"{narrative}"
         if adventure_type:
@@ -2164,8 +2518,11 @@ def _ai_driven_module_creation_impl(
             enhanced_concept += f" Designed for characters level {level_range.get('min', 3)} to {level_range.get('max', 5)}."
         if plot_themes:
             enhanced_concept += f" Key themes include: {plot_themes}."
-        
-        debug(f"MODULE_CREATION: AI-driven module creation starting for '{module_name}'", category="module_creation")
+
+        debug(
+            f"MODULE_CREATION: AI-driven module creation starting for '{module_name}'",
+            category="module_creation",
+        )
 
         from core.generators.managed_module_builder import ManagedModuleBuilder
         from utils.module_lifecycle import LifecycleIndeterminateError, LifecycleKind
@@ -2178,7 +2535,15 @@ def _ai_driven_module_creation_impl(
 
         def build_candidate(candidate_path: Path, final_name: str) -> Dict[str, Any]:
             if progress_callback:
-                progress_callback({'stage': 2, 'total_stages': 9, 'stage_name': 'Configuring builder', 'percentage': 22, 'message': f'Setting up module: {final_name}...'})
+                progress_callback(
+                    {
+                        "stage": 2,
+                        "total_stages": 9,
+                        "stage_name": "Configuring builder",
+                        "percentage": 22,
+                        "message": f"Setting up module: {final_name}...",
+                    }
+                )
 
             config = BuilderConfig(
                 module_name=final_name,
@@ -2188,35 +2553,79 @@ def _ai_driven_module_creation_impl(
                 verbose=True,
             )
             if progress_callback:
-                progress_callback({'stage': 3, 'total_stages': 9, 'stage_name': 'Creating builder', 'percentage': 33, 'message': 'Initializing module builder...'})
+                progress_callback(
+                    {
+                        "stage": 3,
+                        "total_stages": 9,
+                        "stage_name": "Creating builder",
+                        "percentage": 33,
+                        "message": "Initializing module builder...",
+                    }
+                )
             builder = ModuleBuilder(config)
             if per_area_locations is not None:
                 builder.per_area_locations = list(per_area_locations)
 
             if progress_callback:
+
                 def wrapped_callback(status, message):
                     """Convert the low-level callback to the web progress shape."""
                     stage_map = {
-                        'initializing': 4,
-                        'base_structure': 5,
-                        'areas': 5,
-                        'plot': 6,
-                        'npcs': 6,
-                        'finalizing': 7,
+                        "initializing": 4,
+                        "base_structure": 5,
+                        "areas": 5,
+                        "plot": 6,
+                        "npcs": 6,
+                        "finalizing": 7,
                     }
                     stage = stage_map.get(status, 5)
-                    progress_callback({
-                        'stage': stage,
-                        'total_stages': 9,
-                        'stage_name': status.title(),
-                        'percentage': int((stage / 9) * 100),
-                        'message': message,
-                    })
+                    progress_callback(
+                        {
+                            "stage": stage,
+                            "total_stages": 9,
+                            "stage_name": status.title(),
+                            "percentage": int((stage / 9) * 100),
+                            "message": message,
+                        }
+                    )
+
                 builder.progress_callback = wrapped_callback
 
             if progress_callback:
-                progress_callback({'stage': 4, 'total_stages': 9, 'stage_name': 'Building module', 'percentage': 44, 'message': 'Starting module generation process...'})
-            builder.build_module(enhanced_concept)
+                progress_callback(
+                    {
+                        "stage": 4,
+                        "total_stages": 9,
+                        "stage_name": "Building module",
+                        "percentage": 44,
+                        "message": "Starting module generation process...",
+                    }
+                )
+            if use_story_first:
+                from core.generators.story_first.contracts import StorySeed
+
+                story_seed = StorySeed(
+                    seed_id=final_name,
+                    concept=narrative,
+                    module_controls={
+                        "numAreas": num_areas,
+                        "locationsPerArea": locations_per_area,
+                        "levelMin": level_range.get("min", 3),
+                        "levelMax": level_range.get("max", 5),
+                        "adventureType": adventure_type,
+                        "plotThemes": plot_themes,
+                    },
+                    campaign_context={
+                        "partyNames": builder.get_party_members(),
+                    },
+                )
+                builder._build_story_first_module(
+                    enhanced_concept,
+                    story_seed,
+                    story_first_provider,
+                )
+            else:
+                builder.build_module(enhanced_concept)
 
             assigned_path = candidate_path.resolve(strict=False)
             actual_path = Path(builder.config.output_directory).resolve(strict=False)
@@ -2226,7 +2635,15 @@ def _ai_driven_module_creation_impl(
                 )
 
             if progress_callback:
-                progress_callback({'stage': 7, 'total_stages': 9, 'stage_name': 'Finalizing', 'percentage': 77, 'message': 'Finalizing module data...'})
+                progress_callback(
+                    {
+                        "stage": 7,
+                        "total_stages": 9,
+                        "stage_name": "Finalizing",
+                        "percentage": 77,
+                        "message": "Finalizing module data...",
+                    }
+                )
 
             plot_file_path = candidate_path / "module_plot.json"
             if not plot_file_path.exists():
@@ -2263,6 +2680,7 @@ def _ai_driven_module_creation_impl(
             build_candidate=build_candidate,
             prepare_candidate=prepare_candidate,
             defer_promotion=(kind is LifecycleKind.ACTION),
+            retain_story_first_failure=use_story_first,
         )
         module_name = result.module_name
         info(
@@ -2270,27 +2688,36 @@ def _ai_driven_module_creation_impl(
             f"{result.status.value}",
             category="module_creation",
         )
-        
+
         if progress_callback:
-            progress_callback({
-                'stage': 8,
-                'total_stages': 9,
-                'stage_name': 'Generated',
-                'percentage': 88,
-                'status': 'running',
-                'terminal': False,
-                'message': f'Module {module_name} generated; awaiting publication...',
-            })
-        
+            progress_callback(
+                {
+                    "stage": 8,
+                    "total_stages": 9,
+                    "stage_name": "Generated",
+                    "percentage": 88,
+                    "status": "running",
+                    "terminal": False,
+                    "message": f"Module {module_name} generated; awaiting publication...",
+                }
+            )
+
         return True, module_name
 
     except (ModuleCreationRecoveryRequiredError, ModuleCreationCancelledError):
         raise
     except Exception as e:
-        print(f"DEBUG: [Module Generator] ERROR: AI-driven module creation failed: {str(e)}")
+        print(
+            f"DEBUG: [Module Generator] ERROR: AI-driven module creation failed: {str(e)}"
+        )
         import traceback
+
         traceback.print_exc()
-        error(f"Module creation failed for '{module_name}': {e}", exception=e, category="module_creation")
+        error(
+            f"Module creation failed for '{module_name}': {e}",
+            exception=e,
+            category="module_creation",
+        )
         # ManagedModuleBuilder retires only its exact UUID-owned workspace.
         # No path-derived recursive cleanup is permitted here.
         #

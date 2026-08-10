@@ -32,6 +32,27 @@ _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
 _REPARSE_POINT = 0x0400
+_STORY_FIRST_RESUME_FILE = "story_first_resume.json"
+_STORY_FIRST_FAILURE_CLASSES = frozenset(
+    {
+        "interrupted",
+        "timeout",
+        "empty_response",
+        "duplicate_json_key",
+        "malformed_json",
+        "schema",
+        "semantic",
+        "provider",
+        "capacity",
+        "authentication",
+        "pipeline",
+    }
+)
+_STORY_FIRST_DIAGNOSTIC_FIELDS = frozenset({"invariant", "offending", "expectation"})
+_CREDENTIAL_SHAPED_TEXT = re.compile(
+    r"(?i)(?:bearer\s+[A-Za-z0-9._~-]{12,}|sk-[A-Za-z0-9_-]{12,}|"
+    r"AIza[A-Za-z0-9_-]{20,})"
+)
 
 
 def assert_module_refresh_owned() -> None:
@@ -183,9 +204,7 @@ class RecoveryReport:
     reason: str = ""
 
     def __bool__(self) -> bool:
-        raise TypeError(
-            "RecoveryReport has no implicit truth value; inspect .status"
-        )
+        raise TypeError("RecoveryReport has no implicit truth value; inspect .status")
 
 
 def _reject_constant(value: str) -> None:
@@ -358,11 +377,17 @@ class ModuleLifecycleStore:
     ) -> os.stat_result:
         path_stat = cls._entry_stat(path)
         if path_stat is None or not stat.S_ISDIR(path_stat.st_mode):
-            raise LifecycleIndeterminateError(f"Expected directory is unavailable: {path}")
+            raise LifecycleIndeterminateError(
+                f"Expected directory is unavailable: {path}"
+            )
         if stat.S_ISLNK(path_stat.st_mode) or _is_reparse(path_stat):
-            raise LifecycleIndeterminateError(f"Directory is a link/reparse point: {path}")
+            raise LifecycleIndeterminateError(
+                f"Directory is a link/reparse point: {path}"
+            )
         if not allow_mount and os.path.ismount(path):
-            raise LifecycleIndeterminateError(f"Directory is an unexpected mount: {path}")
+            raise LifecycleIndeterminateError(
+                f"Directory is an unexpected mount: {path}"
+            )
         return path_stat
 
     @classmethod
@@ -437,17 +462,25 @@ class ModuleLifecycleStore:
                 relative_text = child_relative.as_posix()
                 child_stat = os.lstat(child_path)
                 if stat.S_ISLNK(child_stat.st_mode) or _is_reparse(child_stat):
-                    raise LifecycleIndeterminateError("Manifest contains a link/reparse point")
+                    raise LifecycleIndeterminateError(
+                        "Manifest contains a link/reparse point"
+                    )
                 if child_stat.st_dev != root_device:
-                    raise LifecycleIndeterminateError("Manifest crossed a device boundary")
+                    raise LifecycleIndeterminateError(
+                        "Manifest crossed a device boundary"
+                    )
                 if stat.S_ISDIR(child_stat.st_mode):
                     if os.path.ismount(child_path):
-                        raise LifecycleIndeterminateError("Manifest contains a mount point")
+                        raise LifecycleIndeterminateError(
+                            "Manifest contains a mount point"
+                        )
                     entries[relative_text] = {"kind": "directory"}
                     walk(child_path, child_relative)
                     continue
                 if not stat.S_ISREG(child_stat.st_mode):
-                    raise LifecycleIndeterminateError("Manifest contains a special file")
+                    raise LifecycleIndeterminateError(
+                        "Manifest contains a special file"
+                    )
                 digest = hashlib.sha256()
                 total = 0
                 flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
@@ -459,7 +492,9 @@ class ModuleLifecycleStore:
                         or opened.st_ino != child_stat.st_ino
                         or not stat.S_ISREG(opened.st_mode)
                     ):
-                        raise LifecycleIndeterminateError("Manifest file identity changed")
+                        raise LifecycleIndeterminateError(
+                            "Manifest file identity changed"
+                        )
                     while True:
                         chunk = os.read(descriptor, 1024 * 1024)
                         if not chunk:
@@ -475,7 +510,9 @@ class ModuleLifecycleStore:
                         or rebound.st_ino != child_stat.st_ino
                         or total != final_stat.st_size
                     ):
-                        raise LifecycleIndeterminateError("Manifest file changed while read")
+                        raise LifecycleIndeterminateError(
+                            "Manifest file changed while read"
+                        )
                 finally:
                     os.close(descriptor)
                 entries[relative_text] = {
@@ -574,7 +611,9 @@ class ModuleLifecycleStore:
             LifecycleKind(value["kind"])
             LifecyclePhase(value["phase"])
         except (TypeError, ValueError) as exc:
-            raise LifecycleIndeterminateError("Lifecycle intent enum is invalid") from exc
+            raise LifecycleIndeterminateError(
+                "Lifecycle intent enum is invalid"
+            ) from exc
         validate_module_name(value["requested_name"])
         validate_module_name(value["final_name"])
         for digest_field in (
@@ -584,8 +623,7 @@ class ModuleLifecycleStore:
         ):
             digest = value[digest_field]
             if digest is not None and (
-                not isinstance(digest, str)
-                or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
             ):
                 raise LifecycleIndeterminateError(
                     f"Lifecycle {digest_field} is invalid"
@@ -660,19 +698,22 @@ class ModuleLifecycleStore:
         if not isinstance(value, dict) or set(value) != required:
             raise LifecycleIndeterminateError("Lifecycle outcome shape is invalid")
         if value["schema_version"] != SCHEMA_VERSION:
-            raise LifecycleIndeterminateError("Lifecycle outcome version is unsupported")
+            raise LifecycleIndeterminateError(
+                "Lifecycle outcome version is unsupported"
+            )
         build_id = _validate_uuid(value["build_id"])
         token = _validate_uuid(value["token"])
         try:
             kind = LifecycleKind(value["kind"])
             status_value = LifecycleStatus(value["status"])
         except (TypeError, ValueError) as exc:
-            raise LifecycleIndeterminateError("Lifecycle outcome enum is invalid") from exc
+            raise LifecycleIndeterminateError(
+                "Lifecycle outcome enum is invalid"
+            ) from exc
         module_name = validate_module_name(value["module_name"])
         digest = value["manifest_digest"]
         if digest is not None and (
-            not isinstance(digest, str)
-            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
         ):
             raise LifecycleIndeterminateError("Lifecycle outcome digest is invalid")
         if type(value["acknowledged"]) is not bool:
@@ -685,9 +726,7 @@ class ModuleLifecycleStore:
             if field_value is not None and (
                 not isinstance(field_value, str) or not field_value
             ):
-                raise LifecycleIndeterminateError(
-                    f"Lifecycle {field_name} is invalid"
-                )
+                raise LifecycleIndeterminateError(f"Lifecycle {field_name} is invalid")
         if value["message_digest"] is not None and not re.fullmatch(
             r"[0-9a-f]{64}", value["message_digest"]
         ):
@@ -847,11 +886,244 @@ class ModuleLifecycleStore:
             or intent["kind"] != workspace.kind.value
             or intent["requested_name"] != workspace.requested_name
             or intent["final_name"] != workspace.final_name
-            or workspace.candidate_path
-            != expected / "candidate" / workspace.final_name
+            or workspace.candidate_path != expected / "candidate" / workspace.final_name
         ):
-            raise LifecycleIndeterminateError("Workspace identity does not match intent")
+            raise LifecycleIndeterminateError(
+                "Workspace identity does not match intent"
+            )
         return intent
+
+    @classmethod
+    def _story_first_resume_value(
+        cls,
+        workspace: BuildWorkspace,
+        *,
+        stage: str,
+        failure_class: str,
+        issues: Iterable[Mapping[str, str]],
+        retries_remaining: int = 1,
+    ) -> Dict[str, Any]:
+        if (
+            not isinstance(stage, str)
+            or not stage
+            or len(stage) > 64
+            or not re.fullmatch(r"[a-z0-9_:-]+", stage)
+        ):
+            raise ValueError("Story-first failure stage is invalid")
+        if failure_class not in _STORY_FIRST_FAILURE_CLASSES:
+            raise ValueError("Story-first failure class is invalid")
+        if retries_remaining not in {0, 1}:
+            raise ValueError("Story-first retry allowance is invalid")
+        safe_issues = []
+        for issue in list(issues):
+            if len(safe_issues) >= 24:
+                raise ValueError("Story-first diagnostic issue limit exceeded")
+            if (
+                not isinstance(issue, Mapping)
+                or set(issue) != _STORY_FIRST_DIAGNOSTIC_FIELDS
+            ):
+                raise ValueError("Story-first diagnostic issue shape is invalid")
+            safe_issue = {}
+            for field in sorted(_STORY_FIRST_DIAGNOSTIC_FIELDS):
+                value = issue[field]
+                if not isinstance(value, str) or not value or len(value) > 240:
+                    raise ValueError("Story-first diagnostic issue text is invalid")
+                try:
+                    value.encode("ascii")
+                except UnicodeEncodeError as exc:
+                    raise ValueError(
+                        "Story-first diagnostic issue must be ASCII"
+                    ) from exc
+                if _CREDENTIAL_SHAPED_TEXT.search(value):
+                    raise ValueError(
+                        "Credential-shaped story-first diagnostic is forbidden"
+                    )
+                safe_issue[field] = value
+            safe_issues.append(safe_issue)
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "build_id": workspace.build_id,
+            "token": workspace.token,
+            "kind": workspace.kind.value,
+            "requested_name": workspace.requested_name,
+            "final_name": workspace.final_name,
+            "stage": stage,
+            "failure_class": failure_class,
+            "issues": safe_issues,
+            "retries_remaining": retries_remaining,
+        }
+
+    @classmethod
+    def _load_story_first_resume(
+        cls, transaction: Path, intent: Mapping[str, Any]
+    ) -> Dict[str, Any]:
+        value = _strict_json_load(transaction / _STORY_FIRST_RESUME_FILE)
+        required = {
+            "schema_version",
+            "build_id",
+            "token",
+            "kind",
+            "requested_name",
+            "final_name",
+            "stage",
+            "failure_class",
+            "issues",
+            "retries_remaining",
+        }
+        if not isinstance(value, dict) or set(value) != required:
+            raise LifecycleIndeterminateError(
+                "Story-first resume evidence shape is invalid"
+            )
+        workspace = BuildWorkspace(
+            intent["build_id"],
+            intent["token"],
+            LifecycleKind(intent["kind"]),
+            intent["requested_name"],
+            intent["final_name"],
+            transaction,
+            transaction / "candidate" / intent["final_name"],
+        )
+        try:
+            expected = cls._story_first_resume_value(
+                workspace,
+                stage=value["stage"],
+                failure_class=value["failure_class"],
+                issues=value["issues"],
+                retries_remaining=value["retries_remaining"],
+            )
+        except (TypeError, ValueError) as exc:
+            raise LifecycleIndeterminateError(
+                "Story-first resume evidence is invalid"
+            ) from exc
+        if value != expected:
+            raise LifecycleIndeterminateError(
+                "Story-first resume identity differs from lifecycle intent"
+            )
+        return value
+
+    def stage_story_first_resume(
+        self,
+        workspace: BuildWorkspace,
+        *,
+        stage: str,
+        failure_class: str,
+        issues: Iterable[Mapping[str, str]] = (),
+        retries_remaining: int = 1,
+    ) -> None:
+        """Attach one bounded, sanitized retry marker before normal retirement."""
+        assert_module_refresh_owned()
+        intent = self._validate_workspace(workspace)
+        if LifecyclePhase(intent["phase"]) is not LifecyclePhase.BUILDING:
+            raise LifecycleIndeterminateError(
+                "Only a building candidate can become story-first resumable"
+            )
+        candidate = workspace.candidate_path
+        self._require_plain_directory(candidate)
+        story_workspace = candidate / ".story_first"
+        self._require_plain_directory(story_workspace)
+        if not (story_workspace / "pipeline_state.json").is_file():
+            raise LifecycleIndeterminateError(
+                "Story-first resume requires pipeline state"
+            )
+        value = self._story_first_resume_value(
+            workspace,
+            stage=stage,
+            failure_class=failure_class,
+            issues=issues,
+            retries_remaining=retries_remaining,
+        )
+        self._atomic_write_json(
+            workspace.transaction_path / _STORY_FIRST_RESUME_FILE, value
+        )
+        self._sync_directory(workspace.transaction_path)
+
+    def claim_story_first_resume(
+        self, requested_name: str, kind: LifecycleKind
+    ) -> Optional[BuildWorkspace]:
+        """Reclaim the exact retired UUID candidate for its one bounded retry."""
+        requested = validate_module_name(requested_name)
+        if not isinstance(kind, LifecycleKind):
+            raise ValueError("Lifecycle kind must be explicit")
+        assert_module_refresh_owned()
+        self.ensure_layout()
+        matches = []
+        for transaction in self._transaction_directories(self.resolved_root):
+            marker = transaction / _STORY_FIRST_RESUME_FILE
+            if not marker.exists():
+                continue
+            intent = self._load_intent(transaction)
+            evidence = self._load_story_first_resume(transaction, intent)
+            if (
+                evidence["requested_name"] == requested
+                and evidence["kind"] == kind.value
+                and evidence["retries_remaining"] == 1
+            ):
+                matches.append((transaction, intent, evidence))
+        if len(matches) > 1:
+            raise LifecycleIndeterminateError(
+                "Multiple resumable story-first candidates match"
+            )
+        if not matches:
+            return None
+        transaction, intent, evidence = matches[0]
+        outcome = self._load_outcome(transaction)
+        if (
+            LifecyclePhase(intent["phase"]) is not LifecyclePhase.NOT_PUBLISHED
+            or outcome.status is not LifecycleStatus.NOT_PUBLISHED
+            or outcome.reason_code != "BUILD_FAILED"
+        ):
+            raise LifecycleIndeterminateError(
+                "Resumable story-first outcome is not a failed hidden build"
+            )
+        candidate = transaction / "candidate" / intent["final_name"]
+        self._require_plain_directory(candidate)
+        self._require_plain_directory(candidate / ".story_first")
+        staging = self._transaction_path(self.staging_root, intent["build_id"])
+        if self._entry_stat(staging) is not None:
+            raise LifecycleIndeterminateError(
+                "Story-first resume staging identity is occupied"
+            )
+        os.replace(transaction, staging)
+        self._sync_directory(self.resolved_root)
+        self._sync_directory(self.staging_root)
+        resumed_intent = self._load_intent(staging)
+        self._write_intent(
+            staging,
+            resumed_intent,
+            phase=LifecyclePhase.BUILDING,
+            manifest_digest=None,
+        )
+        (staging / "outcome.json").unlink()
+        resumed_workspace = BuildWorkspace(
+            intent["build_id"],
+            intent["token"],
+            kind,
+            intent["requested_name"],
+            intent["final_name"],
+            staging,
+            staging / "candidate" / intent["final_name"],
+        )
+        self._atomic_write_json(
+            staging / _STORY_FIRST_RESUME_FILE,
+            self._story_first_resume_value(
+                resumed_workspace,
+                stage=evidence["stage"],
+                failure_class=evidence["failure_class"],
+                issues=evidence["issues"],
+                retries_remaining=0,
+            ),
+        )
+        self._sync_directory(staging)
+        return resumed_workspace
+
+    def finish_story_first_resume(self, workspace: BuildWorkspace) -> None:
+        """Consume a claimed marker before candidate preparation/activation."""
+        assert_module_refresh_owned()
+        self._validate_workspace(workspace)
+        marker = workspace.transaction_path / _STORY_FIRST_RESUME_FILE
+        if marker.exists():
+            marker.unlink()
+            self._sync_directory(workspace.transaction_path)
 
     @staticmethod
     def _validate_registry_snapshot(payload: bytes) -> Dict[str, Any]:
@@ -884,7 +1156,9 @@ class ModuleLifecycleStore:
         self._validate_registry_snapshot(candidate)
         prior_digest = hashlib.sha256(prior).hexdigest()
         candidate_digest = hashlib.sha256(candidate).hexdigest()
-        self._atomic_write_bytes(workspace.transaction_path / "prior_registry.bin", prior)
+        self._atomic_write_bytes(
+            workspace.transaction_path / "prior_registry.bin", prior
+        )
         self._atomic_write_bytes(
             workspace.transaction_path / "candidate_registry.bin", candidate
         )
@@ -1153,8 +1427,7 @@ class ModuleLifecycleStore:
             or intent["final_name"] != active.final_name
             or intent["manifest_digest"] != active.manifest_digest
             or intent["prior_registry_digest"] != active.prior_registry_digest
-            or intent["candidate_registry_digest"]
-            != active.candidate_registry_digest
+            or intent["candidate_registry_digest"] != active.candidate_registry_digest
             or digest != active.manifest_digest
             or dict(active.manifest) != manifest
             or active.candidate_path != expected / "candidate" / active.final_name
@@ -1166,7 +1439,9 @@ class ModuleLifecycleStore:
     def _retire(self, transaction: Path, build_id: str) -> Path:
         resolved = self._transaction_path(self.resolved_root, build_id)
         if self._entry_stat(resolved) is not None:
-            raise LifecycleIndeterminateError("Resolved transaction identity is occupied")
+            raise LifecycleIndeterminateError(
+                "Resolved transaction identity is occupied"
+            )
         source_parent = transaction.parent
         os.replace(transaction, resolved)
         self._sync_directory(source_parent)
@@ -1266,8 +1541,13 @@ class ModuleLifecycleStore:
             )
         if LifecyclePhase(intent["phase"]) is not LifecyclePhase.READY:
             raise LifecycleIndeterminateError("Publication candidate is not READY")
-        if active.prior_registry_digest is None or active.candidate_registry_digest is None:
-            raise LifecycleIndeterminateError("Publication registry proof is unavailable")
+        if (
+            active.prior_registry_digest is None
+            or active.candidate_registry_digest is None
+        ):
+            raise LifecycleIndeterminateError(
+                "Publication registry proof is unavailable"
+            )
         # Delivery identity is part of the write-ahead evidence.  It must be
         # durable before either the module rename or registry replacement.
         self.read_publication_receipt(active)
@@ -1401,7 +1681,9 @@ class ModuleLifecycleStore:
         self._require_plain_directory(transaction)
         outcome = self._load_outcome(transaction)
         if outcome.status is not LifecycleStatus.PUBLISHED:
-            raise LifecycleIndeterminateError("Delivery plan has no publication receipt")
+            raise LifecycleIndeterminateError(
+                "Delivery plan has no publication receipt"
+            )
         normalized_ids = tuple(message_ids)
         if (
             not normalized_ids
@@ -1680,7 +1962,10 @@ class ModuleLifecycleStore:
                 os.replace(final, candidate)
                 self._sync_directory(self.modules_dir)
                 self._sync_directory(candidate_parent)
-                if os.path.lexists(final) or self.create_manifest(candidate) != manifest:
+                if (
+                    os.path.lexists(final)
+                    or self.create_manifest(candidate) != manifest
+                ):
                     raise LifecycleIndeterminateError(
                         "Publication rollback could not be proven"
                     )
@@ -1848,7 +2133,10 @@ class ModuleLifecycleStore:
             manifest = self._load_manifest(transaction)
             digest = self.manifest_digest(manifest)
             candidate = transaction / "candidate" / intent["final_name"]
-            if digest != intent["manifest_digest"] or self.create_manifest(candidate) != manifest:
+            if (
+                digest != intent["manifest_digest"]
+                or self.create_manifest(candidate) != manifest
+            ):
                 raise LifecycleIndeterminateError("READY candidate evidence differs")
             matches.append(
                 ActiveCandidate(
@@ -1933,10 +2221,14 @@ class ModuleLifecycleStore:
                     and outcome.message_digest
                     and outcome.idempotency_key
                 ):
-                    raise LifecycleIndeterminateError("Publication receipt is incomplete")
+                    raise LifecycleIndeterminateError(
+                        "Publication receipt is incomplete"
+                    )
                 identity = (outcome.build_id, outcome.idempotency_key)
                 if identity in seen:
-                    raise LifecycleIndeterminateError("Publication receipt is duplicated")
+                    raise LifecycleIndeterminateError(
+                        "Publication receipt is duplicated"
+                    )
                 seen.add(identity)
                 matches.append(
                     PendingReceipt(
@@ -1969,10 +2261,7 @@ class ModuleLifecycleStore:
             receipt
             for receipt in self.list_publication_receipts()
             if (build_id is None or receipt.build_id == build_id)
-            and (
-                idempotency_key is None
-                or receipt.idempotency_key == idempotency_key
-            )
+            and (idempotency_key is None or receipt.idempotency_key == idempotency_key)
             and (module_name is None or receipt.module_name == module_name)
         ]
         if len(matches) > 1:
@@ -1992,10 +2281,7 @@ class ModuleLifecycleStore:
             for receipt in self.list_publication_receipts()
             if not receipt.acknowledged
             and (build_id is None or receipt.build_id == build_id)
-            and (
-                idempotency_key is None
-                or receipt.idempotency_key == idempotency_key
-            )
+            and (idempotency_key is None or receipt.idempotency_key == idempotency_key)
             and (module_name is None or receipt.module_name == module_name)
         ]
         if len(matches) > 1:

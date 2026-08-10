@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: 2024 MoonlightByte
+# SPDX-License-Identifier: Fair-Source-1.0
+
+"""Default-off feature state and immutable gold-path stage policies."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from types import MappingProxyType, ModuleType
+from typing import Any, Dict, Mapping, Optional
+
+
+@dataclass(frozen=True)
+class StagePolicy:
+    temperature: float
+    max_attempts: int
+
+
+STAGE_POLICIES: Mapping[str, StagePolicy] = MappingProxyType(
+    {
+        "outline": StagePolicy(temperature=0.8, max_attempts=2),
+        "area_binding": StagePolicy(temperature=0.45, max_attempts=2),
+        "plot_derivation": StagePolicy(temperature=0.55, max_attempts=2),
+        "location_fill": StagePolicy(temperature=0.8, max_attempts=2),
+        "npc_repair": StagePolicy(temperature=0.35, max_attempts=2),
+        "candidate_hardening": StagePolicy(temperature=0.3, max_attempts=2),
+        "creature_compile": StagePolicy(temperature=0.45, max_attempts=2),
+    }
+)
+
+GOLD_PRIOR_BLOCKLIST = (
+    "ember",
+    "forge",
+    "elara",
+    "vane",
+    "kaelen",
+    "orell",
+    "rusk",
+    "sorell",
+)
+
+_GOLD_MODEL_CONFIG_NAMES: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {
+        stage: MappingProxyType(
+            {
+                "openai": "DM_MAIN_GPT52_NONE",
+                "gemini": "DM_MAIN_GEMINI_PRO_LOW",
+            }
+        )
+        for stage in STAGE_POLICIES
+        if stage != "location_fill"
+    }
+)
+
+
+class StoryFirstProviderUnsupportedError(RuntimeError):
+    """The selected provider has no approved story-first gold configuration."""
+
+
+def gold_model_config(
+    provider: str,
+    stage: str,
+    model_config_module: Optional[ModuleType] = None,
+) -> Dict[str, Any]:
+    """Return a detached named cloud configuration for one gold-path stage."""
+    if provider == "lmstudio":
+        raise StoryFirstProviderUnsupportedError(
+            "The story-first gold path does not support LM Studio yet. "
+            "Disable USE_STORY_FIRST_GENERATOR or select OpenAI/Gemini."
+        )
+    if provider not in {"openai", "gemini"}:
+        raise StoryFirstProviderUnsupportedError(
+            "The story-first gold path requires the OpenAI or Gemini provider."
+        )
+    if stage not in _GOLD_MODEL_CONFIG_NAMES:
+        raise ValueError(f"unknown story-first model stage: {stage}")
+    if model_config_module is None:
+        import model_config as model_config_module
+
+    name = _GOLD_MODEL_CONFIG_NAMES[stage][provider]
+    value = getattr(model_config_module, name, None)
+    if not isinstance(value, dict) or not isinstance(value.get("model"), str):
+        raise ValueError(f"invalid story-first model configuration: {name}")
+    allowed = {
+        "model",
+        "reasoning_effort",
+        "thinking_level",
+        "max_tokens",
+        "max_completion_tokens",
+    }
+    if set(value) - allowed:
+        raise ValueError(
+            f"unsupported options in story-first model configuration: {name}"
+        )
+    return dict(value)
+
+
+def story_first_enabled(config_module: Optional[ModuleType] = None) -> bool:
+    """Return the explicit development flag; absence is always safe/off."""
+    if config_module is None:
+        try:
+            import config as config_module
+        except ImportError:
+            return False
+
+    return getattr(config_module, "USE_STORY_FIRST_GENERATOR", False) is True
