@@ -1612,6 +1612,32 @@ class AICharacterValidator:
         corrected_data = self.consolidate_ammunition(corrected_data)
         return corrected_data
 
+    def _apply_t053_structured_ac_guard(
+        self,
+        character_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Keep T053 from overriding complete, deterministic AC evidence."""
+
+        corrected_data = copy.deepcopy(character_data)
+        structured_ac = compute_structured_base_ac(corrected_data)
+        if (
+            structured_ac.confidence is ACConfidence.CONFIDENT
+            and structured_ac.armor_class is not None
+            and corrected_data.get("armorClass") != structured_ac.armor_class
+        ):
+            model_armor_class = corrected_data.get("armorClass")
+            corrected_data["armorClass"] = structured_ac.armor_class
+            advisory = "t053_ac_overridden_by_structured"
+            if advisory not in self.corrections_made:
+                self.corrections_made.append(advisory)
+            self.logger.warning(
+                "%s: model armorClass %r replaced with deterministic value %d",
+                advisory,
+                model_armor_class,
+                structured_ac.armor_class,
+            )
+        return corrected_data
+
     def validate_and_correct_character_with_result(
         self,
         character_data: Dict[str, Any],
@@ -3048,6 +3074,7 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
 
                 # Parse AI response to get all corrections
                 corrected_data = self.parse_combined_validation_response(ai_response, character_data)
+                corrected_data = self._apply_t053_structured_ac_guard(corrected_data)
 
                 return _validation_result(character_data, corrected_data)
 

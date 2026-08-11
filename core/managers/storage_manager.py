@@ -627,6 +627,10 @@ class StorageManager:
                     "type": storage["deviceType"],
                     "location": storage["locationName"],
                     "contents": storage["contents"],
+                    "currency": storage.get(
+                        "currency", {"gold": 0, "silver": 0, "copper": 0}
+                    ),
+                    "ammunition": storage.get("ammunition", []),
                     "created_by": storage["createdBy"],
                     "last_accessed": storage["lastAccessed"]
                 })
@@ -656,7 +660,15 @@ def execute_storage_operation(operation: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a storage operation"""
     action = operation.get("action")
 
-    if action in {"create_storage", "store_item", "retrieve_item"}:
+    if action in {
+        "create_storage",
+        "store_item",
+        "retrieve_item",
+        "store_currency",
+        "retrieve_currency",
+        "store_ammunition",
+        "retrieve_ammunition",
+    }:
         # T049/T053 preparation and both participant images are completed
         # before the shared coordinator acquires character -> storage leases.
         # This also makes create+first-store one transaction instead of a

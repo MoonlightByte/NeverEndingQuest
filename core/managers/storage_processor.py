@@ -94,14 +94,35 @@ class StorageProcessor:
                 isinstance(item, dict) for item in contents
             ):
                 return [], "a local storage container has malformed contents"
+            currency = container.get("currency", {})
+            if not isinstance(currency, dict) or any(
+                isinstance(value, bool) or not isinstance(value, int) or value < 0
+                for value in currency.values()
+            ):
+                return [], "a local storage container has malformed currency"
+            ammunition = container.get("ammunition", [])
+            if not isinstance(ammunition, list) or not all(
+                isinstance(row, dict) for row in ammunition
+            ):
+                return [], "a local storage container has malformed ammunition"
             projected = {
                 "id": container.get("id"),
                 "deviceName": container.get("deviceName"),
                 "deviceType": container.get("deviceType"),
                 "locationId": container.get("locationId"),
                 "contents": copy.deepcopy(contents),
+                "currency": {
+                    denomination: currency.get(denomination, 0)
+                    for denomination in ("gold", "silver", "copper")
+                },
+                "ammunition": copy.deepcopy(ammunition),
             }
-            projected_rows = 1 + len(contents)
+            projected_rows = (
+                1
+                + len(contents)
+                + len(ammunition)
+                + sum(bool(currency.get(name, 0)) for name in ("gold", "silver", "copper"))
+            )
             candidate = selected + [projected]
             candidate_bytes = len(
                 json.dumps(
@@ -189,6 +210,12 @@ class StorageProcessor:
                     "quantity": item.get("quantity", 1),
                     "type": item.get("item_type", "miscellaneous")
                 })
+        character_currency = copy.deepcopy(
+            context.get("character", {}).get("currency") or {}
+        )
+        character_ammunition = copy.deepcopy(
+            context.get("character", {}).get("ammunition") or []
+        )
                 
         # Format existing storage for context
         existing_storage_info = []
@@ -199,6 +226,8 @@ class StorageProcessor:
                 "type": storage["deviceType"],
                 "location_id": storage["locationId"],
                 "contents": copy.deepcopy(storage.get("contents", [])),
+                "currency": copy.deepcopy(storage.get("currency", {})),
+                "ammunition": copy.deepcopy(storage.get("ammunition", [])),
             })
             
         system_prompt = f"""You are a storage operations specialist for a 5th Edition RPG system. Your task is to convert natural language storage descriptions into valid JSON operations that match the provided schema.
@@ -211,6 +240,12 @@ Current Area: {context.get('location', {}).get('area_name', 'Unknown Area')} (ID
 CHARACTER INVENTORY (all items):
 {json.dumps(character_inventory, indent=2)}
 
+CHARACTER CURRENCY (exact denominations):
+{json.dumps(character_currency, indent=2)}
+
+CHARACTER AMMUNITION (use exact names):
+{json.dumps(character_ammunition, indent=2)}
+
 EXISTING STORAGE AT LOCATION:
 {json.dumps(existing_storage_info, indent=2)}
 
@@ -219,7 +254,7 @@ STORAGE ACTION SCHEMA:
 
 INSTRUCTIONS:
 1. Analyze the natural language description carefully
-2. Determine the appropriate storage action (create_storage, store_item, retrieve_item, view_storage)
+2. Determine the appropriate storage action (create_storage, store_item, retrieve_item, store_currency, retrieve_currency, store_ammunition, retrieve_ammunition, view_storage)
 3. Extract all relevant information (character, items, quantities, storage types, etc.)
 4. If creating new storage, infer appropriate storage type and name
 5. If referencing existing storage, use the storage_id from the context
@@ -228,12 +263,15 @@ INSTRUCTIONS:
 8. Validate item names against the character's inventory for store operations
 9. For multiple items, use the "items" array format instead of single item_name/quantity
 10. NEVER return action "error" - always use a valid action type from the enum
+11. Currency uses store_currency/retrieve_currency with denomination and quantity; never represent coins as items
+12. Ammunition uses store_ammunition/retrieve_ammunition with ammunition_name and quantity; never represent ammunition as an item
 
 OUTPUT REQUIREMENTS:
 - Return ONLY valid JSON that matches the storage action schema
 - Include all required fields for the detected action type
-- Use EXACT item names from character inventory (never modify or assume item names)
-- Extract the specific item name mentioned in the player's request
+- For item actions, use EXACT item names from character inventory (never modify or assume item names)
+- For ammunition actions, use the EXACT ammunition name from character or storage context
+- For currency actions, use exactly gold, silver, or copper and never convert denominations
 - Use the exact quantity requested, or 1 if not specified
 - Reference existing storage IDs when applicable
 - If the request is unclear, default to store_item action with the specific item mentioned
@@ -273,6 +311,24 @@ For "I get my torch from the chest we made":
   "quantity": 1
 }}
 
+For "I store 5 gold in the chest":
+{{
+  "action": "store_currency",
+  "character": "Norn",
+  "storage_id": "storage_12345678",
+  "denomination": "gold",
+  "quantity": 5
+}}
+
+For "I retrieve 10 arrows from the chest":
+{{
+  "action": "retrieve_ammunition",
+  "character": "Norn",
+  "storage_id": "storage_12345678",
+  "ammunition_name": "Arrows",
+  "quantity": 10
+}}
+
 For "What's in our storage here?":
 {{
   "action": "view_storage",
@@ -308,12 +364,25 @@ For "What's in our storage here?":
         operation["character"] = authoritative_character
             
         # Handle location information
-        if operation.get("action") in ["create_storage", "store_item"]:
+        if operation.get("action") in [
+            "create_storage",
+            "store_item",
+            "store_currency",
+            "store_ammunition",
+        ]:
             if not operation.get("location_id") and context.get("location"):
                 operation["location_id"] = context["location"]["id"]
                 
         # Handle existing storage references
-        if operation.get("action") in ["retrieve_item", "view_storage", "store_item"]:
+        if operation.get("action") in [
+            "retrieve_item",
+            "retrieve_currency",
+            "retrieve_ammunition",
+            "view_storage",
+            "store_item",
+            "store_currency",
+            "store_ammunition",
+        ]:
             existing = context.get("existing_storage") or []
             existing_ids = {storage.get("id") for storage in existing}
             if operation.get("storage_id"):
@@ -345,11 +414,19 @@ For "What's in our storage here?":
                     )
                 elif len(existing) == 1 and not requested_name and not requested_type:
                     operation["storage_id"] = existing[0]["id"]
-                elif operation.get("action") != "store_item":
+                elif operation.get("action") not in {
+                    "store_item",
+                    "store_currency",
+                    "store_ammunition",
+                }:
                     raise ValueError("no exact local storage container was selected")
                     
         # Handle combined create/store operations (only if no existing storage found)
-        if operation.get("action") == "store_item" and not operation.get("storage_id"):
+        if operation.get("action") in {
+            "store_item",
+            "store_currency",
+            "store_ammunition",
+        } and not operation.get("storage_id"):
             # This will trigger storage creation in storage_manager
             if not operation.get("storage_type"):
                 operation["storage_type"] = "chest"  # Default storage type
@@ -471,7 +548,12 @@ For "What's in our storage here?":
                             missing_item = error_parts[1].strip()
                             description = f"{original_description}\n\nPREVIOUS ATTEMPT FAILED: The item '{missing_item}' was not found in the character's inventory. Please check the CHARACTER INVENTORY list above and use the EXACT item name that matches what the player described. Try to match '{missing_item}' to the closest item in the inventory list."
                     else:
-                        description = f"{original_description}\n\nPREVIOUS ATTEMPT FAILED: {validation_error}. Please try again using exact item names from the CHARACTER INVENTORY list."
+                            description = (
+                                f"{original_description}\n\nPREVIOUS ATTEMPT FAILED: "
+                                f"{validation_error}. Please try again using the exact "
+                                "item or ammunition name and exact coin denomination "
+                                "shown in the supplied context."
+                            )
                     
                     continue  # Retry with feedback
                     

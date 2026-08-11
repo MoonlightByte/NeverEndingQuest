@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: Fair-Source-1.0
 # License: See LICENSE file in the repository root
 
-"""Crash-safe item-only storage mutation adapter.
+"""Crash-safe item and resource storage mutation adapter.
 
 T049 and T053 finish before this adapter acquires final participant leases.
 The coordinator then atomically commits the exact character/storage images or
-leaves both unchanged/recoverable.  Currency and ammunition storage are
-deliberately outside this slice.
+leaves both unchanged/recoverable. Currency and ammunition use typed fields;
+they are never disguised as equipment rows.
 """
 
 from __future__ import annotations
@@ -173,6 +173,100 @@ def _requested_items(operation: Mapping[str, Any]) -> Tuple[Tuple[str, int], ...
     return tuple(requested)
 
 
+_DENOMINATIONS = ("gold", "silver", "copper")
+
+
+def _currency(owner: Dict[str, Any], label: str) -> Dict[str, int]:
+    raw = owner.get("currency")
+    if raw is None and label == "storage":
+        raw = {}
+    if not isinstance(raw, dict):
+        raise StorageTransactionError(f"{label} currency is malformed")
+    normalized = {}
+    for denomination in _DENOMINATIONS:
+        value = raw.get(denomination, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise StorageTransactionError(f"{label} currency is malformed")
+        normalized[denomination] = value
+    owner["currency"] = normalized
+    return normalized
+
+
+def _ammunition(owner: Dict[str, Any], label: str) -> list:
+    raw = owner.get("ammunition")
+    if raw is None:
+        raw = []
+    if not isinstance(raw, list) or not all(isinstance(row, dict) for row in raw):
+        raise StorageTransactionError(f"{label} ammunition is malformed")
+    for row in raw:
+        name = row.get("name")
+        quantity = row.get("quantity")
+        description = row.get("description")
+        if (
+            not isinstance(name, str)
+            or not name.strip()
+            or isinstance(quantity, bool)
+            or not isinstance(quantity, int)
+            or quantity < 1
+            or not isinstance(description, str)
+        ):
+            raise StorageTransactionError(f"{label} ammunition is malformed")
+    owner["ammunition"] = raw
+    return raw
+
+
+def _ammunition_counts(owner: Dict[str, Any], label: str, normalized_name: str):
+    counts = {}
+    for row in _ammunition(owner, label):
+        if _normalized_name(row.get("name")) != normalized_name:
+            continue
+        key = (normalized_name, row.get("description"))
+        counts[key] = counts.get(key, 0) + row["quantity"]
+    return counts
+
+
+def _unique_ammunition(rows: Sequence[Mapping[str, Any]], name: str, label: str):
+    normalized = _normalized_name(name)
+    matches = [row for row in rows if _normalized_name(row.get("name")) == normalized]
+    if len(matches) > 1:
+        raise StorageTransactionError(f"{label} has ambiguous duplicate ammunition")
+    return matches[0] if matches else None
+
+
+def _remove_ammunition(rows: list, name: str, quantity: int, label: str):
+    row = _unique_ammunition(rows, name, label)
+    if row is None:
+        raise StorageTransactionError(f"{name} is not available in {label}")
+    available = _strict_quantity(row.get("quantity"), f"{label} ammunition quantity")
+    if available < quantity:
+        raise StorageTransactionError(
+            f"{label} only has {available} {row.get('name')}, but {quantity} were requested"
+        )
+    source = copy.deepcopy(row)
+    if available == quantity:
+        rows.remove(row)
+    else:
+        row["quantity"] = available - quantity
+    return source
+
+
+def _add_ammunition(rows: list, source: Mapping[str, Any], quantity: int, label: str):
+    name = source.get("name")
+    existing = _unique_ammunition(rows, str(name or ""), label)
+    if existing is None:
+        row = copy.deepcopy(dict(source))
+        row["quantity"] = quantity
+        rows.append(row)
+        return
+    if existing.get("description") != source.get("description"):
+        raise StorageTransactionError(
+            f"{label} has different ammunition named {name}; identity is ambiguous"
+        )
+    existing["quantity"] = _strict_quantity(
+        existing.get("quantity"), f"{label} ammunition quantity"
+    ) + quantity
+
+
 def _load_storage(path: str) -> Tuple[bool, Dict[str, Any]]:
     if not os.path.exists(path):
         return False, {"version": "1.0.0", "lastUpdated": "", "playerStorage": []}
@@ -231,6 +325,8 @@ def _new_container(operation: Mapping[str, Any], location, timestamp: str):
         "areaId": area_id,
         "areaName": area_name,
         "contents": [],
+        "currency": {"gold": 0, "silver": 0, "copper": 0},
+        "ammunition": [],
         "createdBy": operation["character"],
         "createdDate": timestamp,
         "accessibility": "party",
@@ -255,8 +351,16 @@ def _validate_operation(operation: Mapping[str, Any]) -> None:
         raise StorageTransactionError(
             f"storage action is invalid: {exc.message}"
         ) from exc
-    if operation.get("action") not in {"create_storage", "store_item", "retrieve_item"}:
-        raise StorageTransactionError("operation is not a mutating item storage action")
+    if operation.get("action") not in {
+        "create_storage",
+        "store_item",
+        "retrieve_item",
+        "store_currency",
+        "retrieve_currency",
+        "store_ammunition",
+        "retrieve_ammunition",
+    }:
+        raise StorageTransactionError("operation is not a mutating storage action")
 
 
 def _character_path(character: str) -> str:
@@ -334,63 +438,147 @@ def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPla
     storage_id = operation.get("storage_id")
     if storage_id:
         container = _find_container(storage_after, storage_id, location_id)
-    elif action == "store_item":
+    elif action in {"store_item", "store_currency", "store_ammunition"}:
         container = _new_container(operation, location, timestamp)
         storage_after["playerStorage"].append(container)
     else:
-        raise StorageTransactionError("retrieve_item requires a storage container")
+        raise StorageTransactionError("retrieval requires a storage container")
 
     container_before = copy.deepcopy(container)
-    character_rows = _inventory_rows(character_after, "character")
-    storage_rows = _inventory_rows(container, "storage")
-    character_rows, character_identity_advisories = consolidate_equipment_rows(
-        character_rows
-    )
-    storage_rows, storage_identity_advisories = consolidate_equipment_rows(storage_rows)
-    character_after["equipment"] = character_rows
-    container["contents"] = storage_rows
-    identity_advisories = tuple(
-        sorted(set(character_identity_advisories + storage_identity_advisories))
-    )
-    requested = _requested_items(operation)
-    names = {_normalized_name(name) for name, _quantity in requested}
-
-    if action == "store_item":
-        for name, quantity in requested:
-            source = _remove_item(character_rows, name, quantity, "character")
-            _add_item(storage_rows, source, quantity, "storage")
-        verb = "Stored"
-        log_action = "store_items" if len(requested) > 1 else "store_item"
+    identity_advisories = ()
+    conserved_before = None
+    if action in {"store_item", "retrieve_item"}:
+        character_rows = _inventory_rows(character_after, "character")
+        storage_rows = _inventory_rows(container, "storage")
+        character_rows, character_identity_advisories = consolidate_equipment_rows(
+            character_rows
+        )
+        storage_rows, storage_identity_advisories = consolidate_equipment_rows(
+            storage_rows
+        )
+        character_after["equipment"] = character_rows
+        container["contents"] = storage_rows
+        identity_advisories = tuple(
+            sorted(set(character_identity_advisories + storage_identity_advisories))
+        )
+        requested = _requested_items(operation)
+        names = {_normalized_name(name) for name, _quantity in requested}
+        conserved_before = ("items", _asset_counts(character_before, container_before, names))
+        if action == "store_item":
+            for name, quantity in requested:
+                source = _remove_item(character_rows, name, quantity, "character")
+                _add_item(storage_rows, source, quantity, "storage")
+            verb = "Stored"
+            log_action = "store_items" if len(requested) > 1 else "store_item"
+        else:
+            for name, quantity in requested:
+                source = _remove_item(storage_rows, name, quantity, "storage")
+                _add_item(character_rows, source, quantity, "character")
+            verb = "Retrieved"
+            log_action = "retrieve_items" if len(requested) > 1 else "retrieve_item"
+        detail = [{"item": name, "quantity": quantity} for name, quantity in requested]
+        item_text = ", ".join(f"{quantity} {name}" for name, quantity in requested)
+    elif action in {"store_currency", "retrieve_currency"}:
+        denomination = operation.get("denomination")
+        if denomination not in _DENOMINATIONS:
+            raise StorageTransactionError("currency denomination is invalid")
+        quantity = _strict_quantity(operation.get("quantity"), "currency quantity")
+        character_currency = _currency(character_after, "character")
+        storage_currency = _currency(container, "storage")
+        conserved_before = (
+            "currency",
+            {
+                name: _currency(copy.deepcopy(character_before), "character")[name]
+                + _currency(copy.deepcopy(container_before), "storage")[name]
+                for name in _DENOMINATIONS
+            },
+        )
+        source, destination = (
+            (character_currency, storage_currency)
+            if action == "store_currency"
+            else (storage_currency, character_currency)
+        )
+        if source[denomination] < quantity:
+            label = "character" if action == "store_currency" else "storage"
+            raise StorageTransactionError(
+                f"{label} only has {source[denomination]} {denomination}, but {quantity} were requested"
+            )
+        source[denomination] -= quantity
+        destination[denomination] += quantity
+        verb = "Stored" if action == "store_currency" else "Retrieved"
+        log_action = action
+        detail = {"denomination": denomination, "quantity": quantity}
+        item_text = f"{quantity} {denomination}"
     else:
-        for name, quantity in requested:
-            source = _remove_item(storage_rows, name, quantity, "storage")
-            _add_item(character_rows, source, quantity, "character")
-        verb = "Retrieved"
-        log_action = "retrieve_items" if len(requested) > 1 else "retrieve_item"
+        name = operation.get("ammunition_name")
+        if not isinstance(name, str) or not name.strip():
+            raise StorageTransactionError("ammunition request has no useful name")
+        quantity = _strict_quantity(operation.get("quantity"), "ammunition quantity")
+        character_ammunition = _ammunition(character_after, "character")
+        storage_ammunition = _ammunition(container, "storage")
+        conserved_name = _normalized_name(name)
+        ammunition_before = {}
+        for counts in (
+            _ammunition_counts(
+                copy.deepcopy(character_before), "character", conserved_name
+            ),
+            _ammunition_counts(
+                copy.deepcopy(container_before), "storage", conserved_name
+            ),
+        ):
+            for key, count_quantity in counts.items():
+                ammunition_before[key] = (
+                    ammunition_before.get(key, 0) + count_quantity
+                )
+        conserved_before = ("ammunition", ammunition_before)
+        source_rows, destination_rows = (
+            (character_ammunition, storage_ammunition)
+            if action == "store_ammunition"
+            else (storage_ammunition, character_ammunition)
+        )
+        source = _remove_ammunition(source_rows, name, quantity, "character" if action == "store_ammunition" else "storage")
+        _add_ammunition(destination_rows, source, quantity, "storage" if action == "store_ammunition" else "character")
+        verb = "Stored" if action == "store_ammunition" else "Retrieved"
+        log_action = action
+        detail = {"ammunition": source.get("name"), "quantity": quantity}
+        item_text = f"{quantity} {source.get('name')}"
 
     character_after, validator_advisories = _validate_character_candidate(
         character_after
     )
     advisories = tuple(sorted(set(identity_advisories + validator_advisories)))
-    if _asset_counts(character_before, container_before, names) != _asset_counts(
-        character_after, container, names
-    ):
-        raise StorageTransactionError("item identity or quantity was not conserved")
+    if conserved_before[0] == "items":
+        conserved_after = _asset_counts(character_after, container, names)
+    elif conserved_before[0] == "currency":
+        conserved_after = {
+            name: _currency(copy.deepcopy(character_after), "character")[name]
+            + _currency(copy.deepcopy(container), "storage")[name]
+            for name in _DENOMINATIONS
+        }
+    else:
+        conserved_after = {}
+        for counts in (
+            _ammunition_counts(
+                copy.deepcopy(character_after), "character", conserved_name
+            ),
+            _ammunition_counts(copy.deepcopy(container), "storage", conserved_name),
+        ):
+            for key, count_quantity in counts.items():
+                conserved_after[key] = conserved_after.get(key, 0) + count_quantity
+    if conserved_before[1] != conserved_after:
+        raise StorageTransactionError("storage resource identity or quantity was not conserved")
 
     container["lastAccessed"] = timestamp
     container.setdefault("accessLog", []).append(
         {
             "character": operation["character"],
             "action": log_action,
-            "items": [
-                {"item": name, "quantity": quantity} for name, quantity in requested
-            ],
+            "items" if isinstance(detail, list) else "resource": detail,
             "timestamp": timestamp,
         }
     )
     storage_after["lastUpdated"] = timestamp
-    item_text = ", ".join(f"{quantity} {name}" for name, quantity in requested)
-    preposition = "in" if action == "store_item" else "from"
+    preposition = "in" if action.startswith("store_") else "from"
     message = f"{verb} {item_text} {preposition} {container['deviceName']}"
     return StorageMutationPlan(
         operation,
@@ -510,12 +698,28 @@ def _combine_storage_fee(storage_plan, fee_action):
         return None
     if storage_plan.character_before != fee.pre_image:
         return None
-    if storage_plan.character_after.get(
-        "currency"
-    ) != storage_plan.character_before.get("currency"):
-        return None
     combined_character = copy.deepcopy(storage_plan.character_after)
-    combined_character["currency"] = copy.deepcopy(fee.post_image.get("currency", {}))
+    if storage_plan.character_after.get("currency") == storage_plan.character_before.get(
+        "currency"
+    ):
+        combined_character["currency"] = copy.deepcopy(
+            fee.post_image.get("currency", {})
+        )
+    elif storage_plan.operation.get("action") in {
+        "store_currency",
+        "retrieve_currency",
+    }:
+        combined_currency = _currency(combined_character, "character")
+        fee_before = _currency(copy.deepcopy(fee.pre_image), "character")
+        fee_after = _currency(copy.deepcopy(fee.post_image), "character")
+        for denomination in _DENOMINATIONS:
+            combined_currency[denomination] += (
+                fee_after[denomination] - fee_before[denomination]
+            )
+            if combined_currency[denomination] < 0:
+                return None
+    else:
+        return None
     return replace(storage_plan, character_after=combined_character)
 
 

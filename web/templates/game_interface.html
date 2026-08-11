@@ -8422,14 +8422,38 @@
                             </div>
                             <ul class="storage-item-list">`;
                 
+                let renderedRows = 0;
                 if (container.contents && container.contents.length > 0) {
                     container.contents.forEach(item => {
                         html += `<li class="storage-item-entry">
-                                    <span class="storage-item-name">${item.item_name}</span> 
+                                    <span class="storage-item-name">${item.item_name}</span>
                                     <span class="storage-item-quantity">(x${item.quantity})</span>
                                  </li>`;
+                        renderedRows += 1;
                     });
-                } else {
+                }
+                const currencyLabels = { gold: 'Gold Pieces', silver: 'Silver Pieces', copper: 'Copper Pieces' };
+                Object.entries(container.currency || {}).forEach(([denomination, quantity]) => {
+                    if (currencyLabels[denomination] && Number.isInteger(quantity) && quantity > 0) {
+                        html += `<li class="storage-item-entry">
+                                    <span class="storage-item-name">${currencyLabels[denomination]}</span>
+                                    <span class="storage-item-quantity">(x${quantity})</span>
+                                 </li>`;
+                        renderedRows += 1;
+                    }
+                });
+                if (container.ammunition && Array.isArray(container.ammunition)) {
+                    container.ammunition.forEach(ammo => {
+                        if (ammo && ammo.name && Number.isInteger(ammo.quantity) && ammo.quantity > 0) {
+                            html += `<li class="storage-item-entry">
+                                        <span class="storage-item-name">${ammo.name}</span>
+                                        <span class="storage-item-quantity">(x${ammo.quantity})</span>
+                                     </li>`;
+                            renderedRows += 1;
+                        }
+                    });
+                }
+                if (renderedRows === 0) {
                     html += '<li class="storage-item-entry">This container is empty.</li>';
                 }
                 

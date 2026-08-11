@@ -6,7 +6,16 @@
   "properties": {
     "action": {
       "type": "string",
-      "enum": ["create_storage", "store_item", "retrieve_item", "view_storage"],
+      "enum": [
+        "create_storage",
+        "store_item",
+        "retrieve_item",
+        "store_currency",
+        "retrieve_currency",
+        "store_ammunition",
+        "retrieve_ammunition",
+        "view_storage"
+      ],
       "description": "Type of storage operation to perform"
     },
     "character": {
@@ -41,7 +50,17 @@
     "quantity": {
       "type": "integer",
       "minimum": 1,
-      "description": "Quantity to store/retrieve (for single item operations)"
+      "description": "Quantity to store/retrieve (for single item, currency, or ammunition operations)"
+    },
+    "denomination": {
+      "type": "string",
+      "enum": ["gold", "silver", "copper"],
+      "description": "Exact coin denomination for a currency operation"
+    },
+    "ammunition_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Exact ammunition name for an ammunition operation"
     },
     "items": {
       "type": "array",
@@ -86,6 +105,18 @@
           {"required": ["storage_id", "items"]}
         ]
       }
+    },
+    {
+      "if": {"properties": {"action": {"enum": ["store_currency", "retrieve_currency"]}}},
+      "then": {"required": ["denomination", "quantity"]}
+    },
+    {
+      "if": {"properties": {"action": {"enum": ["store_ammunition", "retrieve_ammunition"]}}},
+      "then": {"required": ["ammunition_name", "quantity"]}
+    },
+    {
+      "if": {"properties": {"action": {"enum": ["retrieve_currency", "retrieve_ammunition"]}}},
+      "then": {"required": ["storage_id"]}
     }
   ]
 }

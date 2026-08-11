@@ -14,9 +14,38 @@ interface StorageContainer {
   contents: StorageItem[]
 }
 
+const currencyLabels: Record<string, string> = {
+  gold: 'Gold Pieces',
+  silver: 'Silver Pieces',
+  copper: 'Copper Pieces',
+}
+
 function toContainer(raw: unknown): StorageContainer {
   const r = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
   const contentsRaw = Array.isArray(r['contents']) ? (r['contents'] as unknown[]) : []
+  const currencyRaw = typeof r['currency'] === 'object' && r['currency'] !== null
+    ? (r['currency'] as Record<string, unknown>)
+    : {}
+  const ammunitionRaw = Array.isArray(r['ammunition']) ? (r['ammunition'] as unknown[]) : []
+  const resourceRows: StorageItem[] = Object.entries(currencyLabels).flatMap(([key, label]) => {
+    const quantity = currencyRaw[key]
+    return typeof quantity === 'number' && Number.isInteger(quantity) && quantity > 0
+      ? [{ name: label, quantity }]
+      : []
+  })
+  for (const rawAmmo of ammunitionRaw) {
+    const ammo = typeof rawAmmo === 'object' && rawAmmo !== null
+      ? (rawAmmo as Record<string, unknown>)
+      : {}
+    if (
+      typeof ammo['name'] === 'string'
+      && typeof ammo['quantity'] === 'number'
+      && Number.isInteger(ammo['quantity'])
+      && ammo['quantity'] > 0
+    ) {
+      resourceRows.push({ name: ammo['name'], quantity: ammo['quantity'] })
+    }
+  }
   return {
     name: typeof r['name'] === 'string' ? r['name'] : 'Unknown container',
     location: typeof r['location'] === 'string' ? r['location'] : '',
@@ -26,7 +55,7 @@ function toContainer(raw: unknown): StorageContainer {
         name: typeof ir['item_name'] === 'string' ? ir['item_name'] : 'Unknown item',
         quantity: typeof ir['quantity'] === 'number' ? ir['quantity'] : 1,
       }
-    }),
+    }).concat(resourceRows),
   }
 }
 

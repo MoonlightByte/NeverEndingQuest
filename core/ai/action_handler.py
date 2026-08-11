@@ -2699,7 +2699,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         debug("STATE_CHANGE: Processing storageInteraction action", category="storage_operations")
         storage_failure_message = (
             "Storage could not be changed safely. Nothing was moved; please "
-            "name the character, container, item, and quantity clearly."
+            "name the character, container, item or resource, and quantity clearly."
         )
         try:
             # Import storage modules
