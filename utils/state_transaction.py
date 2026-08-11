@@ -166,6 +166,7 @@ class ParticipantPlan:
     kind: ParticipantKind
     before: JsonSnapshot
     after: JsonSnapshot
+    lease_only: bool = False
 
     @property
     def pre_hash(self) -> str:
@@ -393,6 +394,34 @@ class StateTransactionCoordinator:
             raise ValueError("transaction participant has no state change")
         return ParticipantPlan(canonical, kind, before, after)
 
+    def lease_participant(
+        self,
+        path: str,
+        kind: ParticipantKind,
+    ) -> ParticipantPlan:
+        """Describe a lock-only participant in the shared global order.
+
+        Existing durable journals use :meth:`participant`, whose before and
+        after images must differ. Some subsystems retain their own proven
+        journal but still need the coordinator's cross-system lease order.
+        This descriptor is accepted by ``ordered_leases`` only; callers must
+        not include it in a transaction plan.
+        """
+        if not isinstance(kind, ParticipantKind):
+            kind = ParticipantKind(kind)
+        canonical = self._canonical_inside_workspace(path)
+        if canonical == self.journal_root or canonical.startswith(
+            self.journal_root + os.sep
+        ):
+            raise ValueError("transaction journals cannot be participants")
+        return ParticipantPlan(
+            canonical,
+            kind,
+            JsonSnapshot(False),
+            JsonSnapshot(True, {}),
+            True,
+        )
+
     def build_plan(
         self,
         *,
@@ -411,6 +440,8 @@ class StateTransactionCoordinator:
         ordered = self._ordered_participants(tuple(participants))
         if not ordered:
             raise ValueError("a transaction requires at least one participant")
+        if any(participant.lease_only for participant in ordered):
+            raise ValueError("lock-only participants cannot enter a transaction plan")
         material = {
             "schema_version": JOURNAL_SCHEMA_VERSION,
             "transaction_key": transaction_key,
@@ -443,6 +474,8 @@ class StateTransactionCoordinator:
         ordered = self._ordered_participants(plan.participants)
         if ordered != plan.participants:
             raise ValueError("transaction plan participants are not ordered")
+        if any(participant.lease_only for participant in ordered):
+            raise ValueError("lock-only participants cannot enter a transaction plan")
         material = {
             "schema_version": JOURNAL_SCHEMA_VERSION,
             "transaction_key": plan.transaction_key,

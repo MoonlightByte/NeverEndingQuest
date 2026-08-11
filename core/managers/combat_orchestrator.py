@@ -1004,6 +1004,9 @@ def execute_agentic_turn(
             pending["turnId"],
             events,
             delivery_context=persisted_context,
+            character_paths=character_paths,
+            character_preconditions=characters,
+            character_postconditions=_preview_characters,
         )
         committed, committed_characters = apply_staged_turn(
             encounter_path,
@@ -1380,6 +1383,9 @@ def execute_agentic_turn(
         events,
         roll_consumption=roll_consumption,
         delivery_context=persisted_context,
+        character_paths=character_paths,
+        character_preconditions=characters,
+        character_postconditions=_preview_characters,
     )
     committed, committed_characters = apply_staged_turn(
         encounter_path,

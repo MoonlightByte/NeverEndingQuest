@@ -4177,6 +4177,7 @@ Player: {initial_prompt_text}"""
                if (
                    agentic_recovery["action"] == "apply_staged_events"
                    and isinstance(exc, CombatTransactionError)
+                   and not getattr(exc, "retryable", False)
                ):
                    paused_encounter = safe_json_load(json_file_path) or encounter_data
                    paused_state = ensure_combat_state(paused_encounter)
