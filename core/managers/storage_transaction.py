@@ -66,7 +66,12 @@ def _strict_quantity(value: Any, label: str) -> int:
 
 
 def _metadata(row: Mapping[str, Any]) -> str:
-    return inventory_metadata(row, "item_name", omit_ownership_local=True)
+    # ``stackable`` records proven split-stack provenance.  It controls whether
+    # identical rows may merge, but it is not part of the item's mechanical
+    # identity (a ration does not become a different ration after a split).
+    value = copy.deepcopy(dict(row))
+    value.pop("stackable", None)
+    return inventory_metadata(value, "item_name", omit_ownership_local=True)
 
 
 def _is_stackable(row: Mapping[str, Any]) -> bool:
@@ -107,6 +112,11 @@ def _remove_item(rows: list, name: str, quantity: int, label: str) -> Dict[str, 
     if available == quantity:
         rows.remove(row)
     else:
+        if _is_stackable(row):
+            # Both halves came from one row already proven fungible.  Preserve
+            # that fact even when either half later has quantity one.
+            source["stackable"] = True
+            row["stackable"] = True
         row["quantity"] = available - quantity
     return source
 

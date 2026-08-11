@@ -640,23 +640,38 @@ def merge_equipment_arrays(
             raise InventoryIntegrityError(
                 f"equipment update[{index}] has no useful name"
             )
+        recharge_normalized = False
+        if "recharge" in update_item:
+            legacy_recharge = update_item.pop("recharge")
+            if (
+                "rechargeRate" in update_item
+                and update_item.get("rechargeRate") != legacy_recharge
+            ):
+                raise InventoryIntegrityError(
+                    f"equipment update[{index}] has conflicting recharge values"
+                )
+            update_item["rechargeRate"] = legacy_recharge
+            recharge_normalized = True
+
         charges = update_item.get("charges")
         if isinstance(charges, dict) and "recharge" in charges:
             nested_recharge = charges.pop("recharge")
-            top_level_recharge = update_item.get("rechargeRate")
             if (
-                top_level_recharge is not None
-                and top_level_recharge != nested_recharge
+                "rechargeRate" in update_item
+                and update_item.get("rechargeRate") != nested_recharge
             ):
                 raise InventoryIntegrityError(
                     f"equipment update[{index}] has conflicting recharge values"
                 )
             update_item["rechargeRate"] = nested_recharge
+            recharge_normalized = True
+
+        if recharge_normalized:
             advisory = f"equipment_recharge_normalized:{name}"
             if integrity_advisories is not None:
                 integrity_advisories.append(advisory)
             warning(
-                f"INVENTORY: Normalized nested recharge metadata for "
+                f"INVENTORY: Normalized recharge metadata for "
                 f"'{update_item.get('item_name')}'",
                 category="character_validation",
             )
