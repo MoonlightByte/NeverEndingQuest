@@ -18,6 +18,7 @@ import json
 import os
 import re
 import stat
+import time
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -53,6 +54,8 @@ _CREDENTIAL_SHAPED_TEXT = re.compile(
     r"(?i)(?:bearer\s+[A-Za-z0-9._~-]{12,}|sk-[A-Za-z0-9_-]{12,}|"
     r"AIza[A-Za-z0-9_-]{20,})"
 )
+_MANIFEST_MAX_ATTEMPTS = 3
+_MANIFEST_RETRY_BACKOFF_SECONDS = 0.05
 
 
 def assert_module_refresh_owned() -> None:
@@ -441,6 +444,33 @@ class ModuleLifecycleStore:
         cls,
         root: Union[os.PathLike, str],
     ) -> Dict[str, Dict[str, Any]]:
+        """Return one strict manifest, tolerating only bounded transient races.
+
+        Files synchronized by OneDrive and similar services can be rebound or
+        re-statted immediately after the generator closes them.  A failed walk
+        is discarded in full: every retry starts from the root and repeats all
+        identity, link, device, size, and digest checks.  Persistent or unsafe
+        trees therefore remain indeterminate after the fixed attempt limit.
+        """
+        last_error: Optional[LifecycleIndeterminateError] = None
+        for attempt in range(1, _MANIFEST_MAX_ATTEMPTS + 1):
+            try:
+                return cls._create_manifest_once(root)
+            except LifecycleIndeterminateError as exc:
+                last_error = exc
+                if attempt == _MANIFEST_MAX_ATTEMPTS:
+                    raise LifecycleIndeterminateError(
+                        f"{exc} after {attempt} manifest attempts"
+                    ) from exc
+                time.sleep(_MANIFEST_RETRY_BACKOFF_SECONDS * attempt)
+        raise AssertionError(f"unreachable manifest retry state: {last_error}")
+
+    @classmethod
+    def _create_manifest_once(
+        cls,
+        root: Union[os.PathLike, str],
+    ) -> Dict[str, Dict[str, Any]]:
+        """Perform exactly one complete strict manifest walk."""
         root_path = Path(root)
         root_stat = cls._require_plain_directory(root_path)
         root_device = root_stat.st_dev
