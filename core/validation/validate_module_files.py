@@ -24,6 +24,7 @@ Portions derived from SRD 5.2.1, licensed under CC BY 4.0.
 
 import json
 import os
+import re
 from pathlib import Path
 from jsonschema import validate, ValidationError, Draft7Validator
 from collections import defaultdict
@@ -41,6 +42,7 @@ class ModuleValidator:
         self.schema_dir = Path(schema_dir)
         self.results = defaultdict(lambda: {"files": [], "passed": 0, "failed": 0, "errors": []})
         self.schemas = {}
+        self.encounter_creatures_checked = 0
         
     def load_schemas(self, strict: bool = False):
         """Load all available schemas.
@@ -277,14 +279,102 @@ class ModuleValidator:
                 self.results["party"]["errors"].append(f"party_tracker.json: {error}")
                 
     def validate_module_context(self):
-        """Skip validation for module_context.json as it's an internal tracking file"""
+        """Cross-check internal context locations against live area files."""
         context_file = self.module_path / "module_context.json"
-        
-        if context_file.exists():
-            # Mark as passed since it's an internal file that doesn't need validation
-            self.results["module_context"]["files"].append("module_context.json")
-            self.results["module_context"]["passed"] += 1
-            print("  - Skipping module_context.json (internal tracking file)")
+
+        if not context_file.exists():
+            self.results["module_context"]["not_applicable"] = 1
+            return
+
+        result = self.results["module_context"]
+        result["files"].append("module_context.json")
+        errors = []
+        try:
+            with open(context_file, "r", encoding="utf-8") as handle:
+                context = json.load(handle)
+        except Exception as exc:
+            result["failed"] += 1
+            result["errors"].append(f"module_context.json: unreadable context: {exc}")
+            return
+
+        expected_locations = {}
+        expected_by_area = {}
+        areas_dir = self.module_path / "areas"
+        area_files = sorted(areas_dir.glob("*.json")) if areas_dir.exists() else []
+        for area_file in area_files:
+            if any(part in area_file.name for part in ["_BU", ".bak", ".backup", ".tmp"]):
+                continue
+            try:
+                with open(area_file, "r", encoding="utf-8") as handle:
+                    area = json.load(handle)
+            except Exception:
+                continue
+            area_id = area.get("areaId")
+            if not area_id:
+                continue
+            expected_by_area[area_id] = []
+            for location in area.get("locations", []) or []:
+                if not isinstance(location, dict):
+                    continue
+                location_id = location.get("locationId")
+                if not location_id:
+                    continue
+                expected_by_area[area_id].append(location_id)
+                connections = []
+                for value in list(location.get("connectivity", []) or []) + list(
+                    location.get("areaConnectivityId", []) or []
+                ):
+                    if isinstance(value, str) and value and value not in connections:
+                        connections.append(value)
+                expected_locations[location_id] = {
+                    "name": location.get("name"),
+                    "area": area_id,
+                    "connections": connections,
+                }
+
+        actual_locations = context.get("locations")
+        if not isinstance(actual_locations, dict):
+            errors.append("locations must be an object")
+            actual_locations = {}
+        if set(actual_locations) != set(expected_locations):
+            missing = sorted(set(expected_locations) - set(actual_locations))
+            extra = sorted(set(actual_locations) - set(expected_locations))
+            if missing:
+                errors.append(f"locations missing live area IDs: {missing}")
+            if extra:
+                errors.append(f"locations contain unknown IDs: {extra}")
+
+        for location_id, expected in expected_locations.items():
+            actual = actual_locations.get(location_id)
+            if not isinstance(actual, dict):
+                continue
+            for field in ("name", "area", "connections"):
+                if actual.get(field) != expected[field]:
+                    errors.append(
+                        f"location '{location_id}' {field} differs from live area data"
+                    )
+
+        context_areas = context.get("areas")
+        if not isinstance(context_areas, dict):
+            errors.append("areas must be an object")
+            context_areas = {}
+        for area_id, expected_ids in expected_by_area.items():
+            actual_area = context_areas.get(area_id)
+            if not isinstance(actual_area, dict):
+                errors.append(f"area '{area_id}' is missing from context")
+                continue
+            if actual_area.get("locations") != expected_ids:
+                errors.append(
+                    f"area '{area_id}' location list differs from live area data"
+                )
+
+        if errors:
+            result["failed"] += 1
+            result["errors"].extend(
+                f"module_context.json: {message}" for message in errors
+            )
+        else:
+            result["passed"] += 1
                 
     def validate_encounter_files(self):
         """Validate encounter files"""
@@ -395,6 +485,100 @@ class ModuleValidator:
             errors.append(f"Starting area {starting_area} ({area_data[starting_area]['name']}) has no connections - players cannot leave!")
 
         return len(errors) == 0, errors
+
+    def validate_legacy_content_advisories(self):
+        """Surface suspicious legacy content without rewriting or rejecting it."""
+        advisories = []
+        party_year = None
+        party_file = self.module_path / "party_tracker.json"
+        if party_file.exists():
+            try:
+                with open(party_file, "r", encoding="utf-8") as handle:
+                    party = json.load(handle)
+                party_year = (party.get("worldConditions") or {}).get("year")
+            except Exception:
+                pass
+
+        areas_dir = self.module_path / "areas"
+        area_files = sorted(areas_dir.glob("*.json")) if areas_dir.exists() else []
+        for area_file in area_files:
+            if any(part in area_file.name for part in ["_BU", ".bak", ".backup", ".tmp"]):
+                continue
+            try:
+                with open(area_file, "r", encoding="utf-8") as handle:
+                    area = json.load(handle)
+            except Exception:
+                continue
+
+            levels = [
+                int(value)
+                for value in re.findall(r"\d+", str(area.get("recommendedLevel", "")))
+            ]
+            recommended_max = max(levels) if levels else None
+            for location in area.get("locations", []) or []:
+                if not isinstance(location, dict):
+                    continue
+                location_id = location.get("locationId", "unknown")
+                source = f"{area_file.name}:{location_id}"
+
+                for npc in location.get("npcs", []) or []:
+                    if not isinstance(npc, dict):
+                        continue
+                    name = npc.get("name")
+                    normalized = " ".join(name.split()) if isinstance(name, str) else ""
+                    if (
+                        not normalized
+                        or len(normalized) > 120
+                        or len(normalized.split()) > 18
+                    ):
+                        advisories.append(
+                            f"{source}: NPC name is paragraph-shaped; review placement"
+                        )
+
+                for index, encounter in enumerate(location.get("encounters", []) or []):
+                    if not isinstance(encounter, dict):
+                        continue
+                    encounter_year = (encounter.get("worldConditions") or {}).get("year")
+                    if (
+                        type(party_year) is int
+                        and type(encounter_year) is int
+                        and encounter_year != party_year
+                    ):
+                        advisories.append(
+                            f"{source}: encounter[{index}] year {encounter_year} "
+                            f"differs from campaign year {party_year}"
+                        )
+
+                danger = str(location.get("dangerLevel", "")).strip().casefold()
+                if danger in {"very high", "extreme"} and (
+                    recommended_max is not None and recommended_max <= 2
+                ):
+                    advisories.append(
+                        f"{source}: danger '{location.get('dangerLevel')}' may be "
+                        f"too severe for recommended level {area.get('recommendedLevel')}"
+                    )
+
+                for index, monster in enumerate(location.get("monsters", []) or []):
+                    if not isinstance(monster, dict) or not str(
+                        monster.get("name", "")
+                    ).strip():
+                        advisories.append(
+                            f"{source}: lazy monster descriptor[{index}] has no usable name"
+                        )
+                        continue
+                    quantity = monster.get("quantity")
+                    if not isinstance(quantity, dict) or not all(
+                        type(quantity.get(key)) is int for key in ("min", "max")
+                    ):
+                        advisories.append(
+                            f"{source}: lazy monster '{monster['name']}' has an "
+                            "unusable quantity range"
+                        )
+
+        result = self.results["content_advisories"]
+        result["advisories"] = advisories
+        result["not_applicable"] = int(not advisories)
+        return advisories
 
     def validate_bidirectional_connectivity(self, module_path=None):
         """Validate that location-to-location connections are bidirectional.
@@ -513,8 +697,9 @@ class ModuleValidator:
         a real monster. Encounters referencing nonexistent creatures
         (e.g. "ancient_purple_dragon") otherwise pass validation.
 
-        Vacuous cases (no encounters dir, encounter with no enemy
-        creatures) return (True, []).
+        Vacuous cases return (True, []) but leave
+        ``encounter_creatures_checked`` at zero so callers report
+        NOT_APPLICABLE rather than an unearned pass.
 
         Args:
             module_path: Optional path to override ``self.module_path``.
@@ -532,9 +717,7 @@ class ModuleValidator:
         encounters_dir = base_path / "encounters"
 
         errors = []
-
-        if not encounters_dir.exists():
-            return True, errors
+        self.encounter_creatures_checked = 0
 
         # Load global bestiary keys. We tolerate the file being missing
         # or malformed -- in that case resolution falls back to the
@@ -576,8 +759,30 @@ class ModuleValidator:
 
         known_keys = global_monster_keys | local_monster_keys
 
-        # Iterate every encounter file. Skip backups.
-        for enc_file in sorted(encounters_dir.glob("*.json")):
+        def check_creatures(creatures, source_name):
+            for creature in creatures or []:
+                if not isinstance(creature, dict) or creature.get("type") != "enemy":
+                    continue
+                self.encounter_creatures_checked += 1
+                key = creature.get("monsterType")
+                if not key:
+                    key = (creature.get("name") or "").strip().lower().replace(" ", "_")
+                if not key:
+                    continue
+                if key not in known_keys:
+                    errors.append(
+                        f"{source_name}: creature monsterType '{key}' does not "
+                        "resolve to any monster in "
+                        "data/bestiary/monster_compendium.json or "
+                        f"modules/{base_path.name}/monsters/"
+                    )
+
+        encounter_files = (
+            sorted(encounters_dir.glob("*.json"))
+            if encounters_dir.exists()
+            else []
+        )
+        for enc_file in encounter_files:
             if any(part in enc_file.name for part in ["_BU", ".bak", ".backup", ".tmp"]):
                 continue
 
@@ -589,35 +794,31 @@ class ModuleValidator:
                 # elsewhere; skip here so this validator stays focused.
                 continue
 
-            creatures = enc_data.get("creatures", []) or []
-            for creature in creatures:
-                if not isinstance(creature, dict):
-                    continue
-                ctype = creature.get("type")
-                if ctype != "enemy":
-                    # Only enemies need a monster stat block. Players
-                    # and NPCs are out of scope for this validator.
-                    continue
+            check_creatures(enc_data.get("creatures", []), enc_file.name)
 
-                # Prefer explicit monsterType. Fall back to a
-                # snake_cased name if monsterType is absent (schema
-                # requires monsterType for enemies, but be defensive
-                # against legacy files that pre-date the requirement).
-                key = creature.get("monsterType")
-                if not key:
-                    name = creature.get("name") or ""
-                    key = name.strip().lower().replace(" ", "_")
-                if not key:
-                    # No identifier at all -- schema validator will
-                    # catch this; do not double-report.
+        # Embedded full encounters may also carry creatures[]. The separate
+        # locations[].monsters entries are intentionally lazy spawn descriptors,
+        # so they are not required to resolve to a prebuilt stat card here.
+        areas_dir = base_path / "areas"
+        area_files = sorted(areas_dir.glob("*.json")) if areas_dir.exists() else []
+        for area_file in area_files:
+            if any(part in area_file.name for part in ["_BU", ".bak", ".backup", ".tmp"]):
+                continue
+            try:
+                with open(area_file, "r", encoding="utf-8") as handle:
+                    area_data = json.load(handle)
+            except Exception:
+                continue
+            for location in area_data.get("locations", []) or []:
+                if not isinstance(location, dict):
                     continue
-
-                if key not in known_keys:
-                    errors.append(
-                        f"{enc_file.name}: creature monsterType "
-                        f"'{key}' does not resolve to any monster in "
-                        f"data/bestiary/monster_compendium.json or "
-                        f"modules/{base_path.name}/monsters/"
+                location_id = location.get("locationId", "unknown")
+                for index, encounter in enumerate(location.get("encounters", []) or []):
+                    if not isinstance(encounter, dict) or "creatures" not in encounter:
+                        continue
+                    check_creatures(
+                        encounter.get("creatures", []),
+                        f"{area_file.name}:{location_id}:encounters[{index}]",
                     )
 
         return len(errors) == 0, errors
@@ -661,6 +862,7 @@ class ModuleValidator:
         self.validate_party_tracker()
         self.validate_module_context()
         self.validate_encounter_files()
+        self.validate_legacy_content_advisories()
 
         # Run connectivity validation
         success, errors = self.validate_area_connectivity()
@@ -680,7 +882,9 @@ class ModuleValidator:
 
         # VAL-H4: encounter creatures must resolve to real monster stat blocks
         enc_success, enc_errors = self.validate_encounter_creature_resolution()
-        if enc_success:
+        if self.encounter_creatures_checked == 0:
+            self.results["encounter_creature_resolution"]["not_applicable"] = 1
+        elif enc_success:
             self.results["encounter_creature_resolution"]["passed"] = 1
         else:
             self.results["encounter_creature_resolution"]["failed"] = 1
@@ -709,6 +913,7 @@ class ModuleValidator:
         self.validate_party_tracker()
         self.validate_module_context()
         self.validate_encounter_files()
+        self.validate_legacy_content_advisories()
 
         # VAL-H2 / MP-H4: bidirectional location-to-location connectivity
         bi_success, bi_errors = self.validate_bidirectional_connectivity()
@@ -720,7 +925,9 @@ class ModuleValidator:
 
         # VAL-H4: encounter creatures must resolve to real monster stat blocks
         enc_success, enc_errors = self.validate_encounter_creature_resolution()
-        if enc_success:
+        if self.encounter_creatures_checked == 0:
+            self.results["encounter_creature_resolution"]["not_applicable"] = 1
+        elif enc_success:
             self.results["encounter_creature_resolution"]["passed"] = 1
         else:
             self.results["encounter_creature_resolution"]["failed"] = 1
@@ -753,7 +960,8 @@ class ModuleValidator:
         
         file_type_order = ["module", "area", "character", "monster", "map", "plot",
                           "party", "module_context", "encounter", "connectivity",
-                          "bidirectional_connectivity", "encounter_creature_resolution"]
+                          "bidirectional_connectivity", "encounter_creature_resolution",
+                          "content_advisories"]
 
         for file_type in file_type_order:
             if file_type not in self.results:
@@ -808,6 +1016,21 @@ class ModuleValidator:
                         print(f"    ... and {remaining} more errors")
                 else:
                     print(f"  Status: [SKIPPED]")
+                continue
+
+            if file_type == "content_advisories":
+                result = self.results[file_type]
+                advisories = result.get("advisories", [])
+                print("\nLEGACY CONTENT ADVISORIES")
+                if advisories:
+                    print(f"  Status: [REVIEW] {len(advisories)} non-blocking item(s)")
+                    for advisory in advisories[:10]:
+                        print(f"    - {advisory}")
+                    remaining = len(advisories) - 10
+                    if remaining > 0:
+                        print(f"    ... and {remaining} more advisories")
+                else:
+                    print("  Status: [OK] No advisory patterns detected")
                 continue
 
             if not self.results[file_type].get("files"):

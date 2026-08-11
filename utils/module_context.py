@@ -122,6 +122,8 @@ class ModuleContext:
             canonical_name = self.npcs[canonical_key]['name']
             if canonical_name not in self.areas[area_id]["npcs"]:
                 self.areas[area_id]["npcs"].append(canonical_name)
+
+        return self.npcs[canonical_key]["name"]
     
     def add_location(self, location_id: str, location_name: str, area_id: str):
         """Register a location"""

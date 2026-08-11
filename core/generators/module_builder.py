@@ -119,6 +119,46 @@ def _flag_unknown_plot_ids(plot_hooks, valid_ids):
     return referenced - set(valid_ids or [])
 
 
+def _looks_like_npc_name(value: Any) -> bool:
+    """Reject prose paragraphs without trying to invent a replacement name."""
+    if not isinstance(value, str):
+        return False
+    candidate = " ".join(value.split())
+    return bool(candidate) and len(candidate) <= 120 and len(candidate.split()) <= 18
+
+
+def _project_locations_into_context(context, area_id: str, locations) -> None:
+    """Mirror accepted classic locations into the internal module context."""
+    for location in locations or []:
+        if not isinstance(location, dict):
+            continue
+        location_id = location.get("locationId")
+        location_name = location.get("name")
+        if not location_id or not location_name:
+            continue
+
+        context.add_location(location_id, location_name, area_id)
+        connections = []
+        for value in list(location.get("connectivity", []) or []) + list(
+            location.get("areaConnectivityId", []) or []
+        ):
+            if isinstance(value, str) and value and value not in connections:
+                connections.append(value)
+        context.locations[location_id]["connections"] = connections
+
+        for npc in location.get("npcs", []) or []:
+            if not isinstance(npc, dict) or not npc.get("name"):
+                continue
+            canonical_name = context.add_npc(
+                npc["name"],
+                area_id,
+                location_id,
+                description=npc.get("description", ""),
+            )
+            if canonical_name not in context.locations[location_id]["npcs"]:
+                context.locations[location_id]["npcs"].append(canonical_name)
+
+
 def _useful_string(value, field):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} must be useful text")
@@ -597,6 +637,18 @@ MODULE INDEPENDENCE RULES:
         if not antagonist_name:
             self.log("  - WARNING: No antagonist found in module data. Skipping injection.")
             return
+        if not _looks_like_npc_name(antagonist_name):
+            warning(
+                "Antagonist placement skipped because the antagonist field is "
+                "paragraph-shaped rather than name-shaped; model-authored area "
+                "content was left unchanged.",
+                category="module_generation",
+            )
+            self.log(
+                "  - WARNING: Antagonist field is paragraph-shaped. "
+                "Skipping automatic NPC injection without rewriting it."
+            )
+            return
 
         # 2. Identify the climactic area by reading the unified plot file
         plot_file_path = os.path.join(self.config.output_directory, "module_plot.json")
@@ -978,6 +1030,13 @@ MODULE INDEPENDENCE RULES:
             
             # Store locations data
             self.locations_data[area_id] = location_data
+
+            # Classic generation registered NPC appearances but not their
+            # containing locations. Mirror the accepted area data into context
+            # exactly as the story-first path does.
+            _project_locations_into_context(
+                self.context, area_id, location_data.get("locations", [])
+            )
             
             # Add locations to area data and save complete area file
             area_data["locations"] = location_data["locations"]
