@@ -68,6 +68,7 @@ characters/*.backup*
 characters/*_backup_*
 combat_logs/
 modules/encounters/
+modules/transactions/
 modules/*/saved_games/
 modules/world_registry.json
 modules/campaign.json
