@@ -1004,6 +1004,7 @@ except:
 import config
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.path_transaction_lock import path_transaction_lock
 
 # Set script name for logging
 set_script_name(__name__)
@@ -1385,13 +1386,51 @@ class AICharacterValidator:
                 return cache
         return {}
     
-    def _save_cache(self):
-        """Save validation cache to file"""
+    def _save_cache_entry(self, character_name: str, updates: Dict[str, Any]):
+        """Merge one character's fields into the latest cache under its lease."""
+        local_entry = self.validation_cache.setdefault(character_name, {})
+        local_entry.update(copy.deepcopy(updates))
         try:
-            safe_write_json(self.cache_file, self.validation_cache)
-            debug(f"[Validation Cache] Saved cache with {len(self.validation_cache)} entries", category="character_validation")
+            with path_transaction_lock(
+                self.cache_file,
+                suffix=".validation-cache.lock",
+                timeout_seconds=2.0,
+            ) as acquired:
+                if acquired is None:
+                    warning(
+                        "[Validation Cache] Cache busy; continuing without "
+                        "a durable cache update",
+                        category="character_validation",
+                    )
+                    return False
+                try:
+                    latest = safe_read_json(self.cache_file)
+                except Exception:
+                    latest = None
+                if not isinstance(latest, dict):
+                    latest = {}
+                entry = latest.get(character_name)
+                if not isinstance(entry, dict):
+                    entry = {}
+                entry.update(copy.deepcopy(updates))
+                latest[character_name] = entry
+                if not safe_write_json(self.cache_file, latest):
+                    warning(
+                        "[Validation Cache] Atomic cache write failed; "
+                        "continuing without cache persistence",
+                        category="character_validation",
+                    )
+                    return False
+                self.validation_cache = latest
+                debug(
+                    f"[Validation Cache] Merged cache entry for "
+                    f"{character_name} ({len(latest)} total entries)",
+                    category="character_validation",
+                )
+                return True
         except Exception as e:
             error(f"Failed to save validation cache: {str(e)}", category="character_validation")
+            return False
     
     def _compute_ac_hash(self, ac_data: Dict[str, Any]) -> str:
         """
@@ -1443,16 +1482,11 @@ class AICharacterValidator:
             ac_hash: Hash of AC-relevant data
             validated_data: Validated character data
         """
-        if character_name not in self.validation_cache:
-            self.validation_cache[character_name] = {}
-        
-        self.validation_cache[character_name].update({
+        self._save_cache_entry(character_name, {
             'ac_hash': ac_hash,
             'last_ac_validation': datetime.now().isoformat(),
             'ac_value': validated_data.get('armorClass', 10)
         })
-        
-        self._save_cache()
         debug(f"[Validation Cache] Updated AC cache for {character_name}", category="character_validation")
     
     def _compute_inventory_hash(self, inventory_data: Dict[str, Any]) -> str:
@@ -1501,15 +1535,10 @@ class AICharacterValidator:
             character_name: Name of the character
             inventory_hash: Hash of inventory data
         """
-        if character_name not in self.validation_cache:
-            self.validation_cache[character_name] = {}
-        
-        self.validation_cache[character_name].update({
+        self._save_cache_entry(character_name, {
             'inventory_hash': inventory_hash,
             'last_inventory_validation': datetime.now().isoformat()
         })
-        
-        self._save_cache()
         debug(f"[Validation Cache] Updated inventory cache for {character_name}", category="character_validation")
     
     def _compute_currency_hash(self, consolidation_data: Dict[str, Any]) -> str:
@@ -1558,15 +1587,10 @@ class AICharacterValidator:
             character_name: Name of the character
             currency_hash: Hash of currency consolidation data
         """
-        if character_name not in self.validation_cache:
-            self.validation_cache[character_name] = {}
-        
-        self.validation_cache[character_name].update({
+        self._save_cache_entry(character_name, {
             'currency_hash': currency_hash,
             'last_currency_validation': datetime.now().isoformat()
         })
-        
-        self._save_cache()
         debug(f"[Validation Cache] Updated currency cache for {character_name}", category="character_validation")
         
     def _apply_deterministic_validations(
