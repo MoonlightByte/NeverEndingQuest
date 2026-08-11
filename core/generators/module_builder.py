@@ -281,8 +281,10 @@ class ModuleBuilder:
         """
         filepath = os.path.join(self.config.output_directory, relative_filename)
         result = safe_write_json(filepath, data)
+        if not result:
+            raise OSError(f"Could not save generated module file: {relative_filename}")
         self.log(f"Saved: {relative_filename}")
-        return result
+        return True
     
     def create_context_header(self, party_members: List[str]) -> str:
         """Create a context header to prepend to all generator prompts"""

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import time
 from typing import Callable, Generic, Optional, TypeVar, Union
 
 from core.ai.module_creation_contract import ModuleCreationRecoveryRequiredError
@@ -24,6 +25,11 @@ from utils.module_lifecycle import (
     RegistryPreparation,
 )
 from utils.module_refresh_lock import module_refresh_lock
+from utils.transient_filesystem import (
+    TRANSIENT_FILESYSTEM_ATTEMPTS,
+    TRANSIENT_FILESYSTEM_BACKOFF_SECONDS,
+    is_transient_filesystem_error,
+)
 
 
 PayloadT = TypeVar("PayloadT")
@@ -58,6 +64,21 @@ class ManagedModuleBuilder:
     ):
         self.store = ModuleLifecycleStore(modules_dir)
         self.lock_timeout_seconds = lock_timeout_seconds
+
+    def _activate_ready(self, workspace):
+        """Retry only activation work proven not to have crossed READY."""
+        for attempt in range(1, TRANSIENT_FILESYSTEM_ATTEMPTS + 1):
+            try:
+                return self.store.activate_ready(workspace)
+            except OSError as exc:
+                if (
+                    not is_transient_filesystem_error(exc)
+                    or not self.store.activation_retry_safe(workspace)
+                    or attempt == TRANSIENT_FILESYSTEM_ATTEMPTS
+                ):
+                    raise
+                time.sleep(TRANSIENT_FILESYSTEM_BACKOFF_SECONDS * attempt)
+        raise AssertionError("unreachable activation retry state")
 
     def run(
         self,
@@ -142,7 +163,7 @@ class ManagedModuleBuilder:
                             preparation,
                         )
 
-                active = self.store.activate_ready(workspace)
+                active = self._activate_ready(workspace)
                 activated = True
                 if defer_promotion:
                     return ManagedBuildResult(

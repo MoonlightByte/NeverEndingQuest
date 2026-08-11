@@ -4068,7 +4068,10 @@ Create atmospheric travel narration that leads into this adventure."""
                     # Save updated area file in the SAME directory the old one was
                     # found in (areas/ for new modules, root for legacy). (issue #128)
                     new_area_file = os.path.join(os.path.dirname(area_file), f"{new_id}.json")
-                    safe_write_json(new_area_file, area_data)
+                    if not safe_write_json(new_area_file, area_data):
+                        raise OSError("Could not write normalized area file")
+                    if safe_json_load(new_area_file) != area_data:
+                        raise OSError("Normalized area file failed exact readback")
 
                     # Remove old file
                     os.remove(area_file)

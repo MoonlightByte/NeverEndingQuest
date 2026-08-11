@@ -25,6 +25,13 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 from uuid import UUID, uuid4
 
+from utils.transient_filesystem import (
+    TRANSIENT_FILESYSTEM_ATTEMPTS,
+    TRANSIENT_FILESYSTEM_BACKOFF_SECONDS,
+    is_transient_filesystem_error,
+    retry_transient_filesystem,
+)
+
 
 SCHEMA_VERSION = 1
 TRANSACTION_ROOT_NAME = ".module_transactions"
@@ -54,8 +61,8 @@ _CREDENTIAL_SHAPED_TEXT = re.compile(
     r"(?i)(?:bearer\s+[A-Za-z0-9._~-]{12,}|sk-[A-Za-z0-9_-]{12,}|"
     r"AIza[A-Za-z0-9_-]{20,})"
 )
-_MANIFEST_MAX_ATTEMPTS = 3
-_MANIFEST_RETRY_BACKOFF_SECONDS = 0.05
+_MANIFEST_MAX_ATTEMPTS = TRANSIENT_FILESYSTEM_ATTEMPTS
+_MANIFEST_RETRY_BACKOFF_SECONDS = TRANSIENT_FILESYSTEM_BACKOFF_SECONDS
 
 
 def assert_module_refresh_owned() -> None:
@@ -311,20 +318,102 @@ class ModuleLifecycleStore:
             getattr(errno, "EOPNOTSUPP", errno.EINVAL),
             getattr(errno, "ENOSYS", errno.EINVAL),
         }
-        descriptor = None
-        try:
-            descriptor = os.open(
-                os.fspath(path),
-                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
-            )
+
+        def synchronize() -> None:
+            descriptor = None
             try:
-                os.fsync(descriptor)
+                descriptor = os.open(
+                    os.fspath(path),
+                    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+                )
+                try:
+                    os.fsync(descriptor)
+                except OSError as exc:
+                    if exc.errno not in unsupported:
+                        raise
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
+
+        retry_transient_filesystem(synchronize)
+
+    @staticmethod
+    def _same_entry_identity(left: os.stat_result, right: os.stat_result) -> bool:
+        return (
+            left.st_dev == right.st_dev
+            and left.st_ino == right.st_ino
+            and stat.S_IFMT(left.st_mode) == stat.S_IFMT(right.st_mode)
+        )
+
+    @classmethod
+    def _replace_entry(cls, source: Path, destination: Path) -> None:
+        """Move one entry with bounded sharing retry and landed-state proof."""
+        expected = retry_transient_filesystem(
+            lambda: os.lstat(source),
+            allow_missing=True,
+        )
+        for attempt in range(1, _MANIFEST_MAX_ATTEMPTS + 1):
+            try:
+                os.replace(source, destination)
+                return
             except OSError as exc:
-                if exc.errno not in unsupported:
+                if not is_transient_filesystem_error(exc, allow_missing=True):
                     raise
-        finally:
-            if descriptor is not None:
-                os.close(descriptor)
+                source_after = retry_transient_filesystem(
+                    lambda: cls._entry_stat(source)
+                )
+                destination_after = retry_transient_filesystem(
+                    lambda: cls._entry_stat(destination)
+                )
+                if source_after is None and destination_after is not None:
+                    if cls._same_entry_identity(expected, destination_after):
+                        return
+                    raise LifecycleIndeterminateError(
+                        "Filesystem move destination identity differs"
+                    ) from exc
+                if (
+                    source_after is None
+                    or destination_after is not None
+                    or not cls._same_entry_identity(expected, source_after)
+                ):
+                    raise LifecycleIndeterminateError(
+                        "Filesystem move state is indeterminate"
+                    ) from exc
+                if attempt == _MANIFEST_MAX_ATTEMPTS:
+                    raise
+                time.sleep(_MANIFEST_RETRY_BACKOFF_SECONDS * attempt)
+
+    @classmethod
+    def _replace_file_payload(
+        cls,
+        temporary: Path,
+        destination: Path,
+        payload: bytes,
+    ) -> None:
+        """Commit exact bytes, recognizing a replace that already landed."""
+        for attempt in range(1, _MANIFEST_MAX_ATTEMPTS + 1):
+            try:
+                os.replace(temporary, destination)
+                return
+            except OSError as exc:
+                if not is_transient_filesystem_error(exc, allow_missing=True):
+                    raise
+                try:
+                    landed = destination.read_bytes()
+                except FileNotFoundError:
+                    landed = None
+                except OSError as read_error:
+                    if not is_transient_filesystem_error(
+                        read_error,
+                        allow_missing=True,
+                    ):
+                        raise
+                    landed = None
+                if landed == payload:
+                    return
+                if attempt == _MANIFEST_MAX_ATTEMPTS:
+                    raise
+                time.sleep(_MANIFEST_RETRY_BACKOFF_SECONDS * attempt)
 
     @classmethod
     def _atomic_write_bytes(cls, path: Path, payload: bytes) -> None:
@@ -345,11 +434,11 @@ class ModuleLifecycleStore:
                 if not isinstance(written, int) or written <= 0:
                     raise OSError("Atomic lifecycle write made no progress")
                 offset += written
-            os.fsync(descriptor)
+            retry_transient_filesystem(lambda: os.fsync(descriptor))
             os.close(descriptor)
             descriptor = None
-            os.replace(temporary, path)
-            created = False
+            cls._replace_file_payload(temporary, path, payload)
+            created = os.path.lexists(temporary)
             cls._sync_directory(parent)
         finally:
             if descriptor is not None:
@@ -357,7 +446,7 @@ class ModuleLifecycleStore:
             if created:
                 try:
                     os.unlink(temporary)
-                except FileNotFoundError:
+                except OSError:
                     pass
 
     @classmethod
@@ -452,11 +541,16 @@ class ModuleLifecycleStore:
         identity, link, device, size, and digest checks.  Persistent or unsafe
         trees therefore remain indeterminate after the fixed attempt limit.
         """
-        last_error: Optional[LifecycleIndeterminateError] = None
+        last_error: Optional[BaseException] = None
         for attempt in range(1, _MANIFEST_MAX_ATTEMPTS + 1):
             try:
                 return cls._create_manifest_once(root)
-            except LifecycleIndeterminateError as exc:
+            except (LifecycleIndeterminateError, OSError) as exc:
+                if isinstance(exc, OSError) and not is_transient_filesystem_error(
+                    exc,
+                    allow_missing=True,
+                ):
+                    raise
                 last_error = exc
                 if attempt == _MANIFEST_MAX_ATTEMPTS:
                     raise LifecycleIndeterminateError(
@@ -1113,7 +1207,7 @@ class ModuleLifecycleStore:
             raise LifecycleIndeterminateError(
                 "Story-first resume staging identity is occupied"
             )
-        os.replace(transaction, staging)
+        self._replace_entry(transaction, staging)
         self._sync_directory(self.resolved_root)
         self._sync_directory(self.staging_root)
         resumed_intent = self._load_intent(staging)
@@ -1421,7 +1515,7 @@ class ModuleLifecycleStore:
         active_path = self._transaction_path(self.active_root, workspace.build_id)
         if self._entry_stat(active_path) is not None:
             raise LifecycleIndeterminateError("Active transaction identity is occupied")
-        os.replace(workspace.transaction_path, active_path)
+        self._replace_entry(workspace.transaction_path, active_path)
         self._sync_directory(self.staging_root)
         self._sync_directory(self.active_root)
         return ActiveCandidate(
@@ -1438,6 +1532,12 @@ class ModuleLifecycleStore:
             prior_digest,
             candidate_digest,
         )
+
+    def activation_retry_safe(self, workspace: BuildWorkspace) -> bool:
+        """Return whether activation has not crossed its durable READY boundary."""
+        assert_module_refresh_owned()
+        intent = self._validate_workspace(workspace)
+        return LifecyclePhase(intent["phase"]) is LifecyclePhase.BUILDING
 
     def _validate_active(self, active: ActiveCandidate) -> Dict[str, Any]:
         if type(active) is not ActiveCandidate:
@@ -1473,7 +1573,7 @@ class ModuleLifecycleStore:
                 "Resolved transaction identity is occupied"
             )
         source_parent = transaction.parent
-        os.replace(transaction, resolved)
+        self._replace_entry(transaction, resolved)
         self._sync_directory(source_parent)
         self._sync_directory(self.resolved_root)
         return resolved
@@ -1523,7 +1623,7 @@ class ModuleLifecycleStore:
         ):
             raise LifecycleIndeterminateError("A final-name alias is occupied")
 
-        os.replace(active.candidate_path, active.final_path)
+        self._replace_entry(active.candidate_path, active.final_path)
         self._sync_directory(active.candidate_path.parent)
         self._sync_directory(self.modules_dir)
         final_manifest = self.create_manifest(active.final_path)
@@ -1588,7 +1688,7 @@ class ModuleLifecycleStore:
             for entry in os.scandir(self.modules_dir)
         ):
             raise LifecycleIndeterminateError("Publication final path is occupied")
-        os.replace(active.candidate_path, active.final_path)
+        self._replace_entry(active.candidate_path, active.final_path)
         self._sync_directory(active.candidate_path.parent)
         self._sync_directory(self.modules_dir)
         if self.create_manifest(active.final_path) != dict(active.manifest):
@@ -1989,7 +2089,7 @@ class ModuleLifecycleStore:
                     raise LifecycleIndeterminateError(
                         "Publication rollback target is occupied"
                     )
-                os.replace(final, candidate)
+                self._replace_entry(final, candidate)
                 self._sync_directory(self.modules_dir)
                 self._sync_directory(candidate_parent)
                 if (
@@ -2077,68 +2177,92 @@ class ModuleLifecycleStore:
         self._retire(transaction, intent["build_id"])
         return outcome
 
-    def recover(self) -> RecoveryReport:
-        """Classify and resolve only exact hidden/promotion crash states."""
-        assert_module_refresh_owned()
-        try:
-            self.ensure_layout()
-            # Resolved records are retained evidence and must remain parseable.
-            for transaction in self._transaction_directories(self.resolved_root):
-                intent = self._load_intent(transaction)
-                outcome = self._load_outcome(transaction)
-                if (
-                    intent["build_id"] != transaction.name
-                    or outcome.build_id != transaction.name
-                    or intent["token"] != outcome.token
-                    or intent["final_name"] != outcome.module_name
-                ):
-                    raise LifecycleIndeterminateError(
-                        "Resolved intent/outcome identity differs"
-                    )
-
-            active = self._transaction_directories(self.active_root)
-            if len(active) > 1:
+    def _recover_once(self) -> RecoveryReport:
+        """Perform one complete recovery classification pass."""
+        self.ensure_layout()
+        # Resolved records are retained evidence and must remain parseable.
+        for transaction in self._transaction_directories(self.resolved_root):
+            intent = self._load_intent(transaction)
+            outcome = self._load_outcome(transaction)
+            if (
+                intent["build_id"] != transaction.name
+                or outcome.build_id != transaction.name
+                or intent["token"] != outcome.token
+                or intent["final_name"] != outcome.module_name
+            ):
                 raise LifecycleIndeterminateError(
-                    "Multiple active lifecycle authorities exist"
+                    "Resolved intent/outcome identity differs"
                 )
 
-            outcomes: List[LifecycleOutcome] = []
-            for transaction in self._transaction_directories(self.staging_root):
-                intent = self._load_intent(transaction)
-                if intent["build_id"] != transaction.name:
-                    raise LifecycleIndeterminateError("Staging identity differs")
-                phase = LifecyclePhase(intent["phase"])
-                if phase not in {
-                    LifecyclePhase.BUILDING,
-                    LifecyclePhase.READY,
-                    LifecyclePhase.NOT_PUBLISHED,
-                }:
-                    raise LifecycleIndeterminateError("Staging phase is impossible")
-                outcomes.append(
-                    self._resolve_hidden_transaction(
-                        transaction,
-                        intent,
-                        reason_code="INTERRUPTED_HIDDEN_BUILD",
+        active = self._transaction_directories(self.active_root)
+        if len(active) > 1:
+            raise LifecycleIndeterminateError(
+                "Multiple active lifecycle authorities exist"
+            )
+
+        outcomes: List[LifecycleOutcome] = []
+        for transaction in self._transaction_directories(self.staging_root):
+            intent = self._load_intent(transaction)
+            if intent["build_id"] != transaction.name:
+                raise LifecycleIndeterminateError("Staging identity differs")
+            phase = LifecyclePhase(intent["phase"])
+            if phase not in {
+                LifecyclePhase.BUILDING,
+                LifecyclePhase.READY,
+                LifecyclePhase.NOT_PUBLISHED,
+            }:
+                raise LifecycleIndeterminateError("Staging phase is impossible")
+            outcomes.append(
+                self._resolve_hidden_transaction(
+                    transaction,
+                    intent,
+                    reason_code="INTERRUPTED_HIDDEN_BUILD",
+                )
+            )
+
+        if active:
+            transaction = active[0]
+            intent = self._load_intent(transaction)
+            if intent["build_id"] != transaction.name:
+                raise LifecycleIndeterminateError("Active identity differs")
+            outcomes.append(self._recover_active(transaction, intent))
+
+        return RecoveryReport(
+            RecoveryStatus.RECOVERED if outcomes else RecoveryStatus.STABLE,
+            tuple(outcomes),
+        )
+
+    def recover(self) -> RecoveryReport:
+        """Classify exact crash states after a bounded fresh-scan retry."""
+        assert_module_refresh_owned()
+        for attempt in range(1, _MANIFEST_MAX_ATTEMPTS + 1):
+            try:
+                return self._recover_once()
+            except OSError as exc:
+                if not is_transient_filesystem_error(
+                    exc,
+                    allow_missing=True,
+                ):
+                    return RecoveryReport(
+                        RecoveryStatus.INDETERMINATE,
+                        (),
+                        str(exc),
                     )
+                if attempt < _MANIFEST_MAX_ATTEMPTS:
+                    time.sleep(_MANIFEST_RETRY_BACKOFF_SECONDS * attempt)
+                    continue
+                return RecoveryReport(
+                    RecoveryStatus.INDETERMINATE,
+                    (),
+                    f"{exc} after {attempt} recovery attempts",
                 )
-
-            if active:
-                transaction = active[0]
-                intent = self._load_intent(transaction)
-                if intent["build_id"] != transaction.name:
-                    raise LifecycleIndeterminateError("Active identity differs")
-                outcomes.append(self._recover_active(transaction, intent))
-
-            return RecoveryReport(
-                RecoveryStatus.RECOVERED if outcomes else RecoveryStatus.STABLE,
-                tuple(outcomes),
-            )
-        except (OSError, ValueError, LifecycleIndeterminateError) as exc:
-            return RecoveryReport(
-                RecoveryStatus.INDETERMINATE,
-                (),
-                str(exc),
-            )
+            except (ValueError, LifecycleIndeterminateError) as exc:
+                return RecoveryReport(
+                    RecoveryStatus.INDETERMINATE,
+                    (),
+                    str(exc),
+                )
+        raise AssertionError("unreachable recovery retry state")
 
     def find_ready_candidate(
         self,

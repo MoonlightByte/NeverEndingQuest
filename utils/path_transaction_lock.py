@@ -14,6 +14,11 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
+from utils.transient_filesystem import (
+    TRANSIENT_FILESYSTEM_ATTEMPTS,
+    is_transient_filesystem_error,
+)
+
 
 _THREAD_LOCKS = {}
 _THREAD_LOCKS_GUARD = threading.Lock()
@@ -168,6 +173,22 @@ def _lock_file(lock_file, *, deadline=None, poll_seconds: float = 0.05) -> bool:
                     return False
 
 
+def _open_lock_file(lock_path, *, deadline=None, poll_seconds: float = 0.05):
+    """Open the persistent lock identity within the acquisition budget."""
+    attempts = 0
+    while True:
+        try:
+            return open(lock_path, "a+b")
+        except OSError as exc:
+            attempts += 1
+            if not is_transient_filesystem_error(exc):
+                raise
+            if attempts >= TRANSIENT_FILESYSTEM_ATTEMPTS:
+                raise
+            if not _wait_to_retry(deadline, poll_seconds):
+                return None
+
+
 def _unlock_file(lock_file) -> None:
     if os.name == "nt":
         import msvcrt
@@ -228,8 +249,15 @@ def path_transaction_lock(
                 state.local.depth -= 1
             return
 
+        lock_file = _open_lock_file(
+            lock_path,
+            deadline=deadline,
+            poll_seconds=poll_seconds,
+        )
+        if lock_file is None:
+            yield None
+            return
         with _ACTIVE_LOCK_FILES_GUARD:
-            lock_file = open(lock_path, "a+b")
             _ACTIVE_LOCK_FILES.add(lock_file)
         owner_pid = os.getpid()
         locked = False

@@ -58,6 +58,7 @@ from .validators import (
     validate_side_thread_location_projection,
     validate_story_first_location_result,
 )
+from utils.transient_filesystem import retry_transient_filesystem
 
 
 PIPELINE_VERSION = 1
@@ -409,19 +410,24 @@ class StoryFirstPipeline:
         return {"version": PIPELINE_VERSION, "stages": {}}
 
     def _load_state(self) -> Dict[str, Any]:
-        if not self.state_path.exists():
-            return self._blank_state()
         try:
-            state = _read_json(self.state_path)
-            if set(state) - {"version", "stages", "resultArtifactHash"}:
-                raise ValueError("unknown pipeline-state fields")
-            if state.get("version") != PIPELINE_VERSION or not isinstance(
-                state.get("stages"), dict
-            ):
-                raise ValueError("unsupported pipeline state")
-            return state
-        except (OSError, ValueError, json.JSONDecodeError):
+            retry_transient_filesystem(
+                lambda: os.lstat(self.state_path),
+                allow_missing=True,
+            )
+        except FileNotFoundError:
             return self._blank_state()
+        state = retry_transient_filesystem(
+            lambda: _read_json(self.state_path),
+            allow_missing=True,
+        )
+        if set(state) - {"version", "stages", "resultArtifactHash"}:
+            raise ValueError("unknown pipeline-state fields")
+        if state.get("version") != PIPELINE_VERSION or not isinstance(
+            state.get("stages"), dict
+        ):
+            raise ValueError("unsupported pipeline state")
+        return state
 
     def _write_state(self) -> None:
         _atomic_write_json(self.state_path, self.state)

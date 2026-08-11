@@ -210,13 +210,9 @@ class AtomicFileWriter:
                 except:
                     pass
             
-            # Restore backup if write failed
-            if backup_path and os.path.exists(backup_path):
-                try:
-                    shutil.copy2(backup_path, filepath)
-                    logger.info(f"Restored backup for {filepath}")
-                except Exception as restore_error:
-                    logger.error(f"Failed to restore backup: {restore_error}")
+            # Atomic replace leaves the original authoritative on every
+            # pre-commit failure. Re-copying the backup over that intact file
+            # would introduce a second, non-atomic corruption window.
             
             return False
             
