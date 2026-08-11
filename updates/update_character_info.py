@@ -629,7 +629,8 @@ def merge_equipment_arrays(
     if integrity_advisories is not None:
         integrity_advisories.extend(base_advisories)
     updates_seen = set()
-    for index, update_item in enumerate(update_equipment):
+    for index, original_update_item in enumerate(update_equipment):
+        update_item = copy.deepcopy(original_update_item)
         if not isinstance(update_item, dict):
             raise InventoryIntegrityError(
                 f"equipment update[{index}] must be an object"
@@ -638,6 +639,26 @@ def merge_equipment_arrays(
         if not name:
             raise InventoryIntegrityError(
                 f"equipment update[{index}] has no useful name"
+            )
+        charges = update_item.get("charges")
+        if isinstance(charges, dict) and "recharge" in charges:
+            nested_recharge = charges.pop("recharge")
+            top_level_recharge = update_item.get("rechargeRate")
+            if (
+                top_level_recharge is not None
+                and top_level_recharge != nested_recharge
+            ):
+                raise InventoryIntegrityError(
+                    f"equipment update[{index}] has conflicting recharge values"
+                )
+            update_item["rechargeRate"] = nested_recharge
+            advisory = f"equipment_recharge_normalized:{name}"
+            if integrity_advisories is not None:
+                integrity_advisories.append(advisory)
+            warning(
+                f"INVENTORY: Normalized nested recharge metadata for "
+                f"'{update_item.get('item_name')}'",
+                category="character_validation",
             )
         if name in updates_seen:
             raise InventoryIntegrityError(
@@ -1233,7 +1254,7 @@ def infer_requested_character_update_fields(changes):
         )
     )
     if shield_destroyed:
-        required.update(("equipment", "armorClass", "equipment_effects"))
+        required.update(("equipment", "armorClass"))
 
     weapon_swap = re.search(
         r"\b(?:swapped?|replaced|exchanged)\b.{0,100}\b"
@@ -2145,6 +2166,7 @@ Character Role: {character_role}
             
             clean_response = json_match.group()
             updates = json.loads(clean_response)
+            advisories = []
             if not _is_meaningful_character_delta(updates, schema) and not (
                 declarative_effects and managed_effect_operation
             ):
@@ -2163,11 +2185,32 @@ Character Role: {character_role}
                     character_data.get("temporaryEffects", []),
                     updates.get("temporaryEffects", []),
                 )
+
+            # equipment_effects is a derived projection owned by
+            # AICharacterEffectsValidator/calculate_equipment_effects below.
+            # T079 is still prompted with the legacy field, and weaker models
+            # often return only name/value.  Letting that partial row reach the
+            # full character schema causes a needless three-attempt failure
+            # before the authoritative derivation can run.
+            if "equipment_effects" in updates:
+                updates.pop("equipment_effects", None)
+                advisories.append("model_equipment_effects_ignored")
+                warning(
+                    "T079 returned derived equipment_effects; ignored in favor "
+                    "of deterministic equipment-effect calculation",
+                    category="character_validation",
+                )
             if effective_projection:
                 updates = _translate_declarative_effect_delta(
                     character_data,
                     updates,
                     managed_effect_operation if declarative_effects else None,
+                )
+            if not _is_meaningful_character_delta(updates, schema) and not (
+                declarative_effects and managed_effect_operation
+            ):
+                raise ValueError(
+                    "T079 returned only non-authoritative derived fields"
                 )
 
             is_complete, missing_fields = validate_requested_character_update_completeness(
@@ -2345,7 +2388,6 @@ Please provide the CORRECT currency values:
             if 'hitPoints' in updates:
                 debug(f"HP_DEBUG: {character_name} - Before merge HP: {character_data.get('hitPoints')}/{character_data.get('maxHitPoints')}, Update wants HP: {updates.get('hitPoints')}", category="character_updates")
             
-            advisories = []
             updated_data = deep_merge_dict(
                 character_data,
                 updates,

@@ -104,6 +104,26 @@ def _mechanical_metadata(row: Mapping[str, Any], name_field: str) -> str:
     return inventory_metadata(row, name_field, omit_ownership_local=True)
 
 
+def _t052_normalized_metadata(metadata: str) -> str:
+    """Compare mechanics after removing T052-owned display categorization.
+
+    T052 may normalize ``item_type`` while a character mutation plan is being
+    prepared.  A removed item has no post-image row on the giver side, so its
+    pre-validation category cannot be rewritten to match the receiver's final
+    prepared row.  Category is not the item's mechanical payload; every other
+    field remains part of the exact conservation check.
+    """
+    value = json.loads(metadata)
+    value.pop("item_type", None)
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
 def _row_deltas(
     before: Mapping[str, Any],
     after: Mapping[str, Any],
@@ -222,8 +242,16 @@ def _validate_transfer_component(
         if sum(value.quantity for value in values) != 0:
             return f"{key[0]} {key[1]} is not conserved"
         if key[0] != "currency":
-            outgoing = {value.metadata for value in values if value.quantity < 0}
-            incoming = {value.metadata for value in values if value.quantity > 0}
+            outgoing = {
+                _t052_normalized_metadata(value.metadata)
+                for value in values
+                if value.quantity < 0
+            }
+            incoming = {
+                _t052_normalized_metadata(value.metadata)
+                for value in values
+                if value.quantity > 0
+            }
             if outgoing != incoming or len(outgoing) != 1:
                 return f"{key[0]} {key[1]} has ambiguous mechanical identity"
     return None
