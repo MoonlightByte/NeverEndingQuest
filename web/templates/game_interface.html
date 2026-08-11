@@ -4907,6 +4907,13 @@
                 headerText = stats.name.replace(/_/g, ' ');
             }
             let html = `<div class="stats-tooltip-header">${headerText}</div>`;
+            const acValidationStatus = stats.acValidation?.status;
+            const acValidationLabel = acValidationStatus === 'deterministic' ? 'AC verified'
+                : acValidationStatus === 'model' ? 'AC model-reviewed'
+                : acValidationStatus === 'unavailable' ? 'AC check unavailable' : '';
+            if (acValidationLabel) {
+                html += `<div data-ac-validation="${acValidationStatus}" style="font-size:10px;color:#999;">${acValidationLabel}</div>`;
+            }
             
             // First line: HP | AC | Speed
             html += '<div class="stats-tooltip-row" style="font-size: 12px;">';
@@ -6060,6 +6067,13 @@
             let hpClass = '';
             if (hpPercent <= 25) hpClass = 'low'; else if (hpPercent <= 50) hpClass = 'medium';
             const normalizedName = data.name.toLowerCase().replace(/\s+/g, '_');
+            const acValidationStatus = data.acValidation?.status;
+            const acValidationLabel = acValidationStatus === 'deterministic' ? 'AC verified'
+                : acValidationStatus === 'model' ? 'AC model-reviewed'
+                : acValidationStatus === 'unavailable' ? 'AC check unavailable' : '';
+            const acValidationChip = acValidationLabel
+                ? `<span data-ac-validation="${acValidationStatus}" style="display:inline-block;border:1px solid #444;border-radius:3px;padding:1px 5px;font-size:10px;color:#999;">${acValidationLabel}</span>`
+                : '';
             let html = '<div class="character-sheet">';
             
             // --- NEW TWO-COLUMN TOP SECTION ---
@@ -6076,7 +6090,7 @@
                         
                         <!-- COLUMN 2: HEADER INFO BOX -->
                         <div class="character-header-info">
-                            <div class="character-name">${data.name}</div>
+                            <div class="character-name">${data.name}</div>${acValidationChip}
                             <div class="character-details">
                                 <div><span class="orange">Level ${data.level}</span> ${data.race} ${data.class}</div>
                                 <div><span class="orange">XP:</span> ${data.experience_points} / ${data.exp_required_for_next_level}</div>

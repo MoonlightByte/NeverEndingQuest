@@ -134,6 +134,15 @@ export function CharacterSheet() {
   })
   const racialTraits = featureItems('racialTraits').filter((trait) => !['Ability Score Increase', 'Languages', 'Extra Language'].includes(trait.name))
   const background = rec(stats['backgroundFeature'])
+  const acValidation = rec(stats['acValidation'])
+  const acValidationStatus = str(acValidation?.['status'])
+  const acValidationLabel = acValidationStatus === 'deterministic'
+    ? 'AC verified'
+    : acValidationStatus === 'model'
+      ? 'AC model-reviewed'
+      : acValidationStatus === 'unavailable'
+        ? 'AC check unavailable'
+        : ''
 
   return (
     <div className="neq-character-tab h-full overflow-y-auto font-body">
@@ -143,6 +152,14 @@ export function CharacterSheet() {
         <Portrait key={name} name={name} />
         <div className="neq-character-header min-w-0 flex-1 rounded border border-card bg-page p-2">
           <div className="neq-character-name font-display">{name}</div>
+          {acValidationLabel && (
+            <span
+              className="inline-block rounded border border-card px-1.5 py-0.5 text-[10px] text-secondary"
+              data-ac-validation={acValidationStatus}
+            >
+              {acValidationLabel}
+            </span>
+          )}
           <div className="neq-character-details mt-1 space-y-0.5 text-sm text-[#ccc]">
             <div>
               <span className="text-accent">Level {num(stats['level'], 1)}</span>{' '}

@@ -968,14 +968,17 @@ def _effective_character_for_ui(character_data):
     if not isinstance(character_data, dict):
         return character_data
     try:
-        from core.effects.effective import effective_sheet
-        projected = effective_sheet(character_data)
+        from core.effects.projection import effective_character_projection
+        from utils.file_operations import safe_read_json
+
+        party = safe_read_json("party_tracker.json") or {}
+        return effective_character_projection(
+            character_data,
+            world_conditions=party.get("worldConditions"),
+            include_ac_advisory=True,
+        )
     except Exception:
         projected = character_data.copy()
-    try:
-        from core.validation.ac_validation import attach_ac_validation_advisory
-        return attach_ac_validation_advisory(projected)
-    except Exception:
         return projected
 
 @app.route('/upload-portrait', methods=['POST'])
@@ -3172,7 +3175,8 @@ def handle_party_data_request(data=None):
                             'spellSlots': spellcasting.get('spellSlots', player_data.get('spellSlots', {})),
                             'spells': spells_by_level,
                             'conditions': player_data.get('conditions', []),
-                            'classFeatures': class_features
+                            'classFeatures': class_features,
+                            'acValidation': player_data.get('acValidation')
                         })
             except:
                 # Fallback if can't load player data
@@ -3265,7 +3269,8 @@ def handle_party_data_request(data=None):
                                 'spellSlots': spellcasting.get('spellSlots', npc_data.get('spellSlots', {})),
                                 'spells': spells_by_level,
                                 'conditions': npc_data.get('conditions', []),
-                                'classFeatures': class_features
+                                'classFeatures': class_features,
+                                'acValidation': npc_data.get('acValidation')
                             })
                             continue
             except:
@@ -3342,6 +3347,12 @@ def _overlay_authoritative_character_state(combatant_data, character_data):
         projected["currentHp"] = character_data["hitPoints"]
     if character_data.get("maxHitPoints") is not None:
         projected["maxHp"] = character_data["maxHitPoints"]
+    if character_data.get("armorClass") is not None:
+        projected["ac"] = character_data["armorClass"]
+    if character_data.get("speed") is not None:
+        projected["speed"] = character_data["speed"]
+    if character_data.get("acValidation") is not None:
+        projected["acValidation"] = character_data["acValidation"]
     return projected
 
 
@@ -3433,6 +3444,7 @@ def handle_initiative_data_request(data=None):
                     if char_file and os.path.exists(char_file):
                         char_data = safe_read_json(char_file)
                         if char_data:
+                            char_data = _effective_character_for_ui(char_data)
                             # Player HP is persisted in the character file;
                             # NPC/enemy combat HP remains encounter-owned.
                             if c.get("type") == "player":
@@ -3505,7 +3517,8 @@ def handle_initiative_data_request(data=None):
                                 'spells': spells_by_level,
                                 'conditions': char_data.get('conditions', []),
                                 'classFeatures': class_features,
-                                'abilities': char_data.get('abilities', {})
+                                'abilities': char_data.get('abilities', {}),
+                                'acValidation': char_data.get('acValidation')
                             })
                 except Exception as e:
                     # Log error but continue with minimal data

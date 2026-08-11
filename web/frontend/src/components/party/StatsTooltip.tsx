@@ -145,6 +145,15 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
   const ac = asNumber(stats['ac'])
   const speed = asNumber(stats['speed']) ?? asString(stats['speed'])
   const initiative = asNumber(stats['initiative'])
+  const acValidation = asRecord(stats['acValidation'])
+  const acValidationStatus = acValidation ? asString(acValidation['status']) : undefined
+  const acValidationLabel = acValidationStatus === 'deterministic'
+    ? 'AC verified'
+    : acValidationStatus === 'model'
+      ? 'AC model-reviewed'
+      : acValidationStatus === 'unavailable'
+        ? 'AC check unavailable'
+        : undefined
 
   const attack = asRecord(stats['primaryAttack'])
   const attackBonus = attack ? asNumber(attack['bonus']) : undefined
@@ -172,6 +181,11 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
       <div className="neq-stats-tooltip-header-parity">
         {header}
       </div>
+      {acValidationLabel && (
+        <div className="text-[10px] text-secondary" data-ac-validation={acValidationStatus}>
+          {acValidationLabel}
+        </div>
+      )}
 
       <div className="neq-stats-tooltip-row-parity" style={{ fontSize: 12 }}>
         {currentHp !== undefined && maxHp !== undefined && (

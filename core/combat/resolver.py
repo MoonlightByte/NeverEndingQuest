@@ -30,7 +30,8 @@ from core.combat.attacks import (
     executable_attack_names,
     is_executable_attack,
 )
-from core.effects.effective import effective_sheet, modifier_total
+from core.effects.effective import modifier_total
+from core.effects.projection import effective_character_projection
 from core.effects.lifecycle import apply_effect_ops
 from core.effects.model import normalize_effect, validate_effect
 from core.managers.combat_state import (
@@ -297,8 +298,17 @@ def _raw_combatant_sheet(encounter, characters, creature):
     return result
 
 
+def _effect_projection_scalar(encounter):
+    state = (encounter or {}).get("combatState") or {}
+    value = state.get("effectsClockScalar")
+    return value if type(value) is int else None
+
+
 def _effective_combatant_sheet(encounter, characters, creature):
-    return effective_sheet(_raw_combatant_sheet(encounter, characters, creature))
+    return effective_character_projection(
+        _raw_combatant_sheet(encounter, characters, creature),
+        now_scalar=_effect_projection_scalar(encounter),
+    )
 
 
 def _combatant_ac(encounter, characters, creature):
@@ -511,15 +521,18 @@ def _resource_snapshot(sheet, kind, name):
 
 def _save_bonus(encounter, characters, creature, save_type):
     raw_sheet = _raw_combatant_sheet(encounter, characters, creature)
-    sheet = effective_sheet(raw_sheet)
+    sheet = effective_character_projection(
+        raw_sheet,
+        now_scalar=_effect_projection_scalar(encounter),
+    )
     saves = sheet.get("savingThrows") or []
     ability = str(save_type or "").strip().lower()
     if isinstance(saves, dict):
         try:
             return (
                 int(saves.get(ability, saves.get(ability[:3], 0)) or 0)
-                + modifier_total(raw_sheet, "savingThrows")
-                + modifier_total(raw_sheet, "savingThrow.%s" % ability)
+                + modifier_total(sheet, "savingThrows")
+                + modifier_total(sheet, "savingThrow.%s" % ability)
             )
         except (TypeError, ValueError):
             return 0
@@ -538,8 +551,8 @@ def _save_bonus(encounter, characters, creature, save_type):
             pass
     return (
         bonus
-        + modifier_total(raw_sheet, "savingThrows")
-        + modifier_total(raw_sheet, "savingThrow.%s" % ability)
+        + modifier_total(sheet, "savingThrows")
+        + modifier_total(sheet, "savingThrow.%s" % ability)
     )
 
 
@@ -1218,7 +1231,7 @@ def _apply_encounter_effect_operation(creature, operation):
     raw = _raw_combatant_sheet(None, None, creature)
     updated = apply_effect_ops(raw, [operation])
     creature["activeEffects"] = updated.get("temporaryEffects", [])
-    rendered = effective_sheet(updated)
+    rendered = effective_character_projection(updated)
     for sheet_field, encounter_field in (
         ("hitPoints", "currentHitPoints"),
         ("maxHitPoints", "maxHitPoints"),
@@ -1308,7 +1321,10 @@ def _refresh_character_effect_projections(encounter, characters):
         sheet = (characters or {}).get(creature.get("name"))
         if not isinstance(sheet, dict):
             continue
-        rendered = effective_sheet(sheet)
+        rendered = effective_character_projection(
+            sheet,
+            now_scalar=_effect_projection_scalar(encounter),
+        )
         for sheet_field, encounter_field in (
             ("hitPoints", "currentHitPoints"),
             ("maxHitPoints", "maxHitPoints"),
@@ -1354,7 +1370,10 @@ def apply_resolution(encounter, characters, resolution):
             continue
         if "hitPoints" in delta:
             ceiling = int(
-                effective_sheet(sheet).get("maxHitPoints", delta["hitPoints"])
+                effective_character_projection(
+                    sheet,
+                    now_scalar=_effect_projection_scalar(new_encounter),
+                ).get("maxHitPoints", delta["hitPoints"])
                 or 0
             )
             sheet["hitPoints"] = max(0, min(int(delta["hitPoints"]), ceiling))
@@ -1507,7 +1526,10 @@ def apply_resolution(encounter, characters, resolution):
             raise ValueError("Character replay snapshot is not durably addressable")
         if "hitPoints" in snapshot:
             ceiling = int(
-                effective_sheet(sheet).get(
+                effective_character_projection(
+                    sheet,
+                    now_scalar=_effect_projection_scalar(new_encounter),
+                ).get(
                     "maxHitPoints",
                     snapshot["hitPoints"],
                 )

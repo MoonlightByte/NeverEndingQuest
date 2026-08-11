@@ -20,6 +20,7 @@ from core.effects.effective import (
     modifier_total,
     storage_delta_from_effective,
 )
+from core.effects.projection import effective_character_projection
 from core.effects.lifecycle import (
     apply_effect_ops,
     plan_expirations,
@@ -39,6 +40,7 @@ __all__ = (
     "display_iso_from_scalar",
     "effect_identity",
     "effective_sheet",
+    "effective_character_projection",
     "modifier_total",
     "normalize_effect",
     "plan_expirations",

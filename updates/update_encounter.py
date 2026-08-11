@@ -23,6 +23,7 @@ except:
     USAGE_TRACKING_AVAILABLE = False
     def track_response(r): pass
 from utils.module_path_manager import ModulePathManager
+from core.effects.projection import effective_character_projection
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
@@ -182,6 +183,12 @@ Remember to only update monster information and leave player and NPC data unchan
                     try:
                         with open(player_file, "r") as file:
                             player_data = json.load(file)
+                            player_data = effective_character_projection(
+                                player_data,
+                                world_conditions=(party_tracker or {}).get(
+                                    "worldConditions"
+                                ),
+                            )
                             # Only sync combat-relevant state
                             creature["currentHitPoints"] = player_data.get("hitPoints", creature.get("currentHitPoints", 0))
                             creature["maxHitPoints"] = player_data.get("maxHitPoints", creature.get("maxHitPoints", 0))
@@ -204,6 +211,12 @@ Remember to only update monster information and leave player and NPC data unchan
                         try:
                             with open(npc_file, "r") as file:
                                 npc_data = json.load(file)
+                                npc_data = effective_character_projection(
+                                    npc_data,
+                                    world_conditions=(party_tracker or {}).get(
+                                        "worldConditions"
+                                    ),
+                                )
                                 # Only sync combat-relevant state
                                 creature["currentHitPoints"] = npc_data.get("hitPoints", creature.get("currentHitPoints", 0))
                                 creature["maxHitPoints"] = npc_data.get("maxHitPoints", creature.get("maxHitPoints", 0))

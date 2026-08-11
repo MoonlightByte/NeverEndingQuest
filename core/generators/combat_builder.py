@@ -18,6 +18,7 @@ import shutil
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.file_operations import safe_write_json
+from core.effects.projection import effective_character_projection
 
 # Set script name for logging
 set_script_name("combat_builder")
@@ -260,6 +261,7 @@ def load_or_create_monster(monster_type):
     formatted_monster_type = format_type_name(monster_type)
     print(f"[COMBAT_BUILDER] Monster load/create: '{monster_type}' -> '{formatted_monster_type}'")
     # Get current module from party tracker for consistent path resolution
+    party_tracker = None
     try:
         from utils.encoding_utils import safe_json_load
         party_tracker = safe_json_load("party_tracker.json")
@@ -461,6 +463,7 @@ def generate_encounter(encounter_data):
 
     # Add player
     # Get current module from party tracker for consistent path resolution
+    party_tracker = None
     try:
         from utils.encoding_utils import safe_json_load
         party_tracker = safe_json_load("party_tracker.json")
@@ -487,6 +490,10 @@ def generate_encounter(encounter_data):
             return None
 
     logging.debug(f"Loaded player data: {json.dumps(player_data, indent=2)}")
+    player_data = effective_character_projection(
+        player_data,
+        world_conditions=(party_tracker or {}).get("worldConditions"),
+    )
 
     player = {
         "name": player_data["name"],
@@ -537,6 +544,10 @@ def generate_encounter(encounter_data):
         npc_data = load_or_create_npc(npc_name)
         if not npc_data:
             return None
+        npc_data = effective_character_projection(
+            npc_data,
+            world_conditions=(party_tracker or {}).get("worldConditions"),
+        )
 
         npc_counts[formatted_npc_type] = npc_counts.get(formatted_npc_type, 0) + 1
         
