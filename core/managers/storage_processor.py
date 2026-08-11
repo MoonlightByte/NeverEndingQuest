@@ -29,6 +29,7 @@
 # - Error recovery and suggestion generation
 # ============================================================================
 
+import copy
 import json
 import os
 from datetime import datetime
@@ -44,6 +45,9 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
 set_script_name("storage_processor")
+
+MAX_STORAGE_CONTEXT_ROWS = 128
+MAX_STORAGE_CONTEXT_BYTES = 32 * 1024
 
 class StorageProcessor:
     """Processes natural language storage descriptions using AI"""
@@ -68,6 +72,57 @@ class StorageProcessor:
         if os.path.exists(self.schema_file):
             return safe_json_load(self.schema_file)
         return {}
+
+    def _bounded_storage_context(
+        self,
+        storage_data: Dict[str, Any],
+        current_location_id: str,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Return complete local container contents or fail closed on bounds."""
+        containers = storage_data.get("playerStorage", [])
+        if not isinstance(containers, list):
+            return [], "player storage is malformed"
+        selected = []
+        row_count = 0
+        for container in containers:
+            if not isinstance(container, dict):
+                return [], "player storage contains a malformed container"
+            if container.get("locationId") != current_location_id:
+                continue
+            contents = container.get("contents", [])
+            if not isinstance(contents, list) or not all(
+                isinstance(item, dict) for item in contents
+            ):
+                return [], "a local storage container has malformed contents"
+            projected = {
+                "id": container.get("id"),
+                "deviceName": container.get("deviceName"),
+                "deviceType": container.get("deviceType"),
+                "locationId": container.get("locationId"),
+                "contents": copy.deepcopy(contents),
+            }
+            projected_rows = 1 + len(contents)
+            candidate = selected + [projected]
+            candidate_bytes = len(
+                json.dumps(
+                    candidate,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode("utf-8")
+            )
+            if (
+                row_count + projected_rows > MAX_STORAGE_CONTEXT_ROWS
+                or candidate_bytes > MAX_STORAGE_CONTEXT_BYTES
+            ):
+                return [], (
+                    "local storage contents exceed the safe model context bound; "
+                    "the game will not guess which container or item was intended"
+                )
+            row_count += projected_rows
+            selected.append(projected)
+        return selected, None
         
     def _get_game_context(self, character_name: str) -> Dict[str, Any]:
         """Get current game context for processing"""
@@ -75,7 +130,8 @@ class StorageProcessor:
             "character": None,
             "party": None,
             "location": None,
-            "existing_storage": []
+            "existing_storage": [],
+            "storage_context_error": None,
         }
         
         try:
@@ -102,10 +158,16 @@ class StorageProcessor:
             if os.path.exists("player_storage.json"):
                 storage_data = safe_json_load("player_storage.json")
                 current_location_id = context["location"]["id"] if context["location"] else "UNKNOWN"
-                context["existing_storage"] = [
-                    storage for storage in storage_data.get("playerStorage", [])
-                    if storage.get("locationId") == current_location_id
-                ]
+                if not isinstance(storage_data, dict):
+                    context["storage_context_error"] = "player storage is unavailable"
+                else:
+                    (
+                        context["existing_storage"],
+                        context["storage_context_error"],
+                    ) = self._bounded_storage_context(
+                        storage_data,
+                        current_location_id,
+                    )
                 
         except Exception as e:
             print(f"[WARNING] Could not load full game context: {e}")
@@ -135,7 +197,8 @@ class StorageProcessor:
                 "id": storage["id"],
                 "name": storage["deviceName"],
                 "type": storage["deviceType"],
-                "contents_count": len(storage.get("contents", []))
+                "location_id": storage["locationId"],
+                "contents": copy.deepcopy(storage.get("contents", [])),
             })
             
         system_prompt = f"""You are a storage operations specialist for a 5th Edition RPG system. Your task is to convert natural language storage descriptions into valid JSON operations that match the provided schema.
@@ -236,10 +299,13 @@ For "What's in our storage here?":
             
     def _post_process_operation(self, operation: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Post-process operation to add missing information"""
-        
-        # Ensure character is set
-        if not operation.get("character"):
-            operation["character"] = context.get("character", {}).get("name", "Unknown")
+
+        # The call-site character is authoritative; the model cannot redirect
+        # a storage mutation to a different sheet.
+        authoritative_character = context.get("character", {}).get("name")
+        if not authoritative_character:
+            raise ValueError("the requested character inventory is unavailable")
+        operation["character"] = authoritative_character
             
         # Handle location information
         if operation.get("action") in ["create_storage", "store_item"]:
@@ -248,17 +314,39 @@ For "What's in our storage here?":
                 
         # Handle existing storage references
         if operation.get("action") in ["retrieve_item", "view_storage", "store_item"]:
-            if not operation.get("storage_id") and context.get("existing_storage"):
-                # Try to match storage by type or name
-                storage_type = operation.get("storage_type", "").lower()
-                for storage in context["existing_storage"]:
-                    if storage_type in storage.get("deviceType", "").lower():
-                        operation["storage_id"] = storage["id"]
-                        break
-                        
-                # If still no match, use first available storage
-                if not operation.get("storage_id") and context["existing_storage"]:
-                    operation["storage_id"] = context["existing_storage"][0]["id"]
+            existing = context.get("existing_storage") or []
+            existing_ids = {storage.get("id") for storage in existing}
+            if operation.get("storage_id"):
+                if operation["storage_id"] not in existing_ids:
+                    raise ValueError("the selected storage container is not at this location")
+            elif existing:
+                requested_type = str(operation.get("storage_type") or "").strip().casefold()
+                requested_name = str(operation.get("storage_name") or "").strip().casefold()
+                matches = [
+                    storage
+                    for storage in existing
+                    if (
+                        requested_name
+                        and str(storage.get("deviceName") or "").strip().casefold()
+                        == requested_name
+                    )
+                    or (
+                        requested_type
+                        and str(storage.get("deviceType") or "").strip().casefold()
+                        == requested_type
+                    )
+                ]
+                if len(matches) == 1:
+                    operation["storage_id"] = matches[0]["id"]
+                elif len(matches) > 1 or len(existing) > 1:
+                    raise ValueError(
+                        "more than one storage container could match; use one exact "
+                        "container id/name from the supplied contents"
+                    )
+                elif len(existing) == 1 and not requested_name and not requested_type:
+                    operation["storage_id"] = existing[0]["id"]
+                elif operation.get("action") != "store_item":
+                    raise ValueError("no exact local storage container was selected")
                     
         # Handle combined create/store operations (only if no existing storage found)
         if operation.get("action") == "store_item" and not operation.get("storage_id"):
@@ -280,6 +368,12 @@ For "What's in our storage here?":
                 
                 # Get game context
                 context = self._get_game_context(character_name)
+                if context.get("storage_context_error"):
+                    return {
+                        "success": False,
+                        "error": context["storage_context_error"],
+                        "failure_code": "storage_context_ambiguous",
+                    }
                 
                 # Create AI prompt
                 messages = self._create_processing_prompt(description, context)
@@ -340,7 +434,21 @@ For "What's in our storage here?":
                     continue  # Retry on JSON parse error
                     
                 # Post-process operation
-                operation = self._post_process_operation(operation, context)
+                try:
+                    operation = self._post_process_operation(operation, context)
+                except ValueError as post_process_error:
+                    if attempt == max_attempts - 1:
+                        return {
+                            "success": False,
+                            "error": str(post_process_error),
+                            "operation": operation,
+                        }
+                    description = (
+                        f"{original_description}\n\nPREVIOUS ATTEMPT FAILED: "
+                        f"{post_process_error}. Select one exact container from "
+                        "EXISTING STORAGE AT LOCATION."
+                    )
+                    continue
                 
                 # Validate operation
                 is_valid, validation_error = self._validate_operation(operation)

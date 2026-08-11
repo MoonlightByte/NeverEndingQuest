@@ -4135,7 +4135,11 @@ def process_ai_response(
             for index, action in enumerate(actions)
             if action.get("action") == "updateCharacterInfo"
         ]
-        other_actions = [action for action in actions if action.get("action") != "updateCharacterInfo"]
+        other_actions = [
+            (index, action)
+            for index, action in enumerate(actions)
+            if action.get("action") != "updateCharacterInfo"
+        ]
         if char_update_actions and _agentic_post_combat_narration_pass(
             party_tracker_data
         ):
@@ -4197,13 +4201,56 @@ def process_ai_response(
             )
             try:
                 from core.managers.character_transfer import (
-                    process_character_update_batch,
+                    commit_prepared_character_actions,
+                    prepare_character_actions,
+                )
+                from core.managers.storage_transaction import (
+                    process_adjacent_storage_fee_groups,
                 )
 
-                result = process_character_update_batch(
+                prepared_characters = prepare_character_actions(
                     char_update_actions,
                     party_tracker_data,
                 )
+                indexed_storage = tuple(
+                    (index, action)
+                    for index, action in other_actions
+                    if action.get("action") == "storageInteraction"
+                )
+                fee_result = process_adjacent_storage_fee_groups(
+                    prepared_characters,
+                    indexed_storage,
+                    party_tracker_data,
+                )
+                if not fee_result.get("success"):
+                    result = {
+                        "status": "error",
+                        "success": False,
+                        "response_data": {
+                            "failure_code": fee_result.get(
+                                "failure_code", "storage_fee_unverified"
+                            )
+                        },
+                    }
+                else:
+                    for storage_message in fee_result.get("messages", ()):
+                        conversation_history.append(
+                            {"role": "user", "content": f"Storage: {storage_message}"}
+                        )
+                    handled_storage = fee_result.get(
+                        "handled_storage_indices", frozenset()
+                    )
+                    other_actions = [
+                        (index, action)
+                        for index, action in other_actions
+                        if index not in handled_storage
+                    ]
+                    result = commit_prepared_character_actions(
+                        fee_result.get("remaining_character_actions", ()),
+                        party_tracker_data,
+                    )
+                    if fee_result.get("messages") and isinstance(result, dict):
+                        result["needs_update"] = True
             except Exception as action_error:
                 error(
                     "FAILURE: Character coordinator raised unexpectedly",
@@ -4226,7 +4273,7 @@ def process_ai_response(
         pending_archive_info = None
         
         # Process all other actions sequentially
-        for action in other_actions:
+        for _action_index, action in other_actions:
             try:
                 result = action_handler.process_action(
                     action,

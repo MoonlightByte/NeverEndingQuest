@@ -290,6 +290,41 @@ def process_character_update_batch(
     """Prepare original indexed actions and atomically commit transfer components."""
     try:
         prepared = _prepare_actions(indexed_actions, party_tracker_data)
+        return commit_prepared_character_actions(prepared, party_tracker_data)
+    except Exception as exc:
+        return _character_batch_failure(exc)
+
+
+def prepare_character_actions(
+    indexed_actions: Sequence[Tuple[int, Mapping[str, Any]]],
+    party_tracker_data: Mapping[str, Any],
+) -> Tuple[PreparedCharacterAction, ...]:
+    """Public preparation seam used by adjacent atomic adapters."""
+    return _prepare_actions(indexed_actions, party_tracker_data)
+
+
+def _character_batch_failure(exc: Exception) -> Dict[str, Any]:
+    return {
+        "status": "error",
+        "success": False,
+        "response_data": {
+            "error_message": (
+                "The character transfer or inventory update could not be "
+                "verified, so no unsafe partial transfer was applied."
+            ),
+            "failure_code": "character_transfer_unverified",
+        },
+        "diagnostic": str(exc),
+    }
+
+
+def commit_prepared_character_actions(
+    prepared: Sequence[PreparedCharacterAction],
+    party_tracker_data: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Commit a previously prepared subset with the same A1 graph rules."""
+    try:
+        prepared = tuple(prepared)
         by_index = {item.index: item for item in prepared}
         components = _candidate_components(prepared)
 
@@ -380,15 +415,4 @@ def process_character_update_batch(
             "committed_indices": [item.index for item in prepared],
         }
     except Exception as exc:
-        return {
-            "status": "error",
-            "success": False,
-            "response_data": {
-                "error_message": (
-                    "The character transfer or inventory update could not be "
-                    "verified, so no unsafe partial transfer was applied."
-                ),
-                "failure_code": "character_transfer_unverified",
-            },
-            "diagnostic": str(exc),
-        }
+        return _character_batch_failure(exc)

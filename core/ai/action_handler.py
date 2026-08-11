@@ -2697,6 +2697,10 @@ Please use a valid location that exists in the current area ({current_area_id}) 
 
     elif action_type == ACTION_STORAGE_INTERACTION:
         debug("STATE_CHANGE: Processing storageInteraction action", category="storage_operations")
+        storage_failure_message = (
+            "Storage could not be changed safely. Nothing was moved; please "
+            "name the character, container, item, and quantity clearly."
+        )
         try:
             # Import storage modules
             from core.managers.storage_processor import process_storage_request
@@ -2712,11 +2716,25 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 
             if not character_name:
                 print(f"ERROR: No character name provided for storage interaction")
-                return create_return(status="continue", needs_update=False)
+                conversation_history.append(
+                    {"role": "user", "content": storage_failure_message}
+                )
+                return create_return(
+                    status="needs_response",
+                    needs_update=True,
+                    response_data={"failure_code": "storage_character_missing"},
+                )
                 
             if not storage_description:
                 print(f"ERROR: No storage description provided")
-                return create_return(status="continue", needs_update=False)
+                conversation_history.append(
+                    {"role": "user", "content": storage_failure_message}
+                )
+                return create_return(
+                    status="needs_response",
+                    needs_update=True,
+                    response_data={"failure_code": "storage_description_missing"},
+                )
                 
             debug(f"AI_CALL: Processing storage request for {character_name}: '{storage_description}'", category="storage_operations")
             
@@ -2727,10 +2745,19 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 print(f"ERROR: Storage processor failed: {processor_result.get('error')}")
                 
                 # Add error message to conversation
-                error_message = f"Storage Error: {processor_result.get('error', 'Unknown error processing storage request')}"
-                conversation_history.append({"role": "user", "content": error_message})
+                conversation_history.append(
+                    {"role": "user", "content": storage_failure_message}
+                )
                 needs_conversation_history_update = True
-                return create_return(status="needs_response", needs_update=True)
+                return create_return(
+                    status="needs_response",
+                    needs_update=True,
+                    response_data={
+                        "failure_code": processor_result.get(
+                            "failure_code", "storage_processing_failed"
+                        )
+                    },
+                )
                 
             # Execute the validated storage operation
             operation = processor_result["operation"]
@@ -2750,9 +2777,19 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 print(f"ERROR: Storage operation failed: {execution_result.get('error')}")
                 
                 # Add error message to conversation
-                error_message = f"Storage Error: {execution_result.get('error', 'Unknown error executing storage operation')}"
-                conversation_history.append({"role": "user", "content": error_message})
+                conversation_history.append(
+                    {"role": "user", "content": storage_failure_message}
+                )
                 needs_conversation_history_update = True
+                return create_return(
+                    status="needs_response",
+                    needs_update=True,
+                    response_data={
+                        "failure_code": execution_result.get(
+                            "failure_code", "storage_execution_failed"
+                        )
+                    },
+                )
                 
         except Exception as e:
             print(f"ERROR: Exception while processing storage interaction: {str(e)}")
@@ -2760,9 +2797,15 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             traceback.print_exc()
             
             # Add error message to conversation
-            error_message = f"Storage System Error: An unexpected error occurred while processing your storage request."
-            conversation_history.append({"role": "user", "content": error_message})
+            conversation_history.append(
+                {"role": "user", "content": storage_failure_message}
+            )
             needs_conversation_history_update = True
+            return create_return(
+                status="needs_response",
+                needs_update=True,
+                response_data={"failure_code": "storage_system_error"},
+            )
 
     elif action_type == ACTION_UPDATE_PARTY_TRACKER:
         debug("STATE_CHANGE: Processing updatePartyTracker action", category="party_management")

@@ -79,20 +79,10 @@ class StorageManager:
             warning(f"INITIALIZATION: Could not load party tracker, using default", category="storage_operations")
             self.path_manager = ModulePathManager()  # Fallback to reading from file
         self.character_validator = AICharacterValidator()
-        self._ensure_storage_file_exists()
         
     def _ensure_storage_file_exists(self):
-        """Ensure player storage file exists with proper structure"""
-        if not os.path.exists(self.storage_file):
-            initial_data = {
-                "version": "1.0.0",
-                "lastUpdated": datetime.now().isoformat(),
-                "playerStorage": []
-            }
-            if safe_write_json(self.storage_file, initial_data):
-                info(f"FILE_OP: Created new storage file: {self.storage_file}", category="file_operations")
-            else:
-                error(f"FILE_OP: Failed to create storage file: {self.storage_file}", category="file_operations")
+        """Report existence; creation is owned by the transaction adapter."""
+        return os.path.exists(self.storage_file)
             
     def _create_backup(self, file_path: str) -> str:
         """Create a timestamped backup of a file"""
@@ -202,6 +192,12 @@ class StorageManager:
             
     def create_storage(self, operation: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new storage container"""
+        from core.managers.storage_transaction import execute_item_storage_operation
+
+        return execute_item_storage_operation(operation)
+
+        # Legacy implementation retained below for source-history reference;
+        # every callable entry now returns through the coordinator above.
         debug(f"STATE_CHANGE: Creating storage for character '{operation.get('character')}'", category="storage_operations")
         
         if not self._validate_storage_operation(operation):
@@ -281,6 +277,12 @@ class StorageManager:
             
     def store_item(self, operation: Dict[str, Any]) -> Dict[str, Any]:
         """Store an item in a storage container"""
+        from core.managers.storage_transaction import execute_item_storage_operation
+
+        return execute_item_storage_operation(operation)
+
+        # Legacy implementation retained below for source-history reference;
+        # every callable entry now returns through the coordinator above.
         item_desc = operation.get("item_name", "multiple items") if "item_name" in operation else "multiple items"
         debug(f"STATE_CHANGE: Character '{operation.get('character')}' storing {item_desc}", category="storage_operations")
         
@@ -449,6 +451,12 @@ class StorageManager:
             
     def retrieve_item(self, operation: Dict[str, Any]) -> Dict[str, Any]:
         """Retrieve an item from a storage container"""
+        from core.managers.storage_transaction import execute_item_storage_operation
+
+        return execute_item_storage_operation(operation)
+
+        # Legacy implementation retained below for source-history reference;
+        # every callable entry now returns through the coordinator above.
         item_desc = operation.get("item_name", "multiple items") if "item_name" in operation else "multiple items"
         debug(f"STATE_CHANGE: Character '{operation.get('character')}' retrieving {item_desc}", category="storage_operations")
         
@@ -646,17 +654,20 @@ def get_storage_manager() -> StorageManager:
 
 def execute_storage_operation(operation: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a storage operation"""
-    manager = get_storage_manager()
-    
     action = operation.get("action")
-    
-    if action == "create_storage":
-        return manager.create_storage(operation)
-    elif action == "store_item":
-        return manager.store_item(operation)
-    elif action == "retrieve_item":
-        return manager.retrieve_item(operation)
+
+    if action in {"create_storage", "store_item", "retrieve_item"}:
+        # T049/T053 preparation and both participant images are completed
+        # before the shared coordinator acquires character -> storage leases.
+        # This also makes create+first-store one transaction instead of a
+        # nested storage commit followed by a character commit.
+        from core.managers.storage_transaction import (
+            execute_item_storage_operation,
+        )
+
+        return execute_item_storage_operation(operation)
     elif action == "view_storage":
+        manager = get_storage_manager()
         location_id = operation.get("location_id")
         return manager.view_storage(location_id)
     else:
