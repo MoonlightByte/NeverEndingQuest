@@ -42,6 +42,7 @@ def _should_track_json(rel: str) -> bool:
         ".module_transactions",
         ".publication_transactions",
         ".module_orphan_quarantine",
+        ".runtime_quarantine",
     }:
         return False
     if rel == "commit_state.json":

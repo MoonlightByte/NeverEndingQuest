@@ -130,22 +130,40 @@ def get_all_party_inventory(party_tracker_data, characters_data):
     """
     all_inventory = []
     
-    # Get main character inventory
     if party_tracker_data and characters_data:
-        # Primary character
-        primary_char = party_tracker_data.get('party', [None])[0]
-        if primary_char and primary_char in characters_data:
-            char_inventory = extract_character_inventory(characters_data[primary_char])
-            all_inventory.extend(char_inventory)
-        
-        # Party NPCs might have items too
-        party_npcs = party_tracker_data.get('party_npcs', [])
-        for npc_name in party_npcs:
-            # Extract just the name without description
-            npc_base_name = npc_name.split('(')[0].strip().lower().replace(' ', '_')
-            if npc_base_name in characters_data:
-                npc_inventory = extract_character_inventory(characters_data[npc_base_name])
-                all_inventory.extend(npc_inventory)
+        def resolve_character(name):
+            if isinstance(name, dict):
+                name = name.get("name")
+            display = str(name or "").split("(", 1)[0].strip()
+            candidates = (
+                display,
+                display.lower().replace(" ", "_"),
+                display.casefold(),
+            )
+            for candidate in candidates:
+                if candidate in characters_data:
+                    return candidate, characters_data[candidate]
+            normalized = display.casefold().replace(" ", "_")
+            for key, value in characters_data.items():
+                if str(key).casefold().replace(" ", "_") == normalized:
+                    return key, value
+            return None, None
+
+        current_members = party_tracker_data.get("partyMembers")
+        if not isinstance(current_members, list):
+            current_members = party_tracker_data.get("party", [])
+        current_npcs = party_tracker_data.get("partyNPCs")
+        if not isinstance(current_npcs, list):
+            current_npcs = party_tracker_data.get("party_npcs", [])
+
+        seen = set()
+        for member_name in list(current_members or []) + list(current_npcs or []):
+            key, character = resolve_character(member_name)
+            identity = str(key).casefold() if key is not None else None
+            if character is None or identity in seen:
+                continue
+            seen.add(identity)
+            all_inventory.extend(extract_character_inventory(character))
     
     return all_inventory
 

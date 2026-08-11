@@ -126,6 +126,15 @@ import re
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.encoding_utils import safe_json_load
+from utils.inventory_integrity import (
+    InventoryIntegrityError,
+    consolidate_equipment_rows,
+    large_resource_increase_advisories,
+    normalize_inventory_name,
+    quarantine_malformed_ammunition,
+    strict_nonnegative_int,
+    validate_resource_bounds,
+)
 from core.validation.character_validator import AICharacterValidator
 from core.validation.character_effects_validator import AICharacterEffectsValidator
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -559,7 +568,7 @@ def normalize_status_and_condition(data, character_role):
 
     return data
 
-def deep_merge_dict(base_dict, update_dict):
+def deep_merge_dict(base_dict, update_dict, integrity_advisories=None):
     """Recursively merge update_dict into base_dict, preserving nested structures"""
     result = copy.deepcopy(base_dict)
     
@@ -588,13 +597,17 @@ def deep_merge_dict(base_dict, update_dict):
             result[key] = []
         elif key in result and isinstance(result[key], dict) and isinstance(value, dict):
             # Recursively merge nested dictionaries
-            result[key] = deep_merge_dict(result[key], value)
+            result[key] = deep_merge_dict(
+                result[key], value, integrity_advisories=integrity_advisories
+            )
         elif key in named_arrays and isinstance(result.get(key), list) and isinstance(value, list):
             # Special handling for arrays with named items
             name_field = named_arrays[key]
             # print(f"[DEBUG deep_merge_dict] Processing named array: {key}")
             if key == 'equipment':
-                result[key] = merge_equipment_arrays(result[key], value)
+                result[key] = merge_equipment_arrays(
+                    result[key], value, integrity_advisories=integrity_advisories
+                )
             elif key == 'ammunition':
                 # print(f"[DEBUG deep_merge_dict] Calling merge_ammunition_arrays")
                 result[key] = merge_ammunition_arrays(result[key], value)
@@ -608,90 +621,127 @@ def deep_merge_dict(base_dict, update_dict):
     
     return result
 
-def merge_equipment_arrays(base_equipment, update_equipment):
-    """Merge equipment arrays by item name, preserving existing items and removing zero-quantity items"""
-    result = copy.deepcopy(base_equipment)
-    
-    # Create a mapping of item names to indices in the base equipment
-    item_name_to_index = {}
-    for i, item in enumerate(result):
-        item_name = item.get('item_name', '')
-        if item_name:
-            item_name_to_index[item_name] = i
-    
-    # Process updates
-    for update_item in update_equipment:
-        update_item_name = update_item.get('item_name', '')
-        if not update_item_name:
-            continue
-            
-        if update_item_name in item_name_to_index:
-            # Update existing item by merging dictionaries
-            index = item_name_to_index[update_item_name]
-            result[index] = deep_merge_dict(result[index], update_item)
-        else:
-            # Add new item if it doesn't exist
-            result.append(copy.deepcopy(update_item))
-    
-    # Remove items with zero or negative quantity or marked with _remove flag
-    result = [item for item in result if item.get('quantity', 1) > 0 and not item.get('_remove', False)]
-    
+def merge_equipment_arrays(
+    base_equipment, update_equipment, integrity_advisories=None
+):
+    """Apply absolute equipment rows without collapsing ambiguous identities."""
+    result, base_advisories = consolidate_equipment_rows(base_equipment)
+    if integrity_advisories is not None:
+        integrity_advisories.extend(base_advisories)
+    updates_seen = set()
+    for index, update_item in enumerate(update_equipment):
+        if not isinstance(update_item, dict):
+            raise InventoryIntegrityError(
+                f"equipment update[{index}] must be an object"
+            )
+        name = normalize_inventory_name(update_item.get("item_name"))
+        if not name:
+            raise InventoryIntegrityError(
+                f"equipment update[{index}] has no useful name"
+            )
+        if name in updates_seen:
+            raise InventoryIntegrityError(
+                f"equipment update repeats ambiguous name '{name}'"
+            )
+        updates_seen.add(name)
+        matches = [
+            row_index
+            for row_index, row in enumerate(result)
+            if normalize_inventory_name(row.get("item_name")) == name
+        ]
+        if len(matches) > 1:
+            raise InventoryIntegrityError(
+                f"equipment contains ambiguous duplicate name '{name}'"
+            )
+        remove = update_item.get("_remove") is True
+        if "quantity" in update_item:
+            quantity = strict_nonnegative_int(
+                update_item.get("quantity"),
+                f"equipment update[{index}].quantity",
+            )
+            remove = remove or quantity == 0
+        if matches:
+            row_index = matches[0]
+            if remove:
+                result.pop(row_index)
+                continue
+            display_name = result[row_index].get("item_name")
+            cleaned = {key: value for key, value in update_item.items() if key != "_remove"}
+            result[row_index] = deep_merge_dict(
+                result[row_index],
+                cleaned,
+                integrity_advisories=integrity_advisories,
+            )
+            result[row_index]["item_name"] = display_name
+        elif not remove:
+            cleaned = copy.deepcopy(update_item)
+            cleaned.pop("_remove", None)
+            cleaned.setdefault("quantity", 1)
+            strict_nonnegative_int(
+                cleaned.get("quantity"), f"equipment update[{index}].quantity"
+            )
+            result.append(cleaned)
+    result, final_advisories = consolidate_equipment_rows(result)
+    if integrity_advisories is not None:
+        integrity_advisories.extend(final_advisories)
     return result
 
 def merge_ammunition_arrays(base_ammunition, update_ammunition):
-    """Merge ammunition arrays by name, adding quantities for existing items and ensuring schema compliance"""
-    # DEBUG: Check what we're receiving
-    # print(f"[DEBUG merge_ammunition_arrays] base_ammunition type: {type(base_ammunition)}, value: {base_ammunition}")
-    # print(f"[DEBUG merge_ammunition_arrays] update_ammunition type: {type(update_ammunition)}, value: {update_ammunition}")
-    
-    # Create a lookup map from the base ammunition array
+    """Apply signed ammunition deltas and reject any snapshot overdraw."""
     ammo_lookup = {}
-    for ammo in base_ammunition:
-        # Use lowercase name as key for case-insensitive matching
-        key = ammo.get('name', '').lower().strip()
-        if key:
-            ammo_lookup[key] = copy.deepcopy(ammo)
-    
-    # Process updates
-    for update_ammo in update_ammunition:
-        update_name = update_ammo.get('name', '').strip()
-        update_name_lower = update_name.lower()
-        update_quantity = update_ammo.get('quantity', 0)
-        
-        if not update_name:
-            continue
-        
-        # Check if this ammunition already exists (case-insensitive)
-        if update_name_lower in ammo_lookup:
-            # Add to existing ammunition quantity (supports negative for removals)
-            ammo_lookup[update_name_lower]['quantity'] += update_quantity
-            # If the update includes a description and the base doesn't have one, add it
-            if 'description' in update_ammo and 'description' not in ammo_lookup[update_name_lower]:
-                ammo_lookup[update_name_lower]['description'] = update_ammo['description']
-        else:
-            # New ammunition type - only add if positive quantity
-            if update_quantity > 0:
-                # Ensure schema compliance
-                new_ammo = {
-                    'name': update_name,  # Use original casing
-                    'quantity': update_quantity,
-                    'description': update_ammo.get('description', 'Standard ammunition.')
-                }
-                ammo_lookup[update_name_lower] = new_ammo
-    
-    # Convert back to array and filter out zero/negative quantities
-    result = []
-    for ammo in ammo_lookup.values():
-        if ammo.get('quantity', 0) > 0:
-            # Ensure description field exists for schema compliance
-            if 'description' not in ammo:
-                ammo['description'] = f"Standard {ammo.get('name', 'ammunition').lower()}."
-            result.append(ammo)
-    
-    # Sort by name for consistent ordering
-    result.sort(key=lambda x: x.get('name', '').lower())
-    
-    return result
+    for index, ammo in enumerate(base_ammunition):
+        if not isinstance(ammo, dict):
+            raise InventoryIntegrityError(f"ammunition[{index}] must be an object")
+        key = normalize_inventory_name(ammo.get("name"))
+        if not key or key in ammo_lookup:
+            raise InventoryIntegrityError("ammunition has missing or duplicate names")
+        row = copy.deepcopy(ammo)
+        strict_nonnegative_int(row.get("quantity"), f"ammunition[{index}].quantity")
+        ammo_lookup[key] = row
+    updates_seen = set()
+    for index, update_ammo in enumerate(update_ammunition):
+        if not isinstance(update_ammo, dict):
+            raise InventoryIntegrityError(
+                f"ammunition update[{index}] must be an object"
+            )
+        update_name = str(update_ammo.get("name") or "").strip()
+        key = normalize_inventory_name(update_name)
+        if not key or key in updates_seen:
+            raise InventoryIntegrityError(
+                "ammunition update has missing or duplicate names"
+            )
+        updates_seen.add(key)
+        delta = update_ammo.get("quantity")
+        if isinstance(delta, bool) or not isinstance(delta, int):
+            raise InventoryIntegrityError(
+                f"ammunition update[{index}].quantity must be an integer delta"
+            )
+        if key in ammo_lookup:
+            available = ammo_lookup[key]["quantity"]
+            if delta < -available:
+                raise InventoryIntegrityError(
+                    f"ammunition overdraw rejected for '{update_name}'"
+                )
+            remaining = available + delta
+            if remaining == 0:
+                del ammo_lookup[key]
+                continue
+            ammo_lookup[key]["quantity"] = remaining
+            if "description" in update_ammo and "description" not in ammo_lookup[key]:
+                ammo_lookup[key]["description"] = update_ammo["description"]
+        elif delta < 0:
+            raise InventoryIntegrityError(
+                f"ammunition overdraw rejected for '{update_name}'"
+            )
+        elif delta > 0:
+            ammo_lookup[key] = {
+                "name": update_name,
+                "quantity": delta,
+                "description": update_ammo.get(
+                    "description", "Standard ammunition."
+                ),
+            }
+    return sorted(ammo_lookup.values(), key=lambda row: normalize_inventory_name(row.get("name")))
 
 def merge_named_arrays(base_array, update_array, name_field):
     """Generic merge for arrays of objects identified by a name field"""
@@ -1493,6 +1543,30 @@ def execute_character_mutation_plans(plans, operation="character_update"):
     changed = [plan for plan in plans if plan.pre_image != plan.post_image]
     if not changed:
         return None
+    for plan in changed:
+        try:
+            quarantined = quarantine_malformed_ammunition(
+                plan.pre_image, plan.canonical_path
+            )
+            if quarantined:
+                warning(
+                    "INVENTORY: Preserved malformed legacy ammunition before repair",
+                    category="character_validation",
+                )
+        except Exception as quarantine_exc:
+            warning(
+                f"INVENTORY: Could not preserve malformed ammunition forensic: "
+                f"{quarantine_exc}",
+                category="character_validation",
+            )
+        if operation != "character_transfer":
+            for advisory in large_resource_increase_advisories(
+                plan.pre_image, plan.post_image
+            ):
+                warning(
+                    f"INVENTORY: {advisory.replace(':', ' ')}",
+                    category="character_updates",
+                )
     coordinator = StateTransactionCoordinator(workspace_root=".")
     participants = []
     for plan in changed:
@@ -2271,7 +2345,12 @@ Please provide the CORRECT currency values:
             if 'hitPoints' in updates:
                 debug(f"HP_DEBUG: {character_name} - Before merge HP: {character_data.get('hitPoints')}/{character_data.get('maxHitPoints')}, Update wants HP: {updates.get('hitPoints')}", category="character_updates")
             
-            updated_data = deep_merge_dict(character_data, updates)
+            advisories = []
+            updated_data = deep_merge_dict(
+                character_data,
+                updates,
+                integrity_advisories=advisories,
+            )
             if declarative_effects and managed_effect_operation:
                 from core.effects.lifecycle import apply_effect_ops
 
@@ -2327,6 +2406,7 @@ Please provide the CORRECT currency values:
             
             # Role-specific normalization
             updated_data = normalize_status_and_condition(updated_data, character_role)
+            validate_resource_bounds(updated_data)
             
             # Purge invalid fields before validation
             # print(f"[DEBUG] About to purge invalid fields")
@@ -2378,7 +2458,6 @@ Please provide the CORRECT currency values:
             # any final participant lease is acquired.  The transaction
             # coordinator later rechecks the exact pre-image and owns the only
             # durable character write.
-            advisories = []
             try:
                 validator = AICharacterValidator()
                 validation_result = (
@@ -2411,6 +2490,7 @@ Please provide the CORRECT currency values:
                 advisories.append("effects_validator_unavailable")
 
             updated_data = repair_character_data(updated_data)
+            validate_resource_bounds(updated_data)
             final_critical_warnings = validate_critical_fields_preserved(
                 character_data,
                 updated_data,

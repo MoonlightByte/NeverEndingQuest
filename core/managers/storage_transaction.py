@@ -13,9 +13,7 @@ deliberately outside this slice.
 from __future__ import annotations
 
 import copy
-import json
 import os
-import re
 import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -26,6 +24,12 @@ import jsonschema
 from core.validation.character_validator import AICharacterValidator
 from utils.encoding_utils import safe_json_load
 from utils.module_path_manager import ModulePathManager
+from utils.inventory_integrity import (
+    consolidate_equipment_rows,
+    inventory_metadata,
+    is_stackable_equipment,
+    normalize_inventory_name,
+)
 from utils.state_transaction import (
     ParticipantKind,
     StateTransactionCoordinator,
@@ -51,20 +55,8 @@ class StorageMutationPlan:
     advisories: Tuple[str, ...] = ()
 
 
-_OWNERSHIP_LOCAL_FIELDS = {"equipped"}
-_NONSTACKABLE_FIELDS = {
-    "charges",
-    "effects",
-    "instance_id",
-    "item_id",
-    "serial",
-    "attuned",
-    "requires_attunement",
-}
-
-
 def _normalized_name(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "").strip().casefold())
+    return normalize_inventory_name(value)
 
 
 def _strict_quantity(value: Any, label: str) -> int:
@@ -74,29 +66,11 @@ def _strict_quantity(value: Any, label: str) -> int:
 
 
 def _metadata(row: Mapping[str, Any]) -> str:
-    value = copy.deepcopy(dict(row))
-    value.pop("quantity", None)
-    for field in _OWNERSHIP_LOCAL_FIELDS:
-        value.pop(field, None)
-    value["item_name"] = _normalized_name(value.get("item_name"))
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
+    return inventory_metadata(row, "item_name", omit_ownership_local=True)
 
 
 def _is_stackable(row: Mapping[str, Any]) -> bool:
-    if row.get("stackable") is True:
-        return True
-    if row.get("magical") is True or any(
-        field in row for field in _NONSTACKABLE_FIELDS
-    ):
-        return False
-    quantity = row.get("quantity", 1)
-    return isinstance(quantity, int) and not isinstance(quantity, bool) and quantity > 1
+    return is_stackable_equipment(row)
 
 
 def _inventory_rows(owner: Mapping[str, Any], label: str) -> list:
@@ -359,6 +333,15 @@ def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPla
     container_before = copy.deepcopy(container)
     character_rows = _inventory_rows(character_after, "character")
     storage_rows = _inventory_rows(container, "storage")
+    character_rows, character_identity_advisories = consolidate_equipment_rows(
+        character_rows
+    )
+    storage_rows, storage_identity_advisories = consolidate_equipment_rows(storage_rows)
+    character_after["equipment"] = character_rows
+    container["contents"] = storage_rows
+    identity_advisories = tuple(
+        sorted(set(character_identity_advisories + storage_identity_advisories))
+    )
     requested = _requested_items(operation)
     names = {_normalized_name(name) for name, _quantity in requested}
 
@@ -375,7 +358,10 @@ def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPla
         verb = "Retrieved"
         log_action = "retrieve_items" if len(requested) > 1 else "retrieve_item"
 
-    character_after, advisories = _validate_character_candidate(character_after)
+    character_after, validator_advisories = _validate_character_candidate(
+        character_after
+    )
+    advisories = tuple(sorted(set(identity_advisories + validator_advisories)))
     if _asset_counts(character_before, container_before, names) != _asset_counts(
         character_after, container, names
     ):

@@ -70,6 +70,7 @@ from enum import Enum
 from typing import Dict, List, Any, Optional, Union
 from core.ai import api_client
 from utils.character_sheet_contract import repair_required_ammunition_field
+from utils.inventory_integrity import quarantine_malformed_ammunition
 from core.validation.ac_validation import (
     ACConfidence,
     compute_structured_base_ac,
@@ -2927,6 +2928,13 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
                     print(f"[DEBUG VALIDATOR XP] Validator preserving XP: {corrected_xp}")
 
             try:
+                try:
+                    quarantine_malformed_ammunition(source_data, file_path)
+                except Exception as quarantine_exc:
+                    self.logger.warning(
+                        "Could not preserve malformed ammunition forensic for "
+                        f"{file_path}: {quarantine_exc}"
+                    )
                 success = safe_write_json(file_path, corrected_data)
             except Exception as e:
                 self.logger.error(

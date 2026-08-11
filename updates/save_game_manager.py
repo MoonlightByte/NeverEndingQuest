@@ -297,6 +297,7 @@ class SaveGameManager:
             "modules/.module_transactions/",
             "modules/.publication_transactions/",
             "modules/.module_orphan_quarantine/",
+            "modules/.runtime_quarantine/",
             ".runtime_locks/",
             "modules/conversation_history/pending_location_transition.json",
             

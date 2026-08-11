@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import info, warning
+from utils.inventory_integrity import quarantine_malformed_ammunition
 
 
 STARTUP_ARRAY_DEFAULTS = {
@@ -544,6 +545,14 @@ def repair_and_persist_character(
 
     # Only persist if there were actual changes
     if changes:
+        try:
+            quarantine_malformed_ammunition(character_data, character_file_path)
+        except Exception as quarantine_exc:
+            warning(
+                f"REPAIR: Could not preserve malformed ammunition forensic: "
+                f"{quarantine_exc}",
+                category="character_repair",
+            )
         if not safe_write_json(character_file_path, repaired_data):
             # Write failed, but still return in-memory repair
             warning(

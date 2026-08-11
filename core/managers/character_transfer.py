@@ -6,13 +6,16 @@
 
 from __future__ import annotations
 
-import copy
 import json
-import re
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.managers.effects_runtime import prepare_character_with_effects
+from utils.inventory_integrity import (
+    consolidate_equipment_rows,
+    inventory_metadata,
+    normalize_inventory_name,
+)
 from updates.update_character_info import (
     CharacterMutationPlan,
     execute_character_mutation_plans,
@@ -20,9 +23,6 @@ from updates.update_character_info import (
 
 
 _DENOMINATIONS = {"gold": 100, "silver": 10, "copper": 1}
-_OWNERSHIP_LOCAL_FIELDS = {"equipped"}
-
-
 class CharacterTransferError(RuntimeError):
     """A character batch could not be applied without guessing."""
 
@@ -48,7 +48,7 @@ class AssetDelta:
 
 
 def _normalized_name(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "").strip().casefold())
+    return normalize_inventory_name(value)
 
 
 def _strict_nonnegative_int(value: Any, label: str) -> int:
@@ -81,6 +81,11 @@ def _rows_by_name(
     rows = sheet.get(field) or []
     if not isinstance(rows, list):
         raise CharacterTransferError(f"{field} must be an array")
+    if field == "equipment":
+        try:
+            rows, _advisories = consolidate_equipment_rows(rows)
+        except ValueError as exc:
+            raise CharacterTransferError(str(exc)) from exc
     indexed: Dict[str, Mapping[str, Any]] = {}
     for row in rows:
         if not isinstance(row, dict):
@@ -96,18 +101,7 @@ def _rows_by_name(
 
 
 def _mechanical_metadata(row: Mapping[str, Any], name_field: str) -> str:
-    metadata = copy.deepcopy(dict(row))
-    metadata.pop("quantity", None)
-    for field in _OWNERSHIP_LOCAL_FIELDS:
-        metadata.pop(field, None)
-    metadata[name_field] = _normalized_name(metadata.get(name_field))
-    return json.dumps(
-        metadata,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
+    return inventory_metadata(row, name_field, omit_ownership_local=True)
 
 
 def _row_deltas(
