@@ -4130,14 +4130,18 @@ def process_ai_response(
             print(f"DEBUG:   Action {i+1}: {action.get('action', 'unknown')}")
         
         # Separate updateCharacterInfo actions from the other action families.
-        char_update_actions = [action for action in actions if action.get("action") == "updateCharacterInfo"]
+        char_update_actions = [
+            (index, action)
+            for index, action in enumerate(actions)
+            if action.get("action") == "updateCharacterInfo"
+        ]
         other_actions = [action for action in actions if action.get("action") != "updateCharacterInfo"]
         if char_update_actions and _agentic_post_combat_narration_pass(
             party_tracker_data
         ):
             retained_updates = []
             dropped_update_count = 0
-            for action in char_update_actions:
+            for index, action in char_update_actions:
                 if _agentic_post_combat_engine_echo(action):
                     dropped_update_count += 1
                     debug(
@@ -4147,7 +4151,7 @@ def process_ai_response(
                         category="character_updates",
                     )
                 else:
-                    retained_updates.append(action)
+                    retained_updates.append((index, action))
             char_update_actions = retained_updates
             if dropped_update_count:
                 drop_notice = {
@@ -4177,46 +4181,46 @@ def process_ai_response(
             except Exception as e:
                 debug(f"Could not update status: {e}", category="status")
         
-        # Character updates are ordered state mutations. Run them one at a
-        # time so a failed update prevents every later sibling from starting.
+        # Prepare T078/T079/model validators without final file leases, then
+        # atomically group only concrete complementary transfer deltas from
+        # the original indexed response.  The adapter commits independent
+        # updates in original order and stops at the first safe failure.
         if char_update_actions:
             debug(
                 f"STATE_CHANGE: Processing {len(char_update_actions)} "
-                "character updates sequentially",
+                "character updates through the transfer coordinator",
                 category="character_updates",
             )
             print(
                 "DEBUG: STATE_CHANGE: Processing "
-                f"{len(char_update_actions)} character updates sequentially"
+                f"{len(char_update_actions)} coordinated character updates"
             )
-            for action in char_update_actions:
-                try:
-                    result = action_handler.process_action(
-                        action,
-                        party_tracker_data,
-                        location_data,
-                        conversation_history,
-                    )
-                except Exception as action_error:
-                    error(
-                        "FAILURE: Character update handler raised unexpectedly",
-                        exception=action_error,
-                        category="character_updates",
-                    )
-                    result = {"status": "error"}
-                actions_processed = True
-                if isinstance(result, dict):
-                    if result.get("status") == "error":
-                        return _handle_ordinary_action_failure(
-                            result,
-                            response,
-                            action,
-                            conversation_history,
-                        )
-                    if result.get("needs_update"):
-                        needs_conversation_history_update = True
-                elif isinstance(result, bool) and result:
-                    needs_conversation_history_update = True
+            try:
+                from core.managers.character_transfer import (
+                    process_character_update_batch,
+                )
+
+                result = process_character_update_batch(
+                    char_update_actions,
+                    party_tracker_data,
+                )
+            except Exception as action_error:
+                error(
+                    "FAILURE: Character coordinator raised unexpectedly",
+                    exception=action_error,
+                    category="character_updates",
+                )
+                result = {"status": "error", "success": False}
+            actions_processed = True
+            if isinstance(result, dict) and result.get("status") == "error":
+                return _handle_ordinary_action_failure(
+                    result,
+                    response,
+                    char_update_actions[0][1],
+                    conversation_history,
+                )
+            if isinstance(result, dict) and result.get("needs_update"):
+                needs_conversation_history_update = True
         
         # Track pending archive info for delayed processing
         pending_archive_info = None

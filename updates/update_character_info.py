@@ -99,9 +99,11 @@
 
 import json
 import copy
+import hashlib
 import shutil
 import os
 import threading
+from dataclasses import dataclass
 from datetime import datetime
 from jsonschema import validate, ValidationError
 import config
@@ -141,6 +143,50 @@ VALIDATION_TEMPERATURE = 0.1  # Lower temperature for validation
 # characters parallel while serializing the complete transaction per file.
 _CHARACTER_UPDATE_LOCKS = {}
 _CHARACTER_UPDATE_LOCKS_GUARD = threading.Lock()
+
+
+@dataclass(frozen=True)
+class CharacterMutationPlan:
+    """A complete T079 result that has not changed durable character state."""
+
+    character_name: str
+    character_role: str
+    canonical_path: str
+    requested_changes: str
+    pre_image: Dict[str, Any]
+    post_image: Dict[str, Any]
+    pre_image_hash: str
+    field_facts: Tuple[Tuple[str, Any, Any], ...]
+    advisories: Tuple[str, ...] = ()
+
+
+def _character_image_hash(value):
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(b"JSON\0" + encoded).hexdigest()
+
+
+def _field_change_facts(before, after, prefix=""):
+    """Return deterministic leaf before/after facts for adapter inspection."""
+    facts = []
+    if isinstance(before, dict) and isinstance(after, dict):
+        for key in sorted(set(before) | set(after)):
+            path = f"{prefix}.{key}" if prefix else str(key)
+            if key not in before:
+                facts.append((path, None, copy.deepcopy(after[key])))
+            elif key not in after:
+                facts.append((path, copy.deepcopy(before[key]), None))
+            else:
+                facts.extend(_field_change_facts(before[key], after[key], path))
+        return facts
+    if before != after:
+        facts.append((prefix, copy.deepcopy(before), copy.deepcopy(after)))
+    return facts
 
 # ANSI escape codes - REMOVED per CLAUDE.md guidelines
 # All color codes have been removed to prevent Windows console encoding errors
@@ -1326,36 +1372,108 @@ def update_character_info(
     character_role=None,
     managed_effect_operation=None,
 ):
-    """Run one complete character update transaction under a per-file lock."""
-    lock = _get_character_update_lock(character_name, character_role)
-    with lock:
-        resolved_role = character_role or detect_character_role(character_name)
-        character_path = get_character_path(character_name, resolved_role)
-        from utils.path_transaction_lock import path_transaction_lock
+    """Prepare all model work first, then commit through the coordinator."""
+    from utils.state_transaction import TransactionStalePlanError
 
-        with path_transaction_lock(
-            character_path,
-            suffix=".effects.lock",
-            timeout_seconds=30.0,
-        ) as acquired:
-            if acquired is None:
-                warning(
-                    f"EFFECTS: Timed out acquiring character lease for {character_name}",
-                    category="effects_tracking",
-                )
-                return False
-            if managed_effect_operation is None:
-                return _update_character_info_unlocked(
-                    character_name,
-                    changes,
-                    character_role=character_role,
-                )
-            return _update_character_info_unlocked(
-                character_name,
-                changes,
-                character_role=character_role,
-                managed_effect_operation=managed_effect_operation,
+    for attempt in range(2):
+        plan = prepare_character_update(
+            character_name,
+            changes,
+            character_role=character_role,
+            managed_effect_operation=managed_effect_operation,
+        )
+        if not isinstance(plan, CharacterMutationPlan):
+            return False
+        try:
+            execute_character_mutation_plans((plan,), operation="character_update")
+            return True
+        except TransactionStalePlanError:
+            if attempt == 0:
+                continue
+            error(
+                "FAILURE: Character changed twice during update preparation",
+                category="character_updates",
             )
+            return False
+        except Exception as exc:
+            error(
+                f"FAILURE: Character transaction failed safely: {exc}",
+                category="character_updates",
+            )
+            return False
+    return False
+
+
+def prepare_character_update(
+    character_name,
+    changes,
+    character_role=None,
+    managed_effect_operation=None,
+):
+    """Return a fully validated mutation plan without touching the character file."""
+    return _update_character_info_unlocked(
+        character_name,
+        changes,
+        character_role=character_role,
+        managed_effect_operation=managed_effect_operation,
+    )
+
+
+def commit_character_mutation_plans(plans, operation="character_update"):
+    """Atomically commit one or more already-prepared character images."""
+    try:
+        execute_character_mutation_plans(plans, operation=operation)
+        return True
+    except Exception as exc:
+        error(
+            f"FAILURE: Character transaction failed safely: {exc}",
+            category="character_updates",
+        )
+        return False
+
+
+def execute_character_mutation_plans(plans, operation="character_update"):
+    """Commit prepared images, preserving typed coordinator exceptions."""
+    from utils.state_transaction import ParticipantKind, StateTransactionCoordinator
+
+    plans = tuple(plans)
+    if not plans or not all(isinstance(plan, CharacterMutationPlan) for plan in plans):
+        raise TypeError("character transaction requires mutation plans")
+    changed = [plan for plan in plans if plan.pre_image != plan.post_image]
+    if not changed:
+        return None
+    coordinator = StateTransactionCoordinator(workspace_root=".")
+    participants = []
+    for plan in changed:
+        before = coordinator.snapshot(plan.pre_image)
+        if before.digest != plan.pre_image_hash:
+            raise ValueError("character plan pre-image hash mismatch")
+        participants.append(
+            coordinator.participant(
+                plan.canonical_path,
+                ParticipantKind.CHARACTER,
+                before,
+                coordinator.snapshot(plan.post_image),
+            )
+        )
+    identity = hashlib.sha256(
+        "|".join(
+            f"{item.canonical_path}:{item.pre_image_hash}:"
+            f"{_character_image_hash(item.post_image)}"
+            for item in sorted(changed, key=lambda value: value.canonical_path)
+        ).encode("utf-8")
+    ).hexdigest()
+    transaction = coordinator.build_plan(
+        transaction_key=f"character-{identity}",
+        operation=operation,
+        participants=participants,
+        rollback_failure_code=(
+            "transfer_rolled_back"
+            if operation == "character_transfer"
+            else "character_update_rolled_back"
+        )
+    )
+    return coordinator.execute(transaction, timeout_seconds=30.0)
 
 
 def _update_character_info_unlocked(
@@ -1418,20 +1536,14 @@ def _update_character_info_unlocked(
             error(f"FAILURE: Loaded data type: {type(character_data)}, value: {character_data}", category="file_operations")
             return False
         
+        source_file_data = copy.deepcopy(character_data)
+
         # Repair common schema issues before processing
         character_data = repair_character_data(character_data)
             
     except Exception as e:
         error(f"FAILURE: Error loading character data", exception=e, category="file_operations")
         return False
-    
-    # Create file backup before any changes
-    backup_path = create_character_backup(character_path, "update")
-    if backup_path is None:
-        warning("FILE_OP: Could not create backup, but proceeding with update", category="file_operations")
-    else:
-        # Clean up old backups to prevent accumulation
-        cleanup_old_backups(character_path)
     
     # Create in-memory backup
     original_data = copy.deepcopy(character_data)
@@ -2167,164 +2279,107 @@ Please provide the CORRECT currency values:
             
             # Final repair pass before saving to ensure schema compliance
             updated_data = repair_character_data(updated_data)
-            
-            # Save updated character data
-            # print(f"[DEBUG] Validation passed! About to save character data to: {character_path}")
-            
-            # DEBUG: Log XP before saving
-            if 'experience_points' in updated_data:
-                print(f"DEBUG: [XP Save] About to save {character_name} with XP: {updated_data.get('experience_points')}")
-            
-            # Enhanced debugging for save failures
-            print(f"DEBUG: [SAVE] Attempting to save {character_name} to {character_path}")
-            print(f"DEBUG: [SAVE] File exists: {os.path.exists(character_path)}")
-            
-            # Check for lock files that might block the save
-            lock_file = f"{character_path}.lock"
-            if os.path.exists(lock_file):
-                print(f"DEBUG: [SAVE] WARNING - Lock file exists: {lock_file}")
-                try:
-                    lock_age = time.time() - os.path.getmtime(lock_file)
-                    print(f"DEBUG: [SAVE] Lock file age: {lock_age:.2f} seconds")
-                    with open(lock_file, 'r') as f:
-                        lock_pid = f.read().strip()
-                        print(f"DEBUG: [SAVE] Lock held by PID: {lock_pid}")
-                except Exception as e:
-                    print(f"DEBUG: [SAVE] Could not read lock file: {e}")
-            
-            save_result = safe_write_json(character_path, updated_data)
-            print(f"DEBUG: [SAVE] safe_write_json returned: {save_result}")
-            
-            if save_result:
-                # print(f"[DEBUG] Character data saved successfully!")
-                info(f"SUCCESS: Successfully updated {character_name} ({character_role})!", category="character_updates")
-                
-                # Debug HP after save
-                if 'hitPoints' in updates:
-                    saved_data = safe_read_json(character_path)
-                    debug(f"HP_DEBUG: {character_name} - After save HP: {saved_data.get('hitPoints')}/{saved_data.get('maxHitPoints')}", category="character_updates")
-                
-                # Update debug data with success
-                debug_data["final_outcome"] = "success"
-                debug_data["validation_results"]["ai_validator_run"] = validation_success if 'validation_success' in locals() else None
-                
-                # Add to consolidated debug log
-                debug_log["updates"].append(debug_data)
-                # Keep only last 20 entries to prevent file from growing too large
-                if len(debug_log["updates"]) > 20:
-                    debug_log["updates"] = debug_log["updates"][-20:]
-                safe_write_json(debug_log_file, debug_log)
-                debug(f"Debug log updated: {debug_log_file}", category="character_updates")
-                
-                # DEBUG: Verify XP was saved correctly
-                if 'experience_points' in updates:
-                    saved_data = safe_read_json(character_path)
-                    if saved_data:
-                        saved_xp = saved_data.get('experience_points', 0)
-                        expected_xp = updated_data.get('experience_points', 0)
-                        print(f"DEBUG: [XP Verify] After save - Expected XP: {expected_xp}, Actual XP in file: {saved_xp}")
-                        if saved_xp != expected_xp:
-                            print(f"DEBUG: [XP Verify] WARNING: XP mismatch after save!")
-                
-                # Log the changes with more detail for user feedback
-                changed_fields = list(updates.keys())
-                debug(f"STATE_CHANGE: Updated fields: {', '.join(changed_fields)}", category="character_updates")
-                
-                # Provide user-friendly update notification
-                if 'equipment' in changed_fields:
-                    info(f"[Character Update] {character_name}'s equipment/inventory updated", category="character_updates")
-                elif 'currency' in changed_fields:
-                    info(f"[Character Update] {character_name}'s currency updated", category="character_updates")
-                else:
-                    info(f"[Character Update] {character_name}'s {', '.join(changed_fields)} updated", category="character_updates")
-                
-                # AI Character Validation after successful update
-                try:
-                    print(f"DEBUG: [Character Validator] Starting validation for {character_name}...")
-                    
-                    # DEBUG: Check XP before validation
-                    pre_validation_data = safe_read_json(character_path)
-                    pre_validation_xp = pre_validation_data.get('experience_points', 0) if pre_validation_data else 0
-                    print(f"DEBUG: [XP Tracking] {character_name} XP BEFORE validation: {pre_validation_xp}")
-                    
-                    info(f"[Character Validator] Starting smart validation for {character_name}...", category="character_validation")
-                    validator = AICharacterValidator()
 
-                    # Load character data for smart validation
-                    char_data = safe_read_json(character_path)
-                    if char_data:
-                        # Use smart validation that checks cache first
-                        validation_result = (
-                            validator.validate_and_correct_character_smart_with_result(
-                                char_data
-                            )
-                        )
-                        validated_data = validation_result.data
+            # T079 is a prepare/commit boundary.  Run every remaining model and
+            # deterministic validator against the in-memory candidate before
+            # any final participant lease is acquired.  The transaction
+            # coordinator later rechecks the exact pre-image and owns the only
+            # durable character write.
+            advisories = []
+            try:
+                validator = AICharacterValidator()
+                validation_result = (
+                    validator.validate_and_correct_character_smart_with_result(
+                        updated_data
+                    )
+                )
+                updated_data = validation_result.data
+                if not validation_result.success:
+                    advisories.append("character_validator_failed_open")
+            except Exception as validation_exc:
+                warning(
+                    f"VALIDATION: Character preparation validator failed open: "
+                    f"{validation_exc}",
+                    category="character_validation",
+                )
+                advisories.append("character_validator_unavailable")
 
-                        # Save the validated data back with better error handling
-                        if validation_result.changed:
-                            # Ensure write completes successfully
-                            write_success = safe_write_json(character_path, validated_data)
-                            if write_success:
-                                if validation_result.success:
-                                    debug("VALIDATION: Character auto-validated with corrections (using cache where possible)...", category="character_validation")
-                                else:
-                                    warning(
-                                        f"VALIDATION: Provider validation failed for "
-                                        f"{character_name}, but deterministic repairs "
-                                        f"were saved: {validation_result.error}",
-                                        category="character_validation",
-                                    )
-                                validation_success = validation_result.success
-                            else:
-                                error(f"VALIDATION: Failed to write validated data for {character_name}", category="character_validation")
-                                validation_success = False
-                        elif not validation_result.success:
-                            warning(
-                                f"VALIDATION: Character validation failed for "
-                                f"{character_name}: {validation_result.error}",
-                                category="character_validation",
-                            )
-                            validation_success = False
-                        else:
-                            debug("VALIDATION: Character validated - no corrections needed (cache hits used)", category="character_validation")
-                            validation_success = True
-                    else:
-                        warning("VALIDATION: Could not load character data for validation", category="character_validation")
-                        validation_success = False
-                    
-                    # DEBUG: Check XP after validation
-                    post_validation_data = safe_read_json(character_path)
-                    post_validation_xp = post_validation_data.get('experience_points', 0) if post_validation_data else 0
-                    print(f"DEBUG: [XP Tracking] {character_name} XP AFTER validation: {post_validation_xp}")
-                    if pre_validation_xp != post_validation_xp:
-                        print(f"DEBUG: [XP Tracking] WARNING: XP changed during validation! {pre_validation_xp} -> {post_validation_xp}")
-                        
-                except Exception as e:
-                    warning(f"VALIDATION: Character validation error", category="character_validation")
-                    # Don't fail the update if validation has issues
-                
-                # AI Character Effects Validation after AC validation
-                try:
-                    effects_validator = AICharacterEffectsValidator()
-                    effects_validated_data, effects_success = effects_validator.validate_character_effects_safe(character_path)
-                    
-                    if effects_success and effects_validator.corrections_made:
-                        debug("VALIDATION: Character effects auto-validated with corrections...", category="character_validation")
-                    elif effects_success:
-                        debug("VALIDATION: Character effects validated - no corrections needed", category="character_validation")
-                    else:
-                        warning("VALIDATION: Character effects validation failed, but update completed", category="character_validation")
-                        
-                except Exception as e:
-                    warning(f"VALIDATION: Character effects validation error", category="character_validation")
-                    # Don't fail the update if validation has issues
-                
-                return True
-            else:
-                error("FAILURE: Failed to save character data", category="file_operations")
+            try:
+                effects_validator = AICharacterEffectsValidator()
+                updated_data = effects_validator.validate_and_correct_effects(
+                    updated_data
+                )
+            except Exception as effects_exc:
+                warning(
+                    f"VALIDATION: Effects preparation validator failed open: "
+                    f"{effects_exc}",
+                    category="character_validation",
+                )
+                advisories.append("effects_validator_unavailable")
+
+            updated_data = repair_character_data(updated_data)
+            final_critical_warnings = validate_critical_fields_preserved(
+                character_data,
+                updated_data,
+                character_name,
+            )
+            for identity_field in ("name", "character_role", "character_type"):
+                if (
+                    identity_field in character_data
+                    and updated_data.get(identity_field)
+                    != character_data.get(identity_field)
+                ):
+                    final_critical_warnings.append(
+                        f"{identity_field} changed during validation"
+                    )
+            if final_critical_warnings:
+                error(
+                    "VALIDATION: Final preparation changed protected character "
+                    f"identity/state: {', '.join(final_critical_warnings)}",
+                    category="character_validation",
+                )
                 return False
-                
+            is_final_valid, final_error = validate_character_data(
+                updated_data,
+                schema,
+                character_name,
+            )
+            if not is_final_valid:
+                if attempt == max_attempts:
+                    error(
+                        f"VALIDATION: Final prepared character is invalid: "
+                        f"{final_error}",
+                        category="character_validation",
+                    )
+                    return False
+                messages[-1]["content"] += (
+                    "\n\nPREVIOUS ATTEMPT FAILED AFTER FINAL VALIDATION: "
+                    f"{final_error}. Return a corrected minimal delta."
+                )
+                attempt += 1
+                continue
+
+            debug_data["final_outcome"] = "prepared"
+            debug_data["validation_results"]["advisories"] = list(advisories)
+            debug_log["updates"].append(debug_data)
+            if len(debug_log["updates"]) > 20:
+                debug_log["updates"] = debug_log["updates"][-20:]
+            safe_write_json(debug_log_file, debug_log)
+            return CharacterMutationPlan(
+                character_name=character_name,
+                character_role=character_role,
+                canonical_path=os.path.normcase(os.path.realpath(character_path)),
+                requested_changes=(
+                    changes if isinstance(changes, str) else json.dumps(changes)
+                ),
+                pre_image=copy.deepcopy(source_file_data),
+                post_image=copy.deepcopy(updated_data),
+                pre_image_hash=_character_image_hash(source_file_data),
+                field_facts=tuple(
+                    _field_change_facts(source_file_data, updated_data)
+                ),
+                advisories=tuple(advisories),
+            )
         except json.JSONDecodeError as e:
             error(f"FAILURE: JSON decode error (attempt {attempt})", exception=e, category="ai_processing")
             debug(f"AI_CALL: Raw response: {raw_response}", category="ai_processing")
@@ -2392,7 +2447,10 @@ Please provide the CORRECT currency values:
     # Log failure state
     if 'debug_data' in locals():
         debug_data["final_outcome"] = "failure"
-        debug_data["failure_reason"] = str(e) if 'e' in locals() else "Max attempts reached"
+        last_exception = locals().get("e")
+        debug_data["failure_reason"] = (
+            str(last_exception) if last_exception else "Max attempts reached"
+        )
         # Add to consolidated debug log
         debug_log["updates"].append(debug_data)
         if len(debug_log["updates"]) > 100:

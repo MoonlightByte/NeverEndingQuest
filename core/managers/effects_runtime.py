@@ -22,12 +22,13 @@ from core.managers.effects_state import (
     load_effects_state,
 )
 from updates.update_character_info import (
-    _update_character_info_unlocked,
     _get_character_update_lock,
     detect_character_role,
     fuzzy_match_character_name,
     get_character_path,
     normalize_character_name,
+    execute_character_mutation_plans,
+    prepare_character_update,
     update_character_info,
 )
 from utils.encoding_utils import safe_json_load
@@ -101,35 +102,27 @@ def update_character_with_effects(
             update_character_effects(character_name, changes)
         return success
 
-    resolved, role, path, _sheet = _resolve_character(character_name)
-    with _get_character_update_lock(resolved, role):
-        with path_transaction_lock(
-            path,
-            suffix=".effects.lock",
-            timeout_seconds=30.0,
-        ) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("timed out acquiring the character effect lease")
-            sheet = safe_json_load(path)
-            if not isinstance(sheet, dict):
-                raise EffectsRuntimeError("character sheet became unavailable")
-            result = classify_effect(
-                resolved,
-                changes,
-                effective_sheet(sheet),
-                _world_scalar(party_tracker_data),
-            )
-            operation = None
-            if result["operation"] == "add":
-                operation = {"op": "add", "effect": result["effect"]}
-            elif result["operation"] == "remove":
-                operation = _remove_operation(result, sheet)
-            success = _update_character_info_unlocked(
-                resolved,
-                changes,
-                character_role=role,
-                managed_effect_operation=operation,
-            )
+    from utils.state_transaction import TransactionStalePlanError
+
+    success = False
+    for attempt in range(2):
+        plan = prepare_character_with_effects(
+            character_name,
+            changes,
+            party_tracker_data,
+        )
+        if not plan:
+            break
+        try:
+            execute_character_mutation_plans((plan,))
+            success = True
+            break
+        except TransactionStalePlanError:
+            if attempt == 0:
+                continue
+            break
+        except Exception:
+            break
     if success:
         text = str(changes).lower()
         rest_kind = (
@@ -142,6 +135,35 @@ def update_character_with_effects(
         if rest_kind:
             process_effect_lifecycle(rest_kind=rest_kind)
     return success
+
+
+def prepare_character_with_effects(
+    character_name,
+    changes,
+    party_tracker_data=None,
+):
+    """Run T078/T079 and validators without holding a final character lease."""
+    if not campaign_effects_migrated():
+        return prepare_character_update(character_name, changes)
+
+    resolved, role, _path, sheet = _resolve_character(character_name)
+    result = classify_effect(
+        resolved,
+        changes,
+        effective_sheet(sheet),
+        _world_scalar(party_tracker_data),
+    )
+    operation = None
+    if result["operation"] == "add":
+        operation = {"op": "add", "effect": result["effect"]}
+    elif result["operation"] == "remove":
+        operation = _remove_operation(result, sheet)
+    return prepare_character_update(
+        resolved,
+        changes,
+        character_role=role,
+        managed_effect_operation=operation,
+    )
 
 
 def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"):
