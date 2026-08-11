@@ -12,6 +12,7 @@ encounter receipt and cursor are committed last.
 
 from contextlib import contextmanager
 from copy import deepcopy
+import os
 import re
 
 from core.combat import (
@@ -34,10 +35,227 @@ from core.managers.combat_state import (
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
+from utils.state_transaction import (
+    JsonSnapshot,
+    ParticipantKind,
+    StateTransactionCoordinator,
+    TransactionBusyError,
+)
 
 
 class CombatTransactionError(RuntimeError):
     """The turn could not be safely persisted without risking state drift."""
+
+
+class CombatLeaseBusy(CombatTransactionError):
+    """A combat participant is busy; retry without entering recovery mode."""
+
+    retryable = True
+
+
+class CombatPreconditionChanged(CombatTransactionError):
+    """A staged turn was safely returned to intent resolution after drift."""
+
+    retryable = True
+
+
+def _combat_coordinator(encounter_path, character_paths):
+    paths = [encounter_path] + list((character_paths or {}).values())
+    directories = [
+        os.path.dirname(os.path.realpath(os.path.abspath(os.fspath(path))))
+        for path in paths
+    ]
+    try:
+        workspace_root = os.path.commonpath(directories)
+    except ValueError as exc:
+        raise CombatTransactionError(
+            "Combat participants do not share a filesystem root"
+        ) from exc
+    return StateTransactionCoordinator(
+        workspace_root=workspace_root,
+        journal_root=".combat-lease-journals",
+    )
+
+
+def _combat_lease_participants(coordinator, encounter_path, character_paths):
+    participants = [
+        coordinator.lease_participant(encounter_path, ParticipantKind.ENCOUNTER)
+    ]
+    seen = {participants[0].canonical_path.replace("\\", "/").casefold()}
+    for path in (character_paths or {}).values():
+        participant = coordinator.lease_participant(path, ParticipantKind.CHARACTER)
+        identity = participant.canonical_path.replace("\\", "/").casefold()
+        if identity in seen:
+            continue
+        seen.add(identity)
+        participants.append(participant)
+    return participants
+
+
+@contextmanager
+def _combat_leases(
+    encounter_path,
+    character_paths,
+    timeout_seconds,
+):
+    coordinator = _combat_coordinator(encounter_path, character_paths)
+    participants = _combat_lease_participants(
+        coordinator,
+        encounter_path,
+        character_paths,
+    )
+    try:
+        with coordinator.ordered_leases(
+            participants,
+            timeout_seconds=timeout_seconds,
+        ):
+            yield
+    except TransactionBusyError as exc:
+        raise CombatLeaseBusy(
+            "Combat state is busy; retry the preserved action"
+        ) from exc
+
+
+def _json_fingerprint(value):
+    try:
+        return JsonSnapshot(True, value).digest
+    except (TypeError, ValueError) as exc:
+        raise CombatTransactionError(
+            "Combat character state could not be fingerprinted"
+        ) from exc
+
+
+def _changed_field_projection(sheet, field_names):
+    return {
+        name: {
+            "exists": name in sheet,
+            "value": deepcopy(sheet.get(name)) if name in sheet else None,
+        }
+        for name in field_names
+    }
+
+
+def _character_fingerprints(
+    character_paths,
+    character_preconditions,
+    character_postconditions,
+):
+    expected_names = set((character_paths or {}).keys())
+    before = character_preconditions or {}
+    after = character_postconditions or {}
+    if any(not isinstance(name, str) or not name for name in expected_names):
+        raise CombatTransactionError("Combat character roster names are invalid")
+    if not expected_names.issubset(before) or not expected_names.issubset(after):
+        raise CombatTransactionError(
+            "Combat character fingerprints do not cover the canonical roster"
+        )
+    fingerprints = {}
+    for name in sorted(expected_names):
+        if not isinstance(before.get(name), dict) or not isinstance(
+            after.get(name), dict
+        ):
+            raise CombatTransactionError(
+                "Combat character fingerprint source is invalid"
+            )
+        changed_fields = sorted(
+            field
+            for field in set(before[name]).union(after[name])
+            if before[name].get(field) != after[name].get(field)
+            or (field in before[name]) != (field in after[name])
+        )
+        fingerprints[name] = {
+            "before": _json_fingerprint(before[name]),
+            "after": _json_fingerprint(after[name]),
+            "changedFields": changed_fields,
+            "changedBefore": _json_fingerprint(
+                _changed_field_projection(before[name], changed_fields)
+            ),
+            "changedAfter": _json_fingerprint(
+                _changed_field_projection(after[name], changed_fields)
+            ),
+        }
+    return fingerprints
+
+
+def _validate_character_fingerprints(pending, characters, character_paths):
+    fingerprints = pending.get("characterPreconditions")
+    if fingerprints is None:
+        # Backward compatibility for a turn staged by an older release. Its
+        # absolute event values retain the prior crash-replay behavior.
+        return True
+    expected_names = set((character_paths or {}).keys())
+    if not isinstance(fingerprints, dict) or set(fingerprints) != expected_names:
+        raise CombatTransactionError(
+            "Staged combat character fingerprints are invalid"
+        )
+    for name in expected_names:
+        record = fingerprints.get(name)
+        if not isinstance(record, dict) or set(record) != {
+            "before",
+            "after",
+            "changedFields",
+            "changedBefore",
+            "changedAfter",
+        }:
+            raise CombatTransactionError(
+                "Staged combat character fingerprint record is invalid"
+            )
+        changed_fields = record.get("changedFields")
+        if (
+            not isinstance(changed_fields, list)
+            or changed_fields != sorted(set(changed_fields))
+            or any(not isinstance(field, str) for field in changed_fields)
+        ):
+            raise CombatTransactionError(
+                "Staged combat changed-field fingerprint is invalid"
+            )
+        allowed = {
+            record.get("before"),
+            record.get("after"),
+            record.get("changedBefore"),
+            record.get("changedAfter"),
+        }
+        if any(
+            not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
+            for value in allowed
+        ):
+            raise CombatTransactionError(
+                "Staged combat character fingerprint is invalid"
+            )
+        current = _json_fingerprint(characters[name])
+        if current in {record["before"], record["after"]}:
+            continue
+        # A process may die after writing this character but before committing
+        # the encounter. A later unrelated transaction can then alter another
+        # top-level field. Only an exact match for the fields combat changed
+        # proves the combat post-image was already applied; an empty/no-op
+        # projection cannot prove that and deliberately pauses instead.
+        if (
+            changed_fields
+            and record["changedBefore"] != record["changedAfter"]
+            and _json_fingerprint(
+                _changed_field_projection(characters[name], changed_fields)
+            )
+            == record["changedAfter"]
+        ):
+            continue
+        return False
+    return True
+
+
+def _return_stale_turn_to_intent(encounter, characters):
+    state = ensure_combat_state(encounter)
+    pending = state.get("pendingTurn")
+    if not isinstance(pending, dict):
+        raise CombatTransactionError("The stale combat turn is no longer pending")
+    for name, character in characters.items():
+        _project_character_effect_stats(encounter, name, character)
+    pending["stage"] = "intent_pending"
+    pending["events"] = []
+    pending["retryReason"] = "character_state_changed"
+    pending.pop("characterPreconditions", None)
+    state["phase"] = "resolving_turn"
+    state.pop("pauseReason", None)
 
 
 @contextmanager
@@ -56,7 +274,7 @@ def completion_lease(encounter_path, timeout_seconds=5.0):
         timeout_seconds=timeout_seconds,
     ) as acquired:
         if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
         encounter = _load_object(encounter_path, "encounter")
         ensure_combat_state(encounter)
         yield encounter
@@ -113,7 +331,7 @@ def claim_turn(
         timeout_seconds=timeout_seconds,
     ) as acquired:
         if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
         pending = begin_turn(
@@ -148,7 +366,7 @@ def append_pending_player_input(
         timeout_seconds=timeout_seconds,
     ) as acquired:
         if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
         pending = state.get("pendingTurn")
@@ -181,7 +399,7 @@ def record_pending_player_request(
         timeout_seconds=timeout_seconds,
     ) as acquired:
         if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
         pending = state.get("pendingTurn")
@@ -204,18 +422,59 @@ def stage_events(
     events,
     roll_consumption=None,
     delivery_context=None,
+    character_paths=None,
+    character_preconditions=None,
+    character_postconditions=None,
     timeout_seconds=5.0,
 ):
     """Persist fully resolved events before applying any of their effects."""
-    with path_transaction_lock(
-        encounter_path,
-        suffix=".combat.lock",
-        timeout_seconds=timeout_seconds,
-    ) as acquired:
-        if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+    lease = (
+        _combat_leases(encounter_path, character_paths, timeout_seconds)
+        if character_paths is not None
+        else path_transaction_lock(
+            encounter_path,
+            suffix=".combat.lock",
+            timeout_seconds=timeout_seconds,
+        )
+    )
+    with lease as acquired:
+        if character_paths is None and acquired is None:
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
         encounter = _load_object(encounter_path, "encounter")
+        fingerprints = None
+        if character_paths is not None:
+            fingerprints = _character_fingerprints(
+                character_paths,
+                character_preconditions,
+                character_postconditions,
+            )
+            authoritative = {
+                name: _load_object(path, "character %s" % name)
+                for name, path in character_paths.items()
+            }
+            if any(
+                _json_fingerprint(authoritative[name])
+                != fingerprints[name]["before"]
+                for name in fingerprints
+            ):
+                state = ensure_combat_state(encounter)
+                pending = state.get("pendingTurn")
+                if isinstance(pending, dict) and pending.get("turnId") == turn_id:
+                    for name, character in authoritative.items():
+                        _project_character_effect_stats(
+                            encounter,
+                            name,
+                            character,
+                        )
+                    pending["retryReason"] = "character_state_changed"
+                    _write_object(encounter_path, encounter, "stale combat intent receipt")
+                raise CombatPreconditionChanged(
+                    "Character state changed while combat intent was resolving"
+                )
         pending = stage_turn_events(encounter, turn_id, events)
+        if fingerprints is not None:
+            pending["characterPreconditions"] = fingerprints
+            pending.pop("retryReason", None)
         context = delivery_context if isinstance(delivery_context, dict) else {}
         pending["deliveryContext"] = {
             "historyInput": str(context.get("historyInput") or "")[:24000],
@@ -249,7 +508,7 @@ def record_delivery_narration(
         timeout_seconds=timeout_seconds,
     ) as acquired:
         if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
         delivery = state.get("pendingDelivery")
@@ -311,7 +570,7 @@ def record_narration_attempt(
         timeout_seconds=timeout_seconds,
     ) as acquired:
         if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
         delivery = state.get("pendingDelivery")
@@ -360,7 +619,7 @@ def acknowledge_delivery(
         timeout_seconds=timeout_seconds,
     ) as acquired:
         if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
         delivery_id = str(delivery_id)
@@ -398,13 +657,11 @@ def enter_effect_clock(
     timeout_seconds=5.0,
 ):
     """Idempotently convert world deadlines to combat rounds before a turn."""
-    with path_transaction_lock(
+    with _combat_leases(
         encounter_path,
-        suffix=".combat.lock",
-        timeout_seconds=timeout_seconds,
-    ) as acquired:
-        if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+        character_paths,
+        timeout_seconds,
+    ):
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
         if state.get("effectsClockEntered"):
@@ -432,13 +689,11 @@ def exit_effect_clock(
     timeout_seconds=5.0,
 ):
     """Idempotently return surviving round effects to the world clock."""
-    with path_transaction_lock(
+    with _combat_leases(
         encounter_path,
-        suffix=".combat.lock",
-        timeout_seconds=timeout_seconds,
-    ) as acquired:
-        if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+        character_paths,
+        timeout_seconds,
+    ):
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
         if state.get("effectsClockExited"):
@@ -475,14 +730,11 @@ def apply_staged_turn(
     duplicate monster display names are distinguished only by combatantId in
     the encounter.
     """
-    with path_transaction_lock(
+    with _combat_leases(
         encounter_path,
-        suffix=".combat.lock",
-        timeout_seconds=timeout_seconds,
-    ) as acquired:
-        if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
-
+        character_paths,
+        timeout_seconds,
+    ):
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
         pending = state.get("pendingTurn")
@@ -499,6 +751,17 @@ def apply_staged_turn(
         characters = {}
         for name, path in (character_paths or {}).items():
             characters[name] = _load_object(path, "character %s" % name)
+
+        if not _validate_character_fingerprints(
+            pending,
+            characters,
+            character_paths,
+        ):
+            _return_stale_turn_to_intent(encounter, characters)
+            _write_object(encounter_path, encounter, "stale combat turn receipt")
+            raise CombatPreconditionChanged(
+                "Character state changed before the staged combat turn committed"
+            )
 
         next_encounter = deepcopy(encounter)
         next_characters = deepcopy(characters)
@@ -549,13 +812,11 @@ def apply_combat_rewards(
     timeout_seconds=5.0,
 ):
     """Apply end-of-combat XP once, including recovery between file writes."""
-    with path_transaction_lock(
+    with _combat_leases(
         encounter_path,
-        suffix=".combat.lock",
-        timeout_seconds=timeout_seconds,
-    ) as acquired:
-        if acquired is None:
-            raise CombatTransactionError("Timed out acquiring the combat lease")
+        character_paths,
+        timeout_seconds,
+    ):
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
         completion = state["completion"]
