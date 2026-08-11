@@ -182,6 +182,12 @@ class StageExecutionError(RuntimeError):
 
 def _provider_failure_class(exc: BaseException) -> str:
     """Classify a provider exception without retaining its message or traceback."""
+    # The shared provider wrapper intentionally exposes one stable exception
+    # type.  Classification still needs the bounded underlying type/status so
+    # a timeout or authentication failure is not flattened into "provider".
+    original = getattr(exc, "original_error", None)
+    if isinstance(original, BaseException) and original is not exc:
+        exc = original
     if isinstance(exc, (KeyboardInterrupt, SystemExit, InterruptedError)):
         return "interrupted"
     if isinstance(exc, TimeoutError) or "timeout" in type(exc).__name__.casefold():
@@ -205,7 +211,7 @@ def production_completion_gateway(request: StructuredRequest) -> CompletionPaylo
     from utils.capture.multi_model_capture import capture_and_fanout
 
     call_options = mutable_copy(request.model_options)
-    if request.provider == "openai":
+    if request.provider in {"openai", "lmstudio"}:
         call_options["response_format"] = {
             "type": "json_schema",
             "json_schema": {

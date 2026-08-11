@@ -66,8 +66,9 @@ MODULES_DIR = "modules"
 DEFAULT_MODULE = "The_Thornwood_Watch"
 
 # Developer-only story-first module generator. Keep False for the unchanged
-# production/legacy module builder. The gold path currently supports approved
-# OpenAI/Gemini cloud configurations; LM Studio support is a later phase.
+# production/legacy module builder. When enabled, OpenAI, Gemini, and LM Studio
+# receive three bounded attempts per advanced model stage; model-format
+# exhaustion automatically continues through the compatible builder.
 USE_STORY_FIRST_GENERATOR = False
 
 # Note: All model configurations are now imported from model_config.py above

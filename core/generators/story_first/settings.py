@@ -18,13 +18,13 @@ class StagePolicy:
 
 STAGE_POLICIES: Mapping[str, StagePolicy] = MappingProxyType(
     {
-        "outline": StagePolicy(temperature=0.8, max_attempts=2),
-        "area_binding": StagePolicy(temperature=0.45, max_attempts=2),
-        "plot_derivation": StagePolicy(temperature=0.55, max_attempts=2),
-        "location_fill": StagePolicy(temperature=0.8, max_attempts=2),
-        "npc_repair": StagePolicy(temperature=0.35, max_attempts=2),
-        "candidate_hardening": StagePolicy(temperature=0.3, max_attempts=2),
-        "creature_compile": StagePolicy(temperature=0.45, max_attempts=2),
+        "outline": StagePolicy(temperature=0.8, max_attempts=3),
+        "area_binding": StagePolicy(temperature=0.45, max_attempts=3),
+        "plot_derivation": StagePolicy(temperature=0.55, max_attempts=3),
+        "location_fill": StagePolicy(temperature=0.8, max_attempts=3),
+        "npc_repair": StagePolicy(temperature=0.35, max_attempts=3),
+        "candidate_hardening": StagePolicy(temperature=0.3, max_attempts=3),
+        "creature_compile": StagePolicy(temperature=0.45, max_attempts=3),
     }
 )
 
@@ -45,6 +45,7 @@ _GOLD_MODEL_CONFIG_NAMES: Mapping[str, Mapping[str, str]] = MappingProxyType(
             {
                 "openai": "DM_MAIN_GPT52_NONE",
                 "gemini": "DM_MAIN_GEMINI_PRO_LOW",
+                "lmstudio": "DM_MAIN_LMSTUDIO",
             }
         )
         for stage in STAGE_POLICIES
@@ -63,14 +64,9 @@ def gold_model_config(
     model_config_module: Optional[ModuleType] = None,
 ) -> Dict[str, Any]:
     """Return a detached named cloud configuration for one gold-path stage."""
-    if provider == "lmstudio":
+    if provider not in {"openai", "gemini", "lmstudio"}:
         raise StoryFirstProviderUnsupportedError(
-            "The story-first gold path does not support LM Studio yet. "
-            "Disable USE_STORY_FIRST_GENERATOR or select OpenAI/Gemini."
-        )
-    if provider not in {"openai", "gemini"}:
-        raise StoryFirstProviderUnsupportedError(
-            "The story-first gold path requires the OpenAI or Gemini provider."
+            "The story-first gold path requires OpenAI, Gemini, or LM Studio."
         )
     if stage not in _GOLD_MODEL_CONFIG_NAMES:
         raise ValueError(f"unknown story-first model stage: {stage}")

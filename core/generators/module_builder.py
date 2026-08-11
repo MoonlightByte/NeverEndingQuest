@@ -76,6 +76,99 @@ set_script_name("module_builder")
 
 
 _AUTH_ERROR_TYPE_NAMES = {"AuthenticationError", "PermissionDeniedError"}
+_STORY_FIRST_MODEL_FALLBACK_FAILURES = frozenset(
+    {
+        "empty_response",
+        "duplicate_json_key",
+        "malformed_json",
+        "schema",
+        "semantic",
+        "capacity",
+        "provider",
+        "timeout",
+    }
+)
+STORY_FIRST_MODEL_FALLBACK_MESSAGE = (
+    "The selected model could not complete the advanced story-first format after "
+    "3 attempts. This is a model-format limitation, so NeverEndingQuest is "
+    "adjusting to a compatible generation process and will continue creating "
+    "your adventure."
+)
+_STORY_FIRST_PROVIDER_FALLBACK_MESSAGE = (
+    "The selected model provider does not support the advanced story-first "
+    "format. NeverEndingQuest is adjusting to a compatible generation process "
+    "and will continue creating your adventure."
+)
+
+
+def _run_managed_module_build(
+    *,
+    managed,
+    requested_name,
+    kind,
+    story_first_candidate,
+    compatible_candidate,
+    prepare_candidate,
+    defer_promotion,
+    use_story_first,
+    progress_callback,
+):
+    """Run story-first once, then safely dial down on model-format exhaustion.
+
+    Each story-first model stage owns its three bounded response attempts.  A
+    rejected hidden candidate is retired by ``ManagedModuleBuilder`` before the
+    compatible generator receives a fresh workspace. Local durability,
+    authentication, cancellation, interruption, and indeterminate lifecycle
+    failures deliberately bypass this fallback.
+    """
+
+    def run(candidate):
+        return managed.run(
+            requested_name=requested_name,
+            kind=kind,
+            build_candidate=candidate,
+            prepare_candidate=prepare_candidate,
+            defer_promotion=defer_promotion,
+            retain_story_first_failure=False,
+        )
+
+    if not use_story_first:
+        return run(compatible_candidate)
+
+    fallback_message = None
+    try:
+        return run(story_first_candidate)
+    except BaseException as exc:
+        from core.generators.story_first.pipeline import StoryFirstPipelineError
+        from core.generators.story_first.settings import (
+            StoryFirstProviderUnsupportedError,
+        )
+
+        if isinstance(exc, StoryFirstProviderUnsupportedError):
+            fallback_message = _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE
+        elif isinstance(exc, StoryFirstPipelineError) and (
+            exc.failure_class in _STORY_FIRST_MODEL_FALLBACK_FAILURES
+        ):
+            fallback_message = STORY_FIRST_MODEL_FALLBACK_MESSAGE
+        else:
+            raise
+
+    warning(
+        "Story-first generation reached a bounded model limitation; "
+        "continuing with the compatible generator.",
+        category="module_generation",
+    )
+    if progress_callback:
+        progress_callback(
+            {
+                "stage": 6,
+                "total_stages": 9,
+                "stage_name": "Adjusting generator",
+                "percentage": 66,
+                "message": fallback_message,
+            }
+        )
+    return run(compatible_candidate)
 
 
 def _is_auth_error(exc):
@@ -2594,7 +2687,12 @@ def _ai_driven_module_creation_impl(
             else LifecycleKind.TOOLKIT
         )
 
-        def build_candidate(candidate_path: Path, final_name: str) -> Dict[str, Any]:
+        def build_candidate(
+            candidate_path: Path,
+            final_name: str,
+            *,
+            story_first_path: bool,
+        ) -> Dict[str, Any]:
             if progress_callback:
                 progress_callback(
                     {
@@ -2662,7 +2760,7 @@ def _ai_driven_module_creation_impl(
                         "message": "Starting module generation process...",
                     }
                 )
-            if use_story_first:
+            if story_first_path:
                 from core.generators.story_first.contracts import StorySeed
 
                 story_seed = StorySeed(
@@ -2735,13 +2833,24 @@ def _ai_driven_module_creation_impl(
             return {"output_directory": os.fspath(candidate_path)}
 
         managed = ManagedModuleBuilder(modules_dir=Path("modules"))
-        result = managed.run(
+        result = _run_managed_module_build(
+            managed=managed,
             requested_name=module_name,
             kind=kind,
-            build_candidate=build_candidate,
+            story_first_candidate=lambda candidate_path, final_name: build_candidate(
+                candidate_path,
+                final_name,
+                story_first_path=True,
+            ),
+            compatible_candidate=lambda candidate_path, final_name: build_candidate(
+                candidate_path,
+                final_name,
+                story_first_path=False,
+            ),
             prepare_candidate=prepare_candidate,
             defer_promotion=(kind is LifecycleKind.ACTION),
-            retain_story_first_failure=use_story_first,
+            use_story_first=use_story_first,
+            progress_callback=progress_callback,
         )
         module_name = result.module_name
         info(
