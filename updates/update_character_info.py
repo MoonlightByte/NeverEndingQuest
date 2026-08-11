@@ -1235,6 +1235,57 @@ def validate_requested_character_update_completeness(changes, updates):
     return not missing, missing
 
 
+def ac_equipment_coupling_requirement(character_data, updates):
+    """Require AC only for a concrete, structured equip-state transition.
+
+    The check deliberately does not interpret prose or homebrew mechanics.  It
+    gates only the small domain where the returned delta itself proves that a
+    complete structured armor or shield changed equipped state.
+    """
+    if not isinstance(character_data, dict) or not isinstance(updates, dict):
+        return ()
+    equipment_delta = updates.get("equipment")
+    if not isinstance(equipment_delta, list):
+        return ()
+    from core.validation.ac_validation import is_complete_structured_ac_item
+
+    def normalized_item_name(value):
+        return value.strip().casefold() if isinstance(value, str) else ""
+
+    source_by_name = {
+        normalized_item_name(item.get("item_name")): item
+        for item in character_data.get("equipment", [])
+        if isinstance(item, dict) and normalized_item_name(item.get("item_name"))
+    }
+    for delta_item in equipment_delta:
+        if not isinstance(delta_item, dict) or type(delta_item.get("equipped")) is not bool:
+            continue
+        name = normalized_item_name(delta_item.get("item_name"))
+        source_item = source_by_name.get(name)
+        if source_item is None:
+            if delta_item.get("equipped") is True and is_complete_structured_ac_item(
+                delta_item
+            ):
+                return () if "armorClass" in updates else ("armorClass",)
+            continue
+        candidate = deep_merge_dict(source_item, delta_item)
+        if (
+            bool(source_item.get("equipped", False)) != delta_item.get("equipped")
+            and is_complete_structured_ac_item(candidate)
+        ):
+            return () if "armorClass" in updates else ("armorClass",)
+    return ()
+
+
+def _has_structured_ac_equipment_transition(character_data, updates):
+    """Return whether a delta carries the concrete transition B2 observed."""
+    if not isinstance(updates, dict):
+        return False
+    probe = copy.deepcopy(updates)
+    probe.pop("armorClass", None)
+    return bool(ac_equipment_coupling_requirement(character_data, probe))
+
+
 def build_requested_character_delta_gemini_schema(changes, character_schema):
     """Build a strict Gemini schema for the fields this update must return."""
     from model_config import convert_to_gemini_schema
@@ -1892,6 +1943,7 @@ Character Role: {character_role}
     
     max_attempts = 3
     attempt = 1
+    ac_coupling_retry_used = False
     
     # T079 MIGRATION NOTE: Gemini requires response_schema forcing on this callsite.
     # The schema is auto-converted from schemas/char_schema.json at runtime and
@@ -2072,6 +2124,47 @@ Character Role: {character_role}
                         category="character_updates",
                     )
                     return False
+                attempt += 1
+                continue
+
+            ac_coupling_missing = ac_equipment_coupling_requirement(
+                character_data,
+                updates,
+            )
+            if ac_coupling_retry_used and not (
+                "armorClass" in updates
+                and _has_structured_ac_equipment_transition(
+                    character_data,
+                    updates,
+                )
+            ):
+                error(
+                    "FAILURE: T079 correction did not preserve both halves of "
+                    "the structured armor equip-state update.",
+                    category="character_updates",
+                )
+                return False
+            if ac_coupling_missing:
+                if ac_coupling_retry_used:
+                    error(
+                        "FAILURE: T079 repeated a structured armor equip-state "
+                        "change without its coupled armorClass value.",
+                        category="character_updates",
+                    )
+                    return False
+                ac_coupling_retry_used = True
+                feedback_message = (
+                    "\n\nPREVIOUS ATTEMPT OMITTED A COUPLED FIELD: Your delta "
+                    "changes the equipped state of complete structured armor. "
+                    "Return the same intended equipment change together with the "
+                    "resulting top-level armorClass integer in one delta object."
+                )
+                messages[-1]["content"] += feedback_message
+                warning(
+                    "T079 structured armor equip-state delta omitted armorClass; "
+                    "requesting one bounded correction",
+                    category="character_validation",
+                )
                 attempt += 1
                 continue
             

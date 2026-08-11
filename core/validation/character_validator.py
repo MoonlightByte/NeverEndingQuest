@@ -70,6 +70,11 @@ from enum import Enum
 from typing import Dict, List, Any, Optional, Union
 from core.ai import api_client
 from utils.character_sheet_contract import repair_required_ammunition_field
+from core.validation.ac_validation import (
+    ACConfidence,
+    compute_structured_base_ac,
+    record_ac_validation_status,
+)
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T051", "core/validation/character_validator.py", 1946)
 register_callsite("T052", "core/validation/character_validator.py", 2085)
@@ -1714,7 +1719,14 @@ class AICharacterValidator:
         """
         character_name = character_data.get('name', 'Unknown')
         info(f"[Smart Validator] Checking {character_name} for needed validations...", category="character_validation")
-        original_snapshot = copy.deepcopy(character_data)
+        # Refresh the existing derived evidence before deciding whether AC can
+        # be handled deterministically or needs the model. This is local and
+        # pure; T050 still runs later as the owning effects validator.
+        from core.validation.character_effects_validator import (
+            calculate_equipment_effects,
+        )
+
+        original_snapshot = calculate_equipment_effects(character_data)
 
         # Check what needs validation
         needs = self.check_validation_needs(original_snapshot)
@@ -1744,7 +1756,8 @@ class AICharacterValidator:
                 repaired_data,
             )
 
-        if needs['ac']:
+        structured_ac = compute_structured_base_ac(original_snapshot)
+        if needs['ac'] or structured_ac.confidence is ACConfidence.CONFIDENT:
             result = self.ai_validate_armor_class_with_result(corrected_data)
             if not result.success:
                 return failed_after_deterministic(result, "T051")
@@ -1791,7 +1804,13 @@ class AICharacterValidator:
         # The legacy batch facade predates explicit validation results, but it
         # must still honor the same ownership rule as the single-character
         # paths: never let deterministic repairs mutate caller-owned objects.
-        working_characters = copy.deepcopy(character_list)
+        from core.validation.character_effects_validator import (
+            calculate_equipment_effects,
+        )
+
+        working_characters = [
+            calculate_equipment_effects(character) for character in character_list
+        ]
         
         info(f"[Smart Batch] Processing {len(working_characters)} characters", category="character_validation")
         
@@ -1804,6 +1823,7 @@ class AICharacterValidator:
         
         # Track which characters need which validations
         character_needs = {}
+        deterministic_ac_validations = 0
         
         for character in working_characters:
             char_name = character.get('name', 'Unknown')
@@ -1811,8 +1831,11 @@ class AICharacterValidator:
             character_needs[char_name] = needs
             
             # Add to appropriate batches
-            if needs['ac']:
+            structured_ac = compute_structured_base_ac(character)
+            if needs['ac'] or structured_ac.confidence is ACConfidence.CONFIDENT:
                 validation_batches['ac'].append(character)
+                if structured_ac.confidence is ACConfidence.CONFIDENT:
+                    deterministic_ac_validations += 1
             if needs['inventory']:
                 validation_batches['inventory'].append(character)
             if needs['currency']:
@@ -1869,7 +1892,12 @@ class AICharacterValidator:
         
         # Report savings
         total_possible = len(working_characters) * 3  # 3 validators per character
-        total_called = len(validation_batches['ac']) + len(validation_batches['inventory']) + len(validation_batches['currency'])
+        total_called = (
+            len(validation_batches['ac'])
+            - deterministic_ac_validations
+            + len(validation_batches['inventory'])
+            + len(validation_batches['currency'])
+        )
         total_skipped = total_possible - total_called
         
         print(f"DEBUG: [Smart Batch] Complete: {total_called}/{total_possible} API calls made ({total_skipped} skipped due to caching)")
@@ -1891,6 +1919,22 @@ class AICharacterValidator:
             Character data with AI-corrected AC (from cache if unchanged)
         """
         
+        structured_ac = compute_structured_base_ac(character_data)
+        if structured_ac.confidence is ACConfidence.CONFIDENT:
+            corrected_data = copy.deepcopy(character_data)
+            corrected_data['armorClass'] = structured_ac.armor_class
+            character_name = corrected_data.get('name', 'Unknown')
+            final_ac_hash = self._compute_ac_hash(
+                self.extract_ac_relevant_data(corrected_data)
+            )
+            self._update_ac_cache(character_name, final_ac_hash, corrected_data)
+            record_ac_validation_status(
+                corrected_data,
+                "deterministic",
+                "structured_armor",
+            )
+            return _validation_result(character_data, corrected_data)
+
         # Extract only AC-relevant data to reduce tokens
         ac_relevant_data = self.extract_ac_relevant_data(character_data)
         
@@ -1910,6 +1954,11 @@ class AICharacterValidator:
                 debug(f"[Validation Cache] Last validated: {cache_entry.get('last_ac_validation')}", category="character_validation")
                 debug(f"[Validation Cache] Cached AC value: {cache_entry.get('ac_value')}", category="character_validation")
             
+            record_ac_validation_status(
+                character_data,
+                "model",
+                "ambiguous_evidence",
+            )
             return CharacterValidationResult(
                 character_data,
                 CharacterValidationStatus.NO_CHANGE,
@@ -1981,6 +2030,12 @@ class AICharacterValidator:
                 )
                 self._update_ac_cache(character_name, final_ac_hash, merged_data)
 
+                record_ac_validation_status(
+                    merged_data,
+                    "model",
+                    "ambiguous_evidence",
+                )
+
                 return _validation_result(character_data, merged_data)
             except Exception as e:
                 last_error = e
@@ -2002,6 +2057,11 @@ class AICharacterValidator:
                         },
                     ])
 
+        record_ac_validation_status(
+            character_data,
+            "unavailable",
+            "model_validation_failed",
+        )
         return _failed_validation_result(character_data, last_error)
 
     def ai_validate_armor_class(self, character_data: Dict[str, Any]) -> Dict[str, Any]:

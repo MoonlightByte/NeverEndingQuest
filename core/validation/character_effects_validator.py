@@ -61,6 +61,58 @@ except:
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.module_path_manager import ModulePathManager
 
+
+def calculate_equipment_effects(character_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy with the current derived equipment effects.
+
+    This intentionally preserves the existing effect-shaping behavior.  Keeping
+    it as a small pure function lets AC validation see the same up-to-date
+    evidence that the effects validator will persist later in the preparation
+    pipeline, without invoking T050 or mutating its caller's dictionary.
+    """
+    corrected_data = copy.deepcopy(character_data)
+    equipment_effects = []
+
+    for item in corrected_data.get('equipment', []):
+        if item.get('equipped', False) and 'effects' in item:
+            for effect in item['effects']:
+                equipment_effects.append({
+                    'name': f"{item['item_name']} - {effect.get('type', 'effect').title()}",
+                    'type': effect.get('type', 'other'),
+                    'target': effect.get('target', ''),
+                    'value': effect.get('value'),
+                    'description': effect.get('description', ''),
+                    'source': item['item_name']
+                })
+
+    for feature in corrected_data.get('classFeatures', []):
+        if 'Fighting Style: Defense' in feature.get('name', ''):
+            equipment_effects.append({
+                'name': 'Fighting Style: Defense',
+                'type': 'bonus',
+                'target': 'AC',
+                'value': 1,
+                'description': '+1 to AC when wearing armor',
+                'source': 'Class Feature'
+            })
+
+    for item in corrected_data.get('equipment', []):
+        if (item.get('equipped', False) and
+                item.get('item_type') == 'armor' and
+                item.get('armor_category') == 'shield'):
+            equipment_effects.append({
+                'name': 'Shield AC Bonus',
+                'type': 'bonus',
+                'target': 'AC',
+                'value': item.get('ac_bonus', 2),
+                'description': f"Shield provides +{item.get('ac_bonus', 2)} AC",
+                'source': item['item_name']
+            })
+
+    corrected_data['equipment_effects'] = equipment_effects
+    return corrected_data
+
+
 class AICharacterEffectsValidator:
     def __init__(self):
         """Initialize AI-powered effects validator"""
@@ -150,60 +202,13 @@ class AICharacterEffectsValidator:
         Returns:
             Character data with calculated equipment_effects
         """
-        equipment_effects = []
-        
-        # Check all equipped items for effects
-        if 'equipment' in character_data:
-            for item in character_data['equipment']:
-                if item.get('equipped', False) and 'effects' in item:
-                    # Add each effect from the equipped item
-                    for effect in item['effects']:
-                        equipment_effect = {
-                            'name': f"{item['item_name']} - {effect.get('type', 'effect').title()}",
-                            'type': effect.get('type', 'other'),
-                            'target': effect.get('target', ''),
-                            'value': effect.get('value'),
-                            'description': effect.get('description', ''),
-                            'source': item['item_name']
-                        }
-                        equipment_effects.append(equipment_effect)
-        
-        # Add class feature effects that are always active
-        if 'classFeatures' in character_data:
-            for feature in character_data['classFeatures']:
-                # Check for passive bonuses like Fighting Style: Defense
-                if 'Fighting Style: Defense' in feature.get('name', ''):
-                    equipment_effects.append({
-                        'name': 'Fighting Style: Defense',
-                        'type': 'bonus',
-                        'target': 'AC',
-                        'value': 1,
-                        'description': '+1 to AC when wearing armor',
-                        'source': 'Class Feature'
-                    })
-        
-        # Check for shield bonus
-        if 'equipment' in character_data:
-            for item in character_data['equipment']:
-                if (item.get('equipped', False) and 
-                    item.get('item_type') == 'armor' and 
-                    item.get('armor_category') == 'shield'):
-                    equipment_effects.append({
-                        'name': 'Shield AC Bonus',
-                        'type': 'bonus',
-                        'target': 'AC',
-                        'value': item.get('ac_bonus', 2),
-                        'description': f"Shield provides +{item.get('ac_bonus', 2)} AC",
-                        'source': item['item_name']
-                    })
-        
-        # Update character data
-        character_data['equipment_effects'] = equipment_effects
-        
-        if len(equipment_effects) > 0:
-            self.corrections_made.append(f"Calculated {len(equipment_effects)} equipment effects")
-        
-        return character_data
+        corrected_data = calculate_equipment_effects(character_data)
+        equipment_effects = corrected_data.get('equipment_effects', [])
+        if equipment_effects:
+            self.corrections_made.append(
+                f"Calculated {len(equipment_effects)} equipment effects"
+            )
+        return corrected_data
     
     def expire_temporary_effects(self, character_data: Dict[str, Any], game_time: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -969,10 +969,14 @@ def _effective_character_for_ui(character_data):
         return character_data
     try:
         from core.effects.effective import effective_sheet
-        return effective_sheet(character_data)
+        projected = effective_sheet(character_data)
     except Exception:
-        pass
-    return character_data
+        projected = character_data.copy()
+    try:
+        from core.validation.ac_validation import attach_ac_validation_advisory
+        return attach_ac_validation_advisory(projected)
+    except Exception:
+        return projected
 
 @app.route('/upload-portrait', methods=['POST'])
 def upload_portrait():
