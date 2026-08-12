@@ -4270,6 +4270,11 @@ def process_ai_response(
             for index, action in enumerate(actions)
             if action.get("action") != "updateCharacterInfo"
         ]
+        indexed_storage = tuple(
+            (index, action)
+            for index, action in other_actions
+            if action.get("action") == "storageInteraction"
+        )
         if char_update_actions and _agentic_post_combat_narration_pass(
             party_tracker_data
         ):
@@ -4315,11 +4320,10 @@ def process_ai_response(
             except Exception as e:
                 debug(f"Could not update status: {e}", category="status")
         
-        # Prepare T078/T079/model validators without final file leases, then
-        # atomically group only concrete complementary transfer deltas from
-        # the original indexed response.  The adapter commits independent
-        # updates in original order and stops at the first safe failure.
-        if char_update_actions:
+        # Prepare every resource action without final file leases.  The
+        # response coordinator then commits one merged participant image set,
+        # or leaves every character and storage file unchanged.
+        if char_update_actions or indexed_storage:
             debug(
                 f"STATE_CHANGE: Processing {len(char_update_actions)} "
                 "character updates through the transfer coordinator",
@@ -4329,52 +4333,85 @@ def process_ai_response(
                 "DEBUG: STATE_CHANGE: Processing "
                 f"{len(char_update_actions)} coordinated character updates"
             )
+            resource_action_indices = tuple(
+                sorted(
+                    {index for index, _action in char_update_actions}
+                    | {index for index, _action in indexed_storage}
+                )
+            )
+            resource_failed_stage = "resource_response_import"
             try:
                 from core.managers.character_transfer import (
-                    commit_prepared_character_actions,
                     prepare_character_actions,
+                    prepare_character_response_actions,
+                    process_character_response_effects,
+                )
+                from core.managers.resource_response_transaction import (
+                    execute_resource_response_transaction,
                 )
                 from core.managers.storage_transaction import (
                     process_adjacent_storage_fee_groups,
                 )
+                from utils.state_transaction import TransactionStalePlanError
 
-                prepared_characters = prepare_character_actions(
-                    char_update_actions,
-                    party_tracker_data,
-                )
-                indexed_storage = tuple(
-                    (index, action)
-                    for index, action in other_actions
-                    if action.get("action") == "storageInteraction"
-                )
-                resource_action_indices = tuple(
-                    sorted(
-                        {index for index, _action in char_update_actions}
-                        | {index for index, _action in indexed_storage}
+                for resource_attempt in range(2):
+                    resource_failed_stage = "character_prepare"
+                    prepared_characters = prepare_character_actions(
+                        char_update_actions,
+                        party_tracker_data,
                     )
-                )
-                fee_result = process_adjacent_storage_fee_groups(
-                    prepared_characters,
-                    indexed_storage,
-                    party_tracker_data,
-                )
-                if not fee_result.get("success"):
-                    result = {
-                        "status": "error",
-                        "success": False,
-                        "response_data": {
-                            "failure_code": fee_result.get(
-                                "failure_code", "storage_fee_unverified"
+                    resource_failed_stage = "storage_prepare"
+                    fee_result = process_adjacent_storage_fee_groups(
+                        prepared_characters,
+                        indexed_storage,
+                        party_tracker_data,
+                    )
+                    if not fee_result.get("success"):
+                        result = {
+                            "status": "error",
+                            "success": False,
+                            "response_data": {
+                                "failure_code": fee_result.get(
+                                    "failure_code", "storage_fee_unverified"
+                                )
+                            },
+                            "diagnostic": fee_result.get("diagnostic"),
+                            "exception_class": fee_result.get("exception_class"),
+                            "failed_stage": fee_result.get("failed_stage"),
+                            "action_indices": fee_result.get(
+                                "action_indices", list(resource_action_indices)
+                            ),
+                        }
+                        break
+                    resource_failed_stage = "character_batch_validation"
+                    character_result = prepare_character_response_actions(
+                        fee_result.get("remaining_character_actions", ()),
+                        party_tracker_data,
+                    )
+                    if not character_result.get("success"):
+                        result = character_result
+                        break
+                    final_characters = tuple(
+                        character_result.get("prepared_actions", ())
+                    )
+                    try:
+                        resource_failed_stage = "resource_response_commit"
+                        transaction_result = execute_resource_response_transaction(
+                            final_characters,
+                            tuple(fee_result.get("storage_plans", ())),
+                        )
+                    except TransactionStalePlanError:
+                        if resource_attempt == 0:
+                            debug(
+                                "STATE_CHANGE: Resource response changed during "
+                                "preparation; rebuilding the complete response once",
+                                category="character_updates",
                             )
-                        },
-                        "diagnostic": fee_result.get("diagnostic"),
-                        "exception_class": fee_result.get("exception_class"),
-                        "failed_stage": fee_result.get("failed_stage"),
-                        "action_indices": fee_result.get(
-                            "action_indices", list(resource_action_indices)
-                        ),
-                    }
-                else:
+                            continue
+                        raise
+
+                    resource_failed_stage = "effect_lifecycle"
+                    process_character_response_effects(final_characters)
                     for storage_message in fee_result.get("messages", ()):
                         conversation_history.append(
                             {"role": "user", "content": f"Storage: {storage_message}"}
@@ -4387,15 +4424,21 @@ def process_ai_response(
                         for index, action in other_actions
                         if index not in handled_storage
                     ]
-                    result = commit_prepared_character_actions(
-                        fee_result.get("remaining_character_actions", ()),
-                        party_tracker_data,
-                    )
-                    if fee_result.get("messages") and isinstance(result, dict):
-                        result["needs_update"] = True
+                    result = {
+                        "status": "continue",
+                        "success": True,
+                        "needs_update": bool(
+                            final_characters or fee_result.get("storage_plans")
+                        ),
+                        "committed_indices": list(resource_action_indices),
+                        "transaction_id": transaction_result.get(
+                            "transaction_id"
+                        ),
+                    }
+                    break
             except Exception as action_error:
                 error(
-                    "FAILURE: Character coordinator raised unexpectedly",
+                    "FAILURE: Resource response coordinator raised unexpectedly",
                     exception=action_error,
                     category="character_updates",
                 )
@@ -4403,14 +4446,12 @@ def process_ai_response(
                 result.update(
                     {
                         "response_data": {
-                            "failure_code": "character_coordinator_exception"
+                            "failure_code": "resource_response_exception"
                         },
                         "diagnostic": str(action_error),
                         "exception_class": type(action_error).__name__,
-                        "failed_stage": "character_coordinator",
-                        "action_indices": [
-                            index for index, _action in char_update_actions
-                        ],
+                        "failed_stage": resource_failed_stage,
+                        "action_indices": list(resource_action_indices),
                     }
                 )
             actions_processed = True
@@ -4418,15 +4459,17 @@ def process_ai_response(
                 _record_resource_action_failure(
                     result,
                     correlation_id=resource_correlation_id,
-                    fallback_action_indices=(
-                        index for index, _action in char_update_actions
-                    ),
-                    fallback_stage="character_coordinator",
+                    fallback_action_indices=resource_action_indices,
+                    fallback_stage=resource_failed_stage,
                 )
                 return _handle_ordinary_action_failure(
                     result,
                     response,
-                    char_update_actions[0][1],
+                    (
+                        char_update_actions[0][1]
+                        if char_update_actions
+                        else indexed_storage[0][1]
+                    ),
                     conversation_history,
                 )
             if isinstance(result, dict) and result.get("needs_update"):

@@ -1253,11 +1253,14 @@ def process_adjacent_storage_fee_groups(
     indexed_storage_actions,
     party_tracker_data,
 ):
-    """Atomically group storage-owned deltas and adjacent concrete fees."""
+    """Prepare storage-owned deltas and fees for the response transaction.
+
+    This function deliberately performs no durable write.  Its returned plans
+    join every remaining character image at the response-level commit boundary.
+    """
     from core.managers.character_transfer import (
         _candidate_components,
         concrete_asset_deltas,
-        prepare_character_actions,
     )
 
     prepared_character_actions = tuple(prepared_character_actions)
@@ -1270,6 +1273,7 @@ def process_adjacent_storage_fee_groups(
     handled_characters = set()
     handled_storage = set()
     messages = []
+    response_storage_plans = []
     storage_indices = {index for index, _action in indexed_storage_actions}
     prepared_storage = {}
     action_indices = tuple(
@@ -1330,34 +1334,7 @@ def process_adjacent_storage_fee_groups(
             if not exact:
                 continue
             character_action, combined = exact[0]
-            try:
-                failed_stage = "storage_commit"
-                execute_storage_plan(combined)
-            except TransactionStalePlanError:
-                failed_stage = "storage_stale_reprepare"
-                refreshed_character = prepare_character_actions(
-                    ((character_action.index, character_action.action),),
-                    party_tracker_data,
-                )[0]
-                prepared_storage.pop(storage_index, None)
-                _index, _operation, refreshed_storage = prepare_storage(
-                    indexed_storage,
-                    refreshed_character.plan.character_name,
-                )
-                if refreshed_storage is None:
-                    raise StorageTransactionError(
-                        "storage mutation became read-only"
-                    )
-                combined = _combine_storage_owned_character_delta(
-                    refreshed_storage,
-                    refreshed_character,
-                )
-                if combined is None:
-                    raise StorageTransactionError(
-                        "storage mutation no longer matches the character update"
-                    )
-                failed_stage = "storage_commit"
-                execute_storage_plan(combined)
+            response_storage_plans.append(combined)
             handled_characters.add(character_action.index)
             handled_storage.add(storage_index)
             messages.append(combined.message)
@@ -1407,34 +1384,26 @@ def process_adjacent_storage_fee_groups(
             combined = _combine_storage_fee(storage_plan, fee_action)
             if combined is None:
                 continue
-            try:
-                failed_stage = "storage_fee_commit"
-                execute_storage_plan(combined)
-            except TransactionStalePlanError:
-                failed_stage = "storage_fee_stale_reprepare"
-                refreshed_fee = prepare_character_actions(
-                    ((fee_action.index, fee_action.action),),
-                    party_tracker_data,
-                )[0]
-                prepared_storage.pop(storage_index, None)
-                _index, _operation, refreshed_storage = prepare_storage(
-                    indexed_storage,
-                    refreshed_fee.plan.character_name,
-                )
-                if refreshed_storage is None:
-                    raise StorageTransactionError(
-                        "storage fee operation became read-only"
-                    )
-                combined = _combine_storage_fee(refreshed_storage, refreshed_fee)
-                if combined is None:
-                    raise StorageTransactionError(
-                        "storage fee no longer has one unambiguous participant"
-                    )
-                failed_stage = "storage_fee_commit"
-                execute_storage_plan(combined)
+            response_storage_plans.append(combined)
             handled_characters.add(fee_action.index)
             handled_storage.add(storage_index)
             messages.append(combined.message)
+
+        # A storage mutation without a duplicate character sibling still joins
+        # this response transaction.  Read-only views remain in other_actions.
+        for indexed_storage in sorted(
+            indexed_storage_actions, key=lambda value: value[0]
+        ):
+            storage_index = indexed_storage[0]
+            if storage_index in handled_storage:
+                continue
+            failed_stage = "storage_prepare"
+            _index, _operation, storage_plan = prepare_storage(indexed_storage)
+            if storage_plan is None:
+                continue
+            response_storage_plans.append(storage_plan)
+            handled_storage.add(storage_index)
+            messages.append(storage_plan.message)
         return {
             "success": True,
             "remaining_character_actions": tuple(
@@ -1443,6 +1412,7 @@ def process_adjacent_storage_fee_groups(
                 if item.index not in handled_characters
             ),
             "handled_storage_indices": frozenset(handled_storage),
+            "storage_plans": tuple(response_storage_plans),
             "messages": tuple(messages),
         }
     except Exception as exc:

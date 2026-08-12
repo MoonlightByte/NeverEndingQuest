@@ -713,8 +713,15 @@ def _character_batch_failure(
 def commit_prepared_character_actions(
     prepared: Sequence[PreparedCharacterAction],
     party_tracker_data: Mapping[str, Any],
+    *,
+    prepare_only: bool = False,
 ) -> Dict[str, Any]:
-    """Commit a previously prepared subset with the same A1 graph rules."""
+    """Validate a prepared subset and optionally commit it.
+
+    ``prepare_only`` exposes the fully corrected, graph-validated images to the
+    response-level resource transaction without weakening the established
+    transfer checks or performing an early write.
+    """
     failed_stage = "character_batch_input"
     action_indices = ()
     try:
@@ -817,6 +824,22 @@ def commit_prepared_character_actions(
             if item.index not in claimed:
                 units.append((item.index, (item,), "character_update"))
 
+        prepared_actions = tuple(
+            item
+            for _index, unit, _operation in sorted(
+                units, key=lambda value: value[0]
+            )
+            for item in unit
+        )
+        if prepare_only:
+            return {
+                "status": "continue",
+                "success": True,
+                "needs_update": bool(prepared_actions),
+                "prepared_actions": prepared_actions,
+                "prepared_indices": [item.index for item in prepared_actions],
+            }
+
         from utils.state_transaction import TransactionStalePlanError
 
         failed_stage = "character_commit"
@@ -887,3 +910,33 @@ def commit_prepared_character_actions(
             stage=failed_stage,
             action_indices=action_indices,
         )
+
+
+def prepare_character_response_actions(
+    prepared: Sequence[PreparedCharacterAction],
+    party_tracker_data: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Return transfer-validated response images without changing files."""
+    return commit_prepared_character_actions(
+        prepared,
+        party_tracker_data,
+        prepare_only=True,
+    )
+
+
+def process_character_response_effects(
+    prepared: Sequence[PreparedCharacterAction],
+) -> None:
+    """Advance rest-linked effects only after the resource commit succeeds."""
+    rest_kinds = {
+        (
+            "long_rest"
+            if "long rest" in item.changes.casefold()
+            else "short_rest" if "short rest" in item.changes.casefold() else None
+        )
+        for item in prepared
+    }
+    for rest_kind in sorted(value for value in rest_kinds if value):
+        from core.managers.effects_runtime import process_effect_lifecycle
+
+        process_effect_lifecycle(rest_kind=rest_kind)
