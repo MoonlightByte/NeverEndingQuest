@@ -400,55 +400,82 @@ def _asset_counts(character, container, names):
     return counts
 
 
-def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPlan:
-    """Prepare exact participant images; perform no final state write."""
-    operation = copy.deepcopy(dict(operation))
-    _validate_operation(operation)
-    action = operation["action"]
-    timestamp = datetime.now().isoformat()
-    location = _location()
-    location_id = location[0]
-    storage_path = os.path.normcase(os.path.realpath("player_storage.json"))
-    storage_existed, loaded_storage = _load_storage(storage_path)
-    storage_before = copy.deepcopy(loaded_storage) if storage_existed else None
-    storage_after = copy.deepcopy(loaded_storage)
+def _character_resource_signature(character: Mapping[str, Any]):
+    equipment = _inventory_rows(character, "character")
+    equipment_names = {
+        _normalized_name(row.get("item_name")) for row in equipment
+    }
+    ammunition_rows = _ammunition(character, "character")
+    ammunition_names = {
+        _normalized_name(row.get("name") or row.get("item_name"))
+        for row in ammunition_rows
+    }
+    ammunition = {}
+    for name in ammunition_names:
+        for key, quantity in _ammunition_counts(
+            copy.deepcopy(dict(character)), "character", name
+        ).items():
+            ammunition[key] = ammunition.get(key, 0) + quantity
+    return (
+        _asset_counts(
+            copy.deepcopy(dict(character)),
+            {"contents": []},
+            equipment_names,
+        ),
+        _currency(copy.deepcopy(dict(character)), "character"),
+        ammunition,
+    )
 
+
+def _apply_storage_operation(
+    operation: Dict[str, Any],
+    character: Optional[Dict[str, Any]],
+    storage: Dict[str, Any],
+    location: Tuple[str, str, str, str],
+    timestamp: str,
+    selected_storage_id: Optional[str],
+):
+    """Apply one validated operation to in-memory images only."""
+    action = operation["action"]
+    location_id = location[0]
     if action == "create_storage":
+        if selected_storage_id:
+            raise StorageTransactionError(
+                "one storage request cannot create or target multiple containers"
+            )
         container = _new_container(operation, location, timestamp)
-        storage_after["playerStorage"].append(container)
-        storage_after["lastUpdated"] = timestamp
-        return StorageMutationPlan(
-            operation,
-            None,
-            None,
-            None,
-            storage_path,
-            storage_existed,
-            storage_before,
-            storage_after,
+        storage["playerStorage"].append(container)
+        storage["lastUpdated"] = timestamp
+        return (
+            container["id"],
             f"Created {container['deviceType']} at {container['locationName']}",
+            (),
         )
 
-    character_path = _character_path(operation["character"])
-    character_before = safe_json_load(character_path)
-    if not isinstance(character_before, dict):
+    if character is None:
         raise StorageTransactionError("character inventory is unavailable")
-    character_after = copy.deepcopy(character_before)
-
-    storage_id = operation.get("storage_id")
+    operation_storage_id = operation.get("storage_id")
+    if operation_storage_id and selected_storage_id and (
+        operation_storage_id != selected_storage_id
+    ):
+        raise StorageTransactionError(
+            "one storage request cannot target multiple containers"
+        )
+    storage_id = operation_storage_id or selected_storage_id
     if storage_id:
-        container = _find_container(storage_after, storage_id, location_id)
+        container = _find_container(storage, storage_id, location_id)
     elif action in {"store_item", "store_currency", "store_ammunition"}:
         container = _new_container(operation, location, timestamp)
-        storage_after["playerStorage"].append(container)
+        storage["playerStorage"].append(container)
+        storage_id = container["id"]
     else:
         raise StorageTransactionError("retrieval requires a storage container")
 
     container_before = copy.deepcopy(container)
+    character_before = copy.deepcopy(character)
     identity_advisories = ()
-    conserved_before = None
     if action in {"store_item", "retrieve_item"}:
-        character_rows = _inventory_rows(character_after, "character")
+        character_rows = _inventory_rows(character, "character")
         storage_rows = _inventory_rows(container, "storage")
         character_rows, character_identity_advisories = consolidate_equipment_rows(
             character_rows
@@ -456,26 +483,35 @@ def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPla
         storage_rows, storage_identity_advisories = consolidate_equipment_rows(
             storage_rows
         )
-        character_after["equipment"] = character_rows
+        character["equipment"] = character_rows
         container["contents"] = storage_rows
         identity_advisories = tuple(
             sorted(set(character_identity_advisories + storage_identity_advisories))
         )
         requested = _requested_items(operation)
         names = {_normalized_name(name) for name, _quantity in requested}
-        conserved_before = ("items", _asset_counts(character_before, container_before, names))
-        if action == "store_item":
-            for name, quantity in requested:
-                source = _remove_item(character_rows, name, quantity, "character")
-                _add_item(storage_rows, source, quantity, "storage")
-            verb = "Stored"
-            log_action = "store_items" if len(requested) > 1 else "store_item"
-        else:
-            for name, quantity in requested:
-                source = _remove_item(storage_rows, name, quantity, "storage")
-                _add_item(character_rows, source, quantity, "character")
-            verb = "Retrieved"
-            log_action = "retrieve_items" if len(requested) > 1 else "retrieve_item"
+        conserved_before = _asset_counts(character_before, container_before, names)
+        source_rows, destination_rows = (
+            (character_rows, storage_rows)
+            if action == "store_item"
+            else (storage_rows, character_rows)
+        )
+        source_label, destination_label = (
+            ("character", "storage")
+            if action == "store_item"
+            else ("storage", "character")
+        )
+        for name, quantity in requested:
+            source = _remove_item(source_rows, name, quantity, source_label)
+            _add_item(destination_rows, source, quantity, destination_label)
+        if conserved_before != _asset_counts(character, container, names):
+            raise StorageTransactionError(
+                "storage resource identity or quantity was not conserved"
+            )
+        verb = "Stored" if action == "store_item" else "Retrieved"
+        log_action = "store_items" if action == "store_item" and len(requested) > 1 else (
+            "retrieve_items" if len(requested) > 1 else action
+        )
         detail = [{"item": name, "quantity": quantity} for name, quantity in requested]
         item_text = ", ".join(f"{quantity} {name}" for name, quantity in requested)
     elif action in {"store_currency", "retrieve_currency"}:
@@ -483,16 +519,13 @@ def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPla
         if denomination not in _DENOMINATIONS:
             raise StorageTransactionError("currency denomination is invalid")
         quantity = _strict_quantity(operation.get("quantity"), "currency quantity")
-        character_currency = _currency(character_after, "character")
+        character_currency = _currency(character, "character")
         storage_currency = _currency(container, "storage")
-        conserved_before = (
-            "currency",
-            {
-                name: _currency(copy.deepcopy(character_before), "character")[name]
-                + _currency(copy.deepcopy(container_before), "storage")[name]
-                for name in _DENOMINATIONS
-            },
-        )
+        conserved_before = {
+            name: _currency(character_before, "character")[name]
+            + _currency(container_before, "storage")[name]
+            for name in _DENOMINATIONS
+        }
         source, destination = (
             (character_currency, storage_currency)
             if action == "store_currency"
@@ -501,10 +534,20 @@ def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPla
         if source[denomination] < quantity:
             label = "character" if action == "store_currency" else "storage"
             raise StorageTransactionError(
-                f"{label} only has {source[denomination]} {denomination}, but {quantity} were requested"
+                f"{label} only has {source[denomination]} {denomination}, "
+                f"but {quantity} were requested"
             )
         source[denomination] -= quantity
         destination[denomination] += quantity
+        conserved_after = {
+            name: _currency(character, "character")[name]
+            + _currency(container, "storage")[name]
+            for name in _DENOMINATIONS
+        }
+        if conserved_before != conserved_after:
+            raise StorageTransactionError(
+                "storage resource identity or quantity was not conserved"
+            )
         verb = "Stored" if action == "store_currency" else "Retrieved"
         log_action = action
         detail = {"denomination": denomination, "quantity": quantity}
@@ -514,59 +557,43 @@ def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPla
         if not isinstance(name, str) or not name.strip():
             raise StorageTransactionError("ammunition request has no useful name")
         quantity = _strict_quantity(operation.get("quantity"), "ammunition quantity")
-        character_ammunition = _ammunition(character_after, "character")
+        character_ammunition = _ammunition(character, "character")
         storage_ammunition = _ammunition(container, "storage")
         conserved_name = _normalized_name(name)
         ammunition_before = {}
         for counts in (
-            _ammunition_counts(
-                copy.deepcopy(character_before), "character", conserved_name
-            ),
-            _ammunition_counts(
-                copy.deepcopy(container_before), "storage", conserved_name
-            ),
+            _ammunition_counts(character_before, "character", conserved_name),
+            _ammunition_counts(container_before, "storage", conserved_name),
         ):
             for key, count_quantity in counts.items():
-                ammunition_before[key] = (
-                    ammunition_before.get(key, 0) + count_quantity
-                )
-        conserved_before = ("ammunition", ammunition_before)
+                ammunition_before[key] = ammunition_before.get(key, 0) + count_quantity
         source_rows, destination_rows = (
             (character_ammunition, storage_ammunition)
             if action == "store_ammunition"
             else (storage_ammunition, character_ammunition)
         )
-        source = _remove_ammunition(source_rows, name, quantity, "character" if action == "store_ammunition" else "storage")
-        _add_ammunition(destination_rows, source, quantity, "storage" if action == "store_ammunition" else "character")
+        source_label, destination_label = (
+            ("character", "storage")
+            if action == "store_ammunition"
+            else ("storage", "character")
+        )
+        source = _remove_ammunition(source_rows, name, quantity, source_label)
+        _add_ammunition(destination_rows, source, quantity, destination_label)
+        ammunition_after = {}
+        for counts in (
+            _ammunition_counts(character, "character", conserved_name),
+            _ammunition_counts(container, "storage", conserved_name),
+        ):
+            for key, count_quantity in counts.items():
+                ammunition_after[key] = ammunition_after.get(key, 0) + count_quantity
+        if ammunition_before != ammunition_after:
+            raise StorageTransactionError(
+                "storage resource identity or quantity was not conserved"
+            )
         verb = "Stored" if action == "store_ammunition" else "Retrieved"
         log_action = action
         detail = {"ammunition": source.get("name"), "quantity": quantity}
         item_text = f"{quantity} {source.get('name')}"
-
-    character_after, validator_advisories = _validate_character_candidate(
-        character_after
-    )
-    advisories = tuple(sorted(set(identity_advisories + validator_advisories)))
-    if conserved_before[0] == "items":
-        conserved_after = _asset_counts(character_after, container, names)
-    elif conserved_before[0] == "currency":
-        conserved_after = {
-            name: _currency(copy.deepcopy(character_after), "character")[name]
-            + _currency(copy.deepcopy(container), "storage")[name]
-            for name in _DENOMINATIONS
-        }
-    else:
-        conserved_after = {}
-        for counts in (
-            _ammunition_counts(
-                copy.deepcopy(character_after), "character", conserved_name
-            ),
-            _ammunition_counts(copy.deepcopy(container), "storage", conserved_name),
-        ):
-            for key, count_quantity in counts.items():
-                conserved_after[key] = conserved_after.get(key, 0) + count_quantity
-    if conserved_before[1] != conserved_after:
-        raise StorageTransactionError("storage resource identity or quantity was not conserved")
 
     container["lastAccessed"] = timestamp
     container.setdefault("accessLog", []).append(
@@ -577,11 +604,84 @@ def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPla
             "timestamp": timestamp,
         }
     )
-    storage_after["lastUpdated"] = timestamp
+    storage["lastUpdated"] = timestamp
     preposition = "in" if action.startswith("store_") else "from"
-    message = f"{verb} {item_text} {preposition} {container['deviceName']}"
+    return (
+        storage_id,
+        f"{verb} {item_text} {preposition} {container['deviceName']}",
+        identity_advisories,
+    )
+
+
+def prepare_storage_mutation_set(
+    operations: Sequence[Mapping[str, Any]],
+) -> StorageMutationPlan:
+    """Prepare a complete storage intent as one all-or-nothing transaction."""
+    operations = tuple(copy.deepcopy(dict(operation)) for operation in operations)
+    if not operations or len(operations) > 32:
+        raise StorageTransactionError(
+            "a storage operation set must contain between 1 and 32 operations"
+        )
+    for operation in operations:
+        _validate_operation(operation)
+    characters = {operation.get("character") for operation in operations}
+    if len(characters) != 1 or None in characters:
+        raise StorageTransactionError(
+            "one storage request must use one authoritative character"
+        )
+
+    timestamp = datetime.now().isoformat()
+    location = _location()
+    storage_path = os.path.normcase(os.path.realpath("player_storage.json"))
+    storage_existed, loaded_storage = _load_storage(storage_path)
+    storage_before = copy.deepcopy(loaded_storage) if storage_existed else None
+    storage_after = copy.deepcopy(loaded_storage)
+    needs_character = any(
+        operation["action"] != "create_storage" for operation in operations
+    )
+    character_path = None
+    character_before = None
+    character_after = None
+    if needs_character:
+        character_path = _character_path(next(iter(characters)))
+        character_before = safe_json_load(character_path)
+        if not isinstance(character_before, dict):
+            raise StorageTransactionError("character inventory is unavailable")
+        character_after = copy.deepcopy(character_before)
+
+    selected_storage_id = None
+    messages = []
+    advisories = []
+    for operation in operations:
+        selected_storage_id, message, operation_advisories = _apply_storage_operation(
+            operation,
+            character_after,
+            storage_after,
+            location,
+            timestamp,
+            selected_storage_id,
+        )
+        messages.append(message)
+        advisories.extend(operation_advisories)
+
+    if character_after is not None:
+        resources_before_validation = _character_resource_signature(character_after)
+        character_after, validator_advisories = _validate_character_candidate(
+            character_after
+        )
+        if resources_before_validation != _character_resource_signature(character_after):
+            raise StorageTransactionError(
+                "character validation changed storage-owned resources"
+            )
+        advisories.extend(validator_advisories)
+
+    exported_operation = (
+        operations[0]
+        if len(operations) == 1
+        else {"operations": list(operations)}
+    )
     return StorageMutationPlan(
-        operation,
+        exported_operation,
         character_path,
         copy.deepcopy(character_before),
         character_after,
@@ -589,9 +689,14 @@ def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPla
         storage_existed,
         storage_before,
         storage_after,
-        message,
-        advisories,
+        "; ".join(messages),
+        tuple(sorted(set(advisories))),
     )
+
+
+def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPlan:
+    """Prepare one backward-compatible storage operation without writing."""
+    return prepare_storage_mutation_set((operation,))
 
 
 def execute_storage_plan(plan: StorageMutationPlan):
@@ -626,9 +731,12 @@ def execute_storage_plan(plan: StorageMutationPlan):
             for item in participants
         ),
     ).hex
+    operation_name = plan.operation.get("action")
+    if operation_name is None and isinstance(plan.operation.get("operations"), list):
+        operation_name = "batch"
     transaction = coordinator.build_plan(
         transaction_key=f"storage-{identity}",
-        operation=f"storage_{plan.operation['action']}",
+        operation=f"storage_{operation_name or 'mutation'}",
         participants=participants,
         rollback_failure_code="storage_rolled_back",
     )
@@ -639,7 +747,12 @@ def execute_item_storage_operation(operation: Mapping[str, Any]) -> Dict[str, An
     """Prepare, commit, and boundedly re-prepare once on a stale snapshot."""
     try:
         for attempt in range(2):
-            plan = prepare_storage_mutation(operation)
+            operation_set = operation.get("operations")
+            plan = (
+                prepare_storage_mutation_set(operation_set)
+                if isinstance(operation_set, list)
+                else prepare_storage_mutation(operation)
+            )
             try:
                 execute_storage_plan(plan)
                 return {
@@ -678,6 +791,128 @@ def _changed_top_level(before: Mapping[str, Any], after: Mapping[str, Any]):
     return {
         key for key in set(before) | set(after) if before.get(key) != after.get(key)
     }
+
+
+def _currency_deltas(before: Mapping[str, Any], after: Mapping[str, Any]):
+    before_currency = _currency(copy.deepcopy(dict(before)), "character")
+    after_currency = _currency(copy.deepcopy(dict(after)), "character")
+    return tuple(
+        (denomination, after_currency[denomination] - before_currency[denomination])
+        for denomination in _DENOMINATIONS
+        if after_currency[denomination] != before_currency[denomination]
+    )
+
+
+def _asset_delta_signature(delta):
+    metadata = delta.metadata
+    if delta.family == "equipment":
+        from core.managers.character_transfer import _t052_normalized_metadata
+
+        metadata = _t052_normalized_metadata(metadata)
+    return delta.family, delta.name, delta.quantity, metadata
+
+
+def _ownership_local_equipment_changes(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+):
+    def equipped_by_name(sheet):
+        rows = sheet.get("equipment") or []
+        if not isinstance(rows, list):
+            raise StorageTransactionError("character equipment is malformed")
+        result = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                raise StorageTransactionError("character equipment is malformed")
+            name = _normalized_name(row.get("item_name"))
+            if name in result:
+                raise StorageTransactionError(
+                    "character contains ambiguous duplicate item names"
+                )
+            result[name] = row.get("equipped", False)
+        return result
+
+    old = equipped_by_name(before)
+    new = equipped_by_name(after)
+    return {
+        name
+        for name in set(old) & set(new)
+        if old[name] != new[name]
+    }
+
+
+def _combine_storage_owned_character_delta(storage_plan, character_action):
+    """Return one atomic plan for an exact duplicate storage mutation.
+
+    ``None`` means the character action does not touch the storage resource.
+    An overlapping but non-identical mutation is unsafe and raises instead of
+    allowing either independent action to commit.
+    """
+    if storage_plan.character_path is None:
+        return None
+    character_plan = character_action.plan
+    if storage_plan.character_path != character_plan.canonical_path:
+        return None
+
+    from core.managers.character_transfer import (
+        concrete_asset_deltas,
+        concrete_asset_deltas_between,
+    )
+
+    storage_deltas = concrete_asset_deltas_between(
+        storage_plan.character_before,
+        storage_plan.character_after,
+    )
+    character_deltas = tuple(concrete_asset_deltas(character_plan))
+    storage_keys = {delta.lookup_key for delta in storage_deltas}
+    character_keys = {delta.lookup_key for delta in character_deltas}
+    if not storage_keys & character_keys:
+        return None
+    if storage_plan.character_before != character_plan.pre_image:
+        raise StorageTransactionError(
+            "storage and character updates do not share one character snapshot"
+        )
+
+    if sorted(_asset_delta_signature(delta) for delta in storage_deltas) != sorted(
+        _asset_delta_signature(delta) for delta in character_deltas
+    ):
+        raise StorageTransactionError(
+            "storage and character actions overlap without identical resource deltas"
+        )
+    if any(delta.family == "currency" for delta in storage_deltas):
+        if _currency_deltas(
+            storage_plan.character_before, storage_plan.character_after
+        ) != _currency_deltas(character_plan.pre_image, character_plan.post_image):
+            raise StorageTransactionError(
+                "storage and character actions use different currency denominations"
+            )
+    storage_equipped_changes = _ownership_local_equipment_changes(
+        storage_plan.character_before,
+        storage_plan.character_after,
+    )
+    character_equipped_changes = _ownership_local_equipment_changes(
+        character_plan.pre_image,
+        character_plan.post_image,
+    )
+    if character_equipped_changes - storage_equipped_changes:
+        raise StorageTransactionError(
+            "character action includes an unrelated equip or unequip mutation"
+        )
+
+    combined_character = copy.deepcopy(storage_plan.character_after)
+    storage_owned_fields = _changed_top_level(
+        storage_plan.character_before,
+        storage_plan.character_after,
+    )
+    for field in _changed_top_level(
+        character_plan.pre_image,
+        character_plan.post_image,
+    ) - storage_owned_fields:
+        if field in character_plan.post_image:
+            combined_character[field] = copy.deepcopy(character_plan.post_image[field])
+        else:
+            combined_character.pop(field, None)
+    return replace(storage_plan, character_after=combined_character)
 
 
 def _combine_storage_fee(storage_plan, fee_action):
@@ -751,7 +986,81 @@ def _prepare_response_storage_action(
         raise StorageTransactionError("storage processor returned no operation")
     if operation.get("action") == "view_storage":
         return index, operation, None
+    operations = operation.get("operations")
+    if isinstance(operations, list):
+        if any(item.get("action") == "view_storage" for item in operations):
+            raise StorageTransactionError(
+                "view_storage cannot be mixed with storage mutations"
+            )
+        return index, operation, prepare_storage_mutation_set(operations)
     return index, operation, prepare_storage_mutation(operation)
+
+
+def validate_required_storage_sibling(
+    response_data,
+    action_prediction,
+    party_tracker_data,
+):
+    """Reject a storage-classified resource change with no storage action.
+
+    The existing action predictor already runs before the main DM call. This
+    guard consumes that result without adding another classifier call. It
+    prepares concrete character deltas only for the exceptional missing-
+    sibling shape; paired storage responses and non-storage turns do no extra
+    work here.
+    """
+    if not isinstance(response_data, dict) or not isinstance(
+        action_prediction, dict
+    ):
+        return True, ""
+    reason = str(action_prediction.get("reason") or "").casefold()
+    if not action_prediction.get("requires_actions") or "storag" not in reason:
+        return True, ""
+    actions = response_data.get("actions")
+    if not isinstance(actions, list):
+        return True, ""
+    if any(
+        isinstance(action, dict)
+        and action.get("action") == "storageInteraction"
+        for action in actions
+    ):
+        return True, ""
+    character_actions = tuple(
+        (index, action)
+        for index, action in enumerate(actions)
+        if isinstance(action, dict)
+        and action.get("action") == "updateCharacterInfo"
+    )
+    if not character_actions:
+        return True, ""
+
+    from core.managers.character_transfer import (
+        concrete_asset_deltas,
+        prepare_character_actions,
+    )
+
+    prepared = prepare_character_actions(character_actions, party_tracker_data)
+    changed = sorted(
+        {
+            (delta.family, delta.name)
+            for item in prepared
+            for delta in concrete_asset_deltas(item.plan)
+            if delta.quantity != 0
+        }
+    )
+    if not changed:
+        return True, ""
+    families = ", ".join(
+        f"{family} {name}" if name != "currency" else "currency"
+        for family, name in changed
+    )
+    return (
+        False,
+        "This storage-related response changes "
+        f"{families} on a character but omits storageInteraction. "
+        "Return the complete storageInteraction sibling so the storage "
+        "transaction can own and atomically conserve the resource.",
+    )
 
 
 def process_adjacent_storage_fee_groups(
@@ -759,9 +1068,10 @@ def process_adjacent_storage_fee_groups(
     indexed_storage_actions,
     party_tracker_data,
 ):
-    """Atomically group only adjacent, same-character, concrete fee decreases."""
+    """Atomically group storage-owned deltas and adjacent concrete fees."""
     from core.managers.character_transfer import (
         _candidate_components,
+        concrete_asset_deltas,
         prepare_character_actions,
     )
 
@@ -772,28 +1082,113 @@ def process_adjacent_storage_fee_groups(
         for component in _candidate_components(prepared_character_actions)
         for index in component
     }
-    eligible = [
-        item
-        for item in prepared_character_actions
-        if item.index not in transfer_claimed
-        if _changed_top_level(item.plan.pre_image, item.plan.post_image) <= {"currency"}
-        and _currency_copper(item.plan.post_image)
-        < _currency_copper(item.plan.pre_image)
-    ]
     handled_characters = set()
     handled_storage = set()
     messages = []
     storage_indices = {index for index, _action in indexed_storage_actions}
-    unambiguous_fee_indices = {
-        item.index
-        for item in eligible
-        if sum(abs(item.index - index) == 1 for index in storage_indices) == 1
-    }
+    prepared_storage = {}
+
+    def prepare_storage(indexed_storage, fallback_character=None):
+        storage_index = indexed_storage[0]
+        if storage_index not in prepared_storage:
+            prepared_storage[storage_index] = _prepare_response_storage_action(
+                indexed_storage,
+                party_tracker_data,
+                fallback_character=fallback_character,
+            )
+        return prepared_storage[storage_index]
+
     try:
+        asset_mutations = [
+            item
+            for item in prepared_character_actions
+            if concrete_asset_deltas(item.plan)
+        ]
+        for indexed_storage in sorted(
+            indexed_storage_actions, key=lambda value: value[0]
+        ):
+            if not asset_mutations:
+                break
+            storage_index = indexed_storage[0]
+            _index, _operation, storage_plan = prepare_storage(indexed_storage)
+            if storage_plan is None:
+                continue
+            exact = []
+            overlapping_transfer = False
+            for item in asset_mutations:
+                if item.index in handled_characters:
+                    continue
+                combined = _combine_storage_owned_character_delta(
+                    storage_plan,
+                    item,
+                )
+                if combined is None:
+                    continue
+                if item.index in transfer_claimed:
+                    overlapping_transfer = True
+                    continue
+                exact.append((item, combined))
+            if overlapping_transfer or len(exact) > 1:
+                raise StorageTransactionError(
+                    "storage mutation overlaps an ambiguous character transfer"
+                )
+            if not exact:
+                continue
+            character_action, combined = exact[0]
+            try:
+                execute_storage_plan(combined)
+            except TransactionStalePlanError:
+                refreshed_character = prepare_character_actions(
+                    ((character_action.index, character_action.action),),
+                    party_tracker_data,
+                )[0]
+                prepared_storage.pop(storage_index, None)
+                _index, _operation, refreshed_storage = prepare_storage(
+                    indexed_storage,
+                    refreshed_character.plan.character_name,
+                )
+                if refreshed_storage is None:
+                    raise StorageTransactionError(
+                        "storage mutation became read-only"
+                    )
+                combined = _combine_storage_owned_character_delta(
+                    refreshed_storage,
+                    refreshed_character,
+                )
+                if combined is None:
+                    raise StorageTransactionError(
+                        "storage mutation no longer matches the character update"
+                    )
+                execute_storage_plan(combined)
+            handled_characters.add(character_action.index)
+            handled_storage.add(storage_index)
+            messages.append(combined.message)
+
+        eligible = [
+            item
+            for item in prepared_character_actions
+            if item.index not in transfer_claimed
+            and item.index not in handled_characters
+            if _changed_top_level(item.plan.pre_image, item.plan.post_image)
+            <= {"currency"}
+            and _currency_copper(item.plan.post_image)
+            < _currency_copper(item.plan.pre_image)
+        ]
+        unambiguous_fee_indices = {
+            item.index
+            for item in eligible
+            if sum(
+                abs(item.index - index) == 1
+                for index in storage_indices - handled_storage
+            )
+            == 1
+        }
         for indexed_storage in sorted(
             indexed_storage_actions, key=lambda value: value[0]
         ):
             storage_index = indexed_storage[0]
+            if storage_index in handled_storage:
+                continue
             adjacent = [
                 item
                 for item in eligible
@@ -804,10 +1199,9 @@ def process_adjacent_storage_fee_groups(
             if len(adjacent) != 1:
                 continue
             fee_action = adjacent[0]
-            _index, _operation, storage_plan = _prepare_response_storage_action(
+            _index, _operation, storage_plan = prepare_storage(
                 indexed_storage,
-                party_tracker_data,
-                fallback_character=fee_action.plan.character_name,
+                fee_action.plan.character_name,
             )
             if storage_plan is None:
                 continue
@@ -821,12 +1215,10 @@ def process_adjacent_storage_fee_groups(
                     ((fee_action.index, fee_action.action),),
                     party_tracker_data,
                 )[0]
-                _index, _operation, refreshed_storage = (
-                    _prepare_response_storage_action(
-                        indexed_storage,
-                        party_tracker_data,
-                        fallback_character=refreshed_fee.plan.character_name,
-                    )
+                prepared_storage.pop(storage_index, None)
+                _index, _operation, refreshed_storage = prepare_storage(
+                    indexed_storage,
+                    refreshed_fee.plan.character_name,
                 )
                 if refreshed_storage is None:
                     raise StorageTransactionError(
@@ -854,7 +1246,7 @@ def process_adjacent_storage_fee_groups(
     except Exception as exc:
         return {
             "success": False,
-            "error": "Storage fee and item movement could not be committed together.",
-            "failure_code": "storage_fee_unverified",
+            "error": "Storage and character changes could not be committed together.",
+            "failure_code": "storage_batch_unverified",
             "diagnostic": str(exc),
         }

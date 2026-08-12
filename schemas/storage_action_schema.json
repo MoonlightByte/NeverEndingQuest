@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Storage Action Schema",
-  "description": "Schema for validating player storage operations",
+  "description": "Schema for one storage operation or one atomic set of storage operations",
   "type": "object",
   "properties": {
     "action": {
@@ -15,81 +15,171 @@
         "store_ammunition",
         "retrieve_ammunition",
         "view_storage"
-      ],
-      "description": "Type of storage operation to perform"
+      ]
     },
-    "character": {
-      "type": "string",
-      "description": "Character performing the action"
-    },
-    "storage_id": {
-      "type": "string",
-      "description": "Existing storage ID (for retrieve/view operations)"
-    },
+    "character": {"type": "string"},
+    "storage_id": {"type": "string"},
     "storage_type": {
-      "type": "string", 
-      "enum": ["chest", "lockbox", "barrel", "crate", "strongbox"],
-      "description": "Type of storage container"
-    },
-    "storage_name": {
       "type": "string",
-      "description": "Custom name for the storage container"
+      "enum": ["chest", "lockbox", "barrel", "crate", "strongbox"]
     },
-    "location_id": {
-      "type": "string",
-      "description": "Location ID where storage is placed"
-    },
-    "location_description": {
-      "type": "string",
-      "description": "Natural language description of location"
-    },
-    "item_name": {
-      "type": "string",
-      "description": "Name of item to store/retrieve (for single item operations)"
-    },
-    "quantity": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Quantity to store/retrieve (for single item, currency, or ammunition operations)"
-    },
+    "storage_name": {"type": "string"},
+    "location_id": {"type": "string"},
+    "location_description": {"type": "string"},
+    "item_name": {"type": "string"},
+    "quantity": {"type": "integer", "minimum": 1},
     "denomination": {
       "type": "string",
-      "enum": ["gold", "silver", "copper"],
-      "description": "Exact coin denomination for a currency operation"
+      "enum": ["gold", "silver", "copper"]
     },
-    "ammunition_name": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Exact ammunition name for an ammunition operation"
-    },
+    "ammunition_name": {"type": "string", "minLength": 1},
     "items": {
       "type": "array",
-      "description": "Array of items for multi-item operations",
+      "minItems": 1,
       "items": {
         "type": "object",
         "properties": {
-          "item_name": {
-            "type": "string",
-            "description": "Name of the item"
-          },
-          "quantity": {
-            "type": "integer",
-            "minimum": 1,
-            "description": "Quantity of the item"
-          }
+          "item_name": {"type": "string"},
+          "quantity": {"type": "integer", "minimum": 1}
         },
         "required": ["item_name", "quantity"]
       }
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create_storage",
+              "store_item",
+              "retrieve_item",
+              "store_currency",
+              "retrieve_currency",
+              "store_ammunition",
+              "retrieve_ammunition"
+            ]
+          },
+          "character": {"type": "string"},
+          "storage_id": {"type": "string"},
+          "storage_type": {
+            "type": "string",
+            "enum": ["chest", "lockbox", "barrel", "crate", "strongbox"]
+          },
+          "storage_name": {"type": "string"},
+          "location_id": {"type": "string"},
+          "location_description": {"type": "string"},
+          "item_name": {"type": "string"},
+          "quantity": {"type": "integer", "minimum": 1},
+          "denomination": {
+            "type": "string",
+            "enum": ["gold", "silver", "copper"]
+          },
+          "ammunition_name": {"type": "string", "minLength": 1},
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "item_name": {"type": "string"},
+                "quantity": {"type": "integer", "minimum": 1}
+              },
+              "required": ["item_name", "quantity"]
+            }
+          }
+        },
+        "required": ["action", "character"],
+        "allOf": [
+          {
+            "if": {
+              "required": ["action"],
+              "properties": {"action": {"const": "create_storage"}}
+            },
+            "then": {"required": ["storage_type", "location_description"]}
+          },
+          {
+            "if": {
+              "required": ["action"],
+              "properties": {"action": {"const": "store_item"}}
+            },
+            "then": {
+              "anyOf": [
+                {"required": ["item_name", "quantity"]},
+                {"required": ["items"]}
+              ]
+            }
+          },
+          {
+            "if": {
+              "required": ["action"],
+              "properties": {"action": {"const": "retrieve_item"}}
+            },
+            "then": {
+              "anyOf": [
+                {"required": ["storage_id", "item_name", "quantity"]},
+                {"required": ["storage_id", "items"]}
+              ]
+            }
+          },
+          {
+            "if": {
+              "required": ["action"],
+              "properties": {
+                "action": {"enum": ["store_currency", "retrieve_currency"]}
+              }
+            },
+            "then": {"required": ["denomination", "quantity"]}
+          },
+          {
+            "if": {
+              "required": ["action"],
+              "properties": {
+                "action": {"enum": ["store_ammunition", "retrieve_ammunition"]}
+              }
+            },
+            "then": {"required": ["ammunition_name", "quantity"]}
+          },
+          {
+            "if": {
+              "required": ["action"],
+              "properties": {
+                "action": {"enum": ["retrieve_currency", "retrieve_ammunition"]}
+              }
+            },
+            "then": {"required": ["storage_id"]}
+          }
+        ]
+      }
     }
   },
-  "required": ["action", "character"],
+  "oneOf": [
+    {
+      "required": ["action", "character"],
+      "not": {"required": ["operations"]}
+    },
+    {
+      "required": ["operations"],
+      "not": {"required": ["action"]}
+    }
+  ],
   "allOf": [
     {
-      "if": {"properties": {"action": {"const": "create_storage"}}},
+      "if": {
+        "required": ["action"],
+        "properties": {"action": {"const": "create_storage"}}
+      },
       "then": {"required": ["storage_type", "location_description"]}
     },
     {
-      "if": {"properties": {"action": {"const": "store_item"}}}, 
+      "if": {
+        "required": ["action"],
+        "properties": {"action": {"const": "store_item"}}
+      },
       "then": {
         "anyOf": [
           {"required": ["item_name", "quantity"]},
@@ -98,7 +188,10 @@
       }
     },
     {
-      "if": {"properties": {"action": {"const": "retrieve_item"}}},
+      "if": {
+        "required": ["action"],
+        "properties": {"action": {"const": "retrieve_item"}}
+      },
       "then": {
         "anyOf": [
           {"required": ["storage_id", "item_name", "quantity"]},
@@ -107,15 +200,30 @@
       }
     },
     {
-      "if": {"properties": {"action": {"enum": ["store_currency", "retrieve_currency"]}}},
+      "if": {
+        "required": ["action"],
+        "properties": {
+          "action": {"enum": ["store_currency", "retrieve_currency"]}
+        }
+      },
       "then": {"required": ["denomination", "quantity"]}
     },
     {
-      "if": {"properties": {"action": {"enum": ["store_ammunition", "retrieve_ammunition"]}}},
+      "if": {
+        "required": ["action"],
+        "properties": {
+          "action": {"enum": ["store_ammunition", "retrieve_ammunition"]}
+        }
+      },
       "then": {"required": ["ammunition_name", "quantity"]}
     },
     {
-      "if": {"properties": {"action": {"enum": ["retrieve_currency", "retrieve_ammunition"]}}},
+      "if": {
+        "required": ["action"],
+        "properties": {
+          "action": {"enum": ["retrieve_currency", "retrieve_ammunition"]}
+        }
+      },
       "then": {"required": ["storage_id"]}
     }
   ]

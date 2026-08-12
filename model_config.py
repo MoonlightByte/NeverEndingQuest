@@ -846,6 +846,47 @@ STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-p
 STORAGE_PROCESSOR_T049_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 STORAGE_PROCESSOR_T049_LMSTUDIO = {"model": "local-model"}
 
+# --- T104: Currency-offer intent verification (tiny JSON, mini tier) ---
+# Invoked only when a candidate response appears to complete a purchase.  It
+# classifies the player's natural-language offer; it never proposes narration
+# or state changes.  Invalid/provider-failed output is treated as uncertain by
+# the callsite and therefore cannot authorize a currency mutation.
+_T104_CURRENCY_OFFER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "classification": {
+            "type": "string",
+            "enum": ["explicit_offer", "not_explicit", "uncertain"],
+        },
+        "amount": {"type": ["integer", "null"]},
+        "denomination": {
+            "type": ["string", "null"],
+            "enum": ["gold", "silver", "copper", None],
+        },
+        "completed_purchase": {"type": "boolean"},
+    },
+    "required": [
+        "classification",
+        "amount",
+        "denomination",
+        "completed_purchase",
+    ],
+}
+CURRENCY_OFFER_T104_GPT54MINI_NONE = {
+    "model": "gpt-5.4-mini",
+    "reasoning_effort": "none",
+}
+CURRENCY_OFFER_T104_GEMINI_FLASHLITE_LOW = {
+    "model": "gemini-3.1-flash-lite-preview",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(_T104_CURRENCY_OFFER_SCHEMA),
+}
+CURRENCY_OFFER_T104_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+CURRENCY_OFFER_T104_LMSTUDIO = {
+    "model": "local-model",
+    "response_format": None,
+}
+
 # --- T015/T016/T018/T019: Adventure Summaries (location updates, chronicles, journals) ---
 # 12/12 synthetic tests passed (4 scenarios x 3 models). Mini-tier (ADVENTURE_SUMMARY_MODEL).
 # T015: location JSON update (temp=0.8). T016: adventure chronicle (temp=0.8, plain text).
@@ -1385,6 +1426,9 @@ TASK_CAPTURE_CONFIGS = {
 
     # Storage action extraction (natural-language -> JSON op)
     "T049": ("STORAGE_PROCESSOR_T049_GPT5MINI", "STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_LOW"),
+
+    # Currency-offer intent verification (natural language -> tiny JSON fact)
+    "T104": ("CURRENCY_OFFER_T104_GPT54MINI_NONE", "CURRENCY_OFFER_T104_GEMINI_FLASHLITE_LOW"),
 
     # Adventure summaries (T015, T016, T018, T019)
     "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),

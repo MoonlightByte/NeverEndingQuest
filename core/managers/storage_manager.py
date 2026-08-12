@@ -660,7 +660,7 @@ def execute_storage_operation(operation: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a storage operation"""
     action = operation.get("action")
 
-    if action in {
+    if isinstance(operation.get("operations"), list) or action in {
         "create_storage",
         "store_item",
         "retrieve_item",

@@ -1547,6 +1547,90 @@ def _validate_required_transition_action(
     )
 
 
+def _has_player_character_update(response_data, player_name):
+    """Use only action structure to decide whether T104 is relevant."""
+    if not isinstance(response_data, dict):
+        return False
+    actions = response_data.get("actions") or []
+    for action in actions if isinstance(actions, list) else []:
+        if not isinstance(action, dict) or action.get("action") != "updateCharacterInfo":
+            continue
+        parameters = action.get("parameters") or {}
+        action_character = (
+            parameters.get("characterName") or parameters.get("npcName") or player_name
+        )
+        if str(action_character).strip().casefold() == str(player_name).strip().casefold():
+            return True
+    return False
+
+
+def _unaffordable_explicit_purchase_error(
+    response_data,
+    user_input,
+    player_name,
+    player_data,
+    offer_review=None,
+):
+    """Return a correction only for an agent-classified unsafe purchase."""
+    if not _has_player_character_update(response_data, player_name):
+        return None
+    currency = (player_data or {}).get("currency") or {}
+    if not isinstance(currency, dict):
+        return (
+            "The player's current currency could not be verified. Do not "
+            "remove currency or complete an acquisition in this turn."
+        )
+    if offer_review is None:
+        from core.ai.currency_offer_verifier import classify_currency_offer
+
+        offer_review = classify_currency_offer(
+            user_input,
+            currency,
+            response_data.get("actions") or [],
+        )
+    if not isinstance(offer_review, dict):
+        return (
+            "The proposed currency transaction could not be verified. Do not "
+            "remove currency or complete an acquisition in this turn."
+        )
+    if not offer_review.get("completed_purchase"):
+        return None
+    classification = offer_review.get("classification")
+    if classification == "not_explicit":
+        return None
+    if classification != "explicit_offer":
+        return (
+            "The proposed currency transaction could not be verified. Do not "
+            "remove currency or complete an acquisition in this turn."
+        )
+    amount = offer_review.get("amount")
+    denomination = offer_review.get("denomination")
+    available = currency.get(denomination, 0)
+    if (
+        isinstance(amount, bool)
+        or not isinstance(amount, int)
+        or amount <= 0
+        or denomination not in {"gold", "silver", "copper"}
+        or isinstance(available, bool)
+        or not isinstance(available, int)
+        or available < 0
+    ):
+        return (
+            "The proposed currency transaction could not be verified. Do not "
+            "remove currency or complete an acquisition in this turn."
+        )
+    if available >= amount:
+        return None
+    return (
+        f"The player's stated offer of {amount} {denomination} exceeds "
+        f"available {available} {denomination}. Do not remove any currency or "
+        "grant the requested acquisition in this turn. Truthfully refuse the "
+        "offer or narrate a counteroffer without completing the transaction; "
+        "a new price may be completed only after the player accepts it in a "
+        "later turn."
+    )
+
+
 _ENHANCED_DM_NOTE_PREFIX = "Dungeon Master Note:"
 _ENHANCED_PLAYER_MARKER = " Player: "
 _INVENTORY_CONTEXT_MARKER = "\n[Inventory Context:"
@@ -4603,6 +4687,7 @@ def get_ai_response(
     validation_retry_count=0,
     *,
     _skip_pending_publication_delivery=False,
+    _prediction_sink=None,
 ):
     global should_inject_creation_prompt
     # This is the centralized terminal/web provider boundary. A transition
@@ -4641,6 +4726,10 @@ def get_ai_response(
     else:
         # On validation retry, force full model and skip prediction
         prediction = {"requires_actions": True, "reason": "Validation retry - using full model"}
+
+    if isinstance(_prediction_sink, dict):
+        _prediction_sink.clear()
+        _prediction_sink.update(prediction)
     
     # Determine which model to use based on intelligent routing and validation retry.
     # HIGH-1: carry the routing decision as a BOOLEAN (use_mini), not a model
@@ -6136,6 +6225,10 @@ def main_game_loop():
         valid_response_received = False 
         ai_response_content = None
         approved_transition_plan = None
+        turn_action_prediction = {}
+        currency_offer_review = None
+        currency_offer_review_attempted = False
+        currency_offer_correction_used = False
     
         while retry_count < 5 and not valid_response_received:
             # Authorization belongs only to this candidate response. A retry
@@ -6146,6 +6239,9 @@ def main_game_loop():
                 ai_response_content = get_ai_response(
                     conversation_history,
                     validation_retry_count=retry_count,
+                    _prediction_sink=(
+                        turn_action_prediction if retry_count == 0 else None
+                    ),
                 )
             except Exception as response_error:
                 error(
@@ -6392,6 +6488,108 @@ def main_game_loop():
                 validation_reason = validation_result if isinstance(validation_result, str) else ""
             
             if is_valid:
+                try:
+                    response_data = json.loads(ai_response_content)
+                    has_player_character_update = _has_player_character_update(
+                        response_data,
+                        player_name_actual,
+                    )
+                    if has_player_character_update and currency_offer_correction_used:
+                        warning(
+                            "T104 corrected response still contained a player "
+                            "character mutation; stopping before narration/write",
+                            category="character_updates",
+                        )
+                        break
+                    if (
+                        has_player_character_update
+                        and not currency_offer_review_attempted
+                    ):
+                        from core.ai.currency_offer_verifier import (
+                            classify_currency_offer,
+                        )
+
+                        currency_offer_review = classify_currency_offer(
+                            user_input_text,
+                            (player_data_current or {}).get("currency") or {},
+                            response_data.get("actions") or [],
+                        )
+                        currency_offer_review_attempted = True
+                    currency_offer_error = _unaffordable_explicit_purchase_error(
+                        response_data,
+                        user_input_text,
+                        player_name_actual,
+                        player_data_current,
+                        currency_offer_review,
+                    )
+                except Exception as currency_offer_exception:
+                    currency_offer_error = (
+                        "The proposed currency transaction could not be "
+                        "verified. Do not remove currency or complete an "
+                        "acquisition in this turn."
+                    )
+                    warning(
+                        "T104 currency-offer boundary failed closed: "
+                        f"{currency_offer_exception}",
+                        category="character_updates",
+                    )
+                if currency_offer_error:
+                    conversation_history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Error Note: {currency_offer_error} "
+                                "Please regenerate the complete response."
+                            ),
+                        }
+                    )
+                    save_conversation_history(conversation_history)
+                    retry_count += 1
+                    currency_offer_correction_used = True
+                    info(
+                        "VALIDATION: Unsafe or unverifiable currency purchase; "
+                        f"retry {retry_count}",
+                        category="character_updates",
+                    )
+                    continue
+
+                try:
+                    response_data = json.loads(ai_response_content)
+                    from core.managers.storage_transaction import (
+                        validate_required_storage_sibling,
+                    )
+
+                    storage_contract_valid, storage_contract_error = (
+                        validate_required_storage_sibling(
+                            response_data,
+                            turn_action_prediction,
+                            party_tracker_data,
+                        )
+                    )
+                except Exception as storage_contract_exception:
+                    storage_contract_valid = False
+                    storage_contract_error = (
+                        "Storage action safety could not be verified: "
+                        f"{storage_contract_exception}"
+                    )
+                if not storage_contract_valid:
+                    conversation_history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Error Note: {storage_contract_error} "
+                                "Please regenerate the complete response."
+                            ),
+                        }
+                    )
+                    retry_count += 1
+                    info(
+                        "VALIDATION: Missing required storage action; "
+                        f"retry {retry_count}",
+                        category="storage",
+                    )
+                    continue
+
                 valid_response_received = True
                 debug(f"SUCCESS: Valid response generated on attempt {retry_count + 1}", category="ai_validation")
 

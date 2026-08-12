@@ -254,8 +254,8 @@ STORAGE ACTION SCHEMA:
 
 INSTRUCTIONS:
 1. Analyze the natural language description carefully
-2. Determine the appropriate storage action (create_storage, store_item, retrieve_item, store_currency, retrieve_currency, store_ammunition, retrieve_ammunition, view_storage)
-3. Extract all relevant information (character, items, quantities, storage types, etc.)
+2. Export the player's COMPLETE storage intent in one JSON response
+3. A single resource family may use one operation; mixed item/currency/ammunition intent MUST use an "operations" array containing every requested operation
 4. If creating new storage, infer appropriate storage type and name
 5. If referencing existing storage, use the storage_id from the context
 6. Ensure all required fields are present according to the schema
@@ -265,6 +265,8 @@ INSTRUCTIONS:
 10. NEVER return action "error" - always use a valid action type from the enum
 11. Currency uses store_currency/retrieve_currency with denomination and quantity; never represent coins as items
 12. Ammunition uses store_ammunition/retrieve_ammunition with ammunition_name and quantity; never represent ammunition as an item
+13. Every operation in one operations array must use the same character and storage container
+14. Never omit part of a mixed request; the game commits the complete operations array atomically or commits none of it
 
 OUTPUT REQUIREMENTS:
 - Return ONLY valid JSON that matches the storage action schema
@@ -329,6 +331,16 @@ For "I retrieve 10 arrows from the chest":
   "quantity": 10
 }}
 
+For "I put a torch, 2 gold, 3 silver, and 5 arrows in the chest":
+{{
+  "operations": [
+    {{"action": "store_item", "character": "Norn", "storage_id": "storage_12345678", "item_name": "Torch", "quantity": 1}},
+    {{"action": "store_currency", "character": "Norn", "storage_id": "storage_12345678", "denomination": "gold", "quantity": 2}},
+    {{"action": "store_currency", "character": "Norn", "storage_id": "storage_12345678", "denomination": "silver", "quantity": 3}},
+    {{"action": "store_ammunition", "character": "Norn", "storage_id": "storage_12345678", "ammunition_name": "Arrows", "quantity": 5}}
+  ]
+}}
+
 For "What's in our storage here?":
 {{
   "action": "view_storage",
@@ -355,6 +367,29 @@ For "What's in our storage here?":
             
     def _post_process_operation(self, operation: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Post-process operation to add missing information"""
+
+        if isinstance(operation.get("operations"), list):
+            if not operation["operations"]:
+                raise ValueError("the storage operation set is empty")
+            processed = []
+            for item in operation["operations"]:
+                if not isinstance(item, dict):
+                    raise ValueError("a storage operation is malformed")
+                if item.get("action") == "view_storage":
+                    raise ValueError(
+                        "view_storage cannot be mixed with storage mutations"
+                    )
+                processed.append(self._post_process_operation(item, context))
+            storage_ids = {
+                item.get("storage_id")
+                for item in processed
+                if item.get("storage_id")
+            }
+            if len(storage_ids) > 1:
+                raise ValueError(
+                    "one storage request cannot target multiple containers"
+                )
+            return {"operations": processed}
 
         # The call-site character is authoritative; the model cannot redirect
         # a storage mutation to a different sheet.
@@ -500,8 +535,10 @@ For "What's in our storage here?":
                         ai_response = ai_response.split("```")[1].strip()
                         
                     operation = json.loads(ai_response)
+                    if not isinstance(operation, dict):
+                        raise ValueError("storage response must be a JSON object")
                     
-                except json.JSONDecodeError as e:
+                except (json.JSONDecodeError, ValueError) as e:
                     if attempt == max_attempts - 1:  # Last attempt
                         return {
                             "success": False,
