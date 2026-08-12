@@ -112,6 +112,7 @@ Combat Logging System:
 # ============================================================================
 
 import json
+import copy
 import os
 import time
 import re
@@ -144,7 +145,16 @@ except Exception as e:
 from config import (
     OPENAI_API_KEY,
 )
-from updates.update_character_info import update_character_info, normalize_character_name
+from dataclasses import replace
+from updates.update_character_info import (
+    CharacterMutationPlan,
+    _field_change_facts,
+    execute_character_mutation_plans,
+    normalize_character_name,
+    prepare_character_update,
+    update_character_info,
+)
+from utils.inventory_integrity import normalize_inventory_name
 import updates.update_encounter as update_encounter
 import updates.update_party_tracker as update_party_tracker
 # Import the preroll generator
@@ -2973,6 +2983,145 @@ CRITICAL RULES:
         return None
 
 
+def _ammo_rows_by_name(sheet):
+    rows = sheet.get("ammunition") or []
+    if not isinstance(rows, list):
+        return {}
+    result = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = normalize_inventory_name(row.get("name"))
+        quantity = row.get("quantity")
+        if (
+            name
+            and name not in result
+            and isinstance(quantity, int)
+            and not isinstance(quantity, bool)
+            and quantity >= 0
+        ):
+            result[name] = row
+    return result
+
+
+def _unsupported_combat_ammo_decrements(plan, accepted_event_text):
+    before = _ammo_rows_by_name(plan.pre_image)
+    after = _ammo_rows_by_name(plan.post_image)
+    text = accepted_event_text.casefold()
+    unsupported = []
+    for name, before_row in before.items():
+        before_quantity = before_row.get("quantity", 0)
+        after_quantity = (after.get(name) or {}).get("quantity", 0)
+        if after_quantity >= before_quantity:
+            continue
+        singular = name[:-1] if name.endswith("s") else name
+        explicitly_named = name in text or singular in text
+        weapon_match = (
+            ("arrow" in name and re.search(r"\b(shortbow|longbow|bow)\b", text))
+            or ("bolt" in name and "crossbow" in text)
+            or (
+                any(word in name for word in ("bullet", "shot"))
+                and any(word in text for word in ("firearm", "pistol", "musket"))
+            )
+        )
+        if not explicitly_named and not weapon_match:
+            unsupported.append(name)
+    return tuple(sorted(unsupported))
+
+
+def _restore_unmatched_ammunition(plan, names):
+    names = set(names)
+    before_rows = plan.pre_image.get("ammunition") or []
+    after_rows = plan.post_image.get("ammunition") or []
+    canonical = {
+        normalize_inventory_name(row.get("name")): copy.deepcopy(row)
+        for row in before_rows
+        if isinstance(row, dict)
+        and normalize_inventory_name(row.get("name")) in names
+    }
+    rebuilt = []
+    restored = set()
+    for row in after_rows:
+        name = (
+            normalize_inventory_name(row.get("name"))
+            if isinstance(row, dict)
+            else ""
+        )
+        if name in canonical:
+            if name not in restored:
+                rebuilt.append(copy.deepcopy(canonical[name]))
+                restored.add(name)
+            continue
+        rebuilt.append(copy.deepcopy(row))
+    for name in sorted(names - restored):
+        if name in canonical:
+            rebuilt.append(copy.deepcopy(canonical[name]))
+
+    post_image = copy.deepcopy(plan.post_image)
+    post_image["ammunition"] = rebuilt
+    advisories = tuple(
+        sorted(
+            set(plan.advisories)
+            | {
+                f"combat_ammo_decrement_dropped_unmatched:{name}"
+                for name in names
+            }
+        )
+    )
+    for name in sorted(names):
+        warning(
+            f"COMBAT: Dropped unmatched ammunition decrement for '{name}'",
+            category="ammunition",
+        )
+    return replace(
+        plan,
+        post_image=post_image,
+        field_facts=tuple(_field_change_facts(plan.pre_image, post_image)),
+        advisories=advisories,
+    )
+
+
+def _apply_combat_character_update(character_name, accepted_event_text):
+    """Apply a combat mutation without letting narration invent ammo use."""
+    try:
+        plan = prepare_character_update(character_name, accepted_event_text)
+        if not isinstance(plan, CharacterMutationPlan):
+            return False
+        unsupported = _unsupported_combat_ammo_decrements(
+            plan,
+            accepted_event_text,
+        )
+        if unsupported:
+            labels = ", ".join(unsupported)
+            correction = (
+                f"{accepted_event_text}\n\nCOMBAT AMMUNITION CORRECTION "
+                "(one final attempt): The accepted combat event records no "
+                f"matching use of {labels}. Do not decrement that ammunition. "
+                "Preserve all supported HP, condition, spell, and other changes."
+            )
+            plan = prepare_character_update(character_name, correction)
+            if not isinstance(plan, CharacterMutationPlan):
+                return False
+            unsupported = _unsupported_combat_ammo_decrements(
+                plan,
+                accepted_event_text,
+            )
+            if unsupported:
+                plan = _restore_unmatched_ammunition(plan, unsupported)
+        execute_character_mutation_plans(
+            (plan,),
+            operation="combat_character_update",
+        )
+        return True
+    except Exception as exc:
+        error(
+            "FAILURE: Combat character update failed safely",
+            exception=exc,
+            category="character_updates",
+        )
+        return False
+
+
 def run_combat_simulation(encounter_id, party_tracker_data, location_info):
    """Main function to run the combat simulation"""
    print(f"\n[COMBAT_MANAGER] ========== COMBAT SIMULATION START ==========")
@@ -4937,7 +5086,10 @@ Rules:
                    debug(f"AMMO_DEBUG: Final change string: '{final_change_string}'", category="ammunition")
 
                try:
-                   update_success = update_character_info(character_name, final_change_string)
+                   update_success = _apply_combat_character_update(
+                       character_name,
+                       final_change_string,
+                   )
                    if not update_success:
                        error(f"FAILURE: Final consolidated update failed for {character_name}.", category="character_updates")
                    else:

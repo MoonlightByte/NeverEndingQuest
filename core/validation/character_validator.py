@@ -2504,6 +2504,7 @@ Provide the corrected character data with proper AC calculation."""
                 )
 
         equipment_updates = []
+        contract_advisories = []
         if 'equipment' in response_data:
             if not isinstance(response_data['equipment'], list):
                 raise CharacterValidationResponseError(
@@ -2530,6 +2531,7 @@ Provide the corrected character data with proper AC calculation."""
                     raise CharacterValidationResponseError(
                         f"T051: equipment[{index}] must be an object"
                     )
+                item = copy.deepcopy(item)
                 unknown_fields = set(item).difference(allowed_equipment_fields)
                 if unknown_fields:
                     raise CharacterValidationResponseError(
@@ -2547,6 +2549,17 @@ Provide the corrected character data with proper AC calculation."""
                     )
                 seen_names.add(normalized_name)
                 source_item = source_equipment[normalized_name]
+                dex_limit = item.get('dex_limit')
+                if (
+                    'dex_limit' in item
+                    and not isinstance(dex_limit, bool)
+                    and isinstance(dex_limit, (int, float))
+                    and dex_limit > 10
+                ):
+                    item['dex_limit'] = None
+                    contract_advisories.append(
+                        f"t051_dex_limit_normalized:{normalized_name}"
+                    )
                 for immutable_field in immutable_equipment_fields:
                     if (
                         immutable_field in item
@@ -2573,6 +2586,8 @@ Provide the corrected character data with proper AC calculation."""
                         f"T051: equipment[{index}].armor_category must be a string"
                     )
                 for numeric_field in ('ac_base', 'ac_bonus', 'dex_limit'):
+                    if numeric_field == 'dex_limit' and item.get(numeric_field) is None:
+                        continue
                     if numeric_field in item and (
                         isinstance(item[numeric_field], bool)
                         or not isinstance(item[numeric_field], (int, float))
@@ -2603,6 +2618,9 @@ Provide the corrected character data with proper AC calculation."""
             )
 
         self.corrections_made = list(corrections)
+        for advisory in contract_advisories:
+            if advisory not in self.corrections_made:
+                self.corrections_made.append(advisory)
         for correction in self.corrections_made:
             debug(f"[AC Correction] {correction}", category="character_validation")
             self.logger.info(f"AI Correction: {correction}")

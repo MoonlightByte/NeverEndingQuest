@@ -32,6 +32,7 @@ from updates.update_character_info import (
     update_character_info,
 )
 from utils.encoding_utils import safe_json_load
+from utils.enhanced_logger import warning
 from utils.file_operations import safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
 
@@ -157,7 +158,14 @@ def prepare_character_with_effects(
     if result["operation"] == "add":
         operation = {"op": "add", "effect": result["effect"]}
     elif result["operation"] == "remove":
-        operation = _remove_operation(result, sheet)
+        active_effects = sheet.get("temporaryEffects")
+        if isinstance(active_effects, list) and not active_effects:
+            warning(
+                "EFFECTS: classifier_remove_ignored_no_active_effects",
+                category="character_updates",
+            )
+        else:
+            operation = _remove_operation(result, sheet)
     return prepare_character_update(
         resolved,
         changes,

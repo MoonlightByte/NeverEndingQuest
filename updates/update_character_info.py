@@ -691,10 +691,40 @@ def merge_equipment_arrays(
             )
         remove = update_item.get("_remove") is True
         if "quantity" in update_item:
-            quantity = strict_nonnegative_int(
-                update_item.get("quantity"),
-                f"equipment update[{index}].quantity",
-            )
+            quantity = update_item.get("quantity")
+            if isinstance(quantity, bool) or not isinstance(quantity, int):
+                raise InventoryIntegrityError(
+                    f"equipment update[{index}].quantity must be an integer"
+                )
+            if quantity < 0:
+                if not matches:
+                    raise InventoryIntegrityError(
+                        f"equipment removal delta for '{name}' requires existing equipment"
+                    )
+                current_quantity = strict_nonnegative_int(
+                    result[matches[0]].get("quantity", 1),
+                    f"equipment.{name}.quantity",
+                )
+                final_quantity = current_quantity + quantity
+                if final_quantity < 0:
+                    raise InventoryIntegrityError(
+                        f"equipment overdraw rejected for '{name}'"
+                    )
+                update_item["quantity"] = final_quantity
+                quantity = final_quantity
+                advisory = f"equipment_negative_delta_normalized:{name}"
+                if integrity_advisories is not None:
+                    integrity_advisories.append(advisory)
+                warning(
+                    f"INVENTORY: Applied signed removal delta for "
+                    f"'{update_item.get('item_name')}'",
+                    category="character_validation",
+                )
+            else:
+                quantity = strict_nonnegative_int(
+                    quantity,
+                    f"equipment update[{index}].quantity",
+                )
             remove = remove or quantity == 0
         if matches:
             row_index = matches[0]

@@ -230,7 +230,7 @@ def compute_structured_base_ac(sheet: Any) -> ACComputation:
         ):
             reasons.append("equipped_ac_effect")
 
-    if len(body) != 1:
+    if len(body) > 1:
         reasons.append("body_armor_count")
     if len(shields) > 1:
         reasons.append("shield_count")
@@ -282,21 +282,28 @@ def compute_structured_base_ac(sheet: Any) -> ACComputation:
             tuple(sorted(set(reasons))),
         )
 
-    armor = body[0]
     dexterity_modifier = (dexterity - 10) // 2
-    dexterity_limit = armor.get("dex_limit")
-    if _normalized_category(armor) == "heavy":
-        applied_dexterity = 0
-    else:
-        applied_dexterity = (
-            dexterity_modifier
-            if dexterity_limit is None
-            else min(dexterity_modifier, dexterity_limit)
+    if body:
+        armor = body[0]
+        dexterity_limit = armor.get("dex_limit")
+        if _normalized_category(armor) == "heavy":
+            applied_dexterity = 0
+        else:
+            applied_dexterity = (
+                dexterity_modifier
+                if dexterity_limit is None
+                else min(dexterity_modifier, dexterity_limit)
+            )
+        armor_class = (
+            int(armor["ac_base"])
+            + int(armor["ac_bonus"])
+            + applied_dexterity
         )
-    armor_class = (
-        int(armor["ac_base"])
-        + int(armor["ac_bonus"])
-        + applied_dexterity
+    else:
+        # The default unarmored formula is deterministic only after every
+        # alternate formula or AC-bearing effect above has been ruled out.
+        armor_class = 10 + dexterity_modifier
+    armor_class += (
         + sum(int(shield["ac_bonus"]) for shield in shields)
         + (1 if defense_count == 1 else 0)
     )
