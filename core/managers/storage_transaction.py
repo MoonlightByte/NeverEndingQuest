@@ -35,6 +35,7 @@ from utils.state_transaction import (
     StateTransactionCoordinator,
     TransactionStalePlanError,
 )
+from utils.enhanced_logger import warning
 
 
 class StorageTransactionError(RuntimeError):
@@ -427,6 +428,162 @@ def _character_resource_signature(character: Mapping[str, Any]):
     )
 
 
+def _storage_owned_keys(operations: Sequence[Mapping[str, Any]]):
+    """Return the concrete character-resource keys owned by this request."""
+    equipment = set()
+    currency = set()
+    ammunition = set()
+    for operation in operations:
+        action = operation.get("action")
+        if action in {"store_item", "retrieve_item"}:
+            equipment.update(
+                _normalized_name(name)
+                for name, _quantity in _requested_items(operation)
+            )
+        elif action in {"store_currency", "retrieve_currency"}:
+            currency.add(operation.get("denomination"))
+        elif action in {"store_ammunition", "retrieve_ammunition"}:
+            ammunition.add(_normalized_name(operation.get("ammunition_name")))
+    return (
+        frozenset(value for value in equipment if value),
+        frozenset(value for value in currency if value in _DENOMINATIONS),
+        frozenset(value for value in ammunition if value),
+    )
+
+
+def _group_resource_rows(
+    character: Mapping[str, Any],
+    field: str,
+    name_field: str,
+):
+    rows = character.get(field) or []
+    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+        raise StorageTransactionError(f"character {field} is malformed")
+    grouped = {}
+    for index, row in enumerate(rows):
+        name = _normalized_name(row.get(name_field))
+        if not name:
+            # An unrelated legacy row may itself be what the validator repairs.
+            # Keep it observable without making that old defect a prerequisite
+            # for an otherwise safe storage operation.
+            name = f"__unnamed_{index}"
+        grouped.setdefault(name, []).append(copy.deepcopy(row))
+    return grouped
+
+
+def _storage_owned_projection(
+    character: Mapping[str, Any],
+    owned_keys,
+):
+    """Project exact post-image facts for only storage-owned resource keys."""
+    equipment_names, denominations, ammunition_names = owned_keys
+    equipment = _group_resource_rows(character, "equipment", "item_name")
+    ammunition = _group_resource_rows(character, "ammunition", "name")
+    raw_currency = character.get("currency") or {}
+    if not isinstance(raw_currency, dict):
+        raise StorageTransactionError("character currency is malformed")
+    return (
+        {
+            name: equipment.get(name, [])
+            for name in sorted(equipment_names)
+        },
+        {
+            denomination: copy.deepcopy(raw_currency.get(denomination, 0))
+            for denomination in sorted(denominations)
+        },
+        {
+            name: ammunition.get(name, [])
+            for name in sorted(ammunition_names)
+        },
+    )
+
+
+def _storage_owned_delta_signature(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+    owned_keys,
+):
+    """Prove validator merging is neutral to the already-conserved delta."""
+    return (
+        _storage_owned_projection(before, owned_keys),
+        _storage_owned_projection(after, owned_keys),
+    )
+
+
+def _resource_quantity_ledger(character: Mapping[str, Any]):
+    """Track all asset quantities while allowing metadata-only normalization."""
+    equipment = {}
+    for index, row in enumerate(character.get("equipment") or []):
+        if not isinstance(row, dict):
+            raise StorageTransactionError("character equipment is malformed")
+        name = _normalized_name(row.get("item_name")) or f"__unnamed_{index}"
+        equipment[name] = equipment.get(name, 0) + _strict_quantity(
+            row.get("quantity", 1),
+            f"equipment.{name}.quantity",
+        )
+
+    ammunition = {}
+    for index, row in enumerate(character.get("ammunition") or []):
+        if not isinstance(row, dict):
+            raise StorageTransactionError("character ammunition is malformed")
+        name = _normalized_name(row.get("name")) or f"__unnamed_{index}"
+        ammunition[name] = ammunition.get(name, 0) + _strict_quantity(
+            row.get("quantity"),
+            f"ammunition.{name}.quantity",
+        )
+
+    raw_currency = character.get("currency") or {}
+    if not isinstance(raw_currency, dict):
+        raise StorageTransactionError("character currency is malformed")
+    copper_total = 0
+    for denomination, multiplier in (
+        ("gold", 100),
+        ("silver", 10),
+        ("copper", 1),
+    ):
+        value = raw_currency.get(denomination, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise StorageTransactionError("character currency is malformed")
+        copper_total += value * multiplier
+    return equipment, ammunition, copper_total
+
+
+def _coexisting_normalization_advisories(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+):
+    """Describe validator repairs that can safely ride the atomic commit."""
+    advisories = []
+    resource_fields = {"equipment", "currency", "ammunition"}
+    for field in sorted(set(before) | set(after)):
+        if field not in resource_fields and before.get(field) != after.get(field):
+            advisories.append(f"storage_coexisting_normalization:{field}")
+
+    before_currency = before.get("currency") or {}
+    after_currency = after.get("currency") or {}
+    if isinstance(before_currency, dict) and isinstance(after_currency, dict):
+        for denomination in sorted(set(before_currency) | set(after_currency)):
+            if before_currency.get(denomination) != after_currency.get(denomination):
+                advisories.append(
+                    f"storage_coexisting_normalization:currency.{denomination}"
+                )
+
+    for field, name_field in (
+        ("equipment", "item_name"),
+        ("ammunition", "name"),
+    ):
+        old_rows = _group_resource_rows(before, field, name_field)
+        new_rows = _group_resource_rows(after, field, name_field)
+        for name in sorted(set(old_rows) | set(new_rows)):
+            if old_rows.get(name, []) != new_rows.get(name, []):
+                advisories.append(
+                    f"storage_coexisting_normalization:{field}.{name}"
+                )
+        if old_rows == new_rows and before.get(field) != after.get(field):
+            advisories.append(f"storage_coexisting_normalization:{field}.order")
+    return tuple(sorted(set(advisories)))
+
+
 def _apply_storage_operation(
     operation: Dict[str, Any],
     character: Optional[Dict[str, Any]],
@@ -665,15 +822,38 @@ def prepare_storage_mutation_set(
         advisories.extend(operation_advisories)
 
     if character_after is not None:
-        resources_before_validation = _character_resource_signature(character_after)
-        character_after, validator_advisories = _validate_character_candidate(
-            character_after
+        storage_owned_keys = _storage_owned_keys(operations)
+        storage_mutated_character = copy.deepcopy(character_after)
+        validated_character, validator_advisories = _validate_character_candidate(
+            storage_mutated_character
         )
-        if resources_before_validation != _character_resource_signature(character_after):
+        if _storage_owned_delta_signature(
+            character_before,
+            storage_mutated_character,
+            storage_owned_keys,
+        ) != _storage_owned_delta_signature(
+            character_before,
+            validated_character,
+            storage_owned_keys,
+        ):
             raise StorageTransactionError(
                 "character validation changed storage-owned resources"
             )
+        if _resource_quantity_ledger(
+            storage_mutated_character
+        ) != _resource_quantity_ledger(validated_character):
+            raise StorageTransactionError(
+                "character validation changed unrelated resource quantities"
+            )
+        normalization_advisories = _coexisting_normalization_advisories(
+            storage_mutated_character,
+            validated_character,
+        )
+        for advisory in normalization_advisories:
+            warning(f"INVENTORY: {advisory}", category="storage_operations")
+        character_after = validated_character
         advisories.extend(validator_advisories)
+        advisories.extend(normalization_advisories)
 
     exported_operation = (
         operations[0]
