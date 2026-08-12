@@ -3162,6 +3162,47 @@ def _safe_action_failure_result(result, message_id):
     }
 
 
+def _record_resource_action_failure(
+    result,
+    *,
+    correlation_id,
+    fallback_action_indices=(),
+    fallback_stage="resource_action",
+):
+    """Send internal failure facts to the sanitized transaction ledger."""
+    if not isinstance(result, dict):
+        return False
+    response_data = result.get("response_data")
+    if not isinstance(response_data, dict):
+        response_data = {}
+    raw_indices = result.get("action_indices")
+    if not isinstance(raw_indices, (list, tuple, set, frozenset)):
+        raw_indices = fallback_action_indices
+    indices = tuple(
+        sorted(
+            {
+                value
+                for value in raw_indices
+                if type(value) is int and 0 <= value <= 4096
+            }
+        )
+    )
+    from core.managers.resource_transaction_diagnostics import (
+        record_resource_failure,
+    )
+
+    return record_resource_failure(
+        correlation_id=correlation_id,
+        failure_code=response_data.get(
+            "failure_code", result.get("failure_code", "resource_action_unverified")
+        ),
+        stage=result.get("failed_stage") or fallback_stage,
+        action_indices=indices,
+        exception_class=result.get("exception_class") or "ResourceActionError",
+        diagnostic=result.get("diagnostic") or "resource action failed safely",
+    )
+
+
 def _handle_ordinary_action_failure(
     result,
     response,
@@ -3577,6 +3618,11 @@ def process_ai_response(
         json_content = extract_json_from_codeblock(response)
         parsed_response = json.loads(json_content)
         actions = parsed_response.get("actions", [])
+        from core.managers.resource_transaction_diagnostics import (
+            new_resource_correlation_id,
+        )
+
+        resource_correlation_id = new_resource_correlation_id()
 
         # Movement is the transaction boundary for its response. Reject the
         # entire candidate before level-up or any other action can mutate
@@ -4301,6 +4347,12 @@ def process_ai_response(
                     for index, action in other_actions
                     if action.get("action") == "storageInteraction"
                 )
+                resource_action_indices = tuple(
+                    sorted(
+                        {index for index, _action in char_update_actions}
+                        | {index for index, _action in indexed_storage}
+                    )
+                )
                 fee_result = process_adjacent_storage_fee_groups(
                     prepared_characters,
                     indexed_storage,
@@ -4315,6 +4367,12 @@ def process_ai_response(
                                 "failure_code", "storage_fee_unverified"
                             )
                         },
+                        "diagnostic": fee_result.get("diagnostic"),
+                        "exception_class": fee_result.get("exception_class"),
+                        "failed_stage": fee_result.get("failed_stage"),
+                        "action_indices": fee_result.get(
+                            "action_indices", list(resource_action_indices)
+                        ),
                     }
                 else:
                     for storage_message in fee_result.get("messages", ()):
@@ -4342,8 +4400,29 @@ def process_ai_response(
                     category="character_updates",
                 )
                 result = {"status": "error", "success": False}
+                result.update(
+                    {
+                        "response_data": {
+                            "failure_code": "character_coordinator_exception"
+                        },
+                        "diagnostic": str(action_error),
+                        "exception_class": type(action_error).__name__,
+                        "failed_stage": "character_coordinator",
+                        "action_indices": [
+                            index for index, _action in char_update_actions
+                        ],
+                    }
+                )
             actions_processed = True
             if isinstance(result, dict) and result.get("status") == "error":
+                _record_resource_action_failure(
+                    result,
+                    correlation_id=resource_correlation_id,
+                    fallback_action_indices=(
+                        index for index, _action in char_update_actions
+                    ),
+                    fallback_stage="character_coordinator",
+                )
                 return _handle_ordinary_action_failure(
                     result,
                     response,
@@ -4372,12 +4451,33 @@ def process_ai_response(
                     category="action_processing",
                 )
                 result = {"status": "error", "success": False}
+                result.update(
+                    {
+                        "response_data": {
+                            "failure_code": "action_handler_exception"
+                        },
+                        "diagnostic": str(action_error),
+                        "exception_class": type(action_error).__name__,
+                        "failed_stage": "action_handler",
+                        "action_indices": [_action_index],
+                    }
+                )
             actions_processed = True
 
             # Standard action failures are terminal for this response. The
             # narration has already been displayed, so persist it exactly once
             # and stop before any later action can mutate game state.
             if isinstance(result, dict) and result.get("status") == "error":
+                if action.get("action") in {
+                    "updateCharacterInfo",
+                    "storageInteraction",
+                }:
+                    _record_resource_action_failure(
+                        result,
+                        correlation_id=resource_correlation_id,
+                        fallback_action_indices=(_action_index,),
+                        fallback_stage="action_handler",
+                    )
                 safe_result = _handle_ordinary_action_failure(
                     result,
                     response,
@@ -4385,6 +4485,20 @@ def process_ai_response(
                     conversation_history,
                 )
                 return safe_result
+
+            if (
+                action.get("action") == "storageInteraction"
+                and isinstance(result, dict)
+                and result.get("status") == "needs_response"
+                and isinstance(result.get("response_data"), dict)
+                and result["response_data"].get("failure_code")
+            ):
+                _record_resource_action_failure(
+                    result,
+                    correlation_id=resource_correlation_id,
+                    fallback_action_indices=(_action_index,),
+                    fallback_stage="storage_action_handler",
+                )
 
             if isinstance(result, dict) and result.get("needs_dm_response"):
                 return _complete_committed_module_followup(

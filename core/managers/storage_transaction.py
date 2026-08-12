@@ -925,6 +925,7 @@ def execute_storage_plan(plan: StorageMutationPlan):
 
 def execute_item_storage_operation(operation: Mapping[str, Any]) -> Dict[str, Any]:
     """Prepare, commit, and boundedly re-prepare once on a stale snapshot."""
+    failed_stage = "storage_prepare"
     try:
         for attempt in range(2):
             operation_set = operation.get("operations")
@@ -934,6 +935,7 @@ def execute_item_storage_operation(operation: Mapping[str, Any]) -> Dict[str, An
                 else prepare_storage_mutation(operation)
             )
             try:
+                failed_stage = "storage_commit"
                 execute_storage_plan(plan)
                 return {
                     "success": True,
@@ -942,6 +944,7 @@ def execute_item_storage_operation(operation: Mapping[str, Any]) -> Dict[str, An
                 }
             except TransactionStalePlanError:
                 if attempt == 0:
+                    failed_stage = "storage_stale_reprepare"
                     continue
                 raise
     except Exception as exc:
@@ -950,6 +953,8 @@ def execute_item_storage_operation(operation: Mapping[str, Any]) -> Dict[str, An
             "error": "Storage changed before the item transfer could be verified.",
             "failure_code": "storage_transfer_unverified",
             "diagnostic": str(exc),
+            "exception_class": type(exc).__name__,
+            "failed_stage": failed_stage,
         }
     return {"success": False, "error": "Storage transfer did not complete."}
 
@@ -1267,6 +1272,13 @@ def process_adjacent_storage_fee_groups(
     messages = []
     storage_indices = {index for index, _action in indexed_storage_actions}
     prepared_storage = {}
+    action_indices = tuple(
+        sorted(
+            {item.index for item in prepared_character_actions}
+            | {index for index, _action in indexed_storage_actions}
+        )
+    )
+    failed_stage = "storage_pairing"
 
     def prepare_storage(indexed_storage, fallback_character=None):
         storage_index = indexed_storage[0]
@@ -1279,6 +1291,7 @@ def process_adjacent_storage_fee_groups(
         return prepared_storage[storage_index]
 
     try:
+        failed_stage = "storage_pairing"
         asset_mutations = [
             item
             for item in prepared_character_actions
@@ -1290,9 +1303,11 @@ def process_adjacent_storage_fee_groups(
             if not asset_mutations:
                 break
             storage_index = indexed_storage[0]
+            failed_stage = "storage_prepare"
             _index, _operation, storage_plan = prepare_storage(indexed_storage)
             if storage_plan is None:
                 continue
+            failed_stage = "storage_pairing"
             exact = []
             overlapping_transfer = False
             for item in asset_mutations:
@@ -1316,8 +1331,10 @@ def process_adjacent_storage_fee_groups(
                 continue
             character_action, combined = exact[0]
             try:
+                failed_stage = "storage_commit"
                 execute_storage_plan(combined)
             except TransactionStalePlanError:
+                failed_stage = "storage_stale_reprepare"
                 refreshed_character = prepare_character_actions(
                     ((character_action.index, character_action.action),),
                     party_tracker_data,
@@ -1339,6 +1356,7 @@ def process_adjacent_storage_fee_groups(
                     raise StorageTransactionError(
                         "storage mutation no longer matches the character update"
                     )
+                failed_stage = "storage_commit"
                 execute_storage_plan(combined)
             handled_characters.add(character_action.index)
             handled_storage.add(storage_index)
@@ -1379,6 +1397,7 @@ def process_adjacent_storage_fee_groups(
             if len(adjacent) != 1:
                 continue
             fee_action = adjacent[0]
+            failed_stage = "storage_fee_prepare"
             _index, _operation, storage_plan = prepare_storage(
                 indexed_storage,
                 fee_action.plan.character_name,
@@ -1389,8 +1408,10 @@ def process_adjacent_storage_fee_groups(
             if combined is None:
                 continue
             try:
+                failed_stage = "storage_fee_commit"
                 execute_storage_plan(combined)
             except TransactionStalePlanError:
+                failed_stage = "storage_fee_stale_reprepare"
                 refreshed_fee = prepare_character_actions(
                     ((fee_action.index, fee_action.action),),
                     party_tracker_data,
@@ -1409,6 +1430,7 @@ def process_adjacent_storage_fee_groups(
                     raise StorageTransactionError(
                         "storage fee no longer has one unambiguous participant"
                     )
+                failed_stage = "storage_fee_commit"
                 execute_storage_plan(combined)
             handled_characters.add(fee_action.index)
             handled_storage.add(storage_index)
@@ -1424,9 +1446,33 @@ def process_adjacent_storage_fee_groups(
             "messages": tuple(messages),
         }
     except Exception as exc:
-        return {
-            "success": False,
-            "error": "Storage and character changes could not be committed together.",
-            "failure_code": "storage_batch_unverified",
-            "diagnostic": str(exc),
+        return _storage_batch_failure(
+            exc,
+            stage=failed_stage,
+            action_indices=action_indices,
+        )
+
+
+def _storage_batch_failure(
+    exc: Exception,
+    *,
+    stage: str = "storage_batch",
+    action_indices=(),
+):
+    """Return one internal failure envelope for boundary telemetry."""
+    indices = sorted(
+        {
+            value
+            for value in action_indices
+            if type(value) is int and 0 <= value <= 4096
         }
+    )
+    return {
+        "success": False,
+        "error": "Storage and character changes could not be committed together.",
+        "failure_code": "storage_batch_unverified",
+        "diagnostic": str(exc),
+        "exception_class": type(exc).__name__,
+        "failed_stage": stage,
+        "action_indices": indices,
+    }

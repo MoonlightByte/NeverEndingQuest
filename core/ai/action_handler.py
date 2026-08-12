@@ -2723,7 +2723,11 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     status="needs_response",
                     needs_update=True,
                     response_data={"failure_code": "storage_character_missing"},
-                )
+                ) | {
+                    "diagnostic": "storage interaction has no character",
+                    "exception_class": "StorageActionError",
+                    "failed_stage": "storage_action_input",
+                }
                 
             if not storage_description:
                 print(f"ERROR: No storage description provided")
@@ -2734,7 +2738,11 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     status="needs_response",
                     needs_update=True,
                     response_data={"failure_code": "storage_description_missing"},
-                )
+                ) | {
+                    "diagnostic": "storage interaction has no useful description",
+                    "exception_class": "StorageActionError",
+                    "failed_stage": "storage_action_input",
+                }
                 
             debug(f"AI_CALL: Processing storage request for {character_name}: '{storage_description}'", category="storage_operations")
             
@@ -2757,7 +2765,14 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                             "failure_code", "storage_processing_failed"
                         )
                     },
-                )
+                ) | {
+                    "diagnostic": processor_result.get("error")
+                    or "storage processing failed",
+                    "exception_class": processor_result.get("exception_class")
+                    or "StorageProcessingError",
+                    "failed_stage": processor_result.get("failed_stage")
+                    or "storage_processing",
+                }
                 
             # Execute the validated storage operation
             operation = processor_result["operation"]
@@ -2789,7 +2804,15 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                             "failure_code", "storage_execution_failed"
                         )
                     },
-                )
+                ) | {
+                    "diagnostic": execution_result.get("diagnostic")
+                    or execution_result.get("error")
+                    or "storage execution failed",
+                    "exception_class": execution_result.get("exception_class")
+                    or "StorageExecutionError",
+                    "failed_stage": execution_result.get("failed_stage")
+                    or "storage_execution",
+                }
                 
         except Exception as e:
             print(f"ERROR: Exception while processing storage interaction: {str(e)}")
@@ -2805,7 +2828,11 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 status="needs_response",
                 needs_update=True,
                 response_data={"failure_code": "storage_system_error"},
-            )
+            ) | {
+                "diagnostic": str(e),
+                "exception_class": type(e).__name__,
+                "failed_stage": "storage_action_handler",
+            }
 
     elif action_type == ACTION_UPDATE_PARTY_TRACKER:
         debug("STATE_CHANGE: Processing updatePartyTracker action", category="party_management")

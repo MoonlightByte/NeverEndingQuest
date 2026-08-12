@@ -665,7 +665,11 @@ def process_character_update_batch(
         prepared = _prepare_actions(indexed_actions, party_tracker_data)
         return commit_prepared_character_actions(prepared, party_tracker_data)
     except Exception as exc:
-        return _character_batch_failure(exc)
+        return _character_batch_failure(
+            exc,
+            stage="character_prepare",
+            action_indices=(index for index, _action in indexed_actions),
+        )
 
 
 def prepare_character_actions(
@@ -676,7 +680,19 @@ def prepare_character_actions(
     return _prepare_actions(indexed_actions, party_tracker_data)
 
 
-def _character_batch_failure(exc: Exception) -> Dict[str, Any]:
+def _character_batch_failure(
+    exc: Exception,
+    *,
+    stage: str = "character_batch",
+    action_indices=(),
+) -> Dict[str, Any]:
+    indices = sorted(
+        {
+            value
+            for value in action_indices
+            if type(value) is int and 0 <= value <= 4096
+        }
+    )
     return {
         "status": "error",
         "success": False,
@@ -688,6 +704,9 @@ def _character_batch_failure(exc: Exception) -> Dict[str, Any]:
             "failure_code": "character_transfer_unverified",
         },
         "diagnostic": str(exc),
+        "exception_class": type(exc).__name__,
+        "failed_stage": stage,
+        "action_indices": indices,
     }
 
 
@@ -696,9 +715,13 @@ def commit_prepared_character_actions(
     party_tracker_data: Mapping[str, Any],
 ) -> Dict[str, Any]:
     """Commit a previously prepared subset with the same A1 graph rules."""
+    failed_stage = "character_batch_input"
+    action_indices = ()
     try:
         prepared = tuple(prepared)
+        action_indices = tuple(item.index for item in prepared)
         shape_corrected_indices = set()
+        failed_stage = "explicit_removal_contract"
         removal_mismatch = _explicit_removal_contract_mismatch(prepared)
         if removal_mismatch:
             correction = (
@@ -721,6 +744,7 @@ def commit_prepared_character_actions(
                 )
             prepared = corrected
             shape_corrected_indices = {item.index for item in prepared}
+        failed_stage = "transfer_shape_validation"
         shape_mismatch = _batch_transfer_shape_mismatch(prepared)
         if shape_mismatch:
             if shape_corrected_indices:
@@ -748,6 +772,7 @@ def commit_prepared_character_actions(
         components = _candidate_components(prepared)
 
         corrected_components = {}
+        failed_stage = "transfer_component_validation"
         for indices in components:
             component = tuple(by_index[index] for index in indices)
             mismatch = _validate_transfer_component(component)
@@ -794,6 +819,7 @@ def commit_prepared_character_actions(
 
         from utils.state_transaction import TransactionStalePlanError
 
+        failed_stage = "character_commit"
         for _index, unit, operation in sorted(units, key=lambda value: value[0]):
             try:
                 execute_character_mutation_plans(
@@ -804,6 +830,7 @@ def commit_prepared_character_actions(
                 # Leases are already released by the coordinator. Re-run all
                 # model preparation once against the new snapshots, then
                 # revalidate the concrete component before the final attempt.
+                failed_stage = "character_stale_reprepare"
                 refreshed = _prepare_actions(
                     tuple((item.index, item.action) for item in unit),
                     party_tracker_data,
@@ -833,6 +860,7 @@ def commit_prepared_character_actions(
                     tuple(item.plan for item in refreshed),
                     operation=operation,
                 )
+                failed_stage = "character_commit"
 
         rest_kinds = {
             (
@@ -845,6 +873,7 @@ def commit_prepared_character_actions(
         for rest_kind in sorted(value for value in rest_kinds if value):
             from core.managers.effects_runtime import process_effect_lifecycle
 
+            failed_stage = "effect_lifecycle"
             process_effect_lifecycle(rest_kind=rest_kind)
         return {
             "status": "continue",
@@ -853,4 +882,8 @@ def commit_prepared_character_actions(
             "committed_indices": [item.index for item in prepared],
         }
     except Exception as exc:
-        return _character_batch_failure(exc)
+        return _character_batch_failure(
+            exc,
+            stage=failed_stage,
+            action_indices=action_indices,
+        )
