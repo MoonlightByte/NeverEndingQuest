@@ -462,6 +462,177 @@ def _explicit_removal_contract_mismatch(
     return None
 
 
+_ACQUISITION_VERBS = r"(?:added|received|gained|acquired|collected|earned|obtained)"
+
+
+def _effective_same_character_asset_deltas(
+    prepared: Sequence[PreparedCharacterAction],
+):
+    """Project one effective final per character from independently made plans.
+
+    This mirrors the response transaction's deterministic merge rule for the
+    three resource families. Unchanged candidates contribute nothing,
+    identical finals deduplicate, and competing finals are rejected.
+    """
+    effective = {}
+    by_path: Dict[str, List[PreparedCharacterAction]] = {}
+    for item in prepared:
+        by_path.setdefault(item.plan.canonical_path, []).append(item)
+
+    for path, items in by_path.items():
+        before = items[0].plan.pre_image
+        if any(item.plan.pre_image != before for item in items[1:]):
+            raise CharacterTransferError(
+                "same-character actions do not share one pre-image"
+            )
+        before_currency = before.get("currency") or {}
+        if not isinstance(before_currency, dict):
+            raise CharacterTransferError("currency must be an object")
+        for denomination in _DENOMINATIONS:
+            old = _strict_nonnegative_int(
+                before_currency.get(denomination, 0),
+                f"currency.{denomination}",
+            )
+            changed_finals = set()
+            for item in items:
+                currency = item.plan.post_image.get("currency") or {}
+                if not isinstance(currency, dict):
+                    raise CharacterTransferError("currency must be an object")
+                final = _strict_nonnegative_int(
+                    currency.get(denomination, 0),
+                    f"currency.{denomination}",
+                )
+                if final != old:
+                    changed_finals.add(final)
+            if len(changed_finals) > 1:
+                raise CharacterTransferError(
+                    f"same-character actions propose conflicting {denomination} finals"
+                )
+            final = next(iter(changed_finals), old)
+            if final != old:
+                effective[(path, "currency", denomination)] = final - old
+
+        for family, field, name_field in (
+            ("equipment", "equipment", "item_name"),
+            ("ammunition", "ammunition", "name"),
+        ):
+            old_rows = _rows_by_name(before, field, name_field)
+            post_rows = [
+                _rows_by_name(item.plan.post_image, field, name_field)
+                for item in items
+            ]
+            for name in sorted(
+                set(old_rows).union(*(set(rows) for rows in post_rows))
+            ):
+                old = (
+                    _strict_nonnegative_int(
+                        old_rows[name].get("quantity", 1),
+                        f"{field}.{name}.quantity",
+                    )
+                    if name in old_rows
+                    else 0
+                )
+                changed_finals = set()
+                for rows in post_rows:
+                    final = (
+                        _strict_nonnegative_int(
+                            rows[name].get("quantity", 1),
+                            f"{field}.{name}.quantity",
+                        )
+                        if name in rows
+                        else 0
+                    )
+                    if final != old:
+                        changed_finals.add(final)
+                if len(changed_finals) > 1:
+                    raise CharacterTransferError(
+                        f"same-character actions propose conflicting {family} "
+                        f"{name} finals"
+                    )
+                final = next(iter(changed_finals), old)
+                if final != old:
+                    effective[(path, family, name)] = final - old
+    return effective
+
+
+def _explicit_acquisition_contract_mismatch(
+    prepared: Sequence[PreparedCharacterAction],
+) -> Optional[str]:
+    """Compare explicit positive action facts to the batch's merged finals."""
+    try:
+        effective = _effective_same_character_asset_deltas(prepared)
+    except CharacterTransferError as exc:
+        return str(exc)
+
+    stated: Dict[Tuple[str, str, str], int] = {}
+    currency_pattern = re.compile(
+        rf"\b{_ACQUISITION_VERBS}\s+(\d+)\s+"
+        r"(gold|silver|copper)(?:\s+(?:coin|coins|piece|pieces))?\b",
+        re.IGNORECASE,
+    )
+    by_path: Dict[str, List[PreparedCharacterAction]] = {}
+    for item in prepared:
+        by_path.setdefault(item.plan.canonical_path, []).append(item)
+        for amount, denomination in currency_pattern.findall(item.changes):
+            key = (item.plan.canonical_path, "currency", denomination.casefold())
+            stated[key] = stated.get(key, 0) + int(amount)
+
+    for path, items in by_path.items():
+        positive_rows = {
+            key: quantity
+            for key, quantity in effective.items()
+            if key[0] == path and key[1] != "currency" and quantity > 0
+        }
+        for item in items:
+            exact_matched = set()
+            for key in positive_rows:
+                name = key[2]
+                variants = {name}
+                if name.endswith("s") and len(name) > 1:
+                    variants.add(name[:-1])
+                pattern = re.compile(
+                    rf"\b{_ACQUISITION_VERBS}\s+(\d+)\s+(?:"
+                    + "|".join(
+                        re.escape(value)
+                        for value in sorted(variants, key=len, reverse=True)
+                    )
+                    + r")(?=\s|[.,;]|$)",
+                    re.IGNORECASE,
+                )
+                amounts = [int(value) for value in pattern.findall(item.changes)]
+                if amounts:
+                    stated[key] = stated.get(key, 0) + sum(amounts)
+                    exact_matched.add(key)
+
+            # If there is exactly one positive non-currency result, an explicit
+            # numbered acquisition sentence can identify it without fuzzy-name
+            # matching. Sentences that also state currency stay unclassified;
+            # the bounded planner owns those multi-asset shapes in Section D.
+            unmatched = [key for key in positive_rows if key not in exact_matched]
+            if len(positive_rows) == 1 and len(unmatched) == 1:
+                generic = re.compile(
+                    rf"\b{_ACQUISITION_VERBS}\s+(\d+)\s+([^.;\n]+)",
+                    re.IGNORECASE,
+                )
+                generic_matches = generic.findall(item.changes)
+                if len(generic_matches) == 1 and not currency_pattern.search(
+                    item.changes
+                ):
+                    key = unmatched[0]
+                    stated[key] = stated.get(key, 0) + int(generic_matches[0][0])
+
+    for key, expected in sorted(stated.items()):
+        actual = effective.get(key, 0)
+        if actual != expected:
+            _path, family, name = key
+            label = name if family != "equipment" else f"{name}"
+            return (
+                f"stated acquisition of {expected} {label} produced a "
+                f"concrete acquisition of {actual} {label}"
+            )
+    return None
+
+
 def _validate_transfer_component(
     component: Sequence[PreparedCharacterAction],
 ) -> Optional[str]:
@@ -728,26 +899,35 @@ def commit_prepared_character_actions(
         prepared = tuple(prepared)
         action_indices = tuple(item.index for item in prepared)
         shape_corrected_indices = set()
-        failed_stage = "explicit_removal_contract"
-        removal_mismatch = _explicit_removal_contract_mismatch(prepared)
-        if removal_mismatch:
+        failed_stage = "explicit_stated_value_contract"
+        stated_value_mismatch = _explicit_removal_contract_mismatch(prepared)
+        if not stated_value_mismatch:
+            stated_value_mismatch = _explicit_acquisition_contract_mismatch(
+                prepared
+            )
+        if stated_value_mismatch:
             correction = (
-                f"{removal_mismatch}. Explicit numbered removals must produce "
-                "that exact concrete decrease; never clamp, floor, partially "
-                "pay, or substitute another resource"
+                f"{stated_value_mismatch}. Explicit numbered resource changes "
+                "must produce that exact concrete increase or decrease; never "
+                "duplicate, clamp, floor, partially apply, or substitute "
+                "another resource"
             )
             corrected = _prepare_actions(
                 tuple((item.index, item.action) for item in prepared),
                 party_tracker_data,
                 correction=correction,
             )
-            remaining_removal_mismatch = _explicit_removal_contract_mismatch(
+            remaining_stated_value_mismatch = _explicit_removal_contract_mismatch(
                 corrected
             )
-            if remaining_removal_mismatch:
+            if not remaining_stated_value_mismatch:
+                remaining_stated_value_mismatch = (
+                    _explicit_acquisition_contract_mismatch(corrected)
+                )
+            if remaining_stated_value_mismatch:
                 raise CharacterTransferError(
-                    "explicit removal correction failed safely: "
-                    f"{remaining_removal_mismatch}"
+                    "explicit stated-value correction failed safely: "
+                    f"{remaining_stated_value_mismatch}"
                 )
             prepared = corrected
             shape_corrected_indices = {item.index for item in prepared}
