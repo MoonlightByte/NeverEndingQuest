@@ -1013,6 +1013,13 @@ def _storage_operation_delta_signature(operation: Mapping[str, Any]):
             if name and type(quantity) is int and quantity > 0:
                 key = ("ammunition", name)
                 totals[key] = totals.get(key, 0) + sign * quantity
+        elif action in {"store_currency", "retrieve_currency"}:
+            sign = -1 if action == "store_currency" else 1
+            name = _normalized_name(item.get("denomination"))
+            quantity = item.get("quantity")
+            if name in _DENOMINATIONS and type(quantity) is int and quantity > 0:
+                key = ("currency", name)
+                totals[key] = totals.get(key, 0) + sign * quantity
     return {key: quantity for key, quantity in totals.items() if quantity}
 
 
@@ -1020,7 +1027,7 @@ def _storage_operation_coverage_error(operation, required_deltas):
     """Require T049 operations to cover every paired character asset delta."""
     required = {}
     for family, name, quantity in required_deltas:
-        if family not in {"equipment", "ammunition"} or not quantity:
+        if family not in {"equipment", "ammunition", "currency"} or not quantity:
             continue
         key = (family, _normalized_name(name))
         required[key] = required.get(key, 0) + quantity

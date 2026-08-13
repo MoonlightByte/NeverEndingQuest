@@ -527,6 +527,8 @@ For "What's in our storage here?":
         
         max_attempts = 3
         original_description = description
+        completeness_required = ()
+        completeness_checked = False
         
         for attempt in range(max_attempts):
             try:
@@ -620,16 +622,77 @@ For "What's in our storage here?":
                 
                 # Validate operation
                 is_valid, validation_error = self._validate_operation(operation)
-                if is_valid and required_deltas:
+                combined_required_deltas = tuple(required_deltas) + tuple(
+                    completeness_required
+                )
+                if is_valid and combined_required_deltas:
                     from core.managers.storage_transaction import (
                         _storage_operation_coverage_error,
                     )
 
                     validation_error = _storage_operation_coverage_error(
                         operation,
-                        required_deltas,
+                        combined_required_deltas,
                     )
                     is_valid = validation_error is None
+                if is_valid and not completeness_checked:
+                    from core.managers.storage_transaction import (
+                        _storage_operation_delta_signature,
+                    )
+
+                    operation_set = operation.get("operations")
+                    operation_set = (
+                        operation_set
+                        if isinstance(operation_set, list)
+                        else [operation]
+                    )
+                    create_only_shape = any(
+                        isinstance(item, dict)
+                        and item.get("action") == "create_storage"
+                        for item in operation_set
+                    ) and not _storage_operation_delta_signature(operation)
+                    if create_only_shape:
+                        from core.ai.storage_completeness_verifier import (
+                            classify_storage_completeness,
+                        )
+
+                        completeness_checked = True
+                        completeness = classify_storage_completeness(
+                            original_description,
+                            operation,
+                        )
+                        classification = completeness.get("classification")
+                        if classification == "uncertain":
+                            return {
+                                "success": False,
+                                "error": (
+                                    "Storage intent was ambiguous after the "
+                                    "bounded completeness check"
+                                ),
+                                "failure_code": "storage_completeness_uncertain",
+                            }
+                        if classification == "movement_required":
+                            completeness_required = tuple(
+                                (
+                                    resource["family"],
+                                    resource["name"],
+                                    (
+                                        -resource["quantity"]
+                                        if resource["direction"] == "store"
+                                        else resource["quantity"]
+                                    ),
+                                )
+                                for resource in completeness.get("resources", ())
+                            )
+                            from core.managers.storage_transaction import (
+                                _storage_operation_coverage_error,
+                            )
+
+                            validation_error = _storage_operation_coverage_error(
+                                operation,
+                                completeness_required,
+                            )
+                            is_valid = validation_error is None
                 
                 if not is_valid:
                     warning(f"VALIDATION: Failed on attempt {attempt + 1}: {validation_error}", category="storage_operations")

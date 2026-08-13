@@ -463,6 +463,39 @@ def _explicit_removal_contract_mismatch(
 
 
 _ACQUISITION_VERBS = r"(?:added|received|gained|acquired|collected|earned|obtained)"
+_NON_QUANTITY_UNIT_WORDS = frozenset(
+    {
+        "centimeter",
+        "centimeters",
+        "day",
+        "days",
+        "feet",
+        "foot",
+        "ft",
+        "gallon",
+        "gallons",
+        "hour",
+        "hours",
+        "inch",
+        "inches",
+        "lb",
+        "lbs",
+        "liter",
+        "liters",
+        "meter",
+        "meters",
+        "mile",
+        "miles",
+        "minute",
+        "minutes",
+        "ounce",
+        "ounces",
+        "pound",
+        "pounds",
+        "yard",
+        "yards",
+    }
+)
 
 
 def _effective_same_character_asset_deltas(
@@ -557,6 +590,8 @@ def _effective_same_character_asset_deltas(
 
 def _explicit_acquisition_contract_mismatch(
     prepared: Sequence[PreparedCharacterAction],
+    *,
+    check_asset_rows: bool = True,
 ) -> Optional[str]:
     """Compare explicit positive action facts to the batch's merged finals."""
     try:
@@ -581,7 +616,10 @@ def _explicit_acquisition_contract_mismatch(
         positive_rows = {
             key: quantity
             for key, quantity in effective.items()
-            if key[0] == path and key[1] != "currency" and quantity > 0
+            if check_asset_rows
+            and key[0] == path
+            and key[1] != "currency"
+            and quantity > 0
         }
         for item in items:
             exact_matched = set()
@@ -618,8 +656,15 @@ def _explicit_acquisition_contract_mismatch(
                 if len(generic_matches) == 1 and not currency_pattern.search(
                     item.changes
                 ):
-                    key = unmatched[0]
-                    stated[key] = stated.get(key, 0) + int(generic_matches[0][0])
+                    descriptor = generic_matches[0][1].strip().casefold()
+                    first_word = re.match(r"[a-z]+", descriptor)
+                    if not first_word or first_word.group(0) not in (
+                        _NON_QUANTITY_UNIT_WORDS
+                    ):
+                        key = unmatched[0]
+                        stated[key] = stated.get(key, 0) + int(
+                            generic_matches[0][0]
+                        )
 
     for key, expected in sorted(stated.items()):
         actual = effective.get(key, 0)
@@ -925,11 +970,28 @@ def commit_prepared_character_actions(
         prepared = tuple(prepared)
         action_indices = tuple(item.index for item in prepared)
         shape_corrected_indices = set()
+        preliminary_planning_decision = None
+        if enable_resource_planning:
+            import model_config
+            from core.managers.resource_transaction_planning import (
+                route_resource_transaction,
+            )
+
+            preliminary_planning_decision = route_resource_transaction(
+                prepared,
+                tuple(resource_storage_plans),
+                provider=model_config.get_provider(),
+            )
+        check_asset_stated_values = not (
+            preliminary_planning_decision
+            and preliminary_planning_decision.requires_planning
+        )
         failed_stage = "explicit_stated_value_contract"
         stated_value_mismatch = _explicit_removal_contract_mismatch(prepared)
         if not stated_value_mismatch:
             stated_value_mismatch = _explicit_acquisition_contract_mismatch(
-                prepared
+                prepared,
+                check_asset_rows=check_asset_stated_values,
             )
         if stated_value_mismatch:
             correction = (
@@ -948,7 +1010,10 @@ def commit_prepared_character_actions(
             )
             if not remaining_stated_value_mismatch:
                 remaining_stated_value_mismatch = (
-                    _explicit_acquisition_contract_mismatch(corrected)
+                    _explicit_acquisition_contract_mismatch(
+                        corrected,
+                        check_asset_rows=check_asset_stated_values,
+                    )
                 )
             if remaining_stated_value_mismatch:
                 raise CharacterTransferError(

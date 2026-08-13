@@ -887,6 +887,56 @@ CURRENCY_OFFER_T104_LMSTUDIO = {
     "response_format": None,
 }
 
+# --- T106: Zero-resource storage completeness (tiny JSON, mini tier) ---
+# Invoked once only when T049 returns a create/view-style operation that moves
+# no resources. It distinguishes a genuine declarative container action from a
+# missing store/retrieve half and names the resources for T049's existing retry.
+_T106_STORAGE_COMPLETENESS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "classification": {
+            "type": "string",
+            "enum": ["movement_required", "declarative_only", "uncertain"],
+        },
+        "resources": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "family": {
+                        "type": "string",
+                        "enum": ["equipment", "ammunition", "currency"],
+                    },
+                    "name": {"type": "string"},
+                    "direction": {
+                        "type": "string",
+                        "enum": ["store", "retrieve"],
+                    },
+                    "quantity": {"type": "integer", "minimum": 1},
+                },
+                "required": ["family", "name", "direction", "quantity"],
+            },
+        },
+    },
+    "required": ["classification", "resources"],
+}
+STORAGE_COMPLETENESS_T106_GPT54MINI_NONE = {
+    "model": "gpt-5.4-mini",
+    "reasoning_effort": "none",
+}
+STORAGE_COMPLETENESS_T106_GEMINI_FLASHLITE_LOW = {
+    "model": "gemini-3.1-flash-lite-preview",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(
+        _T106_STORAGE_COMPLETENESS_SCHEMA
+    ),
+}
+STORAGE_COMPLETENESS_T106_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+STORAGE_COMPLETENESS_T106_LMSTUDIO = {
+    "model": "local-model",
+    "response_format": None,
+}
+
 # --- T105: Complex resource transaction planning (small JSON, mini tier) ---
 # Invoked only after deterministic routing identifies a complex accepted action
 # batch.  It arranges observed fact identifiers; code remains authoritative for
@@ -1498,6 +1548,7 @@ TASK_CAPTURE_CONFIGS = {
     # Currency-offer intent verification (natural language -> tiny JSON fact)
     "T104": ("CURRENCY_OFFER_T104_GPT54MINI_NONE", "CURRENCY_OFFER_T104_GEMINI_FLASHLITE_LOW"),
     "T105": ("RESOURCE_PLAN_T105_GPT54MINI_LOW", "RESOURCE_PLAN_T105_GEMINI_FLASH_LOW"),
+    "T106": ("STORAGE_COMPLETENESS_T106_GPT54MINI_NONE", "STORAGE_COMPLETENESS_T106_GEMINI_FLASHLITE_LOW"),
 
     # Adventure summaries (T015, T016, T018, T019)
     "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
