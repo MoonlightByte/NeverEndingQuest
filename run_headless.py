@@ -208,8 +208,11 @@ def cmd_script(args):
             inputs = [line.rstrip("\n") for line in handle
                       if line.strip() and not line.lstrip().startswith("#")]
     except OSError as exc:
-        print(json.dumps({"type": "exit", "reason": "error",
-                          "detail": "cannot read inputs file: %s" % exc}))
+        ProtocolWriter(sys.stdout).emit(
+            "exit",
+            reason="error",
+            detail="cannot read inputs file: %s" % exc,
+        )
         return EXIT_BOOTSTRAP
     driver = ScriptDriver(inputs, args.max_turns)
     return _run_session(args, driver, timeout_per_turn=args.timeout_per_turn)

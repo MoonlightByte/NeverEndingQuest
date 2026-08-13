@@ -34,6 +34,7 @@ import json
 import sys
 import os
 import re
+import copy
 
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -103,6 +104,26 @@ def save_json(file_name, data):
         return True
     print(f"{RED}Error saving to {file_name}: atomic write failed{RESET}")
     return False
+
+
+def normalize_legacy_food_equipment(npc_data):
+    """Map the old food item type onto the existing character schema."""
+    normalized = copy.deepcopy(npc_data)
+    advisories = []
+    if not isinstance(normalized, dict):
+        return normalized, tuple(advisories)
+    equipment = normalized.get("equipment")
+    if not isinstance(equipment, list):
+        return normalized, tuple(advisories)
+    for index, item in enumerate(equipment):
+        if not isinstance(item, dict) or item.get("item_type") != "food":
+            continue
+        item["item_type"] = "consumable"
+        item["item_subtype"] = "food"
+        item["consumable"] = True
+        advisories.append("npc_legacy_food_normalized:%d" % index)
+    return normalized, tuple(advisories)
+
 
 def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None, npc_background=None):
     system_prompt_text = load_prompt("prompts/generators/npc_builder_prompt.txt") # Renamed variable
@@ -201,6 +222,14 @@ Adhere strictly to 5e rules and the provided schema."""
                 # Remove nested 'value' fields if they exist
                 npc_data = remove_nested_values(npc_data)
                 npc_data, _ = repair_required_ammunition_field(npc_data)
+                npc_data, food_advisories = normalize_legacy_food_equipment(
+                    npc_data
+                )
+                for advisory in food_advisories:
+                    warning(
+                        "NPC build compatibility repair: %s" % advisory,
+                        category="npc_creation",
+                    )
                 last_parsed_data = npc_data
                 validate(instance=npc_data, schema=schema)
                 return npc_data

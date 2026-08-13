@@ -88,6 +88,40 @@ def _generator_script_path(filename):
     """Resolve generator subprocesses independently of the active game cwd."""
     return os.path.join(_PROJECT_ROOT, "core", "generators", filename)
 
+
+def _run_generator_subprocess(command):
+    """Capture child diagnostics so headless stdout remains protocol-only."""
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        if exc.stdout:
+            debug(
+                "SUBPROCESS: generator stdout: %s" % exc.stdout[:4000],
+                category="subprocess_output",
+            )
+        if exc.stderr:
+            debug(
+                "SUBPROCESS: generator stderr: %s" % exc.stderr[:4000],
+                category="subprocess_output",
+            )
+        raise
+    if result.stdout:
+        debug(
+            "SUBPROCESS: generator stdout: %s" % result.stdout[:4000],
+            category="subprocess_output",
+        )
+    if result.stderr:
+        debug(
+            "SUBPROCESS: generator stderr: %s" % result.stderr[:4000],
+            category="subprocess_output",
+        )
+    return result
+
 # Import token tracking
 try:
     from utils.openai_usage_tracker import track_response
@@ -866,14 +900,17 @@ def update_party_npcs(party_tracker_data, operation, npc):
                 # Add this debug line right before the subprocess.run call
                 debug(f"SUBPROCESS: Calling npc_builder.py with arguments: {npc['name']} {npc.get('race', '')} {npc.get('class', '')} {npc_level} {npc.get('background', '')}", category="character_updates")
 
-                subprocess.run([
-                    sys.executable, _generator_script_path("npc_builder.py"),
-                    npc['name'],
-                    npc.get('race', ''),
-                    npc.get('class', ''),
-                    npc_level,
-                    npc.get('background', '')
-                ], check=True)
+                _run_generator_subprocess(
+                    [
+                        sys.executable,
+                        _generator_script_path("npc_builder.py"),
+                        npc['name'],
+                        npc.get('race', ''),
+                        npc.get('class', ''),
+                        npc_level,
+                        npc.get('background', ''),
+                    ]
+                )
                 info(f"SUCCESS: NPC profile created for {npc['name']}", category="character_updates")
             except subprocess.CalledProcessError as e:
                 error(f"FAILURE: Failed to create NPC profile for {npc['name']}: {e}", category="character_updates")

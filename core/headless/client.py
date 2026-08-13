@@ -30,6 +30,8 @@ import subprocess
 import sys
 import threading
 
+from core.headless.protocol import VALID_EVENT_TYPES
+
 
 class HeadlessProtocolError(RuntimeError):
     """The serve process ended or misbehaved mid-conversation."""
@@ -168,12 +170,34 @@ class HeadlessClient:
                 if not line:
                     continue
                 try:
-                    self._events.put(json.loads(line))
+                    event = json.loads(line)
                 except ValueError:
+                    self._report_protocol_issue("invalid_ndjson")
                     continue
+                if not isinstance(event, dict):
+                    self._report_protocol_issue("non_object_event")
+                    continue
+                if (
+                    event.get("type") not in VALID_EVENT_TYPES
+                    or type(event.get("seq")) is not int
+                    or not isinstance(event.get("ts"), (int, float))
+                    or isinstance(event.get("ts"), bool)
+                ):
+                    self._report_protocol_issue("non_protocol_object")
+                    continue
+                self._events.put(event)
         except Exception:
-            pass
+            self._report_protocol_issue("reader_failure")
         self._events.put(None)  # stream closed
+
+    def _report_protocol_issue(self, reason):
+        """Report a bounded transport warning without replaying leaked text."""
+        self._events.put(
+            {
+                "type": "protocol_warning",
+                "detail": str(reason)[:80],
+            }
+        )
 
     def _next_event(self, timeout=None):
         try:

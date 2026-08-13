@@ -22,6 +22,25 @@ import time
 
 PROTOCOL_VERSION = 1
 
+VALID_EVENT_TYPES = frozenset(
+    {
+        "build_complete",
+        "build_error",
+        "compression",
+        "debug",
+        "exit",
+        "hello",
+        "module_progress",
+        "narration",
+        "prompt",
+        "result",
+        "startup",
+        "state",
+        "status",
+        "system",
+    }
+)
+
 VALID_COMMAND_NAMES = {
     "state",
     "save",
