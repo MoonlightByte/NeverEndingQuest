@@ -294,99 +294,244 @@ def _batch_transfer_shape_mismatch(
     return None
 
 
-def _correction_with_canonical_source_names(
-    mismatch: str,
-    prepared: Sequence[PreparedCharacterAction],
-) -> str:
-    """Add only exact, already-persisted outgoing row names to a correction."""
-    names = set()
-    outgoing = []
-    for item in prepared:
-        for delta in concrete_asset_deltas(item.plan):
-            if delta.quantity >= 0 or delta.family not in {
-                "equipment",
-                "ammunition",
-            }:
-                continue
-            field, name_field = (
-                ("equipment", "item_name")
-                if delta.family == "equipment"
-                else ("ammunition", "name")
-            )
-            rows = item.plan.pre_image.get(field) or []
-            matches = [
-                row
-                for row in rows
-                if isinstance(row, dict)
-                and _normalized_name(row.get(name_field)) == delta.name
-            ]
-            if len(matches) == 1:
-                exact_name = matches[0].get(name_field)
-                if isinstance(exact_name, str) and exact_name.strip():
-                    names.add(
-                        f"{delta.family} {name_field}="
-                        f"{json.dumps(exact_name.strip(), ensure_ascii=False)}"
-                    )
-                    outgoing.append(
-                        (item, delta, matches[0], field, name_field, exact_name.strip())
-                    )
-    if not names:
-        return mismatch
-    enriched = (
-        f"{mismatch}. Canonical source-row names from the giver's current "
-        f"sheet: {', '.join(sorted(names))}. Receiving rows must reuse these "
-        "exact names; do not abbreviate, pluralize, or rename them"
-    )
-    if (
-        len(outgoing) != 1
-        or len(prepared) != 2
-        or len({item.plan.canonical_path for item in prepared}) != 2
-    ):
-        return enriched
+_RESOURCE_TOKEN_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "from",
+    "in",
+    "into",
+    "of",
+    "the",
+    "to",
+}
 
-    giver, delta, source_row, field, name_field, exact_name = outgoing[0]
-    receivers = [item for item in prepared if item.index != giver.index]
-    if len(receivers) != 1:
-        return enriched
-    receiver = receivers[0]
-    receiver_rows = receiver.plan.pre_image.get(field) or []
-    if not isinstance(receiver_rows, list):
-        return enriched
-    receiver_matches = [
-        row
-        for row in receiver_rows
-        if isinstance(row, dict)
-        and _normalized_name(row.get(name_field)) == _normalized_name(exact_name)
-    ]
-    if len(receiver_matches) > 1:
-        return enriched
-    try:
-        giver_current = _strict_nonnegative_int(
-            source_row.get("quantity", 1),
-            f"{field}.{delta.name}.quantity",
-        )
-        receiver_current = (
-            _strict_nonnegative_int(
-                receiver_matches[0].get("quantity", 1),
-                f"{field}.{delta.name}.quantity",
-            )
-            if receiver_matches
-            else 0
-        )
-    except CharacterTransferError:
-        return enriched
-    amount = -delta.quantity
-    giver_final = giver_current - amount
-    receiver_final = receiver_current + amount
-    if amount <= 0 or giver_final < 0:
-        return enriched
-    return (
-        f"{enriched}. Deterministic quantity facts for this exact transfer: "
-        f"{giver.plan.character_name} current {giver_current}, removes {amount}, "
-        f"required final {giver_final}; {receiver.plan.character_name} current "
-        f"{receiver_current}, receives {amount}, required final {receiver_final}. "
-        "Returned absolute final quantities must match these required finals exactly"
+
+def _resource_tokens(value: Any) -> set:
+    tokens = set()
+    for token in re.findall(r"[a-z0-9]+", str(value).casefold()):
+        if len(token) < 3 or token in _RESOURCE_TOKEN_STOPWORDS:
+            continue
+        tokens.add(token)
+        if len(token) > 3 and token.endswith("s"):
+            tokens.add(token[:-1])
+    return tokens
+
+
+def _changes_mention_resource(
+    changes: str,
+    family: str,
+    name: str,
+) -> bool:
+    text = changes.casefold()
+    if family == "currency":
+        return name.casefold() in text
+    return bool(_resource_tokens(name) & _resource_tokens(text))
+
+
+def _exact_delta_row(
+    item: PreparedCharacterAction,
+    delta: AssetDelta,
+) -> Optional[Mapping[str, Any]]:
+    if delta.family not in {"equipment", "ammunition"}:
+        return None
+    field, name_field = (
+        ("equipment", "item_name")
+        if delta.family == "equipment"
+        else ("ammunition", "name")
     )
+    image = item.plan.pre_image if delta.quantity < 0 else item.plan.post_image
+    matches = [
+        row
+        for row in image.get(field) or []
+        if isinstance(row, dict)
+        and _normalized_name(row.get(name_field)) == delta.name
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _row_quantity_for_name(
+    image: Mapping[str, Any],
+    family: str,
+    name: str,
+) -> int:
+    field, name_field = (
+        ("equipment", "item_name")
+        if family == "equipment"
+        else ("ammunition", "name")
+    )
+    matches = [
+        row
+        for row in image.get(field) or []
+        if isinstance(row, dict)
+        and _normalized_name(row.get(name_field)) == _normalized_name(name)
+    ]
+    if not matches:
+        return 0
+    if len(matches) != 1:
+        raise CharacterTransferError(
+            f"{field}.{_normalized_name(name)} has ambiguous rows"
+        )
+    return _strict_nonnegative_int(
+        matches[0].get("quantity", 1),
+        f"{field}.{_normalized_name(name)}.quantity",
+    )
+
+
+def _participant_scoped_corrections(
+    prepared: Sequence[PreparedCharacterAction],
+) -> Dict[int, str]:
+    """Build actor-local correction facts without broadcasting other finals."""
+    prepared = tuple(prepared)
+    relevant_deltas = {}
+    for item in prepared:
+        relevant_deltas[item.index] = tuple(
+            delta
+            for delta in concrete_asset_deltas(item.plan)
+            if delta.family != "currency"
+            and _changes_mention_resource(
+                item.changes,
+                delta.family,
+                delta.name,
+            )
+        )
+
+    inferred_incoming = {item.index: [] for item in prepared}
+    for source in prepared:
+        for source_delta in relevant_deltas[source.index]:
+            if source_delta.quantity >= 0:
+                continue
+            source_row = _exact_delta_row(source, source_delta)
+            if source_row is None:
+                continue
+            candidates = []
+            for receiver in prepared:
+                if receiver.index == source.index or (
+                    receiver.plan.canonical_path == source.plan.canonical_path
+                ):
+                    continue
+                if not _changes_mention_resource(
+                    receiver.changes,
+                    source_delta.family,
+                    source_delta.name,
+                ):
+                    continue
+                if any(
+                    delta.quantity > 0
+                    and delta.family == source_delta.family
+                    and _changes_mention_resource(
+                        receiver.changes,
+                        delta.family,
+                        delta.name,
+                    )
+                    for delta in relevant_deltas[receiver.index]
+                ):
+                    continue
+                candidates.append(receiver)
+            if len(candidates) == 1:
+                inferred_incoming[candidates[0].index].append(
+                    (source_delta, source_row)
+                )
+
+    corrections = {}
+    for item in prepared:
+        character_name = item.plan.character_name
+        facts = []
+        before_currency = item.plan.pre_image.get("currency") or {}
+        after_currency = item.plan.post_image.get("currency") or {}
+        for denomination in sorted(_DENOMINATIONS):
+            before = _strict_nonnegative_int(
+                before_currency.get(denomination, 0),
+                f"currency.{denomination}",
+            )
+            after = _strict_nonnegative_int(
+                after_currency.get(denomination, 0),
+                f"currency.{denomination}",
+            )
+            delta = after - before
+            if not delta or not _changes_mention_resource(
+                item.changes,
+                "currency",
+                denomination,
+            ):
+                continue
+            facts.append(
+                f"currency {denomination}: current {before}, required signed "
+                f"delta {delta:+d}, required final {after}"
+            )
+
+        for delta in relevant_deltas[item.index]:
+            canonical_name = delta.name
+            canonical_row = _exact_delta_row(item, delta)
+            if delta.quantity > 0:
+                candidates = []
+                for other in prepared:
+                    if other.index == item.index or (
+                        other.plan.canonical_path == item.plan.canonical_path
+                    ):
+                        continue
+                    for other_delta in relevant_deltas[other.index]:
+                        if (
+                            other_delta.family == delta.family
+                            and other_delta.quantity == -delta.quantity
+                            and _changes_mention_resource(
+                                item.changes,
+                                other_delta.family,
+                                other_delta.name,
+                            )
+                        ):
+                            row = _exact_delta_row(other, other_delta)
+                            if row is not None:
+                                candidates.append((other_delta, row))
+                if len(candidates) == 1:
+                    source_delta, canonical_row = candidates[0]
+                    canonical_name = source_delta.name
+
+            field_name = "item_name" if delta.family == "equipment" else "name"
+            exact_name = (
+                canonical_row.get(field_name)
+                if isinstance(canonical_row, Mapping)
+                else canonical_name
+            )
+            current = _row_quantity_for_name(
+                item.plan.pre_image,
+                delta.family,
+                str(exact_name),
+            )
+            final = current + delta.quantity
+            facts.append(
+                f"{delta.family} {field_name}="
+                f"{json.dumps(exact_name, ensure_ascii=False)}: current "
+                f"{current}, required signed delta {delta.quantity:+d}, "
+                f"required final {final}; must reuse this exact canonical name"
+            )
+
+        for source_delta, source_row in inferred_incoming[item.index]:
+            field_name = (
+                "item_name" if source_delta.family == "equipment" else "name"
+            )
+            exact_name = source_row.get(field_name)
+            current = _row_quantity_for_name(
+                item.plan.pre_image,
+                source_delta.family,
+                str(exact_name),
+            )
+            amount = -source_delta.quantity
+            facts.append(
+                f"{source_delta.family} {field_name}="
+                f"{json.dumps(exact_name, ensure_ascii=False)}: current "
+                f"{current}, required signed delta {amount:+d}, required final "
+                f"{current + amount}; must reuse this exact canonical name"
+            )
+
+        fact_text = "; ".join(facts) if facts else "no resource-field change"
+        corrections[item.index] = (
+            f"Canonical facts for {character_name} only: {fact_text}. Apply only the "
+            "resource movements stated in this actor's accepted changes. "
+            "Preserve every unrelated resource field and row exactly; do not "
+            "copy another participant's balances, rows, or absolute finals"
+        )
+    return corrections
 
 
 def _explicit_removal_contract_mismatch(
@@ -869,16 +1014,21 @@ def _action_character(action: Mapping[str, Any], party: Mapping[str, Any]) -> st
 def _prepare_actions(
     indexed_actions: Sequence[Tuple[int, Mapping[str, Any]]],
     party: Mapping[str, Any],
-    correction: Optional[str] = None,
+    correction: Optional[Any] = None,
 ) -> Tuple[PreparedCharacterAction, ...]:
     prepared = []
     for index, action in indexed_actions:
         changes = _action_changes(action)
         request = changes
-        if correction:
+        action_correction = (
+            correction.get(index)
+            if isinstance(correction, Mapping)
+            else correction
+        )
+        if action_correction:
             request = (
                 f"{changes}\n\nJOINT TRANSFER CORRECTION (one final attempt): "
-                f"{correction}. Return the exact final values needed so every "
+                f"{action_correction}. Return the exact final values needed so every "
                 "transferred item, ammunition unit, and copper-equivalent coin "
                 "removed from one named character is added to another. Preserve "
                 "the item's complete mechanical metadata."
@@ -1029,10 +1179,7 @@ def commit_prepared_character_actions(
                 raise CharacterTransferError(
                     f"transfer correction failed safely: {shape_mismatch}"
                 )
-            correction = _correction_with_canonical_source_names(
-                shape_mismatch,
-                prepared,
-            )
+            correction = _participant_scoped_corrections(prepared)
             corrected = _prepare_actions(
                 tuple((item.index, item.action) for item in prepared),
                 party_tracker_data,
@@ -1080,10 +1227,7 @@ def commit_prepared_character_actions(
                 if set(indices).issubset(shape_corrected_indices):
                     corrected = component
                 else:
-                    correction = _correction_with_canonical_source_names(
-                        mismatch,
-                        component,
-                    )
+                    correction = _participant_scoped_corrections(component)
                     corrected = _prepare_actions(
                         tuple((item.index, item.action) for item in component),
                         party_tracker_data,
@@ -1161,10 +1305,7 @@ def commit_prepared_character_actions(
                             raise CharacterTransferError(
                                 "stale transfer still violates conservation"
                             )
-                        correction = _correction_with_canonical_source_names(
-                            mismatch,
-                            refreshed,
-                        )
+                        correction = _participant_scoped_corrections(refreshed)
                         refreshed = _prepare_actions(
                             tuple((item.index, item.action) for item in unit),
                             party_tracker_data,
