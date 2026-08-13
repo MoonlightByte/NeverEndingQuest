@@ -946,10 +946,10 @@ RESOURCE_COMMERCE_T108_LMSTUDIO = {
     "response_format": None,
 }
 
-# --- T106: Zero-resource storage completeness (tiny JSON, mini tier) ---
-# Invoked once only when T049 returns a create/view-style operation that moves
-# no resources. It distinguishes a genuine declarative container action from a
-# missing store/retrieve half and names the resources for T049's existing retry.
+# --- T106: Storage completeness and final-actor verification (tiny JSON) ---
+# Invoked once when T049 omits a required movement or routes a movement to a
+# different known party actor than the accepted storage intent. It names exact
+# resources and final actors for T049's existing bounded retry.
 _T106_STORAGE_COMPLETENESS_SCHEMA = {
     "type": "object",
     "properties": {
@@ -967,13 +967,20 @@ _T106_STORAGE_COMPLETENESS_SCHEMA = {
                         "enum": ["equipment", "ammunition", "currency"],
                     },
                     "name": {"type": "string"},
+                    "character": {"type": "string"},
                     "direction": {
                         "type": "string",
                         "enum": ["store", "retrieve"],
                     },
                     "quantity": {"type": "integer", "minimum": 1},
                 },
-                "required": ["family", "name", "direction", "quantity"],
+                "required": [
+                    "family",
+                    "name",
+                    "character",
+                    "direction",
+                    "quantity",
+                ],
             },
         },
     },

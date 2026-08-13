@@ -84,6 +84,118 @@ def _storage_available_resource_quantities(context: Dict[str, Any]):
     return totals
 
 
+def _known_party_identities(context: Dict[str, Any]) -> Tuple[str, ...]:
+    """Return exact persistent party names supplied to the storage verifier."""
+    values = []
+    character = context.get("character") or {}
+    if isinstance(character, dict):
+        values.append(character.get("name"))
+    party = context.get("party") or {}
+    if isinstance(party, dict):
+        for field in ("partyMembers", "partyNPCs"):
+            for item in party.get(field) or []:
+                values.append(item.get("name") if isinstance(item, dict) else item)
+    return tuple(
+        dict.fromkeys(
+            str(value).strip()
+            for value in values
+            if isinstance(value, str) and value.strip()
+        )
+    )
+
+
+def _storage_operation_actor_facts(operation: Dict[str, Any]):
+    """Project exact resource movement plus the candidate final party actor."""
+    operations = operation.get("operations")
+    operations = operations if isinstance(operations, list) else [operation]
+    facts = []
+    for item in operations:
+        if not isinstance(item, dict):
+            continue
+        action = item.get("action")
+        character = str(item.get("character") or "").strip()
+        if action in {"store_item", "retrieve_item"}:
+            direction = "store" if action == "store_item" else "retrieve"
+            rows = item.get("items")
+            rows = rows if isinstance(rows, list) else [item]
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                facts.append(
+                    (
+                        "equipment",
+                        normalize_inventory_name(row.get("item_name")),
+                        direction,
+                        row.get("quantity"),
+                        character,
+                    )
+                )
+        elif action in {"store_ammunition", "retrieve_ammunition"}:
+            facts.append(
+                (
+                    "ammunition",
+                    normalize_inventory_name(item.get("ammunition_name")),
+                    "store" if action == "store_ammunition" else "retrieve",
+                    item.get("quantity"),
+                    character,
+                )
+            )
+        elif action in {"store_currency", "retrieve_currency"}:
+            facts.append(
+                (
+                    "currency",
+                    normalize_inventory_name(item.get("denomination")),
+                    "store" if action == "store_currency" else "retrieve",
+                    item.get("quantity"),
+                    character,
+                )
+            )
+    return tuple(facts)
+
+
+def _storage_actor_review_needed(
+    description: str,
+    operation: Dict[str, Any],
+    party_identities,
+) -> bool:
+    """Use exact names only to route a possible wrong-actor shape to T106."""
+    text = str(description or "").casefold()
+    mentioned = {
+        identity
+        for identity in party_identities
+        if identity.casefold() in text
+    }
+    candidate_actors = {
+        fact[4] for fact in _storage_operation_actor_facts(operation) if fact[4]
+    }
+    return bool(mentioned - candidate_actors)
+
+
+def _storage_actor_coverage_error(operation, required_resources):
+    actual = _storage_operation_actor_facts(operation)
+    missing = []
+    for resource in required_resources:
+        required = (
+            resource["family"],
+            normalize_inventory_name(resource["name"]),
+            resource["direction"],
+            resource["quantity"],
+            resource["character"],
+        )
+        if actual.count(required) != 1:
+            missing.append(required)
+    if not missing:
+        return None
+    facts = "; ".join(
+        (
+            f"{family} {name} {direction} quantity {quantity} must use exact "
+            f"character {character}"
+        )
+        for family, name, direction, quantity, character in missing
+    )
+    return "storage operation does not preserve the intended final actor: " + facts
+
+
 def _bounded_accessible_storage_context(
     storage_data: Dict[str, Any],
     current_location_id: str,
@@ -708,6 +820,7 @@ For "What's in our storage here?":
         max_attempts = 3
         original_description = description
         completeness_required = ()
+        completeness_actor_requirements = ()
         completeness_checked = False
         nonlocal_storage_conflict = None
         
@@ -875,6 +988,12 @@ For "What's in our storage here?":
                         ),
                     )
                     is_valid = validation_error is None
+                if is_valid and completeness_actor_requirements:
+                    validation_error = _storage_actor_coverage_error(
+                        operation,
+                        completeness_actor_requirements,
+                    )
+                    is_valid = validation_error is None
                 if is_valid and not completeness_checked:
                     from core.managers.storage_transaction import (
                         _storage_operation_delta_signature,
@@ -891,7 +1010,13 @@ For "What's in our storage here?":
                         and item.get("action") == "create_storage"
                         for item in operation_set
                     ) and not _storage_operation_delta_signature(operation)
-                    if create_only_shape:
+                    party_identities = _known_party_identities(context)
+                    actor_review_needed = _storage_actor_review_needed(
+                        original_description,
+                        operation,
+                        party_identities,
+                    )
+                    if create_only_shape or actor_review_needed:
                         from core.ai.storage_completeness_verifier import (
                             classify_storage_completeness,
                         )
@@ -900,9 +1025,13 @@ For "What's in our storage here?":
                         completeness = classify_storage_completeness(
                             original_description,
                             operation,
+                            party_identities,
                         )
                         classification = completeness.get("classification")
-                        if classification == "uncertain":
+                        if classification == "uncertain" or (
+                            actor_review_needed
+                            and classification != "movement_required"
+                        ):
                             return {
                                 "success": False,
                                 "error": (
@@ -912,6 +1041,9 @@ For "What's in our storage here?":
                                 "failure_code": "storage_completeness_uncertain",
                             }
                         if classification == "movement_required":
+                            completeness_actor_requirements = tuple(
+                                completeness.get("resources", ())
+                            )
                             completeness_required = tuple(
                                 (
                                     resource["family"],
@@ -936,6 +1068,12 @@ For "What's in our storage here?":
                                 ),
                             )
                             is_valid = validation_error is None
+                            if is_valid:
+                                validation_error = _storage_actor_coverage_error(
+                                    operation,
+                                    completeness_actor_requirements,
+                                )
+                                is_valid = validation_error is None
                 
                 if not is_valid:
                     if is_nonlocal_correction_attempt:

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Fair-Source-1.0
 # License: See LICENSE file in the repository root
 
-"""One-shot classification of zero-resource storage operations."""
+"""One-shot classification of storage completeness and final party actors."""
 
 from __future__ import annotations
 
@@ -24,24 +24,28 @@ _CLASSIFICATIONS = frozenset(
 _FAMILIES = frozenset({"equipment", "ammunition", "currency"})
 _DIRECTIONS = frozenset({"store", "retrieve"})
 _SYSTEM_PROMPT = """You are a narrow storage-intent classifier for a role-playing game.
-The supplied candidate storage operation moves zero items, ammunition, or
-currency. Decide whether the natural-language storage description nevertheless
-commits to moving named resources now, or only creates/claims/names/locks/views
-a container without moving resources. Do not invent story outcomes, storage
-operations, or mechanical changes.
+Decide whether the natural-language storage description commits to moving named
+resources now, and identify the exact supplied party character who must finally
+receive or surrender each resource. The candidate may move zero resources or
+may route a resource to the wrong party character. Do not invent story outcomes,
+storage operations, character names, or mechanical changes.
 
 Return JSON only with exactly:
 {"classification":"movement_required|declarative_only|uncertain",
  "resources":[{"family":"equipment|ammunition|currency",
                "name":"exact resource name or denomination",
+               "character":"exact supplied party character name",
                "direction":"store|retrieve",
                "quantity":positive_integer}]}
 
 Use movement_required only when the description clearly commits to moving each
 listed resource in this turn. List every named resource. Use declarative_only
 for a genuine container-only claim/create/name/lock/view action. Use uncertain
-for ambiguity. Never derive a quantity from a measurement embedded in an item
-name or description (for example, 50 feet of rope is one rope item)."""
+for ambiguity or when the final party character cannot be selected exactly from
+the supplied identities. For store, character is the party actor surrendering
+the resource. For retrieve, character is its intended final party recipient.
+Never derive a quantity from a measurement embedded in an item name or
+description (for example, 50 feet of rope is one rope item)."""
 
 
 def _provider_config() -> Dict[str, Any]:
@@ -59,7 +63,7 @@ def _uncertain(reason: str) -> Dict[str, Any]:
     return {"classification": "uncertain", "resources": [], "reason": reason}
 
 
-def _normalize_contract(value: Any) -> Dict[str, Any]:
+def _normalize_contract(value: Any, party_identities) -> Dict[str, Any]:
     if not isinstance(value, dict) or set(value) != {
         "classification",
         "resources",
@@ -78,17 +82,20 @@ def _normalize_contract(value: Any) -> Dict[str, Any]:
         if not isinstance(resource, dict) or set(resource) != {
             "family",
             "name",
+            "character",
             "direction",
             "quantity",
         }:
             return _uncertain("invalid resource shape")
         family = resource.get("family")
         name = str(resource.get("name") or "").strip()
+        character = str(resource.get("character") or "").strip()
         direction = resource.get("direction")
         quantity = resource.get("quantity")
         if (
             family not in _FAMILIES
             or not name
+            or character not in party_identities
             or direction not in _DIRECTIONS
             or isinstance(quantity, bool)
             or not isinstance(quantity, int)
@@ -99,6 +106,7 @@ def _normalize_contract(value: Any) -> Dict[str, Any]:
             {
                 "family": family,
                 "name": name,
+                "character": character,
                 "direction": direction,
                 "quantity": quantity,
             }
@@ -111,6 +119,7 @@ def _normalize_contract(value: Any) -> Dict[str, Any]:
 def classify_storage_completeness(
     description: str,
     candidate_operation: Any,
+    party_identities=(),
 ) -> Dict[str, Any]:
     """Make at most one classify-only model call and fail closed on uncertainty."""
     packet = {
@@ -118,6 +127,7 @@ def classify_storage_completeness(
         "candidate_operation": (
             candidate_operation if isinstance(candidate_operation, dict) else {}
         ),
+        "party_identities": list(party_identities),
     }
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
@@ -149,7 +159,7 @@ def classify_storage_completeness(
         content = response.choices[0].message.content
         if not isinstance(content, str) or not content.strip():
             return _uncertain("empty classifier response")
-        return _normalize_contract(json.loads(content))
+        return _normalize_contract(json.loads(content), set(party_identities))
     except Exception as exc:
         warning(
             f"T106 storage completeness check failed closed: {exc}",

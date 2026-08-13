@@ -1993,10 +1993,16 @@ def commit_prepared_character_actions(
             and preliminary_planning_decision.requires_planning
         )
         failed_stage = "party_attributed_transfer_validation"
-        prepared = _repair_party_attributed_requirements(
-            prepared,
-            party_tracker_data,
+        storage_routed_complex = bool(
+            resource_storage_plans
+            and preliminary_planning_decision
+            and preliminary_planning_decision.requires_planning
         )
+        if not storage_routed_complex:
+            prepared = _repair_party_attributed_requirements(
+                prepared,
+                party_tracker_data,
+            )
         failed_stage = "explicit_stated_value_contract"
         stated_value_mismatch = _explicit_removal_contract_mismatch(prepared)
         if not stated_value_mismatch:
