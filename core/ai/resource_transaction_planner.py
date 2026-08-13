@@ -34,7 +34,11 @@ Every supplied fact must appear exactly once either in one stage or as the
 fact_id of an exact duplicate. A duplicate is allowed only when participant,
 family, name, direction, and quantity are identical. Use an edge only for an
 outgoing and incoming fact representing the same transferred asset between
-different participants. Each edge has exactly one source and one destination.
+different participants. Equipment or ammunition names may differ when the
+accepted action facts unambiguously describe the same transfer; in that case,
+the outgoing source fact is the persisted canonical identity. Never match
+different names from similarity alone. Each edge has exactly one source and
+one destination.
 Authority identifies which observed side expresses the intended transfer
 amount most directly; do no arithmetic. Use sequential stage numbers from 1.
 Use confidence high only when the classification follows directly from the

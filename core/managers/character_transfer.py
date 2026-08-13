@@ -675,108 +675,132 @@ def _validate_transfer_component(
     return None
 
 
-def _canonicalize_unambiguous_equipment_transfer(
+def _canonicalize_unambiguous_transfer_rows(
     component: Sequence[PreparedCharacterAction],
     mismatch: str,
 ) -> Tuple[Tuple[PreparedCharacterAction, ...], Tuple[str, ...]]:
-    """Preserve one transferred item's existing mechanics after model repair.
+    """Preserve exact outgoing equipment/ammunition rows after model repair.
 
-    The model still chooses the participants, item name, and quantity. This
-    seam runs only after the bounded joint correction failed solely because it
-    reconstructed the receiver's row with different mechanics.
+    The model and T105 still choose participants, edges, names, and quantities.
+    This seam can only replace a receiver row when one exact outgoing row and
+    one same-name incoming row already prove an equal conserved quantity.
     """
-    if not mismatch.startswith("equipment ") or not mismatch.endswith(
+    if not mismatch.endswith(
         " has ambiguous mechanical identity"
     ):
         return tuple(component), ()
 
-    equipment_deltas = [
+    row_deltas = [
         (item, delta)
         for item in component
         for delta in concrete_asset_deltas(item.plan)
-        if delta.family == "equipment"
+        if delta.family in {"equipment", "ammunition"}
     ]
-    names = {delta.name for _item, delta in equipment_deltas}
-    if len(names) != 1:
-        return tuple(component), ()
-    name = next(iter(names))
-    outgoing = [value for value in equipment_deltas if value[1].quantity < 0]
-    incoming = [value for value in equipment_deltas if value[1].quantity > 0]
-    if len(outgoing) != 1 or len(incoming) != 1:
-        return tuple(component), ()
-    giver, removed = outgoing[0]
-    receiver, added = incoming[0]
-    if -removed.quantity != added.quantity:
-        return tuple(component), ()
+    grouped = {}
+    for value in row_deltas:
+        grouped.setdefault(value[1].lookup_key, []).append(value)
 
-    source_rows = [
-        row
-        for row in giver.plan.pre_image.get("equipment", []) or []
-        if isinstance(row, dict)
-        and _normalized_name(row.get("item_name")) == name
-    ]
-    if len(source_rows) != 1:
-        return tuple(component), ()
-    receiver_before_rows = receiver.plan.pre_image.get("equipment", []) or []
-    receiver_after_rows = receiver.plan.post_image.get("equipment", []) or []
-    if not isinstance(receiver_before_rows, list) or not isinstance(
-        receiver_after_rows, list
-    ):
-        return tuple(component), ()
-    before_named = [
-        copy.deepcopy(row)
-        for row in receiver_before_rows
-        if isinstance(row, dict)
-        and _normalized_name(row.get("item_name")) == name
-    ]
-    after_named = [
-        row
-        for row in receiver_after_rows
-        if isinstance(row, dict)
-        and _normalized_name(row.get("item_name")) == name
-    ]
-    if len(before_named) > 1 or len(after_named) != 1:
-        return tuple(component), ()
-
-    canonical = copy.deepcopy(source_rows[0])
-    canonical["quantity"] = added.quantity
-    canonical["equipped"] = False
-    replacement_rows, _identity_advisories = consolidate_equipment_rows(
-        before_named + [canonical]
-    )
-    # Existing same-named non-identical or unique rows remain distinct under
-    # the shared L2 rules. Do not force them together to make this transfer fit.
-    if len(replacement_rows) != 1:
-        return tuple(component), ()
-
-    post_image = copy.deepcopy(receiver.plan.post_image)
-    replaced = False
-    rebuilt = []
-    for row in receiver_after_rows:
-        if (
-            isinstance(row, dict)
-            and _normalized_name(row.get("item_name")) == name
-        ):
-            if not replaced:
-                rebuilt.extend(copy.deepcopy(replacement_rows))
-                replaced = True
+    updated = {item.index: item for item in component}
+    advisories = []
+    for (family, name), values in sorted(grouped.items()):
+        outgoing = [value for value in values if value[1].quantity < 0]
+        incoming = [value for value in values if value[1].quantity > 0]
+        if len(outgoing) != 1 or len(incoming) != 1:
             continue
-        rebuilt.append(copy.deepcopy(row))
-    post_image["equipment"] = rebuilt
-    advisory = f"transfer_metadata_canonicalized:{name}"
-    updated_plan = replace(
-        receiver.plan,
-        post_image=post_image,
-        field_facts=tuple(_field_change_facts(receiver.plan.pre_image, post_image)),
-        advisories=tuple(sorted(set(receiver.plan.advisories + (advisory,)))),
-    )
-    updated_receiver = replace(receiver, plan=updated_plan)
-    updated_component = tuple(
-        updated_receiver if item.index == receiver.index else item
-        for item in component
-    )
-    warning(f"INVENTORY: {advisory}", category="character_updates")
-    return updated_component, (advisory,)
+        giver, removed = outgoing[0]
+        receiver, added = incoming[0]
+        if -removed.quantity != added.quantity:
+            continue
+
+        field, name_field = (
+            ("equipment", "item_name")
+            if family == "equipment"
+            else ("ammunition", "name")
+        )
+        source_rows = [
+            row
+            for row in giver.plan.pre_image.get(field, []) or []
+            if isinstance(row, dict)
+            and _normalized_name(row.get(name_field)) == name
+        ]
+        receiver_current = updated[receiver.index]
+        receiver_before_rows = receiver_current.plan.pre_image.get(field, []) or []
+        receiver_after_rows = receiver_current.plan.post_image.get(field, []) or []
+        if (
+            len(source_rows) != 1
+            or not isinstance(receiver_before_rows, list)
+            or not isinstance(receiver_after_rows, list)
+        ):
+            continue
+        before_named = [
+            copy.deepcopy(row)
+            for row in receiver_before_rows
+            if isinstance(row, dict)
+            and _normalized_name(row.get(name_field)) == name
+        ]
+        after_named = [
+            row
+            for row in receiver_after_rows
+            if isinstance(row, dict)
+            and _normalized_name(row.get(name_field)) == name
+        ]
+        if len(before_named) > 1 or len(after_named) != 1:
+            continue
+
+        canonical = copy.deepcopy(source_rows[0])
+        if family == "equipment":
+            canonical["quantity"] = added.quantity
+            canonical["equipped"] = False
+            replacement_rows, _identity_advisories = consolidate_equipment_rows(
+                before_named + [canonical]
+            )
+            if len(replacement_rows) != 1:
+                continue
+        else:
+            if before_named and inventory_metadata(
+                before_named[0], "name"
+            ) != inventory_metadata(canonical, "name"):
+                continue
+            current_quantity = (
+                _strict_nonnegative_int(
+                    before_named[0].get("quantity"),
+                    f"ammunition.{name}.quantity",
+                )
+                if before_named
+                else 0
+            )
+            canonical["quantity"] = current_quantity + added.quantity
+            replacement_rows = [canonical]
+
+        rebuilt = []
+        replaced = False
+        for row in receiver_after_rows:
+            if (
+                isinstance(row, dict)
+                and _normalized_name(row.get(name_field)) == name
+            ):
+                if not replaced:
+                    rebuilt.extend(copy.deepcopy(replacement_rows))
+                    replaced = True
+                continue
+            rebuilt.append(copy.deepcopy(row))
+        post_image = copy.deepcopy(receiver_current.plan.post_image)
+        post_image[field] = rebuilt
+        advisory = f"transfer_metadata_canonicalized:{name}"
+        updated_plan = replace(
+            receiver_current.plan,
+            post_image=post_image,
+            field_facts=tuple(
+                _field_change_facts(receiver_current.plan.pre_image, post_image)
+            ),
+            advisories=tuple(
+                sorted(set(receiver_current.plan.advisories + (advisory,)))
+            ),
+        )
+        updated[receiver.index] = replace(receiver_current, plan=updated_plan)
+        advisories.append(advisory)
+        warning(f"INVENTORY: {advisory}", category="character_updates")
+    return tuple(updated[item.index] for item in component), tuple(advisories)
 
 
 def _action_changes(action: Mapping[str, Any]) -> str:
@@ -996,7 +1020,7 @@ def commit_prepared_character_actions(
                     mismatch = _validate_transfer_component(corrected)
                 if mismatch:
                     corrected, _canonicalization_advisories = (
-                        _canonicalize_unambiguous_equipment_transfer(
+                        _canonicalize_unambiguous_transfer_rows(
                             corrected,
                             mismatch,
                         )

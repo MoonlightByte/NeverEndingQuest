@@ -22,7 +22,8 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 from core.managers.character_transfer import PreparedCharacterAction
 from core.managers.storage_transaction import StorageMutationPlan
 from updates.update_character_info import _field_change_facts
-from utils.inventory_integrity import normalize_inventory_name
+from utils.enhanced_logger import warning
+from utils.inventory_integrity import inventory_metadata, normalize_inventory_name
 
 
 class ResourceTransactionPlanningError(RuntimeError):
@@ -52,6 +53,7 @@ class ResourceFact:
     current_quantity: Optional[int]
     changes: str
     row: Optional[Mapping[str, Any]] = None
+    canonical_edge: bool = False
 
     def packet(self) -> Dict[str, Any]:
         value = {
@@ -486,7 +488,10 @@ def _validate_plan(value: Any, facts: Sequence[ResourceFact]):
             source.quantity >= 0
             or destination.quantity <= 0
             or source.family != destination.family
-            or source.name != destination.name
+            or (
+                source.name != destination.name
+                and source.family not in {"equipment", "ammunition"}
+            )
             or source.participant_id == destination.participant_id
             or source.family == "storage"
         ):
@@ -539,7 +544,20 @@ def _apply_row_fact(sheet: Dict[str, Any], fact: ResourceFact, quantity: int):
             current = _strict_quantity(
                 row.get("quantity", 1), f"{fact.family}.{fact.name}.quantity"
             )
-            row["quantity"] = current + quantity
+            if fact.canonical_edge:
+                if not isinstance(fact.row, Mapping) or inventory_metadata(
+                    row, name_field
+                ) != inventory_metadata(fact.row, name_field):
+                    raise ResourceTransactionPlanningError(
+                        f"{fact.family} {fact.name} receiver identity is ambiguous"
+                    )
+                canonical = copy.deepcopy(dict(fact.row))
+                canonical["quantity"] = current + quantity
+                if fact.family == "equipment":
+                    canonical["equipped"] = False
+                rows[rows.index(row)] = canonical
+            else:
+                row["quantity"] = current + quantity
         else:
             if not isinstance(fact.row, Mapping):
                 raise ResourceTransactionPlanningError(
@@ -547,6 +565,8 @@ def _apply_row_fact(sheet: Dict[str, Any], fact: ResourceFact, quantity: int):
                 )
             row = copy.deepcopy(dict(fact.row))
             row["quantity"] = quantity
+            if fact.canonical_edge and fact.family == "equipment":
+                row["equipped"] = False
             rows.append(row)
     sheet[field] = rows
 
@@ -575,7 +595,8 @@ def _stage_character_images(
     staged: Sequence[str],
     edges,
 ):
-    fact_map = {fact.fact_id: fact for fact in facts}
+    fact_map = _effective_edge_fact_map(facts, edges)
+    original_fact_map = {fact.fact_id: fact for fact in facts}
     edge_quantities = {}
     for source_id, destination_id, authority in edges.values():
         source, destination = fact_map[source_id], fact_map[destination_id]
@@ -594,12 +615,20 @@ def _stage_character_images(
             raise ResourceTransactionPlanningError(
                 "staged participant pre-images do not match"
             )
+    canonical_advisories = {}
     for fact_id in staged:
         fact = fact_map[fact_id]
         if fact.path not in by_path:
             continue  # Storage facts are already deterministic prepared plans.
         quantity = edge_quantities.get(fact_id, fact.quantity)
         _apply_fact(by_path[fact.path], fact, quantity)
+        original = original_fact_map[fact_id]
+        if fact.canonical_edge and (
+            fact.name != original.name or fact.row != original.row
+        ):
+            canonical_advisories.setdefault(fact.path, set()).add(
+                f"transfer_metadata_canonicalized:{fact.name}"
+            )
 
     result = []
     for item in prepared:
@@ -614,8 +643,17 @@ def _stage_character_images(
             item.plan,
             post_image=post_image,
             field_facts=tuple(_field_change_facts(item.plan.pre_image, post_image)),
+            advisories=tuple(
+                sorted(
+                    set(item.plan.advisories)
+                    | canonical_advisories.get(item.plan.canonical_path, set())
+                )
+            ),
         )
         result.append(replace(item, plan=plan))
+    for advisories in canonical_advisories.values():
+        for advisory in sorted(advisories):
+            warning(f"INVENTORY: {advisory}", category="character_updates")
     return tuple(result)
 
 
@@ -627,7 +665,8 @@ def _reconcile_staged_images(
     edges,
 ):
     """Prove staged finals exactly equal code-owned ledger arithmetic."""
-    fact_map = {fact.fact_id: fact for fact in facts}
+    fact_map = _effective_edge_fact_map(facts, edges)
+    effective_facts = tuple(fact_map[fact.fact_id] for fact in facts)
     edge_quantities = {}
     for source_id, destination_id, authority in edges.values():
         source = fact_map[source_id]
@@ -715,12 +754,34 @@ def _reconcile_staged_images(
             and other.family == fact.family
             and other.name == fact.name
             and other.direction == opposite
-            for other in facts
+            for other in effective_facts
         )
         if has_counterpart and fact_id not in edge_members:
             raise ResourceTransactionPlanningError(
                 "planner omitted a complementary resource-transfer edge"
             )
+
+
+def _effective_edge_fact_map(facts: Sequence[ResourceFact], edges):
+    """Apply only T105-classified canonical source identity to receivers."""
+    fact_map = {fact.fact_id: fact for fact in facts}
+    effective = dict(fact_map)
+    for source_id, destination_id, _authority in edges.values():
+        source = fact_map[source_id]
+        destination = fact_map[destination_id]
+        if source.family not in {"equipment", "ammunition"}:
+            continue
+        if not isinstance(source.row, Mapping):
+            raise ResourceTransactionPlanningError(
+                "planned transfer source has no canonical row"
+            )
+        effective[destination_id] = replace(
+            destination,
+            name=source.name,
+            row=copy.deepcopy(source.row),
+            canonical_edge=True,
+        )
+    return effective
 
 
 def plan_and_stage_resource_transaction(

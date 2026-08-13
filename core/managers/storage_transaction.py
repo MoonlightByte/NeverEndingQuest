@@ -988,13 +988,8 @@ def _currency_deltas(before: Mapping[str, Any], after: Mapping[str, Any]):
     )
 
 
-def _asset_delta_signature(delta):
-    metadata = delta.metadata
-    if delta.family == "equipment":
-        from core.managers.character_transfer import _t052_normalized_metadata
-
-        metadata = _t052_normalized_metadata(metadata)
-    return delta.family, delta.name, delta.quantity, metadata
+def _asset_delta_shape(delta):
+    return delta.family, delta.name, delta.quantity
 
 
 def _ownership_local_equipment_changes(
@@ -1058,12 +1053,29 @@ def _combine_storage_owned_character_delta(storage_plan, character_action):
             "storage and character updates do not share one character snapshot"
         )
 
-    if sorted(_asset_delta_signature(delta) for delta in storage_deltas) != sorted(
-        _asset_delta_signature(delta) for delta in character_deltas
+    if sorted(_asset_delta_shape(delta) for delta in storage_deltas) != sorted(
+        _asset_delta_shape(delta) for delta in character_deltas
     ):
         raise StorageTransactionError(
             "storage and character actions overlap without identical resource deltas"
         )
+    storage_metadata = {
+        _asset_delta_shape(delta): delta.metadata
+        for delta in storage_deltas
+        if delta.family != "currency"
+    }
+    character_metadata = {
+        _asset_delta_shape(delta): delta.metadata
+        for delta in character_deltas
+        if delta.family != "currency"
+    }
+    metadata_advisories = tuple(
+        sorted(
+            "storage_sibling_metadata_canonicalized:%s:%s" % (family, name)
+            for (family, name, _quantity), metadata in storage_metadata.items()
+            if character_metadata.get((family, name, _quantity)) != metadata
+        )
+    )
     if any(delta.family == "currency" for delta in storage_deltas):
         if _currency_deltas(
             storage_plan.character_before, storage_plan.character_after
@@ -1097,7 +1109,15 @@ def _combine_storage_owned_character_delta(storage_plan, character_action):
             combined_character[field] = copy.deepcopy(character_plan.post_image[field])
         else:
             combined_character.pop(field, None)
-    return replace(storage_plan, character_after=combined_character)
+    for advisory in metadata_advisories:
+        warning(f"INVENTORY: {advisory}", category="storage_operations")
+    return replace(
+        storage_plan,
+        character_after=combined_character,
+        advisories=tuple(
+            sorted(set(storage_plan.advisories + metadata_advisories))
+        ),
+    )
 
 
 def _combine_storage_fee(storage_plan, fee_action):
