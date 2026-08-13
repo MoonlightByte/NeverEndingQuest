@@ -6,7 +6,9 @@ Filters validation errors and preserves recent valid context.
 
 import json
 import os
+import queue
 import sys
+import threading
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from core.ai import api_client
@@ -21,6 +23,56 @@ if __name__ == "__main__":
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.enhanced_logger import info, debug, warning, error
+
+T020_COMPRESSION_TIMEOUT_SECONDS = 45.0
+_T020_SINGLE_FLIGHT = threading.Lock()
+
+
+class IncrementalCompressionTimeout(TimeoutError):
+    """The optional T020 provider call exceeded its gameplay-safe budget."""
+
+
+def _run_t020_with_timeout(call, timeout_seconds):
+    """Run the optional compression call without letting it gate gameplay.
+
+    Provider SDK cancellation behavior is not consistent across OpenAI,
+    Gemini, and OpenAI-compatible local servers.  A daemon worker gives this
+    callsite one provider-neutral deadline.  A response that arrives after the
+    deadline has no state-writing callback, so it is safely discarded.
+    """
+    if not _T020_SINGLE_FLIGHT.acquire(blocking=False):
+        raise IncrementalCompressionTimeout(
+            "a prior T020 call is still finishing"
+        )
+
+    outcome = queue.Queue(maxsize=1)
+
+    def invoke():
+        try:
+            outcome.put((True, call()))
+        except Exception as exc:  # Re-raised on the gameplay thread.
+            outcome.put((False, exc))
+        finally:
+            _T020_SINGLE_FLIGHT.release()
+
+    worker = threading.Thread(
+        target=invoke,
+        name="neq-t020-compression",
+        daemon=True,
+    )
+    worker.start()
+    try:
+        succeeded, value = outcome.get(
+            timeout=max(float(timeout_seconds), 0.001)
+        )
+    except queue.Empty as exc:
+        raise IncrementalCompressionTimeout(
+            f"T020 exceeded {timeout_seconds:g}s"
+        ) from exc
+    if not succeeded:
+        raise value
+    return value
+
 
 class IncrementalLocationCompressor:
     """Handles incremental compression of messages at current location."""
@@ -195,12 +247,18 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
             else:  # legacy
                 compress_config = config.NARR_COMPRESS_LEGACY
 
-            api_response = capture_and_fanout("T020", api_client.create_completion,
-                _request_provider=MODEL_PROVIDER,
-                messages=[{"role": "user", "content": compression_prompt}],
-                model=compress_config["model"],
-                temperature=self.COMPRESSION_TEMP,
-                **{k: v for k, v in compress_config.items() if k != "model"})
+            api_response = _run_t020_with_timeout(
+                lambda: capture_and_fanout(
+                    "T020",
+                    api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=[{"role": "user", "content": compression_prompt}],
+                    model=compress_config["model"],
+                    temperature=self.COMPRESSION_TEMP,
+                    **{k: v for k, v in compress_config.items() if k != "model"},
+                ),
+                T020_COMPRESSION_TIMEOUT_SECONDS,
+            )
             response = api_response.choices[0].message.content
             
             if response and response.strip():
@@ -217,6 +275,11 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
                     "role": "assistant",
                     "content": summary_content
                 }
+        except IncrementalCompressionTimeout as exc:
+            warning(
+                "Incremental conversation compression timed out; "
+                f"continuing with uncompressed history ({exc})"
+            )
         except Exception as e:
             error(f"Compression failed: {e}")
         
