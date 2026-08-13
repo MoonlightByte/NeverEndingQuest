@@ -628,13 +628,17 @@ def _resource_totals(facts: Sequence[ResourceFact]):
 def _external_commerce_candidate(
     facts: Sequence[ResourceFact],
     storage_plans: Sequence[StorageMutationPlan],
+    *,
+    player_intent: str = "",
 ) -> bool:
-    # T108 is introduced first for the purchase-then-store seam.  A generic
-    # imbalance can also describe a legacy character-only update, so it is not
-    # sufficient evidence of external commerce by itself.
-    if not any(
+    # An opposing currency/asset imbalance can require an untracked external
+    # counterparty, but old programmatic callers may omit the player turn.
+    # Require either the signed staged-storage seam or accepted player intent
+    # before spending a T108 call; the classifier then decides the contract.
+    staged_storage_source = any(
         "storage_staged_source" in plan.advisories for plan in storage_plans
-    ):
+    )
+    if not staged_storage_source and not str(player_intent or "").strip():
         return False
     totals = _resource_totals(facts)
     currency_value = sum(
@@ -1799,7 +1803,11 @@ def plan_and_stage_resource_transaction(
     packet, facts = build_resource_transaction_packet(prepared, storage_plans)
     external_contract = None
     commerce_classifier_calls = 0
-    if _external_commerce_candidate(facts, storage_plans):
+    if _external_commerce_candidate(
+        facts,
+        storage_plans,
+        player_intent=player_intent,
+    ):
         if commerce_classifier is None:
             from core.ai.resource_commerce_classifier import (
                 request_commerce_contract,
