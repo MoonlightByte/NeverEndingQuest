@@ -39,6 +39,10 @@ accepted action facts unambiguously describe the same transfer; in that case,
 the outgoing source fact is the persisted canonical identity. Never match
 different names from similarity alone. Each edge has exactly one source and
 one destination.
+Facts marked as operations preserve ordered custody that may disappear from a
+participant's net final. If a fact supplies requires_fact_ids, put every named
+dependency in an earlier stage; never collapse or reorder that handoff. This
+lets code rehearse each supplied step before it calculates final images.
 Authority identifies which observed side expresses the intended transfer
 amount most directly; do no arithmetic. Use sequential stage numbers from 1.
 Use confidence high only when the classification follows directly from the

@@ -58,6 +58,8 @@ class ResourceFact:
     changes: str
     row: Optional[Mapping[str, Any]] = None
     canonical_edge: bool = False
+    fact_kind: str = "net_final"
+    requires_fact_ids: Tuple[str, ...] = ()
 
     def packet(self) -> Dict[str, Any]:
         value = {
@@ -76,9 +78,14 @@ class ResourceFact:
             key = (
                 "accepted_operation"
                 if self.participant_id.startswith("storage:")
+                and self.family not in {"equipment", "ammunition"}
                 else "canonical_row"
             )
             value[key] = copy.deepcopy(dict(self.row))
+        if self.fact_kind != "net_final":
+            value["fact_kind"] = self.fact_kind
+        if self.requires_fact_ids:
+            value["requires_fact_ids"] = list(self.requires_fact_ids)
         return value
 
 
@@ -279,6 +286,33 @@ def _character_facts(
     return tuple(facts)
 
 
+def _storage_operation_row(plan, operation, family, name, direction):
+    image = plan.storage_before if direction == "out" else plan.storage_after
+    if not isinstance(image, Mapping):
+        return None
+    storage_id = operation.get("storage_id")
+    containers = [
+        value
+        for value in image.get("playerStorage") or []
+        if isinstance(value, Mapping)
+        and (not storage_id or value.get("id") == storage_id)
+    ]
+    if len(containers) != 1:
+        return None
+    field, name_field = (
+        ("contents", "item_name")
+        if family == "equipment"
+        else ("ammunition", "name")
+    )
+    matches = [
+        row
+        for row in containers[0].get(field) or []
+        if isinstance(row, Mapping)
+        and normalize_inventory_name(row.get(name_field)) == name
+    ]
+    return copy.deepcopy(matches[0]) if len(matches) == 1 else None
+
+
 def _storage_facts(storage_plans: Sequence[StorageMutationPlan]):
     facts = []
     for plan_index, plan in enumerate(storage_plans):
@@ -311,6 +345,16 @@ def _storage_facts(storage_plans: Sequence[StorageMutationPlan]):
                 else 1
             )
             direction = "out" if action.startswith("retrieve_") else "in"
+            normalized_name = normalize_inventory_name(name) or _safe_part(name)
+            row = copy.deepcopy(operation)
+            if family in {"equipment", "ammunition"}:
+                row = _storage_operation_row(
+                    plan,
+                    operation,
+                    family,
+                    normalized_name,
+                    direction,
+                )
             facts.append(
                 ResourceFact(
                     f"S{plan_index}-{operation_index}-{_safe_part(action)}",
@@ -318,22 +362,201 @@ def _storage_facts(storage_plans: Sequence[StorageMutationPlan]):
                     f"storage:{plan_index}",
                     plan.storage_path,
                     family,
-                    normalize_inventory_name(name) or _safe_part(name),
+                    normalized_name,
                     quantity if direction == "in" else -quantity,
                     direction,
                     None,
                     action,
-                    copy.deepcopy(operation),
+                    row,
+                    fact_kind="operation",
                 )
             )
     return tuple(facts)
+
+
+def _storage_character_facts(storage_plans: Sequence[StorageMutationPlan]):
+    facts = []
+    for plan_index, plan in enumerate(storage_plans):
+        if (
+            not plan.character_path
+            or not isinstance(plan.character_before, Mapping)
+            or not isinstance(plan.character_after, Mapping)
+        ):
+            continue
+        before = plan.character_before
+        after = plan.character_after
+        participant = "character:%s" % (
+            plan.operation.get("character") or before.get("name") or "unknown"
+        )
+        before_currency = before.get("currency") or {}
+        after_currency = after.get("currency") or {}
+        if not isinstance(before_currency, Mapping) or not isinstance(
+            after_currency, Mapping
+        ):
+            raise ResourceTransactionPlanningError("currency is malformed")
+        for denomination in _DENOMINATIONS:
+            old = _strict_quantity(
+                before_currency.get(denomination, 0),
+                f"currency.{denomination}",
+            )
+            new = _strict_quantity(
+                after_currency.get(denomination, 0),
+                f"currency.{denomination}",
+            )
+            if new != old:
+                facts.append(
+                    ResourceFact(
+                        f"SC{plan_index}-currency-{denomination}",
+                        -1,
+                        participant,
+                        plan.character_path,
+                        "currency",
+                        denomination,
+                        new - old,
+                        "in" if new > old else "out",
+                        old,
+                        str(plan.operation.get("action") or "storage_mutation"),
+                        fact_kind="operation",
+                    )
+                )
+        for family, field, name_field in (
+            ("equipment", "equipment", "item_name"),
+            ("ammunition", "ammunition", "name"),
+        ):
+            old_rows = _rows(before, field, name_field)
+            new_rows = _rows(after, field, name_field)
+            for name in sorted(set(old_rows) | set(new_rows)):
+                old = (
+                    _strict_quantity(
+                        old_rows[name].get("quantity", 1),
+                        f"{field}.{name}.quantity",
+                    )
+                    if name in old_rows
+                    else 0
+                )
+                new = (
+                    _strict_quantity(
+                        new_rows[name].get("quantity", 1),
+                        f"{field}.{name}.quantity",
+                    )
+                    if name in new_rows
+                    else 0
+                )
+                if new == old:
+                    continue
+                row = old_rows[name] if new < old else new_rows[name]
+                facts.append(
+                    ResourceFact(
+                        f"SC{plan_index}-{family}-{_safe_part(name)}",
+                        -1,
+                        participant,
+                        plan.character_path,
+                        family,
+                        name,
+                        new - old,
+                        "in" if new > old else "out",
+                        old,
+                        str(plan.operation.get("action") or "storage_mutation"),
+                        copy.deepcopy(row),
+                        fact_kind="operation",
+                    )
+                )
+    return tuple(facts)
+
+
+def _same_observed_resource_fact(left: ResourceFact, right: ResourceFact) -> bool:
+    return (
+        left.participant_id,
+        left.path,
+        left.family,
+        left.name,
+        left.quantity,
+        json.dumps(left.row, sort_keys=True, default=str),
+    ) == (
+        right.participant_id,
+        right.path,
+        right.family,
+        right.name,
+        right.quantity,
+        json.dumps(right.row, sort_keys=True, default=str),
+    )
+
+
+def _merge_storage_character_facts(character_facts, storage_character_facts):
+    merged = list(character_facts)
+    effective_storage = []
+    for storage_fact in storage_character_facts:
+        existing = next(
+            (
+                fact
+                for fact in merged
+                if _same_observed_resource_fact(fact, storage_fact)
+            ),
+            None,
+        )
+        effective_storage.append(existing or storage_fact)
+        if existing is None:
+            merged.append(storage_fact)
+    return tuple(merged), tuple(effective_storage)
+
+
+def _add_transient_storage_custody_facts(facts, storage_character_facts):
+    result = list(facts)
+    for incoming in storage_character_facts:
+        if incoming.quantity <= 0 or incoming.family not in _RESOURCE_FIELDS:
+            continue
+        destinations = [
+            fact
+            for fact in facts
+            if fact.participant_id != incoming.participant_id
+            and fact.participant_id.startswith("character:")
+            and fact.family == incoming.family
+            and fact.name == incoming.name
+            and fact.quantity == incoming.quantity
+        ]
+        existing_out = any(
+            fact.participant_id == incoming.participant_id
+            and fact.family == incoming.family
+            and fact.name == incoming.name
+            and fact.quantity < 0
+            for fact in facts
+        )
+        if len(destinations) != 1 or existing_out:
+            continue
+        result.append(
+            ResourceFact(
+                f"TC-{_safe_part(incoming.fact_id)}-{_safe_part(destinations[0].fact_id)}",
+                incoming.action_index,
+                incoming.participant_id,
+                incoming.path,
+                incoming.family,
+                incoming.name,
+                -incoming.quantity,
+                "out",
+                incoming.current_quantity,
+                "temporary_custody",
+                copy.deepcopy(incoming.row),
+                fact_kind="operation",
+                requires_fact_ids=(incoming.fact_id,),
+            )
+        )
+    return tuple(result)
 
 
 def build_resource_transaction_packet(
     prepared: Sequence[PreparedCharacterAction],
     storage_plans: Sequence[StorageMutationPlan],
 ):
-    facts = _character_facts(prepared) + _storage_facts(storage_plans)
+    character_facts = _character_facts(prepared)
+    storage_character_facts = _storage_character_facts(storage_plans)
+    character_facts, effective_storage_character_facts = (
+        _merge_storage_character_facts(character_facts, storage_character_facts)
+    )
+    facts = character_facts + _storage_facts(storage_plans)
+    facts = _add_transient_storage_custody_facts(
+        facts,
+        effective_storage_character_facts,
+    )
     return {
         "facts": [fact.packet() for fact in facts],
         "constraints": {
@@ -528,6 +751,7 @@ def _validate_plan(value: Any, facts: Sequence[ResourceFact]):
     if not isinstance(raw_stages, list) or not raw_stages:
         raise ResourceTransactionPlanningError("planner returned no stages")
     staged = []
+    stage_by_fact = {}
     expected_stage = 1
     for stage in raw_stages:
         if not isinstance(stage, dict) or set(stage) != {
@@ -547,10 +771,21 @@ def _validate_plan(value: Any, facts: Sequence[ResourceFact]):
             if fact_id not in fact_map or fact_id in duplicates or fact_id in staged:
                 raise ResourceTransactionPlanningError("planner staged an invalid fact")
             staged.append(fact_id)
+            stage_by_fact[fact_id] = stage["stage"]
     if set(staged) | set(duplicates) != set(fact_map):
         raise ResourceTransactionPlanningError(
             "planner did not classify every observed fact exactly once"
         )
+    for fact in facts:
+        for dependency in fact.requires_fact_ids:
+            if (
+                dependency not in stage_by_fact
+                or fact.fact_id not in stage_by_fact
+                or stage_by_fact[dependency] >= stage_by_fact[fact.fact_id]
+            ):
+                raise ResourceTransactionPlanningError(
+                    "planner violated an operation dependency"
+                )
 
     edge_members = set()
     edges = {}
@@ -740,6 +975,39 @@ def _apply_ledger_operation(
     _apply_fact(image, fact, operation.quantity)
 
 
+def _row_metadata(row: Mapping[str, Any], family: str) -> str:
+    name_field = "item_name" if family == "equipment" else "name"
+    return inventory_metadata(row, name_field, omit_ownership_local=True)
+
+
+def _validate_custody_metadata(
+    operation,
+    dependency,
+) -> None:
+    if not (
+        operation.quantity < 0
+        and dependency.quantity > 0
+        and operation.participant_id == dependency.participant_id
+        and operation.family == dependency.family
+        and normalize_inventory_name(operation.name)
+        == normalize_inventory_name(dependency.name)
+        and operation.family in {"equipment", "ammunition"}
+    ):
+        return
+    if not isinstance(operation.row, Mapping) or not isinstance(
+        dependency.row, Mapping
+    ):
+        raise ResourceTransactionPlanningError(
+            "custody hop has no canonical metadata"
+        )
+    if _row_metadata(operation.row, operation.family) != _row_metadata(
+        dependency.row, dependency.family
+    ):
+        raise ResourceTransactionPlanningError(
+            "metadata changed across a custody hop"
+        )
+
+
 def rehearse_resource_operation_ledger(
     participants: Sequence[ResourceLedgerParticipant],
     operations: Sequence[ResourceOperationFact],
@@ -861,6 +1129,11 @@ def rehearse_resource_operation_ledger(
                 raise ResourceTransactionPlanningError(
                     "operation ledger dependency is not available before use"
                 )
+            for dependency_id in operation.requires_fact_ids:
+                _validate_custody_metadata(
+                    operation,
+                    operation_map[dependency_id],
+                )
             participant = participant_map[operation.participant_id]
             if participant.kind == "external_actor":
                 key = (
@@ -896,6 +1169,7 @@ def rehearse_resource_operation_ledger(
 
 def _stage_character_images(
     prepared: Sequence[PreparedCharacterAction],
+    storage_plans: Sequence[StorageMutationPlan],
     facts: Sequence[ResourceFact],
     staged: Sequence[str],
     edges,
@@ -917,6 +1191,20 @@ def _stage_character_images(
         if existing is None:
             by_path[item.plan.canonical_path] = copy.deepcopy(item.plan.pre_image)
         elif existing != item.plan.pre_image:
+            raise ResourceTransactionPlanningError(
+                "staged participant pre-images do not match"
+            )
+    for plan in storage_plans:
+        if not plan.character_path:
+            continue
+        if not isinstance(plan.character_before, Mapping):
+            raise ResourceTransactionPlanningError(
+                "staged storage character pre-image is unavailable"
+            )
+        existing = by_path.get(plan.character_path)
+        if existing is None:
+            by_path[plan.character_path] = copy.deepcopy(plan.character_before)
+        elif existing != plan.character_before:
             raise ResourceTransactionPlanningError(
                 "staged participant pre-images do not match"
             )
@@ -959,7 +1247,31 @@ def _stage_character_images(
     for advisories in canonical_advisories.values():
         for advisory in sorted(advisories):
             warning(f"INVENTORY: {advisory}", category="character_updates")
-    return tuple(result)
+    updated_storage = []
+    for plan in storage_plans:
+        if not plan.character_path:
+            updated_storage.append(plan)
+            continue
+        post_image = copy.deepcopy(plan.character_after)
+        final_resources = by_path[plan.character_path]
+        for field in _RESOURCE_FIELDS:
+            if field in final_resources:
+                post_image[field] = copy.deepcopy(final_resources[field])
+            else:
+                post_image.pop(field, None)
+        updated_storage.append(
+            replace(
+                plan,
+                character_after=post_image,
+                advisories=tuple(
+                    sorted(
+                        set(plan.advisories)
+                        | canonical_advisories.get(plan.character_path, set())
+                    )
+                ),
+            )
+        )
+    return tuple(result), tuple(updated_storage)
 
 
 def _reconcile_staged_images(
@@ -1098,6 +1410,18 @@ def _effective_edge_fact_map(facts: Sequence[ResourceFact], edges):
     return effective
 
 
+def _validate_planned_custody_metadata(facts, edges) -> None:
+    effective = _effective_edge_fact_map(facts, edges)
+    for fact in effective.values():
+        for dependency_id in fact.requires_fact_ids:
+            dependency = effective.get(dependency_id)
+            if dependency is None:
+                raise ResourceTransactionPlanningError(
+                    "planned custody dependency is unavailable"
+                )
+            _validate_custody_metadata(fact, dependency)
+
+
 def _non_character_edge_deltas(
     facts: Sequence[ResourceFact],
     edges,
@@ -1173,8 +1497,15 @@ def plan_and_stage_resource_transaction(
                 correction=failure if failure_kind == "validation" else None,
             )
             staged, _duplicates, edges = _validate_plan(value, facts)
+            _validate_planned_custody_metadata(facts, edges)
             non_character_deltas = _non_character_edge_deltas(facts, edges)
-            characters = _stage_character_images(prepared, facts, staged, edges)
+            characters, planned_storage = _stage_character_images(
+                prepared,
+                storage_plans,
+                facts,
+                staged,
+                edges,
+            )
             _reconcile_staged_images(
                 prepared,
                 characters,
@@ -1191,7 +1522,7 @@ def plan_and_stage_resource_transaction(
             )
             return PlannedResourceTransaction(
                 characters,
-                storage_plans,
+                planned_storage,
                 decision,
                 copy.deepcopy(value),
                 attempt + 1,
