@@ -740,6 +740,52 @@ def _synthesize_negative_party_counterparts(
     return tuple(replacements.get(item.index, item) for item in corrected)
 
 
+def _overlay_negative_party_counterparts(
+    original: Sequence[PreparedCharacterAction],
+    corrected: Sequence[PreparedCharacterAction],
+    original_missing: Sequence[_PartyAttributedRequirement],
+    target_indices: Mapping[str, int],
+) -> Tuple[PreparedCharacterAction, ...]:
+    """Keep accepted resource changes when a targeted correction drops them.
+
+    The model gets the first opportunity to express each missing counterpart.
+    For a negative-only, deterministic counterpart, however, its result must be
+    the accepted post-image plus that exact removal.  If the model already
+    produced that resource image, keep its plan untouched.  Otherwise use the
+    same conservative synthesis used after a failed correction so one local
+    repair cannot erase another accepted leg of the transaction.
+    """
+    negative = tuple(
+        requirement
+        for requirement in original_missing
+        if requirement.quantity < 0
+    )
+    if not negative:
+        return tuple(corrected)
+
+    corrected = tuple(corrected)
+    expected = _synthesize_negative_party_counterparts(
+        original,
+        corrected,
+        original_missing,
+        negative,
+        target_indices,
+    )
+    expected_by_index = {item.index: item for item in expected}
+    result = []
+    resource_fields = ("equipment", "ammunition", "currency")
+    for item in corrected:
+        candidate = expected_by_index.get(item.index, item)
+        if candidate is item or all(
+            item.plan.post_image.get(field) == candidate.plan.post_image.get(field)
+            for field in resource_fields
+        ):
+            result.append(item)
+        else:
+            result.append(candidate)
+    return tuple(result)
+
+
 def _repair_party_attributed_requirements(
     prepared: Sequence[PreparedCharacterAction],
     party: Mapping[str, Any],
@@ -814,6 +860,12 @@ def _repair_party_attributed_requirements(
         item
         for item in corrected
         if item.index not in existing_indices
+    )
+    result = _overlay_negative_party_counterparts(
+        prepared,
+        result,
+        missing,
+        target_indices,
     )
     remaining = _unmet_party_attributed_requirements(result, missing)
     if remaining:
