@@ -641,6 +641,163 @@ _NON_QUANTITY_UNIT_WORDS = frozenset(
         "yards",
     }
 )
+_COMMERCE_DISPOSAL_VERBS = r"(?:removed|sold|gave|handed|traded|transferred)"
+_COMMERCE_GENERIC_TOKENS = {
+    "armor",
+    "charge",
+    "charges",
+    "equipment",
+    "experience",
+    "gear",
+    "hp",
+    "inventory",
+    "item",
+    "items",
+    "level",
+    "levels",
+    "new",
+    "points",
+    "slot",
+    "slots",
+    "use",
+    "uses",
+    "weapon",
+    "xp",
+}
+_AMMUNITION_TOKENS = {
+    "arrow",
+    "arrows",
+    "bolt",
+    "bolts",
+    "bullet",
+    "bullets",
+    "shot",
+}
+
+
+def _commerce_item_statements(text: str):
+    verbs = rf"(?P<verb>{_ACQUISITION_VERBS}|{_COMMERCE_DISPOSAL_VERBS})"
+    other_statement = (
+        rf"\s+and\s+(?:{_ACQUISITION_VERBS}|{_COMMERCE_DISPOSAL_VERBS})"
+        r"\s+\d+\s+(?:gold|silver|copper)\b"
+    )
+    pattern = re.compile(
+        rf"\b{verbs}\s+(?P<quantity>\d+)\s+(?P<descriptor>.+?)"
+        rf"(?={other_statement}|[.;\n]|$)",
+        re.IGNORECASE,
+    )
+    statements = []
+    for match in pattern.finditer(text):
+        descriptor = match.group("descriptor").strip(" ,")
+        descriptor = re.sub(
+            r"\s+(?:to|from|into)\s+(?:the\s+)?inventory$",
+            "",
+            descriptor,
+            flags=re.IGNORECASE,
+        ).strip(" ,")
+        tokens = _resource_tokens(descriptor) - _COMMERCE_GENERIC_TOKENS
+        if not descriptor or not tokens or tokens <= {
+            "gold",
+            "silver",
+            "copper",
+            "coin",
+            "piece",
+        }:
+            continue
+        verb = match.group("verb").casefold()
+        direction = "in" if re.fullmatch(
+            _ACQUISITION_VERBS,
+            verb,
+            re.IGNORECASE,
+        ) else "out"
+        statements.append((direction, int(match.group("quantity")), descriptor))
+    return tuple(statements)
+
+
+def _commerce_name_matches(descriptor: str, row_name: str) -> bool:
+    stated = _resource_tokens(descriptor) - _COMMERCE_GENERIC_TOKENS
+    concrete = _resource_tokens(row_name) - _COMMERCE_GENERIC_TOKENS
+    return bool(stated & concrete)
+
+
+def _commerce_row_contract_mismatch(
+    prepared: Sequence[PreparedCharacterAction],
+    effective: Mapping[Tuple[str, str, str], int],
+) -> Optional[str]:
+    """Require a concrete row on paid acquisitions and compensated disposals."""
+    by_path: Dict[str, List[PreparedCharacterAction]] = {}
+    for item in prepared:
+        by_path.setdefault(item.plan.canonical_path, []).append(item)
+
+    for path, items in by_path.items():
+        currency_delta = sum(
+            effective.get((path, "currency", denomination), 0) * multiplier
+            for denomination, multiplier in _DENOMINATIONS.items()
+        )
+        if not currency_delta:
+            continue
+        statements = tuple(
+            statement
+            for item in items
+            for statement in _commerce_item_statements(item.changes)
+        )
+        for direction, quantity, descriptor in statements:
+            expected_sign = 1 if direction == "in" else -1
+            if (direction == "in" and currency_delta >= 0) or (
+                direction == "out" and currency_delta <= 0
+            ):
+                continue
+            matching = [
+                (family, name, delta)
+                for (delta_path, family, name), delta in effective.items()
+                if delta_path == path
+                and family in {"equipment", "ammunition"}
+                and delta * expected_sign > 0
+                and _commerce_name_matches(descriptor, name)
+            ]
+            if matching and sum(abs(delta) for _family, _name, delta in matching) >= quantity:
+                continue
+
+            family = (
+                "ammunition"
+                if _resource_tokens(descriptor) & _AMMUNITION_TOKENS
+                else "equipment"
+            )
+            canonical_name = descriptor
+            current = 0
+            before = items[0].plan.pre_image
+            field, name_field = (
+                ("equipment", "item_name")
+                if family == "equipment"
+                else ("ammunition", "name")
+            )
+            existing = [
+                row
+                for row in before.get(field) or []
+                if isinstance(row, dict)
+                and _commerce_name_matches(
+                    descriptor,
+                    str(row.get(name_field) or ""),
+                )
+            ]
+            if len(existing) == 1:
+                canonical_name = str(existing[0].get(name_field))
+                current = _strict_nonnegative_int(
+                    existing[0].get("quantity", 1),
+                    f"{field}.{_normalized_name(canonical_name)}.quantity",
+                )
+            signed_delta = quantity * expected_sign
+            return (
+                f"commerce {('acquisition' if direction == 'in' else 'disposal')} "
+                f"of stated item {json.dumps(descriptor, ensure_ascii=False)} "
+                "has no matching concrete resource row; required family "
+                f"{family}, canonical {name_field}="
+                f"{json.dumps(canonical_name, ensure_ascii=False)}, required "
+                f"signed row delta {signed_delta:+d}, current {current}, "
+                f"required final {current + signed_delta}. Description-only "
+                "edits do not count as resource movement"
+            )
+    return None
 
 
 def _effective_same_character_asset_deltas(
@@ -743,6 +900,10 @@ def _explicit_acquisition_contract_mismatch(
         effective = _effective_same_character_asset_deltas(prepared)
     except CharacterTransferError as exc:
         return str(exc)
+
+    commerce_mismatch = _commerce_row_contract_mismatch(prepared, effective)
+    if commerce_mismatch:
+        return commerce_mismatch
 
     stated: Dict[Tuple[str, str, str], int] = {}
     currency_pattern = re.compile(
