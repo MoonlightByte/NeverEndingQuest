@@ -546,7 +546,17 @@ class ModuleLifecycleStore:
         last_error: Optional[BaseException] = None
         for attempt in range(1, _MANIFEST_MAX_ATTEMPTS + 1):
             try:
-                return cls._create_manifest_once(root)
+                # The final attempt always uses content-verification mode: a
+                # volume whose file IDs are only intermittently unstable can
+                # pass the stability probe and still fail identity checks
+                # mid-walk on every attempt. Content verification is equally
+                # strict about bytes, so forcing it never weakens the result.
+                return cls._create_manifest_once(
+                    root,
+                    force_content_verification=(
+                        attempt == _MANIFEST_MAX_ATTEMPTS
+                    ),
+                )
             except (LifecycleIndeterminateError, OSError) as exc:
                 if isinstance(exc, OSError) and not is_transient_filesystem_error(
                     exc,
@@ -565,15 +575,21 @@ class ModuleLifecycleStore:
     def _create_manifest_once(
         cls,
         root: Union[os.PathLike, str],
+        *,
+        force_content_verification: bool = False,
     ) -> Dict[str, Dict[str, Any]]:
         """Perform exactly one complete strict manifest walk."""
         root_path = Path(root)
         root_stat = cls._require_plain_directory(root_path)
         root_device = root_stat.st_dev
-        stable_file_ids = cls._manifest_file_ids_are_stable(
-            root_path,
-            root_stat,
-            root_device,
+        stable_file_ids = (
+            False
+            if force_content_verification
+            else cls._manifest_file_ids_are_stable(
+                root_path,
+                root_stat,
+                root_device,
+            )
         )
         entries, observations = cls._walk_manifest_once(
             root_path,
