@@ -196,6 +196,13 @@ T040_VALIDATION_UNAVAILABLE_FEEDBACK = (
     "were applied. Re-evaluate the player's submitted action against the "
     "authoritative combat state and return a fresh, complete response."
 )
+
+T040_VERDICT_REQUEST = (
+    "Validate the assistant combat candidate above. Return only this exact JSON "
+    "shape: {\"valid\":true|false,\"feedback\":{\"positive\":\"...\","
+    "\"negative\":\"...\",\"recommendation\":\"...\"}}"
+)
+T040_MAX_ATTEMPTS_PER_CANDIDATE = 2
 T043_RESUME_FALLBACK_NARRATION = "The battle continues! What will you do next?"
 T045_REJECTED_ACTION_NARRATION = (
     "I could not safely resolve that combat action, so no combat state was "
@@ -953,7 +960,8 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
     # Now add the user input and AI response to validate
     validation_conversation.extend([
         {"role": "user", "content": f"Player Input: {user_input}"},
-        {"role": "assistant", "content": response}
+        {"role": "assistant", "content": response},
+        {"role": "user", "content": T040_VERDICT_REQUEST},
     ])
 
     # Export validation conversation for review
@@ -976,7 +984,10 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
     else:  # legacy
         validation_config = config.COMBAT_VALID_LEGACY
 
-    max_validation_retries = 5
+    # Each combat candidate gets at most two referee calls. T045 itself is
+    # bounded to five candidates, so one player action can make no more than
+    # ten T040 calls before failing closed.
+    max_validation_retries = T040_MAX_ATTEMPTS_PER_CANDIDATE
     for attempt in range(max_validation_retries):
         try:
             validation_result = capture_and_fanout("T040", api_client.create_completion,
