@@ -561,6 +561,167 @@ def _party_character_snapshot(
     return sheet
 
 
+def _synthesize_negative_party_counterparts(
+    original: Sequence[PreparedCharacterAction],
+    corrected: Sequence[PreparedCharacterAction],
+    original_missing: Sequence[_PartyAttributedRequirement],
+    remaining: Sequence[_PartyAttributedRequirement],
+    target_indices: Mapping[str, int],
+) -> Tuple[PreparedCharacterAction, ...]:
+    """Apply only exact removal mirrors after the model correction fails.
+
+    The accepted positive sibling and party attribution already prove the
+    actor, resource identity, and quantity.  Code may therefore enforce the
+    missing negative half as conservation arithmetic.  Additions and any
+    competing or ambiguous actor state remain model-owned and fail closed.
+    """
+    failing_targets = {value.target_name for value in remaining}
+    requirements_by_target: Dict[str, List[_PartyAttributedRequirement]] = {}
+    for requirement in original_missing:
+        if requirement.target_name in failing_targets:
+            requirements_by_target.setdefault(
+                requirement.target_name, []
+            ).append(requirement)
+
+    original_by_index = {item.index: item for item in original}
+    corrected_by_index = {item.index: item for item in corrected}
+    replacements = {}
+    for target_name, requirements in requirements_by_target.items():
+        if not requirements or any(value.quantity >= 0 for value in requirements):
+            continue
+        target_index = target_indices.get(target_name)
+        if target_index is None:
+            continue
+        base = original_by_index.get(target_index)
+        corrected_item = corrected_by_index.get(target_index)
+        if base is None:
+            base = corrected_item
+            if base is None:
+                continue
+            post_image = copy.deepcopy(base.plan.pre_image)
+        else:
+            post_image = copy.deepcopy(base.plan.post_image)
+
+        eligible = True
+        advisories = set(base.plan.advisories)
+        for requirement in requirements:
+            if _actor_resource_delta(
+                original,
+                target_name,
+                requirement.family,
+                requirement.name,
+            ) != 0:
+                eligible = False
+                break
+            if requirement.family == "currency":
+                before_currency = base.plan.pre_image.get("currency") or {}
+                after_currency = post_image.get("currency") or {}
+                if not isinstance(before_currency, dict) or not isinstance(
+                    after_currency, dict
+                ):
+                    eligible = False
+                    break
+                current = _strict_nonnegative_int(
+                    before_currency.get(requirement.name, 0),
+                    f"currency.{requirement.name}",
+                )
+                if _strict_nonnegative_int(
+                    after_currency.get(requirement.name, 0),
+                    f"currency.{requirement.name}",
+                ) != current:
+                    eligible = False
+                    break
+                final = current + requirement.quantity
+                if final < 0:
+                    eligible = False
+                    break
+                after_currency = copy.deepcopy(after_currency)
+                after_currency[requirement.name] = final
+                post_image["currency"] = after_currency
+            elif requirement.family in {"equipment", "ammunition"}:
+                field, name_field = (
+                    ("equipment", "item_name")
+                    if requirement.family == "equipment"
+                    else ("ammunition", "name")
+                )
+                before_rows = base.plan.pre_image.get(field) or []
+                after_rows = post_image.get(field) or []
+                if not isinstance(before_rows, list) or not isinstance(
+                    after_rows, list
+                ):
+                    eligible = False
+                    break
+                before_matches = [
+                    row
+                    for row in before_rows
+                    if isinstance(row, dict)
+                    and _normalized_name(row.get(name_field))
+                    == requirement.name
+                ]
+                after_matches = [
+                    row
+                    for row in after_rows
+                    if isinstance(row, dict)
+                    and _normalized_name(row.get(name_field))
+                    == requirement.name
+                ]
+                if len(before_matches) != 1 or len(after_matches) != 1:
+                    eligible = False
+                    break
+                source = before_matches[0]
+                candidate = after_matches[0]
+                current = _strict_nonnegative_int(
+                    source.get("quantity", 1),
+                    f"{field}.{requirement.name}.quantity",
+                )
+                if (
+                    _strict_nonnegative_int(
+                        candidate.get("quantity", 1),
+                        f"{field}.{requirement.name}.quantity",
+                    )
+                    != current
+                    or inventory_metadata(source, name_field)
+                    != inventory_metadata(candidate, name_field)
+                ):
+                    eligible = False
+                    break
+                final = current + requirement.quantity
+                if final < 0:
+                    eligible = False
+                    break
+                rebuilt = []
+                for row in after_rows:
+                    if row is candidate:
+                        if final:
+                            canonical = copy.deepcopy(source)
+                            canonical["quantity"] = final
+                            rebuilt.append(canonical)
+                        continue
+                    rebuilt.append(copy.deepcopy(row))
+                post_image[field] = rebuilt
+            else:
+                eligible = False
+                break
+            advisories.add(
+                "conservation_counterpart_synthesized:%s:%s"
+                % (requirement.family, requirement.name)
+            )
+        if not eligible:
+            continue
+
+        plan = replace(
+            base.plan,
+            post_image=post_image,
+            field_facts=tuple(
+                _field_change_facts(base.plan.pre_image, post_image)
+            ),
+            advisories=tuple(sorted(advisories)),
+        )
+        replacements[target_index] = replace(base, plan=plan)
+
+    return tuple(replacements.get(item.index, item) for item in corrected)
+
+
 def _repair_party_attributed_requirements(
     prepared: Sequence[PreparedCharacterAction],
     party: Mapping[str, Any],
@@ -576,6 +737,7 @@ def _repair_party_attributed_requirements(
 
     selected_actions = {}
     corrections = {}
+    target_indices = {}
     next_index = max((item.index for item in prepared), default=-1) + 1
     for target_name, requirements in by_target.items():
         candidates = [
@@ -615,6 +777,7 @@ def _repair_party_attributed_requirements(
             for requirement in requirements
         )
         selected_actions[target_index] = target_action
+        target_indices[target_name] = target_index
         corrections[target_index] = (
             f"Party-attributed transfer facts for {target_name} only: {facts}. "
             "The accepted sibling action explicitly attributes this resource "
@@ -635,6 +798,15 @@ def _repair_party_attributed_requirements(
         if item.index not in existing_indices
     )
     remaining = _missing_party_attributed_requirements(result, party)
+    if remaining:
+        result = _synthesize_negative_party_counterparts(
+            prepared,
+            result,
+            missing,
+            remaining,
+            target_indices,
+        )
+        remaining = _missing_party_attributed_requirements(result, party)
     if remaining:
         labels = ", ".join(
             f"{value.target_name} {value.family} {value.name} "
