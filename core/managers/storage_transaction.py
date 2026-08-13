@@ -1248,35 +1248,47 @@ def _storage_sibling_correction(storage_plan):
                 )
 
     facts = []
+    before_currency = storage_plan.character_before.get("currency") or {}
+    after_currency = storage_plan.character_after.get("currency") or {}
+    for denomination, denomination_delta in _currency_deltas(
+        storage_plan.character_before,
+        storage_plan.character_after,
+    ):
+        source_available = (
+            storage_available.get(("currency", denomination), 0)
+            if denomination_delta > 0
+            else before_currency.get(denomination, 0)
+        )
+        facts.append(
+            f"currency {denomination}: authoritative source available "
+            f"{source_available}, character current "
+            f"{before_currency.get(denomination, 0)}, "
+            f"{'receives' if denomination_delta > 0 else 'removes'} "
+            f"{abs(denomination_delta)}, required signed delta "
+            f"{denomination_delta:+d}, required ABSOLUTE final "
+            f"{after_currency.get(denomination, 0)}"
+        )
     for delta in concrete_asset_deltas_between(
         storage_plan.character_before,
         storage_plan.character_after,
     ):
+        if delta.family == "currency":
+            continue
         before_quantity = 0
         final_quantity = 0
-        if delta.family == "currency":
-            before_quantity = (storage_plan.character_before.get("currency") or {}).get(
-                delta.name,
-                0,
-            )
-            final_quantity = (storage_plan.character_after.get("currency") or {}).get(
-                delta.name,
-                0,
-            )
-        else:
-            field, name_field = (
-                ("equipment", "item_name")
-                if delta.family == "equipment"
-                else ("ammunition", "name")
-            )
-            for row in storage_plan.character_before.get(field) or []:
-                if _normalized_name(row.get(name_field)) == delta.name:
-                    before_quantity = row.get("quantity", 1)
-                    break
-            for row in storage_plan.character_after.get(field) or []:
-                if _normalized_name(row.get(name_field)) == delta.name:
-                    final_quantity = row.get("quantity", 1)
-                    break
+        field, name_field = (
+            ("equipment", "item_name")
+            if delta.family == "equipment"
+            else ("ammunition", "name")
+        )
+        for row in storage_plan.character_before.get(field) or []:
+            if _normalized_name(row.get(name_field)) == delta.name:
+                before_quantity = row.get("quantity", 1)
+                break
+        for row in storage_plan.character_after.get(field) or []:
+            if _normalized_name(row.get(name_field)) == delta.name:
+                final_quantity = row.get("quantity", 1)
+                break
         direction = "receives" if delta.quantity > 0 else "removes"
         available_quantity = (
             storage_available.get((delta.family, delta.name), 0)
@@ -1294,7 +1306,9 @@ def _storage_sibling_correction(storage_plan):
         "movement. Rewrite this character update once so its resource fields "
         "match every deterministic fact below exactly, while preserving any "
         "unrelated same-turn changes. Do not substitute names, families, signs, "
-        "quantities, or final values.\n- "
+        "quantities, or final values. Currency objects use the required absolute "
+        "denomination finals; ammunition quantities use the required signed "
+        "delta.\n- "
         + "\n- ".join(facts)
     )
 
