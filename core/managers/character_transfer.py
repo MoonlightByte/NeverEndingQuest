@@ -1720,6 +1720,7 @@ def commit_prepared_character_actions(
     resource_storage_plans=(),
     enable_resource_planning: bool = False,
     resource_intent: str = "",
+    resource_planner_call_budget=None,
 ) -> Dict[str, Any]:
     """Validate a prepared subset and optionally commit it.
 
@@ -1838,6 +1839,7 @@ def commit_prepared_character_actions(
                 tuple(resource_storage_plans),
                 provider=model_config.get_provider(),
                 player_intent=resource_intent,
+                planner_call_budget=resource_planner_call_budget,
             )
             prepared = planning_result.character_actions
             resource_storage_plans = planning_result.storage_plans
@@ -2026,6 +2028,7 @@ def prepare_character_response_actions(
     storage_plans=(),
     *,
     resource_intent: str = "",
+    resource_planner_call_budget=None,
 ) -> Dict[str, Any]:
     """Return transfer-validated response images without changing files."""
     return commit_prepared_character_actions(
@@ -2035,6 +2038,7 @@ def prepare_character_response_actions(
         resource_storage_plans=tuple(storage_plans),
         enable_resource_planning=True,
         resource_intent=resource_intent,
+        resource_planner_call_budget=resource_planner_call_budget,
     )
 
 

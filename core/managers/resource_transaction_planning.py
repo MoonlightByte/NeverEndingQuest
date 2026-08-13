@@ -34,6 +34,10 @@ class ResourceTransactionProviderError(ResourceTransactionPlanningError):
     """The bounded T105 provider calls failed before a plan was returned."""
 
 
+class ResourceTransactionNotAgreed(ResourceTransactionPlanningError):
+    """The accepted response does not contain a completed external exchange."""
+
+
 @dataclass(frozen=True)
 class ResourceRoutingDecision:
     requires_planning: bool
@@ -42,6 +46,25 @@ class ResourceRoutingDecision:
     provider: str
     model_family: str
     inputs: Mapping[str, Any]
+
+
+@dataclass
+class ResourcePlannerCallBudget:
+    """One response-scoped T105 allowance shared by stale rebuilds."""
+
+    max_calls: int = 2
+    calls_used: int = 0
+
+    def __post_init__(self) -> None:
+        if self.max_calls != 2 or self.calls_used not in {0, 1, 2}:
+            raise ValueError("T105 call budget must be a two-call allowance")
+
+    def reserve(self) -> None:
+        if self.calls_used >= self.max_calls:
+            raise ResourceTransactionPlanningError(
+                "T105 response call budget exhausted"
+            )
+        self.calls_used += 1
 
 
 @dataclass(frozen=True)
@@ -711,6 +734,10 @@ def _validate_and_add_external_contract(
             "commerce classifier returned an invalid classification"
         )
     if classification != "complete":
+        if classification == "not_agreed":
+            raise ResourceTransactionNotAgreed(
+                "external commerce contract is not_agreed"
+            )
         raise ResourceTransactionPlanningError(
             "external commerce contract is %s" % classification
         )
@@ -856,6 +883,8 @@ def _classify_external_contract(
             combined, contract = _validate_and_add_external_contract(value, facts)
             return combined, contract, attempt + 1
         except Exception as exc:
+            if isinstance(exc, ResourceTransactionNotAgreed):
+                raise
             failure = (
                 str(exc)
                 if isinstance(exc, ResourceTransactionPlanningError)
@@ -1776,6 +1805,7 @@ def plan_and_stage_resource_transaction(
     planner: Optional[Callable[..., Mapping[str, Any]]] = None,
     commerce_classifier: Optional[Callable[..., Mapping[str, Any]]] = None,
     player_intent: str = "",
+    planner_call_budget: Optional[ResourcePlannerCallBudget] = None,
 ) -> PlannedResourceTransaction:
     started = time.monotonic()
     prepared = tuple(prepared)
@@ -1836,10 +1866,14 @@ def plan_and_stage_resource_transaction(
 
         planner = request_transaction_plan
 
+    if planner_call_budget is None:
+        planner_call_budget = ResourcePlannerCallBudget()
+
     failure = None
     failure_kind = "validation"
     for attempt in range(2):
         try:
+            planner_call_budget.reserve()
             value = planner(
                 packet,
                 correction=failure if failure_kind == "validation" else None,

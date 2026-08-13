@@ -4498,11 +4498,15 @@ def process_ai_response(
                 from core.managers.resource_response_transaction import (
                     execute_resource_response_transaction,
                 )
+                from core.managers.resource_transaction_planning import (
+                    ResourcePlannerCallBudget,
+                )
                 from core.managers.storage_transaction import (
                     process_adjacent_storage_fee_groups,
                 )
                 from utils.state_transaction import TransactionStalePlanError
 
+                resource_planner_call_budget = ResourcePlannerCallBudget()
                 for resource_attempt in range(2):
                     resource_failed_stage = "character_prepare"
                     prepared_characters = prepare_character_actions(
@@ -4539,6 +4543,9 @@ def process_ai_response(
                         tuple(fee_result.get("storage_plans", ())),
                         resource_intent=_current_resource_intent(
                             conversation_history
+                        ),
+                        resource_planner_call_budget=(
+                            resource_planner_call_budget
                         ),
                     )
                     if not character_result.get("success"):
