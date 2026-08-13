@@ -29,9 +29,13 @@ hypotheticals, tentative thoughts, vague prices, or multiple ambiguous amounts
 as an explicit offer. Do not decide whether a sale succeeds and do not invent or
 modify game state.
 
-Also classify whether the candidate actions complete the transaction by both
-removing player currency and granting the player a non-currency acquisition.
-This is observation only; never repair or propose actions.
+Also classify whether the candidate actions mechanically complete the claimed
+transaction.  A newly purchased asset must be granted by updateCharacterInfo;
+storageInteraction alone only moves an already-owned asset and NEVER counts as
+the acquisition.  A storage-service fee is complete when payment and movement
+of the already-owned asset are both encoded.  A refusal or counteroffer is not
+a completed purchase.  This is observation only; never repair or propose
+actions.
 
 Return JSON only with exactly:
 {"classification":"explicit_offer|not_explicit|uncertain",

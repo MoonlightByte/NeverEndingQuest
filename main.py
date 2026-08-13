@@ -3628,6 +3628,7 @@ def process_ai_response(
     conversation_history,
     *,
     approved_transition_plan=None,
+    currency_offer_review=None,
 ):
     global needs_conversation_history_update
     from contextlib import ExitStack
@@ -4518,6 +4519,7 @@ def process_ai_response(
                         prepared_characters,
                         indexed_storage,
                         party_tracker_data,
+                        purchase_offer_review=currency_offer_review,
                     )
                     if not fee_result.get("success"):
                         result = {
@@ -7062,6 +7064,7 @@ def main_game_loop():
                     location_data,
                     conversation_history,
                     approved_transition_plan=approved_transition_plan,
+                    currency_offer_review=currency_offer_review,
                 )
                 (
                     final_result,

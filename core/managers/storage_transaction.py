@@ -42,6 +42,15 @@ class StorageTransactionError(RuntimeError):
     """A storage operation cannot be completed without guessing."""
 
 
+class _StorageSourceUnavailable(StorageTransactionError):
+    """A validated store operation has no source in any prepared image."""
+
+    def __init__(self, message, *, operation, character):
+        super().__init__(message)
+        self.operation = copy.deepcopy(operation)
+        self.character = character
+
+
 @dataclass(frozen=True)
 class StorageMutationPlan:
     operation: Mapping[str, Any]
@@ -1395,6 +1404,158 @@ def _combine_storage_fee(storage_plan, fee_action):
     return replace(storage_plan, character_after=combined_character)
 
 
+def _merged_character_working_image(prepared_actions):
+    """Merge one actor's accepted images for transient storage preparation."""
+    prepared_actions = tuple(prepared_actions)
+    if not prepared_actions:
+        return None
+    if len(prepared_actions) == 1:
+        return prepared_actions[0].plan.post_image
+
+    from core.managers.resource_response_transaction import (
+        ResourceResponseTransactionError,
+        _merge_value,
+    )
+
+    first = prepared_actions[0].plan
+    base = first.pre_image
+    accumulated = copy.deepcopy(base)
+    for item in prepared_actions:
+        plan = item.plan
+        if (
+            plan.canonical_path != first.canonical_path
+            or type(plan.pre_image) is not type(base)
+            or plan.pre_image != base
+        ):
+            raise StorageTransactionError(
+                "staged storage actions do not share one character pre-image"
+            )
+        try:
+            accumulated = _merge_value(
+                base,
+                accumulated,
+                plan.post_image,
+                "storage_working_image",
+            )
+        except ResourceResponseTransactionError as exc:
+            raise StorageTransactionError(
+                "staged storage actions contain competing character finals"
+            ) from exc
+    return accumulated
+
+
+def _prepare_extracted_storage_operation(operation, working_image=None):
+    operations = operation.get("operations")
+    if isinstance(operations, list):
+        return prepare_storage_mutation_set(
+            operations,
+            character_working_image=working_image,
+        )
+    return prepare_storage_mutation(
+        operation,
+        character_working_image=working_image,
+    )
+
+
+def _purchase_review_allows_acquisition_repair(review):
+    return bool(
+        isinstance(review, Mapping)
+        and review.get("classification") == "explicit_offer"
+        and review.get("completed_purchase") is False
+    )
+
+
+def _prepare_missing_purchase_acquisition(
+    operation,
+    character,
+    prepared_actions,
+    party_tracker_data,
+    *,
+    synthetic_index,
+):
+    """Give T079 one bounded chance to supply an omitted purchased item row."""
+    operations = operation.get("operations")
+    operations = operations if isinstance(operations, list) else [operation]
+    requested = []
+    for item in operations:
+        if not isinstance(item, Mapping) or item.get("action") != "store_item":
+            continue
+        requested.extend(_requested_items(item))
+    if not requested:
+        raise StorageTransactionError(
+            "missing purchase acquisition is not an item-storage operation"
+        )
+
+    working_image = _merged_character_working_image(prepared_actions)
+    if not isinstance(working_image, Mapping):
+        raise StorageTransactionError(
+            "missing purchase acquisition has no character working image"
+        )
+    rows = working_image.get("equipment") or []
+    if not isinstance(rows, list):
+        raise StorageTransactionError("character equipment is malformed")
+    missing = []
+    for name, quantity in requested:
+        row = _unique_named_row(rows, name, "character")
+        available = 0 if row is None else _strict_quantity(
+            row.get("quantity", 1), "character item quantity"
+        )
+        if available < quantity:
+            missing.append((name, quantity - available))
+    if not missing:
+        raise StorageTransactionError(
+            "purchase acquisition repair was requested for an available item"
+        )
+
+    labels = ", ".join(f"{quantity} {name}" for name, quantity in missing)
+    action = {
+        "action": "updateCharacterInfo",
+        "parameters": {
+            "characterName": character,
+            "changes": (
+                f"Acquired {labels} from the completed external purchase "
+                "before placing the purchased property directly in storage."
+            ),
+        },
+    }
+    from core.managers.character_transfer import (
+        _prepare_actions,
+        concrete_asset_deltas,
+    )
+
+    corrected = _prepare_actions(
+        ((synthetic_index, action),),
+        party_tracker_data,
+    )
+    if len(corrected) != 1:
+        raise StorageTransactionError(
+            "purchase acquisition preparation returned an invalid batch"
+        )
+    prepared = corrected[0]
+    expected = sorted(
+        ("equipment", _normalized_name(name), quantity)
+        for name, quantity in missing
+    )
+    actual = sorted(
+        (delta.family, delta.name, delta.quantity)
+        for delta in concrete_asset_deltas(prepared.plan)
+        if delta.quantity
+    )
+    if actual != expected:
+        raise StorageTransactionError(
+            "purchase acquisition preparation changed unsupported resources"
+        )
+    advisories = set(prepared.plan.advisories)
+    advisories.update(
+        f"purchase_acquisition_prepared:{_normalized_name(name)}"
+        for name, _quantity in missing
+    )
+    return replace(
+        prepared,
+        plan=replace(prepared.plan, advisories=tuple(sorted(advisories))),
+    )
+
+
 def _prepare_response_storage_action(
     indexed_action,
     party_tracker_data,
@@ -1453,24 +1614,31 @@ def _prepare_response_storage_action(
             "view_storage cannot be mixed with storage mutations"
         )
 
-    def prepare(working_image=None):
-        if isinstance(operations, list):
-            return prepare_storage_mutation_set(
-                operations,
-                character_working_image=working_image,
-            )
-        return prepare_storage_mutation(
-            operation,
-            character_working_image=working_image,
-        )
-
     try:
-        plan = prepare()
+        plan = _prepare_extracted_storage_operation(operation)
     except StorageTransactionError as exc:
         unavailable = "not available in character" in str(exc).casefold()
-        if not unavailable or not isinstance(character_working_image, Mapping):
+        if not unavailable:
             raise
-        plan = prepare(character_working_image)
+        if not isinstance(character_working_image, Mapping):
+            raise _StorageSourceUnavailable(
+                str(exc),
+                operation=operation,
+                character=character,
+            ) from exc
+        try:
+            plan = _prepare_extracted_storage_operation(
+                operation,
+                character_working_image,
+            )
+        except StorageTransactionError as working_error:
+            if "not available in character" not in str(working_error).casefold():
+                raise
+            raise _StorageSourceUnavailable(
+                str(working_error),
+                operation=operation,
+                character=character,
+            ) from working_error
         plan = replace(
             plan,
             advisories=tuple(
@@ -1551,6 +1719,8 @@ def process_adjacent_storage_fee_groups(
     prepared_character_actions,
     indexed_storage_actions,
     party_tracker_data,
+    *,
+    purchase_offer_review=None,
 ):
     """Prepare storage-owned deltas and fees for the response transaction.
 
@@ -1582,6 +1752,7 @@ def process_adjacent_storage_fee_groups(
             | {index for index, _action in indexed_storage_actions}
         )
     )
+    next_synthetic_index = max(action_indices, default=-1) + 1
     failed_stage = "storage_pairing"
 
     def required_deltas_for(indexed_storage):
@@ -1615,6 +1786,8 @@ def process_adjacent_storage_fee_groups(
         )
 
     def prepare_storage(indexed_storage, fallback_character=None):
+        nonlocal prepared_character_actions, asset_mutations
+        nonlocal next_synthetic_index
         storage_index = indexed_storage[0]
         if storage_index not in prepared_storage:
             parameters = indexed_storage[1].get("parameters") or {}
@@ -1627,13 +1800,90 @@ def process_adjacent_storage_fee_groups(
             working_image = (
                 candidates[0].plan.post_image if len(candidates) == 1 else None
             )
-            prepared_storage[storage_index] = _prepare_response_storage_action(
-                indexed_storage,
-                party_tracker_data,
-                fallback_character=fallback_character,
-                required_deltas=required_deltas_for(indexed_storage),
-                character_working_image=working_image,
-            )
+            try:
+                prepared_storage[storage_index] = (
+                    _prepare_response_storage_action(
+                        indexed_storage,
+                        party_tracker_data,
+                        fallback_character=fallback_character,
+                        required_deltas=required_deltas_for(indexed_storage),
+                        character_working_image=working_image,
+                    )
+                )
+            except _StorageSourceUnavailable as unavailable:
+                if not _purchase_review_allows_acquisition_repair(
+                    purchase_offer_review
+                ):
+                    raise
+                working_image = _merged_character_working_image(candidates)
+                try:
+                    plan = _prepare_extracted_storage_operation(
+                        unavailable.operation,
+                        working_image,
+                    )
+                except StorageTransactionError as merged_error:
+                    if (
+                        "not available in character"
+                        not in str(merged_error).casefold()
+                    ):
+                        raise
+                else:
+                    prepared_storage[storage_index] = (
+                        storage_index,
+                        unavailable.operation,
+                        replace(
+                            plan,
+                            advisories=tuple(
+                                sorted(
+                                    set(plan.advisories)
+                                    | {"storage_staged_source"}
+                                )
+                            ),
+                        ),
+                    )
+                    return prepared_storage[storage_index]
+                acquisition = _prepare_missing_purchase_acquisition(
+                    unavailable.operation,
+                    unavailable.character,
+                    candidates,
+                    party_tracker_data,
+                    synthetic_index=next_synthetic_index,
+                )
+                next_synthetic_index += 1
+                prepared_character_actions = (
+                    prepared_character_actions + (acquisition,)
+                )
+                asset_mutations = [
+                    item
+                    for item in prepared_character_actions
+                    if concrete_asset_deltas(item.plan)
+                ]
+                candidates = tuple(candidates) + (acquisition,)
+                working_image = _merged_character_working_image(candidates)
+                plan = _prepare_extracted_storage_operation(
+                    unavailable.operation,
+                    working_image,
+                )
+                purchase_advisories = {
+                    advisory
+                    for advisory in acquisition.plan.advisories
+                    if advisory.startswith("purchase_acquisition_prepared:")
+                }
+                plan = replace(
+                    plan,
+                    advisories=tuple(
+                        sorted(
+                            set(plan.advisories)
+                            | purchase_advisories
+                            | {"storage_staged_source"}
+                        )
+                    ),
+                )
+                prepared_storage[storage_index] = (
+                    storage_index,
+                    unavailable.operation,
+                    plan,
+                )
         return prepared_storage[storage_index]
 
     def correct_storage_sibling(item, storage_plan):
