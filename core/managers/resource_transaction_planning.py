@@ -913,6 +913,7 @@ def route_resource_transaction(
     families = {fact.family for fact in facts}
     has_storage = bool(storage_plans)
     has_character = bool(prepared)
+    prepared_storage_only = has_storage and not has_character
     directions = {fact.direction for fact in facts if fact.family != "storage"}
     transfer_shape = len(participants) > 1 and directions == {"in", "out"}
     unmatched_transfer_facts = 0
@@ -938,6 +939,7 @@ def route_resource_transaction(
         "storage_sibling": has_storage and has_character,
         "transfer_shape": transfer_shape,
         "unmatched_transfer_fact_count": unmatched_transfer_facts,
+        "prepared_storage_only": prepared_storage_only,
     }
     score = 0
     score += 1 if len(facts) > 1 else 0
@@ -966,7 +968,11 @@ def route_resource_transaction(
         "lmstudio": RESOURCE_PLAN_T105_LMSTUDIO,
     }.get(provider, RESOURCE_PLAN_T105_LEGACY)
     return ResourceRoutingDecision(
-        requires_planning=bool(facts) and score >= threshold,
+        requires_planning=(
+            bool(facts)
+            and not prepared_storage_only
+            and score >= threshold
+        ),
         score=score,
         threshold=threshold,
         provider=provider,
