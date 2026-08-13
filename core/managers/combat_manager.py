@@ -761,6 +761,38 @@ def _parse_combat_validation_verdict(text):
         raise ValueError("T040 invalid verdict requires actionable feedback")
     return result
 
+
+def _normalize_legacy_completed_window_round(
+    parsed_response,
+    turn_window,
+    current_round,
+):
+    """Make completed legacy-window round arithmetic code-owned.
+
+    An empty action list is the legacy contract's pause shape for a pending
+    player roll. A validated non-empty response for a submitted window is the
+    response that resolves that window, so its persisted round is the next
+    round regardless of what number the model supplied.
+    """
+    if (
+        not isinstance(parsed_response, dict)
+        or not isinstance(turn_window, dict)
+        or turn_window.get("resolve_submitted_player_action") is not True
+        or turn_window.get("allow_round_advance") is not True
+        or not isinstance(current_round, int)
+        or isinstance(current_round, bool)
+    ):
+        return False
+    actions = parsed_response.get("actions")
+    if not isinstance(actions, list) or not actions:
+        return False
+
+    expected_round = current_round + 1
+    if parsed_response.get("combat_round") == expected_round:
+        return False
+    parsed_response["combat_round"] = expected_round
+    return True
+
 def check_multiple_update_encounter(actions):
     """Check if there are multiple updateEncounter actions that should be consolidated"""
     if not isinstance(actions, list):
@@ -4786,6 +4818,20 @@ Rules:
                
                # Parse the JSON response
                parsed_response = json.loads(ai_response)
+               if _normalize_legacy_completed_window_round(
+                   parsed_response,
+                   turn_window_json,
+                   current_round,
+               ):
+                   ai_response = json.dumps(parsed_response, ensure_ascii=False)
+                   # Validation and persisted history must both see the
+                   # code-owned round, never the model's stale arithmetic.
+                   conversation_history[-1]["content"] = ai_response
+                   debug(
+                       "ROUND_TRACKING: normalized completed legacy window "
+                       f"to combat_round={current_round + 1}",
+                       category="combat_events",
+                   )
                narration = parsed_response["narration"]
                actions = parsed_response["actions"]
                
