@@ -495,6 +495,24 @@ def _missing_party_attributed_requirements(
     )
 
 
+def _unmet_party_attributed_requirements(
+    prepared: Sequence[PreparedCharacterAction],
+    requirements: Sequence[_PartyAttributedRequirement],
+) -> Tuple[_PartyAttributedRequirement, ...]:
+    """Validate the immutable attribution contract against prepared images."""
+    return tuple(
+        requirement
+        for requirement in requirements
+        if _actor_resource_delta(
+            prepared,
+            requirement.target_name,
+            requirement.family,
+            requirement.name,
+        )
+        != requirement.quantity
+    )
+
+
 def _party_attributed_correction_fact(
     requirement: _PartyAttributedRequirement,
     prepared: Sequence[PreparedCharacterAction],
@@ -797,7 +815,7 @@ def _repair_party_attributed_requirements(
         for item in corrected
         if item.index not in existing_indices
     )
-    remaining = _missing_party_attributed_requirements(result, party)
+    remaining = _unmet_party_attributed_requirements(result, missing)
     if remaining:
         result = _synthesize_negative_party_counterparts(
             prepared,
@@ -806,7 +824,7 @@ def _repair_party_attributed_requirements(
             remaining,
             target_indices,
         )
-        remaining = _missing_party_attributed_requirements(result, party)
+        remaining = _unmet_party_attributed_requirements(result, missing)
     if remaining:
         labels = ", ".join(
             f"{value.target_name} {value.family} {value.name} "
