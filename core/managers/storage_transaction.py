@@ -1709,10 +1709,40 @@ def process_adjacent_storage_fee_groups(
                     }:
                         raise
                     item = correct_storage_sibling(item, storage_plan)
-                    combined = _combine_storage_owned_character_delta(
-                        storage_plan,
-                        item,
-                    )
+                    try:
+                        combined = _combine_storage_owned_character_delta(
+                            storage_plan,
+                            item,
+                        )
+                    except StorageTransactionError as corrected_error:
+                        if str(corrected_error) not in {
+                            "storage and character actions overlap without identical resource deltas",
+                            "storage and character actions use different currency denominations",
+                        }:
+                            raise
+                        corrected_prepared = tuple(
+                            item if candidate.index == item.index else candidate
+                            for candidate in prepared_character_actions
+                        )
+                        import model_config
+                        from core.managers.resource_transaction_planning import (
+                            storage_overlap_has_complete_planning_packet,
+                        )
+
+                        if not storage_overlap_has_complete_planning_packet(
+                            corrected_prepared,
+                            (storage_plan,),
+                            provider=model_config.get_provider(),
+                        ):
+                            raise
+                        prepared_character_actions = corrected_prepared
+                        asset_mutations = [
+                            candidate
+                            for candidate in prepared_character_actions
+                            if concrete_asset_deltas(candidate.plan)
+                        ]
+                        overlapping_transfer = True
+                        continue
                 if (
                     combined is None
                     and "storage_coverage_unresolved" in storage_plan.advisories
