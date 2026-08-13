@@ -49,6 +49,116 @@ set_script_name("storage_processor")
 MAX_STORAGE_CONTEXT_ROWS = 128
 MAX_STORAGE_CONTEXT_BYTES = 32 * 1024
 
+
+def _bounded_accessible_storage_context(
+    storage_data: Dict[str, Any],
+    current_location_id: str,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Return complete local container contents or fail closed on bounds."""
+    containers = storage_data.get("playerStorage", [])
+    if not isinstance(containers, list):
+        return [], "player storage is malformed"
+    selected = []
+    row_count = 0
+    for container in containers:
+        if not isinstance(container, dict):
+            return [], "player storage contains a malformed container"
+        if container.get("locationId") != current_location_id:
+            continue
+        contents = container.get("contents", [])
+        if not isinstance(contents, list) or not all(
+            isinstance(item, dict) for item in contents
+        ):
+            return [], "a local storage container has malformed contents"
+        currency = container.get("currency", {})
+        if not isinstance(currency, dict) or any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in currency.values()
+        ):
+            return [], "a local storage container has malformed currency"
+        ammunition = container.get("ammunition", [])
+        if not isinstance(ammunition, list) or not all(
+            isinstance(row, dict) for row in ammunition
+        ):
+            return [], "a local storage container has malformed ammunition"
+        projected = {
+            "id": container.get("id"),
+            "deviceName": container.get("deviceName"),
+            "deviceType": container.get("deviceType"),
+            "locationId": container.get("locationId"),
+            "contents": copy.deepcopy(contents),
+            "currency": {
+                denomination: currency.get(denomination, 0)
+                for denomination in ("gold", "silver", "copper")
+            },
+            "ammunition": copy.deepcopy(ammunition),
+        }
+        projected_rows = (
+            1
+            + len(contents)
+            + len(ammunition)
+            + sum(
+                bool(currency.get(name, 0))
+                for name in ("gold", "silver", "copper")
+            )
+        )
+        candidate = selected + [projected]
+        candidate_bytes = len(
+            json.dumps(
+                candidate,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        )
+        if (
+            row_count + projected_rows > MAX_STORAGE_CONTEXT_ROWS
+            or candidate_bytes > MAX_STORAGE_CONTEXT_BYTES
+        ):
+            return [], (
+                "local storage contents exceed the safe model context bound; "
+                "the game will not guess which container or item was intended"
+            )
+        row_count += projected_rows
+        selected.append(projected)
+    return selected, None
+
+
+def build_accessible_storage_snapshot(
+    party_tracker_path="party_tracker.json",
+    storage_path="player_storage.json",
+) -> Dict[str, Any]:
+    """Build exact, read-only storage facts for the current location."""
+    party = safe_json_load(party_tracker_path)
+    if not isinstance(party, dict):
+        return {"available": False, "containers": []}
+    location_id = (party.get("worldConditions") or {}).get(
+        "currentLocationId"
+    )
+    if not isinstance(location_id, str) or not location_id.strip():
+        return {"available": False, "containers": []}
+    if not os.path.exists(storage_path):
+        return {
+            "available": True,
+            "currentLocationId": location_id,
+            "containers": [],
+        }
+    storage = safe_json_load(storage_path)
+    if not isinstance(storage, dict):
+        return {"available": False, "containers": []}
+    containers, context_error = _bounded_accessible_storage_context(
+        storage,
+        location_id,
+    )
+    if context_error:
+        return {"available": False, "containers": []}
+    return {
+        "available": True,
+        "currentLocationId": location_id,
+        "containers": containers,
+    }
+
 class StorageProcessor:
     """Processes natural language storage descriptions using AI"""
     
@@ -79,71 +189,10 @@ class StorageProcessor:
         current_location_id: str,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Return complete local container contents or fail closed on bounds."""
-        containers = storage_data.get("playerStorage", [])
-        if not isinstance(containers, list):
-            return [], "player storage is malformed"
-        selected = []
-        row_count = 0
-        for container in containers:
-            if not isinstance(container, dict):
-                return [], "player storage contains a malformed container"
-            if container.get("locationId") != current_location_id:
-                continue
-            contents = container.get("contents", [])
-            if not isinstance(contents, list) or not all(
-                isinstance(item, dict) for item in contents
-            ):
-                return [], "a local storage container has malformed contents"
-            currency = container.get("currency", {})
-            if not isinstance(currency, dict) or any(
-                isinstance(value, bool) or not isinstance(value, int) or value < 0
-                for value in currency.values()
-            ):
-                return [], "a local storage container has malformed currency"
-            ammunition = container.get("ammunition", [])
-            if not isinstance(ammunition, list) or not all(
-                isinstance(row, dict) for row in ammunition
-            ):
-                return [], "a local storage container has malformed ammunition"
-            projected = {
-                "id": container.get("id"),
-                "deviceName": container.get("deviceName"),
-                "deviceType": container.get("deviceType"),
-                "locationId": container.get("locationId"),
-                "contents": copy.deepcopy(contents),
-                "currency": {
-                    denomination: currency.get(denomination, 0)
-                    for denomination in ("gold", "silver", "copper")
-                },
-                "ammunition": copy.deepcopy(ammunition),
-            }
-            projected_rows = (
-                1
-                + len(contents)
-                + len(ammunition)
-                + sum(bool(currency.get(name, 0)) for name in ("gold", "silver", "copper"))
-            )
-            candidate = selected + [projected]
-            candidate_bytes = len(
-                json.dumps(
-                    candidate,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    allow_nan=False,
-                ).encode("utf-8")
-            )
-            if (
-                row_count + projected_rows > MAX_STORAGE_CONTEXT_ROWS
-                or candidate_bytes > MAX_STORAGE_CONTEXT_BYTES
-            ):
-                return [], (
-                    "local storage contents exceed the safe model context bound; "
-                    "the game will not guess which container or item was intended"
-                )
-            row_count += projected_rows
-            selected.append(projected)
-        return selected, None
+        return _bounded_accessible_storage_context(
+            storage_data,
+            current_location_id,
+        )
         
     def _get_game_context(self, character_name: str) -> Dict[str, Any]:
         """Get current game context for processing"""

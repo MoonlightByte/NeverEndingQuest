@@ -5009,6 +5009,60 @@ def _finalize_main_response_validation(
     return cleaned_history, None
 
 
+def _prediction_identifies_storage_turn(user_input, prediction):
+    """Use T082's decision plus broad storage signals to add factual context."""
+    if not isinstance(prediction, dict) or prediction.get("requires_actions") is not True:
+        return False
+    reason = str(prediction.get("reason") or "").casefold()
+    if any(
+        marker in reason
+        for marker in (
+            "storage",
+            "store item",
+            "stored item",
+            "retrieve item",
+            "container",
+        )
+    ):
+        return True
+    text = str(user_input or "").casefold()
+    return bool(
+        re.search(
+            r"\b(storage|store|stored|stow|stash|deposit|retrieve|withdraw|"
+            r"container|chest|locker|strongbox|saddlebags?|cache)\b",
+            text,
+        )
+    )
+
+
+def _storage_context_message(user_input, prediction):
+    """Return transient exact storage facts only for a predicted storage turn."""
+    if not _prediction_identifies_storage_turn(user_input, prediction):
+        return None
+    from core.managers.storage_processor import (
+        build_accessible_storage_snapshot,
+    )
+
+    snapshot = build_accessible_storage_snapshot()
+    if snapshot.get("available") is not True:
+        return None
+    return {
+        "role": "system",
+        "content": (
+            "READ-ONLY ACCESSIBLE STORAGE FACTS FOR THIS TURN. These are "
+            "exact current facts, not permission to change state. Never invent "
+            "an unlisted container or resource. Use storageInteraction for any "
+            "storage mutation.\n"
+            + json.dumps(
+                snapshot,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        ),
+    }
+
+
 def _provider_message_projection(messages):
     """Remove local history metadata before crossing a provider boundary."""
     allowed = {"role", "content", "name", "tool_call_id", "tool_calls"}
@@ -5070,6 +5124,8 @@ def get_ai_response(
     if isinstance(_prediction_sink, dict):
         _prediction_sink.clear()
         _prediction_sink.update(prediction)
+
+    storage_context_message = _storage_context_message(user_input, prediction)
     
     # Determine which model to use based on intelligent routing and validation retry.
     # HIGH-1: carry the routing decision as a BOOLEAN (use_mini), not a model
@@ -5162,6 +5218,8 @@ def get_ai_response(
             except OSError as cleanup_error:
                 print(f"WARNING: Could not remove compression input: {cleanup_error}")
 
+    if storage_context_message is not None:
+        messages_to_send = list(messages_to_send) + [storage_context_message]
     messages_to_send = _provider_message_projection(messages_to_send)
     
     # Export main conversation messages for debugging
