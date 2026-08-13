@@ -1530,30 +1530,65 @@ def _prepare_missing_purchase_acquisition(
         raise StorageTransactionError(
             "purchase acquisition preparation returned an invalid batch"
         )
-    prepared = corrected[0]
     expected = sorted(
         ("equipment", _normalized_name(name), quantity)
         for name, quantity in missing
     )
-    actual = [
-        (delta.family, delta.name, delta.quantity)
-        for delta in concrete_asset_deltas(prepared.plan)
-        if delta.quantity
-    ]
-    remaining_actual = list(actual)
-    for required in expected:
-        if remaining_actual.count(required) != 1:
-            raise StorageTransactionError(
-                "purchase acquisition preparation changed unsupported resources"
-            )
-        remaining_actual.remove(required)
     accepted_sibling_deltas = {
         (delta.family, delta.name, delta.quantity)
         for item in prepared_actions
         for delta in concrete_asset_deltas(item.plan)
         if delta.quantity
     }
-    if any(delta not in accepted_sibling_deltas for delta in remaining_actual):
+
+    def missing_required_deltas(candidate):
+        remaining_actual = [
+            (delta.family, delta.name, delta.quantity)
+            for delta in concrete_asset_deltas(candidate.plan)
+            if delta.quantity
+        ]
+        absent = []
+        for required in expected:
+            matches = remaining_actual.count(required)
+            if matches > 1:
+                raise StorageTransactionError(
+                    "purchase acquisition preparation changed unsupported resources"
+                )
+            if not matches:
+                absent.append(required)
+                continue
+            remaining_actual.remove(required)
+        if any(
+            delta not in accepted_sibling_deltas for delta in remaining_actual
+        ):
+            raise StorageTransactionError(
+                "purchase acquisition preparation changed unsupported resources"
+            )
+        return absent
+
+    prepared = corrected[0]
+    absent = missing_required_deltas(prepared)
+    if absent:
+        canonical_rows = "; ".join(
+            f'equipment item_name="{name}", required signed delta +{quantity}'
+            for _family, name, quantity in absent
+        )
+        corrected = _prepare_actions(
+            ((synthetic_index, action),),
+            party_tracker_data,
+            correction=(
+                "Create exactly these NEW standalone equipment rows: "
+                f"{canonical_rows}. Do not encode the purchased item inside "
+                "another row's description and do not mutate a container or pack. "
+                "Preserve every unrelated resource."
+            ),
+        )
+        if len(corrected) != 1:
+            raise StorageTransactionError(
+                "purchase acquisition correction returned an invalid batch"
+            )
+        prepared = corrected[0]
+    if missing_required_deltas(prepared):
         raise StorageTransactionError(
             "purchase acquisition preparation changed unsupported resources"
         )
