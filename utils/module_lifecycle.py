@@ -538,8 +538,10 @@ class ModuleLifecycleStore:
         Files synchronized by OneDrive and similar services can be rebound or
         re-statted immediately after the generator closes them.  A failed walk
         is discarded in full: every retry starts from the root and repeats all
-        identity, link, device, size, and digest checks.  Persistent or unsafe
-        trees therefore remain indeterminate after the fixed attempt limit.
+        available identity, link, device, size, timestamp, and digest checks.
+        Filesystems without stable file IDs receive two complete content reads.
+        Persistent or unsafe trees therefore remain indeterminate after the
+        fixed attempt limit.
         """
         last_error: Optional[BaseException] = None
         for attempt in range(1, _MANIFEST_MAX_ATTEMPTS + 1):
@@ -568,7 +570,128 @@ class ModuleLifecycleStore:
         root_path = Path(root)
         root_stat = cls._require_plain_directory(root_path)
         root_device = root_stat.st_dev
+        stable_file_ids = cls._manifest_file_ids_are_stable(
+            root_path,
+            root_stat,
+            root_device,
+        )
+        entries, observations = cls._walk_manifest_once(
+            root_path,
+            root_device,
+            stable_file_ids=stable_file_ids,
+        )
+        if stable_file_ids:
+            return entries
+
+        verified_entries, verified_observations = cls._walk_manifest_once(
+            root_path,
+            root_device,
+            stable_file_ids=False,
+        )
+        if (
+            verified_entries != entries
+            or verified_observations != observations
+        ):
+            raise LifecycleIndeterminateError(
+                "Manifest changed between content verification reads"
+            )
+        return entries
+
+    @classmethod
+    def _manifest_file_ids_are_stable(
+        cls,
+        root_path: Path,
+        root_stat: os.stat_result,
+        root_device: int,
+    ) -> bool:
+        """Probe whether path and handle stats expose stable nonzero file IDs."""
+
+        def usable(path_stat: os.stat_result) -> bool:
+            return (
+                isinstance(getattr(path_stat, "st_dev", None), int)
+                and isinstance(getattr(path_stat, "st_ino", None), int)
+                and path_stat.st_ino != 0
+            )
+
+        rebound_root = os.lstat(root_path)
+        if (
+            not usable(root_stat)
+            or not usable(rebound_root)
+            or not cls._same_entry_identity(root_stat, rebound_root)
+        ):
+            return False
+
+        def find_probe(directory: Path) -> Optional[Path]:
+            for child in sorted(os.scandir(directory), key=lambda item: item.name):
+                child_path = directory / child.name
+                child_stat = os.lstat(child_path)
+                if stat.S_ISLNK(child_stat.st_mode) or _is_reparse(child_stat):
+                    raise LifecycleIndeterminateError(
+                        "Manifest contains a link/reparse point"
+                    )
+                if child_stat.st_dev != root_device:
+                    raise LifecycleIndeterminateError(
+                        "Manifest crossed a device boundary"
+                    )
+                if stat.S_ISDIR(child_stat.st_mode):
+                    if os.path.ismount(child_path):
+                        raise LifecycleIndeterminateError(
+                            "Manifest contains a mount point"
+                        )
+                    probe = find_probe(child_path)
+                    if probe is not None:
+                        return probe
+                    continue
+                if not stat.S_ISREG(child_stat.st_mode):
+                    raise LifecycleIndeterminateError(
+                        "Manifest contains a special file"
+                    )
+                return child_path
+            return None
+
+        probe_path = find_probe(root_path)
+        if probe_path is None:
+            return True
+
+        path_stat = os.lstat(probe_path)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptors = []
+        try:
+            for _attempt in range(2):
+                descriptor = os.open(os.fspath(probe_path), flags)
+                descriptors.append(descriptor)
+            opened_stats = [os.fstat(descriptor) for descriptor in descriptors]
+        finally:
+            for descriptor in descriptors:
+                os.close(descriptor)
+        rebound = os.lstat(probe_path)
+        identities = (path_stat, *opened_stats, rebound)
+        return all(usable(value) for value in identities) and all(
+            cls._same_entry_identity(path_stat, value)
+            for value in identities[1:]
+        )
+
+    @staticmethod
+    def _manifest_stat_observation(path_stat: os.stat_result) -> Tuple[int, int]:
+        size = getattr(path_stat, "st_size", None)
+        modified_ns = getattr(path_stat, "st_mtime_ns", None)
+        if not isinstance(size, int) or not isinstance(modified_ns, int):
+            raise LifecycleIndeterminateError(
+                "Manifest content-stability metadata is unavailable"
+            )
+        return size, modified_ns
+
+    @classmethod
+    def _walk_manifest_once(
+        cls,
+        root_path: Path,
+        root_device: int,
+        *,
+        stable_file_ids: bool,
+    ) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Tuple[int, int]]]:
+        """Read one manifest pass using identity or content-stability proof."""
         entries: Dict[str, Dict[str, Any]] = {".": {"kind": "directory"}}
+        observations: Dict[str, Tuple[int, int]] = {}
 
         def walk(directory: Path, relative: Path) -> None:
             before = cls._require_plain_directory(directory)
@@ -611,13 +734,23 @@ class ModuleLifecycleStore:
                 descriptor = os.open(os.fspath(child_path), flags)
                 try:
                     opened = os.fstat(descriptor)
-                    if (
+                    if stable_file_ids:
+                        if (
+                            opened.st_dev != child_stat.st_dev
+                            or opened.st_ino != child_stat.st_ino
+                            or not stat.S_ISREG(opened.st_mode)
+                        ):
+                            raise LifecycleIndeterminateError(
+                                "Manifest file identity changed"
+                            )
+                    elif (
                         opened.st_dev != child_stat.st_dev
-                        or opened.st_ino != child_stat.st_ino
                         or not stat.S_ISREG(opened.st_mode)
+                        or cls._manifest_stat_observation(opened)
+                        != cls._manifest_stat_observation(child_stat)
                     ):
                         raise LifecycleIndeterminateError(
-                            "Manifest file identity changed"
+                            "Manifest file changed before read"
                         )
                     while True:
                         chunk = os.read(descriptor, 1024 * 1024)
@@ -627,16 +760,33 @@ class ModuleLifecycleStore:
                         total += len(chunk)
                     final_stat = os.fstat(descriptor)
                     rebound = os.lstat(child_path)
-                    if (
-                        final_stat.st_dev != child_stat.st_dev
-                        or final_stat.st_ino != child_stat.st_ino
-                        or rebound.st_dev != child_stat.st_dev
-                        or rebound.st_ino != child_stat.st_ino
-                        or total != final_stat.st_size
-                    ):
-                        raise LifecycleIndeterminateError(
-                            "Manifest file changed while read"
-                        )
+                    if stable_file_ids:
+                        if (
+                            final_stat.st_dev != child_stat.st_dev
+                            or final_stat.st_ino != child_stat.st_ino
+                            or rebound.st_dev != child_stat.st_dev
+                            or rebound.st_ino != child_stat.st_ino
+                            or total != final_stat.st_size
+                        ):
+                            raise LifecycleIndeterminateError(
+                                "Manifest file changed while read"
+                            )
+                    else:
+                        observation = cls._manifest_stat_observation(child_stat)
+                        if (
+                            final_stat.st_dev != child_stat.st_dev
+                            or rebound.st_dev != child_stat.st_dev
+                            or not stat.S_ISREG(final_stat.st_mode)
+                            or not stat.S_ISREG(rebound.st_mode)
+                            or cls._manifest_stat_observation(final_stat)
+                            != observation
+                            or cls._manifest_stat_observation(rebound)
+                            != observation
+                            or total != final_stat.st_size
+                        ):
+                            raise LifecycleIndeterminateError(
+                                "Manifest file changed while read"
+                            )
                 finally:
                     os.close(descriptor)
                 entries[relative_text] = {
@@ -644,12 +794,30 @@ class ModuleLifecycleStore:
                     "size": total,
                     "sha256": digest.hexdigest(),
                 }
+                if not stable_file_ids:
+                    observations[relative_text] = observation
             after = os.lstat(directory)
-            if before.st_dev != after.st_dev or before.st_ino != after.st_ino:
-                raise LifecycleIndeterminateError("Manifest directory identity changed")
+            if stable_file_ids:
+                if before.st_dev != after.st_dev or before.st_ino != after.st_ino:
+                    raise LifecycleIndeterminateError(
+                        "Manifest directory identity changed"
+                    )
+            else:
+                if (
+                    after.st_dev != root_device
+                    or not stat.S_ISDIR(after.st_mode)
+                    or cls._manifest_stat_observation(after)
+                    != cls._manifest_stat_observation(before)
+                ):
+                    raise LifecycleIndeterminateError(
+                        "Manifest directory changed while read"
+                    )
+                observations[relative.as_posix()] = (
+                    cls._manifest_stat_observation(before)
+                )
 
         walk(root_path, Path("."))
-        return dict(sorted(entries.items()))
+        return dict(sorted(entries.items())), dict(sorted(observations.items()))
 
     @staticmethod
     def manifest_digest(manifest: Mapping[str, Mapping[str, Any]]) -> str:
