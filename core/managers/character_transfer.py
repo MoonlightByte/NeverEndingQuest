@@ -1855,8 +1855,15 @@ def commit_prepared_character_actions(
                     "planned transfer still violates conservation: "
                     f"{shape_mismatch}"
                 )
-        by_index = {item.index: item for item in prepared}
-        components = _candidate_components(prepared)
+        validation_prepared = prepared
+        if planning_result is not None:
+            from core.managers.resource_transaction_planning import (
+                routed_character_validation_actions,
+            )
+
+            validation_prepared = routed_character_validation_actions(prepared)
+        by_index = {item.index: item for item in validation_prepared}
+        components = _candidate_components(validation_prepared)
 
         corrected_components = {}
         failed_stage = "transfer_component_validation"

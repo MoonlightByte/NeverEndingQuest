@@ -1617,6 +1617,45 @@ def _stage_character_images(
     return tuple(result), tuple(updated_storage)
 
 
+def routed_character_validation_actions(
+    staged_images: Sequence[PreparedCharacterAction],
+) -> Tuple[PreparedCharacterAction, ...]:
+    """Return one validation-only view per routed persistent participant.
+
+    T105 may legitimately receive several accepted action legs for the same
+    character.  Once code-owned staging has projected those legs onto a shared
+    final resource image, validate that participant once.  The original action
+    rows remain untouched for receipts and the response transaction's existing
+    three-way merge.  This helper is called only on the routed path; the
+    ordinary transfer validator retains its unique-path requirement.
+    """
+    validation_view = []
+    by_path = {}
+    for item in staged_images:
+        path = item.plan.canonical_path
+        existing = by_path.get(path)
+        if existing is None:
+            by_path[path] = item
+            validation_view.append(item)
+            continue
+        if (
+            type(existing.plan.pre_image) is not type(item.plan.pre_image)
+            or existing.plan.pre_image != item.plan.pre_image
+        ):
+            raise ResourceTransactionPlanningError(
+                "routed participant actions do not share one pre-image"
+            )
+        if any(
+            existing.plan.post_image.get(field)
+            != item.plan.post_image.get(field)
+            for field in _RESOURCE_FIELDS
+        ):
+            raise ResourceTransactionPlanningError(
+                "routed participant actions have competing resource finals"
+            )
+    return tuple(validation_view)
+
+
 def _reconcile_staged_images(
     prepared: Sequence[PreparedCharacterAction],
     staged_images: Sequence[PreparedCharacterAction],
@@ -1896,7 +1935,7 @@ def plan_and_stage_resource_transaction(
             )
             _reconcile_staged_images(
                 prepared,
-                characters,
+                routed_character_validation_actions(characters),
                 facts,
                 staged,
                 edges,
