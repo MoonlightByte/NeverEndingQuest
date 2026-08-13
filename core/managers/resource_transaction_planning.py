@@ -1041,6 +1041,78 @@ def _duplicate_equivalent(left: ResourceFact, right: ResourceFact) -> bool:
     )
 
 
+def _discard_structurally_valid_uncertain_edges(value, facts):
+    """Drop, never promote, cautious T105 edges before strict validation.
+
+    The model's uncertainty is honored: its edge contributes no authority.
+    Later deterministic completion may independently reconstruct the pair only
+    when the facts make that movement forced.  The caller verifies that every
+    discarded member was reconstructed; otherwise the response fails closed.
+    """
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"stages", "edges", "duplicates"}
+        or not isinstance(value.get("edges"), list)
+    ):
+        return value, ()
+    fact_ids = {fact.fact_id for fact in facts}
+    retained = []
+    discarded = []
+    edge_id_counts: Dict[str, int] = {}
+    member_counts: Dict[str, int] = {}
+    for edge in value["edges"]:
+        if not isinstance(edge, dict):
+            continue
+        edge_id = edge.get("edge_id")
+        if isinstance(edge_id, str):
+            edge_id_counts[edge_id] = edge_id_counts.get(edge_id, 0) + 1
+        for key in ("source_fact_ids", "destination_fact_ids"):
+            members = edge.get(key)
+            if isinstance(members, list):
+                for member in members:
+                    if isinstance(member, str):
+                        member_counts[member] = member_counts.get(member, 0) + 1
+    expected_keys = {
+        "edge_id",
+        "source_fact_ids",
+        "destination_fact_ids",
+        "authority",
+        "confidence",
+    }
+    for edge in value["edges"]:
+        sources = edge.get("source_fact_ids") if isinstance(edge, dict) else None
+        destinations = (
+            edge.get("destination_fact_ids") if isinstance(edge, dict) else None
+        )
+        droppable = (
+            isinstance(edge, dict)
+            and set(edge) == expected_keys
+            and isinstance(edge.get("edge_id"), str)
+            and bool(edge.get("edge_id"))
+            and edge_id_counts.get(edge.get("edge_id")) == 1
+            and isinstance(sources, list)
+            and isinstance(destinations, list)
+            and len(sources) == 1
+            and len(destinations) == 1
+            and sources[0] in fact_ids
+            and destinations[0] in fact_ids
+            and sources[0] != destinations[0]
+            and member_counts.get(sources[0]) == 1
+            and member_counts.get(destinations[0]) == 1
+            and edge.get("authority") in {"source", "destination"}
+            and edge.get("confidence") == "uncertain"
+        )
+        if droppable:
+            discarded.extend((sources[0], destinations[0]))
+        else:
+            retained.append(edge)
+    if not discarded:
+        return value, ()
+    normalized = copy.deepcopy(dict(value))
+    normalized["edges"] = copy.deepcopy(retained)
+    return normalized, tuple(discarded)
+
+
 def _validate_plan(value: Any, facts: Sequence[ResourceFact]):
     if not isinstance(value, dict) or set(value) != {
         "stages",
@@ -1156,10 +1228,13 @@ def _validate_plan(value: Any, facts: Sequence[ResourceFact]):
             or len(sources) != 1
             or len(destinations) != 1
             or edge["authority"] not in {"source", "destination"}
-            or edge["confidence"] != "high"
         ):
             raise ResourceTransactionPlanningError(
                 "planner edges require one source and one destination"
+            )
+        if edge["confidence"] != "high":
+            raise ResourceTransactionPlanningError(
+                "planner edge confidence must be high"
             )
         source_id, destination_id = sources[0], destinations[0]
         if (
@@ -2059,6 +2134,9 @@ def plan_and_stage_resource_transaction(
                 packet,
                 correction=failure if failure_kind == "validation" else None,
             )
+            value, discarded_uncertain_members = (
+                _discard_structurally_valid_uncertain_edges(value, facts)
+            )
             staged, duplicates, edges = _validate_plan(value, facts)
             value, completion_advisories = _complete_forced_unclaimed_edges(
                 value,
@@ -2069,6 +2147,15 @@ def plan_and_stage_resource_transaction(
             )
             if completion_advisories:
                 staged, duplicates, edges = _validate_plan(value, facts)
+            completed_members = {
+                fact_id
+                for source_id, destination_id, _authority in edges.values()
+                for fact_id in (source_id, destination_id)
+            }
+            if set(discarded_uncertain_members) - completed_members:
+                raise ResourceTransactionPlanningError(
+                    "uncertain planner edge was not deterministically forced"
+                )
             _validate_noncharacter_currency_edge_completeness(facts, edges)
             _validate_planned_custody_metadata(facts, edges)
             non_character_deltas = _non_character_edge_deltas(facts, edges)
