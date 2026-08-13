@@ -1535,12 +1535,25 @@ def _prepare_missing_purchase_acquisition(
         ("equipment", _normalized_name(name), quantity)
         for name, quantity in missing
     )
-    actual = sorted(
+    actual = [
         (delta.family, delta.name, delta.quantity)
         for delta in concrete_asset_deltas(prepared.plan)
         if delta.quantity
-    )
-    if actual != expected:
+    ]
+    remaining_actual = list(actual)
+    for required in expected:
+        if remaining_actual.count(required) != 1:
+            raise StorageTransactionError(
+                "purchase acquisition preparation changed unsupported resources"
+            )
+        remaining_actual.remove(required)
+    accepted_sibling_deltas = {
+        (delta.family, delta.name, delta.quantity)
+        for item in prepared_actions
+        for delta in concrete_asset_deltas(item.plan)
+        if delta.quantity
+    }
+    if any(delta not in accepted_sibling_deltas for delta in remaining_actual):
         raise StorageTransactionError(
             "purchase acquisition preparation changed unsupported resources"
         )
