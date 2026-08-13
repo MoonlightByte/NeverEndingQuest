@@ -772,6 +772,8 @@ def _apply_storage_operation(
 
 def prepare_storage_mutation_set(
     operations: Sequence[Mapping[str, Any]],
+    *,
+    character_working_image: Optional[Mapping[str, Any]] = None,
 ) -> StorageMutationPlan:
     """Prepare a complete storage intent as one all-or-nothing transaction."""
     operations = tuple(copy.deepcopy(dict(operation)) for operation in operations)
@@ -804,7 +806,20 @@ def prepare_storage_mutation_set(
         character_before = safe_json_load(character_path)
         if not isinstance(character_before, dict):
             raise StorageTransactionError("character inventory is unavailable")
-        character_after = copy.deepcopy(character_before)
+        if character_working_image is None:
+            character_after = copy.deepcopy(character_before)
+        else:
+            if not isinstance(character_working_image, Mapping):
+                raise StorageTransactionError(
+                    "staged character inventory is unavailable"
+                )
+            expected_name = str(next(iter(characters))).strip().casefold()
+            supplied_name = str(character_working_image.get("name") or "").strip().casefold()
+            if not supplied_name or supplied_name != expected_name:
+                raise StorageTransactionError(
+                    "staged character inventory identity does not match"
+                )
+            character_after = copy.deepcopy(dict(character_working_image))
 
     selected_storage_id = None
     messages = []
@@ -874,9 +889,16 @@ def prepare_storage_mutation_set(
     )
 
 
-def prepare_storage_mutation(operation: Mapping[str, Any]) -> StorageMutationPlan:
+def prepare_storage_mutation(
+    operation: Mapping[str, Any],
+    *,
+    character_working_image: Optional[Mapping[str, Any]] = None,
+) -> StorageMutationPlan:
     """Prepare one backward-compatible storage operation without writing."""
-    return prepare_storage_mutation_set((operation,))
+    return prepare_storage_mutation_set(
+        (operation,),
+        character_working_image=character_working_image,
+    )
 
 
 def execute_storage_plan(plan: StorageMutationPlan):
@@ -1362,6 +1384,7 @@ def _prepare_response_storage_action(
     *,
     fallback_character,
     required_deltas=(),
+    character_working_image=None,
 ):
     index, action = indexed_action
     parameters = action.get("parameters") or {}
@@ -1406,21 +1429,38 @@ def _prepare_response_storage_action(
         )
 
     operations = operation.get("operations")
-    if isinstance(operations, list):
-        if any(item.get("action") == "view_storage" for item in operations):
-            raise StorageTransactionError(
-                "view_storage cannot be mixed with storage mutations"
-            )
-        return (
-            index,
-            operation,
-            mark_coverage_unresolved(prepare_storage_mutation_set(operations)),
+    if isinstance(operations, list) and any(
+        item.get("action") == "view_storage" for item in operations
+    ):
+        raise StorageTransactionError(
+            "view_storage cannot be mixed with storage mutations"
         )
-    return (
-        index,
-        operation,
-        mark_coverage_unresolved(prepare_storage_mutation(operation)),
-    )
+
+    def prepare(working_image=None):
+        if isinstance(operations, list):
+            return prepare_storage_mutation_set(
+                operations,
+                character_working_image=working_image,
+            )
+        return prepare_storage_mutation(
+            operation,
+            character_working_image=working_image,
+        )
+
+    try:
+        plan = prepare()
+    except StorageTransactionError as exc:
+        unavailable = "not available in character" in str(exc).casefold()
+        if not unavailable or not isinstance(character_working_image, Mapping):
+            raise
+        plan = prepare(character_working_image)
+        plan = replace(
+            plan,
+            advisories=tuple(
+                sorted(set(plan.advisories + ("storage_staged_source",)))
+            ),
+        )
+    return index, operation, mark_coverage_unresolved(plan)
 
 
 def validate_required_storage_sibling(
@@ -1560,11 +1600,22 @@ def process_adjacent_storage_fee_groups(
     def prepare_storage(indexed_storage, fallback_character=None):
         storage_index = indexed_storage[0]
         if storage_index not in prepared_storage:
+            parameters = indexed_storage[1].get("parameters") or {}
+            character_name = parameters.get("characterName") or fallback_character
+            candidates = [
+                item
+                for item in prepared_character_actions
+                if item.plan.character_name == character_name
+            ]
+            working_image = (
+                candidates[0].plan.post_image if len(candidates) == 1 else None
+            )
             prepared_storage[storage_index] = _prepare_response_storage_action(
                 indexed_storage,
                 party_tracker_data,
                 fallback_character=fallback_character,
                 required_deltas=required_deltas_for(indexed_storage),
+                character_working_image=working_image,
             )
         return prepared_storage[storage_index]
 
@@ -1611,7 +1662,10 @@ def process_adjacent_storage_fee_groups(
                 if item.index in handled_characters:
                     continue
                 if (
-                    item.index in transfer_claimed
+                    (
+                        item.index in transfer_claimed
+                        or "storage_staged_source" in storage_plan.advisories
+                    )
                     and storage_plan.character_path == item.plan.canonical_path
                 ):
                     import model_config

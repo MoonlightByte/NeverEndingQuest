@@ -1719,6 +1719,7 @@ def commit_prepared_character_actions(
     prepare_only: bool = False,
     resource_storage_plans=(),
     enable_resource_planning: bool = False,
+    resource_intent: str = "",
 ) -> Dict[str, Any]:
     """Validate a prepared subset and optionally commit it.
 
@@ -1836,6 +1837,7 @@ def commit_prepared_character_actions(
                 prepared,
                 tuple(resource_storage_plans),
                 provider=model_config.get_provider(),
+                player_intent=resource_intent,
             )
             prepared = planning_result.character_actions
             resource_storage_plans = planning_result.storage_plans
@@ -1942,6 +1944,11 @@ def commit_prepared_character_actions(
                 "prepared_indices": [item.index for item in prepared_actions],
                 "storage_plans": tuple(resource_storage_plans),
                 "resource_planning": planning_result,
+                "external_contract": (
+                    getattr(planning_result, "external_contract", None)
+                    if planning_result is not None
+                    else None
+                ),
             }
 
         from utils.state_transaction import TransactionStalePlanError
@@ -2017,6 +2024,8 @@ def prepare_character_response_actions(
     prepared: Sequence[PreparedCharacterAction],
     party_tracker_data: Mapping[str, Any],
     storage_plans=(),
+    *,
+    resource_intent: str = "",
 ) -> Dict[str, Any]:
     """Return transfer-validated response images without changing files."""
     return commit_prepared_character_actions(
@@ -2025,6 +2034,7 @@ def prepare_character_response_actions(
         prepare_only=True,
         resource_storage_plans=tuple(storage_plans),
         enable_resource_planning=True,
+        resource_intent=resource_intent,
     )
 
 

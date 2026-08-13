@@ -887,6 +887,65 @@ CURRENCY_OFFER_T104_LMSTUDIO = {
     "response_format": None,
 }
 
+# --- T108: External resource-commerce contract (small JSON, mini tier) ---
+# Runs only when code observes opposing currency/non-currency imbalances that
+# require a response-scoped external counterparty.  The model classifies the
+# agreed directions and quantities; code owns arithmetic and conservation.
+_T108_RESOURCE_COMMERCE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "classification": {
+            "type": "string",
+            "enum": ["complete", "not_agreed", "uncertain"],
+        },
+        "external_actor": {"type": ["string", "null"]},
+        "transfers": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "direction": {
+                        "type": "string",
+                        "enum": ["external_to_party", "party_to_external"],
+                    },
+                    "participant_id": {"type": "string"},
+                    "family": {
+                        "type": "string",
+                        "enum": ["equipment", "ammunition", "currency"],
+                    },
+                    "name": {"type": "string"},
+                    "quantity": {"type": "integer", "minimum": 1},
+                    "final_destination_id": {"type": ["string", "null"]},
+                },
+                "required": [
+                    "direction",
+                    "participant_id",
+                    "family",
+                    "name",
+                    "quantity",
+                    "final_destination_id",
+                ],
+            },
+        },
+    },
+    "required": ["classification", "external_actor", "transfers"],
+}
+RESOURCE_COMMERCE_T108_GPT54MINI_LOW = {
+    "model": "gpt-5.4-mini",
+    "reasoning_effort": "low",
+}
+RESOURCE_COMMERCE_T108_GEMINI_FLASH_LOW = {
+    "model": "gemini-3-flash-preview",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(_T108_RESOURCE_COMMERCE_SCHEMA),
+}
+RESOURCE_COMMERCE_T108_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+RESOURCE_COMMERCE_T108_LMSTUDIO = {
+    "model": "local-model",
+    "response_format": None,
+}
+
 # --- T106: Zero-resource storage completeness (tiny JSON, mini tier) ---
 # Invoked once only when T049 returns a create/view-style operation that moves
 # no resources. It distinguishes a genuine declarative container action from a
@@ -1549,6 +1608,7 @@ TASK_CAPTURE_CONFIGS = {
     "T104": ("CURRENCY_OFFER_T104_GPT54MINI_NONE", "CURRENCY_OFFER_T104_GEMINI_FLASHLITE_LOW"),
     "T105": ("RESOURCE_PLAN_T105_GPT54MINI_LOW", "RESOURCE_PLAN_T105_GEMINI_FLASH_LOW"),
     "T106": ("STORAGE_COMPLETENESS_T106_GPT54MINI_NONE", "STORAGE_COMPLETENESS_T106_GEMINI_FLASHLITE_LOW"),
+    "T108": ("RESOURCE_COMMERCE_T108_GPT54MINI_LOW", "RESOURCE_COMMERCE_T108_GEMINI_FLASH_LOW"),
 
     # Adventure summaries (T015, T016, T018, T019)
     "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),

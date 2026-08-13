@@ -4515,6 +4515,7 @@ def process_ai_response(
                         fee_result.get("remaining_character_actions", ()),
                         party_tracker_data,
                         tuple(fee_result.get("storage_plans", ())),
+                        resource_intent=user_input_text,
                     )
                     if not character_result.get("success"):
                         result = character_result
@@ -4534,6 +4535,13 @@ def process_ai_response(
                             final_characters,
                             final_storage_plans,
                         )
+                        external_contract = character_result.get(
+                            "external_contract"
+                        )
+                        if isinstance(external_contract, dict):
+                            transaction_result["external_contract"] = (
+                                external_contract
+                            )
                         turn_receipt.record_resource_commit(
                             transaction_result,
                             resource_action_indices,

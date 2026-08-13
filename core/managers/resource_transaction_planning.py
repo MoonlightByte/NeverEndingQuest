@@ -137,6 +137,8 @@ class PlannedResourceTransaction:
     planner_calls: int
     advisories: Tuple[str, ...] = ()
     non_character_deltas: Tuple[Tuple[str, str, str, int], ...] = ()
+    external_contract: Optional[Mapping[str, Any]] = None
+    commerce_classifier_calls: int = 0
 
 
 _DENOMINATIONS = ("gold", "silver", "copper")
@@ -543,6 +545,51 @@ def _add_transient_storage_custody_facts(facts, storage_character_facts):
     return tuple(result)
 
 
+def _add_transient_store_custody_facts(facts):
+    result = list(facts)
+    for storage_in in facts:
+        if not (
+            storage_in.participant_id.startswith("storage:")
+            and storage_in.quantity > 0
+            and storage_in.family in {"equipment", "ammunition"}
+        ):
+            continue
+        incoming = [
+            fact
+            for fact in facts
+            if fact.participant_id.startswith("character:")
+            and fact.family == storage_in.family
+            and fact.name == storage_in.name
+            and fact.quantity == storage_in.quantity
+        ]
+        if len(incoming) != 1 or any(
+            fact.participant_id == incoming[0].participant_id
+            and fact.family == incoming[0].family
+            and fact.name == incoming[0].name
+            and fact.quantity < 0
+            for fact in facts
+        ):
+            continue
+        result.append(
+            ResourceFact(
+                f"TS-{_safe_part(incoming[0].fact_id)}-{_safe_part(storage_in.fact_id)}",
+                incoming[0].action_index,
+                incoming[0].participant_id,
+                incoming[0].path,
+                incoming[0].family,
+                incoming[0].name,
+                -incoming[0].quantity,
+                "out",
+                incoming[0].current_quantity,
+                "temporary_storage_custody",
+                copy.deepcopy(incoming[0].row),
+                fact_kind="operation",
+                requires_fact_ids=(incoming[0].fact_id,),
+            )
+        )
+    return tuple(result)
+
+
 def build_resource_transaction_packet(
     prepared: Sequence[PreparedCharacterAction],
     storage_plans: Sequence[StorageMutationPlan],
@@ -557,6 +604,7 @@ def build_resource_transaction_packet(
         facts,
         effective_storage_character_facts,
     )
+    facts = _add_transient_store_custody_facts(facts)
     return {
         "facts": [fact.packet() for fact in facts],
         "constraints": {
@@ -565,6 +613,258 @@ def build_resource_transaction_packet(
             "all_facts_must_be_staged_or_exact_duplicates": True,
         },
     }, facts
+
+
+def _resource_totals(facts: Sequence[ResourceFact]):
+    totals = {}
+    for fact in facts:
+        if fact.family not in _RESOURCE_FIELDS:
+            continue
+        key = (fact.family, fact.name)
+        totals[key] = totals.get(key, 0) + fact.quantity
+    return {key: value for key, value in totals.items() if value}
+
+
+def _external_commerce_candidate(
+    facts: Sequence[ResourceFact],
+    storage_plans: Sequence[StorageMutationPlan],
+) -> bool:
+    # T108 is introduced first for the purchase-then-store seam.  A generic
+    # imbalance can also describe a legacy character-only update, so it is not
+    # sufficient evidence of external commerce by itself.
+    if not any(
+        "storage_staged_source" in plan.advisories for plan in storage_plans
+    ):
+        return False
+    totals = _resource_totals(facts)
+    currency_value = sum(
+        totals.get(("currency", denomination), 0) * multiplier
+        for denomination, multiplier in (("gold", 100), ("silver", 10), ("copper", 1))
+    )
+    asset_values = [
+        quantity
+        for (family, _name), quantity in totals.items()
+        if family in {"equipment", "ammunition"}
+    ]
+    return bool(currency_value) and (
+        (currency_value < 0 and any(value > 0 for value in asset_values))
+        or (currency_value > 0 and any(value < 0 for value in asset_values))
+    )
+
+
+def _commerce_packet(
+    facts: Sequence[ResourceFact],
+    *,
+    player_intent: str,
+) -> Dict[str, Any]:
+    participants = sorted(
+        {
+            fact.participant_id
+            for fact in facts
+            if not fact.participant_id.startswith("external:")
+        }
+    )
+    return {
+        "player_intent": str(player_intent or "")[:4000],
+        "participants": participants,
+        "observed_imbalances": [
+            {
+                "family": family,
+                "name": name,
+                "signed_quantity": quantity,
+            }
+            for (family, name), quantity in sorted(_resource_totals(facts).items())
+        ],
+        "accepted_action_facts": [
+            {
+                "fact_id": fact.fact_id,
+                "participant_id": fact.participant_id,
+                "family": fact.family,
+                "name": fact.name,
+                "signed_quantity": fact.quantity,
+                "action_fact": fact.changes[:500],
+            }
+            for fact in facts
+        ],
+    }
+
+
+def _validate_and_add_external_contract(
+    value: Any,
+    facts: Sequence[ResourceFact],
+):
+    if not isinstance(value, Mapping) or set(value) != {
+        "classification",
+        "external_actor",
+        "transfers",
+    }:
+        raise ResourceTransactionPlanningError(
+            "commerce classifier returned an invalid top-level shape"
+        )
+    classification = value.get("classification")
+    if classification not in {"complete", "not_agreed", "uncertain"}:
+        raise ResourceTransactionPlanningError(
+            "commerce classifier returned an invalid classification"
+        )
+    if classification != "complete":
+        raise ResourceTransactionPlanningError(
+            "external commerce contract is %s" % classification
+        )
+    actor = value.get("external_actor")
+    transfers = value.get("transfers")
+    if (
+        not isinstance(actor, str)
+        or not actor.strip()
+        or len(actor.strip()) > 80
+        or not isinstance(transfers, list)
+        or not 1 <= len(transfers) <= 8
+    ):
+        raise ResourceTransactionPlanningError(
+            "commerce classifier returned incomplete contract facts"
+        )
+    persistent_ids = {fact.participant_id for fact in facts}
+    external_id = "external:%s" % _safe_part(actor)
+    external_facts = []
+    normalized_transfers = []
+    for index, transfer in enumerate(transfers):
+        if not isinstance(transfer, Mapping) or set(transfer) != {
+            "direction",
+            "participant_id",
+            "family",
+            "name",
+            "quantity",
+            "final_destination_id",
+        }:
+            raise ResourceTransactionPlanningError(
+                "commerce classifier returned a malformed transfer"
+            )
+        direction = transfer.get("direction")
+        participant_id = transfer.get("participant_id")
+        family = transfer.get("family")
+        name = normalize_inventory_name(transfer.get("name"))
+        quantity = transfer.get("quantity")
+        destination = transfer.get("final_destination_id")
+        if (
+            direction not in {"external_to_party", "party_to_external"}
+            or participant_id not in persistent_ids
+            or family not in _RESOURCE_FIELDS
+            or not name
+            or isinstance(quantity, bool)
+            or not isinstance(quantity, int)
+            or quantity <= 0
+            or (destination is not None and destination not in persistent_ids)
+        ):
+            raise ResourceTransactionPlanningError(
+                "commerce classifier referenced unsupported contract facts"
+            )
+        party_quantity = quantity if direction == "external_to_party" else -quantity
+        matches = [
+            fact
+            for fact in facts
+            if fact.participant_id == participant_id
+            and fact.family == family
+            and fact.name == name
+            and fact.quantity == party_quantity
+        ]
+        if len(matches) != 1:
+            raise ResourceTransactionPlanningError(
+                "commerce contract does not match one observed party fact"
+            )
+        if direction == "party_to_external" and destination is not None:
+            raise ResourceTransactionPlanningError(
+                "outgoing commerce resource has an invalid final destination"
+            )
+        if direction == "external_to_party":
+            destination_quantity = sum(
+                fact.quantity
+                for fact in facts
+                if fact.participant_id == destination
+                and fact.family == family
+                and fact.name == name
+            )
+            if destination is None or destination_quantity < quantity:
+                raise ResourceTransactionPlanningError(
+                    "incoming commerce resource has an invalid final destination"
+                )
+        row = copy.deepcopy(matches[0].row)
+        if family in {"equipment", "ammunition"} and not isinstance(row, Mapping):
+            raise ResourceTransactionPlanningError(
+                "commerce contract asset has no canonical row"
+            )
+        external_facts.append(
+            ResourceFact(
+                f"X{index}-{family}-{_safe_part(name)}",
+                -1,
+                external_id,
+                None,
+                family,
+                name,
+                -party_quantity,
+                "out" if party_quantity > 0 else "in",
+                None,
+                "external_commerce_contract",
+                row,
+                fact_kind="operation",
+            )
+        )
+        normalized_transfers.append(
+            {
+                "direction": direction,
+                "participant_id": participant_id,
+                "family": family,
+                "name": name,
+                "quantity": quantity,
+                "final_destination_id": destination,
+            }
+        )
+    combined = tuple(facts) + tuple(external_facts)
+    if _resource_totals(combined):
+        raise ResourceTransactionPlanningError(
+            "external commerce contract does not exactly close conservation"
+        )
+    external_currency_copper = sum(
+        fact.quantity * multiplier
+        for fact in external_facts
+        if fact.family == "currency"
+        for denomination, multiplier in (("gold", 100), ("silver", 10), ("copper", 1))
+        if fact.name == denomination
+    )
+    contract = {
+        "external_actor": actor.strip(),
+        "external_actor_id": external_id,
+        "agreed_value_copper": abs(external_currency_copper),
+        "directions": normalized_transfers,
+    }
+    return combined, contract
+
+
+def _classify_external_contract(
+    facts: Sequence[ResourceFact],
+    *,
+    player_intent: str,
+    classifier,
+):
+    packet = _commerce_packet(facts, player_intent=player_intent)
+    failure = None
+    for attempt in range(2):
+        try:
+            value = classifier(packet, correction=failure)
+            combined, contract = _validate_and_add_external_contract(value, facts)
+            return combined, contract, attempt + 1
+        except Exception as exc:
+            failure = (
+                str(exc)
+                if isinstance(exc, ResourceTransactionPlanningError)
+                else "previous classifier response failed deterministic validation"
+            )
+            if attempt:
+                raise ResourceTransactionPlanningError(
+                    "bounded external commerce classification failed safely: %s"
+                    % failure
+                ) from exc
+    raise ResourceTransactionPlanningError(
+        "external commerce classification did not complete"
+    )
 
 
 def route_resource_transaction(
@@ -667,7 +967,11 @@ def storage_overlap_has_complete_planning_packet(
                 continue
             key = (fact.family, fact.name)
             totals[key] = totals.get(key, 0) + fact.quantity
-        if not totals or any(quantity != 0 for quantity in totals.values()):
+        if not totals:
+            return False
+        conserved = not any(quantity != 0 for quantity in totals.values())
+        external_commerce = _external_commerce_candidate(facts, storage_plans)
+        if not conserved and not external_commerce:
             return False
         return route_resource_transaction(
             prepared,
@@ -1466,6 +1770,8 @@ def plan_and_stage_resource_transaction(
     *,
     provider: str,
     planner: Optional[Callable[..., Mapping[str, Any]]] = None,
+    commerce_classifier: Optional[Callable[..., Mapping[str, Any]]] = None,
+    player_intent: str = "",
 ) -> PlannedResourceTransaction:
     started = time.monotonic()
     prepared = tuple(prepared)
@@ -1480,9 +1786,43 @@ def plan_and_stage_resource_transaction(
             decision, planner_calls=0, outcome="simple_complete", started=started
         )
         return PlannedResourceTransaction(
-            prepared, storage_plans, decision, None, 0, (), ()
+            prepared,
+            storage_plans,
+            decision,
+            None,
+            0,
+            (),
+            (),
+            None,
+            0,
         )
     packet, facts = build_resource_transaction_packet(prepared, storage_plans)
+    external_contract = None
+    commerce_classifier_calls = 0
+    if _external_commerce_candidate(facts, storage_plans):
+        if commerce_classifier is None:
+            from core.ai.resource_commerce_classifier import (
+                request_commerce_contract,
+            )
+
+            commerce_classifier = request_commerce_contract
+        facts, external_contract, commerce_classifier_calls = (
+            _classify_external_contract(
+                facts,
+                player_intent=player_intent,
+                classifier=commerce_classifier,
+            )
+        )
+        packet = {
+            **packet,
+            "facts": [fact.packet() for fact in facts],
+            "external_contract": {
+                "actor_id": external_contract["external_actor_id"],
+                "agreed_value_copper": external_contract[
+                    "agreed_value_copper"
+                ],
+            },
+        }
     if planner is None:
         from core.ai.resource_transaction_planner import request_transaction_plan
 
@@ -1528,6 +1868,8 @@ def plan_and_stage_resource_transaction(
                 attempt + 1,
                 ("resource_transaction_planned",),
                 non_character_deltas,
+                external_contract,
+                commerce_classifier_calls,
             )
         except Exception as exc:
             from core.ai.api_client import ProviderCallError

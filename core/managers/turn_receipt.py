@@ -41,6 +41,7 @@ class TurnReceiptBuilder:
         self._transaction_ids = []
         self._participants = []
         self._resource_deltas = []
+        self._external_contracts = []
         self._advisories = set()
 
     def record_resource_commit(
@@ -68,6 +69,37 @@ class TurnReceiptBuilder:
             self._resource_deltas.extend(
                 value for value in deltas if isinstance(value, dict)
             )
+        external = result.get("external_contract")
+        if isinstance(external, Mapping):
+            actor = external.get("external_actor")
+            value = external.get("agreed_value_copper")
+            directions = external.get("directions")
+            if (
+                isinstance(actor, str)
+                and actor.strip()
+                and type(value) is int
+                and value >= 0
+                and isinstance(directions, list)
+            ):
+                bounded_directions = []
+                for direction in directions[:8]:
+                    if not isinstance(direction, Mapping):
+                        continue
+                    bounded_directions.append(
+                        {
+                            "direction": str(direction.get("direction") or "")[:32],
+                            "family": str(direction.get("family") or "")[:32],
+                            "name": str(direction.get("name") or "")[:80],
+                            "quantity": direction.get("quantity"),
+                        }
+                    )
+                self._external_contracts.append(
+                    {
+                        "actorLabel": actor.strip()[:80],
+                        "agreedValueCopper": value,
+                        "directions": bounded_directions,
+                    }
+                )
         advisories = result.get("advisories")
         if isinstance(advisories, (list, tuple, set, frozenset)):
             self._advisories.update(
@@ -96,7 +128,7 @@ class TurnReceiptBuilder:
             self._transaction_ids.append(transaction_id[:160])
 
     def finalize(self, *, success: bool) -> Dict[str, Any]:
-        return {
+        receipt = {
             "correlationId": self.correlation_id,
             "intendedActionIndices": list(self.intended_action_indices),
             "committedActionIndices": sorted(self._committed),
@@ -106,6 +138,11 @@ class TurnReceiptBuilder:
             "advisories": sorted(self._advisories),
             "success": bool(success),
         }
+        if self._external_contracts:
+            receipt["externalContracts"] = _deduplicate(
+                self._external_contracts
+            )
+        return receipt
 
 
 def diegetic_failure_correction(action: Mapping[str, Any], receipt: Mapping[str, Any]):
