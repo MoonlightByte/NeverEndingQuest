@@ -1660,6 +1660,28 @@ def _extract_raw_player_message(content):
     return player_text.strip()
 
 
+def _current_resource_intent(conversation_history):
+    """Return the latest player-authored turn, excluding generated notes."""
+    generated_prefixes = (
+        "Error Note:",
+        "Storage:",
+        "Location transition:",
+        "Module transition:",
+        "[SYSTEM:",
+    )
+    history = conversation_history if isinstance(conversation_history, list) else []
+    for message in reversed(history):
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if not isinstance(content, str) or content.startswith(generated_prefixes):
+            continue
+        raw = _extract_raw_player_message(content).strip()
+        if raw:
+            return raw
+    return ""
+
+
 def _select_validation_history(conversation_history, raw_user_input, limit=4):
     """Return bounded player-authored history without injected prompt text."""
     history = conversation_history if isinstance(conversation_history, list) else []
@@ -4515,7 +4537,9 @@ def process_ai_response(
                         fee_result.get("remaining_character_actions", ()),
                         party_tracker_data,
                         tuple(fee_result.get("storage_plans", ())),
-                        resource_intent=user_input_text,
+                        resource_intent=_current_resource_intent(
+                            conversation_history
+                        ),
                     )
                     if not character_result.get("success"):
                         result = character_result
