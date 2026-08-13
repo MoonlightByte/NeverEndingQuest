@@ -203,6 +203,31 @@ def _character_facts(
                         copy.deepcopy(row),
                     )
                 )
+    collapsed = []
+    by_resource = {}
+    for fact in facts:
+        key = (fact.path, fact.participant_id, fact.family, fact.name)
+        existing = by_resource.get(key)
+        if existing is None:
+            by_resource[key] = fact
+            collapsed.append(fact)
+            continue
+        same_final = (
+            existing.current_quantity == fact.current_quantity
+            and existing.quantity == fact.quantity
+        )
+        same_row = json.dumps(
+            existing.row,
+            sort_keys=True,
+            default=str,
+        ) == json.dumps(fact.row, sort_keys=True, default=str)
+        if same_final and same_row:
+            continue
+        raise ResourceTransactionPlanningError(
+            f"same-participant {fact.family} {fact.name} facts propose "
+            "competing finals"
+        )
+    facts = collapsed
     identifiers = [fact.fact_id for fact in facts]
     if len(identifiers) != len(set(identifiers)):
         raise ResourceTransactionPlanningError("resource fact identifiers collide")
