@@ -51,11 +51,13 @@ See LICENSE file for full terms.
 # - Template Method: Consistent action processing pipeline
 # ============================================================================
 
+import copy
 import json
 import hashlib
 import subprocess
 import sys
 import os
+import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -855,100 +857,212 @@ def validate_location_transition(location_graph, current_location_id, destinatio
     except Exception as e:
         return False, f"Location validation failed with exception: {str(e)}", None
 
-def update_party_npcs(party_tracker_data, operation, npc):
-    """Update NPC party members (add or remove)"""
-    if operation == "add":
-        # Get the correct module from party tracker
-        module_name = party_tracker_data.get("module", "").replace(" ", "_")
-        path_manager = ModulePathManager(module_name)
-        
-        # Use fuzzy matching to find the NPC file
-        from updates.update_character_info import find_character_file_fuzzy
-        matched_name = find_character_file_fuzzy(npc['name'])
-        
-        if matched_name:
-            npc_file = path_manager.get_character_path(matched_name)
-        else:
-            # If no match found, use the original name for potential creation
-            npc_file = path_manager.get_character_path(npc['name'])
-        
-        if not os.path.exists(npc_file):
-            # NPC file doesn't exist, so we need to create it
-            try:
-                # Get party level as default if no level specified
-                default_level = ''
-                if not npc.get('level'):
-                    # Get the first party member's level as default
-                    if party_tracker_data.get("partyMembers"):
-                        player_name = party_tracker_data["partyMembers"][0]
-                        # Normalize name for file access
-                        from updates.update_character_info import normalize_character_name
-                        player_name_normalized = normalize_character_name(player_name)
-                        player_file = path_manager.get_character_path(player_name_normalized)
-                        if os.path.exists(player_file):
-                            try:
-                                from utils.encoding_utils import safe_json_load
-                                player_data = safe_json_load(player_file)
-                                if player_data and 'level' in player_data:
-                                    default_level = str(player_data['level'])
-                                    debug(f"STATE_CHANGE: Using party level {default_level} as default for NPC {npc['name']}", category="character_updates")
-                            except Exception as e:
-                                warning(f"FAILURE: Could not get party level, using default: {e}", category="character_updates")
-                
-                npc_level = str(npc.get('level', default_level))
-                
-                # Add this debug line right before the subprocess.run call
-                debug(f"SUBPROCESS: Calling npc_builder.py with arguments: {npc['name']} {npc.get('race', '')} {npc.get('class', '')} {npc_level} {npc.get('background', '')}", category="character_updates")
+def _numeric_party_level(party_tracker_data, path_manager):
+    """Return one verified player level for NPC scaling, or None."""
+    from updates.update_character_info import normalize_character_name
 
+    for player_name in party_tracker_data.get("partyMembers") or []:
+        player_path = path_manager.get_character_path(
+            normalize_character_name(player_name)
+        )
+        if not os.path.exists(player_path):
+            continue
+        player_data = safe_json_load(player_path)
+        raw_level = player_data.get("level") if isinstance(player_data, dict) else None
+        if type(raw_level) is int and 1 <= raw_level <= 20:
+            return raw_level
+        if isinstance(raw_level, str) and raw_level.strip().isdigit():
+            level = int(raw_level.strip())
+            if 1 <= level <= 20:
+                return level
+    return None
+
+
+def _npc_builder_level(npc, party_tracker_data, path_manager):
+    """Map malformed model labels once to the verified party level."""
+    raw_level = npc.get("level")
+    if type(raw_level) is int:
+        if 1 <= raw_level <= 20:
+            return str(raw_level)
+        raise ValueError("NPC level must be between 1 and 20")
+    if isinstance(raw_level, str):
+        stripped = raw_level.strip()
+        numeric_match = re.fullmatch(r"(?:level\s*)?(\d+)", stripped, re.I)
+        if numeric_match:
+            level = int(numeric_match.group(1))
+            if 1 <= level <= 20:
+                return str(level)
+            raise ValueError("NPC level must be between 1 and 20")
+        has_invalid_label = bool(stripped)
+    else:
+        has_invalid_label = raw_level is not None
+
+    party_level = _numeric_party_level(party_tracker_data, path_manager)
+    if party_level is not None:
+        if has_invalid_label:
+            warning(
+                "NPC join level label was not numeric; using verified party "
+                f"level {party_level} for {npc.get('name', 'unknown NPC')}",
+                category="character_updates",
+            )
+        else:
+            debug(
+                f"STATE_CHANGE: Using party level {party_level} as default "
+                f"for NPC {npc.get('name', 'unknown NPC')}",
+                category="character_updates",
+            )
+        return str(party_level)
+    if has_invalid_label:
+        raise ValueError(
+            "NPC level label is not numeric and no verified party level is available"
+        )
+    # Preserve npc_builder's existing default guidance when neither side has
+    # an explicit usable level.
+    return ""
+
+
+def _load_party_npc_sheet(path_manager, npc_name):
+    """Resolve and verify the canonical NPC sheet used by the party roster."""
+    from updates.update_character_info import (
+        find_character_file_fuzzy,
+        normalize_character_name,
+    )
+
+    matched_name = find_character_file_fuzzy(npc_name)
+    target_name = matched_name or normalize_character_name(npc_name)
+    npc_file = path_manager.get_character_path(target_name)
+    if not os.path.exists(npc_file):
+        return npc_file, None
+    npc_data = safe_json_load(npc_file)
+    if (
+        not isinstance(npc_data, dict)
+        or not isinstance(npc_data.get("name"), str)
+        or not npc_data["name"].strip()
+    ):
+        raise ValueError("NPC character sheet is missing or malformed")
+    return npc_file, npc_data
+
+
+def update_party_npcs(party_tracker_data, operation, npc):
+    """Commit a party-roster update only after its required sheet exists."""
+    npc_name = npc.get("name") if isinstance(npc, dict) else None
+    if not isinstance(npc_name, str) or not npc_name.strip():
+        return {
+            "success": False,
+            "failure_code": "party_npc_join_uncommitted",
+            "diagnostic": "party NPC update has no valid NPC name",
+        }
+    party_npcs = party_tracker_data.get("partyNPCs")
+    if not isinstance(party_npcs, list):
+        return {
+            "success": False,
+            "failure_code": "party_npc_join_uncommitted",
+            "diagnostic": "party NPC roster is malformed",
+        }
+
+    module_name = party_tracker_data.get("module", "").replace(" ", "_")
+    path_manager = ModulePathManager(module_name)
+    generated_sheet = None
+    try:
+        if operation == "add":
+            npc_file, npc_data = _load_party_npc_sheet(path_manager, npc_name)
+            if npc_data is None:
+                npc_level = _npc_builder_level(
+                    npc,
+                    party_tracker_data,
+                    path_manager,
+                )
+                debug(
+                    "SUBPROCESS: Calling npc_builder.py for verified party "
+                    f"join: {npc_name} level {npc_level or 'default'}",
+                    category="character_updates",
+                )
                 _run_generator_subprocess(
                     [
                         sys.executable,
                         _generator_script_path("npc_builder.py"),
-                        npc['name'],
-                        npc.get('race', ''),
-                        npc.get('class', ''),
+                        npc_name,
+                        npc.get("race", ""),
+                        npc.get("class", ""),
                         npc_level,
-                        npc.get('background', ''),
+                        npc.get("background", ""),
                     ]
                 )
-                info(f"SUCCESS: NPC profile created for {npc['name']}", category="character_updates")
-            except subprocess.CalledProcessError as e:
-                error(f"FAILURE: Failed to create NPC profile for {npc['name']}: {e}", category="character_updates")
-                return
+                npc_file, npc_data = _load_party_npc_sheet(
+                    path_manager,
+                    npc_name,
+                )
+                if npc_data is None:
+                    raise ValueError(
+                        "npc_builder exited without a readable character sheet"
+                    )
+                generated_sheet = npc_file
+                info(
+                    f"SUCCESS: NPC profile created for {npc_name}",
+                    category="character_updates",
+                )
 
-        # Now we can add the NPC to the party
-        # Create entry matching the party_schema.json requirements (name and role)
-        npc_entry = {
-            "name": npc.get('name'),
-            "role": npc.get('role', npc.get('class', 'Companion'))  # Use role if provided, else class, else default
-        }
-        
-        # Load the actual NPC data to get the correct display name
-        from utils.encoding_utils import safe_json_load
-        from updates.update_character_info import normalize_character_name, find_character_file_fuzzy
-        
-        # Use fuzzy matching to find the correct NPC file
-        matched_name = find_character_file_fuzzy(npc['name'])
-        if matched_name:
-            npc_file = path_manager.get_character_path(matched_name)
+            canonical_name = npc_data["name"].strip()
+            npc_entry = {
+                "name": canonical_name,
+                "role": npc.get("role", npc.get("class", "Companion")),
+            }
+            candidate = copy.deepcopy(party_tracker_data)
+            existing_names = {
+                str(item.get("name") or "").strip().casefold()
+                for item in candidate["partyNPCs"]
+                if isinstance(item, dict)
+            }
+            state_changed = canonical_name.casefold() not in existing_names
+            if state_changed:
+                candidate["partyNPCs"].append(npc_entry)
+        elif operation == "remove":
+            candidate = copy.deepcopy(party_tracker_data)
+            original_count = len(candidate["partyNPCs"])
+            candidate["partyNPCs"] = [
+                item
+                for item in candidate["partyNPCs"]
+                if not isinstance(item, dict)
+                or str(item.get("name") or "").strip().casefold()
+                != npc_name.strip().casefold()
+            ]
+            state_changed = len(candidate["partyNPCs"]) != original_count
         else:
-            # Fallback to normalized name if no match found
-            normalized_name = normalize_character_name(npc['name'])
-            npc_file = path_manager.get_character_path(normalized_name)
-        
-        if os.path.exists(npc_file):
-            npc_data = safe_json_load(npc_file)
-            if npc_data and 'name' in npc_data:
-                # Use the name from the character file for consistency
-                npc_entry['name'] = npc_data['name']
-                debug(f"STATE_CHANGE: Using character file name '{npc_data['name']}' for party tracker", category="character_updates")
-        
-        party_tracker_data["partyNPCs"].append(npc_entry)
-    elif operation == "remove":
-        party_tracker_data["partyNPCs"] = [x for x in party_tracker_data["partyNPCs"] if x["name"] != npc["name"]]
+            raise ValueError("party NPC operation must be add or remove")
 
-    safe_json_dump(party_tracker_data, "party_tracker.json")
-    info(f"STATE_CHANGE: Party NPCs updated - {operation} {npc['name']}", category="character_updates")
+        safe_json_dump(candidate, "party_tracker.json")
+        persisted = safe_json_load("party_tracker.json")
+        if not isinstance(persisted, dict) or persisted.get("partyNPCs") != candidate.get(
+            "partyNPCs"
+        ):
+            raise ValueError("party NPC roster write could not be verified")
+        party_tracker_data.clear()
+        party_tracker_data.update(persisted)
+        info(
+            f"STATE_CHANGE: Party NPCs updated - {operation} {npc_name}",
+            category="character_updates",
+        )
+        return {"success": True, "state_changed": state_changed}
+    except Exception as exc:
+        if generated_sheet and os.path.exists(generated_sheet):
+            try:
+                os.remove(generated_sheet)
+            except OSError as cleanup_error:
+                warning(
+                    "NPC join rollback could not remove the uncommitted sheet: "
+                    f"{cleanup_error}",
+                    category="character_updates",
+                )
+        error(
+            f"FAILURE: Party NPC update did not commit for {npc_name}",
+            exception=exc,
+            category="character_updates",
+        )
+        return {
+            "success": False,
+            "failure_code": "party_npc_join_uncommitted",
+            "diagnostic": str(exc),
+        }
 
 def run_combat_simulation(encounter_id, party_tracker_data, location_data):
     """Run the combat simulation"""
@@ -2211,7 +2325,40 @@ Please use a valid location that exists in the current area ({current_area_id}) 
     elif action_type == ACTION_UPDATE_PARTY_NPCS:
         operation = parameters["operation"]
         npc = parameters["npc"]
-        update_party_npcs(party_tracker_data, operation, npc)
+        party_npc_result = update_party_npcs(
+            party_tracker_data,
+            operation,
+            npc,
+        )
+        if not party_npc_result.get("success"):
+            failed_result = create_return(
+                status="error",
+                response_data={
+                    "failure_code": party_npc_result.get(
+                        "failure_code", "party_npc_join_uncommitted"
+                    ),
+                    "error_message": (
+                        "The party change could not be completed safely."
+                    ),
+                    "state_changed": False,
+                },
+            )
+            failed_result.update(
+                {
+                    "failed_stage": "party_npc_update",
+                    "exception_class": "PartyNPCJoinError",
+                    "diagnostic": party_npc_result.get(
+                        "diagnostic", "party NPC update failed safely"
+                    ),
+                }
+            )
+            return failed_result
+        return create_return(
+            needs_update=party_npc_result.get("state_changed") is True,
+            response_data={
+                "state_changed": party_npc_result.get("state_changed") is True,
+            },
+        )
 
     elif action_type == ACTION_UPDATE_ENCOUNTER:
         debug("STATE_CHANGE: Processing updateEncounter action", category="combat_processing")

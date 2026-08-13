@@ -128,6 +128,17 @@ def diegetic_failure_correction(action: Mapping[str, Any], receipt: Mapping[str,
             "The exchange falters at the last moment. Every coin and piece of gear "
             "remains where it was, and no bargain is struck."
         )
+    if action_name == "updatePartyNPCs":
+        parameters = action.get("parameters") or {}
+        if parameters.get("operation") == "remove":
+            return (
+                "The attempted parting does not take hold; the company remains "
+                "together just as it was."
+            )
+        return (
+            "The would-be companion hesitates before setting out. No new traveler "
+            "joins the company yet."
+        )
     return (
         "The moment hangs unresolved, and events do not unfold as first described."
     )
