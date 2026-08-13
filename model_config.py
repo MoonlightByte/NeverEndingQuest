@@ -943,7 +943,10 @@ RESOURCE_PLAN_T105_GEMINI_FLASH_LOW = {
     "thinking_level": "low",
     "response_schema": convert_to_gemini_schema(_T105_RESOURCE_PLAN_SCHEMA),
 }
-RESOURCE_PLAN_T105_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+RESOURCE_PLAN_T105_LEGACY = {
+    "model": "gpt-5.4-mini",
+    "reasoning_effort": "low",
+}
 RESOURCE_PLAN_T105_LMSTUDIO = {"model": "local-model", "response_format": None}
 RESOURCE_PLAN_T105_COMPLEXITY_THRESHOLDS = {
     "legacy": 2,

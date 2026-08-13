@@ -66,9 +66,13 @@ def request_transaction_plan(
     if correction:
         payload["previous_validation_error"] = str(correction)[:1000]
     provider_config = _provider_config()
+    request_options = {
+        key: value for key, value in provider_config.items() if key != "model"
+    }
+    if str(request_options.get("reasoning_effort") or "none").lower() == "none":
+        request_options["temperature"] = 0.1
     response = capture_and_fanout(
-        "T105",
-        api_client.create_completion,
+        "T105", api_client.create_completion,
         _request_provider=model_config.get_provider(),
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
@@ -78,8 +82,7 @@ def request_transaction_plan(
             },
         ],
         model=provider_config["model"],
-        temperature=0.1,
-        **{key: value for key, value in provider_config.items() if key != "model"},
+        **request_options,
     )
     content = response.choices[0].message.content
     if not isinstance(content, str) or not content.strip():

@@ -30,6 +30,10 @@ class ResourceTransactionPlanningError(RuntimeError):
     """A complex resource operation could not be compiled without guessing."""
 
 
+class ResourceTransactionProviderError(ResourceTransactionPlanningError):
+    """The bounded T105 provider calls failed before a plan was returned."""
+
+
 @dataclass(frozen=True)
 class ResourceRoutingDecision:
     requires_planning: bool
@@ -813,9 +817,13 @@ def plan_and_stage_resource_transaction(
         planner = request_transaction_plan
 
     failure = None
+    failure_kind = "validation"
     for attempt in range(2):
         try:
-            value = planner(packet, correction=failure)
+            value = planner(
+                packet,
+                correction=failure if failure_kind == "validation" else None,
+            )
             staged, _duplicates, edges = _validate_plan(value, facts)
             characters = _stage_character_images(prepared, facts, staged, edges)
             _reconcile_staged_images(prepared, characters, facts, staged, edges)
@@ -834,21 +842,41 @@ def plan_and_stage_resource_transaction(
                 ("resource_transaction_planned",),
             )
         except Exception as exc:
-            failure = (
-                str(exc)
-                if isinstance(exc, ResourceTransactionPlanningError)
-                else "previous planner response failed deterministic validation"
-            )
+            from core.ai.api_client import ProviderCallError
+
+            if isinstance(exc, ProviderCallError):
+                failure = "planner provider call failed"
+                failure_kind = "provider"
+            else:
+                failure = (
+                    str(exc)
+                    if isinstance(exc, ResourceTransactionPlanningError)
+                    else "previous planner response failed deterministic validation"
+                )
+                failure_kind = "validation"
             if attempt:
                 _record_routing(
                     decision,
                     planner_calls=2,
-                    outcome="planning_failed_closed",
+                    outcome=(
+                        "planner_provider_failed_closed"
+                        if failure_kind == "provider"
+                        else "planning_failed_closed"
+                    ),
                     started=started,
                 )
-                raise ResourceTransactionPlanningError(
-                    f"bounded transaction planning failed safely: {failure}"
-                ) from exc
+                error_type = (
+                    ResourceTransactionProviderError
+                    if failure_kind == "provider"
+                    else ResourceTransactionPlanningError
+                )
+                if failure_kind == "provider":
+                    message = "bounded transaction planner provider call failed safely"
+                else:
+                    message = (
+                        "bounded transaction planning failed safely: %s" % failure
+                    )
+                raise error_type(message) from exc
     raise ResourceTransactionPlanningError("transaction planning did not complete")
 
 
