@@ -97,3 +97,51 @@ def record_resource_failure(
         return True
     except Exception:
         return False
+
+
+def record_resource_routing(
+    *,
+    provider,
+    model_family,
+    route,
+    score,
+    threshold,
+    participant_count,
+    asset_family_count,
+    fact_count,
+    planner_calls,
+    outcome,
+    elapsed_ms,
+):
+    """Append non-game-data routing facts for T105 threshold tuning."""
+    try:
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "runId": _PROCESS_RUN_ID,
+            "recordType": "resource_transaction_routing",
+            "provider": _identifier(provider),
+            "modelFamily": _identifier(model_family),
+            "route": _identifier(route),
+            "score": max(0, min(int(score), 100)),
+            "threshold": max(0, min(int(threshold), 100)),
+            "participantCount": max(0, min(int(participant_count), 64)),
+            "assetFamilyCount": max(0, min(int(asset_family_count), 16)),
+            "factCount": max(0, min(int(fact_count), 256)),
+            "plannerCalls": max(0, min(int(planner_calls), 2)),
+            "outcome": _identifier(outcome),
+            "elapsedMs": max(0, min(int(elapsed_ms), 3600000)),
+            "usageSource": "shared_callsite_telemetry",
+        }
+        line = json.dumps(entry, ensure_ascii=True, separators=(",", ":")) + "\n"
+        if not _WRITE_LOCK.acquire(blocking=False):
+            return False
+        try:
+            path = _path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(line)
+        finally:
+            _WRITE_LOCK.release()
+        return True
+    except Exception:
+        return False

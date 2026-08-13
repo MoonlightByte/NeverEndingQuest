@@ -4387,6 +4387,7 @@ def process_ai_response(
                     character_result = prepare_character_response_actions(
                         fee_result.get("remaining_character_actions", ()),
                         party_tracker_data,
+                        tuple(fee_result.get("storage_plans", ())),
                     )
                     if not character_result.get("success"):
                         result = character_result
@@ -4394,11 +4395,17 @@ def process_ai_response(
                     final_characters = tuple(
                         character_result.get("prepared_actions", ())
                     )
+                    final_storage_plans = tuple(
+                        character_result.get(
+                            "storage_plans",
+                            fee_result.get("storage_plans", ()),
+                        )
+                    )
                     try:
                         resource_failed_stage = "resource_response_commit"
                         transaction_result = execute_resource_response_transaction(
                             final_characters,
-                            tuple(fee_result.get("storage_plans", ())),
+                            final_storage_plans,
                         )
                     except TransactionStalePlanError:
                         if resource_attempt == 0:
@@ -4428,7 +4435,7 @@ def process_ai_response(
                         "status": "continue",
                         "success": True,
                         "needs_update": bool(
-                            final_characters or fee_result.get("storage_plans")
+                            final_characters or final_storage_plans
                         ),
                         "committed_indices": list(resource_action_indices),
                         "transaction_id": transaction_result.get(

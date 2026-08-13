@@ -887,6 +887,71 @@ CURRENCY_OFFER_T104_LMSTUDIO = {
     "response_format": None,
 }
 
+# --- T105: Complex resource transaction planning (small JSON, mini tier) ---
+# Invoked only after deterministic routing identifies a complex accepted action
+# batch.  It arranges observed fact identifiers; code remains authoritative for
+# all quantities, balances, participants, and durable writes.
+_T105_RESOURCE_PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "stages": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "stage": {"type": "integer"},
+                    "fact_ids": {"type": "array", "items": {"type": "string"}},
+                    "confidence": {"type": "string", "enum": ["high", "uncertain"]},
+                },
+                "required": ["stage", "fact_ids", "confidence"],
+            },
+        },
+        "edges": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "edge_id": {"type": "string"},
+                    "source_fact_ids": {"type": "array", "items": {"type": "string"}},
+                    "destination_fact_ids": {"type": "array", "items": {"type": "string"}},
+                    "authority": {"type": "string", "enum": ["source", "destination"]},
+                    "confidence": {"type": "string", "enum": ["high", "uncertain"]},
+                },
+                "required": ["edge_id", "source_fact_ids", "destination_fact_ids", "authority", "confidence"],
+            },
+        },
+        "duplicates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "fact_id": {"type": "string"},
+                    "canonical_fact_id": {"type": "string"},
+                },
+                "required": ["fact_id", "canonical_fact_id"],
+            },
+        },
+    },
+    "required": ["stages", "edges", "duplicates"],
+}
+RESOURCE_PLAN_T105_GPT54MINI_LOW = {
+    "model": "gpt-5.4-mini",
+    "reasoning_effort": "low",
+}
+RESOURCE_PLAN_T105_GEMINI_FLASH_LOW = {
+    "model": "gemini-3.1-flash-lite-preview",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(_T105_RESOURCE_PLAN_SCHEMA),
+}
+RESOURCE_PLAN_T105_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+RESOURCE_PLAN_T105_LMSTUDIO = {"model": "local-model", "response_format": None}
+RESOURCE_PLAN_T105_COMPLEXITY_THRESHOLDS = {
+    "legacy": 2,
+    "openai": 2,
+    "gemini": 2,
+    "lmstudio": 1,
+}
+
 # --- T015/T016/T018/T019: Adventure Summaries (location updates, chronicles, journals) ---
 # 12/12 synthetic tests passed (4 scenarios x 3 models). Mini-tier (ADVENTURE_SUMMARY_MODEL).
 # T015: location JSON update (temp=0.8). T016: adventure chronicle (temp=0.8, plain text).
@@ -1429,6 +1494,7 @@ TASK_CAPTURE_CONFIGS = {
 
     # Currency-offer intent verification (natural language -> tiny JSON fact)
     "T104": ("CURRENCY_OFFER_T104_GPT54MINI_NONE", "CURRENCY_OFFER_T104_GEMINI_FLASHLITE_LOW"),
+    "T105": ("RESOURCE_PLAN_T105_GPT54MINI_LOW", "RESOURCE_PLAN_T105_GEMINI_FLASH_LOW"),
 
     # Adventure summaries (T015, T016, T018, T019)
     "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
