@@ -306,6 +306,401 @@ _RESOURCE_TOKEN_STOPWORDS = {
     "to",
 }
 
+_PARTY_NAME_ROLE_TOKENS = {
+    "captain",
+    "commander",
+    "merchant",
+    "messenger",
+    "quartermaster",
+    "ranger",
+    "scout",
+}
+
+
+@dataclass(frozen=True)
+class _PartyAttributedRequirement:
+    claimant_index: int
+    target_name: str
+    family: str
+    name: str
+    quantity: int
+
+
+def _party_character_names(party: Mapping[str, Any]) -> Tuple[str, ...]:
+    names = []
+    for value in party.get("partyMembers") or []:
+        if isinstance(value, str) and value.strip():
+            names.append(value.strip())
+    for value in party.get("partyNPCs") or []:
+        if isinstance(value, Mapping):
+            name = value.get("name")
+            if isinstance(name, str) and name.strip():
+                names.append(name.strip())
+    return tuple(dict.fromkeys(names))
+
+
+def _party_name_aliases(party: Mapping[str, Any]) -> Dict[str, Tuple[str, ...]]:
+    """Return full names plus unambiguous non-role name tokens."""
+    names = _party_character_names(party)
+    token_owners: Dict[str, set] = {}
+    name_tokens = {}
+    for name in names:
+        tokens = tuple(re.findall(r"[a-z0-9]+", name.casefold()))
+        name_tokens[name] = tokens
+        for token in tokens:
+            if len(token) < 3 or token in _PARTY_NAME_ROLE_TOKENS:
+                continue
+            token_owners.setdefault(token, set()).add(name)
+    result = {}
+    for name in names:
+        aliases = {" ".join(name_tokens[name])}
+        aliases.update(
+            token
+            for token in name_tokens[name]
+            if len(token) >= 3
+            and token not in _PARTY_NAME_ROLE_TOKENS
+            and token_owners.get(token) == {name}
+        )
+        result[name] = tuple(sorted(aliases, key=lambda value: (-len(value), value)))
+    return result
+
+
+def _attributed_party_names(
+    changes: str,
+    marker: str,
+    actor_name: str,
+    party: Mapping[str, Any],
+) -> Tuple[str, ...]:
+    text = changes.casefold()
+    actor_key = _normalized_name(actor_name)
+    matches = []
+    for name, aliases in _party_name_aliases(party).items():
+        if _normalized_name(name) == actor_key:
+            continue
+        if any(
+            re.search(
+                rf"\b{re.escape(marker)}\s+(?:the\s+)?{re.escape(alias)}\b",
+                text,
+            )
+            for alias in aliases
+        ):
+            matches.append(name)
+    return tuple(dict.fromkeys(matches))
+
+
+def _denomination_deltas(item: PreparedCharacterAction) -> Dict[str, int]:
+    before = item.plan.pre_image.get("currency") or {}
+    after = item.plan.post_image.get("currency") or {}
+    return {
+        denomination: _strict_nonnegative_int(
+            after.get(denomination, 0), f"currency.{denomination}"
+        )
+        - _strict_nonnegative_int(
+            before.get(denomination, 0), f"currency.{denomination}"
+        )
+        for denomination in sorted(_DENOMINATIONS)
+    }
+
+
+def _party_attributed_requirements(
+    prepared: Sequence[PreparedCharacterAction],
+    party: Mapping[str, Any],
+) -> Tuple[_PartyAttributedRequirement, ...]:
+    requirements = []
+    for item in prepared:
+        incoming_names = _attributed_party_names(
+            item.changes, "from", item.plan.character_name, party
+        )
+        outgoing_names = _attributed_party_names(
+            item.changes, "to", item.plan.character_name, party
+        )
+        resource_deltas = list(concrete_asset_deltas(item.plan))
+        resource_deltas.extend(
+            AssetDelta("currency", denomination, quantity, "currency")
+            for denomination, quantity in _denomination_deltas(item).items()
+            if quantity
+        )
+        for delta in resource_deltas:
+            if delta.family == "currency" and delta.name == "currency":
+                continue
+            if not _changes_mention_resource(
+                item.changes, delta.family, delta.name
+            ):
+                continue
+            if delta.quantity > 0:
+                for source_name in incoming_names:
+                    requirements.append(
+                        _PartyAttributedRequirement(
+                            item.index,
+                            source_name,
+                            delta.family,
+                            delta.name,
+                            -delta.quantity,
+                        )
+                    )
+            elif delta.quantity < 0:
+                for recipient_name in outgoing_names:
+                    requirements.append(
+                        _PartyAttributedRequirement(
+                            item.index,
+                            recipient_name,
+                            delta.family,
+                            delta.name,
+                            -delta.quantity,
+                        )
+                    )
+    return tuple(dict.fromkeys(requirements))
+
+
+def _actor_resource_delta(
+    prepared: Sequence[PreparedCharacterAction],
+    actor_name: str,
+    family: str,
+    name: str,
+) -> Optional[int]:
+    values = set()
+    actor_key = _normalized_name(actor_name)
+    for item in prepared:
+        if _normalized_name(item.plan.character_name) != actor_key:
+            continue
+        if family == "currency":
+            quantity = _denomination_deltas(item).get(name, 0)
+            if quantity:
+                values.add(quantity)
+            continue
+        for delta in concrete_asset_deltas(item.plan):
+            if delta.family == family and delta.name == name and delta.quantity:
+                values.add(delta.quantity)
+    if not values:
+        return 0
+    if len(values) == 1:
+        return next(iter(values))
+    return None
+
+
+def _missing_party_attributed_requirements(
+    prepared: Sequence[PreparedCharacterAction],
+    party: Mapping[str, Any],
+) -> Tuple[_PartyAttributedRequirement, ...]:
+    return tuple(
+        requirement
+        for requirement in _party_attributed_requirements(prepared, party)
+        if _actor_resource_delta(
+            prepared,
+            requirement.target_name,
+            requirement.family,
+            requirement.name,
+        )
+        != requirement.quantity
+    )
+
+
+def _party_attributed_correction_fact(
+    requirement: _PartyAttributedRequirement,
+    prepared: Sequence[PreparedCharacterAction],
+    party: Mapping[str, Any],
+) -> str:
+    target = next(
+        (
+            item
+            for item in prepared
+            if _normalized_name(item.plan.character_name)
+            == _normalized_name(requirement.target_name)
+        ),
+        None,
+    )
+    pre_image = (
+        target.plan.pre_image
+        if target is not None
+        else _party_character_snapshot(requirement.target_name, party)
+    )
+    if requirement.family == "currency":
+        current = _strict_nonnegative_int(
+            (pre_image.get("currency") or {}).get(requirement.name, 0),
+            f"currency.{requirement.name}",
+        )
+        label = f"currency {requirement.name}"
+    else:
+        current = _row_quantity_for_name(
+            pre_image,
+            requirement.family,
+            requirement.name,
+        )
+        label = f"{requirement.family} {requirement.name}"
+    final = current + requirement.quantity
+    if final < 0:
+        raise CharacterTransferError(
+            f"party-attributed {label} transfer would overdraw {requirement.target_name}"
+        )
+    return (
+        f"{label}: current {current}, required signed delta "
+        f"{requirement.quantity:+d}, required final {final}"
+    )
+
+
+def _party_character_snapshot(
+    character_name: str,
+    party: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    from updates.update_character_info import get_character_path
+    from utils.encoding_utils import safe_json_load
+
+    role = (
+        "player"
+        if any(
+            _normalized_name(value) == _normalized_name(character_name)
+            for value in party.get("partyMembers") or []
+        )
+        else "npc"
+    )
+    sheet = safe_json_load(get_character_path(character_name, role))
+    if not isinstance(sheet, dict):
+        raise CharacterTransferError(
+            "party-attributed counterpart character sheet is unavailable"
+        )
+    return sheet
+
+
+def _repair_party_attributed_requirements(
+    prepared: Sequence[PreparedCharacterAction],
+    party: Mapping[str, Any],
+) -> Tuple[PreparedCharacterAction, ...]:
+    missing = _missing_party_attributed_requirements(prepared, party)
+    if not missing:
+        return tuple(prepared)
+
+    prepared = tuple(prepared)
+    by_target: Dict[str, List[_PartyAttributedRequirement]] = {}
+    for requirement in missing:
+        by_target.setdefault(requirement.target_name, []).append(requirement)
+
+    selected_actions = {}
+    corrections = {}
+    next_index = max((item.index for item in prepared), default=-1) + 1
+    for target_name, requirements in by_target.items():
+        candidates = [
+            item
+            for item in prepared
+            if _normalized_name(item.plan.character_name)
+            == _normalized_name(target_name)
+        ]
+        if candidates:
+            resource_matched = [
+                item
+                for item in candidates
+                if any(
+                    _changes_mention_resource(
+                        item.changes, requirement.family, requirement.name
+                    )
+                    for requirement in requirements
+                )
+            ]
+            target = min(resource_matched or candidates, key=lambda item: item.index)
+            target_index = target.index
+            target_action = target.action
+        else:
+            target_index = next_index
+            next_index += 1
+            target_action = {
+                "action": "updateCharacterInfo",
+                "parameters": {
+                    "characterName": target_name,
+                    "changes": (
+                        "Apply the mandatory party-attributed transfer counterpart."
+                    ),
+                },
+            }
+        facts = "; ".join(
+            _party_attributed_correction_fact(requirement, prepared, party)
+            for requirement in requirements
+        )
+        selected_actions[target_index] = target_action
+        corrections[target_index] = (
+            f"Party-attributed transfer facts for {target_name} only: {facts}. "
+            "The accepted sibling action explicitly attributes this resource "
+            "movement to this current party member, so its exact opposite half "
+            "is mandatory. Preserve every unrelated field exactly"
+        )
+
+    corrected = _prepare_actions(
+        tuple(sorted(selected_actions.items())),
+        party,
+        correction=corrections,
+    )
+    replacements = {item.index: item for item in corrected}
+    existing_indices = {item.index for item in prepared}
+    result = tuple(replacements.get(item.index, item) for item in prepared) + tuple(
+        item
+        for item in corrected
+        if item.index not in existing_indices
+    )
+    remaining = _missing_party_attributed_requirements(result, party)
+    if remaining:
+        labels = ", ".join(
+            f"{value.target_name} {value.family} {value.name} "
+            f"{value.quantity:+d}"
+            for value in remaining
+        )
+        raise CharacterTransferError(
+            "party-attributed transfer correction failed safely: " + labels
+        )
+    return result
+
+
+_PARTY_CURRENCY_AGGREGATE_ADVISORY = (
+    "party_currency_aggregate_changed_without_external_action"
+)
+
+
+def _with_party_currency_aggregate_advisory(
+    prepared: Sequence[PreparedCharacterAction],
+    party: Mapping[str, Any],
+) -> Tuple[PreparedCharacterAction, ...]:
+    """Flag party-only currency creation/destruction without blocking play."""
+    prepared = tuple(prepared)
+    roster = {_normalized_name(name) for name in _party_character_names(party)}
+    if not prepared or not roster or any(
+        _normalized_name(item.plan.character_name) not in roster for item in prepared
+    ):
+        return prepared
+
+    by_path: Dict[Tuple[str, str], set] = {}
+    for item in prepared:
+        for denomination, quantity in _denomination_deltas(item).items():
+            if quantity:
+                by_path.setdefault(
+                    (item.plan.canonical_path, denomination), set()
+                ).add(quantity)
+    if any(len(values) != 1 for values in by_path.values()):
+        return prepared
+    aggregate = sum(
+        next(iter(values)) * _DENOMINATIONS[denomination]
+        for (_path, denomination), values in by_path.items()
+    )
+    if not aggregate:
+        return prepared
+
+    changed = []
+    applied = False
+    for item in prepared:
+        if not applied and any(_denomination_deltas(item).values()):
+            advisory_values = tuple(
+                sorted(
+                    set(
+                        item.plan.advisories
+                        + (_PARTY_CURRENCY_AGGREGATE_ADVISORY,)
+                    )
+                )
+            )
+            item = replace(item, plan=replace(item.plan, advisories=advisory_values))
+            applied = True
+        changed.append(item)
+    warning(
+        "INVENTORY: " + _PARTY_CURRENCY_AGGREGATE_ADVISORY,
+        category="character_updates",
+    )
+    return tuple(changed)
+
 
 def _resource_tokens(value: Any) -> set:
     tokens = set()
@@ -1322,6 +1717,11 @@ def commit_prepared_character_actions(
             preliminary_planning_decision
             and preliminary_planning_decision.requires_planning
         )
+        failed_stage = "party_attributed_transfer_validation"
+        prepared = _repair_party_attributed_requirements(
+            prepared,
+            party_tracker_data,
+        )
         failed_stage = "explicit_stated_value_contract"
         stated_value_mismatch = _explicit_removal_contract_mismatch(prepared)
         if not stated_value_mismatch:
@@ -1467,6 +1867,20 @@ def commit_prepared_character_actions(
             )
             for item in unit
         )
+        prepared_actions = _with_party_currency_aggregate_advisory(
+            prepared_actions,
+            party_tracker_data,
+        )
+        advised_by_index = {item.index: item for item in prepared_actions}
+        units = [
+            (
+                index,
+                tuple(advised_by_index.get(item.index, item) for item in unit),
+                operation,
+            )
+            for index, unit, operation in units
+        ]
+        prepared = prepared_actions
         if prepare_only:
             return {
                 "status": "continue",
