@@ -1023,7 +1023,12 @@ def _storage_operation_delta_signature(operation: Mapping[str, Any]):
     return {key: quantity for key, quantity in totals.items() if quantity}
 
 
-def _storage_operation_coverage_error(operation, required_deltas):
+def _storage_operation_coverage_error(
+    operation,
+    required_deltas,
+    *,
+    storage_available=None,
+):
     """Require T049 operations to cover every paired character asset delta."""
     required = {}
     for family, name, quantity in required_deltas:
@@ -1051,9 +1056,25 @@ def _storage_operation_coverage_error(operation, required_deltas):
         )
         for family, name, quantity in missing
     )
+    actual_labels = ", ".join(
+        "%s %s %s%d" % (
+            family,
+            name,
+            "" if quantity < 0 else "+",
+            quantity,
+        )
+        for (family, name), quantity in sorted(actual.items())
+    ) or "none"
+    available = storage_available or {}
+    available_labels = ", ".join(
+        f"{family} {name} available {quantity}"
+        for (family, name), quantity in sorted(available.items())
+    ) or "none"
     return (
         "storage operation set does not cover the character-side resource "
-        f"deltas ({labels}). Return one complete operations[] array containing "
+        f"deltas ({labels}). Current storage-operation signed deltas: "
+        f"{actual_labels}. Canonical storage availability: {available_labels}. "
+        "Return one complete operations[] array containing "
         "every required create/store/retrieve operation in this turn"
     )
 
@@ -1186,6 +1207,98 @@ def _combine_storage_owned_character_delta(storage_plan, character_action):
     )
 
 
+def _storage_sibling_correction(storage_plan):
+    """Build deterministic facts for the one bounded T079 sibling repair."""
+    from core.managers.character_transfer import concrete_asset_deltas_between
+
+    storage_available = {}
+    storage_before = storage_plan.storage_before or {}
+    operation_set = storage_plan.operation.get("operations")
+    operations = (
+        operation_set if isinstance(operation_set, list) else [storage_plan.operation]
+    )
+    target_storage_ids = {
+        operation.get("storage_id")
+        for operation in operations
+        if isinstance(operation, dict) and operation.get("storage_id")
+    }
+    for container in storage_before.get("playerStorage") or []:
+        if not isinstance(container, dict):
+            continue
+        if target_storage_ids and container.get("id") not in target_storage_ids:
+            continue
+        for row in container.get("contents") or []:
+            if isinstance(row, dict):
+                key = ("equipment", _normalized_name(row.get("item_name")))
+                storage_available[key] = storage_available.get(key, 0) + row.get(
+                    "quantity", 1
+                )
+        for row in container.get("ammunition") or []:
+            if isinstance(row, dict):
+                key = ("ammunition", _normalized_name(row.get("name")))
+                storage_available[key] = storage_available.get(key, 0) + row.get(
+                    "quantity", 0
+                )
+        currency = container.get("currency") or {}
+        if isinstance(currency, dict):
+            for denomination in _DENOMINATIONS:
+                key = ("currency", denomination)
+                storage_available[key] = storage_available.get(key, 0) + currency.get(
+                    denomination, 0
+                )
+
+    facts = []
+    for delta in concrete_asset_deltas_between(
+        storage_plan.character_before,
+        storage_plan.character_after,
+    ):
+        before_quantity = 0
+        final_quantity = 0
+        if delta.family == "currency":
+            before_quantity = (storage_plan.character_before.get("currency") or {}).get(
+                delta.name,
+                0,
+            )
+            final_quantity = (storage_plan.character_after.get("currency") or {}).get(
+                delta.name,
+                0,
+            )
+        else:
+            field, name_field = (
+                ("equipment", "item_name")
+                if delta.family == "equipment"
+                else ("ammunition", "name")
+            )
+            for row in storage_plan.character_before.get(field) or []:
+                if _normalized_name(row.get(name_field)) == delta.name:
+                    before_quantity = row.get("quantity", 1)
+                    break
+            for row in storage_plan.character_after.get(field) or []:
+                if _normalized_name(row.get(name_field)) == delta.name:
+                    final_quantity = row.get("quantity", 1)
+                    break
+        direction = "receives" if delta.quantity > 0 else "removes"
+        available_quantity = (
+            storage_available.get((delta.family, delta.name), 0)
+            if delta.quantity > 0
+            else before_quantity
+        )
+        facts.append(
+            f"{delta.family} {delta.name}: authoritative source available "
+            f"{available_quantity}, character current {before_quantity}, "
+            f"{direction} {abs(delta.quantity)}, required signed delta "
+            f"{delta.quantity:+d}, required final {final_quantity}"
+        )
+    return (
+        "The validated storage operation is authoritative for its resource "
+        "movement. Rewrite this character update once so its resource fields "
+        "match every deterministic fact below exactly, while preserving any "
+        "unrelated same-turn changes. Do not substitute names, families, signs, "
+        "quantities, or final values.\n- "
+        + "\n- ".join(facts)
+    )
+
+
 def _combine_storage_fee(storage_plan, fee_action):
     """Combine an actual currency-only decrease with one storage mutation."""
     fee = fee_action.plan
@@ -1264,18 +1377,36 @@ def _prepare_response_storage_action(
         operation,
         required_deltas,
     )
-    if coverage_error:
+    if coverage_error and not processed.get("coverage_unresolved"):
         raise StorageTransactionError(coverage_error)
     if operation.get("action") == "view_storage":
         return index, operation, None
+    def mark_coverage_unresolved(plan):
+        if plan is None or not processed.get("coverage_unresolved"):
+            return plan
+        return replace(
+            plan,
+            advisories=tuple(
+                sorted(set(plan.advisories + ("storage_coverage_unresolved",)))
+            ),
+        )
+
     operations = operation.get("operations")
     if isinstance(operations, list):
         if any(item.get("action") == "view_storage" for item in operations):
             raise StorageTransactionError(
                 "view_storage cannot be mixed with storage mutations"
             )
-        return index, operation, prepare_storage_mutation_set(operations)
-    return index, operation, prepare_storage_mutation(operation)
+        return (
+            index,
+            operation,
+            mark_coverage_unresolved(prepare_storage_mutation_set(operations)),
+        )
+    return (
+        index,
+        operation,
+        mark_coverage_unresolved(prepare_storage_mutation(operation)),
+    )
 
 
 def validate_required_storage_sibling(
@@ -1373,6 +1504,7 @@ def process_adjacent_storage_fee_groups(
     response_storage_plans = []
     storage_indices = {index for index, _action in indexed_storage_actions}
     prepared_storage = {}
+    corrected_storage_siblings = set()
     action_indices = tuple(
         sorted(
             {item.index for item in prepared_character_actions}
@@ -1422,6 +1554,25 @@ def process_adjacent_storage_fee_groups(
             )
         return prepared_storage[storage_index]
 
+    def correct_storage_sibling(item, storage_plan):
+        if item.index in corrected_storage_siblings:
+            raise StorageTransactionError(
+                "storage sibling correction failed safely"
+            )
+        from core.managers.character_transfer import _prepare_actions
+
+        corrected = _prepare_actions(
+            ((item.index, item.action),),
+            party_tracker_data,
+            correction=_storage_sibling_correction(storage_plan),
+        )
+        if len(corrected) != 1:
+            raise StorageTransactionError(
+                "storage sibling correction returned an invalid batch"
+            )
+        corrected_storage_siblings.add(item.index)
+        return corrected[0]
+
     try:
         failed_stage = "storage_pairing"
         asset_mutations = [
@@ -1445,10 +1596,37 @@ def process_adjacent_storage_fee_groups(
             for item in asset_mutations:
                 if item.index in handled_characters:
                     continue
-                combined = _combine_storage_owned_character_delta(
-                    storage_plan,
-                    item,
-                )
+                try:
+                    combined = _combine_storage_owned_character_delta(
+                        storage_plan,
+                        item,
+                    )
+                except StorageTransactionError as sibling_error:
+                    if str(sibling_error) not in {
+                        "storage and character actions overlap without identical resource deltas",
+                        "storage and character actions use different currency denominations",
+                    }:
+                        raise
+                    item = correct_storage_sibling(item, storage_plan)
+                    combined = _combine_storage_owned_character_delta(
+                        storage_plan,
+                        item,
+                    )
+                if (
+                    combined is None
+                    and "storage_coverage_unresolved" in storage_plan.advisories
+                    and storage_plan.character_path == item.plan.canonical_path
+                ):
+                    item = correct_storage_sibling(item, storage_plan)
+                    combined = _combine_storage_owned_character_delta(
+                        storage_plan,
+                        item,
+                    )
+                    if combined is None:
+                        raise StorageTransactionError(
+                            "storage sibling correction did not cover the "
+                            "authoritative storage movement"
+                        )
                 if combined is None:
                     continue
                 if item.index in transfer_claimed:

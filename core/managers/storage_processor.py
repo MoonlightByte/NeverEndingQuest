@@ -40,6 +40,7 @@ import config
 from core.ai import api_client
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
+from utils.inventory_integrity import normalize_inventory_name
 import jsonschema
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
@@ -48,6 +49,38 @@ set_script_name("storage_processor")
 
 MAX_STORAGE_CONTEXT_ROWS = 128
 MAX_STORAGE_CONTEXT_BYTES = 32 * 1024
+
+
+def _storage_available_resource_quantities(context: Dict[str, Any]):
+    """Project canonical resource quantities from accessible local storage."""
+    totals = {}
+    for container in context.get("existing_storage") or []:
+        if not isinstance(container, dict):
+            continue
+        for row in container.get("contents") or []:
+            if not isinstance(row, dict):
+                continue
+            name = normalize_inventory_name(row.get("item_name") or row.get("name"))
+            quantity = row.get("quantity", 1)
+            if name and type(quantity) is int and quantity >= 0:
+                key = ("equipment", name)
+                totals[key] = totals.get(key, 0) + quantity
+        for row in container.get("ammunition") or []:
+            if not isinstance(row, dict):
+                continue
+            name = normalize_inventory_name(row.get("name"))
+            quantity = row.get("quantity", 0)
+            if name and type(quantity) is int and quantity >= 0:
+                key = ("ammunition", name)
+                totals[key] = totals.get(key, 0) + quantity
+        currency = container.get("currency") or {}
+        if isinstance(currency, dict):
+            for denomination in ("gold", "silver", "copper"):
+                quantity = currency.get(denomination, 0)
+                if type(quantity) is int and quantity >= 0:
+                    key = ("currency", denomination)
+                    totals[key] = totals.get(key, 0) + quantity
+    return totals
 
 
 def _bounded_accessible_storage_context(
@@ -633,6 +666,9 @@ For "What's in our storage here?":
                     validation_error = _storage_operation_coverage_error(
                         operation,
                         combined_required_deltas,
+                        storage_available=(
+                            _storage_available_resource_quantities(context)
+                        ),
                     )
                     is_valid = validation_error is None
                 if is_valid and not completeness_checked:
@@ -691,6 +727,9 @@ For "What's in our storage here?":
                             validation_error = _storage_operation_coverage_error(
                                 operation,
                                 completeness_required,
+                                storage_available=(
+                                    _storage_available_resource_quantities(context)
+                                ),
                             )
                             is_valid = validation_error is None
                 
@@ -698,6 +737,24 @@ For "What's in our storage here?":
                     warning(f"VALIDATION: Failed on attempt {attempt + 1}: {validation_error}", category="storage_operations")
                     
                     if attempt == max_attempts - 1:  # Last attempt
+                        from core.managers.storage_transaction import (
+                            _storage_operation_delta_signature,
+                        )
+
+                        if (
+                            combined_required_deltas
+                            and _storage_operation_delta_signature(operation)
+                            and "does not cover the character-side resource deltas"
+                            in str(validation_error)
+                        ):
+                            return {
+                                "success": True,
+                                "operation": operation,
+                                "description": original_description,
+                                "processed_at": datetime.now().isoformat(),
+                                "coverage_unresolved": True,
+                                "coverage_error": validation_error,
+                            }
                         return {
                             "success": False,
                             "error": f"Generated operation failed validation after {max_attempts} attempts: {validation_error}",

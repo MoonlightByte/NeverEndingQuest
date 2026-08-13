@@ -1039,7 +1039,7 @@ def commit_prepared_character_actions(
                 correction=correction,
             )
             remaining_shape_mismatch = _batch_transfer_shape_mismatch(corrected)
-            if remaining_shape_mismatch:
+            if remaining_shape_mismatch and not enable_resource_planning:
                 raise CharacterTransferError(
                     "transfer correction failed safely: "
                     f"{remaining_shape_mismatch}"
