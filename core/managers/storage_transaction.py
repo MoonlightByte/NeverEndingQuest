@@ -1461,7 +1461,6 @@ def _purchase_review_allows_acquisition_repair(review):
     return bool(
         isinstance(review, Mapping)
         and review.get("classification") == "explicit_offer"
-        and review.get("completed_purchase") is False
     )
 
 
