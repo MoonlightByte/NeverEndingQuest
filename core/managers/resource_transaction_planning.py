@@ -1191,6 +1191,116 @@ def _validate_plan(value: Any, facts: Sequence[ResourceFact]):
     return tuple(staged), duplicates, edges
 
 
+def _complete_forced_unclaimed_edges(
+    value: Mapping[str, Any],
+    facts: Sequence[ResourceFact],
+    staged: Sequence[str],
+    duplicates: Mapping[str, str],
+    edges: Mapping[str, Tuple[str, str, str]],
+) -> Tuple[Mapping[str, Any], Tuple[str, ...]]:
+    """Close only exact, unique conservation pairs omitted by T105.
+
+    This does not infer intent or choose between possible routes.  A pair is
+    completed only when one unclaimed negative fact and one unclaimed positive
+    fact are the sole facts for an exact resource identity, have equal absolute
+    quantities, belong to different participants, and have no operation-ledger
+    dependency.  The augmented response is validated again by ``_validate_plan``
+    and every later custody/reconciliation check just like model-authored edges.
+    """
+    staged_ids = set(staged)
+    duplicate_ids = set(duplicates)
+    edge_members = {
+        fact_id
+        for source_id, destination_id, _authority in edges.values()
+        for fact_id in (source_id, destination_id)
+    }
+    dependency_members = {
+        fact.fact_id for fact in facts if fact.requires_fact_ids
+    }
+    dependency_members.update(
+        dependency_id
+        for fact in facts
+        for dependency_id in fact.requires_fact_ids
+    )
+    grouped: Dict[Tuple[str, str], list] = {}
+    for fact in facts:
+        if fact.fact_id not in staged_ids or fact.fact_id in duplicate_ids:
+            continue
+        grouped.setdefault((fact.family, fact.name), []).append(fact)
+
+    additions = []
+    advisories = []
+    used_edge_ids = set(edges)
+    next_edge = 1
+    for (family, name), candidates in sorted(grouped.items()):
+        if len(candidates) != 2:
+            continue
+        negative = [fact for fact in candidates if fact.quantity < 0]
+        positive = [fact for fact in candidates if fact.quantity > 0]
+        if len(negative) != 1 or len(positive) != 1:
+            continue
+        source, destination = negative[0], positive[0]
+        if (
+            source.participant_id == destination.participant_id
+            or abs(source.quantity) != abs(destination.quantity)
+            or source.fact_id in edge_members
+            or destination.fact_id in edge_members
+            or source.fact_id in dependency_members
+            or destination.fact_id in dependency_members
+        ):
+            continue
+        while f"CODE-E{next_edge}" in used_edge_ids:
+            next_edge += 1
+        edge_id = f"CODE-E{next_edge}"
+        next_edge += 1
+        used_edge_ids.add(edge_id)
+        edge_members.update((source.fact_id, destination.fact_id))
+        additions.append(
+            {
+                "edge_id": edge_id,
+                "source_fact_ids": [source.fact_id],
+                "destination_fact_ids": [destination.fact_id],
+                "authority": "source",
+                "confidence": "high",
+            }
+        )
+        advisories.append(f"planner_edge_completed:{family}:{name}")
+
+    if not additions:
+        return value, ()
+    completed = copy.deepcopy(dict(value))
+    completed["edges"] = list(completed["edges"]) + additions
+    return completed, tuple(advisories)
+
+
+def _attach_planning_advisories(
+    characters: Sequence[PreparedCharacterAction],
+    storage_plans: Sequence[StorageMutationPlan],
+    advisories: Sequence[str],
+):
+    if not advisories:
+        return tuple(characters), tuple(storage_plans)
+    additions = set(advisories)
+    characters = tuple(
+        replace(
+            item,
+            plan=replace(
+                item.plan,
+                advisories=tuple(sorted(set(item.plan.advisories) | additions)),
+            ),
+        )
+        for item in characters
+    )
+    storage_plans = tuple(
+        replace(
+            plan,
+            advisories=tuple(sorted(set(plan.advisories) | additions)),
+        )
+        for plan in storage_plans
+    )
+    return characters, storage_plans
+
+
 def _apply_row_fact(sheet: Dict[str, Any], fact: ResourceFact, quantity: int):
     field, name_field = (
         ("equipment", "item_name")
@@ -1923,7 +2033,16 @@ def plan_and_stage_resource_transaction(
                 packet,
                 correction=failure if failure_kind == "validation" else None,
             )
-            staged, _duplicates, edges = _validate_plan(value, facts)
+            staged, duplicates, edges = _validate_plan(value, facts)
+            value, completion_advisories = _complete_forced_unclaimed_edges(
+                value,
+                facts,
+                staged,
+                duplicates,
+                edges,
+            )
+            if completion_advisories:
+                staged, duplicates, edges = _validate_plan(value, facts)
             _validate_planned_custody_metadata(facts, edges)
             non_character_deltas = _non_character_edge_deltas(facts, edges)
             characters, planned_storage = _stage_character_images(
@@ -1941,6 +2060,13 @@ def plan_and_stage_resource_transaction(
                 edges,
                 non_character_deltas,
             )
+            characters, planned_storage = _attach_planning_advisories(
+                characters,
+                planned_storage,
+                completion_advisories,
+            )
+            for advisory in completion_advisories:
+                warning(f"INVENTORY: {advisory}", category="character_updates")
             _record_routing(
                 decision,
                 planner_calls=attempt + 1,
@@ -1953,7 +2079,11 @@ def plan_and_stage_resource_transaction(
                 decision,
                 copy.deepcopy(value),
                 attempt + 1,
-                ("resource_transaction_planned",),
+                tuple(
+                    sorted(
+                        {"resource_transaction_planned", *completion_advisories}
+                    )
+                ),
                 non_character_deltas,
                 external_contract,
                 commerce_classifier_calls,
