@@ -1353,6 +1353,23 @@ def _combine_storage_fee(storage_plan, fee_action):
         return None
     if storage_plan.character_before != fee.pre_image:
         return None
+    try:
+        duplicate = _combine_storage_owned_character_delta(
+            storage_plan,
+            fee_action,
+        )
+    except StorageTransactionError as exc:
+        if str(exc) not in {
+            "storage and character actions overlap without identical resource deltas",
+            "storage and character actions use different currency denominations",
+        }:
+            raise
+        duplicate = None
+    if duplicate is not None:
+        # The main DM commonly emits both sides of a storage movement.  An
+        # exact currency sibling is the storage operation itself, not an
+        # additional service fee, so consuming it must not apply it twice.
+        return duplicate
     combined_character = copy.deepcopy(storage_plan.character_after)
     if storage_plan.character_after.get("currency") == storage_plan.character_before.get(
         "currency"

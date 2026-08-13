@@ -1914,6 +1914,32 @@ def _validate_planned_custody_metadata(facts, edges) -> None:
             _validate_custody_metadata(fact, dependency)
 
 
+def _validate_noncharacter_currency_edge_completeness(facts, edges) -> None:
+    """Reject a partially claimed currency movement to storage/external actors.
+
+    A lone character spend may be an ordinary open-ledger consumption.  Once
+    T105 connects that denomination to a non-character participant, however,
+    both observed endpoints are authoritative.  Unequal quantities would leave
+    a hidden remainder on the character side and cannot be committed safely.
+    """
+    fact_map = {fact.fact_id: fact for fact in facts}
+    for source_id, destination_id, _authority in edges.values():
+        source = fact_map[source_id]
+        destination = fact_map[destination_id]
+        if source.family != "currency" or destination.family != "currency":
+            continue
+        participants = (source.participant_id, destination.participant_id)
+        character_count = sum(
+            participant.startswith("character:") for participant in participants
+        )
+        if character_count != 1:
+            continue
+        if abs(source.quantity) != abs(destination.quantity):
+            raise ResourceTransactionPlanningError(
+                "routed transfer leaves an unpaired currency remainder"
+            )
+
+
 def _non_character_edge_deltas(
     facts: Sequence[ResourceFact],
     edges,
@@ -2043,6 +2069,7 @@ def plan_and_stage_resource_transaction(
             )
             if completion_advisories:
                 staged, duplicates, edges = _validate_plan(value, facts)
+            _validate_noncharacter_currency_edge_completeness(facts, edges)
             _validate_planned_custody_metadata(facts, edges)
             non_character_deltas = _non_character_edge_deltas(facts, edges)
             characters, planned_storage = _stage_character_images(
