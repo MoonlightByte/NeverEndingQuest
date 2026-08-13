@@ -83,6 +83,45 @@ class ResourceFact:
 
 
 @dataclass(frozen=True)
+class ResourceLedgerParticipant:
+    """One participant in a response-scoped resource operation ledger.
+
+    Persistent participants own an in-memory pre-image that may later be handed
+    to the existing atomic response coordinator.  External actors close a
+    conservation edge for the duration of one response only; they deliberately
+    have neither a path nor an image that could be persisted.
+    """
+
+    participant_id: str
+    kind: str
+    path: Optional[str] = None
+    pre_image: Optional[Mapping[str, Any]] = None
+
+
+@dataclass(frozen=True)
+class ResourceOperationFact:
+    """A single ordered resource delta, including temporary custody."""
+
+    fact_id: str
+    participant_id: str
+    family: str
+    name: str
+    quantity: int
+    row: Optional[Mapping[str, Any]] = None
+    requires_fact_ids: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RehearsedResourceOperationLedger:
+    """Deterministic result of rehearsing an operation ledger in memory."""
+
+    persistent_images: Mapping[str, Mapping[str, Any]]
+    external_deltas: Mapping[Tuple[str, str, str], int]
+    completed_fact_ids: Tuple[str, ...]
+    stage_evidence: Tuple[Mapping[str, Mapping[str, Any]], ...]
+
+
+@dataclass(frozen=True)
 class PlannedResourceTransaction:
     character_actions: Tuple[PreparedCharacterAction, ...]
     storage_plans: Tuple[StorageMutationPlan, ...]
@@ -94,6 +133,11 @@ class PlannedResourceTransaction:
 
 _DENOMINATIONS = ("gold", "silver", "copper")
 _RESOURCE_FIELDS = ("equipment", "ammunition", "currency")
+_LEDGER_PARTICIPANT_KINDS = {
+    "persistent_character",
+    "persistent_storage",
+    "external_actor",
+}
 
 
 def _safe_part(value: str) -> str:
@@ -616,6 +660,201 @@ def _apply_fact(sheet: Dict[str, Any], fact: ResourceFact, quantity: int):
         return
     if fact.family in {"equipment", "ammunition"}:
         _apply_row_fact(sheet, fact, quantity)
+
+
+def _ledger_fact(operation: ResourceOperationFact, path: Optional[str]):
+    name = normalize_inventory_name(operation.name)
+    return ResourceFact(
+        fact_id=operation.fact_id,
+        action_index=-1,
+        participant_id=operation.participant_id,
+        path=path,
+        family=operation.family,
+        name=name,
+        quantity=operation.quantity,
+        direction="in" if operation.quantity > 0 else "out",
+        current_quantity=None,
+        changes="operation_ledger",
+        row=copy.deepcopy(operation.row),
+        canonical_edge=operation.family in {"equipment", "ammunition"},
+    )
+
+
+def _apply_ledger_operation(
+    image: Dict[str, Any],
+    participant: ResourceLedgerParticipant,
+    operation: ResourceOperationFact,
+):
+    """Apply one operation to a private image without writing any file."""
+    fact = _ledger_fact(operation, participant.path)
+    if participant.kind == "persistent_character":
+        _apply_fact(image, fact, operation.quantity)
+        return
+    if participant.kind != "persistent_storage":
+        raise ResourceTransactionPlanningError(
+            "external actors cannot receive a persistent resource image"
+        )
+    if operation.family == "equipment":
+        proxy = copy.deepcopy(image)
+        proxy["equipment"] = copy.deepcopy(image.get("contents") or [])
+        _apply_fact(proxy, fact, operation.quantity)
+        image["contents"] = proxy["equipment"]
+        return
+    _apply_fact(image, fact, operation.quantity)
+
+
+def rehearse_resource_operation_ledger(
+    participants: Sequence[ResourceLedgerParticipant],
+    operations: Sequence[ResourceOperationFact],
+    stages: Sequence[Sequence[str]],
+) -> RehearsedResourceOperationLedger:
+    """Validate and rehearse an ordered, conserved ledger entirely in memory.
+
+    The operation list is intentionally separate from net-final character
+    deltas.  An actor may therefore receive and later pass on the same asset in
+    one response without that temporary custody disappearing from the plan.
+    """
+    participant_map = {}
+    path_owners = {}
+    images = {}
+    for participant in participants:
+        if (
+            not isinstance(participant.participant_id, str)
+            or not participant.participant_id.strip()
+            or participant.participant_id in participant_map
+            or participant.kind not in _LEDGER_PARTICIPANT_KINDS
+        ):
+            raise ResourceTransactionPlanningError(
+                "operation ledger has an invalid participant identity"
+            )
+        participant_map[participant.participant_id] = participant
+        if participant.kind == "external_actor":
+            if participant.path is not None or participant.pre_image is not None:
+                raise ResourceTransactionPlanningError(
+                    "external actors cannot own persistent state"
+                )
+            continue
+        if (
+            not isinstance(participant.path, str)
+            or not participant.path
+            or not isinstance(participant.pre_image, Mapping)
+            or participant.path in path_owners
+        ):
+            raise ResourceTransactionPlanningError(
+                "operation ledger has an invalid persistent participant"
+            )
+        path_owners[participant.path] = participant.participant_id
+        images[participant.participant_id] = copy.deepcopy(dict(participant.pre_image))
+
+    operation_map = {}
+    conservation = {}
+    for operation in operations:
+        name = normalize_inventory_name(operation.name)
+        if (
+            not isinstance(operation.fact_id, str)
+            or not operation.fact_id
+            or operation.fact_id in operation_map
+            or operation.participant_id not in participant_map
+            or operation.family not in _RESOURCE_FIELDS
+            or not name
+            or isinstance(operation.quantity, bool)
+            or not isinstance(operation.quantity, int)
+            or operation.quantity == 0
+            or not isinstance(operation.requires_fact_ids, tuple)
+            or len(operation.requires_fact_ids) != len(set(operation.requires_fact_ids))
+        ):
+            raise ResourceTransactionPlanningError(
+                "operation ledger contains a malformed fact"
+            )
+        if operation.family == "currency" and name not in _DENOMINATIONS:
+            raise ResourceTransactionPlanningError(
+                "operation ledger contains an invalid denomination"
+            )
+        if operation.family in {"equipment", "ammunition"} and not isinstance(
+            operation.row, Mapping
+        ):
+            raise ResourceTransactionPlanningError(
+                "operation ledger asset fact has no canonical row"
+            )
+        operation_map[operation.fact_id] = operation
+        key = (operation.family, name)
+        conservation[key] = conservation.get(key, 0) + operation.quantity
+    if not operation_map:
+        raise ResourceTransactionPlanningError("operation ledger contains no facts")
+    if any(total != 0 for total in conservation.values()):
+        raise ResourceTransactionPlanningError(
+            "operation ledger is not conserved by exact resource identity"
+        )
+    for operation in operations:
+        if any(
+            dependency == operation.fact_id or dependency not in operation_map
+            for dependency in operation.requires_fact_ids
+        ):
+            raise ResourceTransactionPlanningError(
+                "operation ledger contains an invalid dependency"
+            )
+
+    completed = []
+    completed_set = set()
+    evidence = []
+    external_deltas = {}
+    if not isinstance(stages, Sequence) or not stages:
+        raise ResourceTransactionPlanningError("operation ledger has no stages")
+    for stage in stages:
+        if (
+            not isinstance(stage, Sequence)
+            or isinstance(stage, (str, bytes))
+            or not stage
+        ):
+            raise ResourceTransactionPlanningError(
+                "operation ledger has a malformed stage"
+            )
+        stage_ids = tuple(stage)
+        if len(stage_ids) != len(set(stage_ids)):
+            raise ResourceTransactionPlanningError(
+                "operation ledger repeats a fact in one stage"
+            )
+        for fact_id in stage_ids:
+            operation = operation_map.get(fact_id)
+            if operation is None or fact_id in completed_set:
+                raise ResourceTransactionPlanningError(
+                    "operation ledger stages an invalid fact"
+                )
+            if not set(operation.requires_fact_ids).issubset(completed_set):
+                raise ResourceTransactionPlanningError(
+                    "operation ledger dependency is not available before use"
+                )
+            participant = participant_map[operation.participant_id]
+            if participant.kind == "external_actor":
+                key = (
+                    participant.participant_id,
+                    operation.family,
+                    normalize_inventory_name(operation.name),
+                )
+                external_deltas[key] = external_deltas.get(key, 0) + operation.quantity
+            else:
+                _apply_ledger_operation(
+                    images[participant.participant_id], participant, operation
+                )
+            completed.append(fact_id)
+            completed_set.add(fact_id)
+        evidence.append(copy.deepcopy(images))
+    if completed_set != set(operation_map):
+        raise ResourceTransactionPlanningError(
+            "operation ledger did not stage every fact exactly once"
+        )
+
+    persistent_images = {
+        participant.path: copy.deepcopy(images[participant.participant_id])
+        for participant in participants
+        if participant.kind != "external_actor"
+    }
+    return RehearsedResourceOperationLedger(
+        persistent_images=persistent_images,
+        external_deltas=external_deltas,
+        completed_fact_ids=tuple(completed),
+        stage_evidence=tuple(evidence),
+    )
 
 
 def _stage_character_images(
