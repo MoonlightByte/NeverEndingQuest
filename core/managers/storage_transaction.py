@@ -992,6 +992,65 @@ def _asset_delta_shape(delta):
     return delta.family, delta.name, delta.quantity
 
 
+def _storage_operation_delta_signature(operation: Mapping[str, Any]):
+    """Project exact character-side item/ammunition deltas from T049 output."""
+    operations = operation.get("operations")
+    operations = operations if isinstance(operations, list) else [operation]
+    totals = {}
+    for item in operations:
+        if not isinstance(item, Mapping):
+            continue
+        action = item.get("action")
+        if action in {"store_item", "retrieve_item"}:
+            sign = -1 if action == "store_item" else 1
+            for name, quantity in _requested_items(item):
+                key = ("equipment", _normalized_name(name))
+                totals[key] = totals.get(key, 0) + sign * quantity
+        elif action in {"store_ammunition", "retrieve_ammunition"}:
+            sign = -1 if action == "store_ammunition" else 1
+            name = _normalized_name(item.get("ammunition_name"))
+            quantity = item.get("quantity")
+            if name and type(quantity) is int and quantity > 0:
+                key = ("ammunition", name)
+                totals[key] = totals.get(key, 0) + sign * quantity
+    return {key: quantity for key, quantity in totals.items() if quantity}
+
+
+def _storage_operation_coverage_error(operation, required_deltas):
+    """Require T049 operations to cover every paired character asset delta."""
+    required = {}
+    for family, name, quantity in required_deltas:
+        if family not in {"equipment", "ammunition"} or not quantity:
+            continue
+        key = (family, _normalized_name(name))
+        required[key] = required.get(key, 0) + quantity
+    required = {key: value for key, value in required.items() if value}
+    if not required:
+        return None
+    actual = _storage_operation_delta_signature(operation)
+    missing = [
+        (family, name, quantity)
+        for (family, name), quantity in sorted(required.items())
+        if actual.get((family, name)) != quantity
+    ]
+    if not missing:
+        return None
+    labels = ", ".join(
+        "%s %s %s%d" % (
+            family,
+            name,
+            "" if quantity < 0 else "+",
+            quantity,
+        )
+        for family, name, quantity in missing
+    )
+    return (
+        "storage operation set does not cover the character-side resource "
+        f"deltas ({labels}). Return one complete operations[] array containing "
+        "every required create/store/retrieve operation in this turn"
+    )
+
+
 def _ownership_local_equipment_changes(
     before: Mapping[str, Any],
     after: Mapping[str, Any],
@@ -1168,6 +1227,7 @@ def _prepare_response_storage_action(
     party_tracker_data,
     *,
     fallback_character,
+    required_deltas=(),
 ):
     index, action = indexed_action
     parameters = action.get("parameters") or {}
@@ -1181,7 +1241,11 @@ def _prepare_response_storage_action(
         raise StorageTransactionError("storage interaction has no character")
     from core.managers.storage_processor import process_storage_request
 
-    processed = process_storage_request(description, str(character))
+    processed = process_storage_request(
+        description,
+        str(character),
+        required_deltas=required_deltas,
+    )
     if not processed.get("success"):
         raise StorageTransactionError(
             processed.get("error") or "storage operation preparation failed"
@@ -1189,6 +1253,12 @@ def _prepare_response_storage_action(
     operation = processed.get("operation")
     if not isinstance(operation, dict):
         raise StorageTransactionError("storage processor returned no operation")
+    coverage_error = _storage_operation_coverage_error(
+        operation,
+        required_deltas,
+    )
+    if coverage_error:
+        raise StorageTransactionError(coverage_error)
     if operation.get("action") == "view_storage":
         return index, operation, None
     operations = operation.get("operations")
@@ -1304,6 +1374,36 @@ def process_adjacent_storage_fee_groups(
     )
     failed_stage = "storage_pairing"
 
+    def required_deltas_for(indexed_storage):
+        storage_index, storage_action = indexed_storage
+        parameters = storage_action.get("parameters") or {}
+        character_name = parameters.get("characterName")
+        if not character_name:
+            character_name = next(
+                iter(party_tracker_data.get("partyMembers") or []),
+                None,
+            )
+        matching = [
+            item
+            for item in asset_mutations
+            if item.index not in transfer_claimed
+            and item.plan.character_name == character_name
+        ]
+        adjacent = [item for item in matching if abs(item.index - storage_index) == 1]
+        if adjacent:
+            matching = adjacent
+        elif len(indexed_storage_actions) != 1:
+            matching = []
+        return tuple(
+            sorted(
+                _asset_delta_shape(delta)
+                for item in matching
+                for delta in concrete_asset_deltas(item.plan)
+                if delta.family in {"equipment", "ammunition"}
+                and delta.quantity
+            )
+        )
+
     def prepare_storage(indexed_storage, fallback_character=None):
         storage_index = indexed_storage[0]
         if storage_index not in prepared_storage:
@@ -1311,6 +1411,7 @@ def process_adjacent_storage_fee_groups(
                 indexed_storage,
                 party_tracker_data,
                 fallback_character=fallback_character,
+                required_deltas=required_deltas_for(indexed_storage),
             )
         return prepared_storage[storage_index]
 

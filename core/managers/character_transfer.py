@@ -957,21 +957,6 @@ def commit_prepared_character_actions(
                 )
             prepared = corrected
             shape_corrected_indices = {item.index for item in prepared}
-        planning_result = None
-        if enable_resource_planning:
-            failed_stage = "resource_transaction_planning"
-            import model_config
-            from core.managers.resource_transaction_planning import (
-                plan_and_stage_resource_transaction,
-            )
-
-            planning_result = plan_and_stage_resource_transaction(
-                prepared,
-                tuple(resource_storage_plans),
-                provider=model_config.get_provider(),
-            )
-            prepared = planning_result.character_actions
-            resource_storage_plans = planning_result.storage_plans
         failed_stage = "transfer_shape_validation"
         shape_mismatch = _batch_transfer_shape_mismatch(prepared)
         if shape_mismatch:
@@ -996,6 +981,28 @@ def commit_prepared_character_actions(
                 )
             prepared = corrected
             shape_corrected_indices = {item.index for item in prepared}
+        planning_result = None
+        if enable_resource_planning:
+            failed_stage = "resource_transaction_planning"
+            import model_config
+            from core.managers.resource_transaction_planning import (
+                plan_and_stage_resource_transaction,
+            )
+
+            planning_result = plan_and_stage_resource_transaction(
+                prepared,
+                tuple(resource_storage_plans),
+                provider=model_config.get_provider(),
+            )
+            prepared = planning_result.character_actions
+            resource_storage_plans = planning_result.storage_plans
+            failed_stage = "transfer_shape_validation"
+            shape_mismatch = _batch_transfer_shape_mismatch(prepared)
+            if shape_mismatch:
+                raise CharacterTransferError(
+                    "planned transfer still violates conservation: "
+                    f"{shape_mismatch}"
+                )
         by_index = {item.index: item for item in prepared}
         components = _candidate_components(prepared)
 

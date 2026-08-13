@@ -517,7 +517,12 @@ For "What's in our storage here?":
                 
         return operation
         
-    def process_storage_description(self, description: str, character_name: str) -> Dict[str, Any]:
+    def process_storage_description(
+        self,
+        description: str,
+        character_name: str,
+        required_deltas=(),
+    ) -> Dict[str, Any]:
         """Process natural language storage description into validated operation with retry logic"""
         
         max_attempts = 3
@@ -615,6 +620,16 @@ For "What's in our storage here?":
                 
                 # Validate operation
                 is_valid, validation_error = self._validate_operation(operation)
+                if is_valid and required_deltas:
+                    from core.managers.storage_transaction import (
+                        _storage_operation_coverage_error,
+                    )
+
+                    validation_error = _storage_operation_coverage_error(
+                        operation,
+                        required_deltas,
+                    )
+                    is_valid = validation_error is None
                 
                 if not is_valid:
                     warning(f"VALIDATION: Failed on attempt {attempt + 1}: {validation_error}", category="storage_operations")
@@ -713,10 +728,18 @@ For "What's in our storage here?":
             ]
 
 # Convenience functions for external use
-def process_storage_request(description: str, character_name: str) -> Dict[str, Any]:
+def process_storage_request(
+    description: str,
+    character_name: str,
+    required_deltas=(),
+) -> Dict[str, Any]:
     """Process a storage request from natural language description"""
     processor = StorageProcessor()
-    return processor.process_storage_description(description, character_name)
+    return processor.process_storage_description(
+        description,
+        character_name,
+        required_deltas=required_deltas,
+    )
 
 def get_storage_suggestions(character_name: str) -> List[str]:
     """Get storage action suggestions for a character"""
