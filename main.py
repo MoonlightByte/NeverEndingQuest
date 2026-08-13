@@ -5051,8 +5051,11 @@ def _storage_context_message(user_input, prediction):
         "content": (
             "READ-ONLY ACCESSIBLE STORAGE FACTS FOR THIS TURN. These are "
             "exact current facts, not permission to change state. Never invent "
-            "an unlisted container or resource. Use storageInteraction for any "
-            "storage mutation.\n"
+            "an unlisted container or resource. 'containers' are accessible at "
+            "the party's current location; 'knownContainersElsewhere' are not "
+            "accessible here and must never be recreated locally. If the player "
+            "names one, reference it where it is, travel there, or clarify the "
+            "intent. Use storageInteraction for any storage mutation.\n"
             + json.dumps(
                 snapshot,
                 ensure_ascii=False,

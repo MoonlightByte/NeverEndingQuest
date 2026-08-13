@@ -32,6 +32,7 @@
 import copy
 import json
 import os
+import re
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
@@ -119,6 +120,9 @@ def _bounded_accessible_storage_context(
             "deviceName": container.get("deviceName"),
             "deviceType": container.get("deviceType"),
             "locationId": container.get("locationId"),
+            "locationName": container.get("locationName"),
+            "areaId": container.get("areaId"),
+            "areaName": container.get("areaName"),
             "contents": copy.deepcopy(contents),
             "currency": {
                 denomination: currency.get(denomination, 0)
@@ -158,6 +162,128 @@ def _bounded_accessible_storage_context(
     return selected, None
 
 
+def _bounded_known_storage_elsewhere(
+    storage_data: Dict[str, Any],
+    current_location_id: str,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Return bounded identity/location facts for non-local containers."""
+    containers = storage_data.get("playerStorage", [])
+    if not isinstance(containers, list):
+        return [], "player storage is malformed"
+    selected = []
+    for container in containers:
+        if not isinstance(container, dict):
+            return [], "player storage contains a malformed container"
+        if container.get("locationId") == current_location_id:
+            continue
+        projected = {
+            "id": container.get("id"),
+            "deviceName": container.get("deviceName"),
+            "deviceType": container.get("deviceType"),
+            "locationId": container.get("locationId"),
+            "locationName": container.get("locationName"),
+            "areaId": container.get("areaId"),
+            "areaName": container.get("areaName"),
+        }
+        candidate = selected + [projected]
+        candidate_bytes = len(
+            json.dumps(
+                candidate,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        )
+        if (
+            len(candidate) > MAX_STORAGE_CONTEXT_ROWS
+            or candidate_bytes > MAX_STORAGE_CONTEXT_BYTES
+        ):
+            return [], (
+                "known non-local storage exceeds the safe model context bound; "
+                "the game will not guess whether a named container already exists"
+            )
+        selected.append(projected)
+    return selected, None
+
+
+def _container_name_tokens(value: Any) -> Tuple[str, ...]:
+    """Normalize only punctuation/case for exact container-name identity."""
+    return tuple(
+        re.findall(r"[^\W_]+", str(value or "").casefold(), flags=re.UNICODE)
+    )
+
+
+def _container_creating_operations(operation: Dict[str, Any]):
+    """Yield explicit and implicit container-creation operation shapes."""
+    operations = operation.get("operations")
+    if isinstance(operations, list):
+        for item in operations:
+            if isinstance(item, dict):
+                yield from _container_creating_operations(item)
+        return
+    action = operation.get("action")
+    if action == "create_storage" or (
+        action in {"store_item", "store_currency", "store_ammunition"}
+        and not operation.get("storage_id")
+    ):
+        yield operation
+
+
+def _nonlocal_container_name_conflict(
+    operation: Dict[str, Any],
+    context: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Find one exact normalized create-name collision outside this location."""
+    remote = context.get("known_storage_elsewhere") or []
+    for item in _container_creating_operations(operation):
+        requested = _container_name_tokens(item.get("storage_name"))
+        if not requested:
+            continue
+        matches = [
+            container
+            for container in remote
+            if _container_name_tokens(container.get("deviceName")) == requested
+        ]
+        if matches:
+            # Multiple same-name remote containers are themselves ambiguous;
+            # give the correction every canonical fact and still fail closed.
+            return {
+                "requestedName": item.get("storage_name"),
+                "matches": copy.deepcopy(matches),
+            }
+    return None
+
+
+def _nonlocal_container_correction(
+    conflict: Dict[str, Any],
+    context: Dict[str, Any],
+) -> str:
+    """Build deterministic facts for the single bounded T049 correction."""
+    current = context.get("location") or {}
+    facts = [
+        {
+            "canonicalContainerId": match.get("id"),
+            "canonicalContainerName": match.get("deviceName"),
+            "containerLocationId": match.get("locationId"),
+            "containerLocationName": match.get("locationName"),
+        }
+        for match in conflict.get("matches") or []
+    ]
+    return (
+        "The requested container name matches known storage at another "
+        f"location. Canonical facts: {json.dumps(facts, ensure_ascii=False)}. "
+        "The party is currently at "
+        f"{current.get('name', 'Unknown Location')} "
+        f"(ID: {current.get('id', 'UNKNOWN')}). Do not create or imply a new "
+        "local copy of that container. The response must instead reference "
+        "the container where it is, require travel there, or leave the action "
+        "unresolved for player clarification. If a genuinely different local "
+        "container was intended, select an existing local container by its "
+        "supplied exact id."
+    )
+
+
 def build_accessible_storage_snapshot(
     party_tracker_path="party_tracker.json",
     storage_path="player_storage.json",
@@ -176,6 +302,7 @@ def build_accessible_storage_snapshot(
             "available": True,
             "currentLocationId": location_id,
             "containers": [],
+            "knownContainersElsewhere": [],
         }
     storage = safe_json_load(storage_path)
     if not isinstance(storage, dict):
@@ -186,10 +313,17 @@ def build_accessible_storage_snapshot(
     )
     if context_error:
         return {"available": False, "containers": []}
+    remote, remote_error = _bounded_known_storage_elsewhere(
+        storage,
+        location_id,
+    )
+    if remote_error:
+        return {"available": False, "containers": []}
     return {
         "available": True,
         "currentLocationId": location_id,
         "containers": containers,
+        "knownContainersElsewhere": remote,
     }
 
 class StorageProcessor:
@@ -234,6 +368,7 @@ class StorageProcessor:
             "party": None,
             "location": None,
             "existing_storage": [],
+            "known_storage_elsewhere": [],
             "storage_context_error": None,
         }
         
@@ -271,6 +406,14 @@ class StorageProcessor:
                         storage_data,
                         current_location_id,
                     )
+                    if context["storage_context_error"] is None:
+                        (
+                            context["known_storage_elsewhere"],
+                            context["storage_context_error"],
+                        ) = _bounded_known_storage_elsewhere(
+                            storage_data,
+                            current_location_id,
+                        )
                 
         except Exception as e:
             print(f"[WARNING] Could not load full game context: {e}")
@@ -331,6 +474,9 @@ CHARACTER AMMUNITION (use exact names):
 EXISTING STORAGE AT LOCATION:
 {json.dumps(existing_storage_info, indent=2)}
 
+KNOWN STORAGE ELSEWHERE (identity and location only; not accessible here):
+{json.dumps(context.get('known_storage_elsewhere', []), indent=2)}
+
 STORAGE ACTION SCHEMA:
 {json.dumps(schema, indent=2)}
 
@@ -349,6 +495,7 @@ INSTRUCTIONS:
 12. Ammunition uses store_ammunition/retrieve_ammunition with ammunition_name and quantity; never represent ammunition as an item
 13. Every operation in one operations array must use the same character and storage container
 14. Never omit part of a mixed request; the game commits the complete operations array atomically or commits none of it
+15. Never create a local copy of a named container listed under KNOWN STORAGE ELSEWHERE; storage there requires travel, an explicit reference to that location, or player clarification
 
 OUTPUT REQUIREMENTS:
 - Return ONLY valid JSON that matches the storage action schema
@@ -562,9 +709,13 @@ For "What's in our storage here?":
         original_description = description
         completeness_required = ()
         completeness_checked = False
+        nonlocal_storage_conflict = None
         
         for attempt in range(max_attempts):
             try:
+                is_nonlocal_correction_attempt = (
+                    nonlocal_storage_conflict is not None
+                )
                 debug(f"AI_CALL: Storage processing attempt {attempt + 1} of {max_attempts}", category="storage_operations")
                 
                 # Get game context
@@ -628,6 +779,16 @@ For "What's in our storage here?":
                         raise ValueError("storage response must be a JSON object")
                     
                 except (json.JSONDecodeError, ValueError) as e:
+                    if is_nonlocal_correction_attempt:
+                        return {
+                            "success": False,
+                            "error": _nonlocal_container_correction(
+                                nonlocal_storage_conflict,
+                                context,
+                            ),
+                            "failure_code": "nonlocal_storage_reference",
+                            "raw_response": ai_response,
+                        }
                     if attempt == max_attempts - 1:  # Last attempt
                         return {
                             "success": False,
@@ -640,6 +801,13 @@ For "What's in our storage here?":
                 try:
                     operation = self._post_process_operation(operation, context)
                 except ValueError as post_process_error:
+                    if nonlocal_storage_conflict is not None:
+                        return {
+                            "success": False,
+                            "error": str(post_process_error),
+                            "failure_code": "nonlocal_storage_reference",
+                            "operation": operation,
+                        }
                     if attempt == max_attempts - 1:
                         return {
                             "success": False,
@@ -652,6 +820,42 @@ For "What's in our storage here?":
                         "EXISTING STORAGE AT LOCATION."
                     )
                     continue
+
+                conflict = _nonlocal_container_name_conflict(
+                    operation,
+                    context,
+                )
+                if conflict is not None:
+                    correction = _nonlocal_container_correction(conflict, context)
+                    if (
+                        nonlocal_storage_conflict is not None
+                        or attempt == max_attempts - 1
+                    ):
+                        return {
+                            "success": False,
+                            "error": correction,
+                            "failure_code": "nonlocal_storage_reference",
+                            "operation": operation,
+                        }
+                    nonlocal_storage_conflict = conflict
+                    description = (
+                        f"{original_description}\n\nPREVIOUS ATTEMPT FAILED: "
+                        f"{correction}"
+                    )
+                    continue
+                if (
+                    nonlocal_storage_conflict is not None
+                    and any(_container_creating_operations(operation))
+                ):
+                    return {
+                        "success": False,
+                        "error": _nonlocal_container_correction(
+                            nonlocal_storage_conflict,
+                            context,
+                        ),
+                        "failure_code": "nonlocal_storage_reference",
+                        "operation": operation,
+                    }
                 
                 # Validate operation
                 is_valid, validation_error = self._validate_operation(operation)
@@ -734,6 +938,16 @@ For "What's in our storage here?":
                             is_valid = validation_error is None
                 
                 if not is_valid:
+                    if is_nonlocal_correction_attempt:
+                        return {
+                            "success": False,
+                            "error": _nonlocal_container_correction(
+                                nonlocal_storage_conflict,
+                                context,
+                            ),
+                            "failure_code": "nonlocal_storage_reference",
+                            "operation": operation,
+                        }
                     warning(f"VALIDATION: Failed on attempt {attempt + 1}: {validation_error}", category="storage_operations")
                     
                     if attempt == max_attempts - 1:  # Last attempt
@@ -789,6 +1003,16 @@ For "What's in our storage here?":
                 
             except Exception as e:
                 error(f"FAILURE: Storage processing exception on attempt {attempt + 1}", exception=e, category="storage_operations")
+                if nonlocal_storage_conflict is not None:
+                    return {
+                        "success": False,
+                        "error": _nonlocal_container_correction(
+                            nonlocal_storage_conflict,
+                            context,
+                        ),
+                        "failure_code": "nonlocal_storage_reference",
+                        "description": original_description,
+                    }
                 if attempt == max_attempts - 1:  # Last attempt
                     return {
                         "success": False,
