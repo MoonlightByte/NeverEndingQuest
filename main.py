@@ -3042,14 +3042,18 @@ def prepare_conversation_for_ai_request(
     return outcome
 
 
-def _strictly_persist_conversation_history(conversation_history):
+def _strictly_persist_conversation_history(
+    conversation_history,
+    *,
+    allow_compression=False,
+):
     """Persist the authoritative list and track literal failure as dirty."""
     global _conversation_history_dirty, _dirty_conversation_history
     try:
         saved = save_conversation_history(
             conversation_history,
             strict=True,
-            allow_compression=False,
+            allow_compression=allow_compression,
         )
     except Exception as save_error:
         error(
@@ -3112,6 +3116,17 @@ def _ordinary_action_failure_message_id(response, action, conversation_history):
         prefix
         and isinstance(prefix[-1], dict)
         and prefix[-1].get("role") == "assistant"
+        and str(prefix[-1].get("message_id", "")).startswith(
+            "action-failure:"
+        )
+        and isinstance(prefix[-1].get("turn_receipt"), dict)
+        and prefix[-1]["turn_receipt"].get("success") is False
+    ):
+        prefix.pop()
+    if (
+        prefix
+        and isinstance(prefix[-1], dict)
+        and prefix[-1].get("role") == "assistant"
         and prefix[-1].get("content") == response
     ):
         prefix.pop()
@@ -3131,16 +3146,15 @@ def _ordinary_action_failure_message_id(response, action, conversation_history):
     return "action-failure:" + hashlib.sha256(encoded).hexdigest()
 
 
-def _safe_action_failure_result(result, message_id):
-    """Whitelist action-error metadata and attach the canonical player text."""
-    from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
-
+def _safe_action_failure_result(result, message_id, player_message, receipt):
+    """Whitelist action-error metadata and attach one truthful player outcome."""
     source_data = result.get("response_data") if isinstance(result, dict) else {}
     if not isinstance(source_data, dict):
         source_data = {}
     response_data = {
-        "player_message": SAFE_ACTION_FAILURE_MESSAGE,
+        "player_message": player_message,
         "message_id": message_id,
+        "turn_receipt": receipt,
     }
     for field in ("retryable", "state_changed", "recovery_required"):
         value = source_data.get(field)
@@ -3156,10 +3170,28 @@ def _safe_action_failure_result(result, message_id):
             isinstance(result, dict) and result.get("needs_update") is True
         ),
         "needs_dm_response": False,
-        "player_message": SAFE_ACTION_FAILURE_MESSAGE,
+        "player_message": player_message,
         "message_id": message_id,
+        "turn_receipt": receipt,
         "response_data": response_data,
     }
+
+
+def _attach_turn_receipt_to_latest_assistant(
+    conversation_history,
+    content,
+    receipt,
+):
+    """Attach local commit metadata to the exact durable narration."""
+    for message in reversed(conversation_history):
+        if (
+            isinstance(message, dict)
+            and message.get("role") == "assistant"
+            and message.get("content") == content
+        ):
+            message["turn_receipt"] = receipt
+            return True
+    return False
 
 
 def _record_resource_action_failure(
@@ -3208,48 +3240,103 @@ def _handle_ordinary_action_failure(
     response,
     action,
     conversation_history,
+    *,
+    receipt_builder=None,
 ):
-    """Persist and deliver one sanitized terminal error for an accepted turn."""
-    from web.shared_state import (
-        SAFE_ACTION_FAILURE_MESSAGE,
-        emit_player_output,
+    """Replace false success with one durable, in-fiction correction."""
+    from core.managers.resource_transaction_diagnostics import (
+        record_turn_receipt,
+    )
+    from core.managers.turn_receipt import (
+        TurnReceiptBuilder,
+        diegetic_failure_correction,
     )
 
-    message_id = _ordinary_action_failure_message_id(
+    stable_message_id = _ordinary_action_failure_message_id(
         response, action, conversation_history
     )
-    already_recorded = any(
-        isinstance(message, dict) and message.get("message_id") == message_id
-        for message in conversation_history
+    if receipt_builder is None:
+        receipt_builder = TurnReceiptBuilder(
+            stable_message_id,
+            (),
+        )
+    receipt = receipt_builder.finalize(success=False)
+    existing = next(
+        (
+            message
+            for message in conversation_history
+            if isinstance(message, dict)
+            and (
+                message.get("message_id") == stable_message_id
+                or (
+                    isinstance(message.get("turn_receipt"), dict)
+                    and message["turn_receipt"].get("correlationId")
+                    == receipt["correlationId"]
+                    and message["turn_receipt"].get("success") is False
+                )
+            )
+        ),
+        None,
     )
-    if not already_recorded:
-        assistant_message = {"role": "assistant", "content": response}
-        if not (
+    if existing is not None:
+        message_id = existing.get("message_id") or stable_message_id
+        if isinstance(existing.get("turn_receipt"), dict):
+            receipt = existing["turn_receipt"]
+        try:
+            correction = json.loads(existing.get("content", "{}"))["narration"]
+        except Exception:
+            correction = diegetic_failure_correction(action, receipt)
+        newly_recorded = False
+    else:
+        message_id = stable_message_id
+        correction = diegetic_failure_correction(action, receipt)
+        if (
             conversation_history
-            and conversation_history[-1] == assistant_message
+            and isinstance(conversation_history[-1], dict)
+            and conversation_history[-1].get("role") == "assistant"
+            and conversation_history[-1].get("content") == response
         ):
-            conversation_history.append(assistant_message)
+            conversation_history.pop()
         conversation_history.append(
             {
-                "role": "system",
-                "content": SAFE_ACTION_FAILURE_MESSAGE,
+                "role": "assistant",
+                "content": json.dumps(
+                    {"narration": correction, "actions": []},
+                    ensure_ascii=False,
+                ),
                 "message_id": message_id,
+                "turn_receipt": receipt,
             }
         )
+        newly_recorded = True
 
     _strictly_persist_conversation_history(conversation_history)
-    emit_player_output(
-        {
-            "type": "error",
-            "content": SAFE_ACTION_FAILURE_MESSAGE,
-            "message_id": message_id,
-        }
+    if newly_recorded:
+        display_dm_narration(correction)
+    response_data = result.get("response_data") if isinstance(result, dict) else {}
+    if not isinstance(response_data, dict):
+        response_data = {}
+    record_turn_receipt(
+        receipt,
+        failure_code=response_data.get(
+            "failure_code", result.get("failure_code") if isinstance(result, dict) else None
+        ),
+        stage=result.get("failed_stage") if isinstance(result, dict) else None,
+        exception_class=(
+            result.get("exception_class") if isinstance(result, dict) else None
+        ),
+        diagnostic=result.get("diagnostic") if isinstance(result, dict) else None,
     )
     try:
         status_ready()
     except Exception:
         pass
-    return _safe_action_failure_result(result, message_id)
+    return _safe_action_failure_result(
+        result,
+        message_id,
+        correction,
+        receipt,
+    )
 
 
 def _receipt_for_committed_module_result(result):
@@ -3623,6 +3710,12 @@ def process_ai_response(
         )
 
         resource_correlation_id = new_resource_correlation_id()
+        from core.managers.turn_receipt import TurnReceiptBuilder
+
+        turn_receipt = TurnReceiptBuilder(
+            resource_correlation_id,
+            range(len(actions)),
+        )
 
         # Movement is the transaction boundary for its response. Reject the
         # entire candidate before level-up or any other action can mutate
@@ -3678,6 +3771,7 @@ def process_ai_response(
                             response,
                             action,
                             conversation_history,
+                            receipt_builder=turn_receipt,
                         )
                     return result
             # Fallback in case the loop doesn't find it, though it should.
@@ -3825,6 +3919,7 @@ def process_ai_response(
                             response,
                             action,
                             conversation_history,
+                            receipt_builder=turn_receipt,
                         )
                     if result_status == "exit":
                         return "exit"
@@ -3859,6 +3954,10 @@ def process_ai_response(
                             location_data,
                             followup_history,
                         )
+                    turn_receipt.record_action_commit(
+                        transition_action_index,
+                        result,
+                    )
                     # Check if we need to generate a DM response (e.g., after module creation)
                     if result.get("needs_dm_response"):
                         if action.get("action") == "transitionLocation":
@@ -4068,7 +4167,10 @@ def process_ai_response(
 
             # Only now may later actions (especially saveGame) observe and
             # snapshot the destination timeline.
-            for action in deferred_actions:
+            for deferred_index, action in enumerate(
+                deferred_actions,
+                start=transition_action_index + 1,
+            ):
                 result = action_handler.process_action(
                     action,
                     party_tracker_data,
@@ -4085,7 +4187,9 @@ def process_ai_response(
                             response,
                             action,
                             fresh_conversation_history,
+                            receipt_builder=turn_receipt,
                         )
+                    turn_receipt.record_action_commit(deferred_index, result)
                     response_data = result.get("response_data")
                     deferred_pending = (
                         response_data.get("pending_archive")
@@ -4221,6 +4325,23 @@ def process_ai_response(
             # within-module transition checkpoint safe to retire.
             finish_location_transition_checkpoint()
 
+            transition_receipt = turn_receipt.finalize(success=True)
+            if _attach_turn_receipt_to_latest_assistant(
+                fresh_conversation_history,
+                full_narration,
+                transition_receipt,
+            ):
+                save_conversation_history(
+                    fresh_conversation_history,
+                    strict=True,
+                    allow_compression=False,
+                )
+            from core.managers.resource_transaction_diagnostics import (
+                record_turn_receipt,
+            )
+
+            record_turn_receipt(transition_receipt)
+
             if needs_transition_dm_response:
                 followup_history = load_json_file(json_file) or fresh_conversation_history
                 (
@@ -4241,7 +4362,13 @@ def process_ai_response(
                     followup_history,
                 )
 
-            return {"role": "assistant", "content": json.dumps({"narration": full_narration, "actions": []})}
+            return {
+                "role": "assistant",
+                "content": json.dumps(
+                    {"narration": full_narration, "actions": []}
+                ),
+                "turn_receipt": transition_receipt,
+            }
         
         # --- END NEW TRANSITION LOGIC ---
 
@@ -4407,6 +4534,10 @@ def process_ai_response(
                             final_characters,
                             final_storage_plans,
                         )
+                        turn_receipt.record_resource_commit(
+                            transaction_result,
+                            resource_action_indices,
+                        )
                     except TransactionStalePlanError:
                         if resource_attempt == 0:
                             debug(
@@ -4478,6 +4609,7 @@ def process_ai_response(
                         else indexed_storage[0][1]
                     ),
                     conversation_history,
+                    receipt_builder=turn_receipt,
                 )
             if isinstance(result, dict) and result.get("needs_update"):
                 needs_conversation_history_update = True
@@ -4533,8 +4665,11 @@ def process_ai_response(
                     response,
                     action,
                     conversation_history,
+                    receipt_builder=turn_receipt,
                 )
                 return safe_result
+
+            turn_receipt.record_action_commit(_action_index, result)
 
             if (
                 action.get("action") == "storageInteraction"
@@ -4650,12 +4785,27 @@ def process_ai_response(
                 if result.get("status") == "needs_response":
                     # Combat summary was added to conversation history, get AI response
                     # CRITICAL FIX: Save the current response to conversation history before getting new response
-                    current_response = {"role": "assistant", "content": response}
+                    current_receipt = turn_receipt.finalize(success=True)
+                    current_response = {
+                        "role": "assistant",
+                        "content": response,
+                        "turn_receipt": current_receipt,
+                    }
                     conversation_history.append(current_response)
-                    save_conversation_history(conversation_history)
+                    _strictly_persist_conversation_history(
+                        conversation_history,
+                        allow_compression=True,
+                    )
+                    from core.managers.resource_transaction_diagnostics import (
+                        record_turn_receipt,
+                    )
+
+                    record_turn_receipt(current_receipt)
                     
                     # Now reload and get the new AI response
-                    conversation_history = load_json_file("modules/conversation_history/conversation_history.json") or []
+                    conversation_history = _reload_conversation_history_if_safe(
+                        conversation_history
+                    )
                     ai_response = get_ai_response(conversation_history)
                     return process_ai_response(ai_response, party_tracker_data, location_data, conversation_history)
                 if result.get("needs_update"): needs_conversation_history_update = True
@@ -4682,9 +4832,22 @@ def process_ai_response(
         # This centralizes history management - the main_game_loop no longer needs to handle it.
         # This ensures the history is saved atomically with the response processing,
         # preventing any possibility of the history and game state becoming out of sync.
-        assistant_message = {"role": "assistant", "content": response}
+        final_receipt = turn_receipt.finalize(success=True)
+        assistant_message = {
+            "role": "assistant",
+            "content": response,
+            "turn_receipt": final_receipt,
+        }
         conversation_history.append(assistant_message)
-        save_conversation_history(conversation_history)
+        _strictly_persist_conversation_history(
+            conversation_history,
+            allow_compression=True,
+        )
+        from core.managers.resource_transaction_diagnostics import (
+            record_turn_receipt,
+        )
+
+        record_turn_receipt(final_receipt)
         
         # DELAYED ARCHIVING: Process any pending archive after the AI response is saved
         if pending_archive_info:
@@ -4846,6 +5009,19 @@ def _finalize_main_response_validation(
     return cleaned_history, None
 
 
+def _provider_message_projection(messages):
+    """Remove local history metadata before crossing a provider boundary."""
+    allowed = {"role", "content", "name", "tool_call_id", "tool_calls"}
+    projected = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        clean = {key: message[key] for key in allowed if key in message}
+        if "role" in clean and "content" in clean:
+            projected.append(clean)
+    return projected
+
+
 def get_ai_response(
     conversation_history,
     validation_retry_count=0,
@@ -4985,6 +5161,8 @@ def get_ai_response(
                 temp_file.unlink()
             except OSError as cleanup_error:
                 print(f"WARNING: Could not remove compression input: {cleanup_error}")
+
+    messages_to_send = _provider_message_projection(messages_to_send)
     
     # Export main conversation messages for debugging
     with open("main_conversation_messages_to_api.json", "w", encoding="utf-8") as f:

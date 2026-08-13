@@ -19,7 +19,10 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Tuple
 
-from core.managers.character_transfer import PreparedCharacterAction
+from core.managers.character_transfer import (
+    PreparedCharacterAction,
+    concrete_asset_deltas_between,
+)
 from core.managers.storage_transaction import StorageMutationPlan
 from updates.update_character_info import _character_image_hash
 from utils.enhanced_logger import warning
@@ -152,6 +155,38 @@ def _identity(participants: Iterable[_MergedParticipant]) -> str:
     return hashlib.sha256("|".join(facts).encode("utf-8")).hexdigest()
 
 
+def _receipt_participant_id(participant: _MergedParticipant) -> str:
+    """Return a stable opaque participant ID without exposing a local path."""
+    identity = "%s\0%s" % (participant.kind.value, participant.path)
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
+
+
+def _receipt_facts(participants: Iterable[_MergedParticipant]):
+    """Project bounded receipt facts from the exact committed images."""
+    participant_facts = []
+    resource_deltas = []
+    for participant in sorted(participants, key=lambda item: item.path):
+        participant_id = _receipt_participant_id(participant)
+        participant_facts.append(
+            {"id": participant_id, "kind": participant.kind.value}
+        )
+        if participant.kind != ParticipantKind.CHARACTER:
+            continue
+        for delta in concrete_asset_deltas_between(
+            participant.before,
+            participant.after,
+        ):
+            resource_deltas.append(
+                {
+                    "participant": participant_id,
+                    "family": delta.family,
+                    "name": delta.name,
+                    "quantity": delta.quantity,
+                }
+            )
+    return participant_facts, resource_deltas
+
+
 def execute_resource_response_transaction(
     character_actions: Tuple[PreparedCharacterAction, ...],
     storage_plans: Tuple[StorageMutationPlan, ...],
@@ -196,13 +231,32 @@ def execute_resource_response_transaction(
             after=plan.storage_after,
         )
 
+    advisories = {
+        advisory
+        for prepared in tuple(character_actions)
+        for advisory in prepared.plan.advisories
+        if advisory
+    }
+    advisories.update(
+        advisory
+        for plan in tuple(storage_plans)
+        for advisory in plan.advisories
+        if advisory
+    )
     changed = [
         participant
         for participant in participants.values()
         if not participant.existed or not _same(participant.before, participant.after)
     ]
     if not changed:
-        return {"success": True, "transaction_id": None, "participant_count": 0}
+        return {
+            "success": True,
+            "transaction_id": None,
+            "participant_count": 0,
+            "participants": [],
+            "resource_deltas": [],
+            "advisories": sorted(advisories),
+        }
 
     coordinator = StateTransactionCoordinator(workspace_root=".")
     coordinator_participants = []
@@ -249,12 +303,17 @@ def execute_resource_response_transaction(
             participant.before,
             participant.after,
         ):
+            advisories.add(advisory)
             warning(
                 "INVENTORY: %s" % advisory.replace(":", " "),
                 category="character_updates",
             )
+    participant_facts, resource_deltas = _receipt_facts(changed)
     return {
         "success": True,
         "transaction_id": result.transaction_id,
         "participant_count": len(changed),
+        "participants": participant_facts,
+        "resource_deltas": resource_deltas,
+        "advisories": sorted(advisories),
     }

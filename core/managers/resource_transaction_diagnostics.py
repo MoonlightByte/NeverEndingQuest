@@ -145,3 +145,72 @@ def record_resource_routing(
         return True
     except Exception:
         return False
+
+
+def record_turn_receipt(
+    receipt,
+    *,
+    failure_code=None,
+    stage=None,
+    exception_class=None,
+    diagnostic=None,
+):
+    """Append a bounded receipt projection; never expose game data or secrets."""
+    try:
+        if not isinstance(receipt, dict):
+            return False
+        intended = receipt.get("intendedActionIndices") or []
+        committed = receipt.get("committedActionIndices") or []
+        transaction_ids = receipt.get("transactionIds") or []
+        participants = receipt.get("participants") or []
+        deltas = receipt.get("resourceDeltas") or []
+        advisories = receipt.get("advisories") or []
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "runId": _PROCESS_RUN_ID,
+            "recordType": "turn_receipt",
+            "correlationId": _identifier(
+                receipt.get("correlationId"), limit=64
+            ),
+            "success": receipt.get("success") is True,
+            "intendedActionIndices": sorted(
+                value
+                for value in intended
+                if type(value) is int and 0 <= value <= 4096
+            )[:64],
+            "committedActionIndices": sorted(
+                value
+                for value in committed
+                if type(value) is int and 0 <= value <= 4096
+            )[:64],
+            "transactionIds": [
+                _identifier(value, limit=160)
+                for value in transaction_ids[:16]
+                if value
+            ],
+            "participantCount": min(len(participants), 64),
+            "resourceDeltaCount": min(len(deltas), 256),
+            "advisoryCount": min(len(advisories), 256),
+        }
+        if receipt.get("success") is not True:
+            entry.update(
+                {
+                    "failureCode": _identifier(failure_code),
+                    "stage": _identifier(stage),
+                    "exceptionClass": _identifier(exception_class),
+                    "diagnostic": _sanitize_diagnostic(diagnostic),
+                }
+            )
+        line = json.dumps(entry, ensure_ascii=True, separators=(",", ":")) + "\n"
+        if not _WRITE_LOCK.acquire(blocking=False):
+            return False
+        try:
+            path = _path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(line)
+        finally:
+            _WRITE_LOCK.release()
+        return True
+    except Exception:
+        return False
