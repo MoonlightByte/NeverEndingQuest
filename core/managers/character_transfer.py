@@ -1207,6 +1207,31 @@ def _prepare_actions(
     return tuple(prepared)
 
 
+def _reprepare_selected_actions(
+    prepared: Sequence[PreparedCharacterAction],
+    party: Mapping[str, Any],
+    correction: str,
+    action_indices,
+) -> Tuple[PreparedCharacterAction, ...]:
+    """Re-run only correction-owning actions; preserve every sibling plan."""
+    selected = {
+        value for value in action_indices if type(value) is int
+    }
+    if not selected:
+        return tuple(prepared)
+    corrected = _prepare_actions(
+        tuple(
+            (item.index, item.action)
+            for item in prepared
+            if item.index in selected
+        ),
+        party,
+        correction={index: correction for index in selected},
+    )
+    by_index = {item.index: item for item in corrected}
+    return tuple(by_index.get(item.index, item) for item in prepared)
+
+
 def process_character_update_batch(
     indexed_actions: Sequence[Tuple[int, Mapping[str, Any]]],
     party_tracker_data: Mapping[str, Any],
@@ -1311,11 +1336,24 @@ def commit_prepared_character_actions(
                 "duplicate, clamp, floor, partially apply, or substitute "
                 "another resource"
             )
-            corrected = _prepare_actions(
-                tuple((item.index, item.action) for item in prepared),
-                party_tracker_data,
-                correction=correction,
-            )
+            commerce_indices = {
+                item.index
+                for item in prepared
+                if _commerce_item_statements(item.changes)
+            }
+            if stated_value_mismatch.startswith("commerce "):
+                corrected = _reprepare_selected_actions(
+                    prepared,
+                    party_tracker_data,
+                    correction,
+                    commerce_indices,
+                )
+            else:
+                corrected = _prepare_actions(
+                    tuple((item.index, item.action) for item in prepared),
+                    party_tracker_data,
+                    correction=correction,
+                )
             remaining_stated_value_mismatch = _explicit_removal_contract_mismatch(
                 corrected
             )
