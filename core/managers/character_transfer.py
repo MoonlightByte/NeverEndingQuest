@@ -1381,15 +1381,46 @@ def _explicit_acquisition_contract_mismatch(
 
 def _validate_transfer_component(
     component: Sequence[PreparedCharacterAction],
+    *,
+    accepted_noncharacter_deltas=(),
 ) -> Optional[str]:
     paths = [item.plan.canonical_path for item in component]
     if len(paths) != len(set(paths)):
         return "a transfer resolves more than once to the same character"
 
+    accepted = {}
+    accepted_currency = {}
+    for value in accepted_noncharacter_deltas:
+        if not isinstance(value, tuple) or len(value) != 4:
+            return "planned non-character resource fact is malformed"
+        path, family, name, quantity = value
+        if family == "currency":
+            if name not in _DENOMINATIONS:
+                return "planned non-character currency fact is malformed"
+            accepted_currency[path] = accepted_currency.get(path, 0) + (
+                quantity * _DENOMINATIONS[name]
+            )
+            continue
+        accepted[value] = accepted.get(value, 0) + 1
+    for path, quantity in accepted_currency.items():
+        if quantity:
+            value = (path, "currency", "currency", quantity)
+            accepted[value] = accepted.get(value, 0) + 1
     grouped: Dict[Tuple[str, str], List[AssetDelta]] = {}
     for item in component:
         for delta in concrete_asset_deltas(item.plan):
+            accepted_key = (
+                item.plan.canonical_path,
+                delta.family,
+                delta.name,
+                delta.quantity,
+            )
+            if accepted.get(accepted_key, 0):
+                accepted[accepted_key] -= 1
+                continue
             grouped.setdefault(delta.lookup_key, []).append(delta)
+    if any(accepted.values()):
+        return "planned non-character resource fact is absent from the character image"
     if not any(
         any(value.quantity < 0 for value in values)
         and any(value.quantity > 0 for value in values)
@@ -1793,6 +1824,7 @@ def commit_prepared_character_actions(
             prepared = corrected
             shape_corrected_indices = {item.index for item in prepared}
         planning_result = None
+        planned_noncharacter_deltas = ()
         if enable_resource_planning:
             failed_stage = "resource_transaction_planning"
             import model_config
@@ -1807,6 +1839,11 @@ def commit_prepared_character_actions(
             )
             prepared = planning_result.character_actions
             resource_storage_plans = planning_result.storage_plans
+            planned_noncharacter_deltas = getattr(
+                planning_result,
+                "non_character_deltas",
+                (),
+            )
             failed_stage = "transfer_shape_validation"
             shape_mismatch = _batch_transfer_shape_mismatch(prepared)
             if shape_mismatch:
@@ -1821,7 +1858,16 @@ def commit_prepared_character_actions(
         failed_stage = "transfer_component_validation"
         for indices in components:
             component = tuple(by_index[index] for index in indices)
-            mismatch = _validate_transfer_component(component)
+            component_paths = {item.plan.canonical_path for item in component}
+            component_noncharacter_deltas = tuple(
+                value
+                for value in planned_noncharacter_deltas
+                if value[0] in component_paths
+            )
+            mismatch = _validate_transfer_component(
+                component,
+                accepted_noncharacter_deltas=component_noncharacter_deltas,
+            )
             if mismatch:
                 if set(indices).issubset(shape_corrected_indices):
                     corrected = component
@@ -1832,7 +1878,10 @@ def commit_prepared_character_actions(
                         party_tracker_data,
                         correction=correction,
                     )
-                    mismatch = _validate_transfer_component(corrected)
+                    mismatch = _validate_transfer_component(
+                        corrected,
+                        accepted_noncharacter_deltas=component_noncharacter_deltas,
+                    )
                 if mismatch:
                     corrected, _canonicalization_advisories = (
                         _canonicalize_unambiguous_transfer_rows(
@@ -1840,7 +1889,10 @@ def commit_prepared_character_actions(
                             mismatch,
                         )
                     )
-                    mismatch = _validate_transfer_component(corrected)
+                    mismatch = _validate_transfer_component(
+                        corrected,
+                        accepted_noncharacter_deltas=component_noncharacter_deltas,
+                    )
                     if mismatch:
                         raise CharacterTransferError(
                             f"transfer correction failed safely: {mismatch}"

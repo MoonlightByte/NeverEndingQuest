@@ -1610,6 +1610,22 @@ def process_adjacent_storage_fee_groups(
             for item in asset_mutations:
                 if item.index in handled_characters:
                     continue
+                if (
+                    item.index in transfer_claimed
+                    and storage_plan.character_path == item.plan.canonical_path
+                ):
+                    import model_config
+                    from core.managers.resource_transaction_planning import (
+                        storage_overlap_has_complete_planning_packet,
+                    )
+
+                    if storage_overlap_has_complete_planning_packet(
+                        prepared_character_actions,
+                        (storage_plan,),
+                        provider=model_config.get_provider(),
+                    ):
+                        overlapping_transfer = True
+                        continue
                 try:
                     combined = _combine_storage_owned_character_delta(
                         storage_plan,
@@ -1647,7 +1663,12 @@ def process_adjacent_storage_fee_groups(
                     overlapping_transfer = True
                     continue
                 exact.append((item, combined))
-            if overlapping_transfer or len(exact) > 1:
+            if overlapping_transfer:
+                # Preserve every independently prepared action and the storage
+                # plan for the bounded T105 graph.  Nothing is merged or
+                # claimed at this early one-action pairing seam.
+                continue
+            if len(exact) > 1:
                 raise StorageTransactionError(
                     "storage mutation overlaps an ambiguous character transfer"
                 )

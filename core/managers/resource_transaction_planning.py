@@ -129,6 +129,7 @@ class PlannedResourceTransaction:
     plan: Optional[Mapping[str, Any]]
     planner_calls: int
     advisories: Tuple[str, ...] = ()
+    non_character_deltas: Tuple[Tuple[str, str, str, int], ...] = ()
 
 
 _DENOMINATIONS = ("gold", "silver", "copper")
@@ -416,6 +417,42 @@ def route_resource_transaction(
         model_family=str(model_config.get("model") or "unknown"),
         inputs=inputs,
     )
+
+
+def storage_overlap_has_complete_planning_packet(
+    prepared: Sequence[PreparedCharacterAction],
+    storage_plans: Sequence[StorageMutationPlan],
+    *,
+    provider: str,
+) -> bool:
+    """Return whether an overlap is a complete, conserved T105 candidate.
+
+    This is the fail-safe escape from the legacy one-action/one-storage pairing
+    seam.  It performs no provider call and cannot relax an incomplete packet:
+    every exact resource identity must balance across the supplied character
+    and storage facts before the overlap may reach the bounded planner.
+    """
+    try:
+        _packet, facts = build_resource_transaction_packet(prepared, storage_plans)
+        if not any(fact.participant_id.startswith("storage:") for fact in facts):
+            return False
+        if not any(fact.participant_id.startswith("character:") for fact in facts):
+            return False
+        totals = {}
+        for fact in facts:
+            if fact.family not in _RESOURCE_FIELDS:
+                continue
+            key = (fact.family, fact.name)
+            totals[key] = totals.get(key, 0) + fact.quantity
+        if not totals or any(quantity != 0 for quantity in totals.values()):
+            return False
+        return route_resource_transaction(
+            prepared,
+            storage_plans,
+            provider=provider,
+        ).requires_planning
+    except ResourceTransactionPlanningError:
+        return False
 
 
 def _duplicate_equivalent(left: ResourceFact, right: ResourceFact) -> bool:
@@ -931,6 +968,7 @@ def _reconcile_staged_images(
     facts: Sequence[ResourceFact],
     staged: Sequence[str],
     edges,
+    non_character_deltas=(),
 ):
     """Prove staged finals exactly equal code-owned ledger arithmetic."""
     fact_map = _effective_edge_fact_map(facts, edges)
@@ -1002,7 +1040,15 @@ def _reconcile_staged_images(
     by_index = {item.index: item for item in staged_images}
     for component_indices in _candidate_components(staged_images):
         component = tuple(by_index[index] for index in component_indices)
-        mismatch = _validate_transfer_component(component)
+        component_paths = {item.plan.canonical_path for item in component}
+        mismatch = _validate_transfer_component(
+            component,
+            accepted_noncharacter_deltas=tuple(
+                value
+                for value in non_character_deltas
+                if value[0] in component_paths
+            ),
+        )
         if mismatch:
             raise ResourceTransactionPlanningError(mismatch)
 
@@ -1052,6 +1098,44 @@ def _effective_edge_fact_map(facts: Sequence[ResourceFact], edges):
     return effective
 
 
+def _non_character_edge_deltas(
+    facts: Sequence[ResourceFact],
+    edges,
+) -> Tuple[Tuple[str, str, str, int], ...]:
+    """Project character deltas paired to storage/external graph participants."""
+    fact_map = _effective_edge_fact_map(facts, edges)
+    result = []
+    for source_id, destination_id, authority in edges.values():
+        source = fact_map[source_id]
+        destination = fact_map[destination_id]
+        participants = (source.participant_id, destination.participant_id)
+        character_position = next(
+            (
+                index
+                for index, participant in enumerate(participants)
+                if participant.startswith("character:")
+            ),
+            None,
+        )
+        if character_position is None or all(
+            participant.startswith("character:") for participant in participants
+        ):
+            continue
+        character = source if character_position == 0 else destination
+        amount = (
+            abs(source.quantity) if authority == "source" else abs(destination.quantity)
+        )
+        result.append(
+            (
+                str(character.path),
+                character.family,
+                character.name,
+                -amount if character.direction == "out" else amount,
+            )
+        )
+    return tuple(sorted(result))
+
+
 def plan_and_stage_resource_transaction(
     prepared: Sequence[PreparedCharacterAction],
     storage_plans: Sequence[StorageMutationPlan],
@@ -1072,7 +1156,7 @@ def plan_and_stage_resource_transaction(
             decision, planner_calls=0, outcome="simple_complete", started=started
         )
         return PlannedResourceTransaction(
-            prepared, storage_plans, decision, None, 0, ()
+            prepared, storage_plans, decision, None, 0, (), ()
         )
     packet, facts = build_resource_transaction_packet(prepared, storage_plans)
     if planner is None:
@@ -1089,8 +1173,16 @@ def plan_and_stage_resource_transaction(
                 correction=failure if failure_kind == "validation" else None,
             )
             staged, _duplicates, edges = _validate_plan(value, facts)
+            non_character_deltas = _non_character_edge_deltas(facts, edges)
             characters = _stage_character_images(prepared, facts, staged, edges)
-            _reconcile_staged_images(prepared, characters, facts, staged, edges)
+            _reconcile_staged_images(
+                prepared,
+                characters,
+                facts,
+                staged,
+                edges,
+                non_character_deltas,
+            )
             _record_routing(
                 decision,
                 planner_calls=attempt + 1,
@@ -1104,6 +1196,7 @@ def plan_and_stage_resource_transaction(
                 copy.deepcopy(value),
                 attempt + 1,
                 ("resource_transaction_planned",),
+                non_character_deltas,
             )
         except Exception as exc:
             from core.ai.api_client import ProviderCallError
