@@ -827,29 +827,14 @@ class LocationPromptGuide:
     """
     
     encounters: str = """
-    Pre-planned encounters that occurred or may occur here.
-    Used to track module history and planned events.
-    
-    Fields:
-    - encounterId: Unique identifier (e.g., "R05-E1")
-    - summary: Brief description of what happened/will happen
-    - impact: How it affects the location or story
-    - worldConditions: Date/time when it occurred
-    
-    Example:
-    {
-        "encounterId": "R05-E1",
-        "summary": "Party fought and defeated the stone guardians",
-        "impact": "Guardians destroyed, forge now accessible",
-        "worldConditions": {
-            "year": 1492,
-            "month": "Springmonth",
-            "day": 15,
-            "time": "14:30:00"
-        }
-    }
-    
-    Used for continuity and world persistence.
+    Encounters are runtime-created history records, not authored module content.
+    A newly created, unplayed location has none.
+
+    Return encounters as an empty array: [].
+    Do NOT invent encounter history, encounterIds, dates, times, years, months,
+    or days. The engine creates dated encounter records at runtime, from the
+    party's authoritative clock, only when an encounter actually occurs.
+    Put possible future scenes in dmInstructions, plotHooks, or monsters instead.
     """
     
     doors: str = """
@@ -1161,16 +1146,11 @@ CRITICAL COMPLETE LOCATION CHECKLIST -- field names and nesting must match EXACT
 - Every trap requires name (string), description (string), detectDC
   (integer), disableDC (integer), triggerDC (integer), and damage (string).
 - Every feature requires name (string) and description (string).
-- Every encounter requires encounterId, summary, impact, and worldConditions.
-  worldConditions is an object requiring year (integer), month (string),
-  day (integer), and time (string).
-- Every encounterId must be the containing locationId followed by "-E" and a
-  number, for example "B01-E1". Never use underscores, an "E_" prefix, or a
-  different ordering.
-- Encounter month must be one of: Firstmonth, Coldmonth, Thawmonth,
-  Springmonth, Bloommonth, Sunmonth, Heatmonth, Harvestmonth, Autumnmonth,
-  Fademonth, Frostmonth, or Yearend. Never return a numeric month. Encounter
-  day must be an integer from 1 through 28.
+- "encounters" must be exactly []. This is a newly created, unplayed location,
+  so no encounters have occurred yet; the engine creates dated encounter records
+  at runtime when one actually occurs. Do NOT invent encounter history,
+  encounterIds, dates, times, years, months, or days. Put possible future scenes
+  in dmInstructions, plotHooks, or monsters.
 - Every door requires name, description, type, locked, lockDC, breakDC,
   keyname, trapped, and trap, using the types listed below.
 - "dcChecks" entries begin with an official skill or ability name only and use
