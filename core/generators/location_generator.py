@@ -197,6 +197,18 @@ def _canonicalize_t026_mechanical_fields(parsed: Any) -> Any:
         location["adventureSummary"] = ""
         location["explorationState"] = {"status": "unvisited"}
 
+        # Encounters are runtime-created records, not authored module content.
+        # A fresh location has none: the shipped starter modules (e.g.
+        # The_Thornwood_Watch, Keep_of_Doom) ship with empty encounters, and the
+        # engine appends a dated encounter with the AUTHORITATIVE party-tracker
+        # clock only when one actually occurs (core/managers/combat_manager.py
+        # append; adv_summary/T015). Model-authored encounters carry invented
+        # timestamps (Qwen produced day: 30 > the 28-day calendar, and years
+        # 842/2024 vs the party's 1492) that are never the real clock but are fed
+        # into DM narration context. Strip them deterministically so a weak model
+        # can never inject a bad date or a phantom encounter into a new module.
+        location["encounters"] = []
+
         checks = location.get("dcChecks")
         if isinstance(checks, list):
             for index, check in enumerate(checks):
@@ -904,6 +916,88 @@ class LocationPromptGuide:
     Used by system for area transitions.
     """
 
+# --- T026 surgical field repair (issue #134 fail-forward ladder) --------------
+# When the model omits or malforms a field on an otherwise-good location, fix ONLY
+# that field instead of regenerating the whole location (which re-rolls the
+# stochastic model and can drop a different field or rewrite good content).
+#   * Mechanical fields  -> code fills from the trusted stub or a fixed runtime
+#                           default (no model call, one correct answer).
+#   * Creative fields    -> re-ask the model for JUST that field's value
+#                           (generate_field), seeded with the location's own good
+#                           content; code splices the value back in.
+#   * Creative that still -> a minimal schema-valid floor so the build never
+#     fails (rare)          aborts; the field name is returned so the pipeline can
+#                           flag the location for the module doctor to enrich.
+_T026_STRUCTURAL_STUB_FIELDS = (
+    "locationId", "name", "type", "coordinates", "connectivity",
+    "areaConnectivity", "areaConnectivityId",
+)
+_T026_RUNTIME_FIELD_DEFAULTS = {
+    "encounters": [],
+    "adventureSummary": "",
+    "explorationState": {"status": "unvisited"},
+}
+
+
+def _t026_top_field(path: str) -> str:
+    """Reduce a schema issue path to its top location field.
+
+    Handles the batch prefix ('locations[3].monsters[0].quantity' -> 'monsters')
+    and unprefixed paths ('description' -> 'description').
+    """
+    if path.startswith("locations["):
+        close = path.find("]")
+        if close != -1:
+            path = path[close + 1:].lstrip(".")
+    for separator in (".", "["):
+        cut = path.find(separator)
+        if cut != -1:
+            path = path[:cut]
+    return path
+
+
+def _t026_creative_floor(field_schema: Dict[str, Any]) -> Any:
+    """A minimal schema-valid value for a creative field the model could not fill."""
+    kind = field_schema.get("type") if isinstance(field_schema, dict) else None
+    if kind == "array":
+        return []
+    if kind == "object":
+        return {}
+    if kind in ("integer", "number"):
+        return field_schema.get("minimum", 0) if isinstance(field_schema, dict) else 0
+    return "To be detailed by the module doctor."
+
+
+def _t026_surgical_repair_location(gen, location, stub, issues, item_schema, context):
+    """Repair ONLY the broken fields of one location, preserving accepted content.
+
+    Returns (fixed_location, floored_fields). The caller re-validates; any field in
+    floored_fields was code-filled as a last resort and should be flagged for the
+    module doctor.
+    """
+    fixed = copy.deepcopy(location)
+    props = item_schema.get("properties", {}) if isinstance(item_schema, dict) else {}
+    floored = []
+    handled = set()
+    for issue in issues:
+        field = _t026_top_field(issue.path)
+        if not field or field in handled:
+            continue
+        handled.add(field)
+        if field in _T026_STRUCTURAL_STUB_FIELDS and isinstance(stub, dict) and field in stub:
+            fixed[field] = copy.deepcopy(stub[field])            # trusted structure, code-owned
+        elif field in _T026_RUNTIME_FIELD_DEFAULTS:
+            fixed[field] = copy.deepcopy(_T026_RUNTIME_FIELD_DEFAULTS[field])
+        else:
+            field_schema = props.get(field, {"type": "string"})
+            try:
+                fixed[field] = gen.generate_field(field, field_schema, context)   # surgical agentic
+            except Exception:
+                fixed[field] = _t026_creative_floor(field_schema)  # last-resort valid floor
+                floored.append(field)
+    return fixed, floored
+
+
 class LocationGenerator:
     def __init__(self):
         self.prompt_guide = LocationPromptGuide()
@@ -1275,6 +1369,47 @@ Do not return commentary or Markdown.
             first_locations,
             self.schema,
         )
+
+        # Fail-forward ladder (issue #134): surgically repair ONLY the broken
+        # field(s) of each otherwise-good location before any whole-location
+        # regeneration. This preserves the model's accepted content -- mechanical
+        # fields are code-filled from the trusted stub, creative fields are
+        # re-asked one at a time (generate_field) and spliced back in, and a
+        # creative field the model still cannot produce gets a minimal valid floor
+        # flagged for the module doctor. Locations made valid drop out of the
+        # whole-location repair set below, so a weak model's stochastic field
+        # omission never aborts the build.
+        if invalid_by_index:
+            item_schema = _location_item_schema(self.schema)
+            base_context = {
+                "moduleName": module_data.get("moduleName", ""),
+                "areaName": area_data.get("areaName", ""),
+                "areaType": area_data.get("areaType", ""),
+            }
+            remaining_invalid = {}
+            for index, issues in invalid_by_index.items():
+                context = dict(base_context)
+                context["stub"] = location_stubs[index]
+                context["location"] = first_locations[index]
+                repaired, floored = _t026_surgical_repair_location(
+                    self, first_locations[index], location_stubs[index],
+                    issues, item_schema, context,
+                )
+                still = _schema_issues(
+                    repaired, item_schema, prefix=("locations", index)
+                )
+                if still:
+                    remaining_invalid[index] = still
+                else:
+                    first_locations[index] = repaired
+                    if floored:
+                        print(
+                            "WARNING: T026 surgical repair floor-filled "
+                            f"{location_stubs[index].get('locationId')} fields "
+                            f"{floored}; flag for module doctor enrichment"
+                        )
+            invalid_by_index = remaining_invalid
+
         if not invalid_by_index:
             try:
                 return _validate_location_batch_contract(
