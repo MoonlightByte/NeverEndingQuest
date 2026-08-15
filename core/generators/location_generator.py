@@ -986,11 +986,25 @@ def _t026_surgical_repair_location(gen, location, stub, issues, item_schema, con
 class LocationGenerator:
     def __init__(self):
         self.prompt_guide = LocationPromptGuide()
+        # Runtime schema -- the live gameplay contract. Used to VALIDATE every
+        # accepted T026 result before publishing (encounters allowed, runtime
+        # populates them). Never weakened.
         self.schema = self.load_schema()
-    
+        # Generation schema -- a clean duplicate of the runtime schema with the
+        # runtime-owned encounter/date-time template removed. Used only to
+        # CONSTRAIN the model-facing request so schema-honoring providers
+        # (OpenAI strict, Gemini response_schema) are never shown a dated
+        # encounter shape to imitate. See schemas/loca_generation_schema.json.
+        self.generation_schema = self.load_generation_schema()
+
     def load_schema(self) -> Dict[str, Any]:
-        """Load the location schema for validation"""
+        """Load the runtime location schema for validation"""
         with open("schemas/loca_schema.json", "r") as f:
+            return json.load(f)
+
+    def load_generation_schema(self) -> Dict[str, Any]:
+        """Load the generation-only location schema for model-facing requests"""
+        with open("schemas/loca_generation_schema.json", "r") as f:
             return json.load(f)
     
     def generate_field(self, field_path: str, schema_info: Dict[str, Any], 
@@ -1241,10 +1255,13 @@ Return no commentary or Markdown.
         _location_stub_ids(location_stubs)
 
         def _semantic_call(prompt: str, expected_count: int):
+            # Constrain the model-facing request with the GENERATION schema
+            # (no encounter/date-time template). The accepted result is still
+            # validated against the runtime self.schema below.
             response_format, extra_params = _t026_request_options(
                 MODEL_PROVIDER,
                 main_cfg,
-                self.schema,
+                self.generation_schema,
                 expected_count,
             )
             try:
