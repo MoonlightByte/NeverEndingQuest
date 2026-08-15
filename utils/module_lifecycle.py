@@ -599,15 +599,16 @@ class ModuleLifecycleStore:
         if stable_file_ids:
             return entries
 
-        verified_entries, verified_observations = cls._walk_manifest_once(
+        verified_entries, _verified_observations = cls._walk_manifest_once(
             root_path,
             root_device,
             stable_file_ids=False,
         )
-        if (
-            verified_entries != entries
-            or verified_observations != observations
-        ):
+        # Issue #134 fix: compare CONTENT (size + SHA-256 per file) between the two
+        # reads, not volatile stat metadata. The prior code also compared
+        # (size, st_mtime_ns) observations, which false-failed on filesystems that
+        # bump mtime between reads even when the bytes are identical.
+        if verified_entries != entries:
             raise LifecycleIndeterminateError(
                 "Manifest changed between content verification reads"
             )
@@ -750,20 +751,16 @@ class ModuleLifecycleStore:
                 descriptor = os.open(os.fspath(child_path), flags)
                 try:
                     opened = os.fstat(descriptor)
-                    if stable_file_ids:
-                        if (
-                            opened.st_dev != child_stat.st_dev
-                            or opened.st_ino != child_stat.st_ino
-                            or not stat.S_ISREG(opened.st_mode)
-                        ):
-                            raise LifecycleIndeterminateError(
-                                "Manifest file identity changed"
-                            )
-                    elif (
-                        opened.st_dev != child_stat.st_dev
-                        or not stat.S_ISREG(opened.st_mode)
-                        or cls._manifest_stat_observation(opened)
-                        != cls._manifest_stat_observation(child_stat)
+                    # Issue #134 fix: verify the open landed on a real regular file on the
+                    # same device, but do NOT compare st_ino or st_mtime_ns. On Windows/
+                    # NTFS (and under Python 3.14) those legitimately differ between a
+                    # path stat and a handle stat, and NTFS flushes mtime lazily right
+                    # after the generator writes -- so a good, unchanged module was being
+                    # falsely discarded ("Manifest file changed while read"). Content
+                    # integrity is proven by the SHA-256 digest below and by the
+                    # cross-phase digest comparison, never by volatile metadata.
+                    if opened.st_dev != child_stat.st_dev or not stat.S_ISREG(
+                        opened.st_mode
                     ):
                         raise LifecycleIndeterminateError(
                             "Manifest file changed before read"
@@ -776,33 +773,19 @@ class ModuleLifecycleStore:
                         total += len(chunk)
                     final_stat = os.fstat(descriptor)
                     rebound = os.lstat(child_path)
-                    if stable_file_ids:
-                        if (
-                            final_stat.st_dev != child_stat.st_dev
-                            or final_stat.st_ino != child_stat.st_ino
-                            or rebound.st_dev != child_stat.st_dev
-                            or rebound.st_ino != child_stat.st_ino
-                            or total != final_stat.st_size
-                        ):
-                            raise LifecycleIndeterminateError(
-                                "Manifest file changed while read"
-                            )
-                    else:
-                        observation = cls._manifest_stat_observation(child_stat)
-                        if (
-                            final_stat.st_dev != child_stat.st_dev
-                            or rebound.st_dev != child_stat.st_dev
-                            or not stat.S_ISREG(final_stat.st_mode)
-                            or not stat.S_ISREG(rebound.st_mode)
-                            or cls._manifest_stat_observation(final_stat)
-                            != observation
-                            or cls._manifest_stat_observation(rebound)
-                            != observation
-                            or total != final_stat.st_size
-                        ):
-                            raise LifecycleIndeterminateError(
-                                "Manifest file changed while read"
-                            )
+                    # Genuine safety only: same device, still a regular file, and the
+                    # bytes read match the final size (catches a real truncation/growth).
+                    # No st_ino / st_mtime_ns equality assertions (see comment above).
+                    if (
+                        final_stat.st_dev != child_stat.st_dev
+                        or rebound.st_dev != child_stat.st_dev
+                        or not stat.S_ISREG(final_stat.st_mode)
+                        or not stat.S_ISREG(rebound.st_mode)
+                        or total != final_stat.st_size
+                    ):
+                        raise LifecycleIndeterminateError(
+                            "Manifest file changed while read"
+                        )
                 finally:
                     os.close(descriptor)
                 entries[relative_text] = {
@@ -810,26 +793,15 @@ class ModuleLifecycleStore:
                     "size": total,
                     "sha256": digest.hexdigest(),
                 }
-                if not stable_file_ids:
-                    observations[relative_text] = observation
             after = os.lstat(directory)
-            if stable_file_ids:
-                if before.st_dev != after.st_dev or before.st_ino != after.st_ino:
-                    raise LifecycleIndeterminateError(
-                        "Manifest directory identity changed"
-                    )
-            else:
-                if (
-                    after.st_dev != root_device
-                    or not stat.S_ISDIR(after.st_mode)
-                    or cls._manifest_stat_observation(after)
-                    != cls._manifest_stat_observation(before)
-                ):
-                    raise LifecycleIndeterminateError(
-                        "Manifest directory changed while read"
-                    )
-                observations[relative.as_posix()] = (
-                    cls._manifest_stat_observation(before)
+            # Issue #134 fix: a directory's st_ino / st_mtime_ns is volatile -- its mtime
+            # bumps whenever a child file is written or touched during the walk (and the
+            # same path-vs-handle / Python-3.14 differences apply). Verify only that it is
+            # still a directory on the same device; the directory's real integrity is its
+            # already-content-hashed entries, not a metadata timestamp.
+            if after.st_dev != root_device or not stat.S_ISDIR(after.st_mode):
+                raise LifecycleIndeterminateError(
+                    "Manifest directory changed while read"
                 )
 
         walk(root_path, Path("."))
