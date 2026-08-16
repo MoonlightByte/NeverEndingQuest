@@ -928,8 +928,9 @@ DM_MAIN_LMSTUDIO = {"model": "local-model"}
 # gpt-5.6-luna|high scored 28.3/30 (blind avg), BEATING gpt-5.2|none (26.3) at 1/12th
 # the cost ($0.009 vs $0.114/build) and 2.4x faster. Retires gpt-5.2 for THIS callsite only;
 # the other DM_MAIN callsites keep DM_MAIN_GPT52_NONE until separately evaluated.
-# NOTE: high reasoning effort requires temperature=default(1) -- the T026 callsite drops
-# its temperature override when the selected config's reasoning_effort is not "none".
+# NOTE: high reasoning effort requires temperature=default(1); create_completion's
+# _enforce_provider_constraints strips temperature automatically for gpt-5.x (non-mini)
+# at reasoning > none, so the callsite passes temperature uniformly like every sibling.
 DM_MAIN_T026_GPT56LUNA_HIGH = {"model": "gpt-5.6-luna", "reasoning_effort": "high"}
 
 # --- Model Routing Settings ---

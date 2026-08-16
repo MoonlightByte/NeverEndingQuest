@@ -1267,13 +1267,6 @@ Return no commentary or Markdown.
                 self.generation_schema,
                 expected_count,
             )
-            # Temperature compatibility: these models accept an explicit
-            # temperature only when reasoning is off. A non-"none" reasoning
-            # effort (e.g. luna|high) requires the default temperature, so the
-            # callsite drops its override in that case. Legacy/lmstudio/gemini
-            # (no reasoning_effort) keep temperature=0.8 unchanged.
-            _effort = main_cfg.get("reasoning_effort")
-            _temp_kwargs = {} if _effort not in (None, "none") else {"temperature": 0.8}
             try:
                 response = capture_and_fanout(
                     "T026",
@@ -1290,8 +1283,12 @@ Return no commentary or Markdown.
                         {"role": "user", "content": prompt},
                     ],
                     model=main_cfg["model"],
+                    # temperature is passed uniformly like every sibling callsite;
+                    # create_completion's _enforce_provider_constraints strips it
+                    # automatically for gpt-5.x (non-mini) at reasoning > none
+                    # (e.g. luna|high), so no callsite-level gating is needed.
+                    temperature=0.8,
                     response_format=response_format,
-                    **_temp_kwargs,
                     **extra_params,
                 )
             except api_client.ProviderEmptyResponse as exc:
