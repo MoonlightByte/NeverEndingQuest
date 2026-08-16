@@ -89,6 +89,24 @@ def _location_stub_ids(location_stubs: List[Dict[str, Any]]) -> List[str]:
     return ids
 
 
+def _t026_valid_cross_area_stub(area_connectivity: Any, area_connectivity_id: Any) -> bool:
+    """Validate a stub's parallel cross-area arrays before trusting them (issue #159).
+
+    Both must be lists of equal length containing only non-blank strings. Pairings
+    are NOT inferred or repaired -- a malformed stub is a code-contract bug in the
+    upstream compiler, surfaced by the caller, never a reason to keep model output.
+    An empty pair ([], []) is valid (the classic path's uninitialized state).
+    """
+    if not isinstance(area_connectivity, list) or not isinstance(area_connectivity_id, list):
+        return False
+    if len(area_connectivity) != len(area_connectivity_id):
+        return False
+    for value in (*area_connectivity, *area_connectivity_id):
+        if not isinstance(value, str) or not value.strip():
+            return False
+    return True
+
+
 def _canonicalize_t026_stub_owned_fields(
     parsed: Any,
     location_stubs: List[Dict[str, Any]],
@@ -133,6 +151,8 @@ def _canonicalize_t026_stub_owned_fields(
     restored_id_indexes = []
     restored_danger_indexes = []
     restored_coord_indexes = []
+    restored_xarea_indexes = []
+    malformed_xarea_indexes = []
     for index, location in enumerate(locations):
         if location.get("locationId") != expected_ids[index]:
             location["locationId"] = expected_ids[index]
@@ -150,6 +170,30 @@ def _canonicalize_t026_stub_owned_fields(
             if location.get("coordinates") != stub_coord:
                 location["coordinates"] = stub_coord
                 restored_coord_indexes.append(index)
+
+        # areaConnectivity / areaConnectivityId are CODE-OWNED cross-area fields
+        # (issue #159). Story-first compiles them into the stub
+        # (compile_area_binding) and validates exact equality downstream; the
+        # classic path leaves them empty on the stub and finalize is the sole
+        # author (Step 4.55). The T026 model is (wrongly, pre-159-B) told to
+        # author them and mislabels the parallel IDs as AREA ids, polluting the
+        # field. Restore BOTH from the trusted stub on every index: classic ->
+        # [] (model pollution cleared); story-first -> compiled links preserved
+        # exactly, which satisfies the downstream exact-equality validator by
+        # construction. Identity==position is already guaranteed by the preflight
+        # above. A malformed STUB (parallel arrays unequal / non-string / blank)
+        # is a code-contract bug we surface, never a reason to keep model output.
+        stub_ac = location_stubs[index].get("areaConnectivity", [])
+        stub_acid = location_stubs[index].get("areaConnectivityId", [])
+        if not _t026_valid_cross_area_stub(stub_ac, stub_acid):
+            malformed_xarea_indexes.append(index)
+            stub_ac = stub_ac if isinstance(stub_ac, list) else []
+            stub_acid = stub_acid if isinstance(stub_acid, list) else []
+        if (location.get("areaConnectivity") != stub_ac
+                or location.get("areaConnectivityId") != stub_acid):
+            location["areaConnectivity"] = copy.deepcopy(stub_ac)
+            location["areaConnectivityId"] = copy.deepcopy(stub_acid)
+            restored_xarea_indexes.append(index)
 
         returned_danger = location.get("dangerLevel")
         stub_danger = location_stubs[index].get("dangerLevel")
@@ -182,6 +226,21 @@ def _canonicalize_t026_stub_owned_fields(
             "to the trusted map-owned stub coordinates at indexes "
             f"{restored_coord_indexes} (issue #128 class; coordinates are "
             "code-owned map geometry)."
+        )
+    if restored_xarea_indexes:
+        print(
+            "WARNING: T026 restored "
+            f"{len(restored_xarea_indexes)} model-authored areaConnectivity/"
+            "areaConnectivityId value(s) to the trusted code-owned stub at "
+            f"indexes {restored_xarea_indexes} (issue #159; cross-area links "
+            "are code-owned -- classic cleared to [], story-first preserved)."
+        )
+    if malformed_xarea_indexes:
+        print(
+            "WARNING: T026 encountered malformed cross-area STUB arrays "
+            f"(unequal/non-string/blank) at indexes {malformed_xarea_indexes} "
+            "(code-contract bug in the upstream stub; coerced to safe lists, "
+            "did NOT trust model output)."
         )
     return corrected
 
