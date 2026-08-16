@@ -923,6 +923,15 @@ DM_MAIN_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "
 DM_MAIN_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 DM_MAIN_LMSTUDIO = {"model": "local-model"}
 
+# T026 (location batch generation) -- per-callsite selection from the 2026-08-15
+# blind 3-reviewer quality + cost eval (docs/audits/2026-08-15-t026-model-quality-eval.md).
+# gpt-5.6-luna|high scored 28.3/30 (blind avg), BEATING gpt-5.2|none (26.3) at 1/12th
+# the cost ($0.009 vs $0.114/build) and 2.4x faster. Retires gpt-5.2 for THIS callsite only;
+# the other DM_MAIN callsites keep DM_MAIN_GPT52_NONE until separately evaluated.
+# NOTE: high reasoning effort requires temperature=default(1) -- the T026 callsite drops
+# its temperature override when the selected config's reasoning_effort is not "none".
+DM_MAIN_T026_GPT56LUNA_HIGH = {"model": "gpt-5.6-luna", "reasoning_effort": "high"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures

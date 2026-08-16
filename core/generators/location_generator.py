@@ -1243,7 +1243,10 @@ Return no commentary or Markdown.
 
         from model_config import MODEL_PROVIDER
         if MODEL_PROVIDER == "openai":
-            main_cfg = config.DM_MAIN_GPT52_NONE
+            # Selected from the 2026-08-15 blind quality+cost eval: gpt-5.6-luna|high
+            # beat gpt-5.2|none on quality (28.3 vs 26.3) at ~1/12th the cost and 2.4x
+            # faster. T026-only binding; other DM_MAIN callsites stay on gpt-5.2.
+            main_cfg = config.DM_MAIN_T026_GPT56LUNA_HIGH
         elif MODEL_PROVIDER == "gemini":
             main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
         elif MODEL_PROVIDER == "lmstudio":
@@ -1264,6 +1267,13 @@ Return no commentary or Markdown.
                 self.generation_schema,
                 expected_count,
             )
+            # Temperature compatibility: these models accept an explicit
+            # temperature only when reasoning is off. A non-"none" reasoning
+            # effort (e.g. luna|high) requires the default temperature, so the
+            # callsite drops its override in that case. Legacy/lmstudio/gemini
+            # (no reasoning_effort) keep temperature=0.8 unchanged.
+            _effort = main_cfg.get("reasoning_effort")
+            _temp_kwargs = {} if _effort not in (None, "none") else {"temperature": 0.8}
             try:
                 response = capture_and_fanout(
                     "T026",
@@ -1280,8 +1290,8 @@ Return no commentary or Markdown.
                         {"role": "user", "content": prompt},
                     ],
                     model=main_cfg["model"],
-                    temperature=0.8,
                     response_format=response_format,
+                    **_temp_kwargs,
                     **extra_params,
                 )
             except api_client.ProviderEmptyResponse as exc:
