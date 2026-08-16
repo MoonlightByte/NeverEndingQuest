@@ -2085,6 +2085,121 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 self.log("Step 7: Validating module consistency...")
                 self.validate_module()
 
+        # Issue #160 (DEFAULT-OFF, classic-only): agentic NPC cross-area coherence
+        # correction. Runs AFTER the T088 locks release so the T104 model call never
+        # holds the global refresh/context locks. Best-effort + fail-closed: any
+        # failure leaves the reconciled module intact and NEVER aborts the build
+        # (heal-forward -- a module is always produced).
+        self._apply_npc_coherence(context_path)
+
+    def _apply_npc_coherence(self, context_path):
+        """Issue #160: reconcile same-name NPCs recurring across areas via one
+        bounded T104 model call (agentic decision) + code-validated fail-closed
+        apply. Default-off and classic-only. On ANY problem it logs and leaves the
+        module unchanged -- it never aborts the build.
+        """
+        import config
+        if not getattr(config, "ENABLE_NPC_COHERENCE_REPAIR", False):
+            return
+        try:
+            import glob
+            from core.generators import npc_coherence as nc
+            from model_config import MODEL_PROVIDER
+            from utils.file_operations import safe_read_json
+            from core.ai import api_client
+
+            out = self.config.output_directory
+            staged = {}
+            for path in sorted(glob.glob(os.path.join(out, "areas", "*.json"))):
+                if path.endswith("_BU.json"):
+                    continue
+                area = safe_read_json(path)
+                if isinstance(area, dict) and area.get("areaId"):
+                    staged[area["areaId"]] = area
+            plot = safe_read_json(os.path.join(out, "module_plot.json")) or {}
+            # Existing "known names" mechanism: party members are passed so the AI
+            # never reuses them; reuse that exclusion set here too.
+            party_names = []
+            pt = safe_read_json(os.path.join(out, "party_tracker.json")) or {}
+            for member in (pt.get("partyMembers") or []):
+                if isinstance(member, str):
+                    party_names.append(member)
+
+            packet = nc.build_coherence_packet(staged, plot, party_names)
+            if packet is None:
+                self.log("Step 7.5: NPC coherence -- no cross-area same-name identities; no call")
+                return
+
+            # Provider config (T104's OWN named bindings).
+            if MODEL_PROVIDER == "openai":
+                cfg = config.NPC_COHERENCE_T104_GPT56LUNA_HIGH
+            elif MODEL_PROVIDER == "gemini":
+                cfg = config.NPC_COHERENCE_T104_GEMINI_PRO_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                cfg = config.NPC_COHERENCE_T104_LMSTUDIO
+            else:
+                cfg = config.NPC_COHERENCE_T104_LEGACY
+
+            send_packet = {k: v for k, v in packet.items() if k != "_occurrence_index"}
+            prompt = nc.build_coherence_prompt(send_packet)
+            n_groups = len(packet["groups"])
+            self.log(f"Step 7.5: NPC coherence -- reconciling {n_groups} cross-area identity group(s)")
+
+            # Provider-appropriate structured output: OpenAI strict json_schema and
+            # Gemini response_schema force the exact contract; local models (lmstudio)
+            # get prompt-enforced json_object (validated + retried by the code below).
+            schema = nc.coherence_response_schema()
+            extra = {k: v for k, v in cfg.items() if k != "model"}
+            if MODEL_PROVIDER in ("openai", "legacy"):
+                response_format = {"type": "json_schema", "json_schema": {
+                    "name": "t104_npc_coherence", "strict": True, "schema": schema}}
+            elif MODEL_PROVIDER == "gemini":
+                from model_config import convert_to_gemini_schema
+                extra["response_schema"] = convert_to_gemini_schema(
+                    schema, preserve_required=True, preserve_constraints=True)
+                response_format = {"type": "json_object"}
+            else:
+                response_format = {"type": "json_object"}
+
+            response = capture_and_fanout(
+                "T104", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=[
+                    {"role": "system", "content": "You are an expert 5e module editor. "
+                     "Return only the requested strict JSON object."},
+                    {"role": "user", "content": prompt},
+                ],
+                model=cfg["model"],
+                temperature=0.2,
+                response_format=response_format,
+                **extra)
+
+            content = response.choices[0].message.content.strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            parsed = json.loads(content)
+
+            ok, errors = nc.validate_coherence_response(parsed, packet)
+            if not ok:
+                self.log(f"Step 7.5: NPC coherence response failed validation "
+                         f"{errors[:3]}; leaving NPCs unchanged")
+                return
+            patched, apply_errors = nc.apply_coherence_patch(parsed, staged, packet, party_names)
+            if apply_errors:
+                self.log(f"Step 7.5: NPC coherence apply blocked {apply_errors[:3]}; "
+                         "leaving NPCs unchanged")
+                return
+
+            # Full valid patch built in memory -> write every changed area, then
+            # resync the context from the patched artifacts.
+            for aid, area in patched.items():
+                self._atomic_save_json(f"areas/{aid}.json", area)
+            self.context = ModuleContext.from_artifacts(out, base_context=self.context)
+            safe_write_json(context_path, self.context.to_dict())
+            self.log(f"Step 7.5: NPC coherence applied to {n_groups} group(s)")
+        except Exception as exc:
+            self.log(f"Step 7.5: NPC coherence skipped (non-fatal): {exc}")
+
     def validate_module(self):
         """Validate module consistency and save results"""
         issues = self.context.validate_all()
