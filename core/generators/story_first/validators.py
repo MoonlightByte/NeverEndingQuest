@@ -1449,3 +1449,200 @@ def semantic_plot_checks(
         ],
         "optionalTerminalPlotPointIds": optional_terminal_ids,
     }
+
+
+# ---------------------------------------------------------------------------
+# Cross-area route agreement (Item B) -- REPORT-ONLY.
+#
+# Confirms the physical cross-area connections written into the area files agree
+# with the story route the unified plot (T028) implies, using the code-owned
+# gateway-endpoint contract from module_builder._create_bidirectional_connection
+# (source area's LAST location <-> destination area's FIRST location, reciprocal).
+#
+# This function NEVER raises and NEVER mutates -- it returns a list of
+# human-readable finding strings for logging. Escalation to fail-loud is deferred
+# until it runs clean on real linear/hub/branch/revisit/dial-down builds. Bare
+# area reachability is intentionally NOT used: cross-area edges are bidirectional,
+# so a wrong-direction link would look "reachable" either way.
+# ---------------------------------------------------------------------------
+
+def _route_area_of(loc_id, loc_to_area):
+    return loc_to_area.get(loc_id)
+
+
+def validate_plot_route_agreement(areas_by_id, plot):
+    """Report-only check that physical cross-area links match the plot route.
+
+    areas_by_id: {area_id: area_dict}  (each with 'areaName' and 'locations')
+    plot:        unified module plot dict (plotPoints[].location = area IDs)
+    Returns: List[str] findings ([] means agreement). Never raises.
+    """
+    findings = []
+    try:
+        if not isinstance(areas_by_id, dict) or not isinstance(plot, dict):
+            return ["route: invalid inputs (areas_by_id/plot not dicts)"]
+        valid_areas = set(areas_by_id)
+        points = plot.get("plotPoints") or []
+
+        # location -> area, and per-area first/last gateway locations
+        loc_to_area = {}
+        first_loc = {}
+        last_loc = {}
+        area_name = {}
+        for aid, area in areas_by_id.items():
+            area_name[aid] = area.get("areaName")
+            locs = area.get("locations") or []
+            for L in locs:
+                lid = L.get("locationId")
+                if lid:
+                    loc_to_area[lid] = aid
+            ids = [L.get("locationId") for L in locs if L.get("locationId")]
+            if ids:
+                first_loc[aid] = ids[0]
+                last_loc[aid] = ids[-1]
+
+        # ---- derive expected DIRECTED cross-area transitions -------------
+        # (a) consecutive plotPoints area order (collapse consecutive dupes)
+        seq = []
+        for pp in points:
+            a = pp.get("location")
+            if a in valid_areas and (not seq or seq[-1] != a):
+                seq.append(a)
+        directed = []
+        seen_pairs = set()
+
+        def _add_transition(a, b):
+            if a == b or a not in valid_areas or b not in valid_areas:
+                return
+            key = (a, b)
+            if key in seen_pairs:
+                return
+            seen_pairs.add(key)
+            directed.append((a, b))
+
+        for a, b in zip(seq, seq[1:]):
+            _add_transition(a, b)
+        # (b) nextPoints edges (covers branches/revisits the linear order misses)
+        point_by_id = {pp.get("id"): pp for pp in points if pp.get("id")}
+        for pp in points:
+            a = pp.get("location")
+            for nxt in (pp.get("nextPoints") or []):
+                nb = point_by_id.get(nxt, {}).get("location")
+                if a and nb:
+                    _add_transition(a, nb)
+
+        plot_areas = {a for a in seq}
+
+        # ---- B2: coverage / unexplained fallback -------------------------
+        uncovered = sorted(valid_areas - plot_areas)
+        if uncovered:
+            findings.append(
+                "route/coverage: area(s) %s are generated but never referenced by the plot "
+                "(possible missing plot coverage or an intentional plot-free area)" % uncovered
+            )
+        if len(valid_areas) >= 2 and len(plot_areas) < 2:
+            findings.append(
+                "route/fallback: multi-area module (%d areas) but the plot references < 2 areas -- "
+                "cross-area linking would fall back to alphabetical order (unverified route)"
+                % len(valid_areas)
+            )
+
+        # undirected physical cross-area link set: {frozenset(area_a, area_b): {(src_loc, dst_loc)}}
+        def _cross_links():
+            out = {}
+            for aid, area in areas_by_id.items():
+                for L in (area.get("locations") or []):
+                    lid = L.get("locationId")
+                    for tgt in (L.get("areaConnectivityId") or []):
+                        ta = loc_to_area.get(tgt)
+                        if ta and ta != aid:
+                            out.setdefault(frozenset((aid, ta)), set()).add((lid, tgt))
+            return out
+
+        phys = _cross_links()
+
+        # ---- B1: every plot-connected area PAIR realized at a code-owned gateway,
+        # reciprocal. Collapse to UNDIRECTED pairs because the cross-area door is
+        # bidirectional and finalize writes ONE link per pair (a plot that goes
+        # A->B and later B->A shares the same physical door). Accept EITHER
+        # code-owned orientation: last(A)<->first(B) OR last(B)<->first(A).
+        expected_pairs = []
+        seen_undirected = set()
+        for a, b in directed:
+            u = frozenset((a, b))
+            if u not in seen_undirected:
+                seen_undirected.add(u)
+                expected_pairs.append((a, b))
+
+        def _reciprocal_gateway(gateway, links):
+            src, dst = gateway
+            return src is not None and dst is not None and (src, dst) in links and (dst, src) in links
+
+        for a, b in expected_pairs:
+            pair = frozenset((a, b))
+            if pair not in phys:
+                findings.append(
+                    "route/missing: plot connects %s<->%s but no physical cross-area link exists"
+                    % (a, b)
+                )
+                continue
+            links = phys[pair]
+            gateway_ab = (last_loc.get(a), first_loc.get(b))
+            gateway_ba = (last_loc.get(b), first_loc.get(a))
+            if not (_reciprocal_gateway(gateway_ab, links) or _reciprocal_gateway(gateway_ba, links)):
+                findings.append(
+                    "route/gateway: plot connects %s<->%s; expected a reciprocal code-owned gateway "
+                    "(last<->first: %s or %s) but physical links are %s"
+                    % (a, b, gateway_ab, gateway_ba, sorted(links))
+                )
+
+        # ---- B3: parallel-array integrity + reciprocity ------------------
+        for aid, area in areas_by_id.items():
+            for L in (area.get("locations") or []):
+                lid = L.get("locationId")
+                names = L.get("areaConnectivity") or []
+                ids = L.get("areaConnectivityId") or []
+                if len(names) != len(ids):
+                    findings.append(
+                        "route/parallel: %s:%s areaConnectivity(len %d) != areaConnectivityId(len %d)"
+                        % (aid, lid, len(names), len(ids))
+                    )
+                if len(set(ids)) != len(ids):
+                    findings.append("route/parallel: %s:%s has duplicate areaConnectivityId targets %s"
+                                    % (aid, lid, ids))
+                for i, tgt in enumerate(ids):
+                    ta = loc_to_area.get(tgt)
+                    if ta is None:
+                        findings.append("route/parallel: %s:%s target %s resolves to no known location"
+                                        % (aid, lid, tgt))
+                        continue
+                    if ta == aid:
+                        findings.append("route/parallel: %s:%s links to its own area (%s)"
+                                        % (aid, lid, tgt))
+                    if i < len(names) and names[i] != area_name.get(ta):
+                        findings.append(
+                            "route/parallel: %s:%s name[%d]=%r != target area %s name %r"
+                            % (aid, lid, i, names[i], ta, area_name.get(ta))
+                        )
+                    # reciprocal: target location carries this location's id + this area's name
+                    tgt_area = areas_by_id.get(ta) or {}
+                    tgt_loc = next((x for x in (tgt_area.get("locations") or [])
+                                    if x.get("locationId") == tgt), None)
+                    if tgt_loc is not None:
+                        back_ids = tgt_loc.get("areaConnectivityId") or []
+                        back_names = tgt_loc.get("areaConnectivity") or []
+                        if lid not in back_ids:
+                            findings.append(
+                                "route/reciprocity: %s:%s -> %s but %s does not link back to %s"
+                                % (aid, lid, tgt, tgt, lid)
+                            )
+                        else:
+                            j = back_ids.index(lid)
+                            if j < len(back_names) and back_names[j] != area_name.get(aid):
+                                findings.append(
+                                    "route/reciprocity: %s back-link name[%d]=%r != source area %s name %r"
+                                    % (tgt, j, back_names[j], aid, area_name.get(aid))
+                                )
+    except Exception as exc:  # report-only must never break a build
+        findings.append("route: detector error (non-fatal): %s" % exc)
+    return findings

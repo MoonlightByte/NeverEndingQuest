@@ -518,6 +518,33 @@ MODULE INDEPENDENCE RULES:
         self.log("Step 4.55: Finalizing cross-area connections in plot order...")
         self.finalize_locations_and_connections()
 
+        # Step 4.56: REPORT-ONLY route-agreement check (Item B). Confirms the
+        # physical cross-area links agree with the plot route at code-owned
+        # gateway endpoints (+ parallel-array/reciprocity/coverage). Never gates
+        # the build yet; escalation to fail-loud is deferred until it runs clean
+        # on real linear/hub/branch/revisit/dial-down builds.
+        try:
+            from core.generators.story_first.validators import (
+                validate_plot_route_agreement,
+            )
+            route_findings = validate_plot_route_agreement(
+                self.areas_data, self.unified_plot or {}
+            )
+            if route_findings:
+                self.log(
+                    f"Step 4.56: Route-agreement check: {len(route_findings)} "
+                    "finding(s) (report-only, non-gating):"
+                )
+                for finding in route_findings:
+                    self.log(f"  - {finding}")
+            else:
+                self.log(
+                    "Step 4.56: Route-agreement check: OK "
+                    "(physical route matches plot)"
+                )
+        except Exception as route_exc:
+            self.log(f"Step 4.56: Route-agreement check skipped (non-fatal): {route_exc}")
+
         # Step 4.6: Update area plot hooks to reference unified plot
         self.log("Step 4.6: Updating area plot hooks...")
         self.update_area_plot_hooks()
