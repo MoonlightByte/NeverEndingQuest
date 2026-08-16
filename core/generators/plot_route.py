@@ -13,9 +13,11 @@ Contract:
   nextPoints graph -- that would invent sibling edges).
 - The plotPoints-order ADJACENCY fallback fires ONLY when the nextPoints graph has
   ZERO usable cross-area edges (legacy/degenerate plots).
-- Reachability of every PLOT-REFERENCED area is reported so the caller can enforce
-  case (a) (a plot-referenced-but-unreachable area is a hard defect) distinctly from
-  the plot-free-area question.
+- Every PLOT-REFERENCED area is guaranteed reachable: if `nextPoints` leaves one
+  unreachable (partial coverage), code HEALS the gap by adding the minimal
+  plot-order adjacency connection(s). A module is always produced and always fully
+  connected -- the build is NEVER aborted for an unreachable area. The healing
+  edges are reported so the detector can surface them as information.
 """
 
 from typing import Any, Dict, List, Set, Tuple
@@ -108,18 +110,33 @@ def extract_plot_route(areas_by_id: Dict[str, Any], plot: Dict[str, Any]) -> Dic
         edges = _adjacency_edges(plot, valid_areas)
         source = "adjacency_fallback" if edges else "none"
 
-    unreachable: List[str] = []
-    if plot_areas:
+    # HEAL any plot-referenced area left unreachable (partial nextPoints coverage):
+    # add the minimal plot-order adjacency connection so the module is always fully
+    # connected. Agentic-first (plot drives the route) with a code safeguard that
+    # corrects -- never an abort.
+    healed_edges: List[Tuple[str, str]] = []
+    if len(plot_areas) > 1:
         root = plot_areas[0]
-        reached = _reachable(edges, [root])
-        # A single-area plot references one area which is trivially "reachable".
-        unreachable = [a for a in plot_areas if a not in reached and a != root]
-        if len(plot_areas) > 1 and root not in reached:
-            reached.add(root)
+        existing = {frozenset(e) for e in edges}
+        reached = _reachable(edges, [root]) | {root}
+        for idx, area in enumerate(plot_areas):
+            if area in reached:
+                continue
+            # connect this orphan to its plot-order predecessor (already connected
+            # because we walk in order), falling back to the plot root.
+            neighbor = plot_areas[idx - 1] if idx > 0 else root
+            connector = (neighbor, area)
+            if frozenset(connector) not in existing:
+                edges = edges + [connector]
+                existing.add(frozenset(connector))
+                healed_edges.append(connector)
+            reached = _reachable(edges, [root]) | {root}
 
     return {
         "edges": edges,
         "source": source,
         "plot_areas": plot_areas,
-        "unreachable_plot_areas": unreachable,
+        "healed_edges": healed_edges,
+        # kept for compatibility; always empty now (every plot area is healed reachable)
+        "unreachable_plot_areas": [],
     }

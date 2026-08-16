@@ -1511,14 +1511,15 @@ def validate_plot_route_agreement(areas_by_id, plot):
         directed = list(route["edges"])
         plot_areas = set(route["plot_areas"])
 
-        # ---- reachability + coverage --------------------------------------
+        # ---- healing + coverage -------------------------------------------
         # A plot-REFERENCED area left unreachable by partial nextPoints coverage is
-        # a HARD DEFECT (the finalizer fails loud on it); report it distinctly.
-        if route["unreachable_plot_areas"]:
+        # HEALED (the finalizer adds the plot-order connection); report it as info,
+        # not a defect -- a module is always produced and fully connected.
+        if route.get("healed_edges"):
             findings.append(
-                "route/unreachable: plot-referenced area(s) %s are unreachable via the plot's "
-                "cross-area graph (source=%s) -- HARD DEFECT (finalizer aborts the candidate)"
-                % (sorted(route["unreachable_plot_areas"]), route["source"])
+                "route/healed: added %d plot-order connection(s) %s so every "
+                "plot-referenced area is reachable (nextPoints left a gap)"
+                % (len(route["healed_edges"]), route["healed_edges"])
             )
         # Generated-but-not-plot-referenced coverage is the separate plot-free
         # question (report-only pending the structural designation).

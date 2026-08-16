@@ -1444,11 +1444,6 @@ IMPORTANT:
                         len(all_plot_points),
                         len(all_side_quests),
                     )
-                    # 159-C case (a): a plot-referenced area unreachable via the
-                    # plot cross-area graph is a HARD DEFECT. Raise here so it joins
-                    # the T028 acceptance contract and is fed into the 2nd attempt
-                    # rather than silently reaching the finalizer.
-                    self._assert_t028_reachable(unified_plot)
                     break
                 except (json.JSONDecodeError, TypeError, ValueError) as exc:
                     last_error = exc
@@ -1469,13 +1464,10 @@ IMPORTANT:
 
         except Exception as e:
             self.log(f"Error during plot unification: {e}")
-            # Fallback: create a simple unified structure.
+            # Fallback: create a simple unified structure. Any cross-area gap is
+            # healed deterministically at finalization (extract_plot_route), so a
+            # module is always produced.
             self._create_fallback_unified_plot()
-            # 159-C: the deterministic fallback must ALSO satisfy plot-referenced
-            # reachability. A connected fallback is accepted; one that still leaves
-            # a plot-referenced area unreachable RE-RAISES (aborts the candidate),
-            # never warn-and-publishes.
-            self._assert_t028_reachable(self.unified_plot or {})
     
     def _create_fallback_unified_plot(self):
         """Create a simple unified plot if AI unification fails"""
@@ -1530,21 +1522,6 @@ IMPORTANT:
         self._atomic_save_json("module_plot.json", unified_plot)
         self.unified_plot = unified_plot
         self.log(f"Created fallback unified plot with {len(unified_plot['plotPoints'])} plot points")
-
-    def _assert_t028_reachable(self, unified_plot):
-        """159-C case (a): every plot-referenced area must be reachable through the
-        plot's cross-area graph. A plot-referenced-but-unreachable area is a HARD
-        DEFECT (distinct from the plot-free-area question). Raises ValueError so the
-        caller either retries T028 or aborts the candidate -- never warn-and-publish.
-        """
-        from core.generators.plot_route import extract_plot_route
-        route = extract_plot_route(self.areas_data, unified_plot or {})
-        if route["unreachable_plot_areas"]:
-            raise ValueError(
-                "plot-referenced area(s) %s unreachable via the plot cross-area "
-                "graph (source=%s)"
-                % (sorted(route["unreachable_plot_areas"]), route["source"])
-            )
 
     def _warn_unified_plot_invalid_locations(self, unified_plot):
         """Warn when the unified plot violates its area-ID reference contract."""
@@ -2377,14 +2354,13 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         route = extract_plot_route(self.areas_data, self.unified_plot or {})
         edges = route["edges"]
 
-        # Case (a): a plot-referenced area unreachable via the derived edge set is
-        # a hard defect (fail-loud). unify_plots should already have caught+
-        # corrected it; this is the finalization-gate enforcement.
-        if route["unreachable_plot_areas"]:
-            raise ValueError(
-                "T028 route defect: plot-referenced area(s) "
-                f"{route['unreachable_plot_areas']} unreachable via the plot's "
-                f"cross-area graph (source={route['source']}); aborting candidate."
+        # A plot-referenced area unreachable via nextPoints is HEALED (not aborted):
+        # the extractor added the minimal plot-order adjacency connection so every
+        # area is reachable and a module is always produced.
+        if route["healed_edges"]:
+            self.log(
+                f"Healed {len(route['healed_edges'])} cross-area gap(s) so every "
+                f"plot-referenced area is reachable: {route['healed_edges']}"
             )
 
         if not edges and len(self.areas_data) > 1 and route["source"] == "none":
