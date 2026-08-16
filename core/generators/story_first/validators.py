@@ -1646,3 +1646,69 @@ def validate_plot_route_agreement(areas_by_id, plot):
     except Exception as exc:  # report-only must never break a build
         findings.append("route: detector error (non-fatal): %s" % exc)
     return findings
+
+
+# ---------------------------------------------------------------------------
+# NPC cross-area role/attitude coherence (Item E) -- REPORT-ONLY ADVISORY.
+#
+# Surfaces same-name NPCs that appear across multiple locations/areas and any
+# EXACT attitude differences among their appearances. Never raises, never
+# mutates. Role/faction lives only in free-text prose (location NPC entries are
+# {name, description, attitude} with NO role field), so role coherence CANNOT be
+# decided deterministically -- same attitudes can hide conflicting roles and
+# different attitudes can be intentional. This reports coverage/advisory facts
+# only; the semantic reconciliation decision (same mobile person / projection /
+# intentional change / accidental duplicate) is owned by the agentic pass, not
+# by code. Groups by exact casefold name (after T088 name reconciliation).
+# ---------------------------------------------------------------------------
+
+def npc_cross_area_coherence_findings(areas_by_id):
+    """Report-only advisory: cross-area same-name NPC appearances + attitude
+    divergences. areas_by_id: {area_id: area_dict}. Returns List[str]."""
+    findings = []
+    try:
+        if not isinstance(areas_by_id, dict):
+            return []
+        appearances = {}
+        for aid, area in areas_by_id.items():
+            for location in (area.get("locations") or []):
+                lid = location.get("locationId")
+                for npc in (location.get("npcs") or []):
+                    name = (npc.get("name") or "").strip()
+                    if not name:
+                        continue
+                    appearances.setdefault(name.casefold(), []).append({
+                        "area": aid,
+                        "location": lid,
+                        "attitude": (npc.get("attitude") or "").strip(),
+                        "name": name,
+                    })
+        for key in sorted(appearances):
+            apps = appearances[key]
+            if len(apps) < 2:
+                continue
+            areas_spanned = {a["area"] for a in apps}
+            if len(areas_spanned) < 2:
+                continue  # same-area duplicates are a separate (placement) concern
+            attitudes = {a["attitude"] for a in apps if a["attitude"]}
+            display = apps[0]["name"]
+            where = ", ".join(
+                "%s:%s(%s)" % (a["area"], a["location"], a["attitude"] or "no-attitude")
+                for a in apps
+            )
+            if len(attitudes) > 1:
+                findings.append(
+                    "npc/role-coherence: '%s' appears in %d areas with DIVERGENT attitudes %s -- %s "
+                    "(advisory: mobile person / projection / intentional change / accidental duplicate; "
+                    "agentic reconciliation decides -- role is prose, not code-decidable)"
+                    % (display, len(areas_spanned), sorted(attitudes), where)
+                )
+            else:
+                findings.append(
+                    "npc/role-coherence: '%s' recurs across %d areas (%s) with a consistent attitude "
+                    "(advisory: confirm same person or intended recurring figure)"
+                    % (display, len(areas_spanned), where)
+                )
+    except Exception as exc:  # advisory must never break a build
+        findings.append("npc/role-coherence: advisory error (non-fatal): %s" % exc)
+    return findings

@@ -545,6 +545,31 @@ MODULE INDEPENDENCE RULES:
         except Exception as route_exc:
             self.log(f"Step 4.56: Route-agreement check skipped (non-fatal): {route_exc}")
 
+        # Step 4.57: REPORT-ONLY NPC cross-area coherence advisory (Item E,
+        # deterministic part). Surfaces same-name NPCs recurring across areas and
+        # DIVERGENT attitudes among their appearances. Never gates -- role lives
+        # in prose and is not code-decidable; the agentic reconciliation pass
+        # (deferred, see issue) owns the semantic decision.
+        try:
+            from core.generators.story_first.validators import (
+                npc_cross_area_coherence_findings,
+            )
+            npc_findings = npc_cross_area_coherence_findings(self.areas_data)
+            if npc_findings:
+                self.log(
+                    f"Step 4.57: NPC coherence advisory: {len(npc_findings)} "
+                    "finding(s) (report-only, non-gating):"
+                )
+                for finding in npc_findings:
+                    self.log(f"  - {finding}")
+            else:
+                self.log(
+                    "Step 4.57: NPC coherence advisory: OK "
+                    "(no cross-area same-name NPC divergence)"
+                )
+        except Exception as npc_exc:
+            self.log(f"Step 4.57: NPC coherence advisory skipped (non-fatal): {npc_exc}")
+
         # Step 4.6: Update area plot hooks to reference unified plot
         self.log("Step 4.6: Updating area plot hooks...")
         self.update_area_plot_hooks()
