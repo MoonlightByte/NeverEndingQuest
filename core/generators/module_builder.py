@@ -2161,18 +2161,31 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             else:
                 response_format = {"type": "json_object"}
 
-            response = capture_and_fanout(
-                "T104", api_client.create_completion,
-                _request_provider=MODEL_PROVIDER,
-                messages=[
-                    {"role": "system", "content": "You are an expert 5e module editor. "
-                     "Return only the requested strict JSON object."},
-                    {"role": "user", "content": prompt},
-                ],
-                model=cfg["model"],
-                temperature=0.2,
-                response_format=response_format,
-                **extra)
+            # Bound the model call with a hard timeout so a slow/hung local model
+            # (e.g. qwen over many groups) can NEVER hang a build. On timeout we
+            # skip (heal-forward: the module is left intact). We do NOT wait on the
+            # orphaned worker (shutdown wait=False), so the build proceeds.
+            import concurrent.futures
+
+            def _t104_call():
+                return capture_and_fanout(
+                    "T104", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=[
+                        {"role": "system", "content": "You are an expert 5e module editor. "
+                         "Return only the requested strict JSON object."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    model=cfg["model"],
+                    temperature=0.2,
+                    response_format=response_format,
+                    **extra)
+
+            _ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            try:
+                response = _ex.submit(_t104_call).result(timeout=120)
+            finally:
+                _ex.shutdown(wait=False)
 
             content = response.choices[0].message.content.strip()
             if content.startswith("```"):
