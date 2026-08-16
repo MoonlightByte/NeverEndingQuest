@@ -187,3 +187,108 @@ Claude and Codex independently traced current `main-merge` (post A-F) and agree 
 the fix seams, the cross-path safety analysis, and the sequencing above. The only additions in this
 merge over Codex's draft are Claude's 159-B prompt-freeze flag and the note that 159-A+C fully fix
 #159 independent of the prompt.
+
+================================================================================
+## VALIDATION FINDINGS & REQUIRED AMENDMENTS (2026-08-16)
+
+Both sides ran independent agents against `.worktrees/main-merge` (post A-F): Claude dispatched 4
+feature-dev agents (#159 architecture, #160 architecture, code-reference accuracy, runtime/gameplay
+tracing); Codex ran 3 (#159, T088, gameplay/save). **Combined verdict: the core ownership strategy is
+CONFIRMED sound, but the plan is NOT 100% implementable as written — it must be revised for the
+BLOCKERS below before any code is touched.** Code references were otherwise unusually accurate.
+
+### Confirmed sound (both sides)
+- 159-A (restore areaConnectivity/areaConnectivityId from the trusted stub) is safe for BOTH paths,
+  gated by the existing identity preflight (`location_generator.py:110-131`); classic stays empty,
+  story-first keeps its compiled links. Root cause verified: prompt + schema mislabel
+  areaConnectivityId as "area IDs".
+- Classic-only + default-off for #160; T088 durable-transaction reuse; save/reset ordering.
+- **Gameplay safety (stronger than the plan stated):** T088/#160 has NO live-play caller (runs only
+  at build time, before any save exists). `dmInstructions` is pure prose (`main.py:1738`);
+  `npcs[].description/attitude` are already mutated live during play (`action_handler.py:3567,3571`);
+  `keyNPCs` has no runtime reader; no encounter/character-file/save structural coupling.
+- **#159 is a RISK REDUCTION, not cosmetic:** the live movement authority is `pre_validate_transition`
+  -> `path_encounter_analyzer.build_active_module_snapshot`; a polluted entry that fails the area-id
+  fallback makes `is_valid=not issues` false, and `find_path_in_snapshot` then refuses to route
+  ANYTHING (`path_encounter_analyzer.py:516,542-544`) — i.e. whole-module travel outage. The fix
+  always lands in the trusted location-id branch.
+
+### #159 — REQUIRED AMENDMENTS
+- **[BLOCKER] Shared nextPoints-aware route extractor.** `_plot_ordered_area_transitions`
+  (`module_builder.py:2283-2304`) walks adjacent plotPoints ONLY and ignores `nextPoints`; the
+  report-only detector separately adds nextPoints edges (`validators.py:1504-1532`). 159-C must NOT
+  reuse the current helper — introduce ONE shared expected-edge extractor (nextPoints authoritative +
+  a deliberate legacy fallback) used by BOTH finalizer and detector, or finalize will miss branch
+  edges the detector then flags.
+- **[BLOCKER] No cross-file graph atomicity.** Per-area `_atomic_save_json`
+  (`module_builder.py:2347-2351`) is not multi-file atomic; a crash leaves half a reciprocal graph.
+  Narrow the claim to deterministic rerun inside the unpublished managed candidate (its lifecycle
+  aborts/hides candidates), OR add a durable multi-file journal. Do NOT claim cross-file atomicity.
+- **[CHANGE] Third stale schema.** Add `schemas/locationfile_schema_strict.json:100-108` to 159-B
+  (same mislabel, used by the full-module validator).
+- **[CHANGE] Non-T026 write path.** `module_stitcher.py` (~1497-1498, 4046, 4342) also writes
+  areaConnectivity when stitching added areas — 159-A's T026-boundary fix does not cover it; 159-C's
+  finalizer-owns-clean model or an explicit note must address it.
+- **[CHANGE] Prompt-freeze attribution.** The current worktree `CLAUDE.md` has no prompt-freeze rule
+  (it is in the model-refactor root context). 159-B still likely needs owner approval, but do not
+  attribute the freeze to the current file. 159-A alone already blanks the classic T026 array, so
+  159-B remains optional for correctness.
+- **[CHANGE] Wording.** TRUSTED_LOCATION_FIELDS *validates exact equality and raises*
+  (`validators.py:1095-1111`), it does not "restore." And "always misroutes" is too absolute — a
+  legacy area-id fallback exists (see risk-reduction note above).
+- **[OWNER CONTRACT] Plot-free areas.** No optional-plot-free-area designation exists; the current
+  fallback is alphabetical (`module_builder.py:2292-2293,2323-2332`). Lock that structural contract
+  before exact-set gating, else the implementation must guess whether an uncovered area is intentional.
+- "Currently 7 findings" is UNVERIFIED by static read (plausible; re-run against a real polluted build).
+
+### #160 — REQUIRED AMENDMENTS
+- **[GAMEPLAY BLOCKER] Secondary-roster deletion breaks cross-area interaction.** Runtime presence
+  comes from `location.npcs` (`main.py:1021-1051`); interactions may use only PRESENT NPCs, an NPC
+  cannot be in multiple locations, and background movement is same-area only
+  (`action_handler.py:3293-3303,3491-3499,3580-3600`). `dmInstructions` does NOT make an NPC
+  mechanically present. So "one physical primary + dmInstructions at secondaries" makes a legitimately
+  recurring NPC mechanically ABSENT elsewhere. For `same_mobile_person` / `projection_or_manifestation`
+  / `deliberate_attitude_change`, v1 must RETAIN the cross-area roster occurrences and HARMONIZE their
+  fields (or narrow v1 to primary-location interaction only). **Secondary deletion is safe ONLY for
+  `accidental_duplicate`.**
+- **[BLOCKER] Staged NPC membership projector.** `ModuleContext.from_artifacts` copies npcs/references
+  VERBATIM (`module_context.py:310-332`); a roster patch would leave `npcs[*].appears_in`,
+  `areas[*].npcs`, `locations[*].npcs` STALE. Add a staged projector that preserves canonical
+  identity/aliases but clears+reconstructs all three membership projections from the patched staged
+  rosters via the existing canonical map; reject unmatched labels; never call `add_npc` (regex/special
+  -case identity, `module_context.py:67-105`). Always stage context when #160 changes an area (staging
+  is currently conditional, `npc_reconciler.py:516-521`).
+- **[BLOCKER] Complete immutable T111 read set.** The packet uses plot + party facts, but T088
+  snapshots/revalidates only context + areas (`npc_reconciler.py:430-505`). Add `module_plot.json` and
+  `party_tracker.json` as read-only snapshot members (path/digest revalidation, no transaction writes),
+  or remove those facts. Passing live builder values breaks the immutable T088 contract.
+- **[CHANGE] Canonical-name freeze.** T111 must NOT rename NPCs (arbitrary renames orphan
+  filename/name-keyed character sheets, codex/party refs, plot prose). Make the response `name` an
+  exact const == the post-T088 canonical name, or remove it. #160 owns roster presence, description,
+  attitude, dmInstructions ONLY.
+- **[CHANGE] Retry-loop call cap.** The outer `_T088_SOURCE_RETRY_LIMIT` loop re-invokes staging up to
+  3x on source drift, so "one T111 call" needs an explicit cap on TOTAL invocations across attempts.
+  Also pull a first-touched area's "before" image from the pristine snapshot, not a name-staged copy.
+- **[CHANGE] Lock duration.** The classic builder HOLDS the global refresh+context locks while
+  `_reconcile_all_areas_unlocked` does model work (`module_builder.py:2043-2077`); a main-model T111
+  call could block reset/other module work for minutes. Prefer the optimistic snapshot/release/
+  revalidate path, or explicitly accept + test the global hold.
+- **[CHANGE] Task ID = T104, not T111.** Registrations end at T103 (`story_first/execution.py:19-24`);
+  T104-T110 do not exist in this worktree. `register_callsite` has NO uniqueness check (silent
+  overwrite), so re-confirm at implementation time and use T104. It is one callsite but up to TWO
+  provider requests (one correction). T111/T104 needs its OWN named provider configs — DM_MAIN is
+  gpt-5.2; luna|high is T026-specific — do not describe it as "the module-main model."
+- **[CHANGE] Step 4.57 final telemetry** can't read `self.areas_data` after T088 (builder reloads only
+  `self.context`, `module_builder.py:2079-2083`) — report from the committed payloads.
+- **[WORDING] "any failure writes nothing"** is too strong (post-marker recovery may converge to the
+  AFTER state); StageEvidence non-persistence is not absolute under multi-model capture. Say "no
+  partial state is accepted," and have T111 redact capture if enabled.
+- **[NONBLOCKING] MODULE_SUMMARY** is built before T088 (`module_builder.py:585-602`) so #160 edits
+  make it stale — regenerate after accepted T088, or document as cosmetic.
+
+### Net
+Ship-order unchanged (#159 first, then #160), but **both issues need the plan revised per the BLOCKERS
+above before implementation.** #159's revisions are contained (shared extractor, honest crash
+semantics, third schema, stitcher note). #160's revisions are more substantial and center on the
+gameplay contradiction (retain cross-area occurrences) + the staged membership projector + immutable
+read set + name freeze. Claude and Codex agree on all of the above.
