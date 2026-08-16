@@ -32,7 +32,7 @@ import json
 import codecs
 import os
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 
@@ -128,6 +128,49 @@ def sanitize_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         return sanitize_text(data)
     else:
         return data
+
+
+def normalize_typography_deep(value: Any):
+    """Deep-walk a JSON value, replacing ONLY known-lossless typography.
+
+    The canonical ASCII-typography normalizer for model-generated content at a
+    generation response boundary. Applies CHARACTER_REPLACEMENTS (curly quotes ->
+    straight, en/em dash -> -/--, ellipsis -> ..., non-breaking space, arrows,
+    Windows-1252 and corrupted-UTF8 sequences) to every string.
+
+    Unlike sanitize_text, it does NOT run NFKD or drop code points, so it never
+    mangles a proper noun. Unlike compilers.normalize_ascii_typography, it uses
+    the fuller map (including the ellipsis it omits). Returns
+    ``(normalized_value, replacement_count, residual_paths)`` where
+    ``residual_paths`` are dotted paths of strings that STILL contain a non-ASCII
+    code point (> 126) after replacement -- the caller decides whether to warn or
+    fail/retry rather than silently deleting a character.
+    """
+    count = 0
+    residual: List[str] = []
+
+    def visit(item: Any, path: str) -> Any:
+        nonlocal count
+        if isinstance(item, dict):
+            return {
+                key: visit(child, f"{path}.{key}" if path else str(key))
+                for key, child in item.items()
+            }
+        if isinstance(item, list):
+            return [visit(child, f"{path}[{index}]") for index, child in enumerate(item)]
+        if not isinstance(item, str):
+            return item
+        text = item
+        for old_char, new_char in CHARACTER_REPLACEMENTS.items():
+            if old_char in text:
+                text = text.replace(old_char, new_char)
+                count += 1
+        if any(ord(char) > 126 for char in text):
+            residual.append(path or "<root>")
+        return text
+
+    normalized = visit(value, "")
+    return normalized, count, residual
 
 
 def safe_json_load(filepath: str) -> Any:

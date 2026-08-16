@@ -20,6 +20,7 @@ from core.ai import api_client
 import config
 import jsonschema
 from utils.module_path_manager import ModulePathManager
+from utils.encoding_utils import normalize_typography_deep
 from utils.capture.multi_model_capture import (
     capture_and_fanout,
     register_callsite,
@@ -194,7 +195,27 @@ def _canonicalize_t026_response_fields(
         parsed,
         location_stubs,
     )
-    return _canonicalize_t026_mechanical_fields(with_stub_fields)
+    mechanical = _canonicalize_t026_mechanical_fields(with_stub_fields)
+    # Item F: canonical lossless ASCII-typography normalization at the T026
+    # generation response boundary (curly quotes -> straight, en/em dash -> -/--,
+    # ellipsis -> ..., nbsp, arrows, Windows-1252/corrupted sequences). Windows
+    # cp1252 consoles crash on non-ASCII, and several models stochastically emit
+    # smart punctuation. Lossless map only -- never NFKD-strips or mangles a
+    # proper noun. Residual non-ASCII (e.g. an accented name) is reported, never
+    # silently deleted.
+    normalized, replaced, residual = normalize_typography_deep(mechanical)
+    if replaced:
+        print(
+            f"WARNING: T026 normalized {replaced} non-ASCII typography "
+            "occurrence(s) to ASCII at the generation boundary."
+        )
+    if residual:
+        print(
+            "WARNING: T026 output retains residual non-ASCII after lossless "
+            f"typography normalization at {residual[:8]} (Windows cp1252 crash "
+            "risk); not deleted to avoid mangling names."
+        )
+    return normalized
 
 
 def _canonicalize_t026_mechanical_fields(parsed: Any) -> Any:
