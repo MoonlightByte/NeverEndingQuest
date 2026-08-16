@@ -942,6 +942,10 @@ NPC_COHERENCE_T104_GPT56LUNA_HIGH = {"model": "gpt-5.6-luna", "reasoning_effort"
 NPC_COHERENCE_T104_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 NPC_COHERENCE_T104_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 NPC_COHERENCE_T104_LMSTUDIO = {"model": "local-model"}
+# Feature flag (issue #160). Defined here so it reaches every build via config.py's
+# `from model_config import *`, regardless of whether an existing config.py copy has
+# it. ON: the pass is fail-closed + heal-forward so shipping enabled is safe.
+ENABLE_NPC_COHERENCE_REPAIR = True
 
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
