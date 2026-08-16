@@ -71,6 +71,15 @@ DEFAULT_MODULE = "The_Thornwood_Watch"
 # exhaustion automatically continues through the compatible builder.
 USE_STORY_FIRST_GENERATOR = False
 
+# Issue #160: agentic NPC cross-area role/attitude coherence reconciliation.
+# DEFAULT-OFF. Classic/legacy module builds only. When True, after T088 name
+# reconciliation, one bounded structured model call (T104) reconciles same-name
+# NPCs that recur across areas (mobile person / projection / attitude change /
+# accidental duplicate), applied fail-closed inside the T088 durable transaction.
+# Story-first is unaffected (it keeps T101). Leave False until the real conflict
+# acceptance battery has passed.
+ENABLE_NPC_COHERENCE_REPAIR = False
+
 # Note: All model configurations are now imported from model_config.py above
 
 # --- Web Interface Configuration ---

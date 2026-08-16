@@ -933,6 +933,16 @@ DM_MAIN_LMSTUDIO = {"model": "local-model"}
 # at reasoning > none, so the callsite passes temperature uniformly like every sibling.
 DM_MAIN_T026_GPT56LUNA_HIGH = {"model": "gpt-5.6-luna", "reasoning_effort": "high"}
 
+# T104 (NPC cross-area role/attitude coherence reconciliation, issue #160) --
+# classic-only, DEFAULT-OFF (config.ENABLE_NPC_COHERENCE_REPAIR). One structured
+# call over all repeated cross-area canonical identities; a semantic judgment, so
+# start on a strong model and reduce after measured runs. Its OWN configs (do NOT
+# reuse DM_MAIN=gpt-5.2 or the T026-specific luna binding by name).
+NPC_COHERENCE_T104_GPT56LUNA_HIGH = {"model": "gpt-5.6-luna", "reasoning_effort": "high"}
+NPC_COHERENCE_T104_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
+NPC_COHERENCE_T104_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+NPC_COHERENCE_T104_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
