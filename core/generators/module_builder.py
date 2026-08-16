@@ -1979,32 +1979,44 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     )
             return
 
-        with path_transaction_lock(context_path):
-            # Resolve a prior interrupted T088 before considering the builder's
-            # in-memory snapshot. Overwriting a staged target first would turn
-            # recoverable before/after state into an unsafe third state.
-            recovery = reconciler._recover_pending_transaction()
-            if recovery:
-                self.log(
-                    "Step 6.5: Recovered interrupted NPC reconciliation "
-                    f"({recovery})."
-                )
-                self.context = ModuleContext.load(context_path)
-            else:
-                if not safe_write_json(context_path, self.context.to_dict()):
-                    raise OSError(
-                        "Could not publish module context before NPC reconciliation"
+        # Lock order MUST be module_refresh -> context, matching the story-first
+        # branch above. The reconciler's locked reconcile_all_areas() refuses a
+        # caller that holds the context lock without refresh (a refresh->context
+        # inversion, npc_reconciler.py:731-738), so a legacy build that took only
+        # the context lock here would abort every time with "did not commit".
+        # Acquire refresh first, then context, then call the UNLOCKED helper that
+        # expects both locks already held.
+        from utils.module_refresh_lock import module_refresh_lock
+
+        with module_refresh_lock() as refresh_acquired:
+            if not refresh_acquired:
+                raise OSError("Module refresh is busy during NPC reconciliation")
+            with path_transaction_lock(context_path):
+                # Resolve a prior interrupted T088 before considering the builder's
+                # in-memory snapshot. Overwriting a staged target first would turn
+                # recoverable before/after state into an unsafe third state.
+                recovery = reconciler._recover_pending_transaction()
+                if recovery:
+                    self.log(
+                        "Step 6.5: Recovered interrupted NPC reconciliation "
+                        f"({recovery})."
                     )
+                    self.context = ModuleContext.load(context_path)
+                else:
+                    if not safe_write_json(context_path, self.context.to_dict()):
+                        raise OSError(
+                            "Could not publish module context before NPC reconciliation"
+                        )
 
-            self.log("Step 6.5: Reconciling NPC names for consistency...")
-            if not reconciler.reconcile_all_areas():
-                raise OSError("NPC identity reconciliation did not commit")
+                self.log("Step 6.5: Reconciling NPC names for consistency...")
+                if not reconciler._reconcile_all_areas_unlocked():
+                    raise OSError("NPC identity reconciliation did not commit")
 
-            # T088 owns a separate ModuleContext instance. Refresh the builder
-            # before validation so Step 7 cannot overwrite its identity merge.
-            self.context = ModuleContext.load(context_path)
-            self.log("Step 7: Validating module consistency...")
-            self.validate_module()
+                # T088 owns a separate ModuleContext instance. Refresh the builder
+                # before validation so Step 7 cannot overwrite its identity merge.
+                self.context = ModuleContext.load(context_path)
+                self.log("Step 7: Validating module consistency...")
+                self.validate_module()
 
     def validate_module(self):
         """Validate module consistency and save results"""
