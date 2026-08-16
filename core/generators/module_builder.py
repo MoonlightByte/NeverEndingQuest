@@ -1444,9 +1444,15 @@ IMPORTANT:
                         len(all_plot_points),
                         len(all_side_quests),
                     )
+                    # 159-C case (a): a plot-referenced area unreachable via the
+                    # plot cross-area graph is a HARD DEFECT. Raise here so it joins
+                    # the T028 acceptance contract and is fed into the 2nd attempt
+                    # rather than silently reaching the finalizer.
+                    self._assert_t028_reachable(unified_plot)
                     break
                 except (json.JSONDecodeError, TypeError, ValueError) as exc:
                     last_error = exc
+                    unified_plot = None
                     self.log(
                         f"T028 response failed contract (attempt {attempt + 1}/2): {exc}"
                     )
@@ -1460,11 +1466,16 @@ IMPORTANT:
             self.unified_plot = unified_plot
 
             self.log(f"Created unified module plot with {len(unified_plot.get('plotPoints', []))} plot points")
-            
+
         except Exception as e:
             self.log(f"Error during plot unification: {e}")
-            # Fallback: create a simple unified structure
+            # Fallback: create a simple unified structure.
             self._create_fallback_unified_plot()
+            # 159-C: the deterministic fallback must ALSO satisfy plot-referenced
+            # reachability. A connected fallback is accepted; one that still leaves
+            # a plot-referenced area unreachable RE-RAISES (aborts the candidate),
+            # never warn-and-publishes.
+            self._assert_t028_reachable(self.unified_plot or {})
     
     def _create_fallback_unified_plot(self):
         """Create a simple unified plot if AI unification fails"""
@@ -1519,6 +1530,21 @@ IMPORTANT:
         self._atomic_save_json("module_plot.json", unified_plot)
         self.unified_plot = unified_plot
         self.log(f"Created fallback unified plot with {len(unified_plot['plotPoints'])} plot points")
+
+    def _assert_t028_reachable(self, unified_plot):
+        """159-C case (a): every plot-referenced area must be reachable through the
+        plot's cross-area graph. A plot-referenced-but-unreachable area is a HARD
+        DEFECT (distinct from the plot-free-area question). Raises ValueError so the
+        caller either retries T028 or aborts the candidate -- never warn-and-publish.
+        """
+        from core.generators.plot_route import extract_plot_route
+        route = extract_plot_route(self.areas_data, unified_plot or {})
+        if route["unreachable_plot_areas"]:
+            raise ValueError(
+                "plot-referenced area(s) %s unreachable via the plot cross-area "
+                "graph (source=%s)"
+                % (sorted(route["unreachable_plot_areas"]), route["source"])
+            )
 
     def _warn_unified_plot_invalid_locations(self, unified_plot):
         """Warn when the unified plot violates its area-ID reference contract."""
@@ -2266,89 +2292,140 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         print(f"DEBUG: [Module Generator] Connected {from_area} location {exit_loc['locationId']} to {to_area} location {entrance_loc['locationId']}")
         return True
 
-    def _plot_ordered_area_transitions(self) -> List[tuple]:
-        """Derive ordered, distinct cross-area transitions from the unified plot.
+    def _validate_cross_area_graph(self, edges) -> List[str]:
+        """Structural invariants for the rebuilt classic cross-area graph (159-C).
 
-        Walks plotPoints in story order, keeps only their area IDs (T028 stores
-        area IDs in ``location``), collapses consecutive duplicates, then returns
-        the ordered list of unique undirected (from_area, to_area) transitions.
-
-        This encodes the intended forward route AND hub-and-spoke topology for
-        free: a plot that returns to a hub between spokes yields the hub edges
-        (A->B, B->A, A->C ... dedupes to {A,B}, {A,C}), while a linear plot
-        yields the linear chain. Direction is taken from first appearance
-        (the forward progression). Returns [] if the plot has < 2 distinct areas
-        (caller then falls back to alphabetical linking).
+        Checked in memory BEFORE any write. Returns a list of violation strings
+        (empty == valid). Mirrors the report-only detector's structural checks so
+        the finalizer never publishes a graph the detector would flag.
         """
-        plot = self.unified_plot or {}
-        valid_areas = set(self.areas_data)
-        # area sequence in plot order, restricted to real areas
-        seq = []
-        for pp in plot.get("plotPoints", []):
-            loc = pp.get("location")
-            if loc in valid_areas:
-                if not seq or seq[-1] != loc:  # collapse consecutive duplicates
-                    seq.append(loc)
-        if len(set(seq)) < 2:
-            return []
-        transitions = []
-        seen = set()
-        for a, b in zip(seq, seq[1:]):
-            if a == b:
-                continue
-            undirected = frozenset((a, b))
-            if undirected in seen:
-                continue
-            seen.add(undirected)
-            transitions.append((a, b))  # keep first-seen (forward) direction
-        return transitions
+        issues: List[str] = []
+        loc_to_area: Dict[str, str] = {}
+        first_loc: Dict[str, str] = {}
+        last_loc: Dict[str, str] = {}
+        area_name: Dict[str, Any] = {}
+        for aid, area in self.areas_data.items():
+            area_name[aid] = area.get("areaName")
+            ids = [L.get("locationId") for L in area.get("locations", []) if L.get("locationId")]
+            for lid in ids:
+                loc_to_area[lid] = aid
+            if ids:
+                first_loc[aid] = ids[0]
+                last_loc[aid] = ids[-1]
+
+        # per-location parallel-array integrity + reciprocity
+        for aid, area in self.areas_data.items():
+            for L in area.get("locations", []):
+                lid = L.get("locationId")
+                names = L.get("areaConnectivity") or []
+                tgts = L.get("areaConnectivityId") or []
+                if len(names) != len(tgts):
+                    issues.append(f"{aid}:{lid} parallel arrays unequal ({len(names)} vs {len(tgts)})")
+                if len(set(tgts)) != len(tgts):
+                    issues.append(f"{aid}:{lid} duplicate areaConnectivityId {tgts}")
+                for i, tgt in enumerate(tgts):
+                    ta = loc_to_area.get(tgt)
+                    if ta is None:
+                        issues.append(f"{aid}:{lid} target {tgt} resolves to no location")
+                        continue
+                    if ta == aid:
+                        issues.append(f"{aid}:{lid} links to its own area ({tgt})")
+                    if i < len(names) and names[i] != area_name.get(ta):
+                        issues.append(f"{aid}:{lid} name[{i}]={names[i]!r} != target area {ta} name")
+                    back = next((x for x in self.areas_data[ta].get("locations", [])
+                                 if x.get("locationId") == tgt), None)
+                    if back is None or lid not in (back.get("areaConnectivityId") or []):
+                        issues.append(f"{aid}:{lid} -> {tgt} not reciprocated")
+
+        # every expected edge realized as a reciprocal code-owned gateway; no extras
+        phys = {}
+        for aid, area in self.areas_data.items():
+            for L in area.get("locations", []):
+                lid = L.get("locationId")
+                for tgt in (L.get("areaConnectivityId") or []):
+                    ta = loc_to_area.get(tgt)
+                    if ta and ta != aid:
+                        phys.setdefault(frozenset((aid, ta)), set()).add((lid, tgt))
+        expected_pairs = {frozenset((a, b)) for a, b in edges}
+        for a, b in edges:
+            pair = frozenset((a, b))
+            g1 = (last_loc.get(a), first_loc.get(b))
+            g2 = (last_loc.get(b), first_loc.get(a))
+            links = phys.get(pair, set())
+            ok = any(g[0] and g[1] and g in links and (g[1], g[0]) in links for g in (g1, g2))
+            if not ok:
+                issues.append(f"expected gateway {a}<->{b} not realized reciprocally ({sorted(links)})")
+        for pair in phys:
+            if pair not in expected_pairs:
+                issues.append(f"spurious cross-area link {tuple(pair)} not in plot edge set")
+        return issues
 
     def finalize_locations_and_connections(self):
+        """159-C: the classic finalizer is the SOLE author of cross-area links.
+
+        Must run AFTER all locations are generated AND after the plot is unified
+        (T028). Clears model-authored areaConnectivity/areaConnectivityId on every
+        staged location, rebuilds the complete reciprocal gateway set from the
+        shared nextPoints-aware plot-route extractor, validates the full graph in
+        memory, and only then writes. A plot-referenced area left unreachable is a
+        HARD DEFECT that aborts the candidate (fail-loud). No cross-file atomicity
+        is claimed: validation is in-memory-first so a failure aborts before any
+        write, and the managed-candidate lifecycle discards a partially-written
+        candidate on crash; the finalizer is idempotent on rerun.
         """
-        Create reciprocal connections between areas. Must run AFTER all locations
-        are generated AND after the plot is unified (T028), so cross-area routing
-        follows the STORY progression rather than alphabetical area-ID order.
+        from core.generators.plot_route import extract_plot_route
+        route = extract_plot_route(self.areas_data, self.unified_plot or {})
+        edges = route["edges"]
 
-        Root cause fixed here: the previous implementation linked areas in
-        ``sorted(area_ids)`` order before any plot existed, which forced the
-        physical route to disagree with the plot (e.g. plot SP->OR but doors
-        linked OR->SP). We now link along the plot-ordered area transitions and
-        fall back to alphabetical only when no usable plot order is available.
-        """
-        transitions = self._plot_ordered_area_transitions()
+        # Case (a): a plot-referenced area unreachable via the derived edge set is
+        # a hard defect (fail-loud). unify_plots should already have caught+
+        # corrected it; this is the finalization-gate enforcement.
+        if route["unreachable_plot_areas"]:
+            raise ValueError(
+                "T028 route defect: plot-referenced area(s) "
+                f"{route['unreachable_plot_areas']} unreachable via the plot's "
+                f"cross-area graph (source={route['source']}); aborting candidate."
+            )
 
-        if transitions:
-            self.log(f"Finalizing {len(transitions)} cross-area connection(s) in plot order")
-            source = "plot order"
-        else:
-            # Fallback: no usable plot-ordered area sequence (e.g. single-area
-            # module, or plot lacked resolvable area references). Preserve the
-            # historical alphabetical linear chain so builds never regress.
-            sorted_area_ids = sorted(self.areas_data.keys())
-            transitions = list(zip(sorted_area_ids, sorted_area_ids[1:]))
-            if transitions:
-                self.log(f"Finalizing {len(transitions)} cross-area connection(s) "
-                         f"in alphabetical fallback order (no plot order available)")
-            source = "alphabetical fallback"
+        if not edges and len(self.areas_data) > 1 and route["source"] == "none":
+            # Degenerate: multi-area module with < 2 plot-referenced areas.
+            # Preserve the historical alphabetical chain so plotless legacy builds
+            # do not regress (this is NOT the plot-referenced reachability path).
+            sorted_ids = sorted(self.areas_data)
+            edges = list(zip(sorted_ids, sorted_ids[1:]))
+            self.log(f"Finalizing {len(edges)} cross-area link(s) in alphabetical "
+                     "fallback (no plot-referenced cross-area edges)")
+        elif edges:
+            self.log(f"Finalizing {len(edges)} cross-area link(s) from {route['source']}")
 
-        touched = set()
-        for from_area_id, to_area_id in transitions:
-            if from_area_id not in self.areas_data or to_area_id not in self.areas_data:
-                continue
-            area_files_for_connection = {
-                from_area_id: self.areas_data[from_area_id],
-                to_area_id: self.areas_data[to_area_id],
-            }
-            if self._create_bidirectional_connection(
-                    area_files_for_connection, from_area_id, to_area_id):
-                touched.add(from_area_id)
-                touched.add(to_area_id)
+        # 1. CLEAR model-authored cross-area arrays on every staged location
+        #    (finalize is the sole author). Intra-area 'connectivity' is untouched.
+        for area in self.areas_data.values():
+            for loc in area.get("locations", []):
+                loc["areaConnectivity"] = []
+                loc["areaConnectivityId"] = []
 
-        # Save every area whose connectivity changed (both endpoints of each link).
-        for area_id in touched:
+        # 2. REBUILD the reciprocal gateway set from the edges.
+        for from_area_id, to_area_id in edges:
+            if from_area_id in self.areas_data and to_area_id in self.areas_data:
+                self._create_bidirectional_connection(
+                    {from_area_id: self.areas_data[from_area_id],
+                     to_area_id: self.areas_data[to_area_id]},
+                    from_area_id, to_area_id)
+
+        # 3. VALIDATE the full staged graph in memory BEFORE any write.
+        issues = self._validate_cross_area_graph(edges)
+        if issues:
+            raise ValueError(
+                "T028 cross-area finalization failed invariants: "
+                + "; ".join(issues[:8])
+            )
+
+        # 4. Write every area (all were cleared, so a stale model link can never
+        #    survive on an untouched area).
+        for area_id in self.areas_data:
             self._atomic_save_json(f"areas/{area_id}.json", self.areas_data[area_id])
-        if touched:
-            self.log(f"Saved {len(touched)} area file(s) after {source} connection finalization")
+        self.log(f"Saved {len(self.areas_data)} area file(s) after cross-area finalization")
 
 def main():
     """Interactive module builder"""

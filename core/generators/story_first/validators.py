@@ -1501,39 +1501,27 @@ def validate_plot_route_agreement(areas_by_id, plot):
                 first_loc[aid] = ids[0]
                 last_loc[aid] = ids[-1]
 
-        # ---- derive expected DIRECTED cross-area transitions -------------
-        # (a) consecutive plotPoints area order (collapse consecutive dupes)
-        seq = []
-        for pp in points:
-            a = pp.get("location")
-            if a in valid_areas and (not seq or seq[-1] != a):
-                seq.append(a)
-        directed = []
-        seen_pairs = set()
+        # ---- expected edges from the SHARED nextPoints-aware extractor -----
+        # (159-C) Same source of truth as the classic finalizer, so detector and
+        # finalizer agree by construction. nextPoints is authoritative; adjacency
+        # is a fallback only for a zero-usable-edge plot -- NOT a union with the
+        # nextPoints graph (a union invents sibling edges in a branched plot).
+        from core.generators.plot_route import extract_plot_route
+        route = extract_plot_route(areas_by_id, plot)
+        directed = list(route["edges"])
+        plot_areas = set(route["plot_areas"])
 
-        def _add_transition(a, b):
-            if a == b or a not in valid_areas or b not in valid_areas:
-                return
-            key = (a, b)
-            if key in seen_pairs:
-                return
-            seen_pairs.add(key)
-            directed.append((a, b))
-
-        for a, b in zip(seq, seq[1:]):
-            _add_transition(a, b)
-        # (b) nextPoints edges (covers branches/revisits the linear order misses)
-        point_by_id = {pp.get("id"): pp for pp in points if pp.get("id")}
-        for pp in points:
-            a = pp.get("location")
-            for nxt in (pp.get("nextPoints") or []):
-                nb = point_by_id.get(nxt, {}).get("location")
-                if a and nb:
-                    _add_transition(a, nb)
-
-        plot_areas = {a for a in seq}
-
-        # ---- B2: coverage / unexplained fallback -------------------------
+        # ---- reachability + coverage --------------------------------------
+        # A plot-REFERENCED area left unreachable by partial nextPoints coverage is
+        # a HARD DEFECT (the finalizer fails loud on it); report it distinctly.
+        if route["unreachable_plot_areas"]:
+            findings.append(
+                "route/unreachable: plot-referenced area(s) %s are unreachable via the plot's "
+                "cross-area graph (source=%s) -- HARD DEFECT (finalizer aborts the candidate)"
+                % (sorted(route["unreachable_plot_areas"]), route["source"])
+            )
+        # Generated-but-not-plot-referenced coverage is the separate plot-free
+        # question (report-only pending the structural designation).
         uncovered = sorted(valid_areas - plot_areas)
         if uncovered:
             findings.append(
