@@ -384,6 +384,10 @@ class ModuleBuilder:
         self.areas_data = {}
         self.locations_data = {}
         self.plots_data = {}
+        # The unified module plot (T028) once built. Cross-area connection
+        # finalization reads its plot-ordered area sequence so the physical
+        # route matches the story, instead of alphabetical area-ID order.
+        self.unified_plot = None
         self.context = ModuleContext()
         self.progress_callback = None  # For progress reporting
         self.per_area_locations = None  # For custom locations per area
@@ -500,18 +504,20 @@ MODULE INDEPENDENCE RULES:
         self.log("Step 3: Generating locations for each area...")
         self.generate_locations()
         
-        # Step 3.5: Apply unique prefixes and create area connections
-        self.log("Step 3.5: Finalizing location IDs and connections...")
-        self.finalize_locations_and_connections()
-        
         # Step 4: Generate plots for each area
         self.log("Step 4: Generating plots for each area...")
         self.generate_plots()
-        
+
         # Step 4.5: Unify plots into module_plot.json
         self.log("Step 4.5: Creating unified module plot...")
         self.unify_plots()
-        
+
+        # Step 4.55: Create cross-area connections in PLOT order (must run after
+        # unify_plots so the physical route matches the story, not alphabetical
+        # area-ID order). Location-ID prefixing already happened during generation.
+        self.log("Step 4.55: Finalizing cross-area connections in plot order...")
+        self.finalize_locations_and_connections()
+
         # Step 4.6: Update area plot hooks to reference unified plot
         self.log("Step 4.6: Updating area plot hooks...")
         self.update_area_plot_hooks()
@@ -1398,6 +1404,8 @@ IMPORTANT:
             # Save the unified plot
             output_path = os.path.join(self.config.output_directory, "module_plot.json")
             self._atomic_save_json("module_plot.json", unified_plot)
+            # Retain the plot-ordered structure for cross-area connection finalization.
+            self.unified_plot = unified_plot
 
             self.log(f"Created unified module plot with {len(unified_plot.get('plotPoints', []))} plot points")
             
@@ -1457,6 +1465,7 @@ IMPORTANT:
         self._warn_unified_plot_invalid_locations(unified_plot)
 
         self._atomic_save_json("module_plot.json", unified_plot)
+        self.unified_plot = unified_plot
         self.log(f"Created fallback unified plot with {len(unified_plot['plotPoints'])} plot points")
 
     def _warn_unified_plot_invalid_locations(self, unified_plot):
@@ -2126,75 +2135,144 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 return prefix
     
     
-    def _create_bidirectional_connection(self, area_files: Dict[str, Any], from_area: str, to_area: str):
-        """Create bidirectional connections between two areas"""
+    def _create_bidirectional_connection(self, area_files: Dict[str, Any], from_area: str, to_area: str) -> bool:
+        """Create a reciprocal cross-area connection between two areas.
+
+        Returns True if a new link was created, False if skipped (missing area,
+        no locations, missing IDs, or the link already exists -- idempotent).
+        The connection is always written to BOTH endpoints so no one-way
+        cross-area edge can ship.
+        """
         if from_area not in area_files or to_area not in area_files:
-            return
-        
+            return False
+        if from_area == to_area:
+            return False
+
         # Get exit locations (prefer last locations for progression)
         from_locations = area_files[from_area].get("locations", [])
         to_locations = area_files[to_area].get("locations", [])
-        
+
         if not from_locations or not to_locations:
-            return
-        
+            return False
+
         # Select exit points (use last location in from_area and first in to_area)
         exit_loc = from_locations[-1]
         entrance_loc = to_locations[0]
-        
+
         # Validate that both locations have locationId
         if "locationId" not in exit_loc or "locationId" not in entrance_loc:
             print(f"DEBUG: [Module Generator] Warning: Missing locationId in connection between {from_area} and {to_area}")
-            return
-        
+            return False
+
+        exit_loc.setdefault("areaConnectivity", [])
+        exit_loc.setdefault("areaConnectivityId", [])
+        entrance_loc.setdefault("areaConnectivity", [])
+        entrance_loc.setdefault("areaConnectivityId", [])
+
+        # Idempotent: if this exact reciprocal pair already exists, do nothing.
+        if (entrance_loc["locationId"] in exit_loc["areaConnectivityId"]
+                and exit_loc["locationId"] in entrance_loc["areaConnectivityId"]):
+            return False
+
         # Get the final, refined names of the areas
         from_area_name = area_files[from_area].get("areaName")
         to_area_name = area_files[to_area].get("areaName")
 
-        # Update area connectivity in from_area exit
-        if "areaConnectivity" not in exit_loc:
-            exit_loc["areaConnectivity"] = []
-        if "areaConnectivityId" not in exit_loc:
-            exit_loc["areaConnectivityId"] = []
-        
-        # Store the refined area name and the location ID for proper connectivity
-        exit_loc["areaConnectivity"].append(to_area_name)  # Use the refined name of the destination area
-        exit_loc["areaConnectivityId"].append(entrance_loc["locationId"])
+        # from_area exit -> to_area entrance
+        if entrance_loc["locationId"] not in exit_loc["areaConnectivityId"]:
+            exit_loc["areaConnectivity"].append(to_area_name)
+            exit_loc["areaConnectivityId"].append(entrance_loc["locationId"])
+        # to_area entrance -> from_area exit (reciprocal)
+        if exit_loc["locationId"] not in entrance_loc["areaConnectivityId"]:
+            entrance_loc["areaConnectivity"].append(from_area_name)
+            entrance_loc["areaConnectivityId"].append(exit_loc["locationId"])
+
         print(f"DEBUG: [Module Generator] Connected {from_area} location {exit_loc['locationId']} to {to_area} location {entrance_loc['locationId']}")
-        
-        # Update area connectivity in to_area entrance
-        if "areaConnectivity" not in entrance_loc:
-            entrance_loc["areaConnectivity"] = []
-        if "areaConnectivityId" not in entrance_loc:
-            entrance_loc["areaConnectivityId"] = []
-        
-        entrance_loc["areaConnectivity"].append(from_area_name)  # Use the refined name of the source area
-        entrance_loc["areaConnectivityId"].append(exit_loc["locationId"])
-    
+        return True
+
+    def _plot_ordered_area_transitions(self) -> List[tuple]:
+        """Derive ordered, distinct cross-area transitions from the unified plot.
+
+        Walks plotPoints in story order, keeps only their area IDs (T028 stores
+        area IDs in ``location``), collapses consecutive duplicates, then returns
+        the ordered list of unique undirected (from_area, to_area) transitions.
+
+        This encodes the intended forward route AND hub-and-spoke topology for
+        free: a plot that returns to a hub between spokes yields the hub edges
+        (A->B, B->A, A->C ... dedupes to {A,B}, {A,C}), while a linear plot
+        yields the linear chain. Direction is taken from first appearance
+        (the forward progression). Returns [] if the plot has < 2 distinct areas
+        (caller then falls back to alphabetical linking).
+        """
+        plot = self.unified_plot or {}
+        valid_areas = set(self.areas_data)
+        # area sequence in plot order, restricted to real areas
+        seq = []
+        for pp in plot.get("plotPoints", []):
+            loc = pp.get("location")
+            if loc in valid_areas:
+                if not seq or seq[-1] != loc:  # collapse consecutive duplicates
+                    seq.append(loc)
+        if len(set(seq)) < 2:
+            return []
+        transitions = []
+        seen = set()
+        for a, b in zip(seq, seq[1:]):
+            if a == b:
+                continue
+            undirected = frozenset((a, b))
+            if undirected in seen:
+                continue
+            seen.add(undirected)
+            transitions.append((a, b))  # keep first-seen (forward) direction
+        return transitions
+
     def finalize_locations_and_connections(self):
         """
-        Creates connections between areas. This must be run AFTER all locations
-        have been fully generated. Prefixing is now done during generation.
+        Create reciprocal connections between areas. Must run AFTER all locations
+        are generated AND after the plot is unified (T028), so cross-area routing
+        follows the STORY progression rather than alphabetical area-ID order.
+
+        Root cause fixed here: the previous implementation linked areas in
+        ``sorted(area_ids)`` order before any plot existed, which forced the
+        physical route to disagree with the plot (e.g. plot SP->OR but doors
+        linked OR->SP). We now link along the plot-ordered area transitions and
+        fall back to alphabetical only when no usable plot order is available.
         """
-        # Create connections between areas using the now-unique IDs
-        sorted_area_ids = sorted(self.areas_data.keys())
-        
-        if len(sorted_area_ids) > 1:
-            for i in range(len(sorted_area_ids) - 1):
-                from_area_id = sorted_area_ids[i]
-                to_area_id = sorted_area_ids[i+1]
-                
-                # The area_files dictionary needs to be built from self.areas_data
-                area_files_for_connection = {
-                    from_area_id: self.areas_data[from_area_id],
-                    to_area_id: self.areas_data[to_area_id]
-                }
-                
-                self._create_bidirectional_connection(area_files_for_connection, from_area_id, to_area_id)
-                
-                # Save the updated files after adding connections
-                self._atomic_save_json(f"areas/{from_area_id}.json", self.areas_data[from_area_id])
-                self._atomic_save_json(f"areas/{to_area_id}.json", self.areas_data[to_area_id])
+        transitions = self._plot_ordered_area_transitions()
+
+        if transitions:
+            self.log(f"Finalizing {len(transitions)} cross-area connection(s) in plot order")
+            source = "plot order"
+        else:
+            # Fallback: no usable plot-ordered area sequence (e.g. single-area
+            # module, or plot lacked resolvable area references). Preserve the
+            # historical alphabetical linear chain so builds never regress.
+            sorted_area_ids = sorted(self.areas_data.keys())
+            transitions = list(zip(sorted_area_ids, sorted_area_ids[1:]))
+            if transitions:
+                self.log(f"Finalizing {len(transitions)} cross-area connection(s) "
+                         f"in alphabetical fallback order (no plot order available)")
+            source = "alphabetical fallback"
+
+        touched = set()
+        for from_area_id, to_area_id in transitions:
+            if from_area_id not in self.areas_data or to_area_id not in self.areas_data:
+                continue
+            area_files_for_connection = {
+                from_area_id: self.areas_data[from_area_id],
+                to_area_id: self.areas_data[to_area_id],
+            }
+            if self._create_bidirectional_connection(
+                    area_files_for_connection, from_area_id, to_area_id):
+                touched.add(from_area_id)
+                touched.add(to_area_id)
+
+        # Save every area whose connectivity changed (both endpoints of each link).
+        for area_id in touched:
+            self._atomic_save_json(f"areas/{area_id}.json", self.areas_data[area_id])
+        if touched:
+            self.log(f"Saved {len(touched)} area file(s) after {source} connection finalization")
 
 def main():
     """Interactive module builder"""
