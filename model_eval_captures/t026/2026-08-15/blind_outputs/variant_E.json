@@ -1,0 +1,666 @@
+{
+  "blind_label": "E",
+  "locations": [
+    {
+      "name": "Wind Scoured Gateway",
+      "type": "room",
+      "description": "A sagging gatehouse of black stone and rusted iron spikes marks the edge of the Watchlands. The wind funnels through the broken portcullis, turning hanging chains into mournful chimes. Old banners\u2014once bright\u2014now cling in strips to spearheads, their stitching forming half-legible unit marks. The ground is a churn of gravel and pale mud where bootprints appear, then slowly fill with brackish water. Between gusts, faint voices whisper \u201cHold\u2026 the line,\u201d as if the air itself is trying to remember an order.\n\nA narrow murder-hole slit looks down from a collapsed loft; a toppled brazier lies in the mud, its soot never quite washing away. The gateway is open, but it feels watched.",
+      "dmInstructions": "Use this as the threshold scene: the wind and voices establish the haunting, and the party\u2019s first choices set tone (stealth vs. bold entry, investigating the gatehouse, following tracks). If the party lingers, emphasize sensory escalation: chains clatter in patterns like code, and the whispers begin answering questions with single words.\n\nThe gateway\u2019s danger is subtle\u2014rather than a straight fight, let the environment mislead. The wind can extinguish non-magical flames unless sheltered (PCs can shield lanterns with cloaks, or use magic). Any loud vow or shouted challenge prompts a brief, visible ripple of pale figures marching across the mud (no combat unless you want to add pressure via the monster list).\n\nIf the party searches, they can find the watch\u2019s old sign countersign scratched into stone; speaking it aloud grants advantage on one social check with a watch-spirit in B02 (you can represent this as the spirits pausing to listen rather than attacking). If they desecrate the banners or mock the dead, increase hostility in later rooms: add +1 to undead quantities (within the listed ranges) in B02 or B05.\n\nConnections: B02 is the main courtyard entry; B05 can be reached via a broken side stair and a narrow rampart walk exposed to the wind (good for stealth but riskier footing).",
+      "locationId": "B01",
+      "coordinates": "X2Y2",
+      "accessibility": "Open approach across muddy ruins. The main gate is unobstructed, but the constant gale makes ranged attacks and flight tricky; the rampart route toward B05 is narrow, partially collapsed, and slick with wet lichen.",
+      "npcs": [
+        {
+          "name": "Warden-Echo Halvren",
+          "description": "A half-formed spirit in a torn officer\u2019s cloak, visible only as a shimmer in the wind and a pair of pale, intent eyes. It cannot leave the gateway, repeating the last duty it remembers: to admit allies and deny enemies.",
+          "attitude": "Wary but duty-bound; responsive to respect, unit insignia, or the correct countersign."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Specter",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        },
+        {
+          "name": "Swarm of Ravens",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        },
+        {
+          "name": "Zombie",
+          "quantity": {
+            "min": 0,
+            "max": 2
+          }
+        }
+      ],
+      "plotHooks": [
+        "A freshly made bootprint appears beside the party\u2019s tracks, matching none of their footwear, and leads toward B02 before vanishing in standing water.",
+        "The torn banners bear the same unit mark as a locket found elsewhere; returning it to the dead could calm the watch.",
+        "The wind\u2019s \u2018code\u2019 can be deciphered into a warning: something in B06 is \u2018not one of ours.\u2019"
+      ],
+      "lootTable": [
+        "Rust-caked signet ring (worth 25 gp; bears the watch\u2019s crest).",
+        "Oilskin satchel with a waterlogged map of the Watchlands; DC 12 Intelligence (Investigation) to salvage a useful route note (advantage on navigation checks in this area).",
+        "Bundle of 3 silvered arrowheads wrapped in cloth (usable as ammunition; counts as silvered)."
+      ],
+      "dangerLevel": "Medium",
+      "connectivity": [
+        "B02",
+        "B05"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "traps": [
+        {
+          "name": "Portcullis Drop Latch",
+          "description": "A broken counterweight still clings to a corroded latch. Putting weight on the inner threshold stone can jar the mechanism, dropping the jagged portcullis half-way. It doesn\u2019t fully seal the entrance, but it pins and tears.",
+          "detectDC": 13,
+          "disableDC": 14,
+          "triggerDC": 13,
+          "damage": "2d10 slashing, and the target is restrained until freed (DC 14 Strength check as an action)."
+        }
+      ],
+      "features": [
+        {
+          "name": "Countersign Scratches",
+          "description": "The stone by the gate hinge is carved with repeated words: \u2018MOTH\u2014EMBER\u2014WATCH.\u2019 A successful check reveals these are a countersign sequence."
+        },
+        {
+          "name": "Hanging Chains",
+          "description": "The chains ring in patterned sequences in the wind; careful listening reveals repeated \u2018beats\u2019 like a military tap."
+        },
+        {
+          "name": "Collapsed Loft Murder-Hole",
+          "description": "A crumbling loft above the gate provides partial cover and a view into B02, but the floor is unstable."
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 13: Notice the portcullis latch is still under tension and the threshold stone is a trigger.",
+        "Investigation DC 12: Find the countersign sequence scratched near the hinge-stone.",
+        "Athletics DC 12: Climb into the collapsed loft without bringing down more masonry (on a failure, fall 10 ft and take 1d6 bludgeoning).",
+        "Insight DC 14: Recognize the whispers as duty phrases rather than threats; speaking respectfully reduces aggression from spirits for the next hour."
+      ],
+      "encounters": [],
+      "adventureSummary": "No adventure events have occurred here yet.",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": [
+        {
+          "name": "Gatehouse Postern",
+          "description": "A narrow side door set into the left wall of the gatehouse, swollen with damp. It opens into a short storage nook and then to the rampart walk toward B05.",
+          "type": "wooden",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ]
+    },
+    {
+      "name": "Spectral Convergence Atrium",
+      "type": "room",
+      "description": "This broad courtyard was once a drill yard, now a bowl of cracked flagstones slick with rain. Pale mist crawls along the ground in threads, meeting at the center where a fractured circle of runes has been inlaid with tarnished silver. The air here is colder, and each exhale seems to drag a whisper out of the lungs.\n\nWhen the wind eases, translucent shapes briefly overlay the yard: soldiers assembling, a captain barking orders, a lantern raised\u2014then the vision collapses into fog. The rune-circle pulses faintly, like a heart struggling to beat.",
+      "dmInstructions": "This is the Watchlands\u2019 \u2018haunt engine.\u2019 The convergence circle draws in emotion and loose spirits, creating visions, minor poltergeist effects, and the occasional manifestation.\n\nRun it as a tense social/exploration node with optional combat. Give the party a clear choice: study the runes, attempt to consecrate/deface them, or push onward. If they interact respectfully (salute, speak the countersign from B01, lay a token of service), let them gain information: a vision showing the command deck (B05) and the vault (B06) as the source of a wrongness.\n\nIf they attempt to disrupt the circle without care, trigger a backlash (use the trap) and potentially manifest undead from the monster list. If they instead repair/complete the circle (skill challenge using Arcana/Religion/History), it can be turned into a protective ward: once per long rest, a creature within the atrium can gain the benefits of protection from evil and good for 10 minutes.\n\nKeep the atrium connected: B03 is a narrow corridor into the mountain-facing side; B04 is a ruined guard post; B01 returns to the gate. Use the atrium\u2019s openness for tactical movement and line-of-sight, but add mist for concealment beyond 30 feet.",
+      "locationId": "B02",
+      "coordinates": "X2Y1",
+      "accessibility": "Wide open courtyard with slick stone and low-lying mist. Easy to enter from B01; visibility is reduced in heavy fog, and the rune-circle creates an oppressive chill that discourages resting.",
+      "npcs": [
+        {
+          "name": "Captain Alys Vorn (Echo)",
+          "description": "A disciplined, translucent commander with a cracked helm and a lantern that sheds no heat. She repeats fragments of the last muster and can be engaged if approached with military respect.",
+          "attitude": "Suspicious but honorable; will bargain for proof the party will \u2018set the watch to rest.\u2019"
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Wraith",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        },
+        {
+          "name": "Specter",
+          "quantity": {
+            "min": 1,
+            "max": 3
+          }
+        },
+        {
+          "name": "Skeleton",
+          "quantity": {
+            "min": 0,
+            "max": 4
+          }
+        }
+      ],
+      "plotHooks": [
+        "The rune-circle is incomplete\u2014one silver inlay segment is missing and may be stored in B04 among the fallen guardians.",
+        "Captain Vorn\u2019s echo insists a \u2018false order\u2019 came from the command deck; she begs the party to find the written command.",
+        "The convergence briefly shows a living figure entering from the direction of A01 (Ironwood Passlands), suggesting a necromancer or scavenger passed through recently."
+      ],
+      "lootTable": [
+        "Tarnished silver inlay shard (counts as 10 gp of silver; also a component useful for turning the circle into a ward).",
+        "Lantern of the watch (mundane but unbreakable; if held during a vision, grants advantage on one Investigation check here).",
+        "Officer\u2019s whistle (when blown, it produces no sound, but spirits within 60 ft turn toward the blower; can be used to draw attention or negotiate)."
+      ],
+      "dangerLevel": "High",
+      "connectivity": [
+        "B01",
+        "B03",
+        "B04"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "traps": [
+        {
+          "name": "Convergence Backlash",
+          "description": "If the rune-circle is disturbed (scratched, pried, blood spilled on it, or a spell of 1st level or higher cast while standing inside), the circle releases a freezing pulse and a chorus of pleading voices that disorients the living.",
+          "detectDC": 14,
+          "disableDC": 15,
+          "triggerDC": 14,
+          "damage": "3d6 cold damage and the target must succeed on a DC 13 Wisdom saving throw or be frightened until the end of its next turn."
+        }
+      ],
+      "features": [
+        {
+          "name": "Fractured Rune-Circle",
+          "description": "A silver-inlaid circle with gaps and cracks. It draws in mist and emotion; completing or sanctifying it can change how the haunt behaves."
+        },
+        {
+          "name": "Muster Visions",
+          "description": "At the DM\u2019s discretion (especially after meaningful roleplay), the courtyard overlays a scene from the last night of the watch: orders, fear, and a sealed descent toward B06."
+        },
+        {
+          "name": "Fog Threads",
+          "description": "Mist forms \u2018strings\u2019 leading toward whichever connected room holds the strongest unresolved memory (often B05). Following them grants advantage on Survival checks to navigate the ruins."
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 15: Identify the circle as a binding/convergence array keyed to oaths of service; disrupting it risks manifestations.",
+        "Religion DC 14: Consecrate the circle with prayer and salt/water; success suppresses hostile manifestations here for 8 hours.",
+        "History DC 13: Recall watchtower customs; a correct salute and countersign can \u2018unlock\u2019 Captain Vorn\u2019s coherent speech for one conversation.",
+        "Investigation DC 14: Find a hidden rune-gap shaped like an inlay segment, implying a missing piece (likely in B04).",
+        "Perception DC 12: Notice the mist threads subtly point toward B05 when the wind quiets."
+      ],
+      "encounters": [],
+      "adventureSummary": "No adventure events have occurred here yet.",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": [
+        {
+          "name": "Collapsed Archway to B03",
+          "description": "A roofless arch choked with rubble; a person can squeeze through along a cleared path.",
+          "type": "archway",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 0,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "East Breach to B04",
+          "description": "A breach in a wall with a hanging doorframe; splintered wood suggests a door once stood here.",
+          "type": "open",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 0,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ]
+    },
+    {
+      "name": "Veiled Mountain Corridor",
+      "type": "room",
+      "description": "A narrow corridor runs along the mountain-facing wall, half carved from stone and half built from black masonry. Rainwater seeps through hairline cracks, feeding a thin sheet of moss that glows faintly silver in the dark. The air tastes metallic, and the sound of the wind becomes a low, steady moan\u2014as if the mountain itself is grieving.\n\nShreds of canvas hang from iron hooks, forming a makeshift curtain that stirs without breeze. Beyond it, the corridor bends toward the command deck, but the angle warps sight: distances feel wrong, and footsteps sometimes echo ahead of their owners.",
+      "dmInstructions": "Play this as a claustrophobic transition space with paranoia and stealth opportunities. The corridor is ideal for a creeping threat: distant steps, whispered mimicry, and the sense of being followed.\n\nThe \u2018veil\u2019 effect is a minor haunt: once per group passage, choose a character and have their own voice whisper a doubt or a memory; no mechanical effect unless you want to call for a Wisdom save (DC 12) to avoid being distracted (disadvantage on the next Perception check here).\n\nThe moss is useful: it can be harvested as a weak alchemical reagent that outlines invisible/ethereal traces when smeared on a surface. Clever PCs can use it to reveal where spirits pass or to mark safe stones around the trap.\n\nThis corridor offers an alternate route between B02 and B05. If the party is trying to avoid the atrium, let them, but make the corridor\u2019s hazards and information compensate: they can find a scratched warning about the vault and a half-burned order strip pointing to B06.",
+      "locationId": "B03",
+      "coordinates": "X1Y1",
+      "accessibility": "Tight, dim corridor with wet footing. Passable single-file in spots; the bend and hanging canvas reduce visibility and make it easy to ambush or be ambushed.",
+      "npcs": [
+        {
+          "name": "Rill the Deserter (Restless Shade)",
+          "description": "A thin, anxious spirit in a torn cloak, clutching an invisible wound. It hides behind the canvas veil and repeats, \u2018I didn\u2019t mean to leave,\u2019 seeking absolution.",
+          "attitude": "Fearful and evasive; can become helpful if offered forgiveness or a promise to lay the watch to rest."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Ghoul",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        },
+        {
+          "name": "Shadow",
+          "quantity": {
+            "min": 1,
+            "max": 2
+          }
+        },
+        {
+          "name": "Specter",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        }
+      ],
+      "plotHooks": [
+        "A strip of charred orders mentions \u2018seal the lower vault, by any means\u2019\u2014the signature is smudged, suggesting forgery from B05.",
+        "Rill\u2019s shade claims someone living came through recently, humming a marching tune to \u2018blend in\u2019 with the ghosts.",
+        "The silver moss can reveal an unseen handprint leading toward a hidden cache in B05."
+      ],
+      "lootTable": [
+        "Harvested veil-moss (1d4 doses; as an action, smear to reveal invisible/ethereal traces on a 5-ft square for 10 minutes).",
+        "Half-burned order strip (clue; worth 10 gp to a historian, or advantage on one check to challenge a watch-spirit\u2019s story).",
+        "Pouch with 12 sp (wedged in a crack behind a loose stone)."
+      ],
+      "dangerLevel": "Medium",
+      "connectivity": [
+        "B02",
+        "B05"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "traps": [
+        {
+          "name": "Moss-Slick Tripwire Drop",
+          "description": "A nearly invisible wire spans ankle height just past the canvas veil. Triggering it drops a slab of loose stone from above and collapses rubble behind the lead creature, briefly separating the party.",
+          "detectDC": 15,
+          "disableDC": 14,
+          "triggerDC": 15,
+          "damage": "2d8 bludgeoning; the target must succeed on a DC 13 Dexterity saving throw or be knocked prone. Rubble creates difficult terrain in a 10-ft radius until cleared (DC 12 Strength check, 1 action)."
+        }
+      ],
+      "features": [
+        {
+          "name": "Canvas Veil Hooks",
+          "description": "Iron hooks and shredded canvas create a \u2018curtain\u2019 that can hide creatures and muffle light; it also serves as a boundary where whispers intensify."
+        },
+        {
+          "name": "Silver Veil-Moss",
+          "description": "Bioluminescent moss that reacts to the presence of incorporeal movement; it brightens when spirits pass through nearby stone."
+        },
+        {
+          "name": "Warped Corner",
+          "description": "A bend where echoes arrive early; ranged attacks through the corner are at disadvantage unless the attacker can see the target."
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 15: Spot the tripwire and the unstable slab above it.",
+        "Survival DC 12: Follow the faintest tracks\u2014some are backwards, suggesting a spirit reenacting retreat toward B05.",
+        "Arcana DC 13: Determine the moss\u2019s glow is reactive to ethereal transit; harvesting it without ruining it requires care.",
+        "Persuasion DC 14: Calm Rill\u2019s shade by offering absolution; on success, it reveals a safe path and one true detail about B06."
+      ],
+      "encounters": [],
+      "adventureSummary": "No adventure events have occurred here yet.",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": [
+        {
+          "name": "Canvas Veil",
+          "description": "A hanging curtain of shredded canvas on iron hooks. It\u2019s not a door, but it blocks line of sight and muffles sound slightly.",
+          "type": "curtain",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 0,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ]
+    },
+    {
+      "name": "Fallen Guardian Post",
+      "type": "room",
+      "description": "This small guard post juts from the courtyard like a broken tooth. Inside, the stone floor is littered with splintered spear shafts and cracked shield boards. A long table has been overturned to form a crude barricade, and behind it lies a heap of bones in rusted mail\u2014guardians who died facing inward, not out.\n\nA weapon rack still holds a single immaculate halberd, untouched by rust. Above it, a cracked plaque reads: \u201cWe Stand Until Relieved.\u201d The air is stale here, with a faint scent of wax and old blood.",
+      "dmInstructions": "This room should feel like a last stand with a mystery: why were they facing inward? Use it to deliver concrete clues and a meaningful reward.\n\nThe immaculate halberd is a lure and a tell: it\u2019s protected by a simple ward and tied to the watch\u2019s oath. If a PC takes it respectfully (salute, speak the watchwords, or lay a hand on the plaque), the weapon accepts them; otherwise the ward triggers (trap).\n\nPlace the missing silver inlay segment for B02 here, tucked under a shield. Finding it lets the party choose: complete the atrium circle for protection, or keep the silver for other uses.\n\nIf combat is needed, this is a tight defensive space with barricade cover. Skeletons can animate from the bone heap, or a single armored spirit can rise to challenge \u2018trespassers.\u2019",
+      "locationId": "B04",
+      "coordinates": "X3Y1",
+      "accessibility": "Easy to enter from B02 via a breached wall. The interior is cramped, with an overturned table providing cover; movement is restricted by debris.",
+      "npcs": [
+        {
+          "name": "Guardian-Sergeant Mora Kett (Bound Spirit)",
+          "description": "A stern, exhausted spirit in dented mail, still \u2018on post.\u2019 She tests intruders with questions of duty and will not leave until properly relieved or her oath is fulfilled.",
+          "attitude": "Hostile to looters; neutral to respectful soldiers; can become reluctantly cooperative if shown the forged order strip or the countersign."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Animated Armor",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        },
+        {
+          "name": "Skeleton",
+          "quantity": {
+            "min": 2,
+            "max": 5
+          }
+        },
+        {
+          "name": "Specter",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        }
+      ],
+      "plotHooks": [
+        "The guardians died facing inward\u2014someone or something came from the tower/vault side, not from outside.",
+        "A silver inlay segment here fits the rune-circle in B02; completing it may let the party \u2018relieve\u2019 the bound spirits.",
+        "Sergeant Kett will reveal the name of the officer who issued the last order\u2014if the party can prove the order was false."
+      ],
+      "lootTable": [
+        "Immaculate halberd (treat as a +1 halberd for a creature that has earned the watch\u2019s respect; otherwise it functions as a normal halberd until the ward is appeased).",
+        "Silver inlay segment (fits B02\u2019s circle; worth 50 gp if sold as silverwork).",
+        "Sealed wax packet containing 3 sticks of incense and a prayer strip (consumable; burning for 10 minutes grants advantage on one Religion check to turn/ward undead in this area).",
+        "Pouch with 18 gp hidden beneath a loose floorstone behind the barricade."
+      ],
+      "dangerLevel": "Medium",
+      "connectivity": [
+        "B02"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "traps": [
+        {
+          "name": "Oathward Weapon Rack",
+          "description": "A simple ward tied to the plaque and weapon rack. If someone grabs the immaculate halberd with intent to steal (or while desecrating the post), spectral shackles lash out.",
+          "detectDC": 12,
+          "disableDC": 15,
+          "triggerDC": 12,
+          "damage": "2d6 necrotic damage and the target must succeed on a DC 13 Strength saving throw or be restrained by spectral manacles for 1 minute (repeat save at end of each of its turns)."
+        }
+      ],
+      "features": [
+        {
+          "name": "Overturned Barricade Table",
+          "description": "Provides half cover to creatures behind it; can be shoved to block the breach, requiring DC 14 Strength to move again."
+        },
+        {
+          "name": "Plaque of Duty",
+          "description": "Reading it aloud steadies the living; the first time a creature reads it with sincerity, it gains advantage on its next Wisdom saving throw against fear within the Watchlands."
+        },
+        {
+          "name": "Bone Heap Last Stand",
+          "description": "A pile of guardians\u2019 remains arranged as if dragged into place; disturbing it may animate skeletons or reveal the silver inlay segment."
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 13: Find the silver inlay segment beneath a cracked shield near the bone heap.",
+        "Religion DC 14: Properly \u2018relieve\u2019 Sergeant Kett with a short rite (or the correct watchwords), shifting her to neutral and gaining a truthful answer.",
+        "Arcana DC 12: Identify the halberd\u2019s immaculate state as a ward effect; disabling it without triggering requires care.",
+        "Persuasion DC 15: Convince Kett the party intends to end the false command; success yields a clue pointing to B05 and the vault below."
+      ],
+      "encounters": [],
+      "adventureSummary": "No adventure events have occurred here yet.",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": [
+        {
+          "name": "Breach to Atrium",
+          "description": "A jagged opening where the wall collapsed. Loose stone can be climbed with care.",
+          "type": "open",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 0,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ]
+    },
+    {
+      "name": "Cursed Command Deck",
+      "type": "room",
+      "description": "The command deck occupies a raised platform of the ruined watchtower\u2019s lower tier, open to the sky through a shattered roof. A warped map table dominates the center, its surface etched with routes and watch-post marks. Black candles\u2014long since melted\u2014stand in iron sockets, yet their wicks twitch as if about to catch.\n\nA cracked bell hangs from a beam, swinging without wind. Each time it nears the beam, it stops short, as though an invisible hand prevents it from striking. Papers cling to the walls in damp stacks: duty rosters, casualty lists, and one set of orders written in a different hand\u2014too neat, too fresh.\n\nThe room feels like a mind trapped in a loop: authority without relief, command without clarity.",
+      "dmInstructions": "This is the information-and-decision hub that points to B06 and explains the haunting. Present three tangible discoveries: (1) the forged orders, (2) the bell that won\u2019t ring, and (3) the map table with a hidden compartment.\n\nThe curse here is about coercion and false authority. If a PC reads the forged order aloud, have the room respond: candles gutter, the bell strains, and any watch-spirits nearby become briefly agitated. Use this to foreshadow that the \u2018command\u2019 is the binding mechanism.\n\nOffer multiple solutions:\n- Disprove the order: compare handwriting, seals, or cross-check rosters (skill checks). Success weakens undead hostility in the area (reduce undead quantities by 1 within ranges for the next room visited).\n- Ring the bell: the bell is bound by a silence geas; breaking it can release a shockwave that stuns undead briefly but may also draw them.\n- Descend to B06: the command deck provides the key clue and/or key item needed.\n\nIf combat occurs, use verticality: broken stairs, beams for partial cover, and the map table as terrain. The monsters here should feel like \u2018officers\u2019 and \u2018enforcers\u2019 of the curse.",
+      "locationId": "B05",
+      "coordinates": "X1Y2",
+      "accessibility": "Reachable from B01 via exposed rampart walk or from B03 via the mountain corridor. The deck is partially roofless and slick; climbing onto beams or broken stairs requires care.",
+      "npcs": [
+        {
+          "name": "The False Commander (Manifested Voice)",
+          "description": "Not a true creature but a presence that speaks through paperwork, the bell, and any creature that tries to assert authority. It issues clipped orders and punishes disobedience with pain and dread.",
+          "attitude": "Controlling and antagonistic; it bargains only to buy time, pushing the party toward bad choices."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Wight",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        },
+        {
+          "name": "Specter",
+          "quantity": {
+            "min": 1,
+            "max": 2
+          }
+        },
+        {
+          "name": "Skeleton",
+          "quantity": {
+            "min": 1,
+            "max": 4
+          }
+        }
+      ],
+      "plotHooks": [
+        "The forged orders direct the watch to \u2018seal the vault\u2019 and \u2018accept no relief\u2019\u2014a command that bound them to endless duty; destroying the source in B06 may free them.",
+        "A hidden compartment in the map table contains a wax seal stamp; it matches none of the tower\u2019s official marks, implying an outside infiltrator from the Ironwood Passlands.",
+        "The bell\u2019s silence is deliberate: if rung, it could \u2018relieve\u2019 the watch\u2014temporarily calming spirits across the Watchlands."
+      ],
+      "lootTable": [
+        "Map table compartment cache: 1 potion of healing, a bundle of 5 sheets of fine parchment, and a seal stamp (unique; valuable as evidence).",
+        "Forged orders (clue item; can be used to confront spirits or as leverage in B06).",
+        "Ring of keys (nonmagical): includes a small iron key labeled \u2018Vault\u2019 (opens the inner lock in B06) and 2 mundane keys for old chests/doors.",
+        "50 gp in mixed coin stitched into the hem of a rotting officer\u2019s cloak hanging on a peg."
+      ],
+      "dangerLevel": "High",
+      "connectivity": [
+        "B01",
+        "B03",
+        "B06"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "traps": [
+        {
+          "name": "Bell of Suppressed Relief",
+          "description": "The bell is bound by a silence geas. Attempting to ring it (or casting thunder damage within 10 feet) triggers a retaliatory burst of psychic pressure as the curse tries to prevent \u2018relief.\u2019",
+          "detectDC": 14,
+          "disableDC": 16,
+          "triggerDC": 14,
+          "damage": "3d6 psychic damage and the creature must succeed on a DC 14 Wisdom saving throw or be stunned until the end of its next turn."
+        }
+      ],
+      "features": [
+        {
+          "name": "Warped Map Table",
+          "description": "A heavy table etched with routes; a hidden compartment can be found on the underside. The map markings subtly shift to point toward B06 when the curse is active."
+        },
+        {
+          "name": "Forged Orders Packet",
+          "description": "Fresh-looking orders with an unfamiliar seal. Reading them aloud empowers the curse but also reveals its nature to attentive PCs."
+        },
+        {
+          "name": "Cracked Silent Bell",
+          "description": "A bell that refuses to strike. If the geas is broken and the bell rings once, undead in the Watchlands hesitate\u2014granting advantage on the party\u2019s next initiative roll or allowing a brief parley."
+        },
+        {
+          "name": "Broken Roof Beams",
+          "description": "Climbable beams provide elevation and half cover; falling is a risk on wet wood."
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 14: Identify the forged orders as inconsistent (wrong seal, wrong phrasing) and find the telltale handwriting flourish.",
+        "History DC 13: Recognize the correct watch protocol; the orders violate it, proving they\u2019re false.",
+        "Perception DC 15: Notice the hidden latch under the map table and open the compartment.",
+        "Arcana DC 15: Understand the bell\u2019s silence as a geas-like binding; suppressing it for 1 minute requires a successful check and a 1st-level spell slot (any school) or appropriate ritual components.",
+        "Athletics DC 12: Climb onto the beams without slipping; on a failure, fall 10 ft (1d6 bludgeoning) and land prone."
+      ],
+      "encounters": [],
+      "adventureSummary": "No adventure events have occurred here yet.",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": [
+        {
+          "name": "Vault Descent Door",
+          "description": "A heavy ironbound door set into the stone at the back of the deck, leading down into B06. Frost rims its edges from within.",
+          "type": "iron",
+          "locked": true,
+          "lockDC": 15,
+          "breakDC": 18,
+          "keyname": "Vault Key (iron key from the command deck)",
+          "trapped": true,
+          "trap": "Cold-Iron Needle Lock"
+        }
+      ]
+    },
+    {
+      "name": "Shrouded Evil Vault",
+      "type": "room",
+      "description": "A steep stair descends into a low vault carved directly into the rock. The air is wet and unnaturally still, as if the wind above has been sealed out by force. The walls sweat brine; the floor is a shallow mirror of water that reflects lantern light like a black eye.\n\nAt the far end stands a squat stone reliquary wrapped in chains of cold iron. The chains are not merely physical\u2014each link hums with a restrained scream. A sigil has been painted on the lid in old blood and ash, overlaid with the watch\u2019s official seal as though someone tried to legitimize the blasphemy.\n\nNear the stairs, a narrow tunnel-mouth opens to the outside\u2014an emergency exit leading toward the Ironwood Passlands. A draft from that direction carries the scent of pine and smoke\u2026 and something sweetly rotten beneath it.",
+      "dmInstructions": "This is the climactic locus. The vault contains the source of the haunting: a bound evil (choose a suitable entity for your campaign\u2014e.g., a shadow-demon remnant, a cursed relic, or a necromantic heartstone). The watch was tricked into sealing it with false orders, binding their oaths to the prison.\n\nPresent clear options with consequences:\n- Destroy the sigil and unchain the reliquary: risky; may release a major undead/fiend threat (use monster list as immediate manifestations and escalate if needed).\n- Rebind/cleanse: skill challenge using Religion/Arcana with the forged orders as a \u2018legal\u2019 lever to rewrite the binding into a release of the dead instead of a seal.\n- Steal the relic: fastest but morally dark; increases future haunt intensity and may draw pursuit through A01.\n\nUse the water as tactical terrain: it muffles steps (advantage on Stealth) but hides hazards; it also conducts cold from the trap. The emergency exit allows pursuit/escape and ties into the wider world.\n\nIf the party obtained the bell relief effect from B05 or completed the rune-circle in B02, let those preparations matter here: reduce manifestations, grant advantage on one key check, or allow a moment of calm to negotiate with a bound spirit.",
+      "locationId": "B06",
+      "coordinates": "X0Y2",
+      "accessibility": "Down steep stairs from B05 into a flooded, cramped vault. The emergency tunnel to A01 is crawlable and slick; medium creatures must squeeze for part of the way.",
+      "npcs": [
+        {
+          "name": "Reliquary-Bound Watcher \u2018Kest\u2019",
+          "description": "A fragmented spirit anchored to the chains, speaking in broken sentences and sensations (cold iron, oath words, and fear). It knows the binding is wrong but cannot act against it directly.",
+          "attitude": "Desperate and pleading; helpful if the party intends to free the watch, hostile if they attempt to steal the relic without making amends."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Mummy",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        },
+        {
+          "name": "Wraith",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        },
+        {
+          "name": "Shadow",
+          "quantity": {
+            "min": 2,
+            "max": 5
+          }
+        }
+      ],
+      "plotHooks": [
+        "The reliquary\u2019s seal bears an unfamiliar stamp matching the one hidden in B05\u2014proof an outsider forged authority to weaponize the watch\u2019s oaths.",
+        "A trail of pine needles and soot at the emergency tunnel suggests a living camp recently used in the Ironwood Passlands (A01).",
+        "Kest\u2019s spirit offers a bargain: rewrite the binding with the correct countersign and the forged order burned together, and the dead will \u2018stand down\u2019\u2014but something else may notice the ritual."
+      ],
+      "lootTable": [
+        "Cold-iron chain link (trophy; counts as 25 gp; also functions as a component granting advantage on one check to bind/ward a fiend or undead).",
+        "Reliquary contents (choose one): a cursed necromantic relic worth 250 gp to the wrong buyer; or a holy counter-relic that can cleanse the watch (DM\u2019s campaign choice).",
+        "2 potions of healing in a waterproof tin tucked behind a loose stone near the stairs (DC 13 Investigation to find).",
+        "A small coffer with 60 sp and 20 gp, waterlogged but intact."
+      ],
+      "dangerLevel": "Very High",
+      "connectivity": [
+        "B05"
+      ],
+      "areaConnectivity": [
+        "The Ironwood Passlands"
+      ],
+      "areaConnectivityId": [
+        "A01"
+      ],
+      "traps": [
+        {
+          "name": "Cold-Iron Needle Lock",
+          "description": "The vault descent door\u2019s lock contains a spring needle of cold iron coated in grave ichor. Picking the lock incorrectly or forcing it triggers the needle.",
+          "detectDC": 15,
+          "disableDC": 15,
+          "triggerDC": 15,
+          "damage": "1d6 piercing plus 3d6 necrotic; DC 14 Constitution saving throw or the target is poisoned for 1 hour."
+        },
+        {
+          "name": "Drowning Mirror Floor",
+          "description": "The shallow water hides a sudden sinkhole-like depression near the reliquary. A creature moving within 10 feet of the reliquary without probing the floor can step into it and be dragged down by unseen hands.",
+          "detectDC": 14,
+          "disableDC": 0,
+          "triggerDC": 14,
+          "damage": "No direct damage; the target is restrained and pulled prone. Escaping requires DC 14 Athletics (action). While restrained, the creature begins suffocating if it cannot breathe water."
+        }
+      ],
+      "features": [
+        {
+          "name": "Chained Stone Reliquary",
+          "description": "A squat stone chest wrapped in cold-iron chains and marked with a blood-ash sigil overlaid by an official seal. Interacting with it is the central choice of the dungeon."
+        },
+        {
+          "name": "Flooded Blackwater Floor",
+          "description": "1\u20136 inches of cold water across most of the vault; it reflects light eerily and muffles sound. Hidden depressions and debris create hazards."
+        },
+        {
+          "name": "Emergency Tunnel to the Passlands",
+          "description": "A narrow, slick tunnel leading out toward A01. Medium creatures must squeeze for 30 feet; it can serve as an escape route or an entry point for rivals."
+        },
+        {
+          "name": "Oath-Echo Chainsong",
+          "description": "The chains emit a low hum that becomes words when the countersign is spoken; this can be used in rituals to rewrite or end the binding."
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 14: Notice the water\u2019s surface dimples toward a hidden depression (the drowning hazard) near the reliquary.",
+        "Investigation DC 13: Find the waterproof tin with potions behind a loose stair-stone.",
+        "Arcana DC 16: Identify the sigil as a coercive overlay that \u2018legalizes\u2019 a binding through stolen authority; removing it without releasing the contents requires careful counter-runes.",
+        "Religion DC 15: Perform a cleansing rite using incense/prayer strips (from B04) to weaken manifestations for 10 minutes.",
+        "Athletics DC 12: Navigate the emergency tunnel while squeezing without slipping; on failure, fall prone and lose 10 feet of progress."
+      ],
+      "encounters": [],
+      "adventureSummary": "No adventure events have occurred here yet.",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": [
+        {
+          "name": "Emergency Tunnel Mouth",
+          "description": "A rough, narrow opening leading to the Ironwood Passlands. It is not a door, but it functions as an exit route.",
+          "type": "tunnel",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 0,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ]
+    }
+  ]
+}

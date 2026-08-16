@@ -1,0 +1,758 @@
+{
+  "blind_label": "F",
+  "locations": [
+    {
+      "accessibility": "Reached through a roofless approach choked with knee-high rubble and broken iron spikes. The route is obvious but exposed to violent crosswinds; wheeled equipment and creatures larger than Medium must clear a narrow passage through the debris.",
+      "adventureSummary": "No adventure events have yet occurred in this unvisited location.",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B02",
+        "B05"
+      ],
+      "coordinates": "X2Y2",
+      "dangerLevel": "Medium",
+      "dcChecks": [
+        "Perception DC 13: Notice loose iron spikes trembling just before a dangerous gust crosses the gateway.",
+        "Athletics DC 14: Brace or secure the hanging portcullis so the party can pass beneath it safely.",
+        "Investigation DC 12: Reconstruct the final gate struggle and find evidence that defenders attacked unarmed refugees.",
+        "Religion DC 14: Calm Corporal Jessa Mire's echo by reciting the weathered oath carved above the wicket."
+      ],
+      "description": "A roofless barbican opens beneath a split arch crowned by the rusted emblem of an unblinking eye. Wind screams through ranks of broken iron spikes, setting the half-raised portcullis clattering against its chains. Pale hands briefly appear between the stones whenever the gusts subside, and pleading voices ask to be admitted. Old blood has soaked the threshold black, but its stains point outward, revealing that many victims were struck while trying to enter rather than flee.",
+      "dmInstructions": "Use alternating gusts and unnatural silence to establish the watchlands' rhythm. A strong gust crosses the gateway when a creature disturbs the portcullis or the spike field; creatures in the exposed lane must succeed on a DC 13 Strength saving throw or be pushed 10 feet and knocked prone. A creature pushed into the spikes takes 1d6 piercing damage. The loose spikes can be wedged down with an action and a successful Athletics check. Corporal Jessa Mire manifests when a character examines the blood or speaks the watch oath. She reveals that Commandant Maelin Voss ordered the gate barred against refugees from Ironwood Pass. Respectful characters can persuade her to release the gate bell's silver tongue, which later helps suppress hostile spirits. The northern grille leads to B02, while a rubble-cut passage behind the western wall descends toward B05.",
+      "doors": [
+        {
+          "breakDC": 17,
+          "description": "A half-raised iron grille opening toward B02. Its corroded chain can be secured to prevent it from crashing shut.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Atrium Grille",
+          "trap": "The weakened chain drops the grille if its winch is turned without first bracing the counterweight.",
+          "trapped": true,
+          "type": "Iron portcullis"
+        },
+        {
+          "breakDC": 14,
+          "description": "A splintered service door behind a bank of fallen masonry leads through a short passage toward B05.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Command Passage Door",
+          "trap": "",
+          "trapped": false,
+          "type": "Broken oak door"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "The hanging grille can be dropped to block the route between B01 and B02. Raising it requires a DC 15 Strength check unless its counterweight is repaired.",
+          "name": "Hanging Portcullis"
+        },
+        {
+          "description": "Loose, rusted spikes cover a 15-foot strip of the approach. They count as difficult terrain and injure creatures hurled into them.",
+          "name": "Scoured Spike Field"
+        },
+        {
+          "description": "The words \"THE WATCH SHELTERS ALL WHO PASS\" remain legible beneath soot and chisel marks. This phrase influences several spirits elsewhere in the ruins.",
+          "name": "Defaced Watch Oath"
+        },
+        {
+          "description": "A cracked bronze bell hangs above the arch. Its missing silver tongue can be released by Corporal Jessa Mire or found behind her memorial stone.",
+          "name": "Silent Gate Bell"
+        }
+      ],
+      "locationId": "B01",
+      "lootTable": [
+        "Silver gate-bell tongue worth 35 gp; ringing it gives creatures within 30 feet advantage on the next saving throw against being frightened by an undead creature",
+        "Weatherproof satchel containing 18 sp and a healer's kit with 4 uses remaining",
+        "Iron signal whistle engraved with Corporal Jessa Mire's name",
+        "Two intact silvered crossbow bolts lodged beneath the portcullis"
+      ],
+      "monsters": [
+        {
+          "name": "Skeleton",
+          "quantity": {
+            "max": 4,
+            "min": 2
+          }
+        },
+        {
+          "name": "Shadow",
+          "quantity": {
+            "max": 2,
+            "min": 1
+          }
+        }
+      ],
+      "name": "Wind Scoured Gateway",
+      "npcs": [
+        {
+          "attitude": "Pleading and ashamed; becomes helpful if shown compassion or reminded of the watch oath.",
+          "description": "A translucent gate corporal with a crushed breastplate. Jessa disobeyed Voss and tried to open the wicket for the refugees before her own comrades killed her.",
+          "name": "Corporal Jessa Mire"
+        }
+      ],
+      "plotHooks": [
+        "Jessa asks the characters to learn why Commandant Voss betrayed the watch oath and to speak his confession before the dead.",
+        "The outward-pointing blood trails contradict claims that the tower fell to invaders and suggest the garrison massacred those it was sworn to protect.",
+        "The missing bell tongue can quiet the spectral convergence in B02 or interrupt the Gloam Shard's soul-draining power in B06.",
+        "A refugee's carved trail mark points toward the hidden command passage to B05."
+      ],
+      "traps": [
+        {
+          "damage": "2d6 slashing damage and the target is knocked prone on a failed DC 13 Dexterity saving throw; half damage without falling on a success",
+          "description": "A gust tears loose spikes from the rubble and drives them across the exposed entrance lane.",
+          "detectDC": 13,
+          "disableDC": 14,
+          "name": "Wind-Hurled Spikes",
+          "triggerDC": 13
+        },
+        {
+          "damage": "2d10 bludgeoning damage on a failed DC 14 Dexterity saving throw, or half damage on a success",
+          "description": "Turning the grille winch without securing the cracked counterweight causes the portcullis to slam down.",
+          "detectDC": 12,
+          "disableDC": 14,
+          "name": "Failing Portcullis Chain",
+          "triggerDC": 14
+        }
+      ],
+      "type": "room"
+    },
+    {
+      "accessibility": "Directly accessible from B01 through the southern grille, from B03 through the western arch, and from B04 through the eastern guard door. The chamber floor is mostly clear, though spectral currents make the central dais hazardous.",
+      "adventureSummary": "No adventure events have yet occurred in this unvisited location.",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B01",
+        "B03",
+        "B04"
+      ],
+      "coordinates": "X2Y1",
+      "dangerLevel": "High",
+      "dcChecks": [
+        "Arcana DC 15: Identify the three floor currents as a damaged spirit-routing ward rather than a summoning circle.",
+        "Religion DC 14: Rekindle a muster brazier with a prayer affirming the duty to shelter travelers.",
+        "Insight DC 13: Separate Adjutant Seln's coherent memories from the commands imposed on his spirit.",
+        "Investigation DC 15: Find the concealed release that opens the east guard door without disturbing its spectral seal."
+      ],
+      "description": "This octagonal atrium once assembled the watch before patrols. Three cold braziers surround a raised mosaic of the mountain pass, while translucent soldiers endlessly march from one doorway to another and vanish before reaching their posts. Their overlapping boots make no sound; instead, every circuit adds another voice to a mounting chorus of orders, denials, and pleas. Blue-white currents crawl through cracks in the mosaic and converge on a blackened socket shaped like a many-pointed star.",
+      "dmInstructions": "Treat the marching apparitions as unstable terrain rather than harmless scenery. A creature entering the central dais for the first time must succeed on a DC 14 Wisdom saving throw or become frightened until it leaves the dais. Lighting all three muster braziers with radiant flame, holy water, or successful Religion checks stabilizes the atrium: the frightened effect ends, concealed writing appears on the mosaic, and undead cannot move through walls in this room. The writing identifies the western route to the refugee gallery in B03 and the eastern route to the guardian post in B04. Adjutant Seln initially repeats Voss's order to bar the gate. Speaking the watch oath from B01 allows him to remember that the order came after Voss handled a black stone brought from the vault.",
+      "doors": [
+        {
+          "breakDC": 17,
+          "description": "The southern iron grille opens toward B01 and hangs from a visibly weakened chain.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Gateway Grille",
+          "trap": "",
+          "trapped": false,
+          "type": "Iron portcullis"
+        },
+        {
+          "breakDC": 15,
+          "description": "A stone arch veiled by strips of decayed signal cloth leads into B03.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Western Veil Arch",
+          "trap": "",
+          "trapped": false,
+          "type": "Open stone arch"
+        },
+        {
+          "breakDC": 18,
+          "description": "A bronze-bound door bearing the eye emblem of the watch seals B04. A concealed lever beneath the mosaic also retracts its lock.",
+          "keyname": "Iron Watch Key",
+          "lockDC": 15,
+          "locked": true,
+          "name": "Eastern Guard Door",
+          "trap": "Forcing or picking the door without suppressing the seal releases a burst of spectral commands.",
+          "trapped": true,
+          "type": "Bronze-bound stone door"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "Three waist-high braziers represent vigilance, mercy, and resolve. Restoring all three stabilizes the chamber's spirit currents.",
+          "name": "Muster Braziers"
+        },
+        {
+          "description": "Colored stone depicts the watchtower, Ironwood Pass, and an old postern beneath B06. Hidden script appears when the braziers are lit.",
+          "name": "Pass Mosaic"
+        },
+        {
+          "description": "A star-shaped cavity once held the black object now secured in B06. Necrotic residue flows toward the vault route.",
+          "name": "Blackened Ward Socket"
+        },
+        {
+          "description": "Faint soldiers circle the room in fixed routes. A creature can study their formation to gain advantage on one check made to locate a hidden military mechanism in this area.",
+          "name": "Spectral Muster"
+        }
+      ],
+      "locationId": "B02",
+      "lootTable": [
+        "Silver-plated patrol badge worth 25 gp and recognized by the spirits of the old watch",
+        "Vial of holy water sealed inside the brazier of mercy",
+        "Cracked quartz signaling lens worth 40 gp",
+        "Scroll of protection from evil and good hidden beneath a loose mosaic tile"
+      ],
+      "monsters": [
+        {
+          "name": "Specter",
+          "quantity": {
+            "max": 3,
+            "min": 1
+          }
+        },
+        {
+          "name": "Poltergeist",
+          "quantity": {
+            "max": 1,
+            "min": 1
+          }
+        }
+      ],
+      "name": "Spectral Convergence Atrium",
+      "npcs": [
+        {
+          "attitude": "Confused and dutiful; becomes cooperative when confronted with the watch oath or evidence from the gateway.",
+          "description": "The fading spirit of the watch's record keeper, still trying to reconcile Voss's unlawful order with his sworn duties.",
+          "name": "Adjutant Orren Seln"
+        }
+      ],
+      "plotHooks": [
+        "Seln remembers that a black stone from B06 altered Voss's voice and urges the party to inspect the command records in B05.",
+        "The pass mosaic reveals that B06 contains an old postern connecting to the Ironwood Passlands.",
+        "Lighting the braziers exposes a list of garrison names; several match the pleading spirits in B03.",
+        "The empty star-shaped socket suggests that the atrium's wards were dismantled to empower something in the vault."
+      ],
+      "traps": [
+        {
+          "damage": "3d6 psychic damage on a failed DC 14 Wisdom saving throw, or half damage on a success; a failed target also cannot take reactions until the end of its next turn",
+          "description": "A spectral seal on the eastern door overwhelms intruders with shouted orders and memories of military punishment.",
+          "detectDC": 15,
+          "disableDC": 15,
+          "name": "Mustering Seal",
+          "triggerDC": 14
+        }
+      ],
+      "type": "room"
+    },
+    {
+      "accessibility": "Reached from B02 through the western arch or from B05 by a narrow signal stair. Part of the outer wall has fallen away, exposing the corridor to severe wind and a steep drop.",
+      "adventureSummary": "No adventure events have yet occurred in this unvisited location.",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B02",
+        "B05"
+      ],
+      "coordinates": "X1Y1",
+      "dangerLevel": "Medium",
+      "dcChecks": [
+        "Perception DC 14: Distinguish solid flagstones from an illusory continuation of the collapsed floor.",
+        "Survival DC 13: Read refugee trail marks and identify a sheltered route through the wind-blown rubble.",
+        "Persuasion DC 14: Convince Mara Fen that the characters intend to expose the garrison's betrayal rather than erase it.",
+        "History DC 13: Recognize the painted mountain symbols as civilian waymarks, not military invasion signs."
+      ],
+      "description": "A long gallery clings to the outer face of the ruined tower, its mountain-side wall reduced to jagged pillars. Tatters of gray signal cloth stream horizontally into a bank of unnatural mist, concealing the drop beyond. Hundreds of names have been scratched into the inner plaster by hands large and small. Their whispers pass from name to name until one voice asks, with terrible clarity, why the gate was never opened.",
+      "dmInstructions": "Keep the drop threatening but readable. The exposed edge is bordered by unstable flagstones; a creature shoved from the gallery can attempt a DC 13 Dexterity saving throw to catch the edge, otherwise falling 30 feet onto a lower rubble slope. The mist creates a false section of floor over one collapsed span. Refugee trail marks reveal the safe inner ledge. Mara Fen emerges from the wall of names if a character reads one aloud. She witnessed Voss ordering archers to fire after a starless black light flared from the command deck. If promised that the Gloam Shard will be destroyed, she teaches the party a refrain that grants advantage on one Charisma check made against a garrison spirit. The cloth-veiled stair at the south end descends to B05.",
+      "doors": [
+        {
+          "breakDC": 14,
+          "description": "An open arch leading to B02 is curtained by rotting signal cloth that moves even when the wind stops.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Atrium Veil Arch",
+          "trap": "",
+          "trapped": false,
+          "type": "Open stone arch"
+        },
+        {
+          "breakDC": 16,
+          "description": "A narrow stair hatch descends toward B05. Rubble obscures its handle but does not lock it.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Signal Stair Hatch",
+          "trap": "",
+          "trapped": false,
+          "type": "Iron hatch"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "The plaster bears the names of those denied shelter. Rubbing charcoal over the names reveals arrows pointing toward the command deck.",
+          "name": "Wall of Names"
+        },
+        {
+          "description": "A veil of supernatural mist hides the mountain drop and creates an illusory span of floor.",
+          "name": "Mountain Veil"
+        },
+        {
+          "description": "Knotted cloth strips record civilian calls for aid. Decoding them proves the approaching group requested sanctuary rather than surrender.",
+          "name": "Refugee Signals"
+        },
+        {
+          "description": "A narrow ledge beyond a fallen pillar holds a small memorial assembled from travel tokens and children's carved animals.",
+          "name": "Hidden Memorial"
+        }
+      ],
+      "locationId": "B03",
+      "lootTable": [
+        "Traveler's charm set with moonstone worth 30 gp",
+        "Potion of climbing wrapped in oilskin beneath the memorial",
+        "Three silver trade bars worth 10 gp each",
+        "Child's carved ironwood bird that Mara Fen recognizes and values"
+      ],
+      "monsters": [
+        {
+          "name": "Shadow",
+          "quantity": {
+            "max": 3,
+            "min": 1
+          }
+        },
+        {
+          "name": "Will-o'-Wisp",
+          "quantity": {
+            "max": 2,
+            "min": 1
+          }
+        }
+      ],
+      "name": "Veiled Mountain Corridor",
+      "npcs": [
+        {
+          "attitude": "Wary and grief-stricken, but eager for proof that the truth will survive.",
+          "description": "The spirit of a refugee trail guide who led families to the watchtower after seeing its shelter signal. Her form is threaded with mountain mist and broken arrows.",
+          "name": "Mara Fen"
+        }
+      ],
+      "plotHooks": [
+        "Mara asks that the wall of names be preserved and that the Gloam Shard in B06 be destroyed before it consumes the refugees' memories.",
+        "The decoded signal cloth proves someone in the watchtower displayed a shelter signal before Voss ordered the massacre.",
+        "One scratched name belongs to Sergeant Arven Pell in B04, implying a guardian secretly aided the refugees.",
+        "A trail mark identifies the signal stair as the route used by a wounded witness fleeing the command deck."
+      ],
+      "traps": [
+        {
+          "damage": "3d6 bludgeoning damage from the fall; a creature that catches the edge takes no damage and remains hanging",
+          "description": "Supernatural mist creates the image of intact flagstones across a collapsed 10-foot section of the gallery.",
+          "detectDC": 14,
+          "disableDC": 13,
+          "name": "Veil-Step Drop",
+          "triggerDC": 13
+        },
+        {
+          "damage": "2d6 bludgeoning damage and the target is pushed 10 feet on a failed DC 13 Strength saving throw; half damage without being pushed on a success",
+          "description": "Touching the central bundle of signal cloth releases a compressed blast of mountain wind.",
+          "detectDC": 13,
+          "disableDC": 14,
+          "name": "Knotted Gale Ward",
+          "triggerDC": 13
+        }
+      ],
+      "type": "room"
+    },
+    {
+      "accessibility": "Accessible only through the locked eastern door from B02. The room is cramped by toppled bunks, armor racks, and a collapsed observation platform.",
+      "adventureSummary": "No adventure events have yet occurred in this unvisited location.",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B02"
+      ],
+      "coordinates": "X3Y1",
+      "dangerLevel": "Medium",
+      "dcChecks": [
+        "Investigation DC 14: Locate Sergeant Pell's hidden compartment beneath the overturned duty desk.",
+        "Persuasion DC 15: Convince Pell's ghost that mercy toward the refugees fulfilled rather than violated his oath.",
+        "Athletics DC 13: Lift the collapsed observation platform without causing further debris to fall.",
+        "Medicine DC 12: Determine that several dead guards were struck from behind by their own comrades."
+      ],
+      "description": "The guardian post is a compact barracks of overturned bunks and split weapon racks. Four suits of rust-streaked armor remain standing at attention amid the wreckage, each facing inward toward a single skeleton pinned beneath a fallen observation platform. Bolts pepper the inner wall, and the painted eye emblems on the shields have been gouged into weeping sockets. A brass duty board still lists Sergeant Arven Pell as the officer responsible for the gate.",
+      "dmInstructions": "The standing armor remains still until someone takes the brass command seal, threatens Pell's remains, or repeats Voss's order to bar the gate. Pell's ghost can halt the armor if convinced that the characters honor the true watch oath. His remains hold an Iron Watch Key, while his hidden desk compartment contains the Brass Command Seal used at the B06 bulkhead. Pell admits that he helped Corporal Jessa Mire raise the gate and was killed by guards influenced by the black beacon. If his remains are freed and the watch oath is spoken, he willingly grants the seal and can reveal that Voss recorded a confession in B05.",
+      "doors": [
+        {
+          "breakDC": 18,
+          "description": "The bronze-bound western door opens to B02. Its interior mechanism can be unlocked without a key.",
+          "keyname": "Iron Watch Key",
+          "lockDC": 15,
+          "locked": true,
+          "name": "Atrium Guard Door",
+          "trap": "A defensive bolt rack fires if the door is forced while the interior safety lever remains engaged.",
+          "trapped": true,
+          "type": "Bronze-bound stone door"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "Four rusted suits bear the old watch emblem. They animate to defend Pell's remains and the command seal unless his spirit intervenes.",
+          "name": "Guardian Armor Rack"
+        },
+        {
+          "description": "The crushed platform pins Pell's skeleton. Lifting it allows his remains to be gathered and laid to rest.",
+          "name": "Collapsed Observation Platform"
+        },
+        {
+          "description": "The entries show Pell repeatedly objected to Voss's orders and reassigned guards away from the gate to reduce bloodshed.",
+          "name": "Brass Duty Board"
+        },
+        {
+          "description": "A spring-loaded rack aimed at the western door still holds several serviceable heavy crossbow bolts.",
+          "name": "Defensive Bolt Rack"
+        }
+      ],
+      "locationId": "B04",
+      "lootTable": [
+        "Brass Command Seal engraved with the true watch oath; functions as the key to the vault bulkhead in B05 and B06",
+        "Iron Watch Key opening surviving garrison locks",
+        "Pell's silvered shortsword in a cracked scabbard",
+        "Case containing 8 heavy crossbow bolts and 2 silvered heavy crossbow bolts",
+        "Potion of healing stored in the duty desk"
+      ],
+      "monsters": [
+        {
+          "name": "Animated Armor",
+          "quantity": {
+            "max": 4,
+            "min": 2
+          }
+        },
+        {
+          "name": "Flying Sword",
+          "quantity": {
+            "max": 2,
+            "min": 1
+          }
+        }
+      ],
+      "name": "Fallen Guardian Post",
+      "npcs": [
+        {
+          "attitude": "Stern and suspicious; becomes protective once shown evidence of the refugees' innocence.",
+          "description": "A broad-shouldered spectral sergeant pinned in the pose of his corpse. Pell opposed Voss and died while attempting to relieve the gate guard.",
+          "name": "Sergeant Arven Pell"
+        }
+      ],
+      "plotHooks": [
+        "Pell asks the party to carry the Brass Command Seal to B06 and end the corruption he failed to stop.",
+        "The duty board proves that Voss replaced loyal guards with soldiers already exposed to the black beacon.",
+        "Wounds on the dead guards indicate fighting within the garrison before any outside force entered.",
+        "Pell's hidden note says Voss left a confession on the command deck and warns that the vault answers to spoken orders."
+      ],
+      "traps": [
+        {
+          "damage": "3d8 piercing damage on a failed DC 14 Dexterity saving throw, or half damage on a success",
+          "description": "Forcing the western door pulls a concealed cable and releases a volley of heavy crossbow bolts from the opposite wall.",
+          "detectDC": 14,
+          "disableDC": 15,
+          "name": "Guardian Bolt Volley",
+          "triggerDC": 14
+        },
+        {
+          "damage": "2d6 bludgeoning damage and the target is restrained beneath debris on a failed DC 13 Dexterity saving throw",
+          "description": "Moving the platform without first bracing its cracked supports causes a section of ceiling stone to fall.",
+          "detectDC": 12,
+          "disableDC": 13,
+          "name": "Unstable Observation Platform",
+          "triggerDC": 13
+        }
+      ],
+      "type": "room"
+    },
+    {
+      "accessibility": "Reached from B01 through the eastern command passage or from B03 by the northern signal stair. The sealed western bulkhead leads to B06 and requires the Brass Command Seal, lockpicking, or force.",
+      "adventureSummary": "No adventure events have yet occurred in this unvisited location.",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B01",
+        "B03",
+        "B06"
+      ],
+      "coordinates": "X1Y2",
+      "dangerLevel": "High",
+      "dcChecks": [
+        "Investigation DC 15: Reassemble the shattered slate fragments containing Commandant Voss's confession.",
+        "Arcana DC 16: Reverse the beacon controls to weaken the necrotic current flowing into B06.",
+        "Insight DC 14: Recognize when Voss is speaking in his own voice rather than echoing the Gloam Shard.",
+        "Sleight of Hand DC 15: Lock the rotating signal arms before they sweep across the deck.",
+        "Persuasion DC 16: Force Voss to acknowledge that fear, not duty, drove his final orders."
+      ],
+      "description": "The upper command chamber resembles the deck of a wrecked ship. Slanted windows frame the mountains, and a ring of iron signal arms surrounds a central map table pierced by a shaft of black light. Orders scratched into slate cover the floor, many written over one another until only the repeated command BAR THE GATE remains clear. A figure in a ruined officer's coat stands beside the controls, fading between a rigid commander and a terrified man with blood on his hands.",
+      "dmInstructions": "Commandant Maelin Voss is represented by the wight listed here, but he need not immediately attack. He alternates between defending his actions and repeating words imposed by the Gloam Shard. Presenting Jessa's whistle, Mara's testimony, Pell's seal, or the completed confession weakens his certainty; three such pieces of evidence make him cease hostilities and reveal how to suppress the vault wards. The beacon controls can be reversed with the Arcana check or by fitting the Brass Command Seal into the map table and speaking the true watch oath. Doing so extinguishes the black beam, disables the Commander's Rebuke trap, and causes the Gloam Shard in B06 to lose its resistance to radiant damage. A failed attempt activates the rotating signal arms. The eastern passage rises to B01, the northern stair reaches B03, and the western bulkhead seals B06.",
+      "doors": [
+        {
+          "breakDC": 14,
+          "description": "A battered oak door opens through the ruined command passage toward B01.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Gateway Command Door",
+          "trap": "",
+          "trapped": false,
+          "type": "Broken oak door"
+        },
+        {
+          "breakDC": 16,
+          "description": "A narrow iron hatch opens onto the signal stair leading to B03.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Signal Stair Hatch",
+          "trap": "",
+          "trapped": false,
+          "type": "Iron hatch"
+        },
+        {
+          "breakDC": 20,
+          "description": "A black iron bulkhead engraved with concentric watch emblems seals B06. Its keyway is shaped for the Brass Command Seal.",
+          "keyname": "Brass Command Seal",
+          "lockDC": 18,
+          "locked": true,
+          "name": "Vault Bulkhead",
+          "trap": "Opening the bulkhead without the seal or without reversing the beacon invokes the Commander's Rebuke.",
+          "trapped": true,
+          "type": "Runed iron bulkhead"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "A circular table depicting the watchlands contains a socket for the Brass Command Seal. Reversing its controls disrupts the vault's power.",
+          "name": "Beacon Command Table"
+        },
+        {
+          "description": "Four long iron spars rotate through the chamber when the damaged controls are activated, striking creatures from raised platforms.",
+          "name": "Signal Arms"
+        },
+        {
+          "description": "The broken fragments record Voss admitting that the stone magnified his fear until every refugee appeared to be an enemy.",
+          "name": "Shattered Confession Slate"
+        },
+        {
+          "description": "A black beam rises through the table and bends west toward B06. Nearby undead appear sharper and more substantial while it remains active.",
+          "name": "Black Beacon Shaft"
+        }
+      ],
+      "locationId": "B05",
+      "lootTable": [
+        "Commandant's +1 longsword, its fuller engraved with the true watch oath",
+        "Shattered confession slate, valuable as evidence if repaired",
+        "Officer's coffer containing 65 gp, 110 sp, and a bloodstone worth 50 gp",
+        "Potion of greater healing secured beneath the map table",
+        "Watchlands survey map granting advantage on one Survival check made to navigate the surrounding ruins"
+      ],
+      "monsters": [
+        {
+          "name": "Wight",
+          "quantity": {
+            "max": 1,
+            "min": 1
+          }
+        },
+        {
+          "name": "Specter",
+          "quantity": {
+            "max": 2,
+            "min": 1
+          }
+        }
+      ],
+      "name": "Cursed Command Deck",
+      "npcs": [
+        {
+          "attitude": "Hostile and defensive, though remorse repeatedly breaks through the Gloam Shard's influence.",
+          "description": "The undead commandant who ordered the gate closed. Voss understands that he was manipulated but cannot accept how readily the shard exploited his fear.",
+          "name": "Commandant Maelin Voss"
+        }
+      ],
+      "plotHooks": [
+        "Voss's confession can release several garrison spirits if read in the atrium or at the gateway.",
+        "The command table proves the black beacon is drawing memories from the dead and feeding them into the object in B06.",
+        "Reversing the beacon controls substantially weakens the vault's defenses.",
+        "Voss claims the Gloam Shard whispered from beneath Ironwood Pass before it was excavated, tying the haunting to the neighboring passlands."
+      ],
+      "traps": [
+        {
+          "damage": "3d10 force damage on a failed DC 15 Dexterity saving throw, or half damage on a success",
+          "description": "Damaged controls cause the iron signal arms to sweep across the chamber at chest height.",
+          "detectDC": 13,
+          "disableDC": 15,
+          "name": "Rotating Signal Arms",
+          "triggerDC": 15
+        },
+        {
+          "damage": "4d6 psychic damage on a failed DC 15 Wisdom saving throw, or half damage on a success; a failed target is also frightened of the bulkhead until the end of its next turn",
+          "description": "The vault bulkhead projects Voss's final execution order directly into the mind of anyone bypassing its seal.",
+          "detectDC": 16,
+          "disableDC": 16,
+          "name": "Commander's Rebuke",
+          "triggerDC": 15
+        }
+      ],
+      "type": "room"
+    },
+    {
+      "accessibility": "Accessible through the sealed bulkhead from B05. A concealed and partially collapsed postern also connects the western side of the vault to A01 in the Ironwood Passlands; clearing it requires sustained labor or a successful DC 16 Athletics check.",
+      "adventureSummary": "No adventure events have yet occurred in this unvisited location.",
+      "areaConnectivity": [
+        "The Ironwood Passlands"
+      ],
+      "areaConnectivityId": [
+        "A01"
+      ],
+      "connectivity": [
+        "B05"
+      ],
+      "coordinates": "X0Y2",
+      "dangerLevel": "Very High",
+      "dcChecks": [
+        "Religion DC 16: Restore the three funerary seals and prevent the Gloam Shard from drawing strength from nearby spirits.",
+        "Arcana DC 17: Determine how to safely separate the Gloam Shard from the Grief Engine.",
+        "Athletics DC 16: Clear the collapsed Ironwood postern without bringing down the surrounding passage.",
+        "Perception DC 15: Notice black frost spreading toward a creature before the soul-drain ward erupts.",
+        "Persuasion DC 14: Reassure Chaplain Ilyra Neme that the refugees' names and testimony will not be forgotten."
+      ],
+      "description": "A circular vault of fitted black stone lies beneath a low dome webbed with silver cracks. At its center, an irregular shard of lightless crystal hangs inside a cage of tarnished bronze rings. Threads of pale vapor stream from the walls into the shard, and each thread carries a face that silently mouths a name. Three funerary seals around the cage have been deliberately inverted. Beyond it, a narrow postern descends into roots and mountain stone toward Ironwood Pass.",
+      "dmInstructions": "The Gloam Shard is the source of the haunting, while the bronze apparatus is a corrupted memorial device called the Grief Engine. The wraith manifests from the shard if anyone touches the cage, attempts to restore a seal, or opens the Ironwood postern without first addressing the engine. Each restored funerary seal requires the Religion check, the Brass Command Seal, or a sincere recitation of a victim's name from B03. With all three seals restored, Shadows cannot emerge from the walls and the wraith loses its ability to move through solid objects. If the beacon in B05 was reversed, the shard also loses resistance to radiant damage. Treat the shard as an object with AC 17, 30 hit points, immunity to poison, psychic, and necrotic damage, and resistance to all other damage except radiant. Destroying it releases the trapped faces as harmless lights. Alternatively, a successful Arcana check after restoring the seals removes the shard intact for secure transport, but it remains dangerously corruptive. Chaplain Ilyra urges destruction and can explain the engine. Clearing the western postern establishes passage to A01.",
+      "doors": [
+        {
+          "breakDC": 20,
+          "description": "The eastern bulkhead returns to B05. Its inner socket accepts the Brass Command Seal and can disengage the soul-drain ward.",
+          "keyname": "Brass Command Seal",
+          "lockDC": 18,
+          "locked": true,
+          "name": "Command Deck Bulkhead",
+          "trap": "Crossing the threshold without the command seal or restored funerary wards triggers a soul-draining pulse.",
+          "trapped": true,
+          "type": "Runed iron bulkhead"
+        },
+        {
+          "breakDC": 17,
+          "description": "A narrow stone postern descends toward A01 in the Ironwood Passlands. Roots and fallen masonry jam it shut from this side.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Ironwood Postern",
+          "trap": "Removing the central blocking stone before bracing the lintel causes a collapse.",
+          "trapped": true,
+          "type": "Stone postern"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "A lightless crystal that feeds on fear, guilt, and unremembered death. It amplified Voss's suspicions and now binds the dead to the watchtower.",
+          "name": "Gloam Shard"
+        },
+        {
+          "description": "Three rotating bronze rings were built to preserve the names of fallen travelers. Inverting its seals transformed remembrance into imprisonment.",
+          "name": "Grief Engine"
+        },
+        {
+          "description": "Silver-inlaid stones dedicated to memory, mercy, and release. Restoring all three weakens the shard and frees lesser spirits.",
+          "name": "Funerary Seals"
+        },
+        {
+          "description": "A root-choked tunnel links the vault to the Ironwood Passlands at A01 and bears the same excavation marks as the shard's original container.",
+          "name": "Ironwood Postern Passage"
+        }
+      ],
+      "locationId": "B06",
+      "lootTable": [
+        "Three black opals worth 100 gp each set into the Grief Engine's outer ring",
+        "Mace of disruption sealed in Chaplain Ilyra's reliquary",
+        "Spell scroll of remove curse inside a silver prayer case",
+        "Reliquary containing diamond dust worth 150 gp",
+        "Intact Gloam Shard fragment, if safely separated, valuable to occult scholars but spiritually hazardous"
+      ],
+      "monsters": [
+        {
+          "name": "Wraith",
+          "quantity": {
+            "max": 1,
+            "min": 1
+          }
+        },
+        {
+          "name": "Shadow",
+          "quantity": {
+            "max": 4,
+            "min": 2
+          }
+        }
+      ],
+      "name": "Shrouded Evil Vault",
+      "npcs": [
+        {
+          "attitude": "Compassionate but urgent; distrusts any proposal to preserve or exploit the Gloam Shard.",
+          "description": "The ghost of the watch chaplain who built the original memorial engine. Ilyra died attempting to restore its seals after Voss corrupted them.",
+          "name": "Chaplain Ilyra Neme"
+        }
+      ],
+      "plotHooks": [
+        "Ilyra asks the characters to destroy the Gloam Shard and recite the recovered names so the bound dead can depart.",
+        "Excavation marks and stone dust show that the shard was brought through the Ironwood postern from beneath the neighboring passlands.",
+        "Occult scholars may seek an intact fragment, creating a dangerous choice between knowledge, profit, and permanent destruction.",
+        "Restoring the Grief Engine without destroying it creates a memorial capable of revealing the name of a nearby restless spirit.",
+        "The newly cleared postern provides direct access to A01 and suggests the corruption extends beneath Ironwood Pass."
+      ],
+      "traps": [
+        {
+          "damage": "4d8 necrotic damage on a failed DC 16 Constitution saving throw, or half damage on a success; the target's hit point maximum is reduced by the necrotic damage until it finishes a long rest",
+          "description": "An inverted funerary seal draws warmth and memory from creatures crossing the eastern threshold without proper authority.",
+          "detectDC": 15,
+          "disableDC": 16,
+          "name": "Soul-Tithe Threshold",
+          "triggerDC": 16
+        },
+        {
+          "damage": "4d6 bludgeoning damage on a failed DC 14 Dexterity saving throw, or half damage on a success; the postern becomes blocked again",
+          "description": "The root-bound lintel collapses if the central blocking stone is removed before the passage is braced.",
+          "detectDC": 13,
+          "disableDC": 15,
+          "name": "Postern Collapse",
+          "triggerDC": 14
+        },
+        {
+          "damage": "3d6 cold damage and 3d6 necrotic damage on a failed DC 15 Constitution saving throw, or half damage on a success",
+          "description": "Black frost erupts from the Grief Engine when a funerary seal is manipulated incorrectly.",
+          "detectDC": 15,
+          "disableDC": 16,
+          "name": "Grief Engine Backlash",
+          "triggerDC": 15
+        }
+      ],
+      "type": "room"
+    }
+  ]
+}

@@ -1,0 +1,468 @@
+{
+  "blind_label": "C",
+  "locations": [
+    {
+      "name": "Wind Scoured Gateway",
+      "type": "room",
+      "description": "This battered archway of pitted iron and tumbled stone serves as the Watchlands' entrance, its columns lashed by icy wind. Faded sigils of warding are etched into cracked flagstones. The ground is littered with windblown debris\u2014ancient banners, broken polearms, and the odd bone. A faint, chilling whisper echoes after every gust.",
+      "dmInstructions": "Play up the sense of exposure and foreboding. The wind both muffles and amplifies sounds; Perception checks are at disadvantage. The spirits are subtle here\u2014use cold spots, fleeting glimpses, and voices at the edge of hearing. If the party lingers, the wind shifts to form faint words, warning against proceeding.",
+      "locationId": "B01",
+      "coordinates": "X2Y2",
+      "accessibility": "Open to the road, but heavily overgrown and exposed to the elements. No doors block entry, but some rubble must be navigated.",
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Specter",
+          "quantity": {
+            "min": 1,
+            "max": 2
+          }
+        },
+        {
+          "name": "Restless Spirit (use Ghost statblock)",
+          "quantity": {
+            "min": 0,
+            "max": 1
+          }
+        }
+      ],
+      "plotHooks": [
+        "A spectral voice pleads for release, hinting at a curse on the Watchtower.",
+        "An iron ring embedded in the ground thrums with faint magic\u2014remnants of a binding ritual."
+      ],
+      "lootTable": [
+        "Half-buried signet ring (10 gp, local noble family crest)",
+        "Small iron key (fits a door in B05)",
+        "Tattered pouch with 13 sp and a silver locket"
+      ],
+      "dangerLevel": "Medium",
+      "connectivity": [
+        "B02",
+        "B05"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "traps": [
+        {
+          "name": "Residual Warding Pulse",
+          "description": "A fading glyph triggers a blast of spectral force when disturbed by the living.",
+          "detectDC": 15,
+          "disableDC": 14,
+          "triggerDC": 12,
+          "damage": "2d6 force damage, targets within 5 ft."
+        }
+      ],
+      "features": [
+        {
+          "name": "Warded Sigil Stones",
+          "description": "Cracked stones with faintly glowing runes, remnants of ancient protective magic."
+        },
+        {
+          "name": "Rusted Banner Stand",
+          "description": "A toppled iron pole with the remains of a banner bearing a crow sigil."
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 13: Find the faintly glowing sigil stones or hidden locket.",
+        "Perception DC 15: Hear the warning in the wind, or spot a lurking specter before it attacks.",
+        "Arcana DC 14: Recognize the warding runes as anti-undead magic, now failing."
+      ],
+      "encounters": [],
+      "adventureSummary": "",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": []
+    },
+    {
+      "name": "Spectral Convergence Atrium",
+      "type": "room",
+      "description": "A vast, echoing chamber with ceilings lost in shadows. Stone benches and shattered statues circle a central dais, where ghostly forms flicker in and out of existence. The air is thick with cold mist, and the ground glitters with fragments of crystal and bone.",
+      "dmInstructions": "If the players interact with the dais or attempt to commune with spirits, allow glimpses of the Watchtower's tragic past. Spirits may coalesce for a brief, disorienting audience. The convergence is unstable\u2014too much disturbance may draw hostile undead from the ethereal.",
+      "locationId": "B02",
+      "coordinates": "X2Y1",
+      "accessibility": "All approaches are open but partially blocked with rubble. Mist hampers vision (disadvantage on ranged attacks).",
+      "npcs": [
+        {
+          "name": "Elyra, Fading Watcher",
+          "description": "A translucent elven spirit, sorrowful and lucid for brief moments. She remembers fragments of the Watchtower\u2019s fall.",
+          "attitude": "Wary, but desperate for release."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Specter",
+          "quantity": {
+            "min": 2,
+            "max": 4
+          }
+        },
+        {
+          "name": "Will-o'-Wisp",
+          "quantity": {
+            "min": 1,
+            "max": 2
+          }
+        }
+      ],
+      "plotHooks": [
+        "Elyra begs for someone to break the curse binding her here.",
+        "The dais flashes with a vision of an ancient betrayal\u2014clues to the source of the haunting."
+      ],
+      "lootTable": [
+        "Broken crystal focus (20 gp, can be reassembled by an enchanter)",
+        "Silvered dagger under a bench",
+        "Old patrol journal with cryptic warnings"
+      ],
+      "dangerLevel": "High",
+      "connectivity": [
+        "B01",
+        "B03",
+        "B04"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "traps": [
+        {
+          "name": "Lingering Sorrow Trap",
+          "description": "Those who step on the dais are struck by a wave of sorrow, risking paralysis.",
+          "detectDC": 14,
+          "disableDC": 17,
+          "triggerDC": 13,
+          "damage": "Target must succeed on a DC 13 Wisdom save or be paralyzed with despair for 1 minute."
+        }
+      ],
+      "features": [
+        {
+          "name": "Central Dais",
+          "description": "A raised platform etched with swirling ghostly patterns."
+        },
+        {
+          "name": "Flickering Statues",
+          "description": "Statues of armored guardians, some animate with spectral energy."
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 15: Sense the convergence of multiple souls and their unrest.",
+        "Insight DC 13: Realize Elyra is holding something back out of fear.",
+        "History DC 12: Recognize Watchtower uniforms among the ghostly forms."
+      ],
+      "encounters": [],
+      "adventureSummary": "",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": []
+    },
+    {
+      "name": "Veiled Mountain Corridor",
+      "type": "room",
+      "description": "This long, narrow hall is lined with faded murals depicting the Watchtower against a stormy mountainscape. Strange, cold fog clings ankle-deep, obscuring cracks in the flagstones. A musty, metallic tang hangs in the air.",
+      "dmInstructions": "Encourage players to describe how they traverse the fog\u2014moving quickly may cause slips or missed details. Hidden among the murals are clues about the Watchtower\u2019s defenders. A spectral sentinel may patrol here, testing intruders' resolve.",
+      "locationId": "B03",
+      "coordinates": "X1Y1",
+      "accessibility": "Accessible by narrow, winding stairs; the corridor is slippery and partially collapsed at one end.",
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Spectral Sentinel (use Wight stats)",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        }
+      ],
+      "plotHooks": [
+        "One mural depicts a living hero who looks like a party member\u2014coincidence, or fate?",
+        "A loose stone conceals a vital clue or relic from the Watchtower\u2019s fall."
+      ],
+      "lootTable": [
+        "Engraved bronze pendant (15 gp, with knight\u2019s vow)",
+        "Potion of resistance (cold)",
+        "Bundle of ancient arrows (usable, fletched with black feathers)"
+      ],
+      "dangerLevel": "Medium",
+      "connectivity": [
+        "B02",
+        "B05"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "traps": [
+        {
+          "name": "Fog-hidden Pitfall",
+          "description": "A section of flagstone collapses underfoot, dropping victims into a shallow pit with rusted spikes.",
+          "detectDC": 13,
+          "disableDC": 13,
+          "triggerDC": 11,
+          "damage": "2d6 piercing damage, DC 12 Dex save for half."
+        }
+      ],
+      "features": [
+        {
+          "name": "Storm Mural",
+          "description": "A mural depicting the Watchtower surrounded by spectral winds and storm clouds."
+        },
+        {
+          "name": "Loose Stone",
+          "description": "Conceals a small compartment containing a relic or clue."
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 14: Notice the pitfall or spot movement in the fog.",
+        "Investigation DC 12: Find the hidden compartment.",
+        "Stealth DC 13: Move quietly enough to avoid attracting the sentinel's attention."
+      ],
+      "encounters": [],
+      "adventureSummary": "",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": []
+    },
+    {
+      "name": "Fallen Guardian Post",
+      "type": "room",
+      "description": "A ruined guard station with two broken arrow slits facing the outside. Old weapons and shattered armor are strewn about, some pieces frozen in ghostly blue flame. The floor is scorched, and the walls bear clawed scratches and spectral burn marks.",
+      "dmInstructions": "If a character touches an item here, there is a chance it animates or causes a spectral echo of a past fight. The blue flames are harmless unless tampered with, in which case they explode violently. Careful examination may yield useful relics or information about the Watchtower\u2019s last stand.",
+      "locationId": "B04",
+      "coordinates": "X3Y1",
+      "accessibility": "Collapsed from one side but passable with care; debris requires Dexterity or Athletics to traverse quickly.",
+      "npcs": [
+        {
+          "name": "Guardian Shade",
+          "description": "A flickering ghost of a former watchman, stuck reliving his final moments.",
+          "attitude": "Agitated, confused, may attack if startled."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Animated Armor",
+          "quantity": {
+            "min": 1,
+            "max": 2
+          }
+        }
+      ],
+      "plotHooks": [
+        "The Guardian Shade can reveal who broke the Watchtower\u2019s defenses if appeased.",
+        "A suit of armor bears an unfamiliar insignia\u2014perhaps a traitor\u2019s mark?"
+      ],
+      "lootTable": [
+        "Ghostly blue flame in a lantern (can be bottled for 1d4 radiant uses)",
+        "Masterwork longbow (damaged, repairable)",
+        "Embroidered badge (unique, collectable)"
+      ],
+      "dangerLevel": "Medium",
+      "connectivity": [
+        "B02"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "traps": [
+        {
+          "name": "Explosive Blue Flame",
+          "description": "Tampering with the blue flames causes them to detonate.",
+          "detectDC": 15,
+          "disableDC": 15,
+          "triggerDC": 12,
+          "damage": "3d6 fire damage, 10 ft. radius, DC 12 Dex save for half."
+        }
+      ],
+      "features": [
+        {
+          "name": "Blue-Flamed Armor",
+          "description": "A shattered suit glowing with eerie blue fire."
+        },
+        {
+          "name": "Arrow Slits",
+          "description": "Narrow windows, half-choked with rubble, looking out over the Watchlands."
+        }
+      ],
+      "dcChecks": [
+        "Athletics DC 13: Clamber over debris without falling.",
+        "Arcana DC 14: Identify the spectral blue flames as protective magic gone rogue.",
+        "Persuasion DC 12: Calm the Guardian Shade long enough to ask questions."
+      ],
+      "encounters": [],
+      "adventureSummary": "",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": []
+    },
+    {
+      "name": "Cursed Command Deck",
+      "type": "room",
+      "description": "A circular chamber with a cracked command table at its center. Faded maps and wooden tokens are scattered around, many half-sunken into the stone. The walls are inscribed with frantic last orders, while invisible hands occasionally move the tokens. An oppressive chill hangs in the air.",
+      "dmInstructions": "The tokens move to represent past and possible future events, echoing the Watchtower\u2019s fall. If anyone studies or touches the table, they may trigger a vision or draw the attention of the cursed commander. The table can be used to glean strategic information about the Watchlands if the curse is broken.",
+      "locationId": "B05",
+      "coordinates": "X1Y2",
+      "accessibility": "Heavy, warped door\u2014stuck but not locked. Athletics DC 14 to force open.",
+      "npcs": [
+        {
+          "name": "Commander Varlon\u2019s Shade",
+          "description": "A spectral, armored human gripping a phantom sword, giving orders to invisible troops.",
+          "attitude": "Commanding, proud, but haunted and desperate."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Poltergeist (use Ghost statblock)",
+          "quantity": {
+            "min": 1,
+            "max": 2
+          }
+        }
+      ],
+      "plotHooks": [
+        "Breaking the command table's curse may lift the Watchlands\u2019 haunting.",
+        "The commander's last orders reference a secret vault (B06)."
+      ],
+      "lootTable": [
+        "Silver-inlaid command baton (25 gp, faint enchantment)",
+        "Cryptic map fragment (leads to B06)",
+        "Potion of heroism"
+      ],
+      "dangerLevel": "High",
+      "connectivity": [
+        "B01",
+        "B03",
+        "B06"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "traps": [
+        {
+          "name": "Frantic Order Trap",
+          "description": "Touching certain tokens causes psychic backlash as memories flood the mind.",
+          "detectDC": 15,
+          "disableDC": 17,
+          "triggerDC": 12,
+          "damage": "2d8 psychic damage, DC 13 Wisdom save for half."
+        }
+      ],
+      "features": [
+        {
+          "name": "Command Table",
+          "description": "A large, rune-inscribed table with shifting tokens and faded maps."
+        },
+        {
+          "name": "Scrawled Last Orders",
+          "description": "Walls covered in ghostly, shifting script of frantic orders."
+        }
+      ],
+      "dcChecks": [
+        "History DC 15: Decipher the tactical maps and last orders.",
+        "Insight DC 13: Discern the commander's weakness from his spectral rants.",
+        "Athletics DC 14: Force open the stuck door."
+      ],
+      "encounters": [],
+      "adventureSummary": "",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": [
+        {
+          "name": "Warped Oak Door",
+          "description": "A thick, weathered door swollen shut from damp.",
+          "type": "wooden",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 14,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ]
+    },
+    {
+      "name": "Shrouded Evil Vault",
+      "type": "room",
+      "description": "A windowless stone vault, its walls lined with broken chains and sigils now blackened by corruption. The air is thick and still, broken only by the occasional rattle of a phantom chain. A massive iron door, once sealed by magic, now hangs open, revealing a darkness that seems to swallow all light. The vault\u2019s center holds a pedestal stained with ancient blood.",
+      "dmInstructions": "Entering the vault sends a chill down the spine; living creatures feel as if watched by dozens of unseen eyes. Anyone tampering with the pedestal may trigger a powerful curse or awaken the vault's true guardian. This room serves as a transition to the Ironwood Passlands but may bar passage unless the curse is lifted or the guardian defeated.",
+      "locationId": "B06",
+      "coordinates": "X0Y2",
+      "accessibility": "Ironbound door (can be closed but no longer locked). Access is otherwise unobstructed, but the lingering aura causes unease (Wisdom saves to avoid Frightened condition when lingering).",
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Wraith",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "Shadow",
+          "quantity": {
+            "min": 2,
+            "max": 4
+          }
+        }
+      ],
+      "plotHooks": [
+        "The vault once sealed a great evil\u2014its release may explain the Watchlands\u2019 curse.",
+        "The pedestal bears a riddle tied to a lost relic, possibly hidden in the Ironwood Passlands."
+      ],
+      "lootTable": [
+        "Ancient spell scroll (Protection from Evil and Good)",
+        "Cursed ceremonial dagger (radiates dark magic, can be cleansed)",
+        "Chainmail of shadows (AC 16, advantage on Stealth in darkness, cursed)"
+      ],
+      "dangerLevel": "Very High",
+      "connectivity": [
+        "B05"
+      ],
+      "areaConnectivity": [
+        "The Ironwood Passlands"
+      ],
+      "areaConnectivityId": [
+        "A01"
+      ],
+      "traps": [
+        {
+          "name": "Vault's Final Curse",
+          "description": "Tampering with the pedestal triggers a wave of necrotic energy and a lingering curse.",
+          "detectDC": 18,
+          "disableDC": 20,
+          "triggerDC": 15,
+          "damage": "4d8 necrotic damage, DC 15 Con save for half. Failing by 5+ inflicts a minor curse (DM's choice)."
+        }
+      ],
+      "features": [
+        {
+          "name": "Blood-Stained Pedestal",
+          "description": "Pedestal engraved with warding runes, now corrupted and oozing shadow."
+        },
+        {
+          "name": "Broken Chains and Seals",
+          "description": "Fragments of magical chains and runes once used to bind a powerful entity."
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 16: Analyze the nature of the vault's lingering evil.",
+        "Religion DC 15: Sense the desecration and identify the curse.",
+        "Investigation DC 14: Find clues to the vault's or Ironwood Passlands' secrets."
+      ],
+      "encounters": [],
+      "adventureSummary": "",
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "doors": [
+        {
+          "name": "Massive Iron Vault Door",
+          "description": "A heavy, partially open iron door inlaid with blackened sigils.",
+          "type": "iron",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 20,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ]
+    }
+  ]
+}

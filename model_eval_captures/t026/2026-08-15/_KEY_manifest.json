@@ -1,0 +1,121 @@
+[
+  {
+    "variant": "v_41",
+    "model": "gpt-4.1-2025-04-14",
+    "effort": "n/a",
+    "blind_label": "C",
+    "adherence": {
+      "pass": true,
+      "n": 6,
+      "enc": 0,
+      "rtvalid": true,
+      "err": ""
+    },
+    "latency": 24.9,
+    "tok_in": 1778,
+    "tok_out": 3323,
+    "cost": 0.0301
+  },
+  {
+    "variant": "v_52_none",
+    "model": "gpt-5.2",
+    "effort": "none",
+    "blind_label": "E",
+    "adherence": {
+      "pass": true,
+      "n": 6,
+      "enc": 0,
+      "rtvalid": true,
+      "err": ""
+    },
+    "latency": 138.2,
+    "tok_in": 1774,
+    "tok_out": 7924,
+    "cost": 0.114
+  },
+  {
+    "variant": "v_terra_none",
+    "model": "gpt-5.6-terra",
+    "effort": "none",
+    "blind_label": "D",
+    "adherence": {
+      "pass": true,
+      "n": 6,
+      "enc": 0,
+      "rtvalid": true,
+      "err": ""
+    },
+    "latency": 66.6,
+    "tok_in": 1778,
+    "tok_out": 5869,
+    "cost": 0.074
+  },
+  {
+    "variant": "v_luna_none",
+    "model": "gpt-5.6-luna",
+    "effort": "none",
+    "blind_label": "G",
+    "adherence": {
+      "pass": true,
+      "n": 6,
+      "enc": 0,
+      "rtvalid": true,
+      "err": ""
+    },
+    "latency": 43.6,
+    "tok_in": 1778,
+    "tok_out": 5134,
+    "cost": 0.0065
+  },
+  {
+    "variant": "v_luna_high",
+    "model": "gpt-5.6-luna",
+    "effort": "high",
+    "blind_label": "B",
+    "adherence": {
+      "pass": true,
+      "n": 6,
+      "enc": 0,
+      "rtvalid": true,
+      "err": ""
+    },
+    "latency": 58.6,
+    "tok_in": 1778,
+    "tok_out": 7254,
+    "cost": 0.0091
+  },
+  {
+    "variant": "v_sol_none",
+    "model": "gpt-5.6-sol",
+    "effort": "none",
+    "blind_label": "A",
+    "adherence": {
+      "pass": true,
+      "n": 6,
+      "enc": 0,
+      "rtvalid": true,
+      "err": ""
+    },
+    "latency": 127.7,
+    "tok_in": 1778,
+    "tok_out": 6317,
+    "cost": 0.1984
+  },
+  {
+    "variant": "v_sol_high",
+    "model": "gpt-5.6-sol",
+    "effort": "high",
+    "blind_label": "F",
+    "adherence": {
+      "pass": true,
+      "n": 6,
+      "enc": 0,
+      "rtvalid": true,
+      "err": ""
+    },
+    "latency": 182.5,
+    "tok_in": 1778,
+    "tok_out": 9980,
+    "cost": 0.3083
+  }
+]

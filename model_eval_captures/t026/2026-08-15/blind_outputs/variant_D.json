@@ -1,0 +1,680 @@
+{
+  "blind_label": "D",
+  "locations": [
+    {
+      "accessibility": "Reached from the storm-battered outer path through a gap in the watchtower's ruined curtain wall. The gateway is open but exposed to fierce crosswinds and loose ironwork.",
+      "adventureSummary": "",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B02",
+        "B05"
+      ],
+      "coordinates": "X2Y2",
+      "dangerLevel": "Medium",
+      "dcChecks": [
+        "Perception DC 13: Notice the nearly invisible tripwire stretched between two fallen spike-posts.",
+        "Investigation DC 14: Identify the old garrison seal beneath the rust as belonging to the tower's last loyal commander.",
+        "Athletics DC 12: Cross the wind-slick rubble without being knocked prone by a powerful gust.",
+        "Religion DC 13: Recognize that the pleading voices repeat fragments of an unfinished funerary rite."
+      ],
+      "description": "Two blackened stone pylons mark the entrance to the old watchtower compound. Their iron crowns have been bent outward by years of mountain wind, leaving long spikes that shriek against one another whenever a gust rises. A collapsed portcullis lies half-buried in shale before the threshold, its links furred with pale lichen. Beyond it, a narrow flagstone approach bends north toward a dim atrium, while a broken service stair descends westward toward the command level. The silence between gusts is worse than the wind: faint voices whisper from within the stones, begging unseen soldiers not to close the gate.",
+      "dmInstructions": "Use the gateway to establish the tower's haunted military character. The voices are harmless residual echoes at first, but they become accusatory if characters mock the dead or disturb the garrison seal. The tripwire releases a suspended bundle of iron spikes; it was installed by living scavengers recently, not by the original garrison. A character who presents the garrison seal or speaks a respectful oath to defend the watch may pass through the atrium without provoking its first undead patrol.",
+      "doors": [
+        {
+          "breakDC": 15,
+          "description": "A twisted remnant of the outer portcullis blocks a narrow section of the gateway but can be climbed over or forced aside.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Collapsed Portcullis",
+          "trap": "",
+          "trapped": false,
+          "type": "portcullis"
+        },
+        {
+          "breakDC": 14,
+          "description": "A weathered oak service door in the western wall opens onto the stair leading to the Cursed Command Deck.",
+          "keyname": "",
+          "lockDC": 13,
+          "locked": true,
+          "name": "Service Door",
+          "trap": "",
+          "trapped": false,
+          "type": "wooden door"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "The shattered insignia bears a tower beneath three stars, the emblem of the vanished Watch of Saint Vey.",
+          "name": "Garrison Seal"
+        },
+        {
+          "description": "Bent spikes scrape together in the wind, producing sounds uncannily like distant screams.",
+          "name": "Iron Spike Crowns"
+        },
+        {
+          "description": "A fallen portcullis forms a low, unstable barrier across the old road.",
+          "name": "Collapsed Portcullis"
+        }
+      ],
+      "locationId": "B01",
+      "lootTable": [
+        "A tarnished silver officer's whistle worth 15 gp",
+        "A usable coil of silk rope tangled beneath the portcullis",
+        "A bronze garrison seal that grants advantage on Charisma checks made to appeal to the tower's loyal dead",
+        "1d4 old silver coins lodged in the rubble"
+      ],
+      "monsters": [
+        {
+          "name": "Restless Spirit",
+          "quantity": {
+            "max": 2,
+            "min": 0
+          }
+        },
+        {
+          "name": "Bandit Scout",
+          "quantity": {
+            "max": 2,
+            "min": 0
+          }
+        }
+      ],
+      "name": "Wind Scoured Gateway",
+      "npcs": [],
+      "plotHooks": [
+        "The garrison seal names Captain Elira Vey, whose unburied remains may be somewhere within the tower.",
+        "A recent scavenger trap suggests someone living has entered the haunted ruins and may know a safer route through them.",
+        "The whispering dead repeatedly mention that 'the western door was barred too late.'"
+      ],
+      "traps": [
+        {
+          "damage": "2d6 piercing damage",
+          "description": "A concealed tripwire releases a hanging bundle of rusted iron spikes from the broken gatehouse above.",
+          "detectDC": 13,
+          "disableDC": 12,
+          "name": "Scavenger's Iron Rain",
+          "triggerDC": 12
+        }
+      ],
+      "type": "room"
+    },
+    {
+      "accessibility": "Accessible from the Wind Scoured Gateway to the south, the Veiled Mountain Corridor to the west, and the Fallen Guardian Post to the east. The broad central chamber has no intact doors, though drifting spectral mist obscures its exits.",
+      "adventureSummary": "",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B01",
+        "B03",
+        "B04"
+      ],
+      "coordinates": "X2Y1",
+      "dangerLevel": "High",
+      "dcChecks": [
+        "Arcana DC 14: Determine that the chamber's ghostlights are drawn to strong emotions and memories of battlefield death.",
+        "Insight DC 13: Discern which of the overlapping spectral voices belongs to Captain Elira Vey.",
+        "Investigation DC 15: Reassemble enough of the shattered memorial plaques to learn the names of the garrison's dead.",
+        "Religion DC 15: Calm the gathering spirits for 1 hour by completing the names-and-candles vigil carved into the central dais."
+      ],
+      "description": "Once the ceremonial heart of the watchtower, this octagonal atrium rises three stories beneath a fractured dome. Moonlight and stormlight seep through the cracks above, catching in hundreds of pale motes that circle the chamber like a slow, silent procession. Four bronze braziers stand cold around a raised memorial dais, each filled with ash that never blows away. The walls are covered in military plaques, most split by a single violent impact. Faces sometimes appear in the dark glass of the high windows: armored soldiers, terrified civilians, and a stern woman in a captain's cloak who seems to be trying to speak over the others.",
+      "dmInstructions": "This is the social and supernatural pivot of the dungeon. The dead here are not automatically hostile; they are trapped in the moment the watch failed. If the party conducts the vigil, restores three names to the memorial, or produces Captain Vey's seal, the spirits reveal that the true corruption is sealed in the western vault. On a hostile approach, use specters or a wraith as the voices coalesce. The ghostlights can lead characters toward hidden details but may also lure them into the central glyph trap if they follow blindly.",
+      "doors": [
+        {
+          "breakDC": 16,
+          "description": "A broad, splintered double door once led east to the guardian post; it now hangs open on one hinge.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "East Guard Doors",
+          "trap": "",
+          "trapped": false,
+          "type": "double wooden door"
+        },
+        {
+          "breakDC": 17,
+          "description": "A rune-scarred stone arch opens west into the mountain corridor. Its warding inscription has been partially defaced.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Western Warding Arch",
+          "trap": "",
+          "trapped": false,
+          "type": "stone archway"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "The dais is engraved with the names of the fallen, though many letters have been clawed away.",
+          "name": "Memorial Dais"
+        },
+        {
+          "description": "Four braziers contain cold gray ash and can be relit as part of the spirits' funerary vigil.",
+          "name": "Vigil Braziers"
+        },
+        {
+          "description": "Pale lights drift through the chamber and briefly form the silhouettes of marching soldiers.",
+          "name": "Ghostlights"
+        }
+      ],
+      "locationId": "B02",
+      "lootTable": [
+        "A silver funerary censer worth 75 gp",
+        "Three memorial plaques that can be restored or used as proof of the garrison's fate",
+        "A potion of healing hidden inside a cracked brazier base",
+        "Captain Vey's tactical map fragment, showing a concealed vault approach"
+      ],
+      "monsters": [
+        {
+          "name": "Specter",
+          "quantity": {
+            "max": 4,
+            "min": 2
+          }
+        },
+        {
+          "name": "Wraith",
+          "quantity": {
+            "max": 1,
+            "min": 0
+          }
+        }
+      ],
+      "name": "Spectral Convergence Atrium",
+      "npcs": [
+        {
+          "attitude": "Wary but potentially helpful if treated with military respect",
+          "description": "The fractured apparition of Captain Elira Vey appears intermittently in the high windows and near the memorial dais. She cannot initially speak more than a few broken words.",
+          "name": "Captain Elira Vey"
+        }
+      ],
+      "plotHooks": [
+        "Restoring the memorial vigil may allow Captain Vey to identify the traitor who opened the vault.",
+        "The tactical map fragment indicates that a mountain passage was used to smuggle something into the watchtower.",
+        "One missing plaque bears the name of a local ancestor, giving a nearby family a reason to hire or aid the party."
+      ],
+      "traps": [
+        {
+          "damage": "3d6 necrotic damage and the target cannot regain hit points until the start of its next turn",
+          "description": "Stepping onto the center of the memorial dais without offering a name of one of the fallen triggers a pulse of grave-cold energy.",
+          "detectDC": 15,
+          "disableDC": 15,
+          "name": "Unremembered Dead Glyph",
+          "triggerDC": 14
+        }
+      ],
+      "type": "room"
+    },
+    {
+      "accessibility": "A narrow, sloping passage links the atrium to the command deck. It is carved partly through the mountain and partly through the watchtower's foundation, with uneven footing and frequent curtains of freezing mist.",
+      "adventureSummary": "",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B02",
+        "B05"
+      ],
+      "coordinates": "X1Y1",
+      "dangerLevel": "Medium",
+      "dcChecks": [
+        "Survival DC 13: Follow the fresher boot prints through the mist without doubling back into a dead-end fissure.",
+        "Perception DC 14: Hear the scrape of a hidden stone panel before it opens.",
+        "Investigation DC 14: Find the narrow cache niche used by the tower's couriers.",
+        "Arcana DC 13: Recognize that the mist is a weakened boundary between the mountain's natural spirits and the tower's undead curse."
+      ],
+      "description": "This cramped corridor winds through raw gray stone, its ceiling low enough that taller travelers must stoop beneath old support beams. The mountain breathes here. Cold vapor seeps from hairline cracks in the rock, gathers in gauzy veils, and then pulls away as though inhaled by something deeper in the passage. Faded white arrows, painted by long-dead sentries, point in conflicting directions. A series of shallow alcoves holds broken lanterns and the occasional rusted spearhead. Halfway along, the corridor passes a narrow fissure that exhales a scent of wet earth and extinguished candles.",
+      "dmInstructions": "Run this passage as tense exploration rather than a simple connector. The mist distorts sound and direction; on a failed Survival check, a character loses a few minutes and triggers the echo trap or encounters lurking undead. The hidden courier cache contains evidence that the tower received warnings about the evil now in the vault. The fissure can be widened with tools or magic, creating a dangerous but useful observation route into part of the command deck.",
+      "doors": [
+        {
+          "breakDC": 15,
+          "description": "A concealed slab of mountain stone covers an old courier niche set into the north wall.",
+          "keyname": "",
+          "lockDC": 14,
+          "locked": true,
+          "name": "Courier Cache Panel",
+          "trap": "",
+          "trapped": false,
+          "type": "secret stone door"
+        },
+        {
+          "breakDC": 16,
+          "description": "An iron-banded door at the western end opens into the Cursed Command Deck. Its hinges are stiff but intact.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Command Door",
+          "trap": "",
+          "trapped": false,
+          "type": "iron-banded wooden door"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "Old painted arrows contradict one another; only the arrows marked with a tiny three-star emblem indicate safe routes.",
+          "name": "Faded Sentry Markings"
+        },
+        {
+          "description": "A breathing crack in the mountain wall leaks supernatural mist and muffles sounds from beyond.",
+          "name": "Mist Fissure"
+        },
+        {
+          "description": "A hidden niche once held dispatches carried between the tower and the pass.",
+          "name": "Courier Cache"
+        }
+      ],
+      "locationId": "B03",
+      "lootTable": [
+        "A waterproof dispatch tube containing Captain Vey's final warning",
+        "A potion of climbing in the courier cache",
+        "A silvered dagger stamped with the three-star garrison emblem",
+        "2d6 gp in old military pay chits redeemable only as curios"
+      ],
+      "monsters": [
+        {
+          "name": "Shadow",
+          "quantity": {
+            "max": 3,
+            "min": 1
+          }
+        },
+        {
+          "name": "Ghoul",
+          "quantity": {
+            "max": 2,
+            "min": 0
+          }
+        }
+      ],
+      "name": "Veiled Mountain Corridor",
+      "npcs": [],
+      "plotHooks": [
+        "Captain Vey's warning names an object called the Black Standard, now believed to be locked in the vault.",
+        "The courier dispatch suggests reinforcements never arrived because a message was deliberately altered.",
+        "The mountain fissure contains a faint voice calling for a descendant of the tower's original masons."
+      ],
+      "traps": [
+        {
+          "damage": "2d8 thunder damage and the target is pushed 10 feet",
+          "description": "Disturbing a false route marker causes a resonant stone plate to crack, releasing a concussive echo through the narrow passage.",
+          "detectDC": 14,
+          "disableDC": 13,
+          "name": "Echoing False Trail",
+          "triggerDC": 13
+        }
+      ],
+      "type": "room"
+    },
+    {
+      "accessibility": "Reached through the eastern doors of the Spectral Convergence Atrium. The post is partially collapsed, but a clear path runs between the bunks and the ruined arrow slits.",
+      "adventureSummary": "",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B02"
+      ],
+      "coordinates": "X3Y1",
+      "dangerLevel": "Medium",
+      "dcChecks": [
+        "Medicine DC 13: Determine that the skeletal guards died defending the post rather than attacking it.",
+        "History DC 12: Identify the rank markings on the uniforms and learn that the guards were elite oathsworn sentries.",
+        "Perception DC 15: Spot the pressure plate beneath a loose shield before it activates.",
+        "Persuasion DC 14: Convince the guardian dead that the party intends to restore the watch rather than loot it."
+      ],
+      "description": "The eastern guardroom has endured better than most of the tower, as if its defenders still refuse to let it fall. Six narrow bunks line the walls beneath racks of rotted shields and spears. A long table occupies the center of the room, set with cracked dice, a bone-handled knife, and a ledger swollen with damp. At the far end, three armored skeletons sit in rigid silence beneath an arrow slit overlooking the pass. Their skulls turn in perfect unison whenever someone enters. Behind them, a war banner hangs in strips from the wall, its embroidered three-star emblem stained almost black.",
+      "dmInstructions": "Present the guardian dead as disciplined rather than mindlessly violent. They challenge intruders with a formal watchword: 'Who holds the line?' Characters who answer with the garrison motto found in the atrium or show the seal can avoid combat and gain an escort or warning. If a character touches the black-stained banner, the skeletal sentries attack. The old ledger contains a clue that the command deck's officer knowingly ordered the vault opened.",
+      "doors": [
+        {
+          "breakDC": 15,
+          "description": "The battered double doors to the atrium are reinforced with iron straps and can be barred from this side.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Atrium Guard Doors",
+          "trap": "",
+          "trapped": false,
+          "type": "double wooden door"
+        },
+        {
+          "breakDC": 13,
+          "description": "A small shuttered arrow slit overlooks a steep ravine and can be opened wide enough for a Small creature to squeeze through.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Ravine Arrow Shutter",
+          "trap": "",
+          "trapped": false,
+          "type": "wooden shutter"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "The ledger records watches, supplies, and an ominous final order signed by an officer whose name has been scratched out.",
+          "name": "Watch Ledger"
+        },
+        {
+          "description": "Three skeletal guards remain seated at their final post, their armor fused to their bones by age and necromancy.",
+          "name": "Oathsworn Sentries"
+        },
+        {
+          "description": "The shredded banner bears a black stain that seems to spread when observed.",
+          "name": "Blackened War Banner"
+        }
+      ],
+      "locationId": "B04",
+      "lootTable": [
+        "A masterwork shield bearing the three-star emblem",
+        "A set of bone dice carved from a mountain goat's horn, worth 10 gp",
+        "A silver key marked 'V' that opens the vault's inner reliquary",
+        "A scroll of protection from undead tucked into the watch ledger"
+      ],
+      "monsters": [
+        {
+          "name": "Skeleton",
+          "quantity": {
+            "max": 3,
+            "min": 3
+          }
+        },
+        {
+          "name": "Animated Armor",
+          "quantity": {
+            "max": 1,
+            "min": 0
+          }
+        }
+      ],
+      "name": "Fallen Guardian Post",
+      "npcs": [
+        {
+          "attitude": "Formal and suspicious; can become loyal if given the proper watchword",
+          "description": "The spirit bound to the lead skeletal sentry remembers only duty, the final alarm, and the shame of failing Captain Vey.",
+          "name": "Sergeant Hal Bren"
+        }
+      ],
+      "plotHooks": [
+        "Sergeant Bren knows the garrison motto and can reveal the location of a hidden reliquary key.",
+        "The watch ledger implicates Lieutenant Orsik, whose ghost may still command the command deck.",
+        "The blackened banner reacts to the Black Standard in the vault, confirming the source of the curse."
+      ],
+      "traps": [
+        {
+          "damage": "2d10 piercing damage",
+          "description": "A pressure plate beneath a fallen shield releases three spring-loaded bolts from the wall beside the bunks.",
+          "detectDC": 15,
+          "disableDC": 14,
+          "name": "Last Watch Volley",
+          "triggerDC": 14
+        }
+      ],
+      "type": "room"
+    },
+    {
+      "accessibility": "Accessible from the Wind Scoured Gateway by a broken service stair and from the Veiled Mountain Corridor through an iron-banded door. A sealed western passage leads to the Shrouded Evil Vault.",
+      "adventureSummary": "",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B01",
+        "B03",
+        "B06"
+      ],
+      "coordinates": "X1Y2",
+      "dangerLevel": "High",
+      "dcChecks": [
+        "Investigation DC 15: Locate the hidden release that opens the map table's secret compartment.",
+        "Arcana DC 15: Identify the black threads crawling across the command map as a sympathetic link to the vault.",
+        "History DC 14: Interpret the final deployment orders and identify Lieutenant Orsik's deliberate betrayal.",
+        "Religion DC 16: Consecrate the commander's chair, weakening undead in the vault for 1 hour."
+      ],
+      "description": "The old command deck occupies a broad, low chamber built around a massive circular map table. Its surface is carved with the surrounding passlands, but black veins have spread through the inlaid roads and walls, converging on a small iron tower at the center. Torn orders litter the floor amid broken signal lenses and overturned chairs. At the northern wall, a commander\u2019s chair faces a tall slit window; rain blows through it in silver needles. The western wall is dominated by a heavy stone-and-iron vault door, its locking wheel wrapped in chains that drip dark water despite the dry floor beneath them.",
+      "dmInstructions": "This room should reveal the betrayal behind the haunting. The records show Lieutenant Orsik opened the vault to use the Black Standard against besiegers, then lost control of the dead it raised. Orsik's ghost can manifest here as a hostile wight or as a bargaining apparition offering access to the vault in exchange for being freed from blame. The map table gives practical clues: it shows the outer gateway, guardian post, and a secret maintenance route into the vault. Consecrating the chair or exposing Orsik's treachery weakens the vault guardian.",
+      "doors": [
+        {
+          "breakDC": 22,
+          "description": "A circular stone-and-iron vault door is secured by a locking wheel, heavy chains, and a blackened military seal. It opens west into the Shrouded Evil Vault.",
+          "keyname": "Silver Key of Vey",
+          "lockDC": 18,
+          "locked": true,
+          "name": "Vault Seal Door",
+          "trap": "Commander's Retribution",
+          "trapped": true,
+          "type": "vault door"
+        },
+        {
+          "breakDC": 14,
+          "description": "A damaged oak door opens south toward the Wind Scoured Gateway's service stair.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Service Stair Door",
+          "trap": "",
+          "trapped": false,
+          "type": "wooden door"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "Black corruption veins crawl across the carved terrain and pulse whenever someone approaches the vault door.",
+          "name": "Cursed Command Map"
+        },
+        {
+          "description": "The chair bears Captain Vey's nameplate and is cold enough to frost bare skin.",
+          "name": "Commander's Chair"
+        },
+        {
+          "description": "A hidden compartment beneath the map table contains sealed orders and a small maintenance plan.",
+          "name": "Map Table Compartment"
+        }
+      ],
+      "locationId": "B05",
+      "lootTable": [
+        "Lieutenant Orsik's signet ring worth 50 gp",
+        "A set of coded deployment orders proving the betrayal",
+        "A +1 longsword engraved 'Hold the Line'",
+        "A scroll of remove curse hidden in the map table compartment",
+        "A silver key marked 'V' if not recovered from the guardian post"
+      ],
+      "monsters": [
+        {
+          "name": "Wight",
+          "quantity": {
+            "max": 1,
+            "min": 1
+          }
+        },
+        {
+          "name": "Specter",
+          "quantity": {
+            "max": 3,
+            "min": 1
+          }
+        },
+        {
+          "name": "Animated Armor",
+          "quantity": {
+            "max": 2,
+            "min": 0
+          }
+        }
+      ],
+      "name": "Cursed Command Deck",
+      "npcs": [
+        {
+          "attitude": "Manipulative and defensive; attempts to shift blame onto Captain Vey",
+          "description": "Lieutenant Orsik's gaunt apparition clings to the command map and remembers enough of his betrayal to fear the truth.",
+          "name": "Lieutenant Damas Orsik"
+        }
+      ],
+      "plotHooks": [
+        "The sealed orders prove Orsik opened the vault and may allow the party to lay Captain Vey's spirit to rest.",
+        "The command map identifies a maintenance route that can bypass one of the vault's defenses.",
+        "Orsik offers the party a bargain: destroy the Black Standard and conceal his crime, or he will rouse every dead sentry in the tower."
+      ],
+      "traps": [
+        {
+          "damage": "4d8 necrotic damage, and the target's hit point maximum is reduced by the damage taken until it finishes a long rest",
+          "description": "Tampering with the vault wheel without the Silver Key of Vey causes the command seal to flare with the rage of the betrayed garrison.",
+          "detectDC": 16,
+          "disableDC": 17,
+          "name": "Commander's Retribution",
+          "triggerDC": 16
+        }
+      ],
+      "type": "room"
+    },
+    {
+      "accessibility": "Reached only through the locked vault door from the Cursed Command Deck or, after escaping the tower, through a narrow cracked passage that emerges into The Ironwood Passlands. The vault's stone floor is uneven and slick with unnatural condensation.",
+      "adventureSummary": "",
+      "areaConnectivity": [
+        "The Ironwood Passlands"
+      ],
+      "areaConnectivityId": [
+        "A01"
+      ],
+      "connectivity": [
+        "B05"
+      ],
+      "coordinates": "X0Y2",
+      "dangerLevel": "Very High",
+      "dcChecks": [
+        "Arcana DC 17: Understand that the Black Standard anchors the dead to the watchtower and can be safely suppressed only through consecration, destruction, or a powerful binding ritual.",
+        "Religion DC 17: Perform the final rite for the tower's fallen, weakening the vault guardian and allowing trapped spirits to depart.",
+        "Investigation DC 16: Find the concealed mountain escape fissure leading toward the Ironwood Passlands.",
+        "Athletics DC 15: Force apart the escape fissure without causing a partial cave-in.",
+        "Persuasion DC 16: Appeal to Captain Vey's spirit through the reliquary to oppose the Black Standard's influence."
+      ],
+      "description": "The vault is a circular chamber cut deep into the mountain beneath the watchtower. Its walls are lined with iron niches holding the remains of soldiers who were never properly buried; many of the niches stand open, their occupants gone. At the center rises a black stone plinth supporting a tattered military standard. The cloth hangs perfectly still despite the constant wind moaning through cracks in the rock, and its embroidered tower emblem has been overwritten by a shape like a hollow crown. Dark water pools around the plinth, reflecting a sky full of stars that cannot be seen anywhere above. Behind the plinth, an ancient fissure splits the mountain wall and leads toward the wild Ironwood Passlands.",
+      "dmInstructions": "This is the climax. The Black Standard is the source of the unrest and should demand a meaningful choice: destroy it, consecrate it, bind it for later use, or attempt to claim it. Destroying it releases a wave of anguished spirits and may collapse portions of the tower; consecrating it lets Captain Vey's loyal dead rest; claiming it is dangerous and should create future consequences. The guardian is a wraith, deathlock, or similar undead commander supported by lesser undead. The escape fissure offers a route to A01 after the confrontation, but forcing it during combat risks falling stone. Describe the dead soldiers' spirits reacting visibly to honorable acts and to proof of Orsik's betrayal.",
+      "doors": [
+        {
+          "breakDC": 22,
+          "description": "The inner face of the command vault door is a smooth slab of iron-veined stone with a locking wheel and a narrow keyway.",
+          "keyname": "Silver Key of Vey",
+          "lockDC": 18,
+          "locked": true,
+          "name": "Inner Vault Seal",
+          "trap": "",
+          "trapped": false,
+          "type": "vault door"
+        },
+        {
+          "breakDC": 18,
+          "description": "A natural fissure in the western mountain wall can be widened into a cramped escape route toward the Ironwood Passlands.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Ironwood Escape Fissure",
+          "trap": "",
+          "trapped": false,
+          "type": "natural passage"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "The standard binds the restless dead to the watchtower. Its destruction or purification can end the haunting.",
+          "name": "The Black Standard"
+        },
+        {
+          "description": "Open burial niches contain the garrison's empty armor, broken weapons, and the lingering impressions of the unburied dead.",
+          "name": "Unquiet Ossuary"
+        },
+        {
+          "description": "A black-water pool reflects an alien star field and serves as a conduit for the standard's necromantic power.",
+          "name": "Starless Reflection Pool"
+        },
+        {
+          "description": "A narrow mountain fissure provides a hazardous exit into the Ironwood Passlands.",
+          "name": "Ironwood Escape Fissure"
+        }
+      ],
+      "locationId": "B06",
+      "lootTable": [
+        "The Black Standard, a dangerous necromantic relic whose fate should shape future adventures",
+        "Captain Vey's silver-and-onyx funerary medallion worth 150 gp",
+        "A +1 shield bearing the restored three-star emblem",
+        "2 potions of greater healing from an emergency reliquary",
+        "A pouch containing 4d6 gp and 2d4 gemstones worth 25 gp each"
+      ],
+      "monsters": [
+        {
+          "name": "Wraith",
+          "quantity": {
+            "max": 1,
+            "min": 1
+          }
+        },
+        {
+          "name": "Specter",
+          "quantity": {
+            "max": 6,
+            "min": 2
+          }
+        },
+        {
+          "name": "Ghast",
+          "quantity": {
+            "max": 2,
+            "min": 0
+          }
+        }
+      ],
+      "name": "Shrouded Evil Vault",
+      "npcs": [
+        {
+          "attitude": "Sorrowful but resolute; becomes an ally if the party honors the fallen and reveals Orsik's betrayal",
+          "description": "Captain Elira Vey's complete spirit is bound within the funerary medallion near the Black Standard. She can explain how to end the curse.",
+          "name": "Captain Elira Vey"
+        }
+      ],
+      "plotHooks": [
+        "Destroying the Black Standard may scatter a fragment of its hollow-crown emblem into the Ironwood Passlands, beginning the next threat.",
+        "Captain Vey asks the party to carry proof of the garrison's sacrifice to the descendants of those who abandoned the watch.",
+        "If the party claims rather than destroys the standard, rival factions may pursue them for its power over the dead."
+      ],
+      "traps": [
+        {
+          "damage": "4d6 necrotic damage and the target must succeed on a DC 15 Wisdom saving throw or be frightened for 1 minute",
+          "description": "Crossing the black-water ring around the plinth without a spoken funerary oath awakens grasping spectral hands beneath the surface.",
+          "detectDC": 16,
+          "disableDC": 17,
+          "name": "Ossuary's Grasp",
+          "triggerDC": 15
+        },
+        {
+          "damage": "3d10 bludgeoning damage",
+          "description": "Forcing the escape fissure carelessly dislodges a shelf of unstable mountain stone.",
+          "detectDC": 14,
+          "disableDC": 15,
+          "name": "Fissure Cave-In",
+          "triggerDC": 14
+        }
+      ],
+      "type": "room"
+    }
+  ]
+}

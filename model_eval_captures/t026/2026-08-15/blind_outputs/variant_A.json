@@ -1,0 +1,657 @@
+{
+  "blind_label": "A",
+  "locations": [
+    {
+      "accessibility": "The gateway stands open to the surrounding moor, reached by a steep road of loose shale. Broken iron spikes, knee-high rubble, and violent crosswinds make the final approach difficult but require no special equipment.",
+      "adventureSummary": "No adventure events have occurred here.",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B02",
+        "B05"
+      ],
+      "coordinates": "X2Y2",
+      "dangerLevel": "Medium",
+      "dcChecks": [
+        "Perception DC 12: Notice pale fingers briefly gripping the broken battlements whenever the wind falls silent.",
+        "Athletics DC 13: Cross the rubble-choked threshold during a violent gust without falling prone.",
+        "Investigation DC 14: Determine that the scattered bones belong to two different garrisons separated by several decades.",
+        "Religion DC 15: Recognize the pleading voices as fragments of a burial litany rather than hostile whispers."
+      ],
+      "description": "A split barbican leans over a road polished smooth by relentless mountain wind. Most of its iron portcullis has been torn away, leaving black spikes embedded among pale stones like broken teeth. Tattered signal pennants snap from the walls although their faded heraldry belongs to no living realm. Human bones lie in drifts against the eastern parapet, each gust uncovering scraps of mail before burying them again. Beyond the gate, one stair climbs toward the Spectral Convergence Atrium while a narrow officers' passage cuts west toward the Cursed Command Deck.",
+      "dmInstructions": "Emphasize alternating noise and silence: roaring gusts drown speech, then stop abruptly so the dead can be heard pleading to be admitted. During a strong gust, creatures on exposed rubble that move faster than half speed must succeed on a DC 13 Dexterity saving throw or fall prone. The spirits are initially mournful, not aggressive. Speaking the old watchword, \"No flame fails while one guard stands,\" or completing their burial litany calms them and reveals the safe route to B02. Disturbing the bone drifts or carrying a commander's insignia openly may draw the listed undead from cover. Clearly present both exits to B02 and B05.",
+      "doors": [
+        {
+          "breakDC": 16,
+          "description": "A warped oak wicket reinforced with green-black iron opens into the officers' passage toward B05.",
+          "keyname": "Watch Captain's Iron Key",
+          "lockDC": 14,
+          "locked": true,
+          "name": "Officers' Wicket",
+          "trap": "A loosened iron spike falls when the lock is forced; a creature before the door must make a DC 13 Dexterity saving throw, taking 1d8 piercing damage on a failure.",
+          "trapped": true,
+          "type": "Reinforced wooden door"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "A shattered portcullis whose remaining spikes hum at different pitches in the wind. One spike bears the intact watchword.",
+          "name": "Singing Iron Spikes"
+        },
+        {
+          "description": "Windblown remains of forgotten soldiers. Respectful burial uncovers a silver clasp without provoking the dead.",
+          "name": "Bone Drifts"
+        },
+        {
+          "description": "A stone niche containing a cracked bronze speaking horn connected by pipes to B05.",
+          "name": "Command Horn"
+        }
+      ],
+      "locationId": "B01",
+      "lootTable": [
+        "Silver watch-cloak clasp worth 25 gp, found beneath the respectfully moved bones",
+        "Potion of healing wrapped in oilskin inside the command-horn niche",
+        "Three cold-iron crossbow bolts engraved with the old watchword",
+        "Weathered route map granting advantage on one Survival check in the surrounding watchlands"
+      ],
+      "monsters": [
+        {
+          "name": "Skeleton",
+          "quantity": {
+            "max": 4,
+            "min": 2
+          }
+        },
+        {
+          "name": "Specter",
+          "quantity": {
+            "max": 1,
+            "min": 1
+          }
+        }
+      ],
+      "name": "Wind Scoured Gateway",
+      "npcs": [],
+      "plotHooks": [
+        "The gate spirits beg the party to recover their captain's oath-seal from the Fallen Guardian Post.",
+        "One skeleton wears the heraldry of a settlement that insists none of its soldiers ever served here.",
+        "The command horn carries a faint reply from B05: \"The vault must remain shut.\""
+      ],
+      "traps": [
+        {
+          "damage": "1d8 piercing damage",
+          "description": "A nearly invisible ankle wire releases a broken portcullis spike from above.",
+          "detectDC": 13,
+          "disableDC": 12,
+          "name": "Falling Gate Spike",
+          "triggerDC": 13
+        }
+      ],
+      "type": "Ruined Gateway"
+    },
+    {
+      "accessibility": "Broad stairs from B01 lead into the atrium. Arched passages connect west to B03 and east to B04; drifting spectral fog lightly obscures the floor but does not prevent entry.",
+      "adventureSummary": "No adventure events have occurred here.",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B01",
+        "B03",
+        "B04"
+      ],
+      "coordinates": "X2Y1",
+      "dangerLevel": "High",
+      "dcChecks": [
+        "Arcana DC 15: Identify the rotating ghost lights as a damaged ward drawing spirits toward the central mosaic.",
+        "Perception DC 14: Spot hairline fractures outlining a safe path across the mosaic.",
+        "Religion DC 16: Separate the overlapping voices and learn that three spirits must be named to quiet the convergence.",
+        "Persuasion DC 15: Convince a lucid guardian spirit that the party seeks to end the watch rather than plunder it."
+      ],
+      "description": "A roofless circular atrium occupies the heart of the ruined outpost. Silver-gray fog pours through three archways and revolves around a floor mosaic depicting a beacon above three mountains. Translucent soldiers repeatedly march from one doorway to another, colliding at the mosaic and dissolving into showers of blue sparks. Their final orders overlap in a ceaseless argument: hold the pass, defend the command deck, seal the vault. At the chamber's center, a cracked crystal lens floats above a bronze pedestal, drawing every wandering shade toward it. The west arch enters B03, the east arch enters B04, and the southern stair descends to B01.",
+      "dmInstructions": "Run the atrium as both a dangerous crossroads and a social puzzle. At the end of each round of open combat, the convergence discharges; every living creature within 15 feet of the mosaic must make a DC 13 Wisdom saving throw or become frightened until the end of its next turn. Characters can weaken the phenomenon by learning names in B03 and B04 or by rotating the lens so its three cracks align with the three exits. Three successful DC 15 Arcana, Religion, or Investigation checks before two failures suppress the discharge and make the guardian spirits nonhostile. A character who fails a check by 5 or more takes 1d6 psychic damage. The specters target anyone damaging the lens, while the ghostly guardian can be reasoned with if addressed by rank.",
+      "doors": [
+        {
+          "breakDC": 18,
+          "description": "A pair of bronze lattice doors, currently standing ajar, separates the atrium from B04.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Guardian Post Doors",
+          "trap": "",
+          "trapped": false,
+          "type": "Bronze double doors"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "A cracked focusing crystal suspended above a bronze mechanism. Correct alignment temporarily quiets undead throughout the atrium.",
+          "name": "Convergence Lens"
+        },
+        {
+          "description": "The colored stones grow cold beneath living feet. Its three mountain emblems correspond to B03, B04, and B05.",
+          "name": "Beacon Mosaic"
+        },
+        {
+          "description": "Processions of insubstantial soldiers reenact contradictory final orders and can reveal fragments of the tower's fall.",
+          "name": "Marching Echoes"
+        }
+      ],
+      "locationId": "B02",
+      "lootTable": [
+        "Cracked convergence crystal worth 75 gp to an arcanist if safely removed",
+        "Bronze warding medallion that can be used once to gain advantage on a saving throw against being frightened",
+        "Two sticks of incense of meditation hidden in the pedestal",
+        "A sapphire lens fragment worth 40 gp"
+      ],
+      "monsters": [
+        {
+          "name": "Specter",
+          "quantity": {
+            "max": 3,
+            "min": 2
+          }
+        },
+        {
+          "name": "Ghost",
+          "quantity": {
+            "max": 1,
+            "min": 1
+          }
+        }
+      ],
+      "name": "Spectral Convergence Atrium",
+      "npcs": [
+        {
+          "attitude": "Wary but honorable; becomes helpful if addressed respectfully or shown proof that the vault's curse is being contained.",
+          "description": "The translucent remnant of Lieutenant Mara Venn, trapped between three conflicting orders and unable to abandon her post.",
+          "name": "Lieutenant Mara Venn"
+        }
+      ],
+      "plotHooks": [
+        "Mara Venn asks the party to recover the true final orders from the command deck in B05.",
+        "The convergence lens contains a vision of something in B06 speaking with the dead commander's voice.",
+        "Aligning the lens reveals that one of the marching spirits escaped toward the mountain corridor carrying a vital dispatch."
+      ],
+      "traps": [
+        {
+          "damage": "2d6 psychic damage and frightened until the end of the creature's next turn on a failed DC 14 Wisdom saving throw; half damage and no frightened condition on a success",
+          "description": "Stepping on the cracked center of the mosaic releases the accumulated terror of the dead.",
+          "detectDC": 14,
+          "disableDC": 16,
+          "name": "Memory Backlash",
+          "triggerDC": 14
+        }
+      ],
+      "type": "Haunted Atrium"
+    },
+    {
+      "accessibility": "The corridor is entered from B02 through a broken arch or from B05 through a concealed officers' door. Parts of the outer wall have collapsed, leaving a narrow ledge exposed to mountain winds.",
+      "adventureSummary": "No adventure events have occurred here.",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B02",
+        "B05"
+      ],
+      "coordinates": "X1Y1",
+      "dangerLevel": "Medium",
+      "dcChecks": [
+        "Perception DC 13: Hear a second set of footsteps matching the party from inside the wall.",
+        "Survival DC 14: Read old boot scuffs and determine that a wounded messenger crawled toward B05.",
+        "Athletics DC 14: Traverse the exposed ledge during a gust without slipping.",
+        "Investigation DC 15: Find the concealed latch opening the officers' door to B05.",
+        "Medicine DC 13: Identify blood-black stains as evidence that the messenger remained alive for several hours."
+      ],
+      "description": "This long gallery hugs the watchtower's mountain-facing wall. Torn curtains of supernatural mist drift through arrow slits, briefly forming distant ridgelines and ranks of soldiers who vanish when approached. A section of floor has fallen away, forcing travelers onto a frost-slick ledge above a steep ravine. Along the intact wall, carved distance markers count down toward the command deck, while a dark trail left by a dying messenger ends beneath a weathered relief of the Three Peaks. The eastern arch returns to B02; a hidden panel behind the relief provides the shortest route to B05.",
+      "dmInstructions": "Use the corridor to reveal the chronology of the disaster. Each time the party advances, describe the mist replaying one stage: beacon fires failing, soldiers abandoning the outer wall, and a messenger carrying sealed orders toward B05. Crossing the ledge requires a DC 14 Athletics or Acrobatics check; on a failure, the creature catches the edge and must use an action or receive help to climb up, while failure by 5 or more causes a 20-foot fall onto a lower shelf for 2d6 bludgeoning damage. The will-o'-wisps attempt to lure isolated creatures toward the edge but retreat from bright magical light. Finding the messenger's dispatch gives leverage with Lieutenant Mara Venn in B02.",
+      "doors": [
+        {
+          "breakDC": 17,
+          "description": "A stone panel disguised as part of the Three Peaks relief opens into B05.",
+          "keyname": "Watch Captain's Iron Key",
+          "lockDC": 15,
+          "locked": true,
+          "name": "Three Peaks Secret Door",
+          "trap": "Turning the false mountain peak releases a needle; the creature manipulating it must make a DC 13 Dexterity saving throw or take 1 piercing damage and become poisoned for 1 hour.",
+          "trapped": true,
+          "type": "Concealed stone door"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "A narrow, icy path skirting a collapsed floor section above the ravine.",
+          "name": "Frost-Slick Ledge"
+        },
+        {
+          "description": "Mist through the arrow slits reconstructs silent images of the watchlands' last battle.",
+          "name": "Memory Fog"
+        },
+        {
+          "description": "The final marker conceals a bloodstained dispatch tube and the latch to B05.",
+          "name": "Three Peaks Relief"
+        }
+      ],
+      "locationId": "B03",
+      "lootTable": [
+        "Sealed final dispatch naming the order to lock down B06",
+        "Silver messenger's tube worth 35 gp",
+        "Climber's kit left on a lower shelf beneath the ledge",
+        "Spell scroll of protection from evil and good concealed behind a distance marker"
+      ],
+      "monsters": [
+        {
+          "name": "Will-o'-Wisp",
+          "quantity": {
+            "max": 2,
+            "min": 1
+          }
+        },
+        {
+          "name": "Shadow",
+          "quantity": {
+            "max": 3,
+            "min": 1
+          }
+        }
+      ],
+      "name": "Veiled Mountain Corridor",
+      "npcs": [],
+      "plotHooks": [
+        "The messenger's dispatch contradicts the orders endlessly repeated by the spirits in B02.",
+        "The mist shows one supposed defender opening the route to B06 from the inside.",
+        "A distant answering beacon appears in the visions, suggesting another occupied watchpost beyond the ruins."
+      ],
+      "traps": [
+        {
+          "damage": "1 piercing damage and poisoned for 1 hour on a failed DC 13 Constitution saving throw",
+          "description": "A spring needle coated with preserved carrion poison protects the concealed-door latch.",
+          "detectDC": 15,
+          "disableDC": 14,
+          "name": "Poisoned Relief Needle",
+          "triggerDC": 13
+        }
+      ],
+      "type": "Ruined Mountain Corridor"
+    },
+    {
+      "accessibility": "Accessible only from B02 through bronze lattice doors. The room is structurally stable, though fallen weapon racks create difficult terrain along the walls.",
+      "adventureSummary": "No adventure events have occurred here.",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B02"
+      ],
+      "coordinates": "X3Y1",
+      "dangerLevel": "High",
+      "dcChecks": [
+        "Investigation DC 14: Reconstruct the guardian captain's final stand from weapon marks and the positions of the dead.",
+        "Perception DC 15: Notice that one suit of armor tracks living creatures with its empty visor.",
+        "Religion DC 14: Identify the proper rite for releasing soldiers who died while bound by an unfulfilled oath.",
+        "Athletics DC 15: Lift the fallen stone beam pinning the oath-seal coffer.",
+        "Persuasion DC 16: Convince the revenant guardian that the party can fulfill its watch."
+      ],
+      "description": "A cramped guardroom lies frozen at the instant of its defeat. Splintered spear racks lean against walls carved with the names of every soldier assigned to the tower. Four empty suits of blackened plate kneel around a collapsed stone beam, their gauntlets resting on rusted swords. Behind them, the remains of a massive guardian lie half buried beneath masonry, one skeletal hand still clutching a chain attached to a small iron coffer. Blue flame glows within the empty helmets whenever anyone approaches the coffer. The only exit is the bronze doorway back to B02.",
+      "dmInstructions": "The kneeling armor remains inert until someone crosses the ring, touches the coffer, erases a name from the walls, or bears the dispatch from B03. If shown the dispatch, the guardian spirit demands that the party swear to seal or cleanse B06; a sincere oath avoids combat and causes the animated armor to stand aside. The revenant-like guardian fights only until reduced to half hit points, then asks whether the characters truly understand what lies in the vault. The beam can be shifted with a DC 15 Athletics check, or broken after taking 20 points of bludgeoning damage. The oath-seal opens the safest command archive in B05 and calms the gate spirits in B01.",
+      "doors": [
+        {
+          "breakDC": 18,
+          "description": "Bronze lattice doors open west into B02; their bars are etched with names matching those on the guardroom walls.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Atrium Doors",
+          "trap": "",
+          "trapped": false,
+          "type": "Bronze double doors"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "Hundreds of carved names become warm when spoken aloud. Defacing them awakens all dormant guardians.",
+          "name": "Roll of the Watch"
+        },
+        {
+          "description": "A heavy lintel pins the guardian's remains and the chain of an iron coffer.",
+          "name": "Collapsed Stone Beam"
+        },
+        {
+          "description": "Blackened suits inhabited by fragments of duty rather than complete souls.",
+          "name": "Kneeling Armor"
+        }
+      ],
+      "locationId": "B04",
+      "lootTable": [
+        "Captain's oath-seal, an iron signet required to access protected records in B05",
+        "Guardian's longsword with a silvered blade",
+        "Four intact heavy crossbow bolts and one flask of holy water",
+        "Iron coffer containing 55 gp in obsolete military coinage"
+      ],
+      "monsters": [
+        {
+          "name": "Animated Armor",
+          "quantity": {
+            "max": 4,
+            "min": 2
+          }
+        },
+        {
+          "name": "Revenant",
+          "quantity": {
+            "max": 1,
+            "min": 1
+          }
+        }
+      ],
+      "name": "Fallen Guardian Post",
+      "npcs": [
+        {
+          "attitude": "Hostile toward thieves, stern toward strangers, and cooperative with anyone who swears to finish the watch's final duty.",
+          "description": "The oath-bound remnant of Captain Orsik Vale, manifesting through the armored corpse beneath the beam.",
+          "name": "Captain Orsik Vale"
+        }
+      ],
+      "plotHooks": [
+        "Captain Vale entrusts the party with the oath-seal and commands them to determine whether his commander was possessed.",
+        "One name on the wall has been carefully chiseled away, yet its armor still kneels with the others.",
+        "The coffer contains a roster indicating that a soldier thought dead may have escaped toward the Ironwood Passlands."
+      ],
+      "traps": [
+        {
+          "damage": "2d8 thunder damage and deafened for 1 minute on a failed DC 14 Constitution saving throw; half damage and no deafness on a success",
+          "description": "Removing the oath-seal without first speaking an oath triggers a concussive command from the carved names.",
+          "detectDC": 14,
+          "disableDC": 16,
+          "name": "Oathbreaker's Rebuke",
+          "triggerDC": 14
+        }
+      ],
+      "type": "Ruined Guard Post"
+    },
+    {
+      "accessibility": "Reached from B01 through a locked officers' wicket or from B03 through a concealed stone door. A reinforced stair descends from the western side to B06.",
+      "adventureSummary": "No adventure events have occurred here.",
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "connectivity": [
+        "B01",
+        "B03",
+        "B06"
+      ],
+      "coordinates": "X1Y2",
+      "dangerLevel": "Very High",
+      "dcChecks": [
+        "Investigation DC 15: Sort the scattered orders and identify the commander's handwriting changing midway through the final night.",
+        "Arcana DC 16: Understand that the command map channels necromantic energy into B06.",
+        "Insight DC 15: Determine that the commander's recorded confession was made under supernatural compulsion.",
+        "Perception DC 14: Spot the pressure plate beneath the command chair.",
+        "History DC 13: Recognize the brass map's symbols as the old beacon network of the passlands."
+      ],
+      "description": "The upper operations chamber has become a shrine to failed command. A crescent table surrounds a brass relief map whose tiny beacon towers burn with cold violet flames. Rotting orders blanket the floor, all bearing frantic revisions in the same hand: reinforce the gate, abandon the gate, open the vault, kill anyone who opens the vault. A high-backed command chair faces a cracked observation window, occupied by a corpse in ceremonial mail whose shadow moves independently across the wall. To the west, iron-bound stairs descend to B06; other passages lead to B01 and the hidden route from B03.",
+      "dmInstructions": "Present the chamber as the central source of answers. The corpse belongs to Commander Elid Rusk, but its independent shadow carries the hostile will that corrupted him. Reading the orders for 10 minutes and succeeding on the Investigation check reveals that the changes began after a sealed object was brought from B06. Placing Captain Vale's oath-seal from B04 in the map's central socket extinguishes the violet beacons, suppresses the map trap, and forces the shadow to separate visibly from the corpse. Without this advantage, the listed undead coordinate attacks and use the furniture as cover. The commander's spirit can briefly speak if protection from evil and good, remove curse, or a successful DC 16 Religion check is applied to the corpse. He reveals the phrase that safely opens the vault stair door: \"Let the last watch end.\"",
+      "doors": [
+        {
+          "breakDC": 19,
+          "description": "An iron-bound stone door at the head of the descending stair leads to B06. Frost covers its inner face.",
+          "keyname": "Captain's Oath-Seal",
+          "lockDC": 17,
+          "locked": true,
+          "name": "Vault Stair Door",
+          "trap": "Opening the door without the oath-seal or command phrase releases a pulse of grave cold affecting creatures within 10 feet.",
+          "trapped": true,
+          "type": "Iron-bound stone door"
+        },
+        {
+          "breakDC": 16,
+          "description": "A warped oak wicket leads back to B01 and can be unbarred from this side.",
+          "keyname": "Watch Captain's Iron Key",
+          "lockDC": 14,
+          "locked": true,
+          "name": "Gateway Wicket",
+          "trap": "",
+          "trapped": false,
+          "type": "Reinforced wooden door"
+        },
+        {
+          "breakDC": 17,
+          "description": "A concealed stone panel opens into B03; its latch is plainly visible from the command-deck side.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Corridor Secret Door",
+          "trap": "",
+          "trapped": false,
+          "type": "Concealed stone door"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "A detailed brass model of the watchlands. Its violet beacon flames feed power through engraved channels toward B06.",
+          "name": "Necromantic Command Map"
+        },
+        {
+          "description": "The dead commander sits upright while his shadow gestures, points, and sometimes strangles him anew.",
+          "name": "Commander's Corpse"
+        },
+        {
+          "description": "Contradictory documents reveal the progressive corruption of the garrison's orders.",
+          "name": "Scattered Final Orders"
+        },
+        {
+          "description": "A bronze speaking tube connects to the horn niche in B01 and carries whispers from the gateway.",
+          "name": "Gate Speaking Tube"
+        }
+      ],
+      "locationId": "B05",
+      "lootTable": [
+        "Commander Rusk's ceremonial chain worth 90 gp",
+        "Watch Captain's Iron Key tucked beneath the command chair",
+        "Spell scroll of gentle repose in a sealed map drawer",
+        "Military strongbox containing 80 gp, two bloodstones worth 50 gp each, and a potion of greater healing",
+        "Bundle of complete beacon charts valuable to local authorities"
+      ],
+      "monsters": [
+        {
+          "name": "Shadow",
+          "quantity": {
+            "max": 4,
+            "min": 2
+          }
+        },
+        {
+          "name": "Wight",
+          "quantity": {
+            "max": 1,
+            "min": 1
+          }
+        }
+      ],
+      "name": "Cursed Command Deck",
+      "npcs": [
+        {
+          "attitude": "Tormented and fearful; helpful if separated from the possessing shadow, otherwise compelled to mislead intruders.",
+          "description": "The flickering spirit of Commander Elid Rusk, bound to his seated corpse and burdened by the contradictory orders he issued.",
+          "name": "Commander Elid Rusk"
+        }
+      ],
+      "plotHooks": [
+        "Rusk claims the entity in B06 can imitate any dead person whose name it learns.",
+        "The beacon map shows one violet flame still burning in the Ironwood Passlands beyond A01.",
+        "A hidden order offers payment to smuggle the vault's contents away rather than destroy them."
+      ],
+      "traps": [
+        {
+          "damage": "3d6 cold damage on a failed DC 15 Constitution saving throw, or half as much on a success",
+          "description": "The vault stair door exhales supernatural cold when opened without the proper seal or phrase.",
+          "detectDC": 15,
+          "disableDC": 17,
+          "name": "Grave-Cold Seal",
+          "triggerDC": 15
+        },
+        {
+          "damage": "2d6 piercing damage and restrained beneath iron bands; escape requires a DC 14 Strength check",
+          "description": "Weight before the command chair releases spring-loaded map braces that clamp around the intruder.",
+          "detectDC": 14,
+          "disableDC": 14,
+          "name": "Command Chair Restraint",
+          "triggerDC": 14
+        }
+      ],
+      "type": "Ruined Command Chamber"
+    },
+    {
+      "accessibility": "Accessible from B05 by a steep, iron-bound stair behind a locked and trapped door. A narrow root-choked breach at the rear exits toward The Ironwood Passlands at A01, but a stone seal and grasping roots obstruct passage.",
+      "adventureSummary": "No adventure events have occurred here.",
+      "areaConnectivity": [
+        "The Ironwood Passlands"
+      ],
+      "areaConnectivityId": [
+        "A01"
+      ],
+      "connectivity": [
+        "B05"
+      ],
+      "coordinates": "X0Y2",
+      "dangerLevel": "Very High",
+      "dcChecks": [
+        "Arcana DC 17: Identify the black reliquary as a vessel that stores names and uses them to mimic the dead.",
+        "Religion DC 16: Complete the interrupted sealing rite inscribed around the central plinth.",
+        "Perception DC 15: Notice dead faces appearing between the roots before they reach from the walls.",
+        "Athletics DC 16: Force open the root-choked breach toward A01.",
+        "Deception DC 17: Feed the reliquary a false identity convincing enough to distract its resident spirit.",
+        "Investigation DC 15: Locate the missing final line of the sealing rite beneath the plinth."
+      ],
+      "description": "At the bottom of the command stair waits a hexagonal vault cut directly into black mountain stone. Iron roots have pierced the walls and curled around six funerary niches, each holding an empty suit of burial mail. A waist-high plinth supports an obsidian reliquary bound in tarnished silver wire. Whispers seep from its seams in the voices of loved ones, fallen allies, and anyone named aloud within the tower. A circle of salt and powdered iron around the plinth has been broken from within. Behind the reliquary, roots choke a narrow breach leading out toward the Ironwood Passlands at A01, where cold forest air stirs the otherwise stagnant chamber.",
+      "dmInstructions": "Treat the reliquary as the source of the haunting and a dangerous social antagonist, not merely treasure. It listens before revealing itself, using familiar voices to persuade characters to break its silver bindings. A creature that answers a mimicked voice with its full name has disadvantage on its next saving throw against an effect created by an undead in this vault. The sealing rite requires three successes before two failures using DC 16 Arcana, Religion, or Performance checks; Captain Vale's oath-seal grants one automatic success, the dispatch from B03 prevents the first failure, and Rusk's phrase from B05 suppresses the reliquary's mimicry for one round. Each failed check animates one additional burial guardian, up to the listed maximum. Destroying the vessel by brute force releases a hostile wraith and leaves the wider haunting diminished but unresolved; completing the rite binds the evil and pacifies undead elsewhere. Opening the breach establishes travel to A01.",
+      "doors": [
+        {
+          "breakDC": 19,
+          "description": "The iron-bound stair door returns to B05. Its ward can be bypassed with the oath-seal or the commander's final phrase.",
+          "keyname": "Captain's Oath-Seal",
+          "lockDC": 17,
+          "locked": true,
+          "name": "Command Stair Door",
+          "trap": "The B05-facing ward releases grave cold if bypassed without the correct seal or phrase.",
+          "trapped": true,
+          "type": "Iron-bound stone door"
+        },
+        {
+          "breakDC": 20,
+          "description": "A cracked stone seal overgrown by iron-hard roots blocks the passage to A01 in The Ironwood Passlands.",
+          "keyname": "",
+          "lockDC": 0,
+          "locked": false,
+          "name": "Ironwood Breach",
+          "trap": "Cutting the central root before disrupting the necromantic sigil causes all roots in the vault to lash outward.",
+          "trapped": true,
+          "type": "Root-choked stone breach"
+        }
+      ],
+      "encounters": [],
+      "explorationState": {
+        "status": "unvisited"
+      },
+      "features": [
+        {
+          "description": "An obsidian box wrapped in silver wire that steals names, memories, and voices from nearby dead.",
+          "name": "Reliquary of Stolen Voices"
+        },
+        {
+          "description": "A damaged ritual boundary that can be repaired with salt, powdered iron, and the correct litany.",
+          "name": "Broken Sealing Circle"
+        },
+        {
+          "description": "Six alcoves contain empty ceremonial armor connected to the reliquary by iron roots.",
+          "name": "Funerary Niches"
+        },
+        {
+          "description": "A narrow passage toward A01 sealed by stonework and roots from the Ironwood Passlands.",
+          "name": "Ironwood Breach"
+        }
+      ],
+      "locationId": "B06",
+      "lootTable": [
+        "Six lengths of tarnished silver binding wire worth 25 gp each if removed after a successful sealing",
+        "Reliquary shard functioning as a spellcasting focus and worth 150 gp, but prone to whispering stolen names",
+        "Two potions of necrotic resistance stored in a funerary niche",
+        "Black pearl worth 100 gp beneath the central plinth",
+        "Guardian burial mail equivalent to a suit of intact chain mail"
+      ],
+      "monsters": [
+        {
+          "name": "Wraith",
+          "quantity": {
+            "max": 1,
+            "min": 1
+          }
+        },
+        {
+          "name": "Animated Armor",
+          "quantity": {
+            "max": 6,
+            "min": 2
+          }
+        },
+        {
+          "name": "Shadow",
+          "quantity": {
+            "max": 4,
+            "min": 2
+          }
+        }
+      ],
+      "name": "Shrouded Evil Vault",
+      "npcs": [
+        {
+          "attitude": "Deceptively affectionate and manipulative; becomes openly hateful if the sealing rite begins.",
+          "description": "An unnamed intelligence inside the reliquary that speaks through stolen voices and claims to be whichever dead person its listener most wishes to hear.",
+          "name": "The Voice Beneath the Watch"
+        }
+      ],
+      "plotHooks": [
+        "The reliquary has stolen the voice of someone recently deceased far beyond the watchtower, implying its influence is spreading.",
+        "The Ironwood roots bear the same necromantic sigil as the command map, leading toward a second source in A01.",
+        "Sealing the reliquary frees most spirits, but one stolen name remains missing and must be recovered elsewhere.",
+        "A funerary niche contains evidence that the vault guardians willingly imprisoned themselves with the entity."
+      ],
+      "traps": [
+        {
+          "damage": "3d8 slashing damage and grappled (escape DC 15) on a failed DC 15 Dexterity saving throw; half damage and no grapple on a success",
+          "description": "Disturbing the central root before erasing its sigil causes iron-hard tendrils to lash every creature within 15 feet of the breach.",
+          "detectDC": 15,
+          "disableDC": 17,
+          "name": "Grasping Ironwood Roots",
+          "triggerDC": 15
+        },
+        {
+          "damage": "2d8 necrotic damage, and the target cannot regain hit points until the start of its next turn, on a failed DC 16 Wisdom saving throw; half damage on a success",
+          "description": "Crossing the broken sealing circle while speaking a creature's full name allows the reliquary to tear at that creature's identity.",
+          "detectDC": 16,
+          "disableDC": 17,
+          "name": "Name-Eater Ward",
+          "triggerDC": 16
+        }
+      ],
+      "type": "Cursed Vault and Area Exit"
+    }
+  ]
+}
