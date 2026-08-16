@@ -99,7 +99,7 @@
           "areaConnectivityId": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "IDs of areas connected to this location, if it's an exit point."
+            "description": "Code-owned cross-area field: destination LOCATION IDs (parallel by index with areaConnectivity area names), assigned by the module builder from the plot route. Not authored by the model; not area IDs."
           },
           "traps": {
             "type": "array",

@@ -971,35 +971,18 @@ class LocationPromptGuide:
     """
     
     areaConnectivity: str = """
-    Connections to different areas/maps entirely.
-    Used for zone transitions.
-    
-    List area names this location connects to.
-    Example: ["Ember Mines - Level 2", "Surface Exit"]
-    
-    Typically used for:
-    - Stairs between dungeon levels
-    - Exits to wilderness
-    - Portals to other planes
-    - Zone boundaries
-    
-    Helps track large-scale navigation.
+    CODE-OWNED. Do NOT author this. Cross-area connections are assigned
+    deterministically by the module builder from the plot route after all
+    locations are generated. Copy the exact value from the supplied stub
+    (usually []). Never add, remove, rename, or reinterpret it.
     """
-    
+
     areaConnectivityId: str = """
-    Area IDs corresponding to areaConnectivity names.
-    Maintains technical references.
-    
-    IMPORTANT RULES:
-    - Use empty array [] if location doesn't connect to other areas
-    - Only include IDs of OTHER areas, never the current area
-    - Must match entries in areaConnectivity array
-    
-    Examples:
-    - Internal room: []
-    - Exit to another area: ["GW001"] (if connecting to Gloamwood)
-    - Multi-area connection: ["EM002", "SURFACE"]
-    
+    CODE-OWNED. Do NOT author this. It holds destination LOCATION IDs (parallel
+    by index with areaConnectivity's area names) and is assigned by the module
+    builder from the plot route. Copy the exact value from the supplied stub
+    (usually []). It is NOT a list of area IDs.
+
     Used by system for area transitions.
     """
 
@@ -1305,11 +1288,11 @@ DOOR STRUCTURE: Every door must have ALL these fields:
 - trap (string): trap description (empty string if not trapped)
 
 AREA CONNECTIVITY RULES:
-- areaConnectivityId should be [] for locations that don't connect to other
-  areas
-- Only include other area IDs when the location explicitly connects to a
-  different area
-- NEVER include the location's own area ID in areaConnectivityId
+- "areaConnectivity" and "areaConnectivityId" are CODE-OWNED cross-area fields.
+  Do NOT author them. Copy the exact values from each supplied stub (usually []).
+  The module builder assigns all cross-area connections deterministically from the
+  plot route after generation; anything you put here is discarded. Note that
+  "areaConnectivityId" holds destination LOCATION IDs, not area IDs.
 
 Check the location schema carefully for all required fields.
 Use only standard ASCII characters -- no smart quotes, no em-dashes, and no
