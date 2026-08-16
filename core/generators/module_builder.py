@@ -2030,6 +2030,18 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     )
                     self.context = ModuleContext.load(context_path)
                 else:
+                    # Item C: publish a context rebuilt from the FINAL on-disk
+                    # artifacts (areas/*.json + module_plot.json) so the
+                    # reconciled/validated context matches the real areas, area
+                    # names, location membership, and plot ownership instead of
+                    # the possibly-stale in-memory generation snapshot. NPC
+                    # identity/aliases are carried from the in-memory context and
+                    # owned by the T088 reconcile that immediately follows; the
+                    # post-reconcile ModuleContext.load below restores the merged
+                    # result (reconciler aliases included).
+                    self.context = ModuleContext.from_artifacts(
+                        self.config.output_directory, base_context=self.context
+                    )
                     if not safe_write_json(context_path, self.context.to_dict()):
                         raise OSError(
                             "Could not publish module context before NPC reconciliation"
