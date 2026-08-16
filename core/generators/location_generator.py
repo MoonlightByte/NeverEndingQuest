@@ -131,10 +131,24 @@ def _canonicalize_t026_stub_owned_fields(
 
     restored_id_indexes = []
     restored_danger_indexes = []
+    restored_coord_indexes = []
     for index, location in enumerate(locations):
         if location.get("locationId") != expected_ids[index]:
             location["locationId"] = expected_ids[index]
             restored_id_indexes.append(index)
+
+        # Coordinates are pure map geometry assigned by MapLayoutGenerator and
+        # carried on the trusted stub; they are 100% code-owned, not creative
+        # content. Identity==position is already guaranteed by the preflight
+        # above, so a model coordinate that differs from the stub is a
+        # hallucination (issue #128 class) for a location whose identity is
+        # confirmed. Restore ALWAYS from the stub (unlike dangerLevel, which
+        # permits model variation) so a coordinate drift can never ship.
+        stub_coord = location_stubs[index].get("coordinates")
+        if isinstance(stub_coord, str) and stub_coord.strip():
+            if location.get("coordinates") != stub_coord:
+                location["coordinates"] = stub_coord
+                restored_coord_indexes.append(index)
 
         returned_danger = location.get("dangerLevel")
         stub_danger = location_stubs[index].get("dangerLevel")
@@ -159,6 +173,14 @@ def _canonicalize_t026_stub_owned_fields(
             f"{len(restored_danger_indexes)} omitted or blank dangerLevel "
             "value(s) from the trusted ordered stubs at indexes "
             f"{restored_danger_indexes}."
+        )
+    if restored_coord_indexes:
+        print(
+            "WARNING: T026 corrected "
+            f"{len(restored_coord_indexes)} model-drifted coordinates value(s) "
+            "to the trusted map-owned stub coordinates at indexes "
+            f"{restored_coord_indexes} (issue #128 class; coordinates are "
+            "code-owned map geometry)."
         )
     return corrected
 
