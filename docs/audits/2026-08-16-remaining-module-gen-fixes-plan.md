@@ -1,0 +1,161 @@
+# Remaining Module-Generation Fixes — Consolidated Plan (2026-08-16)
+
+Covers everything left after Items 1 & 2: the newly-surfaced T088 lock-inversion blocker,
+the Item 2 route detector, #3a/#3b/#7 from the original plan, and the queued sanitization pass.
+Root causes below are code-confirmed in `.worktrees/main-merge`, not assumed. Doctrine unchanged:
+code owns mechanical/structural fields; model owns creative content; no prose keyword-matching;
+acceptance = real headless build judged on-disk; commit + validate ONE item before the next.
+
+Baseline commits already landed (local, unpushed): `82ffda6a`/`4e1b82fe` (Item 1 encounters +
+gen schema), `f0e8e4e1` (model eval), `76da367a`/`dbc93723` (luna|high T026 binding), `0f8afe90`
+(Item 2 plot-ordered cross-area linking).
+
+--------------------------------------------------------------------------------
+## Item A (BLOCKER, do first) — T088 legacy reconcile lock inversion
+
+**Symptom:** every legacy `build_module` aborts at Step 6.5 with
+`ERROR: [NpcReconciler] Refusing target -> refresh lock inversion` then
+`OSError: NPC identity reconciliation did not commit` (`module_builder.py:2001`).
+
+**Root cause (confirmed):** `_reconcile_and_validate_context` has two branches:
+- story-first (`expected_context is not None`, `module_builder.py:1948-1980`) acquires
+  `module_refresh_lock()` -> `path_transaction_lock(context_path)`, then calls the
+  **unlocked** `reconciler._reconcile_all_areas_unlocked()` (`npc_reconciler.py:868`,
+  which asserts both locks are already held). CORRECT.
+- legacy (`expected_context is None`, `module_builder.py:1982-2001`) acquires ONLY
+  `path_transaction_lock(context_path)` (no refresh), then calls the **locked**
+  `reconciler.reconcile_all_areas()` (`npc_reconciler.py:715`). That method's guard
+  (`:731-738`) sees `path_transaction_lock_owned and not module_refresh_lock_owned`
+  -> declares a lock-order inversion -> returns False -> build raises. BUG.
+
+**Fix:** make the legacy branch mirror the story-first branch's lock order — wrap in
+`module_refresh_lock()` first, then `path_transaction_lock(context_path)`, then call
+`_reconcile_all_areas_unlocked()` (not the locked variant). Keep the existing
+`_recover_pending_transaction` -> publish-in-memory -> reconcile -> reload -> validate
+ordering and the atomic/backup semantics. Do NOT weaken the inversion guard itself (it is
+correct; the caller was wrong). Consider collapsing the two branches into one shared locked
+scope that differs only by the optional `validate_reconciled_context` tail.
+
+**Validate:** real qwen legacy 3-area headless build now runs to completion (module_context
+reconciled, `_BU.json` backups created, no OSError). Re-run the Item 2 build harness; it must
+reach `[ACCEPTANCE PASS]` AND `build_module returned OK` with no reconcile abort.
+
+--------------------------------------------------------------------------------
+## Item B — Item 2 route-agreement detector (hardening)
+
+Item 2 fixed the root cause (plot-ordered linking). This adds the belt-and-suspenders
+detector from the original plan so a future regression is caught, not silently shipped.
+
+**Change:** add `validate_plot_route_agreement(areas, plot)` (deterministic) that asserts a
+forward-consistent canonical path exists visiting the plot-ordered area waypoints. **Critical
+scoping (do not regress hub-and-spoke):** edges are bidirectional; it checks ">=1
+forward-consistent path exists," NOT "no backtracking"; it must NOT flag hub-and-spoke revisits
+or optional/`optionalTerminal` beats. Also add the explicit **cross-area reciprocity** assertion
+(no existing validator checks cross-area reciprocity;
+`validate_bidirectional_connectivity` excludes cross-area by design,
+`validate_module_files.py:588`). Wire as a report-only check first; escalate to fail-loud only
+after it runs clean on real builds.
+
+**Validate:** deterministic fixtures (linear/backward/skip/hub/branch/revisit) + the real build
+from Item A passes the detector; a synthetic backward fixture is flagged.
+
+--------------------------------------------------------------------------------
+## Item C (#3a) — module_context.json deterministic resync (legacy gap)
+
+**Root cause:** story-first already rebuilds context from artifacts and hard-compares
+(`expected_context_projection` + `validate_reconciled_context`, `compatibility.py`). The legacy
+branch just publishes the in-memory context (`module_builder.py:1994`), so it can drift from the
+final area/plot artifacts (Codex found stale cross-area connections, wrong area names, wrong plot
+ownership; `validation_report.json` then falsely says "no issues").
+
+**Change:** add `ModuleContext.from_artifacts(module_dir)` (shared util) that rebuilds context
+from final `areas/*.json`, `module_plot.json`, AND `[module]_module.json`
+(`mainPlot.plotStages.keyNPCs` for `references` — omitting it makes `validate_npc_placement`
+vacuous). In the legacy branch, replace the pre-reconciliation in-memory publish with the
+artifact projection; preserve NpcReconciler aliases (do NOT replace the post-reconcile
+`ModuleContext.load`). Order: pre-image projection -> reconcile (identity preserved) -> reload ->
+validate -> atomic publish. Collapse with story-first's projection into one mechanism.
+
+**Validate:** after a real build, `module_context.json` cross-area connections / area names /
+plot ownership exactly match live artifacts; `validation_report.json` no longer falsely clean.
+
+--------------------------------------------------------------------------------
+## Item D (#3b) — coordinate ownership fail-loud (legacy gap)
+
+**Root cause:** story-first code-owns coordinates and re-asserts equality fail-loud at three
+stages (`TRUSTED_LOCATION_FIELDS`, `restore_repaired`, `restore_hardened`). The legacy path writes
+T026 output straight to disk (`module_builder.py:1136`) with no coordinate re-check, so a model
+coordinate hallucination (issue-#128 class; e.g. A04 at X2Y3 vs map X1Y2) ships.
+
+**Change:** after the legacy path writes an area, reuse the existing
+`validate_story_first_location_result` `TRUSTED_LOCATION_FIELDS` check (`validators.py:844`)
+comparing each location's coordinates to the deterministic map (`MapLayoutGenerator.generate_layout`).
+Fail loud -> route through the existing T026 retry ladder; do NOT silently coerce (every existing
+ownership guard is fail-loud; a silent map-wins overwrite would hide the root cause and risk
+shipped-module/save backward-compat). Optional: a read-only `validate_coordinate_ownership` report
+in `ModuleValidator` for auditing already-generated modules (never mutates).
+
+**Validate:** legacy build with an injected coordinate hallucination fails loud + retries; final
+coordinates equal map rooms; existing shipped modules are not mutated.
+
+--------------------------------------------------------------------------------
+## Item E (#7) — NPC cross-area role/attitude coherence (agentic)
+
+**Root cause:** `NpcReconciler` reconciles NAMES only (`npc_reconciler.py:411-428`). Location NPC
+entries are `{name, description, attitude}` — there is NO `role`/`faction` field, so inferring role
+from free-text `description` would violate the no-prose-matching prohibition. Same-name NPCs with
+conflicting roles across areas (e.g. Mother Marrow: neutral grove-tender vs hostile cult leader)
+ship unreconciled.
+
+**Change (agentic, the only compliant path):** after name reconciliation, group final appearances
+by canonical identity (reuse `duplicate_npc_placements`, `validators.py:1205`). If a repeated
+cross-area identity exists, make ONE structured model call over the complete occurrence set that
+decides the semantic fact code cannot derive (same mobile person / projection / deliberate attitude
+change / accidental duplicate) and returns a strict patch contract. **Code validates + applies
+fail-closed:** only `npcs[].name/description/attitude` and the location `dmInstructions` may change;
+no new IDs; identity set preserved; atomic via T088; one bounded correction then abort. Recurring
+antagonists/guides kept via a primary placement + explicit projection/mobility note — never
+auto-erased. Add a lightweight deterministic `ModuleContext.validate_npc_role_coherence()`
+(attitude-only report) alongside `validate_npc_placement`.
+
+**Validate:** same-name NPCs with divergent attitudes get one coherent primary + explicit
+continuity; no false positives on legitimately distinct same-name NPCs; no party member added.
+
+--------------------------------------------------------------------------------
+## Item F — Non-ASCII sanitization pass (queued issue)
+
+**Root cause:** the blind eval showed several models emit non-ASCII smart quotes / em-dashes in
+generated location content (stochastic; Windows cp1252 crash risk). Generation output is not
+guaranteed ASCII-clean.
+
+**Change:** confirm/where-missing add a deterministic ASCII sanitization step on generated content
+before publish (curly quotes -> straight, em/en-dash -> `--`/`-`, ellipsis -> `...`, strip/convert
+other non-ASCII), reusing `utils/encoding_utils`. Applies to T026 location content and any other
+model-authored text fields at generation time. Do NOT change prompts. This is code-owned cleanup,
+not a gameplay decision.
+
+**Validate:** re-generate a batch with a model that previously emitted smart quotes; assert the
+published area files are pure ASCII; no content meaning changed.
+
+--------------------------------------------------------------------------------
+## Sequencing (one item, complete + validated, before the next)
+1. **Item A** (blocker) — unblocks full legacy builds; every later item's real-build validation depends on it.
+2. **Item B** — route detector (cheap; guards Item 2).
+3. **Item D** (#3b coordinates) + **Item C** (#3a context) — the two legacy fail-loud/resync gaps.
+4. **Item E** (#7 NPC coherence).
+5. **Item F** — sanitization.
+
+Each item: commit baseline first, implement, validate via a real qwen (and one gemma control)
+headless build judged on-disk, commit, then proceed. Nothing pushed without owner direction.
+
+## Reused utilities (do not reinvent)
+`_reconcile_all_areas_unlocked` / `reconcile_all_areas` / `duplicate_npc_placements` (npc_reconciler.py,
+validators.py); `validate_story_first_location_result` / `TRUSTED_LOCATION_FIELDS` /
+`validate_plot_route_agreement`(new) (story_first/validators.py); `expected_context_projection` /
+`validate_reconciled_context` (story_first/compatibility.py); `ModuleContext` + `validate_all`
+(utils/module_context.py); `MapLayoutGenerator.generate_layout` (area_generator.py); `encoding_utils`.
+
+## Open questions for owner / Codex cross-check
+1. Item A: collapse the two reconcile branches into one, or minimally patch the legacy branch? (Recommend collapse.)
+2. Item B detector: report-only permanently, or escalate to fail-loud after it runs clean? (Recommend escalate.)
+3. Item F: sanitize at generation only, or also add a one-time migration pass for already-generated modules? (Recommend generation-only; BC-safe.)
