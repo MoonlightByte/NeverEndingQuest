@@ -125,6 +125,14 @@ sites where the cheaper models regressed (combat refereeing and the initiative
 tracker). The result is a large cost reduction versus the old GPT-5.2-everywhere
 wiring, with no observed quality loss on the tested sites.
 
+These bindings live in `model_registry.py` (`CALLSITE_BINDINGS`) and are the single
+source of truth: every AI call is routed through `resolve_callsite_config(task_id,
+provider)` at the shared call boundary, which sets the model + reasoning tier for that
+call regardless of any older per-call-site constant. To confirm which model a call
+actually used, read the response-derived record in
+`debug/api_captures/api_calls_master.jsonl` (it logs `response.model`) — not a
+pre-call routing snapshot.
+
 **Prefer the old behavior?** Switch **Settings → AI Provider → Legacy (GPT-4.1)**
 (or set `MODEL_PROVIDER = "legacy"` in `config.py`). The full GPT-4.1 /
 GPT-4.1-mini path is unchanged and fully supported — nothing was removed, the
