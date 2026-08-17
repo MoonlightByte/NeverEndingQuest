@@ -368,7 +368,14 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
 
 
 def _enforce_provider_constraints(provider, model, temperature, kwargs):
-    """Apply hard API constraints after merge. Mutates kwargs in place."""
+    """Apply hard API constraints after merge. Mutates kwargs in place.
+
+    Doctrine carve-out: this is NOT model selection or param injection (which the
+    callsite/registry own). It only enforces provider hard-API rules that would
+    otherwise cause a 400 -- e.g. gpt-5.x non-mini rejects temperature at
+    reasoning_effort != "none", gpt-5-mini rejects temperature and effort="none".
+    It never chooses a model and never adds tuning params.
+    """
     if provider == "openai":
         model_lower = model.lower() if model else ""
         reasoning = kwargs.get("reasoning_effort")

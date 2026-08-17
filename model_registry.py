@@ -207,7 +207,19 @@ _declare(
     ),
 )
 _declare(
-    "T014 T091",
+    "T014",
+    _profiles(
+        "OPENAI_GPT56_LUNA_NONE",
+        "NPC_MOVEMENT_T014_GEMINI_FLASH_LOW",
+        "NPC_INFO_LEGACY",
+        "NPC_INFO_LMSTUDIO",
+    ),
+    note="T014 needs its OWN gemini config carrying response_schema; NPC_INFO_GEMINI_FLASH_LOW "
+         "(shared with T091) has none, so gemini would emit narration and silently drop the NPC "
+         "movement update. Must match the live callsite (action_handler.py NPC_MOVEMENT_T014_*).",
+)
+_declare(
+    "T091",
     _profiles(
         "OPENAI_GPT56_LUNA_NONE",
         "NPC_INFO_GEMINI_FLASH_LOW",
