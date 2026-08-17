@@ -5,9 +5,10 @@
 An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campaigns with infinite adventure potential. Experience the world's most popular roleplaying game with an intelligent AI that remembers every decision, adapts to your playstyle, and creates endless adventures tailored to your party.
 
 **🚀 NEW: React Player and Multi-Provider AI** - Choose the established legacy
-player or the component-based React player, then run the game with the stable
-GPT-4.1 baseline, newer OpenAI models, Gemini, or an OpenAI-compatible local or
-remote server.
+player or the component-based React player, then run the game with the current
+cost-optimized OpenAI GPT-5.x models (**the new default**), the stable GPT-4.1
+baseline (one toggle away), Gemini, or an OpenAI-compatible local or remote
+server.
 
 ---
 
@@ -102,11 +103,42 @@ shown by the launcher. React is served at `/play/` and legacy at `/`.
 
 Open **Settings → AI Provider** and choose one of these modes:
 
-- **Legacy (GPT-4.1)**: Stable, recommended baseline. Requires an OpenAI API key.
-- **OpenAI (GPT-5.x)**: Uses newer OpenAI models selected per call site. Requires an OpenAI API key.
+- **OpenAI (GPT-5.x)** — *default*: The current, cost-optimized model matrix.
+  Requires an OpenAI API key.
+- **Legacy (GPT-4.1)**: The previous stable baseline, kept as a one-click toggle.
+  Requires an OpenAI API key.
 - **Gemini 3.1**: Uses Gemini models selected per call site. Requires a Google AI API key.
 - **Local / Custom Server**: Connects to an OpenAI-compatible endpoint such as
   LM Studio, Ollama, vLLM, OpenRouter, or another remote server.
+
+#### Why OpenAI (GPT-5.x) is now the default
+
+The application no longer points every AI call at a single model. Each of the
+~76 distinct AI call sites (main DM turns, combat refereeing, summaries,
+validation, module generation, NPC coherence, and so on) is individually bound
+to a specific model + reasoning setting that was chosen from blind quality/cost
+evaluations. The default **OpenAI** provider routes the large majority of call
+sites to the cheaper, faster `gpt-5.6-luna` (at the lowest reasoning tier that
+still passed each site's tests), keeps `gpt-5.6-terra` where it measurably won,
+and deliberately **retains the stronger `gpt-5.4` / `gpt-5.2`** on the two call
+sites where the cheaper models regressed (combat refereeing and the initiative
+tracker). The result is a large cost reduction versus the old GPT-5.2-everywhere
+wiring, with no observed quality loss on the tested sites.
+
+**Prefer the old behavior?** Switch **Settings → AI Provider → Legacy (GPT-4.1)**
+(or set `MODEL_PROVIDER = "legacy"` in `config.py`). The full GPT-4.1 /
+GPT-4.1-mini path is unchanged and fully supported — nothing was removed, the
+default just moved.
+
+> ⚠️ **Feedback wanted on the new call-site bindings.** These model choices are
+> new. If you notice a regression on the default OpenAI provider — worse
+> narration, broken combat math, malformed JSON/updates, a stuck build, or any
+> behavior that improves the moment you toggle back to **Legacy (GPT-4.1)** —
+> please [open an issue](https://github.com/MoonlightByte/NeverEndingQuest/issues)
+> and tell us **which action you took** and **roughly where in play** it
+> happened (e.g. "combat, enemy turn" or "module generation, location step").
+> That points us straight at the responsible call site so we can retune just
+> that binding. In the meantime, Legacy is always a safe fallback.
 
 For Local / Custom Server, the default endpoint is
 `http://localhost:1234/v1`. The model name and API key are optional for local
@@ -971,10 +1003,13 @@ AI: "The explosion engulfs three goblins..."
 ### AI Provider and Credentials
 
 Use **Settings → AI Provider** in the web interface instead of assigning a
-single model in `config.py`. Choose Legacy, OpenAI, Gemini, or Local / Custom
-Server. The application maintains its tested per-call-site model matrix in
-`model_config.py`.
+single model in `config.py`. Choose OpenAI (default), Legacy, Gemini, or Local /
+Custom Server. The application maintains its tested per-call-site model matrix in
+`model_config.py`, and the active provider persists in `user_settings.json`.
 
+- **Default provider is `openai`** (the cost-optimized GPT-5.x call-site matrix).
+  Set `MODEL_PROVIDER = "legacy"` in `config.py`, or use the Settings panel, to
+  run the GPT-4.1 baseline instead.
 - Legacy and OpenAI require an OpenAI API key.
 - Gemini requires a Google AI API key.
 - Local endpoints generally do not require a key; hosted compatible endpoints may.
@@ -1184,7 +1219,14 @@ This is unofficial Fan Content and is not affiliated with, endorsed, sponsored, 
 - **Windows launcher choice**: New installer-generated `launch_game.bat` files prompt for React or legacy.
 
 #### AI Providers and Local Credentials
-- **Provider selection in Settings**: Choose Legacy GPT-4.1, newer OpenAI models, Gemini, or an OpenAI-compatible Local / Custom Server.
+- **Default provider is now OpenAI (GPT-5.x)**: The cost-optimized per-call-site
+  matrix (`gpt-5.6-luna`/`terra`, with `gpt-5.4`/`gpt-5.2` retained where they
+  won) is the new out-of-the-box default. **Legacy (GPT-4.1) remains one toggle
+  away** in Settings → AI Provider, or `MODEL_PROVIDER = "legacy"` in `config.py`.
+  Nothing was removed — only the default moved. *Please report any call-site
+  regression against the OpenAI default (see AI Provider Setup above); Legacy is a
+  safe fallback.*
+- **Provider selection in Settings**: Choose OpenAI (default), Legacy GPT-4.1, Gemini, or an OpenAI-compatible Local / Custom Server.
 - **Per-call-site model matrix**: Narration, combat, validation, summaries, updates,
   and generation use provider-specific model settings selected for their task.
 - **Local endpoint testing**: Save and test LM Studio, Ollama, vLLM, OpenRouter, or other compatible endpoints from the UI.

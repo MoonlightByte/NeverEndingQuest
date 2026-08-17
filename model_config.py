@@ -1008,7 +1008,12 @@ MULTI_MODEL_CAPTURE = False  # Set True to enable parallel cloud model testing (
 
 # --- Provider Selection ---
 # Single setting replaces USE_GPT5_MODELS and USE_LM_STUDIO
-MODEL_PROVIDER = "legacy"  # options: "legacy", "openai", "gemini", "lmstudio"
+# DEFAULT: "openai" -- the current, cost-optimized GPT-5.x callsite matrix
+#   (gpt-5.6-luna / terra, with gpt-5.4 and gpt-5.2 retained where they win).
+#   Set to "legacy" to run the stable gpt-4.1 / gpt-4.1-mini baseline instead;
+#   "gemini" and "lmstudio" are also available. Switchable at runtime via
+#   Settings -> AI Provider (persists in user_settings.json).
+MODEL_PROVIDER = "openai"  # options: "openai" (default), "legacy", "gemini", "lmstudio"
 
 PROVIDER_MODELS = {
     "legacy": {
@@ -1235,9 +1240,15 @@ def persist_provider(provider_name):
 
 
 def load_persisted_provider():
-    """Load provider from disk and apply it. Call at startup."""
+    """Load provider from disk and apply it. Call at startup.
+
+    When the user has never explicitly chosen a provider, fall back to the
+    application default "openai" (the cost-optimized GPT-5.x callsite matrix).
+    An explicit choice saved via persist_provider() / the Settings panel always
+    wins, so existing users who picked Legacy keep Legacy.
+    """
     settings = _load_user_settings()
-    provider = settings.get("model_provider", "legacy")
+    provider = settings.get("model_provider", "openai")
     if provider in PROVIDER_MODELS:
         set_provider(provider)
 
