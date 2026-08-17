@@ -47,46 +47,13 @@ class CombatNarrationAttemptError(CombatAgentContractError):
 
 
 def _provider_config(role, attempt=1):
-    import config
-    from model_config import get_provider
+    from model_config import get_provider, resolve_callsite_config
 
     provider = get_provider()
-    if role == "intent":
-        names = {
-            "openai": "COMBAT_INTENT_GPT54_NONE",
-            "gemini": "COMBAT_INTENT_GEMINI_FLASH_LOW",
-            "lmstudio": "COMBAT_INTENT_LMSTUDIO",
-            "legacy": "COMBAT_INTENT_LEGACY",
-        }
-    else:
-        retry_names = {
-            "openai": (
-                "COMBAT_NARRATE_GPT54MINI_NONE",
-                "COMBAT_NARRATE_GPT54MINI_LOW",
-                "COMBAT_NARRATE_GPT54MINI_MEDIUM",
-            ),
-            "gemini": (
-                "COMBAT_NARRATE_GEMINI_FLASH_LOW",
-                "COMBAT_NARRATE_GEMINI_FLASH_MEDIUM",
-                "COMBAT_NARRATE_GEMINI_FLASH_MEDIUM",
-            ),
-            "lmstudio": (
-                "COMBAT_NARRATE_LMSTUDIO",
-                "COMBAT_NARRATE_LMSTUDIO",
-                "COMBAT_NARRATE_LMSTUDIO",
-            ),
-            "legacy": (
-                "COMBAT_NARRATE_LEGACY",
-                "COMBAT_NARRATE_LEGACY",
-                "COMBAT_NARRATE_LEGACY",
-            ),
-        }
-        provider_names = retry_names[provider]
-        selected = provider_names[min(max(int(attempt), 1), len(provider_names)) - 1]
-        if not hasattr(config, selected):
-            selected = provider_names[0]
-        names = {provider: selected}
-    return provider, dict(getattr(config, names[provider]))
+    task_id = "T096" if role == "intent" else "T097"
+    # Public combat call sites use one-based attempt numbers; the canonical
+    # resolver uses zero-based indices and clamps beyond the final retry entry.
+    return provider, resolve_callsite_config(task_id, provider, max(int(attempt) - 1, 0))
 
 
 def combat_role_identity(role):
@@ -559,6 +526,7 @@ def request_narration_candidate(
             "T097",
             api_client.create_completion,
             _request_provider=provider,
+            _callsite_attempt=max(int(attempt) - 1, 0),
             messages=messages,
             model=call_config.pop("model"),
             temperature=0.5,

@@ -5,14 +5,17 @@ All other variants fire in background threads via ThreadPoolExecutor.
 """
 import atexit
 import copy
+import hashlib
 import inspect
 import json
 import logging
 import os
+import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 import model_config
@@ -33,6 +36,105 @@ _config = None
 _config_lock = threading.Lock()
 _error_logger = None
 _init_lock = threading.Lock()
+_source_revision = None
+_repo_root = Path(__file__).resolve().parents[2]
+
+
+def _capture_dir():
+    value = os.environ.get("NEQ_MODEL_CAPTURE_DIR", "").strip()
+    return os.path.abspath(value) if value else str(_repo_root / "model_captures")
+
+
+def _capture_config_path():
+    value = os.environ.get("NEQ_MODEL_CAPTURE_CONFIG", "").strip()
+    return os.path.abspath(value) if value else os.path.join(
+        _capture_dir(), "capture_config.json"
+    )
+
+
+def _capture_enabled():
+    override = os.environ.get("NEQ_MULTI_MODEL_CAPTURE", "").strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    return bool(getattr(model_config, "MULTI_MODEL_CAPTURE", False))
+
+
+def _evaluation_primary_override(task_id, provider, attempt):
+    """Return an explicit incumbent profile only in opted-in evaluation runs."""
+    mode = os.environ.get("NEQ_MODEL_EVAL_PRIMARY", "").strip().lower()
+    if mode != "incumbent" or provider != "openai" or not _capture_enabled():
+        return None
+    entries = (_load_config().get("primary_overrides") or {}).get(task_id)
+    if not isinstance(entries, list) or not entries:
+        raise RuntimeError("Missing incumbent evaluation profile for %s" % task_id)
+    index = min(max(int(attempt), 0), len(entries) - 1)
+    entry = entries[index]
+    if not isinstance(entry, dict) or not isinstance(entry.get("model"), str):
+        raise RuntimeError("Invalid incumbent evaluation profile for %s" % task_id)
+    allowed = {"model", "reasoning_effort", "thinking_level"}
+    unknown = set(entry) - allowed - {"provider", "use_caller_temp", "label"}
+    if unknown:
+        raise RuntimeError(
+            "Unsupported incumbent evaluation options for %s: %s"
+            % (task_id, sorted(unknown))
+        )
+    return {name: copy.deepcopy(entry[name]) for name in allowed if name in entry}
+
+
+def _get_source_revision():
+    """Return a stable fingerprint of model-affecting runtime inputs.
+
+    Audit prose, ignored captures, and test harness edits must not invalidate a
+    production request captured from unchanged runtime code.  Conversely, an
+    uncommitted prompt/schema/runtime edit must change the fingerprint even when
+    HEAD has not moved.
+    """
+    global _source_revision
+    if _source_revision is None:
+        try:
+            head = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+                cwd=_repo_root,
+            ).strip()
+            candidates = subprocess.check_output(
+                ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+                cwd=_repo_root,
+            )
+            digest = hashlib.sha256()
+            included = 0
+            for relative in sorted(candidates.split(b"\0")):
+                if not relative:
+                    continue
+                relative_text = relative.decode("utf-8", errors="surrogateescape")
+                path = Path(relative_text)
+                runtime_input = (
+                    path.suffix.lower() == ".py"
+                    and not path.parts[0] in {"tests", "scripts", "tools", "debug"}
+                ) or (
+                    path.parts
+                    and path.parts[0] in {"prompts", "schemas"}
+                    and path.suffix.lower() in {".json", ".txt"}
+                )
+                if not runtime_input:
+                    continue
+                candidate = _repo_root / path
+                if not candidate.is_file() or candidate.stat().st_size > 10_000_000:
+                    continue
+                digest.update(relative)
+                digest.update(b"\0")
+                digest.update(candidate.read_bytes())
+                digest.update(b"\0")
+                included += 1
+            _source_revision = "%s-runtime-%s-%d" % (
+                head,
+                digest.hexdigest()[:16],
+                included,
+            )
+        except Exception:
+            _source_revision = "unknown"
+    return _source_revision
 
 
 def _get_error_logger():
@@ -40,10 +142,12 @@ def _get_error_logger():
     if _error_logger is None:
         with _init_lock:
             if _error_logger is None:
-                os.makedirs("model_captures", exist_ok=True)
+                os.makedirs(_capture_dir(), exist_ok=True)
                 _error_logger = logging.getLogger("capture_errors")
                 if not _error_logger.handlers:
-                    handler = logging.FileHandler("model_captures/errors.log")
+                    handler = logging.FileHandler(
+                        os.path.join(_capture_dir(), "errors.log")
+                    )
                     handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
                     _error_logger.addHandler(handler)
                     _error_logger.setLevel(logging.ERROR)
@@ -55,7 +159,7 @@ def _get_writer():
     if _writer is None:
         with _init_lock:
             if _writer is None:
-                _writer = CaptureFileWriter("model_captures")
+                _writer = CaptureFileWriter(_capture_dir())
     return _writer
 
 
@@ -64,7 +168,7 @@ def _load_config():
     with _config_lock:
         if _config is not None:
             return _config
-        config_path = "model_captures/capture_config.json"
+        config_path = _capture_config_path()
         if os.path.exists(config_path):
             with open(config_path, 'r') as f:
                 _config = json.load(f)
@@ -160,7 +264,12 @@ def _calculate_cost(model_name, token_usage, cfg):
     if not pricing or not token_usage:
         return None
 
-    input_cost = (token_usage.get("prompt_tokens", 0) / 1_000_000) * pricing.get("input", 0)
+    prompt_tokens = token_usage.get("prompt_tokens", 0)
+    cached_tokens = min(prompt_tokens, token_usage.get("cached_tokens", 0) or 0)
+    input_cost = ((prompt_tokens - cached_tokens) / 1_000_000) * pricing.get("input", 0)
+    input_cost += (cached_tokens / 1_000_000) * pricing.get(
+        "cached_input", pricing.get("input", 0)
+    )
     output_cost = (token_usage.get("completion_tokens", 0) / 1_000_000) * pricing.get("output", 0)
     return round(input_cost + output_cost, 6)
 
@@ -211,6 +320,32 @@ def _fire_background_variant(variant, task_id, messages, invocation_id,
             pass
 
 
+def _resolve_effective_callsite_kwargs(task_id, provider, kwargs, attempt=0):
+    """Return detached runtime kwargs with only the model profile replaced.
+
+    Prompts are a separate argument to ``capture_and_fanout``.  Response schemas,
+    formats, temperatures, and other callsite-owned request policy remain exactly
+    as the production caller assembled them.
+    """
+    effective = copy.deepcopy(kwargs)
+    from model_registry import CALLSITE_BINDINGS
+
+    if task_id not in CALLSITE_BINDINGS:
+        return effective
+    selected = _evaluation_primary_override(task_id, provider, attempt)
+    if selected is None:
+        selected = model_config.resolve_callsite_config(task_id, provider, attempt)
+    effective["model"] = selected["model"]
+    for option in ("reasoning_effort", "thinking_level"):
+        effective.pop(option, None)
+        if option in selected:
+            effective[option] = copy.deepcopy(selected[option])
+    for option in ("max_tokens", "max_completion_tokens"):
+        if option in selected:
+            effective[option] = copy.deepcopy(selected[option])
+    return effective
+
+
 def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     """Drop-in wrapper around client.chat.completions.create.
 
@@ -225,8 +360,25 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         response = capture_and_fanout("T013", client.chat.completions.create,
                                       messages=messages, model=..., temperature=0.7)
     """
-    # Freeze capture inputs before the primary callable or its caller can mutate
-    # shared message/config objects. The primary still receives the originals.
+    # Keep the provider used for config selection attached to this request. A UI
+    # provider switch while the request is in flight must not redirect it.
+    request_provider = (
+        kwargs.get("_request_provider") or model_config.get_provider()
+    )
+
+    # The capture boundary is also the one production boundary shared by every
+    # registered T-ID. Resolve the canonical binding here so older callers that
+    # still assemble compatibility constants cannot drift from evaluation or
+    # capture selection. Only model-profile options are replaced; the callsite's
+    # prompt, response_format/schema, temperature, and other overlays remain
+    # exactly as assembled by its production caller.
+    callsite_attempt = kwargs.pop("_callsite_attempt", 0)
+    kwargs = _resolve_effective_callsite_kwargs(
+        task_id, request_provider, kwargs, callsite_attempt
+    )
+
+    # Freeze the effective production inputs before the primary callable or its
+    # caller can mutate shared message/config objects.
     capture_messages = copy.deepcopy(messages)
     capture_kwargs = copy.deepcopy(kwargs)
     capture_kwargs.pop("_usage_invocation_id", None)
@@ -235,12 +387,6 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     runtime_line = caller_frame.f_lineno if caller_frame is not None else 0
     del caller_frame
     del current_frame
-
-    # Keep the provider used for config selection attached to this request. A UI
-    # provider switch while the request is in flight must not redirect it.
-    request_provider = (
-        capture_kwargs.get("_request_provider") or model_config.get_provider()
-    )
 
     # Gated task_id injection: only inject when callable is create_completion
     # (unmigrated callsites using raw client.chat.completions.create would
@@ -278,7 +424,7 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     _track_module_primary(response, task_id, request_provider, requested_model)
 
     # If capture disabled, return immediately - zero overhead
-    if not getattr(model_config, "MULTI_MODEL_CAPTURE", False):
+    if not _capture_enabled():
         return response
 
     # All capture logic is wrapped - errors never surface to the game
@@ -303,6 +449,11 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         input_data = {
             "messages": capture_messages,
             "provider": request_provider,
+            "source_revision": _get_source_revision(),
+            # Preserve the request assembled by the real callsite. Replay tools
+            # replace only provider/model/effort and route it back through the
+            # production adapter, so schemas and token ceilings cannot drift.
+            "request_kwargs": caller_kwargs,
         }
         if caller_temperature is not None:
             input_data["temperature"] = caller_temperature
@@ -316,7 +467,10 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
             input_data["response_schema"] = capture_kwargs["response_schema"]
 
         primary_content = response.choices[0].message.content
-        primary_label = f"{model}|baseline"
+        primary_label = "selected|%s|%s" % (
+            model,
+            capture_kwargs.get("reasoning_effort", "n/a"),
+        )
 
         # Extract token usage from primary response
         usage = getattr(response, 'usage', None)
@@ -324,6 +478,16 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
             "prompt_tokens": usage.prompt_tokens if usage else 0,
             "completion_tokens": usage.completion_tokens if usage else 0,
             "total_tokens": usage.total_tokens if usage else 0,
+            "cached_tokens": getattr(
+                getattr(usage, "prompt_tokens_details", None),
+                "cached_tokens",
+                0,
+            ) or 0,
+            "reasoning_tokens": getattr(
+                getattr(usage, "completion_tokens_details", None),
+                "reasoning_tokens",
+                0,
+            ) or 0,
         }
         primary_cost = _calculate_cost(model, primary_token_usage, cfg)
 

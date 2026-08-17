@@ -4,6 +4,7 @@ import copy
 import json
 import os
 
+from model_registry import CALLSITE_BINDINGS, SUPPORTED_PROVIDERS
 from utils.secret_store import delete_secret, get_secret, set_secret
 
 
@@ -931,14 +932,27 @@ DM_MAIN_LMSTUDIO = {"model": "local-model"}
 # NOTE: high reasoning effort requires temperature=default(1); create_completion's
 # _enforce_provider_constraints strips temperature automatically for gpt-5.x (non-mini)
 # at reasoning > none, so the callsite passes temperature uniformly like every sibling.
-DM_MAIN_T026_GPT56LUNA_HIGH = {"model": "gpt-5.6-luna", "reasoning_effort": "high"}
+# Reusable GPT-5.6 profiles.  Task-specific names below are detached compatibility
+# aliases for older imports; canonical callsite selection lives in CALLSITE_BINDINGS.
+OPENAI_GPT56_LUNA_NONE = {"model": "gpt-5.6-luna", "reasoning_effort": "none"}
+OPENAI_GPT56_LUNA_LOW = {"model": "gpt-5.6-luna", "reasoning_effort": "low"}
+OPENAI_GPT56_LUNA_MEDIUM = {"model": "gpt-5.6-luna", "reasoning_effort": "medium"}
+OPENAI_GPT56_LUNA_HIGH = {"model": "gpt-5.6-luna", "reasoning_effort": "high"}
+OPENAI_GPT56_TERRA_NONE = {"model": "gpt-5.6-terra", "reasoning_effort": "none"}
+OPENAI_GPT56_TERRA_LOW = {"model": "gpt-5.6-terra", "reasoning_effort": "low"}
+OPENAI_GPT56_TERRA_MEDIUM = {"model": "gpt-5.6-terra", "reasoning_effort": "medium"}
+OPENAI_GPT56_TERRA_HIGH = {"model": "gpt-5.6-terra", "reasoning_effort": "high"}
+
+DM_MAIN_T026_GPT56LUNA_HIGH = copy.deepcopy(OPENAI_GPT56_LUNA_HIGH)
 
 # T104 (NPC cross-area role/attitude coherence reconciliation, issue #160) --
-# classic-only, DEFAULT-OFF (config.ENABLE_NPC_COHERENCE_REPAIR). One structured
-# call over all repeated cross-area canonical identities; a semantic judgment, so
-# start on a strong model and reduce after measured runs. Its OWN configs (do NOT
-# reuse DM_MAIN=gpt-5.2 or the T026-specific luna binding by name).
-NPC_COHERENCE_T104_GPT56LUNA_HIGH = {"model": "gpt-5.6-luna", "reasoning_effort": "high"}
+# classic-only, enabled at the reviewed tip (config.ENABLE_NPC_COHERENCE_REPAIR).
+# One structured call over all repeated cross-area canonical identities. Focused
+# semantic comparisons and a complete classic build selected Luna-none. Its OWN
+# configs remain named for compatibility (do not reuse the T026 binding).
+NPC_COHERENCE_T104_GPT56LUNA_NONE = copy.deepcopy(OPENAI_GPT56_LUNA_NONE)
+# Historical import compatibility only; the canonical T104 binding is Luna-none.
+NPC_COHERENCE_T104_GPT56LUNA_HIGH = copy.deepcopy(OPENAI_GPT56_LUNA_HIGH)
 NPC_COHERENCE_T104_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 NPC_COHERENCE_T104_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 NPC_COHERENCE_T104_LMSTUDIO = {"model": "local-model"}
@@ -1109,7 +1123,10 @@ def get_model_for_callsite(task_id, default_var):
     return globals()[var_name]
 
 
-_USER_SETTINGS_FILE = "user_settings.json"
+# Runtime entry points such as headless mode deliberately chdir into isolated
+# game directories.  Provider selection belongs to the installation, not the
+# campaign cwd, so always read the same ignored settings file the UI writes.
+_USER_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
 _SECRET_SETTING_NAMES = {
     "openai_api_key": "openai_api_key",
     "gemini_api_key": "gemini_api_key",
@@ -1336,100 +1353,79 @@ apply_persisted_openai_key()
 apply_persisted_gemini_key()
 
 
-# --- Capture System Per-Callsite Model Configs ---
-# Maps task_id -> (OpenAI config dict name, Gemini config dict name)
-# Used by capture_and_fanout() to fire per-callsite variants instead of tier-based variants.
-# Callsites not in this map fall back to tier-based variants from capture_config.json.
+# --- Canonical callsite resolver and capture compatibility view ---
+def validate_model_registry():
+    """Fail fast on missing profiles, invalid effort, or incomplete ladders."""
+    errors = []
+    from model_registry import EXPECTED_TASK_IDS
+
+    if set(CALLSITE_BINDINGS) != set(EXPECTED_TASK_IDS):
+        missing = sorted(set(EXPECTED_TASK_IDS) - set(CALLSITE_BINDINGS))
+        unknown = sorted(set(CALLSITE_BINDINGS) - set(EXPECTED_TASK_IDS))
+        errors.append(
+            "binding inventory mismatch; missing=%s unknown=%s" % (missing, unknown)
+        )
+    for task_id, binding in CALLSITE_BINDINGS.items():
+        if binding.task_id != task_id:
+            errors.append("%s has mismatched task_id %s" % (task_id, binding.task_id))
+        for provider in SUPPORTED_PROVIDERS:
+            ladder = binding.profiles_for(provider)
+            if not ladder:
+                errors.append("%s/%s has no retry entry" % (task_id, provider))
+                continue
+            for profile_name in ladder:
+                profile = globals().get(profile_name)
+                if not isinstance(profile, dict) or not profile.get("model"):
+                    errors.append(
+                        "%s/%s references unknown profile %s"
+                        % (task_id, provider, profile_name)
+                    )
+                    continue
+                effort = profile.get("reasoning_effort")
+                if effort is not None and effort not in (
+                    "none",
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max",
+                ):
+                    errors.append(
+                        "%s/%s profile %s has unsupported effort %s"
+                        % (task_id, provider, profile_name, effort)
+                    )
+    if errors:
+        raise RuntimeError("Invalid callsite model registry:\n- " + "\n- ".join(errors))
+    return True
+
+
+def resolve_callsite_config(task_id, provider=None, attempt=0):
+    """Return a detached provider configuration for one zero-based attempt."""
+    provider = provider or get_provider()
+    try:
+        binding = CALLSITE_BINDINGS[task_id]
+    except KeyError as exc:
+        raise KeyError("Unregistered model callsite: %s" % task_id) from exc
+    ladder = binding.profiles_for(provider)
+    try:
+        attempt_index = int(attempt)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("attempt must be a non-negative integer") from exc
+    if attempt_index < 0:
+        raise ValueError("attempt must be a non-negative integer")
+    profile_name = ladder[min(attempt_index, len(ladder) - 1)]
+    return copy.deepcopy(globals()[profile_name])
+
+
+# Kept for callers/tests importing the historical name.  It is generated from
+# the production registry, so capture and production selection cannot drift.
 TASK_CAPTURE_CONFIGS = {
-    # Full-tier callsites
-    "T067": ("DM_FULL_MODEL_GPT52_NONE", "DM_FULL_MODEL_GEMINI_PRO_LOW"),
-    "T065": ("DM_VALIDATION_GPT52_LOW", "DM_VALIDATION_GEMINI_FLASH_LOW"),
-    "T046": ("INIT_TRACKER_GPT52_NONE", "INIT_TRACKER_GEMINI_FLASH_LOW"),
-    "T078": ("CHAR_EFFECTS_GPT52_NONE", "CHAR_EFFECTS_GEMINI_FLASH_HIGH"),
-    "T040": ("COMBAT_VALID_GPT54_NONE", "COMBAT_VALID_GEMINI_FLASH_LOW"),
-    "T051": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T051_GEMINI_FLASH_LOW"),
-    "T052": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T052_GEMINI_FLASH_LOW"),
-    "T053": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T053_GEMINI_FLASH_LOW"),
-    "T054": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T054_GEMINI_FLASH_LOW"),
-    "T034": ("MONSTER_BUILD_GPT52_NONE", "MONSTER_BUILD_GEMINI_FLASH_LOW"),
-    "T035": ("NPC_BUILD_GPT52_NONE", "NPC_BUILD_GEMINI_FLASH_LOW"),
-    "T048": ("LEVELUP_VAL_GPT52_NONE", "LEVELUP_VAL_GEMINI_PRO_LOW"),
-    "T047": ("LEVELUP_CONV_GPT52_NONE", "LEVELUP_CONV_GEMINI_FLASH_LOW"),
-    "T086": ("LEVELUP_CONV_GPT52_NONE", "LEVELUP_CONV_GEMINI_FLASH_LOW"),
-    "T043": ("COMBAT_MAIN_GPT54_NONE", "COMBAT_MAIN_GEMINI_PRO_LOW"),
-    "T044": ("COMBAT_MAIN_GPT54_NONE", "COMBAT_MAIN_GEMINI_PRO_LOW"),
-    "T045": ("COMBAT_MAIN_GPT54_NONE", "COMBAT_MAIN_GEMINI_PRO_LOW"),
-    "T085": ("LOC_COMPRESS_GPT52_NONE", "LOC_COMPRESS_GEMINI_PRO_LOW"),
-    "T059": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T092": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-
-    # Module generation (T022-T029, T031, T036-T037)
-    "T022": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T023": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T024": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T025": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T026": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T028": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T029": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T031": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T036": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T037": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-
-    # Story-first gold pipeline (developer flag, default off)
-    "T098": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T099": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T100": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T101": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T102": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-    "T103": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
-
-    # Mini-tier callsites
-    "T017": ("COMBAT_COMPRESS_GPT5MINI_LOW", "COMBAT_COMPRESS_GEMINI_FLASH_LOW"),
-    "T079": ("CHAR_UPDATE_GPT5MINI_LOW", "CHAR_UPDATE_GEMINI_FLASHLITE_LOW"),
-    "T082": ("ACTION_PRED_GPT5MINI_LOW", "ACTION_PRED_GEMINI_FLASH_LOW"),
-    "T081": ("ENCOUNTER_UPD_GPT52_NONE", "ENCOUNTER_UPD_GEMINI_FLASH_LOW"),
-    "T077": ("PLOT_UPD_GPT52_NONE", "PLOT_UPD_GEMINI_FLASH_LOW"),
-    "T021": ("TRANSITION_VAL_GPT52_NONE", "TRANSITION_VAL_GEMINI_FLASH_LOW"),
-    "T014": ("NPC_INFO_GPT54MINI_NONE", "NPC_INFO_GEMINI_FLASH_LOW"),
-    "T091": ("NPC_INFO_GPT54MINI_NONE", "NPC_INFO_GEMINI_FLASH_LOW"),
-    "T041": ("COMBAT_SUMMARY_GPT54MINI_NONE", "COMBAT_SUMMARY_GEMINI_FLASH_LOW"),
-    "T020": ("NARR_COMPRESS_GPT54MINI_NONE", "NARR_COMPRESS_GEMINI_FLASH_LOW"),
-    "T084": ("AGENTIC_COMPRESS_GPT54MINI_NONE", "AGENTIC_COMPRESS_GEMINI_PRO_LOW"),
-    "T027": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
-
-    # DM summarization (T030, T032, T033, T038, T066)
-    "T030": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
-    "T032": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
-    "T033": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
-    "T038": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
-    "T066": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
-
-    # Module-integration helper: starting location analysis
-    "T012": ("DM_LOCSTART_T012_GPT5MINI", "DM_LOCSTART_T012_GEMINI_FLASHLITE_LOW"),
-
-    # Storage action extraction (natural-language -> JSON op)
-    "T049": ("STORAGE_PROCESSOR_T049_GPT5MINI", "STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_LOW"),
-
-    # Adventure summaries (T015, T016, T018, T019)
-    "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
-    "T016": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
-    "T018": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
-    "T019": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
-
-    # Mini utilities (T042, T063, T064, T087-T090, T093-T095)
-    "T042": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
-    "T063": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
-    "T064": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
-    "T087": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
-    "T088": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
-    "T089": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
-    "T090": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
-    "T093": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
-    "T094": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
-    "T095": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
-    "T096": ("COMBAT_INTENT_GPT54_NONE", "COMBAT_INTENT_GEMINI_FLASH_LOW"),
-    "T097": ("COMBAT_NARRATE_GPT54MINI_NONE", "COMBAT_NARRATE_GEMINI_FLASH_LOW"),
+    task_id: (binding.openai[0], binding.gemini[0])
+    for task_id, binding in CALLSITE_BINDINGS.items()
 }
+
+
+validate_model_registry()
 
 
 def get_capture_variants_for_task(task_id):
@@ -1439,11 +1435,8 @@ def get_capture_variants_for_task(task_id):
     Each dict has: provider, model, and provider-specific params.
     Returns None if task_id not mapped (falls back to tier-based).
     """
-    config_names = TASK_CAPTURE_CONFIGS.get(task_id)
-    if not config_names:
+    if task_id not in CALLSITE_BINDINGS:
         return None  # Fall back to tier-based
-
-    openai_dict_name, gemini_dict_name = config_names
     variants = []
 
     def openai_uses_caller_temperature(provider_config):
@@ -1458,7 +1451,7 @@ def get_capture_variants_for_task(task_id):
         return True
 
     # Get OpenAI variant
-    openai_cfg = globals().get(openai_dict_name)
+    openai_cfg = resolve_callsite_config(task_id, "openai")
     if openai_cfg:
         variant = {
             "provider": "openai",
@@ -1473,7 +1466,7 @@ def get_capture_variants_for_task(task_id):
         variants.append(variant)
 
     # Get Gemini variant
-    gemini_cfg = globals().get(gemini_dict_name)
+    gemini_cfg = resolve_callsite_config(task_id, "gemini")
     if gemini_cfg:
         variant = {
             "provider": "gemini",

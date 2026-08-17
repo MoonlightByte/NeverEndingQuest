@@ -1,5 +1,11 @@
 # Merged Plan — Issues #159 and #160 (Claude + Codex, 2026-08-16)
 
+> **Superseded operational setting (2026-08-16):** This historical design plan
+> proposed T104 default-off during initial risk containment. The reviewed tip
+> subsequently shipped `ENABLE_NPC_COHERENCE_REPAIR = True`. The OpenAI
+> optimization preserves that enabled state and validates T104 in a complete
+> classic build; see `2026-08-16-openai-callsite-optimization-summary.md`.
+
 Merge of two independent plans:
 - Claude: `docs/audits/2026-08-16-issues-159-160-plan-claude.md`
 - Codex (gpt-5.6-sol): `docs/audits/2026-08-16-issues-159-160-plan-codex.md`

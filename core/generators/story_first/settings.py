@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from types import MappingProxyType, ModuleType
 from typing import Any, Dict, Mapping, Optional
@@ -39,17 +40,14 @@ GOLD_PRIOR_BLOCKLIST = (
     "sorell",
 )
 
-_GOLD_MODEL_CONFIG_NAMES: Mapping[str, Mapping[str, str]] = MappingProxyType(
+_GOLD_STAGE_TASK_IDS: Mapping[str, str] = MappingProxyType(
     {
-        stage: MappingProxyType(
-            {
-                "openai": "DM_MAIN_GPT52_NONE",
-                "gemini": "DM_MAIN_GEMINI_PRO_LOW",
-                "lmstudio": "DM_MAIN_LMSTUDIO",
-            }
-        )
-        for stage in STAGE_POLICIES
-        if stage != "location_fill"
+        "outline": "T098",
+        "area_binding": "T099",
+        "plot_derivation": "T100",
+        "npc_repair": "T101",
+        "candidate_hardening": "T102",
+        "creature_compile": "T103",
     }
 )
 
@@ -68,15 +66,25 @@ def gold_model_config(
         raise StoryFirstProviderUnsupportedError(
             "The story-first gold path requires OpenAI, Gemini, or LM Studio."
         )
-    if stage not in _GOLD_MODEL_CONFIG_NAMES:
+    if stage not in _GOLD_STAGE_TASK_IDS:
         raise ValueError(f"unknown story-first model stage: {stage}")
     if model_config_module is None:
         import model_config as model_config_module
 
-    name = _GOLD_MODEL_CONFIG_NAMES[stage][provider]
-    value = getattr(model_config_module, name, None)
+    resolver = getattr(model_config_module, "resolve_callsite_config", None)
+    if callable(resolver):
+        value = resolver(_GOLD_STAGE_TASK_IDS[stage], provider)
+    else:
+        # Compatibility for isolated consumers that supply the historical
+        # config-only module object. Production always takes the registry path.
+        legacy_name = {
+            "openai": "DM_MAIN_GPT52_NONE",
+            "gemini": "DM_MAIN_GEMINI_PRO_LOW",
+            "lmstudio": "DM_MAIN_LMSTUDIO",
+        }[provider]
+        value = getattr(model_config_module, legacy_name, None)
     if not isinstance(value, dict) or not isinstance(value.get("model"), str):
-        raise ValueError(f"invalid story-first model configuration: {name}")
+        raise ValueError(f"invalid story-first model configuration: {stage}")
     allowed = {
         "model",
         "reasoning_effort",
@@ -86,17 +94,23 @@ def gold_model_config(
     }
     if set(value) - allowed:
         raise ValueError(
-            f"unsupported options in story-first model configuration: {name}"
+            f"unsupported options in story-first model configuration: {stage}"
         )
     return dict(value)
 
 
 def story_first_enabled(config_module: Optional[ModuleType] = None) -> bool:
-    """Return the explicit development flag; absence is always safe/off."""
+    """Return the explicit config flag or headless evaluation opt-in."""
     if config_module is None:
         try:
             import config as config_module
         except ImportError:
             return False
 
-    return getattr(config_module, "USE_STORY_FIRST_GENERATOR", False) is True
+    environment_opt_in = os.environ.get(
+        "NEQ_STORY_FIRST_GENERATOR", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    return (
+        getattr(config_module, "USE_STORY_FIRST_GENERATOR", False) is True
+        or environment_opt_in
+    )

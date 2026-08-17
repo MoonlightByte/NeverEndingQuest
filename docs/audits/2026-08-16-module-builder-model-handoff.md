@@ -1,19 +1,30 @@
-# Module-Builder Model Hand-off Brief (luna / terra / sol) — 2026-08-16
+# Module-Builder Model Hand-off Brief (Luna / Terra) — 2026-08-16
 
 What we learned selecting a model for the T026 location-generation callsite, for reuse across the
 module-builder callsites. Source: blind 3-reviewer quality eval + real cost/latency capture
-(`docs/audits/2026-08-15-t026-model-quality-eval.md`, raw at `model_eval_captures/t026/2026-08-15/`).
+(`docs/audits/2026-08-15-t026-model-quality-eval.md`; raw capture was local/ignored
+and is not present in this checkout).
 
-## Pricing (per 1M tokens, short-context standard; from OpenAI model/pricing pages)
+## Pricing snapshot
+
+The optimization registry uses the direct official model-page prices fetched on
+2026-08-16. These are per 1M tokens:
+
 | Model | Input | Cached in | Output | Notes |
 |---|---|---|---|---|
-| gpt-5.6-luna | $0.20 | $0.02 | $1.20 | cheapest by far |
-| gpt-5.6-terra | $2.00 | $0.20 | $12.00 | mid |
-| gpt-5.6-sol | $5.00 | $0.50 | $30.00 | = Codex's own model (daybreak-blue-latest) |
+| gpt-5.6-luna | $0.20 | $0.02 | $1.20 | direct model page, fetched 2026-08-16 |
+| gpt-5.6-terra | $2.00 | $0.20 | $12.00 | direct model page, fetched 2026-08-16 |
 | gpt-5.2 | $1.75 | $0.175 | $14.00 | previous frontier |
 | gpt-4.1 (legacy) | $2.00 | — | $8.00 | current prod baseline |
 
-## T026 eval results (6 locations/run, real callsite)
+Sol and the unsuffixed `gpt-5.6` alias are excluded from eligibility. Newly
+discovered model IDs are also ineligible until explicitly evaluated.
+
+## T026 historical eval results (6 locations/run, real callsite)
+
+The dollar column below is the original 2026-08-15 run record and uses the
+pricing then recorded; it is retained as historical evidence, not as the current
+projection. Current cost accounting uses the direct model-page snapshot above.
 Adherence (valid JSON, 6/6 locations, zero encounters): ALL pass. Quality (blind avg /30), latency,
 and cost/build:
 
@@ -27,9 +38,10 @@ and cost/build:
 | luna \| none | 25.3 | 43s | $0.0065 |
 | gpt-4.1 | 18.3 | 20-25s | $0.030 |
 
-**Selected for T026 OpenAI branch: gpt-5.6-luna|high** (`DM_MAIN_T026_GPT56LUNA_HIGH` in
-model_config.py). Beats the old gpt-5.2 on quality at ~1/12th the cost and ~2.4x faster. gpt-4.1 is
-fastest but worst quality (terse == under-built: empty doors, "use Ghost statblock" shorthand).
+**Selected for T026 OpenAI branch: gpt-5.6-luna|high**. It beat the old
+gpt-5.2 incumbent in the blind quality review and was materially faster in that
+run. The earlier $0.027094 projection used a superseded conservative
+snapshot and produced zero module-validation issues.
 
 ## Model-parameter rules (important for calls)
 - `reasoning_effort="none"` = cheapest/fastest for 5.x; higher effort raises quality (luna none 25.3 ->
@@ -46,13 +58,11 @@ fastest but worst quality (terse == under-built: empty doors, "use Ghost statblo
 
 ## Call pattern (all module-builder callsites)
 ```python
-from model_config import MODEL_PROVIDER
-if MODEL_PROVIDER == "openai":   cfg = config.<TASK>_<MODEL>_<EFFORT>
-elif MODEL_PROVIDER == "gemini": cfg = config.<TASK>_GEMINI_...
-elif MODEL_PROVIDER == "lmstudio": cfg = config.<TASK>_LMSTUDIO   # sends NO schema (response_format=None)
-else:                            cfg = config.<TASK>_LEGACY
+from model_config import get_provider, resolve_callsite_config
+provider = get_provider()
+cfg = resolve_callsite_config("T0xx", provider, attempt=0)
 response = capture_and_fanout("T0xx", api_client.create_completion,
-    _request_provider=MODEL_PROVIDER, messages=[...],
+    _request_provider=provider, messages=[...],
     model=cfg["model"], temperature=<fixed>, **{k:v for k,v in cfg.items() if k!="model"})
 ```
 - create_completion is a THIN router (no retry/param injection beyond provider constraints).
@@ -61,10 +71,42 @@ response = capture_and_fanout("T0xx", api_client.create_completion,
 - lmstudio sends no schema; the prompt is the effective lever. OpenAI strict rejects unknown keys.
 
 ## Module-builder callsite status
-- T026 (location generation): OpenAI -> gpt-5.6-luna|high (changed from gpt-5.2). Others per provider.
-- T028 (unify_plots): OpenAI still `DM_MAIN_GPT52_NONE`. Candidate to re-eval on luna|high if desired.
-- Other DM_MAIN callsites: still gpt-5.2|none; not separately evaluated. Per-callsite doctrine: eval +
-  select individually; each callsite names its own config, no blanket swap.
 
-## Available model IDs on this key
-gpt-5.2, gpt-5.4(+mini/nano/pro), gpt-5.5(+pro), gpt-5.6-luna, gpt-5.6-terra, gpt-5.6-sol, gpt-5.6-cyber.
+- T022-T025 and T027-T038: Luna-none, except T026 on Luna-high.
+- Story-first: T098 Luna-none, T099 Terra-low, T100 Luna-none, T101 Luna-low,
+  T102 Luna-none, T103 Luna-none.
+- T104: enabled and Luna-none. A complete classic build exercised it on the
+  recurring Kira Vale identity and published with zero validation issues. The
+  final evaluated context has one `kira_vale` with appearances at
+  `BGF001/A01` and `EAE001/B01`.
+- Mainline's 120-second T104 timeout remains intact after the rebase. Timeout,
+  failure, malformed output, or unusable local-model output is a heal-forward
+  no-op and cannot block module publication.
+- Each callsite retains its own binding; this is not an alias-based blanket swap.
+
+## Before/after projection from live build frequencies
+
+The seven observed story-first stage calls project from $0.155699 and 101.577
+seconds of serial model time on the incumbents to $0.026564 and 45.903 seconds
+on the selected bindings. The complete build published with zero validation
+issues. T099 accounts for most of the selected cost because Terra is 10x Luna,
+but Luna none/low failed that stage's semantic gates.
+
+The 27 observed classic-builder calls project from $0.333929 and 331.298 seconds
+of serial model time to $0.041894 and 198.792 seconds. T026 is unchanged at
+Luna-high in both sides of that comparison; T104 is compared against its
+Luna-high incumbent.
+
+The final exact enabled T104 comparison used 6,334 prompt tokens. Luna-none
+completed in 5.128 seconds with 802 output tokens for $0.002229. Terra-none took
+13.708 seconds and cost $0.040100; the Luna-high incumbent took 42.148 seconds
+and cost $0.009561. T026 remains the main creative-generation latency component.
+The older whole-build table is superseded because it assumed only T026 changed
+and therefore cannot project the new 76-callsite registry.
+
+## Availability check
+
+`GET /v1/models` confirmed both explicit eligible IDs on 2026-08-16:
+`gpt-5.6-luna` (created 2026-06-23 15:30:58 UTC) and
+`gpt-5.6-terra` (created 2026-06-23 15:27:39 UTC). Availability alone does not
+promote either model to a callsite.

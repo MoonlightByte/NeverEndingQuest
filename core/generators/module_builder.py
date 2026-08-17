@@ -70,6 +70,7 @@ from core.ai.module_creation_contract import (
 register_callsite("T028", "core/generators/module_builder.py", 919)
 register_callsite("T029", "core/generators/module_builder.py", 1217)
 register_callsite("T030", "core/generators/module_builder.py", 1906)
+register_callsite("T104", "core/generators/module_builder.py", 2160)
 
 # Set script name for logging
 set_script_name("module_builder")
@@ -2085,7 +2086,7 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 self.log("Step 7: Validating module consistency...")
                 self.validate_module()
 
-        # Issue #160 (DEFAULT-OFF, classic-only): agentic NPC cross-area coherence
+        # Issue #160 (enabled at the reviewed tip, classic-only): agentic NPC cross-area coherence
         # correction. Runs AFTER the T088 locks release so the T104 model call never
         # holds the global refresh/context locks. Best-effort + fail-closed: any
         # failure leaves the reconciled module intact and NEVER aborts the build
@@ -2095,16 +2096,19 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     def _apply_npc_coherence(self, context_path):
         """Issue #160: reconcile same-name NPCs recurring across areas via one
         bounded T104 model call (agentic decision) + code-validated fail-closed
-        apply. Default-off and classic-only. On ANY problem it logs and leaves the
-        module unchanged -- it never aborts the build.
+        apply. Enabled by the tip configuration and classic-only. On ANY problem
+        it logs and leaves the module unchanged -- it never aborts the build.
         """
         import config
-        if not getattr(config, "ENABLE_NPC_COHERENCE_REPAIR", False):
+        # Older local config.py files may predate this flag. The reviewed tip
+        # default is enabled, so a missing setting must inherit True rather than
+        # silently disabling T104 for upgraded installations.
+        if not getattr(config, "ENABLE_NPC_COHERENCE_REPAIR", True):
             return
         try:
             import glob
             from core.generators import npc_coherence as nc
-            from model_config import MODEL_PROVIDER
+            from model_config import get_provider, resolve_callsite_config
             from utils.file_operations import safe_read_json
             from core.ai import api_client
 
@@ -2130,15 +2134,9 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 self.log("Step 7.5: NPC coherence -- no cross-area same-name identities; no call")
                 return
 
-            # Provider config (T104's OWN named bindings).
-            if MODEL_PROVIDER == "openai":
-                cfg = config.NPC_COHERENCE_T104_GPT56LUNA_HIGH
-            elif MODEL_PROVIDER == "gemini":
-                cfg = config.NPC_COHERENCE_T104_GEMINI_PRO_LOW
-            elif MODEL_PROVIDER == "lmstudio":
-                cfg = config.NPC_COHERENCE_T104_LMSTUDIO
-            else:
-                cfg = config.NPC_COHERENCE_T104_LEGACY
+            # Production and capture resolve the same explicit T104 binding.
+            provider = get_provider()
+            cfg = resolve_callsite_config("T104", provider)
 
             send_packet = {k: v for k, v in packet.items() if k != "_occurrence_index"}
             prompt = nc.build_coherence_prompt(send_packet)
@@ -2150,10 +2148,10 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             # get prompt-enforced json_object (validated + retried by the code below).
             schema = nc.coherence_response_schema()
             extra = {k: v for k, v in cfg.items() if k != "model"}
-            if MODEL_PROVIDER in ("openai", "legacy"):
+            if provider in ("openai", "legacy"):
                 response_format = {"type": "json_schema", "json_schema": {
                     "name": "t104_npc_coherence", "strict": True, "schema": schema}}
-            elif MODEL_PROVIDER == "gemini":
+            elif provider == "gemini":
                 from model_config import convert_to_gemini_schema
                 extra["response_schema"] = convert_to_gemini_schema(
                     schema, preserve_required=True, preserve_constraints=True)
@@ -2170,7 +2168,7 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             def _t104_call():
                 return capture_and_fanout(
                     "T104", api_client.create_completion,
-                    _request_provider=MODEL_PROVIDER,
+                    _request_provider=provider,
                     messages=[
                         {"role": "system", "content": "You are an expert 5e module editor. "
                          "Return only the requested strict JSON object."},

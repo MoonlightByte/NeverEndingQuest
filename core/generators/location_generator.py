@@ -1326,18 +1326,11 @@ Return no commentary or Markdown.
 {location_contract_prompt}
 """
 
-        from model_config import MODEL_PROVIDER
-        if MODEL_PROVIDER == "openai":
-            # Selected from the 2026-08-15 blind quality+cost eval: gpt-5.6-luna|high
-            # beat gpt-5.2|none on quality (28.3 vs 26.3) at ~1/12th the cost and 2.4x
-            # faster. T026-only binding; other DM_MAIN callsites stay on gpt-5.2.
-            main_cfg = config.DM_MAIN_T026_GPT56LUNA_HIGH
-        elif MODEL_PROVIDER == "gemini":
-            main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
-        elif MODEL_PROVIDER == "lmstudio":
-            main_cfg = config.DM_MAIN_LMSTUDIO
-        else:  # legacy
-            main_cfg = config.DM_MAIN_LEGACY
+        from model_config import get_provider, resolve_callsite_config
+        # T026's measured Luna selection and every non-OpenAI compatibility
+        # branch come from the same registry used by capture tooling.
+        provider = get_provider()
+        main_cfg = resolve_callsite_config("T026", provider)
 
         # Reject ambiguous stub input before spending a model request.
         _location_stub_ids(location_stubs)
@@ -1347,7 +1340,7 @@ Return no commentary or Markdown.
             # (no encounter/date-time template). The accepted result is still
             # validated against the runtime self.schema below.
             response_format, extra_params = _t026_request_options(
-                MODEL_PROVIDER,
+                provider,
                 main_cfg,
                 self.generation_schema,
                 expected_count,
@@ -1356,7 +1349,7 @@ Return no commentary or Markdown.
                 response = capture_and_fanout(
                     "T026",
                     api_client.create_completion,
-                    _request_provider=MODEL_PROVIDER,
+                    _request_provider=provider,
                     messages=[
                         {
                             "role": "system",

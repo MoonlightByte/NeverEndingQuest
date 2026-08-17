@@ -1,10 +1,17 @@
 # T026 Location Generation — Model Quality + Cost/Latency Evaluation (2026-08-15)
 
+> Pricing note (2026-08-16): dollar figures below are the historical run record.
+> The canonical catalog now uses the direct official model-page snapshot of Luna
+> $0.20/$0.02/$1.20 and Terra $2.00/$0.20/$12.00 per 1M input/cached/output
+> tokens. Historical quality and latency results remain valid; historical cost
+> ratios must not be used as current projections.
+
 Blind, three-reviewer quality evaluation of the T026 location-batch generator across
 OpenAI models and reasoning-effort settings, run through the **new generation-schema**
 strict wiring (`schemas/loca_generation_schema.json`). All raw outputs, the shared input,
-and the de-anonymization key are saved at `model_eval_captures/t026/2026-08-15/` for reuse
-in later audits.
+and the de-anonymization key were written to the ignored local path
+`model_eval_captures/t026/2026-08-15/`. Those raw artifacts are not present in
+this checkout; the reviewed aggregate evidence below is retained.
 
 ## Method
 - One location batch (6 rooms, area HWG001 "Haunted Watchtower") generated per variant.
@@ -43,9 +50,10 @@ terra|none, luna|high, and both sol settings — while also being the 2nd-slowes
 plus non-ASCII smart quotes and the longest, hardest-to-parse dmInstructions. Weak on all three axes.
 
 **3. Owner's high-effort-luna hypothesis is CONFIRMED.** luna|high (28.3) **beats the current
-gpt-5.2 (26.3)** on quality, at **1/12th the cost** ($0.0091 vs $0.1140) and **2.4x faster**
-(58.6s vs 138.2s). Effort clearly lifts luna: none=25.3 -> high=28.3 (+3.0). Even luna|none
-(25.3) is within ~1 pt of gpt-5.2 at 1/17th the cost.
+gpt-5.2 (26.3)** on quality and was **2.4x faster** (58.6s vs 138.2s). Under the
+prices recorded for this historical run it was 1/12th the cost ($0.0091 vs
+$0.1140); see the pricing note above for current projections. Effort clearly
+lifts luna: none=25.3 -> high=28.3 (+3.0).
 
 **4. sol is the quality ceiling** (none 29.3, high 30.0) but 20-34x the cost of luna|high.
 
@@ -64,11 +72,12 @@ encoding_utils path catches generation output.
   high-effort selection (luna|high, sol|high) must DROP the temperature override on that branch.
 
 ## Recommendation
-For the OpenAI T026 branch, **replace gpt-5.2|none with gpt-5.6-luna|high**: higher quality
-than the incumbent, 12x cheaper, 2.4x faster. Reserve **gpt-5.6-sol|high** as an optional
-premium/"max quality" binding. Retire gpt-5.2 for this callsite.
+For the OpenAI T026 branch, **replace gpt-5.2|none with gpt-5.6-luna|high**:
+higher quality than the incumbent and 2.4x faster in this paired sample. Current
+production eligibility excludes Sol and uses the conservative pricing catalog.
 
 ## Caveat
 N=1 generation per variant (a quality sample, per the "run 1" scope). The 3-reviewer consensus
 is strong and the cost/quality gaps are large, but before finalizing the production binding,
-harden with ~3-5 runs each of the two finalists (luna|high, sol|high) vs the incumbent.
+The later 2026-08-16 complete classic and story-first builds retained Luna-high
+and published with zero validation issues. Sol is no longer an eligible candidate.

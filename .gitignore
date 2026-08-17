@@ -495,6 +495,8 @@ data/companion_memories_pre_enhanced/
 
 # model_captures/ telemetry output folder
 model_captures/
+# Raw candidate prompts, responses, and local evaluation evidence never ship.
+model_eval_captures/
 CLAUDE.md
 docs/branding/
 .worktrees/
