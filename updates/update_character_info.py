@@ -1862,7 +1862,10 @@ Character Role: {character_role}
                 "attempt": attempt,
                 "changes_requested": changes,
                 "raw_ai_response": raw_response,
-                "model_used": char_update_config["model"],
+                # Actual model: capture_and_fanout overrides to the registry binding
+                # before the call, so read it from the response, not the pre-override
+                # char_update_config (which holds a stale compatibility model string).
+                "model_used": getattr(response, "model", None) or char_update_config["model"],
                 "parsed_updates": None,
                 "validation_results": {},
                 "final_outcome": "pending"

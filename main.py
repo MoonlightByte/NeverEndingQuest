@@ -2061,7 +2061,10 @@ def validate_ai_response(
                         "raw_response": validation_response
                     },
                     "attempt": attempt + 1,
-                    "model_used": validation_config["model"]
+                    # Actual model: capture_and_fanout overrides to the registry
+                    # binding before the call, so read it from the response, not
+                    # the pre-override validation_config.
+                    "model_used": getattr(validation_result, "model", None) or validation_config["model"]
                 }
                 
                 # Append to validation pairs log
@@ -4601,19 +4604,28 @@ def get_ai_response(
     if config.ENABLE_INTELLIGENT_ROUTING and validation_retry_count == 0 and not has_module_creation_prompt:
         # Use prediction to determine model (Phase 2 of token optimization)
         use_mini = not prediction["requires_actions"]
-        selected_model = config.DM_MINI_MODEL if use_mini else config.DM_FULL_MODEL
 
         # Log the routing decision
         routing_info = "MINI MODEL" if use_mini else "FULL MODEL"
         print(f"DEBUG: MODEL ROUTING - Selected: {routing_info} (Prediction: {prediction['requires_actions']}, Reason: {prediction['reason']})")
     else:
         # Use full model (default behavior or validation retry)
-        selected_model = config.DM_FULL_MODEL
         if validation_retry_count > 0:
             print(f"DEBUG: MODEL ROUTING - VALIDATION RETRY {validation_retry_count}: Using FULL MODEL")
         else:
             print(f"DEBUG: MODEL ROUTING - Intelligent routing disabled, using FULL MODEL")
     
+    # Honesty: capture_and_fanout() overrides the per-callsite model to the registry
+    # binding (resolve_callsite_config) BEFORE the real API call, so the model that
+    # ACTUALLY runs is the registry's T067 model -- not the config.DM_*_MODEL tier
+    # string (which set_provider() rewrites to a bare gpt-5.2/gpt-5-mini). Log the
+    # real model; use_mini is preserved separately as the routing signal.
+    try:
+        from model_config import MODEL_PROVIDER as _mp, resolve_callsite_config as _resolve_cfg
+        selected_model = _resolve_cfg("T067", _mp)["model"]
+    except Exception:
+        selected_model = config.DM_FULL_MODEL
+
     # Track model selection decision for quality control
     print(f"DEBUG: Logging model selection - model={selected_model}, retry={validation_retry_count}")
     try:
@@ -4624,6 +4636,7 @@ def get_ai_response(
             "user_input": user_input[:200],  # First 200 chars
             "prediction": prediction if validation_retry_count == 0 and not has_module_creation_prompt else None,
             "selected_model": selected_model,
+            "routing_use_mini": use_mini,
             "routing_reason": prediction.get("reason", "Validation retry or module creation") if validation_retry_count == 0 else f"Validation retry {validation_retry_count}",
             "validation_retry_count": validation_retry_count,
             "has_module_creation_prompt": has_module_creation_prompt,
@@ -4736,7 +4749,7 @@ def get_ai_response(
         try:
             from utils.openai_usage_tracker import get_global_tracker
             tracker = get_global_tracker()
-            tracker.track(response, context={'endpoint': 'main_dm', 'purpose': 'primary_game_response', 'model': selected_model})
+            tracker.track(response, context={'endpoint': 'main_dm', 'purpose': 'primary_game_response', 'model': getattr(response, "model", None) or selected_model})
         except:
             pass
     content = response.choices[0].message.content.strip()
@@ -4753,7 +4766,7 @@ def get_ai_response(
             model_result_record = {
                 "timestamp": datetime.now().isoformat(),
                 "user_input": user_input[:200],
-                "selected_model": selected_model,
+                "selected_model": getattr(response, "model", None) or selected_model,
                 "prediction": prediction,
                 "actual_actions": actual_actions,
                 "prediction_correct": bool(actual_actions) == prediction["requires_actions"],
