@@ -995,6 +995,17 @@ NPC_PROFILE_T107_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview
 NPC_PROFILE_T107_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 NPC_PROFILE_T107_LMSTUDIO = {"model": "local-model"}
 
+# T108: companion EPISODE extraction (attributed salient facts from full-fidelity
+# encounter text -> canonical episode ledger). Runs at per-location close and at
+# module-leave consolidation -- infrequent, quality-leaning within the luna tier.
+# OpenAI on luna|LOW, designated after a real-archive sample (none/low/medium: all
+# correct attribution + present-guard; low is the cost/quality balance). Final
+# effort pending a blind 3-reviewer eval in the fine-tuning pass (cf. T026).
+NPC_EPISODE_T108_OPENAI_LUNA_LOW = copy.deepcopy(OPENAI_GPT56_LUNA_LOW)
+NPC_EPISODE_T108_GEMINI_FLASH_LOW = {"model": "gemini-3.1-flash-preview", "thinking_level": "low"}
+NPC_EPISODE_T108_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+NPC_EPISODE_T108_LMSTUDIO = {"model": "local-model"}
+
 # Feature flag: gates the NPC voice injection wiring in main.py/combat_manager.py.
 # Shipped ON (owner ship-on directive) after all validation gates passed: full
 # tests/npc suite 104/104, real headless OOC acceptance (say/do/want reach the DM

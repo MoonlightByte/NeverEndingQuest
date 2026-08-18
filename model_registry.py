@@ -592,6 +592,20 @@ _declare(
     note="One-time per-NPC profile seed (structured behavior profile) for the NPC "
          "voice system, gated by NPC_VOICE_ENABLED. OpenAI on cheapest luna|none.",
 )
+_declare(
+    "T108",
+    _profiles(
+        "NPC_EPISODE_T108_OPENAI_LUNA_LOW",
+        "NPC_EPISODE_T108_GEMINI_FLASH_LOW",
+        "NPC_EPISODE_T108_LEGACY",
+        "NPC_EPISODE_T108_LMSTUDIO",
+    ),
+    note="Companion EPISODE extraction: attributed salient facts from full-fidelity "
+         "encounter text into the canonical episode ledger, at per-location close and "
+         "module-leave consolidation. Gated by NPC_VOICE_ENABLED. OpenAI on luna|low "
+         "(designated on a real-archive sample). The Gemini response_schema is supplied "
+         "by the service (core/npc/episode_extraction.py).",
+)
 
 
 def _build_bindings():
@@ -614,7 +628,7 @@ REGISTERED_TASK_IDS = tuple(
     "T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T050 T051 T052 T053 "
     "T054 T059 T063 T064 T065 T066 T067 T077 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T091 T092 T093 T094 T095 T096 T097 T098 "
-    "T099 T100 T101 T102 T103 T105 T107".split()
+    "T099 T100 T101 T102 T103 T105 T107 T108".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 
