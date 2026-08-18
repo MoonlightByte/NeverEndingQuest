@@ -175,6 +175,95 @@ compaction system into per-character POV.
 - **Phase 6 — backfill existing campaigns from archives.**
 - **Phase 7 — (deferred) local semantic retrieval for paraphrase-at-scale.**
 
+## 7b. Blind-review resolutions — closing the plan before live wiring (2026-08-18)
+
+Three blind reviewers (correctness / completeness / integration-seam) validated the work + plan.
+One CRITICAL code bug was fixed (`commit_episode` reported success on failed writes — now a 3-state
+outcome, commit `5fdc2567`). The remaining gaps are DESIGN, resolved here so 1d is buildable:
+
+**R1 — Identity resolution BEFORE extraction (the #1 integration landmine).** `witnessIds` requires
+strict identity UUIDs; `partyNPCs` entries are display names. So the wiring MUST, at the boundary,
+resolve each present companion name→UUID via `RelationshipStore.ensure_identity(kind="npc",
+display_name=…, sheet_path=…)` (the canonical system the voice feature already uses) and pass
+`present_companions=[{name,id}]` with resolved ids. A companion whose id can't be resolved is SKIPPED
+(never passed with a null id). **Fail-loud:** if present companions exist but the resolved witness set
+is empty, emit `record_store_health("episode_no_witnesses", …)` — never commit a witness-less episode
+silently (that is the blank-recall failure mode).
+
+**R2 — `boundaryTurnId` = the close-time world clock, not a content hash.** There is no turn id in the
+transition marker. Use the `worldConditions` game-day+time scalar captured at location close
+(`scalar_from_calendar` / the value behind `game_day_ordinal`) as `boundaryTurnId`. It is stable within
+a visit (idempotent re-summarization → same episodeId) and advances across revisits (distinct
+episodeId), so `uuid5(module|locationId|boundaryTurnId)` no longer collides on revisit. If the clock is
+unavailable, fall back to the transition's position index in history (still coordinate-derived).
+
+**R3 — Presence union by scanning the segment, not reading the boundary.** `partyNPCs` at close ≠ the
+visit union, and combat `creatures[]` is unreachable at close. Reuse the existing per-turn engine stamp
+`Party NPCs: {…}` written into every DM note (`main.py:6076/6085`) and already parsed by
+`voice_context._source_turn_witnessed` (`voice_context.py:88`): the witness union = the union of
+`Party NPCs` across the segment's user messages (covers combat turns too, since they carry the stamp).
+No new per-turn write state.
+
+**R4 — Hot-path is engineered, not assumed.** The location-close seam (`main.py:2316-2336`, between
+`generate_enhanced_adventure_summary` at :2318 and `compress_conversation_history_on_transition` at
+:2333) is synchronous and player-blocking with no async harness. The extraction call runs BEST-EFFORT
+and OFFLOADED (background thread/queue), inside the outer try (`main.py:2316`), MUST NOT mutate
+`conversation_history`/`compressed_history`, and never gates the summary return. It reads the raw
+segment (still present before :2333). A throw or slow call can never affect the summary or the turn.
+
+**R5 — Cover both close paths + safe module-leave placement.** Wire BOTH `check_and_process_location_
+transitions` (live) and `check_and_compact_missing_summaries` (startup backfill of un-summarized
+transitions), or startup-closed locations get no episode. The module-leave consolidation runs at the
+T038 seam (`campaign_manager._generate_module_summary`, full archive available at :3184-3191) but ONLY
+after the T038 summary is committed and OUTSIDE the archive/checkpoint critical section (a throw there
+aborts module completion), wrapped fail-open.
+
+**R6 — Ledger integrity manifest (before Phase 6 backfill).** `episode_ledger.json` is saved/restored
+as a `data/companion_memories/` directory file, but `state_manifest` only allow-lists
+`npc_agent_state.json` and rejects a second path (`save_game_manager.py:449-456`). Add
+`episode_ledger.json` to the allow-list + fingerprint it, so the shared-truth ledger is integrity-checked
+on restore. Small, required before backfill ships ledgers users save.
+
+**R7 — POV/salience derivation (Phase 2) is a concrete formula, not a hand-wave.**
+- `povTag` ← a fixed map from the linked affinity `eventType` + telemetry to the tag set (e.g.
+  protect/rescue→`protective`; the actor's own near_death→`traumatic`; heal/give→`grateful`;
+  betray/abandon→`resentful`; share/trust bonding→`tender`; victory/defeat→`proud`/`triumphant`).
+- `salienceScore` ∈ 0..1 = clamp( `w_intensity*canonical.intensity` + `w_evt*max(|affinity delta|)` +
+  `w_kind*kindWeight(salientFact.kind)` ). `pinned` = `salienceScore >= PIN_THRESHOLD` (e.g. 0.6) OR
+  `kind ∈ {near_death, sacrifice, betrayal, confession, first_meeting}` (always-pin peaks).
+- All code-derived from already-classified events → idempotent, no model authorship.
+
+**R8 — Near-death telemetry has a concrete producer.** `combat_manager` observes a party/NPC HP crossing
+a near-zero threshold (e.g. ≤ max(1, 10% max HP)) during a fight and stamps a `combat_telemetry`
+salient fact (`kind:near_death`, subject = that NPC id) into the presence/segment accumulator, so the
+location-close extraction folds it into the episode independent of whether the classifier fired. This is
+what makes "you almost died" recall real.
+
+**R9 — Retrieval + injection + grounding contract (Phases 3-4), specified.**
+- *Default (0 calls):* extend `_build_canonical_companion_context_message` (`conversation_utils.py:426`)
+  to append each active NPC's top-K episodes by `(pinned desc, salienceScore desc, ordinal desc)` from
+  `episodes_for_witness(npcId)`, rendered as `episodeId + headline + the NPC's personalLine`, under a
+  per-turn char budget shared with the existing companion block.
+- *Recall (bounded call):* a NEW callsite (propose **T112**, luna|low, gated) parses the player's line
+  into anchors (entities/place/outcome) as structured JSON; CODE selects matching `episodeId`s from that
+  NPC's fixed index via lexical match over `entityTags` + `locationName` + `salientFacts.oneLine` (no
+  embeddings in v1; Phase 7 adds them). Only the NPC's own `episodes_for_witness` set is searchable.
+- *Grounding contract (an actual prompt fragment, not prose):* "You may state as memory ONLY facts in
+  the RECALLED EPISODES block below. Vivid if present; hedge the unmatched part; if empty, stay
+  in-character uncertain ('remind me…') and NEVER invent a shared past." Paired DM-side rule: the DM
+  won't attribute a shared memory to an NPC unless it's in that NPC's recalled block. Player claims are
+  marked *unverified*, never fed as scene truth.
+
+**R10 — Module consolidation behavior = idempotent re-emit.** The module-leave pass re-runs the SAME
+per-location extraction over the full archive and re-commits with the SAME coordinate episodeIds
+(update-in-place, ordinal preserved) — it reconciles/completes, it does not mint a separate module-level
+row. The "full profile" is an ASSEMBLER (persona ⊕ pinned POV memories ⊕ relationship state) rendered
+together; persona fields are never overwritten by memory.
+
+**R11 — Retention.** The canonical ledger is NOT pruned (it is the shared truth, small, archive-backed).
+Boundedness lives in the per-turn INJECTION (top-K) and the per-NPC POV overlay (bounded+pinned): pinned
+peaks never drop, routine POV rows age out under a cap, recoverable by re-deriving from the archive.
+
 ## 8. Risks to watch
 1. Presence accuracy at write-time (union roster + combat `creatures[]`, bias to inclusion).
 2. Near-death from combat HP telemetry, not only the affinity classifier.
