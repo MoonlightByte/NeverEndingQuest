@@ -2886,6 +2886,25 @@ class CampaignManager:
             summary,
             campaign_data=updated_campaign,
         )
+        # Phase 1d: module-leave consolidation -- capture the FINAL location (the one
+        # live per-location capture structurally misses, since it never gets a
+        # transition-out). Best-effort, fail-open, AFTER the summary/export commit and
+        # outside the archive/checkpoint critical section; can never affect module
+        # completion. Synchronous (module completion is rare) so the episode lands
+        # deterministically. Gated on NPC_VOICE_ENABLED.
+        try:
+            import config as _config
+            if getattr(_config, "NPC_VOICE_ENABLED", False) is True:
+                from core.npc.episode_capture import consolidate_module_episodes
+                from utils.module_path_manager import ModulePathManager
+                consolidate_module_episodes(
+                    conversation_history,
+                    party_tracker_data,
+                    path_manager=ModulePathManager(module_name),
+                    player_name=(party_tracker_data.get("partyMembers") or [""])[0],
+                )
+        except Exception:
+            pass
         updated_campaign["lastUpdated"] = datetime.now().isoformat()
         receipt_after = None
         if receipt_path is not None:

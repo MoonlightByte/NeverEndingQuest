@@ -196,6 +196,75 @@ def leaving_location_id_from_marker(transition_content: str) -> str:
     return match.group(1) if match else ""
 
 
+def _count_transition_markers(conversation_history: Sequence[Mapping[str, Any]]) -> int:
+    return sum(
+        1
+        for m in conversation_history
+        if isinstance(m, Mapping)
+        and m.get("role") == "user"
+        and isinstance(m.get("content"), str)
+        and "Location transition:" in m["content"]
+    )
+
+
+def consolidate_module_episodes(
+    conversation_history: Sequence[Mapping[str, Any]],
+    party_tracker_data: Mapping[str, Any],
+    *,
+    path_manager: Any,
+    player_name: str = "",
+    provider: Optional[str] = None,
+    episode_store: Optional[EpisodeStore] = None,
+    rel_store: Optional[RelationshipStore] = None,
+) -> Optional[str]:
+    """Module-leave consolidation (R10): capture the FINAL location.
+
+    Live per-location capture already covers every location the party LEFT (each
+    got a transition-out from full-fidelity raw turns). The final location -- where
+    the module ends without a transition-out -- is the one live capture structurally
+    misses; its raw turns are still present at module completion. This captures it
+    idempotently (coordinate = the (N+1)th close) and fail-open. Older locations in
+    the archive are already compressed summaries and already have their episodes, so
+    they are intentionally not re-derived here. Runs AFTER the T038 summary commits.
+    """
+    try:
+        last_marker = -1
+        for i, message in enumerate(conversation_history):
+            if (
+                isinstance(message, Mapping)
+                and message.get("role") == "user"
+                and isinstance(message.get("content"), str)
+                and "Location transition:" in message["content"]
+            ):
+                last_marker = i
+        final_segment = [
+            m
+            for m in conversation_history[last_marker + 1 :]
+            if isinstance(m, Mapping) and m.get("role") != "system"
+        ]
+        if not final_segment:
+            return None
+        world = party_tracker_data.get("worldConditions", {})
+        world = world if isinstance(world, Mapping) else {}
+        position = _count_transition_markers(conversation_history) + 1
+        return capture_location_episode(
+            leaving_location_name=str(world.get("currentLocation") or "Unknown location"),
+            leaving_location_id=str(world.get("currentLocationId") or ""),
+            segment_messages=final_segment,
+            party_tracker_data=party_tracker_data,
+            path_manager=path_manager,
+            boundary_turn_id=boundary_turn_id_for_position(position),
+            player_name=player_name,
+            provider=provider,
+            derived_from="module_consolidation",
+            episode_store=episode_store,
+            rel_store=rel_store,
+        )
+    except Exception as error:  # noqa: BLE001 - fail-open; never break module completion
+        _LOGGER.debug("module consolidation failed: %r", error)
+        return None
+
+
 def capture_location_episode_async(**kwargs: Any) -> None:
     """Fire-and-forget offload (R4): the player-blocking location-close seam is
     never gated on the extraction model call. Failures are swallowed."""
