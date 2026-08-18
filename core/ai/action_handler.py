@@ -906,12 +906,165 @@ def update_party_npcs(party_tracker_data, operation, npc):
                 npc_entry['name'] = npc_data['name']
                 debug(f"STATE_CHANGE: Using character file name '{npc_data['name']}' for party tracker", category="character_updates")
         
-        party_tracker_data["partyNPCs"].append(npc_entry)
+        # Idempotent add: skip if this NPC (by resolved display name) is already
+        # on the roster, so a duplicate add is a true no-op (T105 lifecycle relies
+        # on before/after roster equality to decide whether to fire).
+        _existing_names = {
+            str(x.get("name")) for x in party_tracker_data["partyNPCs"]
+        }
+        if npc_entry["name"] not in _existing_names:
+            party_tracker_data["partyNPCs"].append(npc_entry)
     elif operation == "remove":
         party_tracker_data["partyNPCs"] = [x for x in party_tracker_data["partyNPCs"] if x["name"] != npc["name"]]
 
     safe_json_dump(party_tracker_data, "party_tracker.json")
     info(f"STATE_CHANGE: Party NPCs updated - {operation} {npc['name']}", category="character_updates")
+
+
+def _apply_party_npc_lifecycle(
+    party_tracker_data,
+    operation,
+    npc_name,
+    npc_file,
+    lifecycle_context,
+    source_turn_id,
+):
+    """Best-effort post-commit lifecycle hook; never rolls back the roster."""
+    if getattr(config, "NPC_VOICE_ENABLED", False) is not True:
+        return False
+    try:
+        from core.npc.profile_service import seed_profile_best_effort
+        from core.npc.relationship_store import RelationshipStore, game_day_ordinal
+
+        context = lifecycle_context if isinstance(lifecycle_context, dict) else {}
+        module = str(party_tracker_data.get("module") or "")
+        world = party_tracker_data.get("worldConditions", {})
+        world = world if isinstance(world, dict) else {}
+        location_id = str(world.get("currentLocationId") or "")
+        game_day = game_day_ordinal(world)
+        player_names = party_tracker_data.get("partyMembers", [])
+        player_name = (
+            str(player_names[0]).strip()
+            if isinstance(player_names, list) and player_names
+            else ""
+        )
+        if not player_name or not npc_name or not npc_file:
+            raise ValueError("lifecycle hook is missing a committed identity path")
+        path_manager = ModulePathManager(module.replace(" ", "_"))
+        player_file = path_manager.get_character_path(player_name)
+        store = RelationshipStore()
+        if store.read_only:
+            raise RuntimeError(
+                "sidecar opened read-only: %s"
+                % (getattr(store, "read_only_reason", None) or "unknown")
+            )
+        starting_revision = store.snapshot()["revision"]
+        npc_id = store.ensure_identity(
+            kind="npc",
+            display_name=npc_name,
+            sheet_path=npc_file,
+            module=module,
+            location_id=location_id,
+            active=None,
+        )
+        player_id = store.ensure_identity(
+            kind="player",
+            display_name=player_name,
+            sheet_path=player_file,
+            module=module,
+            location_id=location_id,
+        )
+        store.get_relationship(npc_id, player_id, game_day=game_day)
+        if operation == "add":
+            store.migrate_legacy_identity(npc_id, player_id, game_day=game_day)
+            store.mark_joined(
+                npc_id,
+                player_id,
+                game_day=game_day,
+                module=module,
+                location_id=location_id,
+                source_turn_id=source_turn_id,
+                lifecycle_context=context,
+            )
+            sheet = safe_json_load(npc_file)
+            if not isinstance(sheet, dict):
+                raise ValueError("committed NPC sheet became unreadable")
+            lifecycle_events = (
+                store.snapshot().get("lifecycle", {}).get(npc_id, {}).get(
+                    "events", []
+                )
+            )
+            original_join = next(
+                (
+                    event
+                    for event in lifecycle_events
+                    if isinstance(event, dict) and event.get("kind") == "join"
+                ),
+                {},
+            )
+            lifecycle_source = {
+                "reason": original_join.get("cause", "unknown"),
+                "invitedBy": original_join.get("invitedBy", "unknown"),
+                "terms": original_join.get("terms", ""),
+                "personalObjective": original_join.get("personalObjective", ""),
+                "redLines": original_join.get("redLines", []),
+                "compensation": original_join.get("compensation", ""),
+                "expectedDuration": original_join.get(
+                    "expectedDuration", "unknown"
+                ),
+            }
+            seed_profile_best_effort(
+                store=store,
+                npc_id=npc_id,
+                npc_name=npc_name,
+                sheet=sheet,
+                lifecycle=lifecycle_source,
+            )
+        elif operation == "remove":
+            store.mark_departed(
+                npc_id,
+                module=module,
+                location_id=location_id,
+                cause=str(context.get("reason") or "unknown"),
+                departure_kind=str(context.get("departureKind") or "unknown"),
+                destination=str(context.get("destination") or "unknown"),
+                return_hook=str(context.get("returnHook") or ""),
+                unresolved_obligations=context.get("unresolvedObligations", []),
+                game_day=game_day,
+                source_turn_id=source_turn_id,
+            )
+        else:
+            raise ValueError("party NPC lifecycle operation is invalid")
+
+        final = store.snapshot()
+        edge_key = "%s|%s" % (npc_id, player_id)
+        identity = final["identities"].get(npc_id, {})
+        events = final["lifecycle"].get(npc_id, {}).get("events", [])
+        if operation == "add":
+            complete = (
+                identity.get("active") is True
+                and edge_key in final["relationships"]
+                and npc_id in final["profiles"]
+                and bool(events)
+                and events[-1].get("kind") in {"join", "rejoin"}
+            )
+        else:
+            complete = (
+                identity.get("active") is False
+                and bool(events)
+                and events[-1].get("kind") == "depart"
+            )
+        if not complete or final["revision"] <= starting_revision:
+            raise RuntimeError("sidecar lifecycle update did not commit completely")
+        return True
+    except Exception as exc:
+        warning(
+            "T105 NPC lifecycle sidecar update failed open: %s: %s"
+            % (type(exc).__name__, str(exc)),
+            category="character_updates",
+        )
+        return False
+
 
 def run_combat_simulation(encounter_id, party_tracker_data, location_data):
     """Run the combat simulation"""
@@ -2174,7 +2327,66 @@ Please use a valid location that exists in the current area ({current_area_id}) 
     elif action_type == ACTION_UPDATE_PARTY_NPCS:
         operation = parameters["operation"]
         npc = parameters["npc"]
+        # Capture the roster before the commit so we can tell whether this action
+        # actually changed state (idempotent duplicate add / no-op remove must not
+        # trigger a lifecycle hook or a conversation-history refresh).
+        _roster_before = [
+            dict(x) for x in party_tracker_data.get("partyNPCs", [])
+        ]
         update_party_npcs(party_tracker_data, operation, npc)
+        _roster_after = party_tracker_data.get("partyNPCs", [])
+        _state_changed = _roster_after != _roster_before
+        # T105: best-effort NPC-voice lifecycle hook after the roster commit.
+        # Only fires when the roster actually changed (idempotent duplicate add /
+        # no-op remove is a true no-op). Flag-gated + fail-open; must never break
+        # the committed roster action.
+        if _state_changed:
+            needs_conversation_history_update = True
+            try:
+                lifecycle_context = parameters.get("lifecycleContext")
+                source_turn_id = hashlib.sha256(
+                    json.dumps(
+                        {
+                            "action": action,
+                            "historyLength": len(conversation_history or []),
+                        },
+                        ensure_ascii=True,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("ascii")
+                ).hexdigest()[:32]
+                npc_name = str(npc.get("name") or "")
+                npc_file = ""
+                try:
+                    _lc_module = party_tracker_data.get("module", "").replace(" ", "_")
+                    _lc_pm = ModulePathManager(_lc_module)
+                    from updates.update_character_info import (
+                        find_character_file_fuzzy,
+                        normalize_character_name,
+                    )
+                    _matched = find_character_file_fuzzy(npc_name)
+                    if _matched:
+                        npc_file = _lc_pm.get_character_path(_matched)
+                    else:
+                        npc_file = _lc_pm.get_character_path(
+                            normalize_character_name(npc_name)
+                        )
+                except Exception:
+                    npc_file = ""
+                _apply_party_npc_lifecycle(
+                    party_tracker_data,
+                    operation,
+                    npc_name,
+                    npc_file,
+                    lifecycle_context,
+                    source_turn_id,
+                )
+            except Exception as exc:
+                warning(
+                    "T105 NPC lifecycle hook raised after roster commit: %s: %s"
+                    % (type(exc).__name__, str(exc)),
+                    category="character_updates",
+                )
 
     elif action_type == ACTION_UPDATE_ENCOUNTER:
         debug("STATE_CHANGE: Processing updateEncounter action", category="combat_processing")

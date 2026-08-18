@@ -7,6 +7,7 @@
 from copy import deepcopy
 import re
 import time
+from types import MappingProxyType
 
 from core.ai.combat_diagnostics import record_combat_diagnostic
 from core.combat import (
@@ -68,6 +69,26 @@ def _window_kind(encounter, actor_ids):
     if not actors:
         return "clock"
     return "player" if any(actor and actor.get("type") == "player" for actor in actors) else "npc"
+
+
+def _immutable_voice_intents(npc_voice_intents):
+    """Copy once at the coordinator boundary, then reuse unchanged on retries."""
+    if not isinstance(npc_voice_intents, dict):
+        try:
+            npc_voice_intents = dict(npc_voice_intents or {})
+        except (TypeError, ValueError):
+            npc_voice_intents = {}
+    frozen = {}
+    for actor_id, row in npc_voice_intents.items():
+        if not isinstance(actor_id, str):
+            continue
+        if not isinstance(row, dict):
+            try:
+                row = dict(row)
+            except (TypeError, ValueError):
+                continue
+        frozen[actor_id] = MappingProxyType(dict(row))
+    return MappingProxyType(frozen)
 
 
 def _diagnostic_context_counts(spell_references):
@@ -811,6 +832,7 @@ def execute_agentic_turn(
     max_narration_attempts=3,
     intent_provider=None,
     narrator=None,
+    npc_voice_intents=None,
 ):
     """Choose, resolve, commit, then narrate one persisted actor window.
 
@@ -819,6 +841,7 @@ def execute_agentic_turn(
     exhaustion during a player window pauses without consuming the player's
     turn. NPC-only windows fall back to deterministic defend events.
     """
+    immutable_voice_intents = _immutable_voice_intents(npc_voice_intents)
     narrator_is_default = narrator is None
     narration_diagnostics = {} if narrator_is_default else None
     intent_provider_name = "custom"
@@ -1103,13 +1126,20 @@ def execute_agentic_turn(
         started = time.monotonic()
         batch = None
         try:
+            intent_kwargs = {
+                "spell_references": spell_references,
+                "correction": correction,
+            }
+            # T105: pass the immutable NPC-voice advisory map (built once at the
+            # coordinator boundary) unchanged on every intent attempt/correction.
+            if immutable_voice_intents:
+                intent_kwargs["npc_voice_intents"] = immutable_voice_intents
             batch = intent_provider(
                 encounter,
                 provider_characters,
                 pending,
                 provider_player_input,
-                spell_references=spell_references,
-                correction=correction,
+                **intent_kwargs,
             )
             batch = _apply_trusted_spell_durations(
                 batch,

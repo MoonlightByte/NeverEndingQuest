@@ -11,6 +11,7 @@ Neither role writes game state.
 
 import json
 import time
+from collections.abc import Mapping
 
 from core.ai import api_client
 from core.ai.combat_capabilities import (
@@ -284,6 +285,13 @@ The player need not name mechanics. Do not invent an unavailable capability.
 For multi-step actions, preserve the player's goal, resolve only the steps that
 are currently possible, and request a roll or choice when required.
 
+npcVoiceIntents, when present, is private advisory characterization for only
+the exact actor IDs keyed in that object. It may suggest loyalty, protection,
+retreat, targets, or tactics, but it is never rules or action authority.
+requiredActorIds, encounter facts, sheets, capability candidates, and rule
+references remain authoritative. Ignore or legally reconcile impossible voice
+advice and always return a mechanically legal intent.
+
 Return one JSON object with stateVersion and intents. Return EXACTLY one intent
 for every actorId in requiredActorIds, in that exact order. Do not add or omit
 actors, even if an earlier action might defeat a later actor; code skips them.
@@ -380,6 +388,7 @@ def request_intent_batch(
     player_input,
     spell_references=None,
     correction=None,
+    npc_voice_intents=None,
 ):
     """Call T096 once for an ordered batch of decisions, with no mutations."""
     provider, call_config = _provider_config("intent")
@@ -404,6 +413,25 @@ def request_intent_batch(
             else spell_references or {}
         ),
     }
+    pending_ids = list(pending_turn.get("actorIds", []))
+    if isinstance(npc_voice_intents, Mapping):
+        bounded_voice = {}
+        for actor_id in pending_ids:
+            row = npc_voice_intents.get(actor_id)
+            if not isinstance(row, Mapping):
+                continue
+            npc_name = row.get("npcName")
+            thought = row.get("thought")
+            if not isinstance(npc_name, str) or not npc_name.strip():
+                continue
+            if not isinstance(thought, str) or not thought.strip():
+                continue
+            bounded_voice[actor_id] = {
+                "npcName": npc_name.strip()[:100],
+                "thought": thought.strip()[:640],
+            }
+        if bounded_voice:
+            payload["npcVoiceIntents"] = bounded_voice
     if contextual_payload:
         payload["ruleReferences"] = contextual_payload.get("ruleReferences", [])
         payload["spellActionIndex"] = contextual_payload.get("spellActionIndex", [])

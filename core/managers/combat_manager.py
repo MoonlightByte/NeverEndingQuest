@@ -4167,6 +4167,43 @@ Player: {initial_prompt_text}"""
                path_manager,
                monster_templates,
            )
+           # T105: build the per-turn NPC-voice advisory batch (flag-gated,
+           # fail-open) and hand the accepted intents to the agentic intent
+           # model as advisory-only input. Voice never breaks the combat turn.
+           npc_voice_intents = {}
+           if (
+               getattr(config, "NPC_VOICE_ENABLED", False) is True
+               and agentic_recovery["action"] in {"continue", "regenerate_intent"}
+           ):
+               try:
+                   from core.npc.voice_context import (
+                       commit_accepted_combat_voice_batch,
+                       run_combat_voice_stage,
+                   )
+
+                   voice_stage = run_combat_voice_stage(
+                       recovery_action_name=agentic_recovery["action"],
+                       encounter_data=encounter_data,
+                       actor_ids=agentic_actor_ids,
+                       character_paths=character_paths,
+                       context_sheets=context_sheets,
+                       party_tracker_data=party_tracker_data,
+                       location_info=location_info,
+                       player_input=raw_combat_input_text,
+                   )
+                   npc_voice_intents = voice_stage.intents
+                   # T104 can classify only the prior committed fact carried
+                   # by its packet, so this idempotent write cannot depend on
+                   # or make claims about the unresolved T096 action.
+                   commit_accepted_combat_voice_batch(
+                       voice_stage.batch,
+                       party_tracker_data,
+                   )
+               except Exception as exc:
+                   debug(
+                       "T105 combat stage skipped: %s" % type(exc).__name__,
+                       category="combat_events",
+                   )
            try:
                from core.ai.combat_agent import build_contextual_spell_payload
 
@@ -4211,6 +4248,7 @@ Player: {initial_prompt_text}"""
                        "historyInput": user_input_text,
                        "displayPrefix": skipped_player_notice or "",
                    },
+                   npc_voice_intents=npc_voice_intents,
                )
            except (CombatTurnPaused, CombatTransactionError) as exc:
                # Technical exception text may contain internal state terms,
