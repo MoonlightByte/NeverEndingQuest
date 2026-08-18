@@ -1,0 +1,68 @@
+{
+  "type": "object",
+  "properties": {
+    "thought": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 640
+    },
+    "affinityEvent": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "actor": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "eventType": {
+              "type": "string",
+              "enum": [
+                "abandon",
+                "betray",
+                "deceive",
+                "disrespect",
+                "give",
+                "harm",
+                "heal",
+                "honor",
+                "protect",
+                "rescue",
+                "share",
+                "support",
+                "threaten",
+                "trust"
+              ]
+            },
+            "magnitude": {
+              "type": "integer",
+              "enum": [-3, -2, -1, 1, 2, 3]
+            },
+            "witnessed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "actor",
+            "target",
+            "eventType",
+            "magnitude",
+            "witnessed"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": ["thought", "affinityEvent"],
+  "additionalProperties": false
+}

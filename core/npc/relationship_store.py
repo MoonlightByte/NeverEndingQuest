@@ -1,0 +1,1226 @@
+"""Strict, atomic, revisioned persistence for private NPC relationship state."""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import logging
+import os
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Tuple
+
+from jsonschema import Draft202012Validator
+
+from core.effects.clock import SECONDS_PER_DAY, scalar_from_calendar
+from core.npc.relationship_rules import (
+    DIMENSIONS,
+    EVENT_DELTAS,
+    apply_event_delta,
+    clamp_state,
+    decay_toward_baseline,
+    event_delta,
+)
+from core.npc.voice_contracts import (
+    NEGATIVE_AFFINITY_EVENT_TYPES,
+    POSITIVE_AFFINITY_EVENT_TYPES,
+    PROMPT_VERSION,
+)
+from utils.encoding_utils import safe_json_dump
+from utils.path_transaction_lock import path_transaction_lock
+
+
+_LOGGER = logging.getLogger(__name__)
+SCHEMA_VERSION = 1
+MIGRATION_VERSION = "companion-memory-v1"
+DEFAULT_STATE_PATH = Path("data/companion_memories/npc_agent_state.json")
+DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "npc_agent_state_schema.json"
+PROJECT_IDENTITY_NAMESPACE = uuid.UUID("9b0f3d4d-bf49-5c2c-a8bb-4056bdc31fc1")
+ZERO_HASH = "0" * 64
+UNRESOLVED_TYPES = frozenset({"abandon", "betray", "rescue"})
+
+
+@dataclass(frozen=True)
+class EventApplication:
+    event_id: str
+    mutated: bool
+    duplicate: bool = False
+    read_only: bool = False
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _sha256_value(value: Any) -> str:
+    return _sha256_bytes(_canonical_json(value).encode("ascii"))
+
+
+def _text(value: Any, limit: int) -> str:
+    return value.strip()[:limit] if isinstance(value, str) else ""
+
+
+def _text_list(value: Any, count: int, limit: int) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    result = []
+    for item in value:
+        candidate = _text(item, limit)
+        if candidate and candidate not in result:
+            result.append(candidate)
+        if len(result) >= count:
+            break
+    return result
+
+
+def normalize_identity_seed(sheet_path: os.PathLike[str] | str) -> str:
+    """Return a stable, root-relative, slash-normalized identity seed."""
+    raw = os.fspath(sheet_path)
+    normalized = os.path.normpath(raw)
+    if os.path.isabs(normalized):
+        try:
+            normalized = os.path.relpath(normalized, os.getcwd())
+        except ValueError:
+            pass
+    while normalized.startswith("./") or normalized.startswith(".\\"):
+        normalized = normalized[2:]
+    return normalized.replace("\\", "/").casefold()
+
+
+def stable_identity_id(kind: str, sheet_path: os.PathLike[str] | str) -> str:
+    if kind not in {"npc", "player"}:
+        raise ValueError("identity kind must be npc or player")
+    seed = normalize_identity_seed(sheet_path)
+    if not seed or seed == ".":
+        raise ValueError("identity seed must name a character sheet")
+    return str(uuid.uuid5(PROJECT_IDENTITY_NAMESPACE, "%s:%s" % (kind, seed)))
+
+
+def game_day_ordinal(world_conditions: Mapping[str, Any]) -> Optional[int]:
+    """Convert an exact persisted calendar date to an ordinal, or return None."""
+    if not isinstance(world_conditions, Mapping):
+        return None
+    if not all(name in world_conditions for name in ("year", "month", "day")):
+        return None
+    try:
+        return scalar_from_calendar(dict(world_conditions)) // SECONDS_PER_DAY
+    except (TypeError, ValueError):
+        return None
+
+
+def _neutral() -> Dict[str, float]:
+    return {name: 0.0 for name in DIMENSIONS}
+
+
+def new_state_document() -> Dict[str, Any]:
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "revision": 0,
+        "identities": {},
+        "profiles": {},
+        "relationships": {},
+        "working": {},
+        "lifecycle": {},
+        "migrations": {},
+    }
+
+
+def _relationship_key(subject_id: str, counterparty_id: str) -> str:
+    return "%s|%s" % (subject_id, counterparty_id)
+
+
+def _new_relationship(
+    subject_id: str,
+    counterparty_id: str,
+    game_day: Optional[int],
+) -> Dict[str, Any]:
+    return {
+        "subjectId": subject_id,
+        "counterpartyId": counterparty_id,
+        "baseline": _neutral(),
+        "current": _neutral(),
+        "lastDecayDay": game_day,
+        "evidence": [],
+        "appliedEventIds": [],
+        "appliedEventHistory": ZERO_HASH,
+        "aggregateCounts": {},
+        "evidenceHashChain": ZERO_HASH,
+    }
+
+
+def _identity_names(identity: Mapping[str, Any]) -> set[str]:
+    names = {_text(identity.get("displayName"), 100)}
+    names.update(
+        _text(value, 100)
+        for value in identity.get("aliases", [])
+        if isinstance(value, str)
+    )
+    return {name for name in names if name}
+
+
+def _history_contains(history: str, event_id: str) -> bool:
+    bits = int(history or ZERO_HASH, 16)
+    index = int(event_id[:8], 16) % 256
+    return bool(bits & (1 << index))
+
+
+def _history_add(history: str, event_id: str) -> str:
+    bits = int(history or ZERO_HASH, 16)
+    index = int(event_id[:8], 16) % 256
+    return format(bits | (1 << index), "064x")
+
+
+class RelationshipStore:
+    """One path-scoped sidecar with fail-closed writes and fail-open reads."""
+
+    def __init__(
+        self,
+        path: os.PathLike[str] | str = DEFAULT_STATE_PATH,
+        *,
+        schema_path: os.PathLike[str] | str = DEFAULT_SCHEMA_PATH,
+    ) -> None:
+        self.path = Path(path)
+        self.schema_path = Path(schema_path)
+        schema = json.loads(self.schema_path.read_text(encoding="ascii"))
+        self._validator = Draft202012Validator(schema)
+        self._read_only_reason: Optional[str] = None
+        if self.path.exists():
+            document = self._read_existing()
+            if document is None:
+                self._read_only_reason = "corrupt_or_unsupported"
+
+    @property
+    def read_only(self) -> bool:
+        return self._read_only_reason is not None
+
+    @property
+    def read_only_reason(self) -> Optional[str]:
+        return self._read_only_reason
+
+    def _validate(self, document: Mapping[str, Any]) -> bool:
+        if document.get("schemaVersion") != SCHEMA_VERSION:
+            return False
+        return next(self._validator.iter_errors(document), None) is None
+
+    def _read_existing(self) -> Optional[Dict[str, Any]]:
+        try:
+            with self.path.open("r", encoding="utf-8") as handle:
+                value = json.load(handle)
+        except (OSError, ValueError, TypeError):
+            return None
+        if not isinstance(value, dict):
+            return None
+        if self._validate(value):
+            return value
+        return self._repair_bounded_working_text(value)
+
+    def _repair_bounded_working_text(
+        self, document: Mapping[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Recover only historical working-text overflows, never unknown damage."""
+        bounds = {
+            "currentPrivateIntent": 300,
+            "sourceTurn": 120,
+            "currentGoalReference": 300,
+            "openQuestion": 240,
+            "sceneId": 240,
+        }
+        errors = list(self._validator.iter_errors(document))
+        if not errors:
+            return copy.deepcopy(dict(document))
+        candidate = copy.deepcopy(dict(document))
+        for validation_error in errors:
+            path = list(validation_error.absolute_path)
+            if (
+                validation_error.validator != "maxLength"
+                or len(path) != 3
+                or path[0] != "working"
+                or path[2] not in bounds
+            ):
+                return None
+            row = candidate.get("working", {}).get(path[1])
+            value = row.get(path[2]) if isinstance(row, dict) else None
+            if not isinstance(value, str):
+                return None
+            row[path[2]] = value[: bounds[path[2]]]
+        return candidate if self._validate(candidate) else None
+
+    def snapshot(self) -> Dict[str, Any]:
+        value = self._read_existing() if self.path.exists() else None
+        return copy.deepcopy(value if value is not None else new_state_document())
+
+    def _mutate(
+        self,
+        callback: Callable[[Dict[str, Any]], Tuple[bool, Any]],
+    ) -> Tuple[bool, Any]:
+        if self.read_only:
+            return False, None
+        try:
+            with path_transaction_lock(
+                self.path,
+                suffix=".npc-agent.lock",
+                timeout_seconds=5.0,
+            ) as acquired:
+                if acquired is None:
+                    return False, None
+                if self.path.exists():
+                    current = self._read_existing()
+                    if current is None:
+                        self._read_only_reason = "corrupt_or_unsupported"
+                        return False, None
+                else:
+                    current = new_state_document()
+                candidate = copy.deepcopy(current)
+                changed, result = callback(candidate)
+                if not changed:
+                    return False, result
+                candidate["revision"] = current["revision"] + 1
+                if not self._validate(candidate):
+                    return False, result
+                try:
+                    safe_json_dump(candidate, self.path, ensure_ascii=True)
+                except Exception:
+                    _LOGGER.warning("NPC relationship state write failed")
+                    return False, result
+                return True, result
+        except Exception:
+            _LOGGER.warning("NPC relationship state mutation failed")
+            return False, None
+
+    def _resolve_existing_identity(
+        self,
+        document: Mapping[str, Any],
+        *,
+        kind: str,
+        display_name: str,
+        sheet_path: str,
+    ) -> Optional[str]:
+        identities = document["identities"]
+        normalized_path = normalize_identity_seed(sheet_path)
+        path_matches = [
+            identity_id
+            for identity_id, identity in identities.items()
+            if identity.get("kind") == kind
+            and normalize_identity_seed(identity.get("sheetPath", ""))
+            == normalized_path
+        ]
+        if len(path_matches) == 1:
+            return path_matches[0]
+        name_matches = [
+            identity_id
+            for identity_id, identity in identities.items()
+            if identity.get("kind") == kind
+            and display_name in _identity_names(identity)
+        ]
+        if len(name_matches) == 1:
+            return name_matches[0]
+        if len(path_matches) > 1 or len(name_matches) > 1:
+            raise ValueError("ambiguous stable identity")
+        return None
+
+    def ensure_identity(
+        self,
+        *,
+        kind: str,
+        display_name: str,
+        sheet_path: os.PathLike[str] | str,
+        module: str = "",
+        location_id: str = "",
+        active: Optional[bool] = True,
+    ) -> str:
+        display_name = _text(display_name, 100)
+        normalized_path = normalize_identity_seed(sheet_path)
+        if not display_name:
+            raise ValueError("identity display name is required")
+        proposed_id = stable_identity_id(kind, normalized_path)
+        snapshot = self.snapshot()
+        try:
+            existing_id = self._resolve_existing_identity(
+                snapshot,
+                kind=kind,
+                display_name=display_name,
+                sheet_path=normalized_path,
+            )
+        except ValueError:
+            raise
+        identity_id = existing_id or proposed_id
+        if self.read_only:
+            return identity_id
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, str]:
+            resolved = self._resolve_existing_identity(
+                document,
+                kind=kind,
+                display_name=display_name,
+                sheet_path=normalized_path,
+            )
+            selected_id = resolved or identity_id
+            identity = document["identities"].get(selected_id)
+            if identity is None:
+                document["identities"][selected_id] = {
+                    "kind": kind,
+                    "displayName": display_name,
+                    "aliases": [],
+                    "sheetPath": normalized_path,
+                    "identitySeed": normalized_path,
+                    "active": True if active is None else bool(active),
+                    "lastModule": _text(module, 160),
+                    "lastLocationId": _text(location_id, 120),
+                }
+                if kind == "npc":
+                    document["lifecycle"][selected_id] = {
+                        "status": "active" if active is not False else "inactive",
+                        "events": [],
+                    }
+                return True, selected_id
+            before = copy.deepcopy(identity)
+            old_name = identity["displayName"]
+            if old_name != display_name and old_name not in identity["aliases"]:
+                identity["aliases"].append(old_name)
+                identity["aliases"] = identity["aliases"][-32:]
+            identity["displayName"] = display_name
+            identity["sheetPath"] = normalized_path
+            if active is not None:
+                identity["active"] = bool(active)
+            identity["lastModule"] = _text(module, 160)
+            identity["lastLocationId"] = _text(location_id, 120)
+            lifecycle_changed = False
+            if kind == "npc":
+                lifecycle = document["lifecycle"].setdefault(
+                    selected_id, {"status": "active", "events": []}
+                )
+                if active is not None:
+                    prior_lifecycle_status = lifecycle.get("status")
+                    lifecycle["status"] = "active" if active else "inactive"
+                    lifecycle_changed = lifecycle["status"] != prior_lifecycle_status
+            return before != identity or lifecycle_changed, selected_id
+
+        _changed, actual_id = self._mutate(update)
+        return actual_id or identity_id
+
+    def _ensure_edge(
+        self,
+        document: Dict[str, Any],
+        subject_id: str,
+        counterparty_id: str,
+        game_day: Optional[int],
+    ) -> Tuple[Dict[str, Any], bool]:
+        if subject_id == counterparty_id:
+            raise ValueError("relationship endpoints must differ")
+        if (
+            subject_id not in document["identities"]
+            or counterparty_id not in document["identities"]
+        ):
+            raise ValueError("relationship endpoints must be registered identities")
+        key = _relationship_key(subject_id, counterparty_id)
+        if key not in document["relationships"]:
+            document["relationships"][key] = _new_relationship(
+                subject_id, counterparty_id, game_day
+            )
+            return document["relationships"][key], True
+        return document["relationships"][key], False
+
+    @staticmethod
+    def _apply_decay(edge: Dict[str, Any], game_day: Optional[int]) -> bool:
+        if game_day is None:
+            return False
+        last_day = edge.get("lastDecayDay")
+        if last_day is None:
+            edge["lastDecayDay"] = game_day
+            return True
+        if game_day <= last_day:
+            return False
+        edge["current"] = decay_toward_baseline(
+            edge["baseline"], edge["current"], game_day - last_day
+        )
+        edge["lastDecayDay"] = game_day
+        return True
+
+    def get_relationship(
+        self,
+        subject_id: str,
+        counterparty_id: str,
+        *,
+        game_day: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        holder: Dict[str, Any] = {}
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, None]:
+            edge, created = self._ensure_edge(
+                document, subject_id, counterparty_id, game_day
+            )
+            decayed = self._apply_decay(edge, game_day)
+            holder["edge"] = copy.deepcopy(edge)
+            return created or decayed, None
+
+        if self.read_only:
+            snapshot = self.snapshot()
+            edge = snapshot["relationships"].get(
+                _relationship_key(subject_id, counterparty_id)
+            )
+            return copy.deepcopy(
+                edge or _new_relationship(subject_id, counterparty_id, game_day)
+            )
+        self._mutate(update)
+        return holder.get(
+            "edge", _new_relationship(subject_id, counterparty_id, game_day)
+        )
+
+    def get_profile(self, npc_id: str) -> Optional[Dict[str, Any]]:
+        """Return one validated persisted profile without exposing live state."""
+        profile = self.snapshot()["profiles"].get(npc_id)
+        return copy.deepcopy(profile) if isinstance(profile, dict) else None
+
+    def store_profile(self, npc_id: str, profile: Mapping[str, Any]) -> bool:
+        """Atomically replace one profile after whole-document validation."""
+        candidate = copy.deepcopy(dict(profile)) if isinstance(profile, Mapping) else {}
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, None]:
+            identity = document["identities"].get(npc_id)
+            if not identity or identity.get("kind") != "npc":
+                return False, None
+            if document["profiles"].get(npc_id) == candidate:
+                return False, None
+            document["profiles"][npc_id] = candidate
+            return True, None
+
+        mutated, _ = self._mutate(update)
+        return mutated
+
+    def _event_id(
+        self,
+        source_turn_id: str,
+        subject_id: str,
+        counterparty_id: str,
+        event: Mapping[str, Any],
+        prompt_version: str,
+    ) -> str:
+        return _sha256_value(
+            [
+                "relationship-event/v2",
+                source_turn_id,
+                subject_id,
+                counterparty_id,
+                prompt_version,
+            ]
+        )
+
+    def _validate_event(
+        self,
+        document: Mapping[str, Any],
+        subject_id: str,
+        counterparty_id: str,
+        event: Mapping[str, Any],
+    ) -> None:
+        if set(event) != {"actor", "target", "eventType", "magnitude", "witnessed"}:
+            raise ValueError("relationship event keys are invalid")
+        subject = document["identities"].get(subject_id)
+        counterparty = document["identities"].get(counterparty_id)
+        if not subject or not counterparty or subject.get("kind") != "npc":
+            raise ValueError("relationship event identity direction is invalid")
+        if event["actor"] not in _identity_names(counterparty):
+            raise ValueError("relationship event actor is not the counterparty")
+        if event["target"] not in _identity_names(subject):
+            raise ValueError("relationship event target is not the focal NPC")
+        event_type = event["eventType"]
+        magnitude = event["magnitude"]
+        if event_type not in EVENT_DELTAS:
+            raise ValueError("relationship event type is invalid")
+        if (
+            isinstance(magnitude, bool)
+            or not isinstance(magnitude, int)
+            or abs(magnitude) not in (1, 2, 3)
+        ):
+            raise ValueError("relationship event magnitude is invalid")
+        if event_type in POSITIVE_AFFINITY_EVENT_TYPES and magnitude < 0:
+            raise ValueError("positive relationship event has negative magnitude")
+        if event_type in NEGATIVE_AFFINITY_EVENT_TYPES and magnitude > 0:
+            raise ValueError("negative relationship event has positive magnitude")
+        if not isinstance(event["witnessed"], bool):
+            raise ValueError("relationship witnessed flag is invalid")
+
+    @staticmethod
+    def _prune_evidence(edge: Dict[str, Any]) -> None:
+        records = edge["evidence"]
+        if len(records) <= 256:
+            edge["appliedEventIds"] = [
+                record["eventId"]
+                for record in records
+                if record["kind"] == "typedEvent"
+            ]
+            return
+        ranked = sorted(
+            enumerate(records),
+            key=lambda row: (
+                row[1]["magnitude"] == 3,
+                row[1]["gameDay"] if row[1]["gameDay"] is not None else -1,
+                row[0],
+            ),
+            reverse=True,
+        )
+        keep_indexes = {index for index, _record in ranked[:256]}
+        kept = []
+        for index, record in enumerate(records):
+            if index in keep_indexes:
+                kept.append(record)
+                continue
+            aggregate_key = record["eventType"] or "legacyEvidence"
+            counts = edge["aggregateCounts"]
+            counts[aggregate_key] = counts.get(aggregate_key, 0) + 1
+            edge["evidenceHashChain"] = _sha256_value(
+                [edge["evidenceHashChain"], record["eventId"]]
+            )
+            if record["kind"] == "typedEvent":
+                edge["appliedEventHistory"] = _history_add(
+                    edge["appliedEventHistory"], record["eventId"]
+                )
+        edge["evidence"] = kept
+        edge["appliedEventIds"] = [
+            record["eventId"]
+            for record in kept
+            if record["kind"] == "typedEvent"
+        ]
+
+    @staticmethod
+    def _set_working(
+        document: Dict[str, Any],
+        npc_id: str,
+        working: Optional[Mapping[str, Any]],
+    ) -> bool:
+        if not working:
+            return False
+        source_turn = _text(working.get("sourceTurn"), 120)
+        intent = _text(working.get("currentPrivateIntent"), 300)
+        if not source_turn or not intent:
+            return False
+        candidate = {
+            "currentPrivateIntent": intent,
+            "sourceTurn": source_turn,
+            "currentGoalReference": _text(working.get("currentGoalReference"), 300),
+            "openQuestion": _text(working.get("openQuestion"), 240),
+            "moodTags": list(dict.fromkeys(
+                _text(value, 60)
+                for value in working.get("moodTags", [])
+                if _text(value, 60)
+            ))[:4],
+            "expiresAfterTurn": working.get("expiresAfterTurn")
+            if isinstance(working.get("expiresAfterTurn"), int)
+            and not isinstance(working.get("expiresAfterTurn"), bool)
+            and working.get("expiresAfterTurn") >= 0
+            else None,
+            "sceneId": _text(working.get("sceneId"), 240),
+        }
+        if document["working"].get(npc_id) == candidate:
+            return False
+        document["working"][npc_id] = candidate
+        return True
+
+    def apply_event(
+        self,
+        *,
+        subject_id: str,
+        counterparty_id: str,
+        event: Mapping[str, Any],
+        source_turn_id: str,
+        evidence_summary: str,
+        game_day: Optional[int],
+        module: str,
+        location_id: str,
+        packet_hash: str,
+        prompt_version: str = PROMPT_VERSION,
+        topic_ids: Iterable[str] = (),
+        working: Optional[Mapping[str, Any]] = None,
+    ) -> EventApplication:
+        source_turn_id = _text(source_turn_id, 120)
+        evidence_summary = _text(evidence_summary, 240)
+        if not source_turn_id or not evidence_summary:
+            raise ValueError("relationship event source and evidence are required")
+        snapshot = self.snapshot()
+        self._validate_event(snapshot, subject_id, counterparty_id, event)
+        event_id = self._event_id(
+            source_turn_id,
+            subject_id,
+            counterparty_id,
+            event,
+            prompt_version,
+        )
+        if self.read_only:
+            return EventApplication(event_id, False, read_only=True)
+        disposition = {"duplicate": False}
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, str]:
+            self._validate_event(document, subject_id, counterparty_id, event)
+            edge, created = self._ensure_edge(
+                document, subject_id, counterparty_id, game_day
+            )
+            prior_source = next(
+                (
+                    record
+                    for record in edge["evidence"]
+                    if record.get("kind") == "typedEvent"
+                    and record.get("sourceTurnId") == source_turn_id
+                ),
+                None,
+            )
+            if prior_source is not None:
+                disposition["duplicate"] = True
+                return False, prior_source["eventId"]
+            if event_id in edge["appliedEventIds"] or _history_contains(
+                edge["appliedEventHistory"], event_id
+            ):
+                disposition["duplicate"] = True
+                return False, event_id
+            changed = created or self._apply_decay(edge, game_day)
+            witnessed = event["witnessed"]
+            before = copy.deepcopy(edge["current"])
+            edge["current"] = apply_event_delta(
+                edge["current"],
+                event["eventType"],
+                event["magnitude"],
+                witnessed=witnessed,
+            )
+            delta = event_delta(
+                event["eventType"], event["magnitude"], witnessed
+            )
+            record = {
+                "kind": "typedEvent",
+                "eventId": event_id,
+                "actorId": counterparty_id,
+                "targetId": subject_id,
+                "actor": event["actor"],
+                "target": event["target"],
+                "eventType": event["eventType"],
+                "magnitude": abs(event["magnitude"]),
+                "witnessed": witnessed,
+                "applied": witnessed,
+                "delta": delta,
+                "summary": evidence_summary,
+                "sourceTurnId": source_turn_id,
+                "promptVersion": _text(prompt_version, 80),
+                "packetHash": packet_hash if len(packet_hash) == 64 else "",
+                "gameDay": game_day,
+                "module": _text(module, 160),
+                "locationId": _text(location_id, 120),
+                "topicIds": list(dict.fromkeys(
+                    _text(value, 240) for value in topic_ids if _text(value, 240)
+                ))[:12],
+                "unresolved": event["eventType"] in UNRESOLVED_TYPES,
+                "sourceHash": "",
+            }
+            edge["evidence"].append(record)
+            edge["appliedEventIds"].append(event_id)
+            self._prune_evidence(edge)
+            changed = True
+            changed = self._set_working(document, subject_id, working) or changed
+            return changed or before != edge["current"], event_id
+
+        mutated, _result = self._mutate(update)
+        return EventApplication(
+            event_id,
+            mutated,
+            duplicate=disposition["duplicate"],
+            read_only=self.read_only,
+        )
+
+    def update_working(
+        self,
+        npc_id: str,
+        *,
+        source_turn_id: str,
+        thought: str,
+        current_goal_reference: str = "",
+        open_question: str = "",
+        mood_tags: Iterable[str] = (),
+        expires_after_turn: Optional[int] = None,
+        scene_id: str = "",
+    ) -> bool:
+        working = {
+            "currentPrivateIntent": thought,
+            "sourceTurn": source_turn_id,
+            "currentGoalReference": current_goal_reference,
+            "openQuestion": open_question,
+            "moodTags": list(mood_tags),
+            "expiresAfterTurn": expires_after_turn,
+            "sceneId": scene_id,
+        }
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, None]:
+            if npc_id not in document["identities"]:
+                return False, None
+            return self._set_working(document, npc_id, working), None
+
+        mutated, _ = self._mutate(update)
+        return mutated
+
+    def get_working(
+        self,
+        npc_id: str,
+        *,
+        scene_id: str = "",
+        current_turn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        snapshot = self.snapshot()
+        value = snapshot["working"].get(npc_id)
+        if not isinstance(value, dict):
+            return {}
+        expired = (
+            current_turn is not None
+            and value["expiresAfterTurn"] is not None
+            and current_turn > value["expiresAfterTurn"]
+        )
+        scene_changed = bool(
+            scene_id and value["sceneId"] and scene_id != value["sceneId"]
+        )
+        if not expired and not scene_changed:
+            return copy.deepcopy(value)
+
+        def clear(document: Dict[str, Any]) -> Tuple[bool, None]:
+            return document["working"].pop(npc_id, None) is not None, None
+
+        self._mutate(clear)
+        return {}
+
+    def retrieve_evidence(
+        self,
+        subject_id: str,
+        counterparty_id: str,
+        *,
+        present_actor_ids: Iterable[str],
+        entity_ids: Iterable[str],
+        limit: int = 3,
+    ) -> list[Dict[str, Any]]:
+        edge = self.snapshot()["relationships"].get(
+            _relationship_key(subject_id, counterparty_id)
+        )
+        if not edge:
+            return []
+        relevant_ids = set(present_actor_ids) | set(entity_ids)
+
+        def rank(record: Mapping[str, Any]) -> tuple:
+            record_ids = {
+                record.get("actorId"),
+                record.get("targetId"),
+                *record.get("topicIds", []),
+            }
+            intersects = bool(relevant_ids.intersection(record_ids))
+            unresolved = (
+                bool(record.get("unresolved"))
+                or record.get("eventType") in UNRESOLVED_TYPES
+            )
+            game_day = record.get("gameDay")
+            return (
+                0 if intersects else 1,
+                0 if unresolved else 1,
+                -int(record.get("magnitude", 0)),
+                -(game_day if isinstance(game_day, int) else -1),
+                record.get("eventId", ""),
+            )
+
+        return [
+            copy.deepcopy(record)
+            for record in sorted(edge["evidence"], key=rank)[: max(0, min(limit, 3))]
+        ]
+
+    def migrate_legacy_identity(
+        self,
+        npc_id: str,
+        counterparty_id: str,
+        *,
+        game_day: Optional[int],
+    ) -> bool:
+        if self.read_only:
+            return False
+        snapshot = self.snapshot()
+        identity = snapshot["identities"].get(npc_id)
+        if not identity or identity.get("kind") != "npc":
+            return False
+        memory_dir = self.path.parent
+        matches = []
+        for candidate in sorted(memory_dir.glob("*_memories.json")):
+            if candidate.name in {"npc_agent_state.json", "memory_config.json"}:
+                continue
+            try:
+                raw = candidate.read_bytes()
+                value = json.loads(raw.decode("utf-8"))
+            except (OSError, UnicodeError, ValueError, TypeError):
+                continue
+            if not isinstance(value, dict):
+                continue
+            legacy_name = _text(value.get("npc_name"), 100)
+            if not legacy_name:
+                continue
+            matching_ids = [
+                identity_id
+                for identity_id, registered in snapshot["identities"].items()
+                if registered.get("kind") == "npc"
+                and legacy_name in _identity_names(registered)
+            ]
+            if matching_ids == [npc_id]:
+                matches.append((candidate, raw, value))
+        if len(matches) != 1:
+            return False
+        source_path, raw_bytes, legacy = matches[0]
+        source_hash = _sha256_bytes(raw_bytes)
+        migration_key = "%s|%s" % (MIGRATION_VERSION, npc_id)
+        old_migration = snapshot["migrations"].get(migration_key)
+        if old_migration and old_migration.get("sourceHash") == source_hash:
+            return False
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, None]:
+            prior = document["migrations"].get(migration_key)
+            if prior and prior.get("sourceHash") == source_hash:
+                return False, None
+            edge, _created = self._ensure_edge(
+                document, npc_id, counterparty_id, game_day
+            )
+            raw_state = legacy.get("current_emotional_state")
+            imported_state = clamp_state(
+                raw_state if isinstance(raw_state, dict) else {}
+            )
+            if not edge["evidence"] and not edge["appliedEventIds"]:
+                edge["baseline"] = imported_state
+                edge["current"] = copy.deepcopy(imported_state)
+                edge["lastDecayDay"] = game_day
+            subject = document["identities"][npc_id]
+            counterparty = document["identities"][counterparty_id]
+            imported_count = 0
+            existing_hashes = {
+                record["sourceHash"] for record in edge["evidence"] if record["sourceHash"]
+            }
+            for index, memory in enumerate(legacy.get("core_memories", [])):
+                if not isinstance(memory, dict):
+                    continue
+                memory_hash = _sha256_value(memory)
+                if memory_hash in existing_hashes:
+                    continue
+                summary = _text(
+                    memory.get("journal_excerpt")
+                    or memory.get("context")
+                    or "Imported legacy companion memory.",
+                    240,
+                ) or "Imported legacy companion memory."
+                try:
+                    velocity = float(memory.get("emotional_velocity", 0.0))
+                except (TypeError, ValueError):
+                    velocity = 0.0
+                magnitude = max(0, min(3, int(round(abs(velocity) * 3))))
+                event_id = _sha256_value([MIGRATION_VERSION, npc_id, memory_hash])
+                edge["evidence"].append(
+                    {
+                        "kind": "legacyEvidence",
+                        "eventId": event_id,
+                        "actorId": counterparty_id,
+                        "targetId": npc_id,
+                        "actor": counterparty["displayName"],
+                        "target": subject["displayName"],
+                        "eventType": None,
+                        "magnitude": magnitude,
+                        "witnessed": False,
+                        "applied": False,
+                        "delta": _neutral(),
+                        "summary": summary,
+                        "sourceTurnId": _text(memory.get("id"), 120)
+                        or "legacy-%d" % index,
+                        "promptVersion": "",
+                        "packetHash": "",
+                        "gameDay": None,
+                        "module": "",
+                        "locationId": _text(memory.get("location"), 120),
+                        "topicIds": [],
+                        "unresolved": False,
+                        "sourceHash": memory_hash,
+                    }
+                )
+                existing_hashes.add(memory_hash)
+                imported_count += 1
+            self._prune_evidence(edge)
+            behavior = legacy.get("behavioral_model")
+            behavior_hint = (
+                _canonical_json(behavior)[:500]
+                if isinstance(behavior, dict)
+                else ""
+            )
+            try:
+                relative_source = source_path.relative_to(Path.cwd()).as_posix()
+            except ValueError:
+                relative_source = source_path.as_posix()
+            document["migrations"][migration_key] = {
+                "version": MIGRATION_VERSION,
+                "npcId": npc_id,
+                "sourcePath": relative_source[:500],
+                "sourceHash": source_hash,
+                "status": "migrated",
+                "legacyBehaviorHint": behavior_hint,
+                "migratedEvidence": imported_count,
+            }
+            return True, None
+
+        mutated, _ = self._mutate(update)
+        return mutated
+
+    def _lifecycle_event(
+        self,
+        *,
+        kind: str,
+        source_turn_id: str,
+        module: str,
+        location_id: str,
+        cause: str = "",
+        departure_kind: str = "",
+        destination: str = "",
+        return_hook: str = "",
+        game_day: Optional[int] = None,
+        invited_by: str = "",
+        terms: str = "",
+        personal_objective: str = "",
+        red_lines: Iterable[str] = (),
+        compensation: str = "",
+        expected_duration: str = "",
+        prior_status: str = "unknown",
+        unresolved_obligations: Iterable[str] = (),
+    ) -> Dict[str, Any]:
+        return {
+            "kind": kind,
+            "sourceTurnId": _text(source_turn_id, 120),
+            "module": _text(module, 160),
+            "locationId": _text(location_id, 120),
+            "cause": _text(cause, 240),
+            "departureKind": _text(departure_kind, 80),
+            "destination": _text(destination, 160),
+            "returnHook": _text(return_hook, 240),
+            "gameDay": game_day if type(game_day) is int and game_day >= 0 else None,
+            "invitedBy": _text(invited_by, 100),
+            "terms": _text(terms, 240),
+            "personalObjective": _text(personal_objective, 240),
+            "redLines": _text_list(red_lines, 5, 160),
+            "compensation": _text(compensation, 160),
+            "expectedDuration": _text(expected_duration, 160),
+            "priorStatus": prior_status
+            if prior_status in {"new", "active", "inactive", "unknown"}
+            else "unknown",
+            "unresolvedObligations": _text_list(
+                unresolved_obligations, 5, 180
+            ),
+        }
+
+    def mark_joined(
+        self,
+        npc_id: str,
+        player_id: str,
+        *,
+        game_day: Optional[int],
+        module: str,
+        location_id: str,
+        source_turn_id: str,
+        lifecycle_context: Optional[Mapping[str, Any]] = None,
+    ) -> str:
+        """Initialize or recover recruitment state while retaining old affinity."""
+        context = lifecycle_context if isinstance(lifecycle_context, Mapping) else {}
+        snapshot = self.snapshot()
+        identity = snapshot["identities"].get(npc_id, {})
+        lifecycle = snapshot["lifecycle"].get(npc_id, {})
+        events = lifecycle.get("events", []) if isinstance(lifecycle, Mapping) else []
+        prior_status = (
+            "inactive"
+            if identity and not identity.get("active", True)
+            else "active"
+            if events
+            else "new"
+        )
+        kind = "rejoin" if prior_status == "inactive" else "join"
+        event = self._lifecycle_event(
+            kind=kind,
+            source_turn_id=source_turn_id,
+            module=module,
+            location_id=location_id,
+            cause=_text(context.get("reason"), 240) or "unknown",
+            game_day=game_day,
+            invited_by=_text(context.get("invitedBy"), 100) or "unknown",
+            terms=_text(context.get("terms"), 240),
+            personal_objective=_text(context.get("personalObjective"), 240),
+            red_lines=context.get("redLines", []),
+            compensation=_text(context.get("compensation"), 160),
+            expected_duration=_text(context.get("expectedDuration"), 160)
+            or "unknown",
+            prior_status=prior_status,
+        )
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, str]:
+            selected = document["identities"].get(npc_id)
+            if not selected or player_id not in document["identities"]:
+                return False, kind
+            edge, edge_created = self._ensure_edge(
+                document, npc_id, player_id, game_day
+            )
+            decayed = self._apply_decay(edge, game_day)
+            lifecycle_state = document["lifecycle"].setdefault(
+                npc_id, {"status": "active", "events": []}
+            )
+            duplicate = (
+                lifecycle_state["events"]
+                and lifecycle_state["events"][-1] == event
+                and selected.get("active") is True
+            )
+            changed = edge_created or decayed
+            if not duplicate:
+                lifecycle_state["events"] = (
+                    lifecycle_state["events"] + [event]
+                )[-64:]
+                changed = True
+            if selected.get("active") is not True:
+                selected["active"] = True
+                changed = True
+            selected["lastModule"] = _text(module, 160)
+            selected["lastLocationId"] = _text(location_id, 120)
+            lifecycle_state["status"] = "active"
+            if kind == "rejoin" and document["working"].pop(npc_id, None) is not None:
+                changed = True
+            return changed, kind
+
+        _mutated, result = self._mutate(update)
+        return result or kind
+
+    def mark_departed(
+        self,
+        npc_id: str,
+        *,
+        module: str,
+        location_id: str,
+        cause: str,
+        departure_kind: str,
+        destination: str,
+        return_hook: str,
+        source_turn_id: str = "",
+        unresolved_obligations: Iterable[str] = (),
+        game_day: Optional[int] = None,
+    ) -> bool:
+        event = self._lifecycle_event(
+            kind="depart",
+            source_turn_id=source_turn_id,
+            module=module,
+            location_id=location_id,
+            cause=cause,
+            departure_kind=departure_kind,
+            destination=destination,
+            return_hook=return_hook,
+            game_day=game_day,
+            prior_status="active",
+            unresolved_obligations=unresolved_obligations,
+        )
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, None]:
+            identity = document["identities"].get(npc_id)
+            if not identity:
+                return False, None
+            lifecycle = document["lifecycle"].setdefault(
+                npc_id, {"status": "active", "events": []}
+            )
+            if (
+                lifecycle["events"]
+                and lifecycle["events"][-1] == event
+                and not identity["active"]
+            ):
+                return False, None
+            identity["active"] = False
+            identity["lastModule"] = _text(module, 160)
+            identity["lastLocationId"] = _text(location_id, 120)
+            lifecycle["status"] = "inactive"
+            lifecycle["events"] = (lifecycle["events"] + [event])[-64:]
+            document["working"].pop(npc_id, None)
+            return True, None
+
+        mutated, _ = self._mutate(update)
+        return mutated
+
+    def mark_module_transition(
+        self,
+        *,
+        module: str,
+        location_id: str,
+        source_turn_id: str,
+        game_day: Optional[int] = None,
+    ) -> bool:
+        """Move active lifecycle context without touching affinity or profiles."""
+        event = self._lifecycle_event(
+            kind="module",
+            source_turn_id=source_turn_id,
+            module=module,
+            location_id=location_id,
+            game_day=game_day,
+            prior_status="active",
+        )
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, None]:
+            changed = False
+            for npc_id, identity in document["identities"].items():
+                if identity.get("kind") != "npc" or not identity.get("active"):
+                    continue
+                lifecycle = document["lifecycle"].setdefault(
+                    npc_id, {"status": "active", "events": []}
+                )
+                if identity.get("lastModule") != _text(module, 160):
+                    identity["lastModule"] = _text(module, 160)
+                    changed = True
+                if identity.get("lastLocationId") != _text(location_id, 120):
+                    identity["lastLocationId"] = _text(location_id, 120)
+                    changed = True
+                if not lifecycle["events"] or lifecycle["events"][-1] != event:
+                    lifecycle["events"] = (lifecycle["events"] + [event])[-64:]
+                    changed = True
+                lifecycle["status"] = "active"
+                if document["working"].pop(npc_id, None) is not None:
+                    changed = True
+            return changed, None
+
+        mutated, _ = self._mutate(update)
+        return mutated
+
+    def mark_rejoined(
+        self,
+        npc_id: str,
+        *,
+        module: str,
+        location_id: str,
+        source_turn_id: str,
+    ) -> str:
+        event = self._lifecycle_event(
+            kind="rejoin",
+            source_turn_id=source_turn_id,
+            module=module,
+            location_id=location_id,
+        )
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, str]:
+            identity = document["identities"].get(npc_id)
+            if not identity:
+                return False, npc_id
+            lifecycle = document["lifecycle"].setdefault(
+                npc_id, {"status": "inactive", "events": []}
+            )
+            if (
+                lifecycle["events"]
+                and lifecycle["events"][-1] == event
+                and identity["active"]
+            ):
+                return document["working"].pop(npc_id, None) is not None, npc_id
+            identity["active"] = True
+            identity["lastModule"] = _text(module, 160)
+            identity["lastLocationId"] = _text(location_id, 120)
+            lifecycle["status"] = "active"
+            lifecycle["events"] = (lifecycle["events"] + [event])[-64:]
+            document["working"].pop(npc_id, None)
+            return True, npc_id
+
+        self._mutate(update)
+        return npc_id

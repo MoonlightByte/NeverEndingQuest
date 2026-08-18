@@ -977,6 +977,29 @@ NPC_COHERENCE_T104_LMSTUDIO = {"model": "local-model"}
 # it. ON: the pass is fail-closed + heal-forward so shipping enabled is safe.
 ENABLE_NPC_COHERENCE_REPAIR = True
 
+# ----- T105 NPC Voice (+ isolated affinity classifier) & T107 NPC Profile Seed -----
+# Per-NPC "voice" micro-model agents (NPC_VOICE_ENABLED). These are per-NPC,
+# per-relevant-turn micro calls, so OpenAI uses the CHEAPEST luna tier. Both the
+# voice/affinity call (T105) and the one-time profile seed (T107) share the same
+# cheap tier per provider. Temperature/output-cap stay at the callsite; the Gemini
+# response_schema is supplied by the service from its own contract (kept out of here
+# to avoid a model_config <-> core.npc import cycle). T105/T107 are distinct from
+# main's T104 (NPC cross-area coherence), a different feature.
+NPC_VOICE_T105_OPENAI_LUNA_NONE = copy.deepcopy(OPENAI_GPT56_LUNA_NONE)
+NPC_VOICE_T105_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
+NPC_VOICE_T105_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+NPC_VOICE_T105_LMSTUDIO = {"model": "local-model"}
+
+NPC_PROFILE_T107_OPENAI_LUNA_NONE = copy.deepcopy(OPENAI_GPT56_LUNA_NONE)
+NPC_PROFILE_T107_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
+NPC_PROFILE_T107_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+NPC_PROFILE_T107_LMSTUDIO = {"model": "local-model"}
+
+# Feature flag: gates the NPC voice injection wiring in main.py/combat_manager.py.
+# Default OFF until all validation gates pass; flipped ON at ship (owner ship-on
+# directive). Defined here so it reaches every build via config.py's star-import.
+NPC_VOICE_ENABLED = False
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
