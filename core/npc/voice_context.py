@@ -1061,10 +1061,15 @@ def run_combat_voice_stage(
         for result in batch.results:
             actor_id = actor_by_npc_id.get(result.npc_id)
             if actor_id:
-                intents[actor_id] = {
-                    "npcName": result.npc_name,
-                    "thought": result.thought,
-                }
+                entry = {"npcName": result.npc_name}
+                if result.say:
+                    entry["say"] = result.say
+                if result.do:
+                    entry["do"] = result.do
+                if result.want:
+                    entry["want"] = result.want
+                entry["thought"] = result.thought
+                intents[actor_id] = entry
         return CombatVoiceStage(batch=batch, intents=MappingProxyType(intents))
     except Exception as exc:
         _LOGGER.debug("T105 combat stage skipped: %s", type(exc).__name__)
@@ -1251,23 +1256,34 @@ def commit_accepted_ooc_voice_batch(
     return committed
 
 
+def _voice_row(result):
+    """Build one compact advisory row for the DM (null say/do/want omitted)."""
+    row = {"npcId": result.npc_id, "npcName": result.npc_name}
+    if getattr(result, "say", None):
+        row["say"] = result.say
+    if getattr(result, "do", None):
+        row["do"] = result.do
+    if getattr(result, "want", None):
+        row["want"] = result.want
+    row["thought"] = result.thought
+    return row
+
+
 def inject_voice_context(messages: list, batch: Optional[NpcVoiceBatch]):
-    """Insert vector-free private thoughts without mutating durable messages."""
+    """Insert vector-free private say/do/want/thought without mutating durable messages."""
     if batch is None or not batch.results:
         return messages
-    rows = [
-        {
-            "npcId": result.npc_id,
-            "npcName": result.npc_name,
-            "thought": result.thought,
-        }
-        for result in batch.results
-    ]
+    rows = [_voice_row(result) for result in batch.results]
     block = (
-        _PRIVATE_BLOCK_PREFIX + " Use these as "
-        "advisory characterization. The Dungeon Master owns final narration, "
-        "mechanics, and actions, and may ignore impossible advice. Do not expose "
-        "this private guidance to the player.\n"
+        _PRIVATE_BLOCK_PREFIX + " Each entry is one companion's PROPOSED "
+        "characterization for this beat: 'say' is a line they'd speak, 'do' is an "
+        "action/intent they'd take, 'want' is their current desire, 'thought' is "
+        "their private reasoning. Weave these into your narration in the NPC's "
+        "voice, but you own final narration, mechanics, and actions -- reword, "
+        "trim, or override anything that does not fit the scene or the rules, and "
+        "ignore impossible advice. Do not expose this private guidance, and never "
+        "paste 'say'/'do' verbatim without making it fit. Null fields mean the NPC "
+        "offers nothing there.\n"
         + json.dumps(rows, ensure_ascii=True, separators=(",", ":"))
     )
     copied = [dict(message) for message in messages]

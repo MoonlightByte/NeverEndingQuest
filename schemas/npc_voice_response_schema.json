@@ -1,6 +1,42 @@
 {
   "type": "object",
   "properties": {
+    "say": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      ]
+    },
+    "do": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      ]
+    },
+    "want": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      ]
+    },
     "thought": {
       "type": "string",
       "minLength": 1,
@@ -45,7 +81,14 @@
             },
             "magnitude": {
               "type": "integer",
-              "enum": [-3, -2, -1, 1, 2, 3]
+              "enum": [
+                -3,
+                -2,
+                -1,
+                1,
+                2,
+                3
+              ]
             },
             "witnessed": {
               "type": "boolean"
@@ -63,6 +106,9 @@
       ]
     }
   },
-  "required": ["thought", "affinityEvent"],
+  "required": [
+    "thought",
+    "affinityEvent"
+  ],
   "additionalProperties": false
 }

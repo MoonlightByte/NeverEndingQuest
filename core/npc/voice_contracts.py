@@ -13,9 +13,14 @@ from jsonschema import Draft202012Validator
 
 TASK_ID = "T105"
 PACKET_VERSION = "npc-voice-packet/v1"
-PROMPT_VERSION = "npc-voice-prompt/v2"
-RESPONSE_SCHEMA_VERSION = "npc-voice-response/v1"
+PROMPT_VERSION = "npc-voice-prompt/v3"
+RESPONSE_SCHEMA_VERSION = "npc-voice-response/v2"
 MAX_THOUGHT_WORDS = 80
+# Character caps for the enriched advisory fields (say/do/want). These are DM-facing
+# PROPOSALS the Dungeon Master edits/inlines/overrides; they are not final output.
+MAX_SAY_CHARS = 240
+MAX_DO_CHARS = 200
+MAX_WANT_CHARS = 200
 
 AFFINITY_EVENT_TYPES = (
     "abandon",
@@ -67,8 +72,27 @@ AFFINITY_EVENT_SCHEMA = strict_object(
     ("actor", "target", "eventType", "magnitude", "witnessed"),
 )
 
+def _nullable_string(max_len: int) -> Dict[str, Any]:
+    """A required key whose value is either null or a bounded non-empty string."""
+    return {
+        "anyOf": [
+            {"type": "null"},
+            {"type": "string", "minLength": 1, "maxLength": max_len},
+        ]
+    }
+
+
+# The enriched advisory voice response. In addition to the private ``thought`` and
+# the typed ``affinityEvent`` (unchanged), the NPC proposes what it would SAY (a
+# line of dialogue), what it would DO (an action/intent, no mechanics asserted),
+# and what it currently WANTs (a desire/goal). All three are ADVISORY: the Dungeon
+# Master reads them as input and may reword, cut, or override them for legality and
+# scene. say/do/want are nullable so an NPC with nothing to add returns null.
 THOUGHT_RESPONSE_SCHEMA = strict_object(
     {
+        "say": _nullable_string(MAX_SAY_CHARS),
+        "do": _nullable_string(MAX_DO_CHARS),
+        "want": _nullable_string(MAX_WANT_CHARS),
         "thought": {"type": "string", "minLength": 1, "maxLength": 640},
         "affinityEvent": {
             "anyOf": [
@@ -77,8 +101,15 @@ THOUGHT_RESPONSE_SCHEMA = strict_object(
             ]
         },
     },
+    # say/do/want are OPTIONAL, not required: the same schema/validator serves both
+    # the enriched voice call (which returns all three) and the isolated affinity
+    # classifier call (which returns only thought + affinityEvent). Absent fields
+    # are treated as null. thought + affinityEvent stay required.
     ("thought", "affinityEvent"),
 )
+# Clearer alias for the enriched contract (kept alongside the historical name so
+# existing imports keep working).
+VOICE_RESPONSE_SCHEMA = THOUGHT_RESPONSE_SCHEMA
 
 PROFILE_SCHEMA = strict_object(
     {
@@ -404,12 +435,27 @@ def gemini_response_schema() -> Dict[str, Any]:
     non_nullable["properties"]["affinityEvent"] = copy.deepcopy(
         AFFINITY_EVENT_SCHEMA
     )
+    # say/do/want are anyOf[null,string]; Gemini takes a single typed schema, so
+    # flatten each to a plain bounded string and mark it nullable after conversion.
+    _nullable_field_caps = {
+        "say": MAX_SAY_CHARS,
+        "do": MAX_DO_CHARS,
+        "want": MAX_WANT_CHARS,
+    }
+    for field_name, cap in _nullable_field_caps.items():
+        non_nullable["properties"][field_name] = {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": cap,
+        }
     converted = convert_to_gemini_schema(
         non_nullable,
         preserve_required=True,
         preserve_constraints=True,
     )
     converted["properties"]["affinityEvent"]["nullable"] = True
+    for field_name in _nullable_field_caps:
+        converted["properties"][field_name]["nullable"] = True
     return converted
 
 
@@ -519,6 +565,24 @@ def validate_thought_response(raw: Any, packet: Mapping[str, Any]) -> Dict[str, 
             "thought exceeds %d words" % MAX_THOUGHT_WORDS
         )
     candidate["thought"] = thought
+
+    # Normalize the enriched advisory fields: strip whitespace, collapse empty to
+    # null, enforce the character caps. These are STRUCTURAL checks only -- we never
+    # parse the prose for meaning (no verb/keyword gating); legality/mechanics are
+    # the Dungeon Master's job downstream.
+    _field_caps = {"say": MAX_SAY_CHARS, "do": MAX_DO_CHARS, "want": MAX_WANT_CHARS}
+    for field_name, cap in _field_caps.items():
+        value = candidate.get(field_name)
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if not trimmed:
+                candidate[field_name] = None
+            elif len(trimmed) > cap:
+                raise ThoughtContractError(
+                    "%s exceeds %d characters" % (field_name, cap)
+                )
+            else:
+                candidate[field_name] = trimmed
 
     event = candidate["affinityEvent"]
     evidence = packet_copy["beat"]["relationshipEvidence"]

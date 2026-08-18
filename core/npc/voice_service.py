@@ -24,6 +24,7 @@ from core.npc.voice_contracts import (
     TASK_ID,
     ThoughtContractError,
     canonical_hash,
+    gemini_response_schema,
     validate_packet,
     validate_thought_response,
 )
@@ -252,6 +253,9 @@ class NpcVoiceResult:
     model: str
     usage: Usage
     latency_seconds: float
+    say: Optional[str] = None
+    do: Optional[str] = None
+    want: Optional[str] = None
     cached: bool = False
     source_turn_id: str = ""
     counterparty_id: str = ""
@@ -400,17 +404,28 @@ def build_classification_messages(
 
 
 def _config_for_provider(provider: str) -> Dict[str, Any]:
+    # OpenAI/legacy use plain JSON mode (json_object) + client-side
+    # validate_thought_response + one bounded retry. We deliberately do NOT use
+    # OpenAI strict json_schema here: the enriched contract makes say/do/want
+    # OPTIONAL (strict mode requires every property), and the same callsite also
+    # serves the affinity classifier which returns only thought + affinityEvent.
+    # Gemini needs response_schema or it silently drops the enriched fields
+    # (T014-class bug). Never attach response_schema on the OpenAI path (400).
     if provider == "openai":
-        selected = model_config.NPC_VOICE_T105_OPENAI_LUNA_NONE
+        selected = copy.deepcopy(model_config.NPC_VOICE_T105_OPENAI_LUNA_NONE)
+        selected["response_format"] = {"type": "json_object"}
     elif provider == "gemini":
-        selected = model_config.NPC_VOICE_T105_GEMINI_FLASHLITE_LOW
+        selected = copy.deepcopy(model_config.NPC_VOICE_T105_GEMINI_FLASHLITE_LOW)
+        selected["response_schema"] = gemini_response_schema()
     elif provider == "lmstudio":
-        selected = model_config.NPC_VOICE_T105_LMSTUDIO
+        selected = copy.deepcopy(model_config.NPC_VOICE_T105_LMSTUDIO)
+        selected["response_format"] = None
     elif provider == "legacy":
-        selected = model_config.NPC_VOICE_T105_LEGACY
+        selected = copy.deepcopy(model_config.NPC_VOICE_T105_LEGACY)
+        selected["response_format"] = {"type": "json_object"}
     else:
         raise ValueError("unsupported T105 provider: %s" % provider)
-    return copy.deepcopy(selected)
+    return selected
 
 
 class NpcVoiceService:
@@ -695,6 +710,9 @@ class NpcVoiceService:
             content_hash=key,
             thought=validated["thought"],
             affinity_event=affinity_event,
+            say=validated.get("say"),
+            do=validated.get("do"),
+            want=validated.get("want"),
             model=getattr(thought_response, "model", None) or thought_model,
             usage=Usage(
                 prompt_tokens=(

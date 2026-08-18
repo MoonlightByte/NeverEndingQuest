@@ -16,7 +16,11 @@ from jsonschema import Draft202012Validator
 import model_config
 from core.ai import api_client
 from core.npc.relationship_store import RelationshipStore
-from core.npc.voice_contracts import STRUCTURED_PROFILE_SCHEMA, canonical_hash
+from core.npc.voice_contracts import (
+    STRUCTURED_PROFILE_SCHEMA,
+    canonical_hash,
+    profile_gemini_response_schema,
+)
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 
 
@@ -231,17 +235,24 @@ def build_messages(source: Mapping[str, Any], retry_reason: str = "") -> list[Di
 
 
 def _config_for_provider(provider: str) -> Dict[str, Any]:
+    # Structured 12-key profile output. OpenAI/legacy use JSON mode + client-side
+    # validation; Gemini needs response_schema or it emits the wrong shape.
+    # Never attach response_schema on the OpenAI path (would 400).
     if provider == "openai":
-        selected = model_config.NPC_PROFILE_T107_OPENAI_LUNA_NONE
+        selected = copy.deepcopy(model_config.NPC_PROFILE_T107_OPENAI_LUNA_NONE)
+        selected["response_format"] = {"type": "json_object"}
     elif provider == "gemini":
-        selected = model_config.NPC_PROFILE_T107_GEMINI_FLASHLITE_LOW
+        selected = copy.deepcopy(model_config.NPC_PROFILE_T107_GEMINI_FLASHLITE_LOW)
+        selected["response_schema"] = profile_gemini_response_schema()
     elif provider == "legacy":
-        selected = model_config.NPC_PROFILE_T107_LEGACY
+        selected = copy.deepcopy(model_config.NPC_PROFILE_T107_LEGACY)
+        selected["response_format"] = {"type": "json_object"}
     elif provider == "lmstudio":
-        selected = model_config.NPC_PROFILE_T107_LMSTUDIO
+        selected = copy.deepcopy(model_config.NPC_PROFILE_T107_LMSTUDIO)
+        selected["response_format"] = None
     else:
         raise ValueError("unsupported T107 provider: %s" % provider)
-    return copy.deepcopy(selected)
+    return selected
 
 
 class NpcProfileService:
