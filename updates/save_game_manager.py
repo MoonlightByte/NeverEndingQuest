@@ -60,6 +60,7 @@ Handles save and restore functionality for game state preservation.
 # ============================================================================
 
 import json
+import hashlib
 import os
 import shutil
 import zipfile
@@ -206,7 +207,8 @@ class SaveGameManager:
             "current_location.json", 
             "journal.json",
             "player_storage.json",
-            
+            "data/companion_memories/",
+
             # Installed SRD reference data is application-owned, not campaign
             # state. Restoring an old save must never downgrade current rules.
             "training_data.json",
@@ -297,6 +299,7 @@ class SaveGameManager:
             "modules/.module_transactions/",
             "modules/.publication_transactions/",
             "modules/.module_orphan_quarantine/",
+            "modules/.runtime_quarantine/",
             ".runtime_locks/",
             "modules/conversation_history/pending_location_transition.json",
             
@@ -308,6 +311,7 @@ class SaveGameManager:
             # Temporary files
             "*.tmp",
             "*.bak",
+            "*.lock",
             "*.backup_*",
             # NOTE: *_BU.json files are now INCLUDED in saves as they are critical
             # for the reset_campaign.py functionality
@@ -401,7 +405,76 @@ class SaveGameManager:
             return "saved_games"
         
         return f"modules/{self.current_module}/saved_games"
-    
+
+    @staticmethod
+    def _state_manifest_for_root(root: str = ".") -> List[Dict[str, Any]]:
+        """Describe private state files by fingerprint, never by contents."""
+        relative_path = "data/companion_memories/npc_agent_state.json"
+        sidecar_path = os.path.join(root, relative_path)
+        if not os.path.isfile(sidecar_path):
+            return []
+        try:
+            with open(sidecar_path, "rb") as handle:
+                raw = handle.read()
+        except OSError:
+            return []
+        try:
+            parsed = json.loads(raw.decode("utf-8"))
+            schema_version = (
+                parsed.get("schemaVersion", -1)
+                if isinstance(parsed, dict)
+                else -1
+            )
+        except (UnicodeError, ValueError, TypeError):
+            schema_version = -1
+        return [
+            {
+                "path": relative_path,
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "schemaVersion": schema_version,
+                "bytes": len(raw),
+            }
+        ]
+
+    @staticmethod
+    def _validate_state_manifest(
+        save_path: str, metadata: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        """Validate every listed private state file before live mutation."""
+        manifest = metadata.get("state_manifest")
+        if manifest is None:
+            return True, ""
+        if not isinstance(manifest, list):
+            return False, "state manifest is not a list"
+        allowed_path = "data/companion_memories/npc_agent_state.json"
+        for entry in manifest:
+            if not isinstance(entry, dict) or set(entry) != {
+                "path", "sha256", "schemaVersion", "bytes"
+            }:
+                return False, "state manifest entry is malformed"
+            if entry["path"] != allowed_path:
+                return False, "state manifest path is not recognized"
+            candidate = os.path.join(save_path, allowed_path)
+            try:
+                with open(candidate, "rb") as handle:
+                    raw = handle.read()
+            except OSError:
+                return False, "listed state file is missing"
+            if len(raw) != entry["bytes"]:
+                return False, "listed state file size differs"
+            if hashlib.sha256(raw).hexdigest() != entry["sha256"]:
+                return False, "listed state file hash differs"
+            try:
+                parsed = json.loads(raw.decode("utf-8"))
+            except (UnicodeError, ValueError, TypeError):
+                return False, "listed state file is not JSON"
+            if (
+                not isinstance(parsed, dict)
+                or parsed.get("schemaVersion") != entry["schemaVersion"]
+            ):
+                return False, "listed state schema version differs"
+        return True, ""
+
     def generate_save_metadata(self, description: str = "", save_mode: str = "essential") -> Dict[str, Any]:
         """Generate metadata for a save game"""
         timestamp = datetime.now()
@@ -457,9 +530,10 @@ class SaveGameManager:
             "system_info": {
                 "save_format_version": "1.0",
                 "created_by": "NeverEndingQuest Save System",
-            }
+            },
+            "state_manifest": self._state_manifest_for_root(),
         }
-        
+
         return metadata
     
     def create_save_game(self, description: str = "", save_mode: str = "essential") -> Tuple[bool, str]:
@@ -546,7 +620,9 @@ class SaveGameManager:
             # Generate and save metadata
             metadata = self.generate_save_metadata(description, save_mode)
             metadata_path = f"{save_path}/save_metadata.json"
-            if not safe_write_json(metadata_path, metadata):
+            if not safe_write_json(
+                metadata_path, metadata, create_backup=False
+            ):
                 return False, "Failed to write save metadata"
             
             # Copy files based on save mode
@@ -605,9 +681,16 @@ class SaveGameManager:
                 "files_skipped": len(skipped_files),
                 "total_files_processed": len(copied_files) + len(skipped_files),
             }
-            
+
+            # Fingerprint the copied bytes, not a later live revision. This
+            # keeps metadata and the save payload on the exact same timeline.
+            metadata["state_manifest"] = self._state_manifest_for_root(save_path)
+
             # Save updated metadata
-            safe_write_json(metadata_path, metadata)
+            if not safe_write_json(
+                metadata_path, metadata, create_backup=False
+            ):
+                return False, "Failed to finalize save metadata"
             
             success_msg = f"Save game created successfully: {save_path}"
             success_msg += f"\nCopied {len(copied_files)} files"
@@ -732,7 +815,17 @@ class SaveGameManager:
             metadata = safe_read_json(metadata_path)
             if not metadata:
                 return False, "Could not read save game metadata"
-            
+
+            manifest_valid, manifest_error = self._validate_state_manifest(
+                save_path, metadata
+            )
+            if not manifest_valid:
+                return (
+                    False,
+                    "State manifest integrity validation failed: "
+                    f"{manifest_error}",
+                )
+
             # Create backup of current state before restoring
             backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_dir = (
@@ -802,6 +895,7 @@ class SaveGameManager:
             directories_to_clean = [
                 "modules/encounters/",  # Global encounters directory
                 "characters/",  # Player/NPC characters
+                "data/companion_memories/",  # Private campaign runtime state
             ]
             
             # Add module-specific directories if we have a current module
@@ -823,6 +917,14 @@ class SaveGameManager:
                         for file in os.listdir(directory):
                             file_path = os.path.join(directory, file)
                             if os.path.isfile(file_path):
+                                if directory == "data/companion_memories/":
+                                    if (
+                                        file not in {".gitkeep", ".gitignore"}
+                                        and not file.endswith(".lock")
+                                    ):
+                                        os.remove(file_path)
+                                        debug(f"FILE_OP: Removed: {file_path}", category="save_game")
+                                    continue
                                 # CRITICAL: Preserve BU files during restore
                                 if file.endswith("_BU.json"):
                                     debug(f"FILE_OP: Preserving BU file: {file_path}", category="save_game")
