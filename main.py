@@ -1644,6 +1644,7 @@ def _assemble_validation_messages(
     candidate_response,
     compress_prefix=None,
     srd_context=None,
+    npc_voice_batch=None,
 ):
     """Compress context first, then preserve the raw intent/candidate pair."""
     prefix = [dict(message) for message in validation_prefix]
@@ -1651,10 +1652,21 @@ def _assemble_validation_messages(
         prefix = compress_prefix(prefix)
     if srd_context:
         prefix.append({"role": "system", "content": srd_context})
-    return prefix + [
+    messages = prefix + [
         {"role": "user", "content": str(raw_user_input or "")},
         {"role": "assistant", "content": candidate_response},
     ]
+    if npc_voice_batch is not None:
+        try:
+            from core.npc.voice_context import inject_voice_context
+
+            messages = inject_voice_context(messages, npc_voice_batch)
+        except Exception as voice_error:
+            debug(
+                f"T105 validator guidance skipped: {type(voice_error).__name__}",
+                category="ai_validation",
+            )
+    return messages
 
 
 def _normalize_semantic_rejection_reason(reason):
@@ -1680,6 +1692,7 @@ def validate_ai_response(
     conversation_history,
     party_tracker_data,
     srd_context=None,
+    npc_voice_batch=None,
 ):
     print("DEBUG: NPC validation running...")
     status_validating()
@@ -1978,18 +1991,31 @@ def validate_ai_response(
         user_input,
         response_to_validate,
         srd_context=srd_context,
+        npc_voice_batch=npc_voice_batch,
     )
+    validation_messages_for_diagnostics = validation_messages_to_send
+    if npc_voice_batch is not None:
+        try:
+            from core.npc.voice_context import redact_voice_context
+
+            validation_messages_for_diagnostics = redact_voice_context(
+                validation_messages_to_send
+            )
+        except Exception:
+            validation_messages_for_diagnostics = [
+                {"role": "system", "content": "Private NPC guidance: [redacted]"}
+            ]
 
     if '"action": "createNewModule"' in response_to_validate:
         debug(
             "VALIDATION: createNewModule raw intent/candidate pair isolated",
             category="ai_validation",
         )
-    
+
     # Export validation messages for debugging
     os.makedirs("debug/api_captures", exist_ok=True)
     with open("debug/api_captures/main_validation_messages_to_api.json", "w", encoding="utf-8") as f:
-        json.dump(validation_messages_to_send, f, indent=2, ensure_ascii=False)
+        json.dump(validation_messages_for_diagnostics, f, indent=2, ensure_ascii=False)
     print(f"DEBUG: [MAIN VALIDATION] Exported validation messages to debug/api_captures/main_validation_messages_to_api.json")
     
     max_validation_retries = 3
@@ -2024,7 +2050,7 @@ def validate_ai_response(
         # Log API call to master log
         try:
             from utils.api_logger import log_api_call
-            log_api_call("validation", validation_messages_to_send, validation_result,
+            log_api_call("validation", validation_messages_for_diagnostics, validation_result,
                         metadata={"attempt": attempt+1, "max_retries": max_validation_retries})
         except Exception as e:
             print(f"[API_LOG] Warning: Failed to log validation call: {e}")
@@ -4555,6 +4581,7 @@ def get_ai_response(
     validation_retry_count=0,
     *,
     _skip_pending_publication_delivery=False,
+    npc_voice_batch=None,
 ):
     global should_inject_creation_prompt
     # This is the centralized terminal/web provider boundary. A transition
@@ -4694,10 +4721,31 @@ def get_ai_response(
                 temp_file.unlink()
             except OSError as cleanup_error:
                 print(f"WARNING: Could not remove compression input: {cleanup_error}")
-    
+
+    # T105 guidance is request-local and is inserted only after compression.
+    # A missing, invalid, disabled, or failed batch returns the exact existing
+    # message list unchanged.
+    messages_for_diagnostics = messages_to_send
+    if npc_voice_batch is not None:
+        try:
+            from core.npc.voice_context import (
+                inject_voice_context,
+                redact_voice_context,
+            )
+
+            messages_to_send = inject_voice_context(
+                messages_to_send, npc_voice_batch
+            )
+            messages_for_diagnostics = redact_voice_context(messages_to_send)
+        except Exception as voice_error:
+            debug(
+                f"T105 DM guidance skipped: {type(voice_error).__name__}",
+                category="ai_routing",
+            )
+
     # Export main conversation messages for debugging
     with open("main_conversation_messages_to_api.json", "w", encoding="utf-8") as f:
-        json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
+        json.dump(messages_for_diagnostics, f, indent=2, ensure_ascii=False)
     print(f"DEBUG: [MAIN CONVERSATION] Exported conversation messages to main_conversation_messages_to_api.json")
     
     # Generate response with selected model (unified path -- provider-agnostic).
@@ -4739,7 +4787,7 @@ def get_ai_response(
     # Log API call to master log
     try:
         from utils.api_logger import log_api_call
-        log_api_call("main_dm", messages_to_send, response,
+        log_api_call("main_dm", messages_for_diagnostics, response,
                     metadata={"temperature": TEMPERATURE, "retry_count": validation_retry_count, "provider": MODEL_PROVIDER})
     except Exception as e:
         print(f"[API_LOG] Warning: Failed to log main DM call: {e}")
@@ -6091,14 +6139,36 @@ def main_game_loop():
         conversation_history.append({"role": "user", "content": user_input_with_note})
         save_conversation_history(conversation_history)
 
+        # Run T105 once per substantive player beat. The feature is default-off,
+        # and every composition/provider/validation failure collapses to an
+        # empty immutable batch without changing the authoritative turn.
+        npc_voice_batch = None
+        if getattr(config, "NPC_VOICE_ENABLED", False) is True:
+            try:
+                from core.npc.voice_context import run_ooc_voice_stage
+
+                npc_voice_batch = run_ooc_voice_stage(
+                    party_tracker_data=party_tracker_data,
+                    player_name=player_name_actual,
+                    raw_input=user_input_text,
+                    location_data=location_data,
+                    conversation_prefix=conversation_history[:-1],
+                    path_manager=path_manager,
+                )
+            except Exception as voice_error:
+                debug(
+                    f"T105 OOC stage skipped: {type(voice_error).__name__}",
+                    category="ai_routing",
+                )
+
         validation_prefix_length = len(conversation_history)
         retry_count = 0
         previous_semantic_rejection = None
         consecutive_semantic_rejections = 0
-        valid_response_received = False 
+        valid_response_received = False
         ai_response_content = None
         approved_transition_plan = None
-    
+
         while retry_count < 5 and not valid_response_received:
             # Authorization belongs only to this candidate response. A retry
             # must obtain a new plan from the current atlas/evidence snapshot.
@@ -6108,6 +6178,7 @@ def main_game_loop():
                 ai_response_content = get_ai_response(
                     conversation_history,
                     validation_retry_count=retry_count,
+                    npc_voice_batch=npc_voice_batch,
                 )
             except Exception as response_error:
                 error(
@@ -6336,8 +6407,9 @@ def main_game_loop():
                 conversation_history,
                 party_tracker_data,
                 srd_context=turn_srd_context,
+                npc_voice_batch=npc_voice_batch,
             )
-        
+
             # Unpack the validation result tuple
             is_valid = False
             validation_reason = ""
@@ -6369,7 +6441,27 @@ def main_game_loop():
                     )
                 )
                 save_conversation_history(conversation_history)
-            
+
+                # T105 relationship events are staged until this exact T067
+                # acceptance boundary. Failed candidates never reach this
+                # best-effort, idempotent sidecar commit.
+                if npc_voice_batch is not None:
+                    try:
+                        from core.npc.voice_context import (
+                            commit_accepted_ooc_voice_batch,
+                        )
+
+                        commit_accepted_ooc_voice_batch(
+                            npc_voice_batch,
+                            party_tracker_data,
+                        )
+                    except Exception as voice_commit_error:
+                        debug(
+                            f"T105 accepted event skipped: "
+                            f"{type(voice_commit_error).__name__}",
+                            category="ai_routing",
+                        )
+
                 # SIMPLIFIED ARCHITECTURE: process_ai_response now handles ALL complexity internally.
                 # This includes:
                 # - Standard turn processing

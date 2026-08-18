@@ -898,7 +898,7 @@ def sanitize_unicode_for_logging(text):
     
     return text
 
-def validate_combat_response(response, encounter_data, user_input, conversation_history=None):
+def validate_combat_response(response, encounter_data, user_input, conversation_history=None, npc_voice_batch=None):
     """
     Validate a combat response for accuracy in HP tracking, combat flow, etc.
     Returns True if valid, or a string with the reason for failure if invalid.
@@ -996,9 +996,31 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
         {"role": "user", "content": T040_VERDICT_REQUEST},
     ])
 
+    validation_messages_for_diagnostics = validation_conversation
+    if npc_voice_batch is not None:
+        try:
+            from core.npc.voice_context import (
+                inject_voice_context,
+                redact_voice_context,
+            )
+
+            validation_conversation = inject_voice_context(
+                validation_conversation,
+                npc_voice_batch,
+            )
+            validation_messages_for_diagnostics = redact_voice_context(
+                validation_conversation
+            )
+        except Exception as voice_error:
+            debug(
+                "T105 combat validator guidance skipped: %s"
+                % type(voice_error).__name__,
+                category="combat_validation",
+            )
+
     # Export validation conversation for review
     with open("validation_messages_to_api.json", "w", encoding="utf-8") as f:
-        json.dump(validation_conversation, f, indent=2, ensure_ascii=False)
+        json.dump(validation_messages_for_diagnostics, f, indent=2, ensure_ascii=False)
     
     # Calculate size for debugging
     validation_size = sum(len(json.dumps(msg)) for msg in validation_conversation)
@@ -1032,7 +1054,7 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
             # Log API call to master log
             try:
                 from utils.api_logger import log_api_call
-                log_api_call("combat_validation", validation_conversation, validation_result,
+                log_api_call("combat_validation", validation_messages_for_diagnostics, validation_result,
                             metadata={"temperature": 0.3, "attempt": attempt+1})
             except Exception as e:
                 print(f"[API_LOG] Warning: Failed to log combat validation call: {e}")
@@ -4579,7 +4601,38 @@ Rules:
        # Add user input to conversation history
        conversation_history.append({"role": "user", "content": user_input_with_note})
        save_json_file(conversation_history_file, conversation_history)
-       
+
+       # Compose legacy NPC guidance once for this calculated initiative
+       # window. The batch is request-local and is reused for every T045/T040
+       # correction attempt below.
+       legacy_voice_batch = None
+       if getattr(config, "NPC_VOICE_ENABLED", False) is True:
+           try:
+               from core.npc.voice_context import run_legacy_combat_voice_stage
+
+               character_paths, context_sheets = _agentic_combat_context(
+                   encounter_data,
+                   path_manager,
+                   monster_templates,
+               )
+               legacy_voice_stage = run_legacy_combat_voice_stage(
+                   encounter_data=encounter_data,
+                   turn_window=turn_window_json,
+                   character_paths=character_paths,
+                   context_sheets=context_sheets,
+                   party_tracker_data=party_tracker_data,
+                   location_info=location_info,
+                   player_input=raw_combat_input_text,
+                   conversation_prefix=conversation_history,
+               )
+               legacy_voice_batch = legacy_voice_stage.batch
+           except Exception as exc:
+               debug(
+                   "T105 legacy combat stage skipped: %s"
+                   % type(exc).__name__,
+                   category="combat_events",
+               )
+
        # Get AI response with validation and retries
        max_retries = 5
        valid_response = False
@@ -4616,6 +4669,26 @@ Rules:
 
                # Compress conversation history before sending to AI
                messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+
+               # T105 guidance is private and request-local. Compression runs
+               # first, then the same immutable batch is inserted before the
+               # final user combat-state message on every correction attempt.
+               if legacy_voice_batch is not None:
+                   try:
+                       from core.npc.voice_context import (
+                           inject_legacy_combat_voice_context,
+                       )
+
+                       messages_to_send = inject_legacy_combat_voice_context(
+                           messages_to_send,
+                           legacy_voice_batch,
+                       )
+                   except Exception as voice_error:
+                       debug(
+                           "T105 legacy T045 guidance skipped: %s"
+                           % type(voice_error).__name__,
+                           category="combat_events",
+                       )
 
                response = capture_and_fanout("T045", api_client.create_completion,
                    _request_provider=MODEL_PROVIDER,
@@ -4723,7 +4796,13 @@ Rules:
                except Exception as e:
                    debug(f"Could not update status: {e}", category="status")
                
-               validation_result = validate_combat_response(ai_response, encounter_data, user_input_text, conversation_history)
+               validation_result = validate_combat_response(
+                   ai_response,
+                   encounter_data,
+                   user_input_text,
+                   conversation_history,
+                   npc_voice_batch=legacy_voice_batch,
+               )
                
                if validation_result is True:
                    valid_response = True
@@ -4824,7 +4903,27 @@ Rules:
            error("FAILURE: Failed to get a valid AI response after multiple attempts", category="combat_events")
            _display_combat_narration(T045_REJECTED_ACTION_NARRATION)
            continue
-       
+
+       # The T105 event describes only prior accepted evidence. Commit it once
+       # the current T045 candidate crosses T040, before legacy action
+       # processing begins. Store failures remain advisory and fail open.
+       if legacy_voice_batch is not None:
+           try:
+               from core.npc.voice_context import (
+                   commit_accepted_combat_voice_batch,
+               )
+
+               commit_accepted_combat_voice_batch(
+                   legacy_voice_batch,
+                   party_tracker_data,
+               )
+           except Exception as exc:
+               debug(
+                   "T105 accepted legacy combat event skipped: %s"
+                   % type(exc).__name__,
+                   category="combat_events",
+               )
+
        # Process the validated response
        try:
            round_advanced_this_response = False
