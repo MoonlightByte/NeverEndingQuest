@@ -317,12 +317,21 @@ class RelationshipStore:
         ]
         if len(path_matches) == 1:
             return path_matches[0]
-        name_matches = [
-            identity_id
-            for identity_id, identity in identities.items()
-            if identity.get("kind") == kind
-            and display_name in _identity_names(identity)
-        ]
+        # Name fallback for identities with no distinct sheet path. Match only the
+        # CURRENT displayName -- never a historical alias -- and never bind onto an
+        # identity that already owns a DIFFERENT sheet path. Matching a retired alias
+        # or a same-named-but-different-sheet character silently merges two distinct
+        # NPCs' histories (issue #164 / finding M28).
+        name_matches = []
+        for identity_id, identity in identities.items():
+            if identity.get("kind") != kind:
+                continue
+            if _text(identity.get("displayName"), 100) != display_name:
+                continue
+            existing_path = normalize_identity_seed(identity.get("sheetPath", ""))
+            if existing_path and existing_path != normalized_path:
+                continue
+            name_matches.append(identity_id)
         if len(name_matches) == 1:
             return name_matches[0]
         if len(path_matches) > 1 or len(name_matches) > 1:
