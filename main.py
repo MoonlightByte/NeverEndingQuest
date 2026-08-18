@@ -2329,10 +2329,15 @@ def check_and_process_location_transitions(conversation_history, party_tracker_d
                 leaving_location_name
             )
             
-            # Compress conversation history
+            # Compress conversation history (also captures per-companion episodes
+            # from the raw segment before it is compressed away -- Phase 1d,
+            # offloaded + fail-open, gated on NPC_VOICE_ENABLED)
             compressed_history = compress_conversation_history_on_transition(
                 conversation_history,
-                leaving_location_name
+                leaving_location_name,
+                party_tracker_data=party_tracker_data,
+                path_manager=path_manager,
+                player_name=(party_tracker_data.get("partyMembers") or [""])[0],
             )
             
             # Check if chunked compression is needed after creating the location summary

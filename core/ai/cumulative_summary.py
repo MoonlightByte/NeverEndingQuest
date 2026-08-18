@@ -374,12 +374,19 @@ def clean_old_summaries_from_conversation(conversation_history):
     
     return cleaned_history
 
-def compress_conversation_history_on_transition(conversation_history, leaving_location_name):
+def compress_conversation_history_on_transition(conversation_history, leaving_location_name,
+                                                party_tracker_data=None, path_manager=None,
+                                                player_name=""):
     """
     Compress conversation history when transitioning out of a location.
     Creates a summary of the location being left and removes those messages.
     Uses location transition messages as markers.
     Returns the compressed conversation history.
+
+    party_tracker_data/path_manager/player_name are optional; when provided and
+    NPC_VOICE_ENABLED, a best-effort per-companion episode is captured from the raw
+    segment before it is compressed away (Phase 1d). Capture is offloaded and
+    fail-open -- it never gates, mutates, or blocks the summary/history.
     """
     status_compressing_history()
     debug_print(f"Compressing conversation history when leaving {leaving_location_name}")
@@ -449,7 +456,30 @@ def compress_conversation_history_on_transition(conversation_history, leaving_lo
     # Generate summary if we have messages to summarize
     if len(messages_to_summarize) > 0:
         summary = generate_location_summary(leaving_location_name, messages_to_summarize)
-        
+
+        # Phase 1d: best-effort per-companion episode capture from the SAME raw
+        # segment, before it is compressed away. Offloaded (fire-and-forget) and
+        # fail-open: never gates or mutates the summary/history. Gated on the flag.
+        try:
+            import config as _config
+            if (getattr(_config, "NPC_VOICE_ENABLED", False) is True
+                    and party_tracker_data is not None and path_manager is not None):
+                from core.npc.episode_capture import (
+                    capture_location_episode_async,
+                    leaving_location_id_from_marker,
+                )
+                capture_location_episode_async(
+                    leaving_location_name=leaving_location_name,
+                    leaving_location_id=leaving_location_id_from_marker(
+                        conversation_history[transition_index].get("content", "")),
+                    segment_messages=list(messages_to_summarize),
+                    party_tracker_data=party_tracker_data,
+                    path_manager=path_manager,
+                    player_name=player_name,
+                )
+        except Exception:
+            pass
+
         if summary:
             # Build the new conversation history
             new_history = []
