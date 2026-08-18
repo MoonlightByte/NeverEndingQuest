@@ -94,6 +94,35 @@ from utils.enhanced_logger import debug, info, warning, error, game_event, set_s
 set_script_name(__name__)
 
 
+def _update_npc_module_lifecycle_best_effort(party_tracker, source_turn_id):
+    """Advance private active-NPC context after a committed party transition.
+
+    Best-effort and flag-gated: a failure never blocks the module transition.
+    Records the transition in the NPC voice relationship sidecar so departed /
+    rejoined companions and per-module lifecycle stay consistent for T105.
+    """
+    if getattr(config, "NPC_VOICE_ENABLED", False) is not True:
+        return
+    try:
+        from core.npc.relationship_store import RelationshipStore, game_day_ordinal
+
+        if not isinstance(party_tracker, dict):
+            return
+        world = party_tracker.get("worldConditions", {})
+        world = world if isinstance(world, dict) else {}
+        RelationshipStore().mark_module_transition(
+            module=str(party_tracker.get("module") or ""),
+            location_id=str(world.get("currentLocationId") or ""),
+            source_turn_id=str(source_turn_id or "")[:120],
+            game_day=game_day_ordinal(world),
+        )
+    except Exception as exc:
+        warning(
+            "NPC module lifecycle update failed open: %s" % type(exc).__name__,
+            category="module_loading",
+        )
+
+
 def _is_valid_campaign_export_data(exported_data: Any) -> bool:
     """Check the structural contract consumed by campaign-state importers."""
     if not isinstance(exported_data, dict):
@@ -1759,6 +1788,7 @@ class CampaignManager:
                 completion_id,
                 conversation_history=conversation_history,
             )
+            _update_npc_module_lifecycle_best_effort(updated, completion_id)
             return original, updated
 
     def publish_location_module_transition(
@@ -1857,6 +1887,7 @@ class CampaignManager:
                 completion_id,
                 conversation_history=conversation_history,
             )
+            _update_npc_module_lifecycle_best_effort(updated, completion_id)
             return transition_result, updated
 
     def _cancel_prepared_module_completion_intent(
@@ -2221,6 +2252,9 @@ class CampaignManager:
                     repaired_party = copy.deepcopy(persisted_party)
                     repaired_party["module"] = intent["to_module"]
                     safe_json_dump(repaired_party, "party_tracker.json")
+                    _update_npc_module_lifecycle_best_effort(
+                        repaired_party, intent.get("completion_id", "")
+                    )
                     persisted_module = intent["to_module"]
                 if persisted_module != intent["to_module"]:
                     next_intent = (
