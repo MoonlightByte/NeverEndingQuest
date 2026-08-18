@@ -346,6 +346,36 @@ def _resolve_effective_callsite_kwargs(task_id, provider, kwargs, attempt=0):
     return effective
 
 
+def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
+                             max_attempts=3, base_delay=0.6):
+    """Fire the primary provider call, retrying only on transient empty responses.
+
+    A provider occasionally returns a response with no text content
+    (finish_reason=stop, empty/whitespace content) -- a transient glitch that
+    succeeds on retry. Retrying HERE (the shared production boundary) keeps
+    create_completion() a thin router (wrapper-scope rule) while making every
+    registered callsite resilient. Any other error propagates immediately, and
+    an exhausted budget re-raises the original ProviderEmptyResponse unchanged.
+    """
+    from core.ai.api_client import ProviderEmptyResponse
+    last_exc = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return primary_fn(messages=messages, **kwargs)
+        except ProviderEmptyResponse as exc:
+            last_exc = exc
+            if attempt >= max_attempts:
+                break
+            _get_error_logger().warning(
+                "Transient empty provider response for %s (attempt %d/%d, "
+                "finish_reason=%s); retrying.",
+                task_id, attempt, max_attempts,
+                getattr(exc, "finish_reason", "unknown"),
+            )
+            time.sleep(base_delay * attempt)
+    raise last_exc
+
+
 def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     """Drop-in wrapper around client.chat.completions.create.
 
@@ -408,7 +438,7 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     # still player-visible production accounting and must happen before this
     # capture-specific early return.
     if request_provider == "lmstudio":
-        response = primary_fn(messages=messages, **kwargs)
+        response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id)
         _track_module_primary(
             response, task_id, request_provider, requested_model
         )
@@ -416,7 +446,7 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
 
     # Always fire primary call synchronously
     start = time.time()
-    response = primary_fn(messages=messages, **kwargs)
+    response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id)
     primary_latency = round(time.time() - start, 3)
 
     # Account before either capture-disabled return below. Diagnostic capture
