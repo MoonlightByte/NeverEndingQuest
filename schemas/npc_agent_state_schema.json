@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "npc-agent-state/v1",
-  "title": "NPC Agent State Sidecar v1",
+  "$id": "npc-agent-state/v2",
+  "title": "NPC Agent State Sidecar v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "revision", "identities", "profiles", "relationships", "working", "lifecycle", "migrations"],
+  "required": ["schemaVersion", "revision", "identities", "profiles", "relationships", "working", "lifecycle", "migrations", "episodes"],
   "properties": {
-    "schemaVersion": {"const": 1},
+    "schemaVersion": {"const": 2},
     "revision": {"type": "integer", "minimum": 0},
     "identities": {
       "type": "object",
@@ -48,6 +48,13 @@
       "additionalProperties": false,
       "patternProperties": {
         "^companion-memory-v1\\|[0-9a-f-]{36}$": {"$ref": "#/$defs/migration"}
+      }
+    },
+    "episodes": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"type": "array", "items": {"type": "object"}}
       }
     }
   },

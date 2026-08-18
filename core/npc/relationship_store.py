@@ -33,13 +33,28 @@ from utils.path_transaction_lock import path_transaction_lock
 
 
 _LOGGER = logging.getLogger(__name__)
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MIGRATION_VERSION = "companion-memory-v1"
 DEFAULT_STATE_PATH = Path("data/companion_memories/npc_agent_state.json")
 DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "npc_agent_state_schema.json"
 PROJECT_IDENTITY_NAMESPACE = uuid.UUID("9b0f3d4d-bf49-5c2c-a8bb-4056bdc31fc1")
 ZERO_HASH = "0" * 64
 UNRESOLVED_TYPES = frozenset({"abandon", "betray", "rescue"})
+
+# Loud, non-fail-open persistence signal. A read-only latch or a turn that commits
+# zero writes despite an eligible packet must never be swallowed at debug level --
+# that is exactly the "dead feature behind perfect narration" failure this project
+# has already shipped once. Callers/tests can inspect these events; a startup guard
+# (assert_store_writable) turns a corrupt/unmigratable store into a hard error.
+STORE_HEALTH_EVENTS: list[dict] = []
+_MAX_HEALTH_EVENTS = 100
+
+
+def record_store_health(event: str, *, path: str = "", detail: str = "") -> None:
+    _LOGGER.error("NPC store health: %s path=%s %s", event, path, detail)
+    STORE_HEALTH_EVENTS.append({"event": event, "path": path, "detail": detail})
+    if len(STORE_HEALTH_EVENTS) > _MAX_HEALTH_EVENTS:
+        del STORE_HEALTH_EVENTS[0]
 
 
 @dataclass(frozen=True)
@@ -133,7 +148,48 @@ def new_state_document() -> Dict[str, Any]:
         "working": {},
         "lifecycle": {},
         "migrations": {},
+        "episodes": {},
     }
+
+
+def _migrate_v1_to_v2(document: Dict[str, Any]) -> Dict[str, Any]:
+    """Additive: reserve the per-NPC episodes container; no data is dropped."""
+    document.setdefault("episodes", {})
+    document["schemaVersion"] = 2
+    return document
+
+
+# Ordered forward migrations keyed by the version they upgrade FROM. A stored
+# document is rewritten on load up to SCHEMA_VERSION instead of being rejected as
+# corrupt -- so a schema bump can never silently latch existing saves read-only.
+_FORWARD_MIGRATIONS: Dict[int, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
+    1: _migrate_v1_to_v2,
+}
+
+
+def _migrate_document(document: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Bring a document up to SCHEMA_VERSION via the forward chain.
+
+    Returns the migrated document, the unchanged document if already current, or
+    None if a version gap has no registered migrator (unknown/future version).
+    """
+    version = document.get("schemaVersion")
+    if not isinstance(version, int):
+        return None
+    if version == SCHEMA_VERSION:
+        return document
+    working = copy.deepcopy(document)
+    guard = 0
+    while working.get("schemaVersion") != SCHEMA_VERSION:
+        current = working.get("schemaVersion")
+        migrator = _FORWARD_MIGRATIONS.get(current)
+        if migrator is None:
+            return None
+        working = migrator(working)
+        guard += 1
+        if guard > len(_FORWARD_MIGRATIONS) + 1:
+            return None
+    return working
 
 
 def _relationship_key(subject_id: str, counterparty_id: str) -> str:
@@ -198,7 +254,11 @@ class RelationshipStore:
         if self.path.exists():
             document = self._read_existing()
             if document is None:
-                self._read_only_reason = "corrupt_or_unsupported"
+                self._latch_read_only("corrupt_or_unsupported")
+
+    def _latch_read_only(self, reason: str) -> None:
+        self._read_only_reason = reason
+        record_store_health("read_only_latch", path=str(self.path), detail=reason)
 
     @property
     def read_only(self) -> bool:
@@ -221,9 +281,11 @@ class RelationshipStore:
             return None
         if not isinstance(value, dict):
             return None
-        if self._validate(value):
-            return value
-        return self._repair_bounded_working_text(value)
+        migrated = _migrate_document(value)
+        candidate = migrated if migrated is not None else value
+        if self._validate(candidate):
+            return candidate
+        return self._repair_bounded_working_text(candidate)
 
     def _repair_bounded_working_text(
         self, document: Mapping[str, Any]
@@ -277,7 +339,7 @@ class RelationshipStore:
                 if self.path.exists():
                     current = self._read_existing()
                     if current is None:
-                        self._read_only_reason = "corrupt_or_unsupported"
+                        self._latch_read_only("corrupt_or_unsupported")
                         return False, None
                 else:
                     current = new_state_document()
@@ -1233,3 +1295,22 @@ class RelationshipStore:
 
         self._mutate(update)
         return npc_id
+
+
+def assert_store_writable(
+    path: os.PathLike[str] | str = DEFAULT_STATE_PATH,
+    *,
+    schema_path: os.PathLike[str] | str = DEFAULT_SCHEMA_PATH,
+) -> None:
+    """Startup guard: raise if an existing sidecar cannot be opened writable.
+
+    A corrupt or unmigratable store would otherwise degrade silently to read-only
+    at runtime and persist nothing while narration still looks perfect. Call this
+    at boot so that failure is loud and fatal instead of invisible.
+    """
+    store = RelationshipStore(path, schema_path=schema_path)
+    if store.read_only:
+        raise RuntimeError(
+            "NPC relationship store at %s is read-only (%s); refusing to start with "
+            "a silently non-persisting memory store." % (path, store.read_only_reason)
+        )
