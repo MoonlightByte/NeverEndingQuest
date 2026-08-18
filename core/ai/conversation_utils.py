@@ -311,6 +311,218 @@ def load_json_data(file_path):
         print(f"{file_path} has an invalid JSON format. Returning None.")
         return None
 
+
+def filter_active_companion_memories(memory_rows, party_tracker_data):
+    """Keep transitional legacy memory only for exact active roster names."""
+    active_roster_names = {
+        str(row.get("name") or "").strip().casefold()
+        for row in (party_tracker_data or {}).get("partyNPCs", [])
+        if isinstance(row, dict) and str(row.get("name") or "").strip()
+    }
+    return [
+        row
+        for row in memory_rows
+        if isinstance(row, dict)
+        and str(row.get("n") or "").strip().casefold() in active_roster_names
+    ]
+
+
+_LEGACY_COMPANION_MEMORY_PREFIX = "=== COMPANION MEMORIES (Compressed) ==="
+_CANONICAL_COMPANION_CONTEXT_PREFIX = "=== ACTIVE COMPANION CANONICAL CONTEXT ==="
+_MAX_CANONICAL_COMPANION_CONTEXT_CHARS = 16000
+
+
+def _build_legacy_companion_memory_message(party_tracker_data, legacy_path):
+    """Return the Phase 6 active-roster legacy block without changing its bytes."""
+    try:
+        path = os.fspath(legacy_path)
+        if not os.path.exists(path):
+            return None
+        with open(path, "r", encoding="utf-8") as handle:
+            memories = json.load(handle)
+        if not memories or "npcs" not in memories:
+            return None
+
+        valid_npcs = []
+        for npc in filter_active_companion_memories(
+            memories["npcs"], party_tracker_data
+        ):
+            es = npc.get("es", [0.0, 0.0, 0.0, 0.0, 0.0])
+            mem = npc.get("mem", [])
+            interaction_count = npc.get("ti", 0)
+            npc_name = npc.get("n", "unknown")
+            if (
+                sum(abs(value) for value in es) == 0.0
+                and len(mem) == 0
+                and interaction_count > 0
+            ):
+                warning(
+                    f"Detected corrupted memory data for {npc_name}: "
+                    f"{interaction_count} interactions but zero emotional state and no memories. "
+                    "This NPC will be excluded from context until memories regenerate.",
+                    category="memory",
+                )
+                continue
+            valid_npcs.append(npc)
+
+        if not valid_npcs:
+            debug(
+                "No valid companion memories to inject (all NPCs have corrupted data)",
+                category="memory",
+            )
+            return None
+        memory_content = _LEGACY_COMPANION_MEMORY_PREFIX + "\n"
+        memory_content += json.dumps(valid_npcs, separators=(",", ":"))
+        memory_content += (
+            "\n@GUIDE: Use ES (emotional state) for tone, "
+            "BM (behavioral model) for consistency"
+        )
+        memory_content += "\n==="
+        return {"role": "system", "content": memory_content}
+    except Exception as exc:
+        warning(f"Failed to inject memories (non-fatal): {exc}", category="memory")
+        return None
+
+
+def _latest_player_input(conversation_history):
+    from core.npc.voice_context import _raw_player_text
+
+    for message in reversed(conversation_history):
+        if isinstance(message, dict) and message.get("role") == "user":
+            value = _raw_player_text(message.get("content"))
+            if value and not value.startswith("Error Note:"):
+                return value
+    return ""
+
+
+def _canonical_context_row(packet):
+    """Project one bounded packet without vectors or private working memory."""
+    npc = packet["npc"]
+    context = packet["context"]
+    evidence = []
+    for record in packet["relationship"].get("recentEvents", []):
+        evidence.append(
+            {
+                "actor": record.get("actor", ""),
+                "target": record.get("target", ""),
+                "eventType": record.get("eventType"),
+                "magnitude": record.get("magnitude"),
+                "witnessed": bool(record.get("witnessed")),
+                "summary": record.get("summary", ""),
+            }
+        )
+    return {
+        "npc": {
+            "id": npc["id"],
+            "name": npc["name"],
+            "role": npc["role"],
+        },
+        "profile": npc["profile"],
+        "relationshipEvidence": evidence,
+        "currentGoals": context.get("currentGoals", []),
+    }
+
+
+def _build_canonical_companion_context_message(
+    party_tracker_data,
+    conversation_history,
+    *,
+    relationship_store,
+    path_manager,
+    json_loader,
+):
+    from core.npc.voice_context import build_ooc_packets_for_turn
+
+    members = party_tracker_data.get("partyMembers", [])
+    first_member = members[0] if isinstance(members, list) and members else ""
+    player_name = (
+        str(first_member.get("name") or "").strip()
+        if isinstance(first_member, dict)
+        else str(first_member or "").strip()
+    )
+    if not player_name:
+        return None
+    packets = build_ooc_packets_for_turn(
+        party_tracker_data=party_tracker_data,
+        player_name=player_name,
+        raw_input=_latest_player_input(conversation_history),
+        location_data=None,
+        conversation_prefix=conversation_history,
+        path_manager=path_manager,
+        json_loader=json_loader,
+        relationship_store=relationship_store,
+        limit=4,
+    )
+    rows = []
+    for packet in packets:
+        candidate_rows = rows + [_canonical_context_row(packet)]
+        candidate_json = json.dumps(
+            candidate_rows,
+            ensure_ascii=True,
+            separators=(",", ":"),
+        )
+        candidate_content = (
+            _CANONICAL_COMPANION_CONTEXT_PREFIX
+            + "\n"
+            + candidate_json
+            + "\n==="
+        )
+        if len(candidate_content) > _MAX_CANONICAL_COMPANION_CONTEXT_CHARS:
+            break
+        rows = candidate_rows
+    if not rows:
+        return None
+    content = (
+        _CANONICAL_COMPANION_CONTEXT_PREFIX
+        + "\n"
+        + json.dumps(rows, ensure_ascii=True, separators=(",", ":"))
+        + "\n==="
+    )
+    return {"role": "system", "content": content}
+
+
+def build_companion_memory_message(
+    party_tracker_data,
+    conversation_history,
+    *,
+    npc_voice_enabled,
+    relationship_store=None,
+    path_manager=None,
+    json_loader=safe_json_load,
+    legacy_path=os.path.join(
+        "data", "companion_memories", "memories_compressed.json"
+    ),
+):
+    """Select canonical active context, or preserve the exact legacy fallback."""
+    if not npc_voice_enabled:
+        return _build_legacy_companion_memory_message(
+            party_tracker_data, legacy_path
+        )
+
+    try:
+        from core.npc.relationship_store import RelationshipStore
+
+        store = relationship_store or RelationshipStore()
+        if not store.path.exists() or store.read_only:
+            return _build_legacy_companion_memory_message(
+                party_tracker_data, legacy_path
+            )
+        module_name = str(party_tracker_data.get("module") or "").replace(" ", "_")
+        manager = path_manager or ModulePathManager(module_name)
+        return _build_canonical_companion_context_message(
+            party_tracker_data,
+            conversation_history,
+            relationship_store=store,
+            path_manager=manager,
+            json_loader=json_loader,
+        )
+    except Exception as exc:
+        warning(
+            f"Failed to inject canonical companion context (non-fatal): {exc}",
+            category="memory",
+        )
+        return None
+
 def update_conversation_history(conversation_history, party_tracker_data, plot_data, module_data):
     # Read the actual system prompt to get the proper identifier
     with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "prompts", "system_prompt.txt"), "r", encoding="utf-8") as file:
@@ -400,7 +612,13 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
             continue
 
         # ALWAYS remove companion memories - fresh data will be injected from file
-        if msg["role"] == "system" and "=== COMPANION MEMORIES (Compressed) ===" in msg.get("content", ""):
+        if msg["role"] == "system" and any(
+            marker in msg.get("content", "")
+            for marker in (
+                _LEGACY_COMPANION_MEMORY_PREFIX,
+                _CANONICAL_COMPANION_CONTEXT_PREFIX,
+            )
+        ):
             debug("Removing existing companion memories (will be refreshed from file)", category="memory")
             continue
 
@@ -410,49 +628,26 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
     # Create a new list starting with the primary system prompt
     new_history = [primary_system_prompt] if primary_system_prompt else []
 
-    # ALWAYS inject fresh compressed companion memories from file
-    # This prevents stale data from being perpetuated in conversation history
+    # Refresh exactly one companion context block immediately after the main prompt.
+    # T105: flag-off and unavailable-sidecar paths retain the Phase 6 legacy bytes.
     try:
-        compressed_path = os.path.join("data", "companion_memories", "memories_compressed.json")
-        if os.path.exists(compressed_path):
-            with open(compressed_path, 'r', encoding='utf-8') as f:
-                memories = json.load(f)
+        import config as runtime_config
 
-            # Format memories compactly for AI
-            if memories and 'npcs' in memories:
-                # Self-healing: Validate memory structure and fix corrupted data
-                valid_npcs = []
-                for npc in memories['npcs']:
-                    # Check for corrupted emotional state (all zeros) or empty memories with positive interaction count
-                    es = npc.get('es', [0.0, 0.0, 0.0, 0.0, 0.0])
-                    mem = npc.get('mem', [])
-                    interaction_count = npc.get('ti', 0)
-                    npc_name = npc.get('n', 'unknown')
-
-                    # Flag suspicious data patterns
-                    if sum(abs(x) for x in es) == 0.0 and len(mem) == 0 and interaction_count > 0:
-                        warning(f"Detected corrupted memory data for {npc_name}: " +
-                               f"{interaction_count} interactions but zero emotional state and no memories. " +
-                               "This NPC will be excluded from context until memories regenerate.",
-                               category="memory")
-                        continue
-
-                    valid_npcs.append(npc)
-
-                if valid_npcs:
-                    memory_content = "=== COMPANION MEMORIES (Compressed) ===\n"
-                    memory_content += json.dumps(valid_npcs, separators=(',', ':'))
-                    memory_content += "\n@GUIDE: Use ES (emotional state) for tone, BM (behavioral model) for consistency"
-                    memory_content += "\n==="
-
-                    # Insert right after system prompt
-                    memory_message = {'role': 'system', 'content': memory_content}
-                    new_history.append(memory_message)
-                    debug(f"Injected fresh companion memories for {len(valid_npcs)} NPCs", category="memory")
-                else:
-                    debug("No valid companion memories to inject (all NPCs have corrupted data)", category="memory")
-    except Exception as e:
-        warning(f"Failed to inject memories (non-fatal): {e}", category="memory")
+        memory_message = build_companion_memory_message(
+            party_tracker_data,
+            conversation_history,
+            npc_voice_enabled=(
+                getattr(runtime_config, "NPC_VOICE_ENABLED", False) is True
+            ),
+        )
+        if memory_message is not None:
+            new_history.append(memory_message)
+            if _CANONICAL_COMPANION_CONTEXT_PREFIX in memory_message["content"]:
+                debug("Injected selective canonical companion context", category="memory")
+            else:
+                debug("Injected fresh active-roster legacy companion memories", category="memory")
+    except Exception as exc:
+        warning(f"Failed to inject memories (non-fatal): {exc}", category="memory")
 
     debug(f"VALIDATION: Current module from party tracker: '{current_module}'", category="module_management")
     
