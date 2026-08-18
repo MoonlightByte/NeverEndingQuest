@@ -294,12 +294,20 @@ _declare(
 _declare(
     "T040",
     _profiles(
-        "COMBAT_VALID_GPT54_NONE",
+        "COMBAT_VALID_TERRA_LOW",
         "COMBAT_VALID_GEMINI_FLASH_LOW",
         "COMBAT_VALID_LEGACY",
         "COMBAT_VALID_LMSTUDIO",
     ),
-    note="Retain incumbent: no Luna/Terra profile through high matched its 4/4 broad combat-referee result.",
+    note="OpenAI=terra|low. Replaced gpt-5.4 after adversarial + broad referee testing: "
+         "on a poisoned player-pause case (DM plan hallucinates a 3-actor window vs the "
+         "authoritative player-only state window) gpt-5.4 AND luna|low false-positive "
+         "rejected legitimate play (jamming combat in a retry loop) while terra was "
+         "correct; on a 45-case randomized battery terra|low caught 33/33 violation "
+         "types (0 false negatives) and passed all valid cases. Chosen over sol|none on "
+         "cost (terra $2/$12 vs sol $5/$30 per 1M) at equal correctness; terra|medium/high "
+         "add no accuracy. Paired with a combat_validation prompt clause: plan/narration "
+         "text does not define the turn window (only game state does).",
 )
 _declare(
     "T041",

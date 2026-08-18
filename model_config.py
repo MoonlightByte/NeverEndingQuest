@@ -373,8 +373,22 @@ CHAR_EFFECTS_LMSTUDIO = {"model": "local-model"}
 # gpt-5.2 FAILS validation (over-rejects valid responses at all reasoning levels)
 # REQUIRES v4 prompt changes to combat_validation_prompt_compressed.txt
 
-# OpenAI (gpt-5.4 with no reasoning -- 4/4 correct, 2.5s avg, temp=0.3 passes through)
+# OpenAI (gpt-5.4 with no reasoning -- retained as fallback reference)
 COMBAT_VALID_GPT54_NONE = {"model": "gpt-5.4", "reasoning_effort": "none"}
+
+# OpenAI selected (gpt-5.6-terra, low reasoning). Replaces gpt-5.4 as the T040
+# combat referee after adversarial + broad testing:
+#  - Poisoned player-pause case (DM plan hallucinates a 3-actor window while the
+#    authoritative state window is player-only): gpt-5.4 AND luna|low false-positive
+#    rejected legitimate play (jamming combat in a retry loop); terra|low was correct.
+#  - 45-case randomized battery across 15 rule dimensions: terra|low caught 33/33
+#    violation types (0 false negatives) and passed all valid cases (0 false
+#    positives once valid candidates echo the turn window, per plan_must_echo).
+# Chosen over sol|none on cost: identical correctness at ~2.3x lower price
+# (terra $2/$12 vs sol $5/$30 per 1M in/out). terra|medium/high add no accuracy.
+# gpt-5.6-sol / gpt-5.4 profiles retained above as references.
+COMBAT_VALID_TERRA_LOW = {"model": "gpt-5.6-terra", "reasoning_effort": "low"}
+COMBAT_VALID_SOL_NONE = {"model": "gpt-5.6-sol", "reasoning_effort": "none"}
 
 # Gemini (3-flash with low thinking -- 4/4 correct, 1.6s avg, cheapest)
 # MED-1 (#127): inline schema for T040 combat validation (no schema file exists).
@@ -942,6 +956,8 @@ OPENAI_GPT56_TERRA_NONE = {"model": "gpt-5.6-terra", "reasoning_effort": "none"}
 OPENAI_GPT56_TERRA_LOW = {"model": "gpt-5.6-terra", "reasoning_effort": "low"}
 OPENAI_GPT56_TERRA_MEDIUM = {"model": "gpt-5.6-terra", "reasoning_effort": "medium"}
 OPENAI_GPT56_TERRA_HIGH = {"model": "gpt-5.6-terra", "reasoning_effort": "high"}
+OPENAI_GPT56_SOL_NONE = {"model": "gpt-5.6-sol", "reasoning_effort": "none"}
+OPENAI_GPT56_SOL_LOW = {"model": "gpt-5.6-sol", "reasoning_effort": "low"}
 
 DM_MAIN_T026_GPT56LUNA_HIGH = copy.deepcopy(OPENAI_GPT56_LUNA_HIGH)
 

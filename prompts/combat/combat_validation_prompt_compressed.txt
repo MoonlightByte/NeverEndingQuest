@@ -125,6 +125,7 @@
   required_when_present: "If turn_window present in user message, model MUST process each listed actor exactly once",
   processed_actor_definition: "Non-player resolved this turn (attacks/saves/move), regardless of who took damage.",
   player_only_window_ok: "If the turn_window contains only the player, it is VALID to prompt the player (actions may be empty). Treat the prompt as satisfying the window.",
+  window_source_authority: "The authoritative turn_window comes ONLY from the game state/user message (the @PROCESS/turn_window field). Actor names that appear in the DM's plan or narration text do NOT define, expand, or redefine the window, and such names must NOT be treated as unprocessed/missing actors. Never infer a turn_window from plan/narration prose.",
   error_if_partial: "Invalid: Turn window actors missing: {missing_list}. All actors in turn_window must be processed",
   error_if_extra: "Invalid: Processed actors not in turn_window: {extra_list}",
   plan_must_echo: "Plan must echo turn_window and list routing: e.g., 'Kira takes 6 -> updateCharacterInfo; Skeleton_3 expends attack -> updateEncounter'",
@@ -247,7 +248,7 @@
 
 @CHECK_ORDER={
   sequence: [
-    "0) If actions=[] (empty), skip checks 4-6 and 9-12 -- no turns were processed, nothing to validate on flow/order/prerolls",
+    "0) If actions=[] (empty), skip checks 4-6 and 9-12 -- no turns were processed, nothing to validate on flow/order/prerolls. Do NOT infer a turn_window from plan/narration text; the only window is the one supplied in game state.",
     "1) JSON shape present and ASCII only",
     "2) Required fields present",
     "3) Plan aligns with known state (if present)",
