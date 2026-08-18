@@ -215,41 +215,48 @@ class EpisodeStore:
 
     def _mutate(
         self, callback: Callable[[Dict[str, Any]], Tuple[bool, Any]]
-    ) -> Tuple[bool, Any]:
+    ) -> Tuple[str, Any]:
+        """Returns (outcome, result) where outcome is 'wrote' | 'noop' | 'failed'.
+
+        'noop' means the callback found nothing to change (idempotent success);
+        'failed' means the write did NOT land (read-only, lock timeout, schema
+        reject, or IO error) -- callers MUST treat 'failed' as no bytes written.
+        """
         if self.read_only:
-            return False, None
+            return "failed", None
         try:
             with path_transaction_lock(
                 self.path, suffix=".episode-ledger.lock", timeout_seconds=5.0
             ) as acquired:
                 if acquired is None:
-                    return False, None
+                    record_store_health("episode_lock_timeout", path=str(self.path))
+                    return "failed", None
                 if self.path.exists():
                     current = self._read_existing()
                     if current is None:
                         self._latch_read_only("corrupt_or_unsupported")
-                        return False, None
+                        return "failed", None
                 else:
                     current = new_ledger_document()
                 candidate = copy.deepcopy(current)
                 changed, result = callback(candidate)
                 if not changed:
-                    return False, result
+                    return "noop", result
                 candidate["revision"] = current["revision"] + 1
                 if not self._validate(candidate):
                     record_store_health(
                         "episode_write_invalid", path=str(self.path), detail="schema"
                     )
-                    return False, result
+                    return "failed", result
                 try:
                     safe_json_dump(candidate, self.path, ensure_ascii=True)
                 except Exception:
                     record_store_health("episode_write_failed", path=str(self.path))
-                    return False, result
-                return True, result
+                    return "failed", result
+                return "wrote", result
         except Exception:
             record_store_health("episode_mutate_failed", path=str(self.path))
-            return False, None
+            return "failed", None
 
     def commit_episode(
         self,
@@ -310,10 +317,13 @@ class EpisodeStore:
             episodes[episode_id] = record
             return True, episode_id
 
-        _, result = self._mutate(update)
-        # result is the id whether or not a write was needed (idempotent no-op still
-        # resolves to the stable id); None only on a hard failure.
-        return result if result is not None else (episode_id if not self.read_only else None)
+        outcome, result = self._mutate(update)
+        # Honest success only: a real write or an idempotent no-op (row already
+        # matches). 'failed' (read-only, lock timeout, schema reject, IO) returns
+        # None so a caller never links to an episode that is not on disk.
+        if outcome in ("wrote", "noop"):
+            return result
+        return None
 
     def get_episode(self, episode_id: str) -> Optional[Dict[str, Any]]:
         return self.snapshot()["episodes"].get(episode_id)

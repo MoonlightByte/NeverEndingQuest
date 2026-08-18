@@ -353,11 +353,11 @@ class RelationshipStore:
                 try:
                     safe_json_dump(candidate, self.path, ensure_ascii=True)
                 except Exception:
-                    _LOGGER.warning("NPC relationship state write failed")
+                    record_store_health("relationship_write_failed", path=str(self.path))
                     return False, result
                 return True, result
         except Exception:
-            _LOGGER.warning("NPC relationship state mutation failed")
+            record_store_health("relationship_mutate_failed", path=str(self.path))
             return False, None
 
     def _resolve_existing_identity(
