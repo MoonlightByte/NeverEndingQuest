@@ -22,7 +22,6 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
-from core.effects.clock import scalar_from_calendar
 from core.npc.episode_extraction import extract_episode, flatten_scene
 from core.npc.episode_store import EpisodeStore
 from core.npc.relationship_store import (
@@ -100,15 +99,34 @@ def resolve_present_companions(
     return present
 
 
-def _boundary_turn_id(world: Mapping[str, Any], segment_len: int) -> str:
-    """Close-time world clock (R2): stable within a visit, advances across revisits.
-    Falls back to a position token if the calendar is incomplete."""
-    if isinstance(world, Mapping) and all(k in world for k in ("year", "month", "day")):
-        try:
-            return str(scalar_from_calendar(dict(world)))
-        except (TypeError, ValueError):
-            pass
-    return "pos-%d" % segment_len
+def location_close_position(
+    conversation_history: Sequence[Mapping[str, Any]], transition_index: int
+) -> int:
+    """Ordinal of this location-close within the module = count of 'Location
+    transition:' markers up to and including transition_index (R2).
+
+    Position is stable and reconstructable IDENTICALLY from the live history and
+    the archive (both preserve transition markers), and is distinct per visit, so
+    the coordinate episodeId converges between live capture and module-leave
+    consolidation -- never a content hash.
+    """
+    count = 0
+    upper = min(transition_index + 1, len(conversation_history))
+    for i in range(upper):
+        message = conversation_history[i]
+        content = message.get("content") if isinstance(message, Mapping) else None
+        if (
+            isinstance(message, Mapping)
+            and message.get("role") == "user"
+            and isinstance(content, str)
+            and "Location transition:" in content
+        ):
+            count += 1
+    return count
+
+
+def boundary_turn_id_for_position(position: int) -> str:
+    return "close-%d" % position
 
 
 def capture_location_episode(
@@ -118,8 +136,10 @@ def capture_location_episode(
     segment_messages: Sequence[Mapping[str, Any]],
     party_tracker_data: Mapping[str, Any],
     path_manager: Any,
+    boundary_turn_id: str,
     player_name: str = "",
     provider: Optional[str] = None,
+    derived_from: str = "location_summary",
     episode_store: Optional[EpisodeStore] = None,
     rel_store: Optional[RelationshipStore] = None,
     json_loader: Callable[[str], Any] = safe_json_load,
@@ -162,8 +182,8 @@ def capture_location_episode(
             location_id=leaving_location_id or str(world.get("currentLocationId") or ""),
             location_name=leaving_location_name,
             game_day=game_day_ordinal(world),
-            boundary_turn_id=_boundary_turn_id(world, len(segment_messages)),
-            derived_from="location_summary",
+            boundary_turn_id=boundary_turn_id,
+            derived_from=derived_from,
             **result,
         )
     except Exception as error:  # noqa: BLE001 - fail-open; capture never breaks a turn

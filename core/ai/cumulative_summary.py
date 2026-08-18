@@ -467,7 +467,10 @@ def compress_conversation_history_on_transition(conversation_history, leaving_lo
                 from core.npc.episode_capture import (
                     capture_location_episode_async,
                     leaving_location_id_from_marker,
+                    location_close_position,
+                    boundary_turn_id_for_position,
                 )
+                position = location_close_position(conversation_history, transition_index)
                 capture_location_episode_async(
                     leaving_location_name=leaving_location_name,
                     leaving_location_id=leaving_location_id_from_marker(
@@ -475,6 +478,7 @@ def compress_conversation_history_on_transition(conversation_history, leaving_lo
                     segment_messages=list(messages_to_summarize),
                     party_tracker_data=party_tracker_data,
                     path_manager=path_manager,
+                    boundary_turn_id=boundary_turn_id_for_position(position),
                     player_name=player_name,
                 )
         except Exception:
