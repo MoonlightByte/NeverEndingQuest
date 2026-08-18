@@ -307,7 +307,9 @@ class NpcProfileService:
                     messages=build_messages(source_copy, retry_reason),
                     model=model,
                     temperature=TEMPERATURE,
-                    max_tokens=MAX_OUTPUT_TOKENS,
+                    # No max_tokens/max_completion_tokens on any call: gpt-5.x (luna)
+                    # rejects max_tokens with a 400. Structured output is bounded by
+                    # the client-side profile contract validation instead.
                     retry_attempt=attempt,
                     **config,
                 )

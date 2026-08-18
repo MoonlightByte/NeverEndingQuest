@@ -572,7 +572,9 @@ class NpcVoiceService:
                     messages=messages,
                     model=model,
                     temperature=TEMPERATURE,
-                    max_tokens=MAX_OUTPUT_TOKENS,
+                    # No max_tokens/max_completion_tokens on any call: the gpt-5.x
+                    # default (luna) rejects max_tokens with a 400. Output length is
+                    # bounded by the client-side contract validation instead.
                     retry_attempt=attempt,
                     **config,
                 )
