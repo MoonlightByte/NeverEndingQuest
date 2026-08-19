@@ -395,7 +395,42 @@ def _latest_player_input(conversation_history):
     return ""
 
 
-def _canonical_context_row(packet):
+def _companion_memory_rows(npc_id, episode_store, relationship_store, limit=3):
+    """Top pinned/salient episodic memories for one NPC, rendered against the shared
+    canonical episode (headline is the factual authority; personalLine is the NPC's
+    own colouring). Cheap reads only, fail-open. This is Phase 3 default injection --
+    the memories that proactively colour the DM's per-turn context."""
+    if not npc_id or episode_store is None or relationship_store is None:
+        return []
+    try:
+        pov = relationship_store.get_pov_episodes(npc_id)
+    except Exception:
+        return []
+    pov = sorted(
+        pov,
+        key=lambda r: (bool(r.get("pinned")), r.get("salienceScore", 0.0)),
+        reverse=True,
+    )[:limit]
+    rows = []
+    for row in pov:
+        try:
+            canonical = episode_store.get_episode(row.get("episodeId"))
+        except Exception:
+            canonical = None
+        if not canonical:
+            continue
+        rows.append(
+            {
+                "where": canonical.get("locationName", ""),
+                "what": canonical.get("headline", ""),
+                "youRecall": row.get("personalLine", ""),
+                "feeling": row.get("povTag", ""),
+            }
+        )
+    return rows
+
+
+def _canonical_context_row(packet, episode_store=None, relationship_store=None):
     """Project one bounded packet without vectors or private working memory."""
     npc = packet["npc"]
     context = packet["context"]
@@ -411,7 +446,7 @@ def _canonical_context_row(packet):
                 "summary": record.get("summary", ""),
             }
         )
-    return {
+    row = {
         "npc": {
             "id": npc["id"],
             "name": npc["name"],
@@ -421,6 +456,10 @@ def _canonical_context_row(packet):
         "relationshipEvidence": evidence,
         "currentGoals": context.get("currentGoals", []),
     }
+    memories = _companion_memory_rows(npc["id"], episode_store, relationship_store)
+    if memories:
+        row["memories"] = memories
+    return row
 
 
 def _build_canonical_companion_context_message(
@@ -453,9 +492,23 @@ def _build_canonical_companion_context_message(
         relationship_store=relationship_store,
         limit=4,
     )
+    episode_store = None
+    try:
+        from core.npc.episode_store import EpisodeStore
+
+        candidate_store = EpisodeStore()
+        episode_store = None if candidate_store.read_only else candidate_store
+    except Exception:
+        episode_store = None
     rows = []
     for packet in packets:
-        candidate_rows = rows + [_canonical_context_row(packet)]
+        candidate_rows = rows + [
+            _canonical_context_row(
+                packet,
+                episode_store=episode_store,
+                relationship_store=relationship_store,
+            )
+        ]
         candidate_json = json.dumps(
             candidate_rows,
             ensure_ascii=True,
