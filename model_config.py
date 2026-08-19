@@ -1006,6 +1006,15 @@ NPC_EPISODE_T108_GEMINI_FLASH_LOW = {"model": "gemini-3.1-flash-preview", "think
 NPC_EPISODE_T108_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 NPC_EPISODE_T108_LMSTUDIO = {"model": "local-model"}
 
+# T112: episodic RECALL anchor-parse. When the player references the past, this
+# parses their line into structured anchors (entities/places/outcomes); CODE then
+# selects the matching episodeIds from the NPC's own index (the model never sees or
+# selects episodes -> it cannot fabricate a memory). On-demand + cheap.
+NPC_RECALL_T112_OPENAI_LUNA_LOW = copy.deepcopy(OPENAI_GPT56_LUNA_LOW)
+NPC_RECALL_T112_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
+NPC_RECALL_T112_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+NPC_RECALL_T112_LMSTUDIO = {"model": "local-model"}
+
 # Feature flag: gates the NPC voice injection wiring in main.py/combat_manager.py.
 # Shipped ON (owner ship-on directive) after all validation gates passed: full
 # tests/npc suite 104/104, real headless OOC acceptance (say/do/want reach the DM

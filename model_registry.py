@@ -606,6 +606,19 @@ _declare(
          "(designated on a real-archive sample). The Gemini response_schema is supplied "
          "by the service (core/npc/episode_extraction.py).",
 )
+_declare(
+    "T112",
+    _profiles(
+        "NPC_RECALL_T112_OPENAI_LUNA_LOW",
+        "NPC_RECALL_T112_GEMINI_FLASHLITE_LOW",
+        "NPC_RECALL_T112_LEGACY",
+        "NPC_RECALL_T112_LMSTUDIO",
+    ),
+    note="Episodic RECALL anchor-parse: parses a player's 'remember when...' line into "
+         "structured anchors; CODE selects the matching episodeIds from the NPC's own "
+         "index (model never selects episodes -> cannot fabricate). Gated by "
+         "NPC_VOICE_ENABLED. OpenAI luna|low. Service: core/npc/episode_recall.py.",
+)
 
 
 def _build_bindings():
@@ -628,7 +641,7 @@ REGISTERED_TASK_IDS = tuple(
     "T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T050 T051 T052 T053 "
     "T054 T059 T063 T064 T065 T066 T067 T077 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T091 T092 T093 T094 T095 T096 T097 T098 "
-    "T099 T100 T101 T102 T103 T105 T107 T108".split()
+    "T099 T100 T101 T102 T103 T105 T107 T108 T112".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 
