@@ -1927,12 +1927,41 @@ def summarize_dialogue(
     return dialogue_summary
 
 
+def _capture_combat_episode_best_effort(conversation_history, encounter_data, party_tracker_data):
+    """W2 seam shared by both combat-exit paths (legacy + agentic). Gated on
+    NPC_VOICE_ENABLED; offloaded fire-and-forget; deepcopies transcript + encounter so
+    the worker reads a stable snapshot after the caller archives/clears live state.
+    Fail-open: any problem here never affects combat exit."""
+    try:
+        import config as _config
+        if getattr(_config, "NPC_VOICE_ENABLED", False) is not True:
+            return
+        if not isinstance(encounter_data, dict) or not isinstance(party_tracker_data, dict):
+            return
+        import copy as _copy
+        from core.npc.episode_capture import capture_combat_episode_async
+        player_name = ""
+        for creature in encounter_data.get("creatures", []) or []:
+            if isinstance(creature, dict) and creature.get("type") == "player":
+                player_name = str(creature.get("name") or "")
+                break
+        capture_combat_episode_async(
+            conversation_history=_copy.deepcopy(list(conversation_history or [])),
+            encounter_data=_copy.deepcopy(encounter_data),
+            party_tracker_data=_copy.deepcopy(party_tracker_data),
+            player_name=player_name,
+        )
+    except Exception:
+        pass
+
+
 def _finalize_combat_exit(
     conversation_history,
     location_info,
     party_tracker_data,
     encounter_id,
     player_file,
+    encounter_data=None,
 ):
     """Finalize an exit without allowing optional work to block the return.
 
@@ -1941,6 +1970,12 @@ def _finalize_combat_exit(
     intact so startup can retry/recover it on the next run.
     """
     import copy
+
+    # W2: capture a combat episode from the raw transcript BEFORE it is archived/
+    # cleared. Offloaded, gated, fail-open -- must never block or fail the exit.
+    _capture_combat_episode_best_effort(
+        conversation_history, encounter_data, party_tracker_data
+    )
 
     try:
         dialogue_summary = summarize_dialogue(
@@ -2094,6 +2129,12 @@ def _complete_agentic_combat(
             )
             completion["dialogueSummary"] = dialogue_summary
             completion["summaryPublished"] = True
+
+    # W2: capture a combat episode from the raw transcript BEFORE it is archived.
+    # Offloaded, gated, fail-open -- never blocks or fails the agentic exit.
+    _capture_combat_episode_best_effort(
+        conversation_history, encounter_data, party_tracker_data
+    )
 
     # Step A: use one deterministic archive path for this final revision. A
     # retry after the file write simply overwrites the same transcript.
@@ -2272,6 +2313,21 @@ def generate_chat_history(conversation_history, encounter_id, archive_filename=N
         error(f"FAILURE: Error generating combat chat history", exception=e, category="combat_logs")
         return False
 
+def _track_combat_low_water(creature, sheet_hp):
+    """W2/R8: record the fight's low-water-mark HP per combatant from the AUTHORITATIVE
+    character-sheet HP (source of truth), not the possibly-stale exit mirror. Persisted
+    on the creature so it survives later syncs, save/restore, and combat exit. Returns
+    True when it lowered the mark (so the caller persists the encounter). Additive field
+    (encounter schema allows extra properties) -> backward compatible."""
+    if not isinstance(sheet_hp, (int, float)):
+        return False
+    previous = creature.get("combatMinHitPoints")
+    if not isinstance(previous, (int, float)) or sheet_hp < previous:
+        creature["combatMinHitPoints"] = sheet_hp
+        return True
+    return False
+
+
 def sync_active_encounter():
     """Sync player and NPC data to the active encounter file if one exists"""
     from utils.module_path_manager import ModulePathManager
@@ -2325,6 +2381,8 @@ def sync_active_encounter():
                     if creature.get("currentHitPoints") != player_data.get("hitPoints"):
                         creature["currentHitPoints"] = player_data.get("hitPoints")
                         changes_made = True
+                    if _track_combat_low_water(creature, player_data.get("hitPoints")):
+                        changes_made = True
                     if creature.get("maxHitPoints") != player_data.get("maxHitPoints"):
                         creature["maxHitPoints"] = player_data.get("maxHitPoints")
                         changes_made = True
@@ -2353,6 +2411,8 @@ def sync_active_encounter():
                         # Update combat-relevant fields
                         if creature.get("currentHitPoints") != npc_data.get("hitPoints"):
                             creature["currentHitPoints"] = npc_data.get("hitPoints")
+                            changes_made = True
+                        if _track_combat_low_water(creature, npc_data.get("hitPoints")):
                             changes_made = True
                         if creature.get("maxHitPoints") != npc_data.get("maxHitPoints"):
                             creature["maxHitPoints"] = npc_data.get("maxHitPoints")
@@ -5153,6 +5213,7 @@ Rules:
                party_tracker_data,
                encounter_id,
                player_file,
+               encounter_data=encounter_data,
            )
            info("SUCCESS: Combat complete. Exiting simulation.", category="combat_events")
            return final_result

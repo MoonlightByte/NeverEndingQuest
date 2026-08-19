@@ -195,43 +195,221 @@ def capture_location_episode(
             return None
         world = party_tracker_data.get("worldConditions", {})
         world = world if isinstance(world, Mapping) else {}
-        module = str(party_tracker_data.get("module") or "")
-        episode_id = store.commit_episode(
-            module=module,
+        return _commit_and_overlay(
+            store, rel, result,
+            module=str(party_tracker_data.get("module") or ""),
             location_id=leaving_location_id or str(world.get("currentLocationId") or ""),
             location_name=leaving_location_name,
-            game_day=game_day_ordinal(world),
+            world=world,
             boundary_turn_id=boundary_turn_id,
             derived_from=derived_from,
-            **result,
+            player_name=player_name,
+            party_tracker_data=party_tracker_data,
+            path_manager=path_manager,
+            json_loader=json_loader,
         )
-        # Phase 2: derive each witness's POV overlay from the committed canonical
-        # episode (code-only). Fail-open; POV failure never undoes the canonical write.
-        if episode_id:
-            try:
-                from core.npc.pov_overlay import derive_pov_episodes
-                stored = store.get_episode(episode_id)
-                if stored:
-                    pov_by_npc = derive_pov_episodes(stored)
-                    for pov_npc_id, pov_rows in pov_by_npc.items():
-                        rel.upsert_pov_episodes(pov_npc_id, pov_rows)
-                    # Phase 5: elevate each witness's NPC->player relationship baseline
-                    # from their accumulated pinned memories, so the bond deepens+sticks.
-                    player_id = _resolve_player_id(
-                        player_name, party_tracker_data, path_manager, rel, json_loader
-                    )
-                    if player_id:
-                        game_day = game_day_ordinal(world)
-                        for pov_npc_id in pov_by_npc:
-                            rel.reinforce_baseline_from_pov(
-                                pov_npc_id, player_id, game_day=game_day
-                            )
-            except Exception as pov_error:  # noqa: BLE001
-                _LOGGER.debug("pov overlay/baseline derivation failed: %r", pov_error)
-        return episode_id
     except Exception as error:  # noqa: BLE001 - fail-open; capture never breaks a turn
         _LOGGER.debug("location episode capture failed: %r", error)
         return None
+
+
+def _commit_and_overlay(
+    store: EpisodeStore,
+    rel: RelationshipStore,
+    result: Mapping[str, Any],
+    *,
+    module: str,
+    location_id: str,
+    location_name: str,
+    world: Mapping[str, Any],
+    boundary_turn_id: str,
+    derived_from: str,
+    player_name: str,
+    party_tracker_data: Mapping[str, Any],
+    path_manager: Any,
+    json_loader: Callable[[str], Any],
+) -> Optional[str]:
+    """Commit one canonical episode then derive POV overlays + relationship baseline.
+    Shared by location-close, module-consolidation, and combat capture. Fail-open:
+    a POV/baseline failure never undoes the canonical write."""
+    episode_id = store.commit_episode(
+        module=module,
+        location_id=location_id,
+        location_name=location_name,
+        game_day=game_day_ordinal(world),
+        boundary_turn_id=boundary_turn_id,
+        derived_from=derived_from,
+        **result,
+    )
+    if episode_id:
+        try:
+            from core.npc.pov_overlay import derive_pov_episodes
+            stored = store.get_episode(episode_id)
+            if stored:
+                pov_by_npc = derive_pov_episodes(stored)
+                for pov_npc_id, pov_rows in pov_by_npc.items():
+                    rel.upsert_pov_episodes(pov_npc_id, pov_rows)
+                # Phase 5: elevate each witness's NPC->player relationship baseline
+                # from their accumulated pinned memories, so the bond deepens+sticks.
+                player_id = _resolve_player_id(
+                    player_name, party_tracker_data, path_manager, rel, json_loader
+                )
+                if player_id:
+                    game_day = game_day_ordinal(world)
+                    for pov_npc_id in pov_by_npc:
+                        rel.reinforce_baseline_from_pov(
+                            pov_npc_id, player_id, game_day=game_day
+                        )
+        except Exception as pov_error:  # noqa: BLE001
+            _LOGGER.debug("pov overlay/baseline derivation failed: %r", pov_error)
+    return episode_id
+
+
+def combat_witness_names(
+    encounter_data: Mapping[str, Any], party_tracker_data: Mapping[str, Any]
+) -> List[str]:
+    """Present companions in a fight, read from the AUTHORITATIVE combat roster
+    (encounter_data['creatures'] type=='npc') -- stronger than the DM notes stamp,
+    which combat turns may not carry. Never prose."""
+    names: List[str] = []
+    creatures = encounter_data.get("creatures", []) if isinstance(encounter_data, Mapping) else []
+    for creature in creatures:
+        if isinstance(creature, Mapping) and creature.get("type") == "npc":
+            name = str(creature.get("name") or "").strip()
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
+def _norm_name(value: Any) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _combat_near_death_facts(
+    encounter_data: Mapping[str, Any], present: Sequence[Mapping[str, str]]
+) -> List[Dict[str, Any]]:
+    """R8, CODE-derived (never inferred from prose): for each resolved present
+    companion, read the fight's low-water-mark HP (creature['combatMinHitPoints'],
+    tracked from the authoritative character-sheet HP in sync_active_encounter) and,
+    if it crossed <= max(1, 10% of maxHP), synthesize a near_death salient fact.
+    Subject id is the resolved witness identity so recall/POV attribute it."""
+    creatures_by_name: Dict[str, Mapping[str, Any]] = {}
+    for creature in encounter_data.get("creatures", []) or []:
+        if isinstance(creature, Mapping) and creature.get("type") == "npc":
+            creatures_by_name[_norm_name(creature.get("name"))] = creature
+    facts: List[Dict[str, Any]] = []
+    for companion in present:
+        creature = creatures_by_name.get(_norm_name(companion.get("name")))
+        if not creature:
+            continue
+        low = creature.get("combatMinHitPoints")
+        max_hp = creature.get("maxHitPoints")
+        if not isinstance(low, (int, float)) or not isinstance(max_hp, (int, float)) or max_hp <= 0:
+            continue
+        if low <= max(1, 0.1 * max_hp):
+            facts.append({
+                "kind": "near_death",
+                "subject": {"id": companion.get("id"), "label": companion.get("name")},
+                "oneLine": "%s dropped to %d of %d HP" % (
+                    companion.get("name"), int(low), int(max_hp)),
+            })
+    return facts
+
+
+def capture_combat_episode(
+    *,
+    conversation_history: Sequence[Mapping[str, Any]],
+    encounter_data: Mapping[str, Any],
+    party_tracker_data: Mapping[str, Any],
+    path_manager: Any = None,
+    player_name: str = "",
+    provider: Optional[str] = None,
+    episode_store: Optional[EpisodeStore] = None,
+    rel_store: Optional[RelationshipStore] = None,
+    json_loader: Callable[[str], Any] = safe_json_load,
+) -> Optional[str]:
+    """W2: capture one combat episode from the raw combat transcript at combat exit,
+    BEFORE the transcript is archived/cleared. Presence + near-death come from the
+    authoritative encounter roster, not prose. Synchronous core; fail-open; never
+    raises; never mutates the transcript."""
+    try:
+        if not isinstance(encounter_data, Mapping):
+            return None
+        names = combat_witness_names(encounter_data, party_tracker_data)
+        if not names:
+            return None  # no companions in the fight -> nothing to remember
+        store = episode_store or EpisodeStore()
+        if store.read_only:
+            return None
+        rel = rel_store or RelationshipStore()
+        if path_manager is None:
+            from utils.module_path_manager import ModulePathManager
+            module_name = str(party_tracker_data.get("module") or "").replace(" ", "_")
+            path_manager = ModulePathManager(module_name) if module_name else ModulePathManager()
+        present = resolve_present_companions(
+            names, party_tracker_data,
+            path_manager=path_manager, rel_store=rel, json_loader=json_loader,
+        )
+        if not present:
+            record_store_health(
+                "episode_no_witnesses",
+                detail="combat present unresolved: %s" % ", ".join(names[:5]),
+            )
+            return None
+        scene = flatten_scene([
+            m for m in conversation_history
+            if isinstance(m, Mapping) and m.get("role") != "system"
+        ])
+        result = extract_episode(
+            scene, present, player_name=player_name, provider=provider,
+            capture_fn=capture_and_fanout,
+        )
+        if result is None:
+            return None
+        result = dict(result)
+        # Presence is authoritative from the roster: every resolved combat companion
+        # is a witness even if extraction under-listed them.
+        witness_ids = set(result.get("witness_ids") or [])
+        witness_ids |= {c["id"] for c in present if c.get("id")}
+        result["witness_ids"] = list(witness_ids)
+        # R8: append code-derived near-death facts (never from prose).
+        near_death = _combat_near_death_facts(encounter_data, present)
+        if near_death:
+            result["salient_facts"] = list(result.get("salient_facts") or []) + near_death
+        if not result.get("witness_ids"):
+            record_store_health("episode_no_witnesses", detail="combat extraction produced no witnesses")
+            return None
+        world = party_tracker_data.get("worldConditions", {})
+        world = world if isinstance(world, Mapping) else {}
+        encounter_id = str(encounter_data.get("encounterId") or "").replace("/", "_")
+        if not encounter_id:
+            return None
+        return _commit_and_overlay(
+            store, rel, result,
+            module=str(party_tracker_data.get("module") or ""),
+            location_id=str(world.get("currentLocationId") or ""),
+            location_name=str(world.get("currentLocation") or "Unknown location"),
+            world=world,
+            boundary_turn_id="combat-%s" % encounter_id,
+            derived_from="combat_telemetry",
+            player_name=player_name,
+            party_tracker_data=party_tracker_data,
+            path_manager=path_manager,
+            json_loader=json_loader,
+        )
+    except Exception as error:  # noqa: BLE001 - fail-open; capture never breaks combat exit
+        _LOGGER.debug("combat episode capture failed: %r", error)
+        return None
+
+
+def capture_combat_episode_async(**kwargs: Any) -> None:
+    """Fire-and-forget offload: combat exit is never gated on the extraction call.
+    Callers pass deepcopied transcript + encounter so the worker reads a stable
+    snapshot after the caller archives/clears live state."""
+    try:
+        _EXECUTOR.submit(capture_combat_episode, **kwargs)
+    except Exception as error:  # noqa: BLE001 - never let scheduling break combat exit
+        _LOGGER.debug("combat episode capture could not be scheduled: %r", error)
 
 
 def leaving_location_id_from_marker(transition_content: str) -> str:
