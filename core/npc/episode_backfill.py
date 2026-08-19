@@ -256,11 +256,21 @@ def extract_backfill_episode(
 
 # ---- module data loaders --------------------------------------------------
 
+def _safe_load_dict(path: str) -> Optional[Dict[str, Any]]:
+    """Load one JSON dict, tolerating corrupt/empty/temp files in real dirs (a bad
+    character or area file must never break roster/name-map building)."""
+    try:
+        data = safe_json_load(path)
+    except Exception:  # noqa: BLE001 - corrupt file -> skip, never abort backfill
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def load_module_area_dicts(module_dir: str) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for path in sorted(glob.glob(os.path.join(module_dir, "areas", "*.json"))):
-        data = safe_json_load(path)
-        if isinstance(data, dict):
+        data = _safe_load_dict(path)
+        if data is not None:
             out.append(data)
     return out
 
@@ -268,10 +278,11 @@ def load_module_area_dicts(module_dir: str) -> List[Dict[str, Any]]:
 def load_character_dicts(characters_dir: str = "characters") -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for path in sorted(glob.glob(os.path.join(characters_dir, "*.json"))):
-        if ".backup" in os.path.basename(path):
+        base = os.path.basename(path)
+        if ".backup" in base or "_temp" in base or base.endswith((".bak", ".tmp")):
             continue
-        data = safe_json_load(path)
-        if isinstance(data, dict):
+        data = _safe_load_dict(path)
+        if data is not None:
             out.append(data)
     return out
 
