@@ -186,9 +186,13 @@ compaction system into per-character POV.
   prompt) and the **player-claim fix** are NOT yet in the prompt surface — they land in Phase 4b.
 - **Phase 4a — DONE** (`episode_recall.py`, `713c1c6f`). T112 recall service; real-luna acceptance
   harness passes (real recalled / fabricated absent / presence-negative not leaked).
-- **Phase 4b — PENDING (ship-critical).** Wire `recall_episodes` into a live turn (it has no live caller
-  yet) + land the grounding-contract prompt fragment + the player-claim fix. This is what makes the
-  feature grounded recall rather than ambient memory flavor.
+- **Phase 4b — DONE** (`conversation_utils.py`, `<this commit>`). Closed-world grounding contract
+  prepended to the memory-carrying companion block; targeted recall wired (one T112 anchor-parse/turn,
+  skipped when no present NPC has episodes, code-selected per NPC as a `recalled` field). Validated
+  through the REAL DM model: real reference recalled + grounded; fabricated reference hedged, no
+  confabulation. The contract also serves as the player-claim defense at the authoritative DM layer.
+  *Residual (defense-in-depth, low priority):* mark the raw player claim `unverified` inside the voice
+  packet (`voice_context` beat.summary/scene.stakes) too — the DM layer is already grounded.
 - **DEFERRED (explicitly, so it is not silently missing): R8 near-death combat telemetry + combat-path
   episode capture.** Episodes are captured at location-close + module-leave only; combat beats are
   captured only if they fall inside a location segment. The `combat_telemetry` `derivedFrom` value +
