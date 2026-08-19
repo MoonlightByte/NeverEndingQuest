@@ -167,7 +167,15 @@ compaction system into per-character POV.
 
 - **Phase 0 — DONE.** Fail-loud persistence + v1→v2 migration framework + M28 identity fix. Commits
   `fea16428`, `a4cb6174`. 107/107 npc suite.
-- **Phase 1 — canonical ledger + presence stamping (dark).**
+- **Phase 1 — DONE.** Canonical ledger + extraction + LIVE capture wiring.
+  - 1a store (`1736380e`), 1b T108 callsite luna|low (`e0be8fbb`), 1c extraction service (`975f8d7a`).
+  - 1d live per-location capture (`411e9c45`) + position-based boundary (`1e554d45`) + module-leave
+    final-location consolidation (`b164fc31`) + ledger save-manifest (`8f16d7b7`). 124/124 npc suite;
+    validated end-to-end on real archives through the real luna model.
+  - **Deferred (documented):** the startup-backfill hook (`check_and_compact_missing_summaries`
+    summarizes *arriving* locations — needs arrival-vs-leaving position reconciliation to avoid a
+    coordinate mismatch with live capture; edge case: mid-location save/reload). And Phase-6 backfill
+    of pre-stamp archives (no `Party NPCs:` presence stamp before that engine change).
 - **Phase 2 — POV overlays + code-derived salience/pinning.**
 - **Phase 3 — default injection + grounding contract + player-claim fix.**
 - **Phase 4 — agentic recall + acceptance harness (real vs fabricated tavern reference).**
