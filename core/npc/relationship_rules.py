@@ -104,3 +104,53 @@ def decay_toward_baseline(
             for name in DIMENSIONS
         }
     )
+
+
+# --- Phase 5: relationship depth -----------------------------------------------
+# A PINNED episode's emotional tag contributes to the NPC->player relationship
+# BASELINE (not the momentary value), so decay settles the bond at a memory-justified
+# level instead of returning to zero -- bonds deepen and STICK. The baseline is
+# recomputed as a pure sum over the NPC's pinned POV episodes (idempotent), then
+# clamped. This is what finally moves the intimacy/fear axes that ordinary per-turn
+# deltas leave dead (finding M27).
+_POVTAG_BASELINE_WEIGHTS = {
+    "traumatic":   {"intimacy": 1.0, "fear": 1.0},
+    "protective":  {"intimacy": 1.0, "respect": 0.5},
+    "proud":       {"respect": 1.0, "intimacy": 0.5},
+    "triumphant":  {"respect": 1.0},
+    "tender":      {"intimacy": 1.0},
+    "grateful":    {"intimacy": 1.0, "trust": 0.5},
+    "grieving":    {"intimacy": 1.0},
+    "resentful":   {"trust": -1.0, "fear": 0.5},
+    "afraid":      {"fear": 1.0},
+    "guilty":      {"intimacy": 0.5, "respect": -0.3},
+    "amused":      {"intimacy": 0.3},
+    "smitten":     {"intimacy": 1.0},
+    "longing":     {"intimacy": 1.0},
+    "heartbroken": {"intimacy": 0.5, "fear": 0.5},
+}
+_BASELINE_NUDGE = 0.08  # per unit-weight, per salience=1.0 pinned episode
+
+
+def povtag_baseline_contribution(pov_tag, salience) -> Dict[str, float]:
+    """Axis contribution a single pinned episode makes to the relationship baseline."""
+    try:
+        strength = max(0.0, min(1.0, float(salience)))
+    except (TypeError, ValueError):
+        strength = 0.0
+    weights = _POVTAG_BASELINE_WEIGHTS.get(pov_tag, {})
+    return {axis: weight * strength * _BASELINE_NUDGE for axis, weight in weights.items()}
+
+
+def baseline_from_pinned(pov_episodes) -> Dict[str, float]:
+    """Recompute the relationship baseline from an NPC's pinned POV episodes (pure,
+    idempotent): sum per-axis contributions across pinned rows, then clamp to bounds."""
+    total = {name: 0.0 for name in DIMENSIONS}
+    for episode in pov_episodes:
+        if not isinstance(episode, Mapping) or not episode.get("pinned"):
+            continue
+        for axis, delta in povtag_baseline_contribution(
+            episode.get("povTag"), episode.get("salienceScore", 0.0)
+        ).items():
+            total[axis] += delta
+    return clamp_state(total)

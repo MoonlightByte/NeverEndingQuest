@@ -99,6 +99,25 @@ def resolve_present_companions(
     return present
 
 
+def _resolve_player_id(player_name, party_tracker_data, path_manager, rel_store, json_loader):
+    """Resolve the player's identity UUID (needed to reinforce the NPC->player edge)."""
+    if not player_name:
+        return None
+    try:
+        path = path_manager.get_character_path(player_name)
+        sheet = json_loader(path)
+        name = (sheet.get("name") if isinstance(sheet, dict) else None) or player_name
+        world = party_tracker_data.get("worldConditions", {})
+        world = world if isinstance(world, Mapping) else {}
+        return rel_store.ensure_identity(
+            kind="player", display_name=str(name), sheet_path=path,
+            module=str(party_tracker_data.get("module") or ""),
+            location_id=str(world.get("currentLocationId") or ""), active=None,
+        )
+    except Exception:
+        return None
+
+
 def location_close_position(
     conversation_history: Sequence[Mapping[str, Any]], transition_index: int
 ) -> int:
@@ -193,10 +212,22 @@ def capture_location_episode(
                 from core.npc.pov_overlay import derive_pov_episodes
                 stored = store.get_episode(episode_id)
                 if stored:
-                    for pov_npc_id, pov_rows in derive_pov_episodes(stored).items():
+                    pov_by_npc = derive_pov_episodes(stored)
+                    for pov_npc_id, pov_rows in pov_by_npc.items():
                         rel.upsert_pov_episodes(pov_npc_id, pov_rows)
+                    # Phase 5: elevate each witness's NPC->player relationship baseline
+                    # from their accumulated pinned memories, so the bond deepens+sticks.
+                    player_id = _resolve_player_id(
+                        player_name, party_tracker_data, path_manager, rel, json_loader
+                    )
+                    if player_id:
+                        game_day = game_day_ordinal(world)
+                        for pov_npc_id in pov_by_npc:
+                            rel.reinforce_baseline_from_pov(
+                                pov_npc_id, player_id, game_day=game_day
+                            )
             except Exception as pov_error:  # noqa: BLE001
-                _LOGGER.debug("pov overlay derivation failed: %r", pov_error)
+                _LOGGER.debug("pov overlay/baseline derivation failed: %r", pov_error)
         return episode_id
     except Exception as error:  # noqa: BLE001 - fail-open; capture never breaks a turn
         _LOGGER.debug("location episode capture failed: %r", error)

@@ -19,6 +19,7 @@ from core.npc.relationship_rules import (
     DIMENSIONS,
     EVENT_DELTAS,
     apply_event_delta,
+    baseline_from_pinned,
     clamp_state,
     decay_toward_baseline,
     event_delta,
@@ -1374,6 +1375,34 @@ class RelationshipStore:
                 episodes[npc_id] = merged
             else:
                 episodes.pop(npc_id, None)
+            return True, None
+
+        changed, _ = self._mutate(update)
+        return changed
+
+    def reinforce_baseline_from_pov(
+        self, npc_id: str, player_id: str, *, game_day: Optional[int] = None
+    ) -> bool:
+        """Phase 5: recompute the NPC->player relationship BASELINE from the NPC's
+        PINNED POV episodes and write it onto the edge. Pure/idempotent (a function of
+        the current pinned set) so re-runs are no-ops. Elevating the baseline makes
+        decay settle the bond at a memory-justified level -- bonds deepen and STICK,
+        finally moving the intimacy/fear axes that per-turn deltas leave dead (M27).
+        Only fires when pinned memories exist, so it never clobbers a legacy baseline."""
+        if not (isinstance(npc_id, str) and npc_id and isinstance(player_id, str) and player_id):
+            return False
+        pov = self.snapshot().get("episodes", {}).get(npc_id, [])
+        if not any(isinstance(e, dict) and e.get("pinned") for e in pov):
+            return False
+        new_baseline = baseline_from_pinned(pov)
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, None]:
+            if npc_id not in document["identities"] or player_id not in document["identities"]:
+                return False, None
+            edge, _created = self._ensure_edge(document, npc_id, player_id, game_day)
+            if edge.get("baseline") == new_baseline:
+                return False, None
+            edge["baseline"] = new_baseline
             return True, None
 
         changed, _ = self._mutate(update)
