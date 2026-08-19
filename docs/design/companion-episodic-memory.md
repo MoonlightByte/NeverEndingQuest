@@ -18,11 +18,17 @@ compaction system into per-character POV.
 
 ## 2. Ground truth (mapped this session; do not re-derive)
 
-- **Fidelity is preserved.** Full per-module conversation history is archived permanently to
-  `modules/campaign_archives/{module}_conversation_NNN.json`, never deleted. On **return** to a module
-  the full archive is **rehydrated** (`conversation_utils.py:698-710`), not the lossy summary; on leave,
-  T038 re-summarizes from full history — never summary-of-summary. → **The full-fidelity source is
-  always on disk.** Episodes can be regenerated from archives, and existing campaigns can be backfilled.
+- **CORRECTION (2026-08-18, proven by review + compression audit): the archive-at-rest is COMPRESSED,
+  not full fidelity.** The earlier claim here ("the full-fidelity source is always on disk → existing
+  campaigns can be backfilled") was FALSE. The permanent archives store per-location *summaries*
+  (`=== LOCATION SUMMARY ===`), and the `Party NPCs:` presence stamp survives in ~4% of segments
+  (12/267 measured). Worse, a **rolling incremental compressor** (`incremental_compression.py`, ~every
+  15 turn-pairs) and **combat-end summarization** (T041) destroy raw turns DURING live play, before a
+  location closes — so even the shipped location-close capture misses long-location early beats and all
+  combat beats. Raw is full-fidelity only transiently, at each compression point. Consequences: (1)
+  forward capture must hook the rolling + combat compression points, not only location-close (see the
+  upgrade plan Part 1); (2) backfill of old games can only be **summary-derived** (lossy, presence
+  inferred from prose), not raw. See `docs/design/2026-08-18-episodic-upgrade-backfill-plan.md`.
 - **Compaction fork point:** Layer A per-location summary (`cumulative_summary.py:235`).
 - **Attribution gap:** the only structured "who was present" signal is combat `creatures[]`; roster
   history is destructively overwritten. → presence must be **stamped at write-time going forward**.
