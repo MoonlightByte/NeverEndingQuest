@@ -473,7 +473,7 @@ def _recall_by_npc(player_line, packets, episode_store):
     if not episode_store or not isinstance(player_line, str) or len(player_line.strip()) < 8:
         return result
     try:
-        from core.npc.episode_recall import parse_anchors, select_episodes, _tokens
+        from core.npc.episode_recall import parse_anchors, select_episodes, _tokens, _episode_terms
     except Exception:
         return result
     episodes_by_npc = {}
@@ -487,6 +487,17 @@ def _recall_by_npc(player_line, packets, episode_store):
             episodes_by_npc[npc_id] = []
     if not any(episodes_by_npc.values()):
         return result  # nothing to recall -> do not pay for the anchor-parse call
+    # Cheap code-side PRE-SCREEN: only pay for the T112 anchor-parse model call when
+    # the player line lexically overlaps SOME stored episode term (a plausible past
+    # reference). On an ordinary action turn ("I attack the goblin") there is no
+    # overlap -> skip the call. This bounds per-turn cost/latency to recall turns.
+    line_tokens = _tokens(player_line)
+    all_terms = set()
+    for episodes in episodes_by_npc.values():
+        for episode in episodes:
+            all_terms |= _episode_terms(episode)
+    if not (line_tokens & all_terms):
+        return result
     anchors = parse_anchors(player_line)
     if not anchors:
         return result
