@@ -176,9 +176,24 @@ compaction system into per-character POV.
     summarizes *arriving* locations — needs arrival-vs-leaving position reconciliation to avoid a
     coordinate mismatch with live capture; edge case: mid-location save/reload). And Phase-6 backfill
     of pre-stamp archives (no `Party NPCs:` presence stamp before that engine change).
-- **Phase 2 — POV overlays + code-derived salience/pinning.**
-- **Phase 3 — default injection + grounding contract + player-claim fix.**
-- **Phase 4 — agentic recall + acceptance harness (real vs fabricated tavern reference).**
+- **Phase 2 — DONE** (`pov_overlay.py`, `7817009d`). POV overlays + code-derived povTag/salience/
+  pinning + bounded+pinned retention. *Simplification vs R7:* salience is the 2-term form
+  (`w_intensity*intensity + w_kind*kindWeight`); the affinity-delta term and `linkedEvidenceIds`
+  population are deferred to Phase 5. `personalLine` is the fact's line verbatim (third-person), not a
+  generated first-person line — a deliberate no-model-call choice.
+- **Phase 3 — DONE, default injection only** (`conversation_utils.py`, `7f37d097`). Top pinned/salient
+  memories injected into the companion context each turn. The closed-world **grounding contract** (R9
+  prompt) and the **player-claim fix** are NOT yet in the prompt surface — they land in Phase 4b.
+- **Phase 4a — DONE** (`episode_recall.py`, `713c1c6f`). T112 recall service; real-luna acceptance
+  harness passes (real recalled / fabricated absent / presence-negative not leaked).
+- **Phase 4b — PENDING (ship-critical).** Wire `recall_episodes` into a live turn (it has no live caller
+  yet) + land the grounding-contract prompt fragment + the player-claim fix. This is what makes the
+  feature grounded recall rather than ambient memory flavor.
+- **DEFERRED (explicitly, so it is not silently missing): R8 near-death combat telemetry + combat-path
+  episode capture.** Episodes are captured at location-close + module-leave only; combat beats are
+  captured only if they fall inside a location segment. The `combat_telemetry` `derivedFrom` value +
+  `near_death` kind exist but have no producer yet. Near-death currently depends on the T108 extraction
+  noticing it in prose. Build in a later phase or keep deferred.
 - **Phase 5 — relationship depth (baseline reinforcement + anti-decay).**
 - **Phase 6 — backfill existing campaigns from archives.**
 - **Phase 7 — (deferred) local semantic retrieval for paraphrase-at-scale.**
