@@ -53,6 +53,26 @@ def stable_episode_id(module: str, location_id: str, boundary_turn_id: str) -> s
     return str(uuid.uuid5(EPISODE_NAMESPACE, seed))
 
 
+# Retrieval grain, derived (NOT stored) from an episode's coordinate + provenance.
+# Lower rank = finer/more specific = wins ties in injection & recall ordering, so a
+# specific fight or beat never gets buried under a coarse whole-module backfill
+# episode that happens to share a location. Derived so it needs no schema field and
+# stays correct for episodes written before grain existed.
+_GRAIN_FIGHT, _GRAIN_BEAT, _GRAIN_LOCATION, _GRAIN_MODULE = 0, 1, 2, 3
+
+
+def episode_grain_rank(episode: Mapping[str, Any]) -> int:
+    boundary = str(episode.get("boundaryTurnId") or "")
+    derived = str(episode.get("derivedFrom") or "")
+    if boundary.startswith("combat-") or derived == "combat_telemetry":
+        return _GRAIN_FIGHT
+    if boundary.startswith("roll-"):
+        return _GRAIN_BEAT
+    if derived == "module_consolidation" or boundary.startswith("backfill-summary-"):
+        return _GRAIN_MODULE
+    return _GRAIN_LOCATION
+
+
 def _is_uuid(value: Any) -> bool:
     if not isinstance(value, str):
         return False
@@ -344,6 +364,20 @@ class EpisodeStore:
             episode
             for episode in self.snapshot()["episodes"].values()
             if npc_id in episode.get("witnessIds", [])
+        ]
+        rows.sort(key=lambda e: e.get("ordinal", 0))
+        return rows
+
+    def episodes_at_location(self, location_id: str) -> List[Dict[str, Any]]:
+        """All episodes recorded at one location, oldest-first (mirrors
+        episodes_for_witness). Read-only; used to make retrieval location-aware --
+        returning to a place can surface what happened there."""
+        if not location_id:
+            return []
+        rows = [
+            episode
+            for episode in self.snapshot()["episodes"].values()
+            if episode.get("locationId") == location_id
         ]
         rows.sort(key=lambda e: e.get("ordinal", 0))
         return rows

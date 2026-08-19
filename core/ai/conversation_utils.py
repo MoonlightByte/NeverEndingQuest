@@ -410,30 +410,68 @@ def _latest_player_input(conversation_history):
     return ""
 
 
-def _companion_memory_rows(npc_id, episode_store, relationship_store, limit=3):
+def _companion_memory_rows(npc_id, episode_store, relationship_store, limit=3,
+                           current_location_id=None):
     """Top pinned/salient episodic memories for one NPC, rendered against the shared
     canonical episode (headline is the factual authority; personalLine is the NPC's
     own colouring). Cheap reads only, fail-open. This is Phase 3 default injection --
-    the memories that proactively colour the DM's per-turn context."""
+    the memories that proactively colour the DM's per-turn context.
+
+    When `current_location_id` is set, memories at the party's CURRENT location are
+    boosted above other (equally pinned) memories -- returning to a place surfaces
+    what happened there -- while pinned peaks from elsewhere still surface (a boost,
+    not a filter). Ties break toward the finer-grained episode."""
     if not npc_id or episode_store is None or relationship_store is None:
         return []
     try:
         pov = relationship_store.get_pov_episodes(npc_id)
     except Exception:
         return []
-    pov = sorted(
-        pov,
-        key=lambda r: (bool(r.get("pinned")), r.get("salienceScore", 0.0)),
-        reverse=True,
-    )[:limit]
-    rows = []
+    try:
+        from core.npc.episode_store import episode_grain_rank
+        episodes_index = episode_store.snapshot().get("episodes", {})
+    except Exception:
+        return []
+    enriched = []
     for row in pov:
-        try:
-            canonical = episode_store.get_episode(row.get("episodeId"))
-        except Exception:
-            canonical = None
+        canonical = episodes_index.get(row.get("episodeId"))
         if not canonical:
             continue
+        here = bool(current_location_id) and canonical.get("locationId") == current_location_id
+        enriched.append((row, canonical, here, episode_grain_rank(canonical)))
+    enriched.sort(
+        key=lambda t: (
+            bool(t[0].get("pinned")),
+            t[2],                               # at current location
+            t[0].get("salienceScore", 0.0),
+            -t[3],                              # finer grain wins ties
+        ),
+        reverse=True,
+    )
+    selected = enriched[:limit]
+    # Revisit guarantee: if the party is AT a location this NPC witnessed but their
+    # top-`limit` slots were filled entirely by pinned peaks from elsewhere, ensure
+    # the single strongest here-memory still surfaces -- returning to a place should
+    # recall it without the player having to name it. Displace only the weakest
+    # NON-pinned selected row so pinned peaks are never lost.
+    if current_location_id and not any(here for _r, _c, here, _g in selected):
+        here_rows = [t for t in enriched if t[2]]
+        if here_rows:
+            top_here = here_rows[0]  # already salience/grain-ordered
+            replace_at = None
+            for idx in range(len(selected) - 1, -1, -1):
+                if not selected[idx][0].get("pinned"):
+                    replace_at = idx
+                    break
+            if replace_at is not None:
+                selected[replace_at] = top_here
+            else:
+                # All slots are pinned peaks (never drop them) -> surface the
+                # here-memory as one bounded extra row; outer char-budget truncation
+                # bounds total size.
+                selected.append(top_here)
+    rows = []
+    for row, canonical, _here, _grain in selected:
         rows.append(
             {
                 "where": canonical.get("locationName", ""),
@@ -465,7 +503,7 @@ def _recalled_rows_for_npc(npc_id, episodes):
     return rows
 
 
-def _recall_by_npc(player_line, packets, episode_store):
+def _recall_by_npc(player_line, packets, episode_store, current_location_id=None):
     """When the player references the past, do ONE anchor-parse (T112) and CODE-select
     matching episodes per present NPC. Skips the model call entirely if no present NPC
     has any episodes. Returns {npc_id: [canonical episode, ...]}. Fail-open -> {}."""
@@ -510,14 +548,17 @@ def _recall_by_npc(player_line, packets, episode_store):
                 subject = fact.get("subject") if isinstance(fact, dict) else None
                 if isinstance(subject, dict) and subject.get("id") == npc_id:
                     ignore |= _tokens(subject.get("label"))
-        scored = select_episodes(anchors, episodes, ignore_terms=ignore)
+        scored = select_episodes(
+            anchors, episodes, ignore_terms=ignore,
+            current_location_id=current_location_id,
+        )
         if scored:
             result[npc_id] = [s["episode"] for s in scored[:2]]
     return result
 
 
 def _canonical_context_row(packet, episode_store=None, relationship_store=None,
-                           recalled_episodes=None):
+                           recalled_episodes=None, current_location_id=None):
     """Project one bounded packet without vectors or private working memory."""
     npc = packet["npc"]
     context = packet["context"]
@@ -543,7 +584,10 @@ def _canonical_context_row(packet, episode_store=None, relationship_store=None,
         "relationshipEvidence": evidence,
         "currentGoals": context.get("currentGoals", []),
     }
-    memories = _companion_memory_rows(npc["id"], episode_store, relationship_store)
+    memories = _companion_memory_rows(
+        npc["id"], episode_store, relationship_store,
+        current_location_id=current_location_id,
+    )
     if memories:
         row["memories"] = memories
     if recalled_episodes:
@@ -592,8 +636,15 @@ def _build_canonical_companion_context_message(
     except Exception:
         episode_store = None
     try:
+        current_location_id = str(
+            (party_tracker_data.get("worldConditions") or {}).get("currentLocationId") or ""
+        ) or None
+    except Exception:
+        current_location_id = None
+    try:
         recalled_by_npc = _recall_by_npc(
-            _latest_player_input(conversation_history), packets, episode_store
+            _latest_player_input(conversation_history), packets, episode_store,
+            current_location_id=current_location_id,
         )
     except Exception:
         recalled_by_npc = {}
@@ -605,6 +656,7 @@ def _build_canonical_companion_context_message(
                 episode_store=episode_store,
                 relationship_store=relationship_store,
                 recalled_episodes=recalled_by_npc.get(packet.get("npc", {}).get("id")),
+                current_location_id=current_location_id,
             )
         ]
         candidate_json = json.dumps(

@@ -143,11 +143,21 @@ def select_episodes(
     episodes: Sequence[Mapping[str, Any]],
     *,
     ignore_terms: Any = frozenset(),
+    current_location_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Code-only selection: score each episode by lexical overlap with the anchors
     plus outcome->kind hints. `ignore_terms` (e.g. the NPC's own name -- never a
     distinguishing anchor) are removed so an addressed name cannot false-match every
-    episode about that NPC. Returns episodes scoring >= MATCH_THRESHOLD."""
+    episode about that NPC. Returns episodes scoring >= MATCH_THRESHOLD.
+
+    `current_location_id`: when the party is standing at an episode's location, that
+    shared physical place IS a real anchor -- add +2 (the outcome-hint weight) so a
+    bare "remember this place?" can reach threshold. This never fabricates: the
+    episode is still drawn only from the NPC's own witnessed set and really happened
+    HERE, so surfacing it is a true recall, not a manufactured event. On a tie, prefer
+    the finer-grained episode (a specific fight over a coarse module backfill)."""
+    from core.npc.episode_store import episode_grain_rank
+
     anchor_terms = set()
     for key in ("entities", "places", "outcomes"):
         for phrase in anchors.get(key, []):
@@ -170,9 +180,18 @@ def select_episodes(
         for kind, hints in _OUTCOME_KIND_HINTS.items():
             if kind in kinds and (outcome_tokens & hints):
                 score += 2
+        if current_location_id and episode.get("locationId") == current_location_id:
+            score += 2
         if score >= MATCH_THRESHOLD:
             scored.append({"episode": episode, "score": score})
-    scored.sort(key=lambda s: (s["score"], s["episode"].get("ordinal", 0)), reverse=True)
+    scored.sort(
+        key=lambda s: (
+            s["score"],
+            -episode_grain_rank(s["episode"]),
+            s["episode"].get("ordinal", 0),
+        ),
+        reverse=True,
+    )
     return scored
 
 
@@ -185,6 +204,7 @@ def recall_episodes(
     completion_fn: Callable[..., Any] = api_client.create_completion,
     capture_fn: Callable[..., Any] = None,
     limit: int = 3,
+    current_location_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Grounded recall for one NPC. Returns {confidence, episodes, anchors}.
     confidence: 'vivid' | 'partial' | 'absent'. Fail-open -> 'absent'."""
@@ -210,7 +230,10 @@ def recall_episodes(
             subject = fact.get("subject") if isinstance(fact, Mapping) else None
             if isinstance(subject, Mapping) and subject.get("id") == npc_id:
                 ignore_terms |= _tokens(subject.get("label"))
-    scored = select_episodes(anchors, episodes, ignore_terms=ignore_terms)
+    scored = select_episodes(
+        anchors, episodes, ignore_terms=ignore_terms,
+        current_location_id=current_location_id,
+    )
     if not scored:
         return {"confidence": "absent", "episodes": [], "anchors": anchors}
     top = scored[:limit]
