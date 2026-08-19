@@ -1383,26 +1383,44 @@ class RelationshipStore:
     def reinforce_baseline_from_pov(
         self, npc_id: str, player_id: str, *, game_day: Optional[int] = None
     ) -> bool:
-        """Phase 5: recompute the NPC->player relationship BASELINE from the NPC's
-        PINNED POV episodes and write it onto the edge. Pure/idempotent (a function of
-        the current pinned set) so re-runs are no-ops. Elevating the baseline makes
-        decay settle the bond at a memory-justified level -- bonds deepen and STICK,
-        finally moving the intimacy/fear axes that per-turn deltas leave dead (M27).
-        Only fires when pinned memories exist, so it never clobbers a legacy baseline."""
+        """Phase 5: set the NPC->player BASELINE to (preserved persona/legacy base) +
+        (contribution from the NPC's PINNED POV episodes). The persona base is captured
+        ONCE into `personaBaseline` (from the pre-episodic baseline, e.g. a legacy-
+        migrated emotional state) and never overwritten, so this deepens the bond
+        without clobbering imported relationship state (backward-compat). Pure/
+        idempotent -- baseline is a function of personaBaseline + the pinned set, so
+        re-runs are no-ops. Elevating the baseline makes decay settle the bond at a
+        memory-justified level -- bonds deepen and STICK, finally moving the intimacy/
+        fear axes that per-turn deltas leave dead (M27)."""
         if not (isinstance(npc_id, str) and npc_id and isinstance(player_id, str) and player_id):
             return False
         pov = self.snapshot().get("episodes", {}).get(npc_id, [])
         if not any(isinstance(e, dict) and e.get("pinned") for e in pov):
             return False
-        new_baseline = baseline_from_pinned(pov)
+        pov_contribution = baseline_from_pinned(pov)
 
         def update(document: Dict[str, Any]) -> Tuple[bool, None]:
             if npc_id not in document["identities"] or player_id not in document["identities"]:
                 return False, None
             edge, _created = self._ensure_edge(document, npc_id, player_id, game_day)
-            if edge.get("baseline") == new_baseline:
+            # Preserve the persona/legacy base: capture the pre-episodic baseline ONCE
+            # and ADD the POV contribution on top, rather than overwriting it. A
+            # legacy-migrated baseline (from the character's imported emotional state)
+            # is therefore never clobbered. Idempotent: baseline is a pure function of
+            # personaBaseline + the current pinned set.
+            persona = edge.get("personaBaseline")
+            first_time = persona is None
+            if first_time:
+                persona = copy.deepcopy(edge.get("baseline") or _neutral())
+            combined = clamp_state({
+                axis: float(persona.get(axis, 0.0)) + float(pov_contribution.get(axis, 0.0))
+                for axis in DIMENSIONS
+            })
+            if not first_time and edge.get("baseline") == combined:
                 return False, None
-            edge["baseline"] = new_baseline
+            if first_time:
+                edge["personaBaseline"] = persona
+            edge["baseline"] = combined
             return True, None
 
         changed, _ = self._mutate(update)

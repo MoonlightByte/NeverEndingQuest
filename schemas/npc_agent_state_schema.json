@@ -171,6 +171,7 @@
         "subjectId": {"type": "string", "minLength": 1, "maxLength": 240},
         "counterpartyId": {"type": "string", "minLength": 1, "maxLength": 240},
         "baseline": {"$ref": "#/$defs/vector"},
+        "personaBaseline": {"$ref": "#/$defs/vector"},
         "current": {"$ref": "#/$defs/vector"},
         "lastDecayDay": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
         "evidence": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/evidence"}},
