@@ -437,6 +437,17 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
     # Pop internal flags
     strip_temp = kwargs.pop("_strip_temperature", False)
 
+    # Caller-supplied transport deadline (issue #134 follow-up, T104): applied as
+    # an SDK REQUEST OPTION (never a payload field) with transport retries
+    # disabled -- otherwise the SDK's client-level default (2 retries) re-issues
+    # a timed-out request, and a local model that was just disconnected at the
+    # deadline is immediately asked to generate again, up to two more times.
+    # A caller that sets a deadline owns its retry policy; the deadline is a
+    # TRUE end-to-end bound. Callers that pass no timeout are untouched.
+    request_timeout = kwargs.pop("timeout", None)
+    if request_timeout is not None:
+        client = client.with_options(timeout=request_timeout, max_retries=0)
+
     call_kwargs = {"model": model, "messages": messages}
 
     # Temperature: pass through unless stripped by constraint enforcement

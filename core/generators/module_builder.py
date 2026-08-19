@@ -2165,6 +2165,21 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             # orphaned worker (shutdown wait=False), so the build proceeds.
             import concurrent.futures
 
+            # Issue #134 follow-up: the thread timeout alone ABANDONS the worker
+            # but leaves its HTTP request streaming, so a local model (LM Studio)
+            # kept generating for thousands of tokens after the build had already
+            # moved on. For OpenAI-SDK-routed providers, also pass a per-request
+            # transport deadline: the SDK treats `timeout` as a request OPTION
+            # (never a payload field) and closes the connection on expiry --
+            # the disconnect is what actually stops local inference. The thread
+            # timeout stays as the backstop; timeout still lands on the same
+            # fail-closed skip path (module published unchanged post-T088).
+            # 110 < the 120s thread backstop so the transport reliably closes
+            # (and the worker exits with APITimeoutError -> the normal skip
+            # path) BEFORE the thread is ever abandoned.
+            if provider in ("openai", "legacy", "lmstudio"):
+                extra["timeout"] = 110
+
             def _t104_call():
                 return capture_and_fanout(
                     "T104", api_client.create_completion,
