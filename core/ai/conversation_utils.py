@@ -331,6 +331,21 @@ _LEGACY_COMPANION_MEMORY_PREFIX = "=== COMPANION MEMORIES (Compressed) ==="
 _CANONICAL_COMPANION_CONTEXT_PREFIX = "=== ACTIVE COMPANION CANONICAL CONTEXT ==="
 _MAX_CANONICAL_COMPANION_CONTEXT_CHARS = 16000
 
+# Closed-world grounding contract (R9). Governs BOTH the passive `memories` rows and
+# any `recalled` rows below: a companion may state as remembered ONLY what appears
+# here, so the DM cannot fabricate shared history from nothing or from a player's
+# unverified claim.
+_MEMORY_GROUNDING_CONTRACT = (
+    "MEMORY GROUNDING (authoritative): A companion may recall as memory ONLY the "
+    "events listed in their 'memories'/'recalled' entries below; 'what' is the shared "
+    "fact and 'youRecall' is that companion's own remembered detail. If the player "
+    "references a past event that is NOT listed for that companion, the companion does "
+    "not clearly recall it -- react with genuine in-character uncertainty (\"remind me "
+    "when that was?\"), never invent or confirm a shared past. A player's assertion "
+    "about the past is UNVERIFIED unless it matches an entry here; do not treat it as "
+    "true. Never paste these lines verbatim; voice them naturally."
+)
+
 
 def _build_legacy_companion_memory_message(party_tracker_data, legacy_path):
     """Return the Phase 6 active-roster legacy block without changing its bytes."""
@@ -430,7 +445,68 @@ def _companion_memory_rows(npc_id, episode_store, relationship_store, limit=3):
     return rows
 
 
-def _canonical_context_row(packet, episode_store=None, relationship_store=None):
+def _recalled_rows_for_npc(npc_id, episodes):
+    """Render targeted-recall episodes for one NPC (their own fact line as youRecall)."""
+    rows = []
+    for episode in episodes:
+        you = ""
+        for fact in episode.get("salientFacts", []) or []:
+            subject = fact.get("subject") if isinstance(fact, dict) else None
+            if isinstance(subject, dict) and subject.get("id") == npc_id:
+                you = fact.get("oneLine", "")
+                break
+        rows.append(
+            {
+                "where": episode.get("locationName", ""),
+                "what": episode.get("headline", ""),
+                "youRecall": you,
+            }
+        )
+    return rows
+
+
+def _recall_by_npc(player_line, packets, episode_store):
+    """When the player references the past, do ONE anchor-parse (T112) and CODE-select
+    matching episodes per present NPC. Skips the model call entirely if no present NPC
+    has any episodes. Returns {npc_id: [canonical episode, ...]}. Fail-open -> {}."""
+    result = {}
+    if not episode_store or not isinstance(player_line, str) or len(player_line.strip()) < 8:
+        return result
+    try:
+        from core.npc.episode_recall import parse_anchors, select_episodes, _tokens
+    except Exception:
+        return result
+    episodes_by_npc = {}
+    for packet in packets:
+        npc_id = packet.get("npc", {}).get("id")
+        if not npc_id:
+            continue
+        try:
+            episodes_by_npc[npc_id] = episode_store.episodes_for_witness(npc_id)
+        except Exception:
+            episodes_by_npc[npc_id] = []
+    if not any(episodes_by_npc.values()):
+        return result  # nothing to recall -> do not pay for the anchor-parse call
+    anchors = parse_anchors(player_line)
+    if not anchors:
+        return result
+    for npc_id, episodes in episodes_by_npc.items():
+        if not episodes:
+            continue
+        ignore = set()
+        for episode in episodes:
+            for fact in episode.get("salientFacts", []) or []:
+                subject = fact.get("subject") if isinstance(fact, dict) else None
+                if isinstance(subject, dict) and subject.get("id") == npc_id:
+                    ignore |= _tokens(subject.get("label"))
+        scored = select_episodes(anchors, episodes, ignore_terms=ignore)
+        if scored:
+            result[npc_id] = [s["episode"] for s in scored[:2]]
+    return result
+
+
+def _canonical_context_row(packet, episode_store=None, relationship_store=None,
+                           recalled_episodes=None):
     """Project one bounded packet without vectors or private working memory."""
     npc = packet["npc"]
     context = packet["context"]
@@ -459,6 +535,10 @@ def _canonical_context_row(packet, episode_store=None, relationship_store=None):
     memories = _companion_memory_rows(npc["id"], episode_store, relationship_store)
     if memories:
         row["memories"] = memories
+    if recalled_episodes:
+        recalled = _recalled_rows_for_npc(npc["id"], recalled_episodes)
+        if recalled:
+            row["recalled"] = recalled
     return row
 
 
@@ -500,6 +580,12 @@ def _build_canonical_companion_context_message(
         episode_store = None if candidate_store.read_only else candidate_store
     except Exception:
         episode_store = None
+    try:
+        recalled_by_npc = _recall_by_npc(
+            _latest_player_input(conversation_history), packets, episode_store
+        )
+    except Exception:
+        recalled_by_npc = {}
     rows = []
     for packet in packets:
         candidate_rows = rows + [
@@ -507,6 +593,7 @@ def _build_canonical_companion_context_message(
                 packet,
                 episode_store=episode_store,
                 relationship_store=relationship_store,
+                recalled_episodes=recalled_by_npc.get(packet.get("npc", {}).get("id")),
             )
         ]
         candidate_json = json.dumps(
@@ -525,9 +612,12 @@ def _build_canonical_companion_context_message(
         rows = candidate_rows
     if not rows:
         return None
+    any_memories = any(("memories" in r or "recalled" in r) for r in rows)
+    contract = (_MEMORY_GROUNDING_CONTRACT + "\n") if any_memories else ""
     content = (
         _CANONICAL_COMPANION_CONTEXT_PREFIX
         + "\n"
+        + contract
         + json.dumps(rows, ensure_ascii=True, separators=(",", ":"))
         + "\n==="
     )
