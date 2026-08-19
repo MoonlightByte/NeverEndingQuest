@@ -470,13 +470,18 @@ def compress_conversation_history_on_transition(conversation_history, leaving_lo
                     location_close_position,
                     boundary_turn_id_for_position,
                 )
+                import copy as _copy
                 position = location_close_position(conversation_history, transition_index)
                 capture_location_episode_async(
                     leaving_location_name=leaving_location_name,
                     leaving_location_id=leaving_location_id_from_marker(
                         conversation_history[transition_index].get("content", "")),
                     segment_messages=list(messages_to_summarize),
-                    party_tracker_data=party_tracker_data,
+                    # Snapshot the tracker: the offloaded thread reads module/world
+                    # seconds later (after the luna call), and the main loop mutates
+                    # the live dict on the very next action (often a module transition)
+                    # -- a live reference would corrupt the episode's module coordinate.
+                    party_tracker_data=_copy.deepcopy(party_tracker_data),
                     path_manager=path_manager,
                     boundary_turn_id=boundary_turn_id_for_position(position),
                     player_name=player_name,

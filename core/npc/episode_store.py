@@ -285,6 +285,17 @@ class EpisodeStore:
         derived = derived_from if derived_from in VALID_DERIVED_FROM else "location_summary"
         source = source_hash if (isinstance(source_hash, str) and (source_hash == "" or (len(source_hash) == 64))) else ""
         game_day_value = game_day if isinstance(game_day, int) and game_day >= 0 else None
+        # Materialize once (the iterable is read below) and fail LOUD if witnesses are
+        # truncated -- an over-cap drop would make a present companion's episode
+        # unrecallable via episodes_for_witness (a silent blank-recall). The cap is 16;
+        # realistic parties are far smaller, but truncation must never be silent.
+        witness_ids = list(witness_ids)
+        _distinct_witnesses = {w for w in witness_ids if _is_uuid(w)}
+        if len(_distinct_witnesses) > 16:
+            record_store_health(
+                "episode_witness_truncated", path=str(self.path),
+                detail="episode %s had %d witnesses, capped at 16" % (episode_id, len(_distinct_witnesses)),
+            )
 
         def update(document: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
             episodes = document["episodes"]
