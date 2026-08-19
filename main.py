@@ -5059,7 +5059,10 @@ def main_game_loop():
     # campaign's own journal/summaries so returning companions already remember.
     try:
         from core.npc.episodic_upgrade import check_and_run_episode_upgrade, default_progress
-        check_and_run_episode_upgrade(progress=default_progress)
+        # Cap per load so a large old journal doesn't stall startup for minutes; the
+        # marker resumes the remainder on the next few loads (idempotent). Snappy first
+        # load, full memory within a couple of sessions.
+        check_and_run_episode_upgrade(progress=default_progress, per_run_cap=40)
     except Exception as e:
         debug(f"Episodic upgrade skipped (non-fatal): {e}", category="startup")
 

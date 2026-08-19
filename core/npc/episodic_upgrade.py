@@ -179,7 +179,10 @@ def backfill_campaign(
             path_manager=path_manager, roster_names=roster,
             name_to_id_map=name_to_id_map, episode_store=store, rel_store=rel,
             player_name=player_name, provider=provider, json_loader=json_loader,
-            progress_cb=lambda done, total: emit("journal", start_index + done, total,
+            # backfill_from_journal reports the ABSOLUTE entry index, so on a resumed
+            # load the bar already shows cumulative progress (e.g. 41/277) -- do NOT
+            # add start_index again.
+            progress_cb=lambda done, total: emit("journal", done, total,
                                                  "recovering memories"),
             start_index=start_index, max_entries=per_run_cap,
         )
