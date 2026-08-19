@@ -830,6 +830,16 @@ class ModuleLifecycleStore:
     def _sync_tree(cls, root: Path) -> None:
         # Validate first, then synchronize every regular file and directory.
         cls.create_manifest(root)
+        if os.name == "nt":
+            # Windows: os.fsync maps to CRT _commit/FlushFileBuffers, which
+            # REQUIRES a writable handle -- fsync of an O_RDONLY descriptor
+            # fails EBADF (verified natively on Windows 11; PR #165 evidence:
+            # 3/3 read-only probes failed, writable descriptors succeeded).
+            # Per-file durability was already provided at write time by the
+            # writable-descriptor fsyncs in the atomic writers, and
+            # _sync_directory below already skips Windows for the same
+            # platform reason. Validation above still ran in full.
+            return
         directories: List[Path] = []
         for directory, child_dirs, child_files in os.walk(root, followlinks=False):
             directory_path = Path(directory)
