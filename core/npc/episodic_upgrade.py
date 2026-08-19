@@ -268,9 +268,12 @@ def default_progress(stage: str, done: int, total: int, message: str = "") -> No
     prints a terminal line for headless/terminal play."""
     try:
         from core.managers.status_manager import status_manager
+        # paused/disabled also close the overlay via the complete event.
         event = {
             "start": "episodic_upgrade_start",
             "complete": "episodic_upgrade_complete",
+            "paused": "episodic_upgrade_complete",
+            "disabled": "episodic_upgrade_complete",
         }.get(stage, "episodic_upgrade_progress")
         status_manager.emit_compression_event(
             event, {"completed": done, "total": total, "message": message, "stage": stage}
