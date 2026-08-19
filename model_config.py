@@ -1015,6 +1015,16 @@ NPC_RECALL_T112_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview"
 NPC_RECALL_T112_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 NPC_RECALL_T112_LMSTUDIO = {"model": "local-model"}
 
+# T113: episodic BACKFILL extraction. One-time, when upgrading an existing game to
+# the episodic-memory feature: reads compressed journal / campaign-summary PROSE and
+# selects the PRESENT companions from a CLOSED module roster (agentic presence,
+# reconciled by code -- a name not in the roster is dropped) into attributed
+# backfilled episodes. Same luna tier as T108; runs behind the upgrade progress UI.
+NPC_BACKFILL_T113_OPENAI_LUNA_LOW = copy.deepcopy(OPENAI_GPT56_LUNA_LOW)
+NPC_BACKFILL_T113_GEMINI_FLASH_LOW = {"model": "gemini-3.1-flash-preview", "thinking_level": "low"}
+NPC_BACKFILL_T113_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+NPC_BACKFILL_T113_LMSTUDIO = {"model": "local-model"}
+
 # Feature flag: gates the NPC voice injection wiring in main.py/combat_manager.py.
 # Shipped ON (owner ship-on directive) after all validation gates passed: full
 # tests/npc suite 104/104, real headless OOC acceptance (say/do/want reach the DM
