@@ -198,7 +198,13 @@ compaction system into per-character POV.
   captured only if they fall inside a location segment. The `combat_telemetry` `derivedFrom` value +
   `near_death` kind exist but have no producer yet. Near-death currently depends on the T108 extraction
   noticing it in prose. Build in a later phase or keep deferred.
-- **Phase 5 — relationship depth (baseline reinforcement + anti-decay).**
+- **Phase 5 — DONE** (`relationship_rules.py`/`relationship_store.py`/`episode_capture.py`). Pinned
+  memories reinforce the NPC→player baseline (`baseline_from_pinned` + `reinforce_baseline_from_pov`),
+  so decay settles the bond at a memory-justified level — the M27 dead-axes fix. Pure/idempotent; only
+  pinned peaks move it. Validated: store test + real-luna end-to-end (a pinned near-death elevates
+  intimacy/fear baseline). *Deferred within P5:* the `linkedEvidenceIds`↔affinity-evidence linkage +
+  R7's affinity-delta salience term (traceability nicety; baseline works without it). Anti-decay
+  softening (0.99 vs 0.97) not needed — an elevated non-zero baseline already makes bonds stick.
 - **Phase 6 — backfill existing campaigns from archives.**
 - **Phase 7 — (deferred) local semantic retrieval for paraphrase-at-scale.**
 
