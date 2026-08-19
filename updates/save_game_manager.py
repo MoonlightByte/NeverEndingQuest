@@ -406,35 +406,43 @@ class SaveGameManager:
         
         return f"modules/{self.current_module}/saved_games"
 
+    # Private NPC state files fingerprinted in the save manifest (never by contents).
+    _MANIFEST_STATE_PATHS = (
+        "data/companion_memories/npc_agent_state.json",
+        "data/companion_memories/episode_ledger.json",
+    )
+
     @staticmethod
     def _state_manifest_for_root(root: str = ".") -> List[Dict[str, Any]]:
         """Describe private state files by fingerprint, never by contents."""
-        relative_path = "data/companion_memories/npc_agent_state.json"
-        sidecar_path = os.path.join(root, relative_path)
-        if not os.path.isfile(sidecar_path):
-            return []
-        try:
-            with open(sidecar_path, "rb") as handle:
-                raw = handle.read()
-        except OSError:
-            return []
-        try:
-            parsed = json.loads(raw.decode("utf-8"))
-            schema_version = (
-                parsed.get("schemaVersion", -1)
-                if isinstance(parsed, dict)
-                else -1
+        entries: List[Dict[str, Any]] = []
+        for relative_path in SaveGameManager._MANIFEST_STATE_PATHS:
+            file_path = os.path.join(root, relative_path)
+            if not os.path.isfile(file_path):
+                continue
+            try:
+                with open(file_path, "rb") as handle:
+                    raw = handle.read()
+            except OSError:
+                continue
+            try:
+                parsed = json.loads(raw.decode("utf-8"))
+                schema_version = (
+                    parsed.get("schemaVersion", -1)
+                    if isinstance(parsed, dict)
+                    else -1
+                )
+            except (UnicodeError, ValueError, TypeError):
+                schema_version = -1
+            entries.append(
+                {
+                    "path": relative_path,
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                    "schemaVersion": schema_version,
+                    "bytes": len(raw),
+                }
             )
-        except (UnicodeError, ValueError, TypeError):
-            schema_version = -1
-        return [
-            {
-                "path": relative_path,
-                "sha256": hashlib.sha256(raw).hexdigest(),
-                "schemaVersion": schema_version,
-                "bytes": len(raw),
-            }
-        ]
+        return entries
 
     @staticmethod
     def _validate_state_manifest(
@@ -446,15 +454,15 @@ class SaveGameManager:
             return True, ""
         if not isinstance(manifest, list):
             return False, "state manifest is not a list"
-        allowed_path = "data/companion_memories/npc_agent_state.json"
+        allowed_paths = set(SaveGameManager._MANIFEST_STATE_PATHS)
         for entry in manifest:
             if not isinstance(entry, dict) or set(entry) != {
                 "path", "sha256", "schemaVersion", "bytes"
             }:
                 return False, "state manifest entry is malformed"
-            if entry["path"] != allowed_path:
+            if entry["path"] not in allowed_paths:
                 return False, "state manifest path is not recognized"
-            candidate = os.path.join(save_path, allowed_path)
+            candidate = os.path.join(save_path, entry["path"])
             try:
                 with open(candidate, "rb") as handle:
                     raw = handle.read()
