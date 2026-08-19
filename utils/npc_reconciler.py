@@ -126,7 +126,12 @@ def _durable_copy(source, destination):
             destination_handle.flush()
             os.fsync(destination_handle.fileno())
         shutil.copystat(canonical_source, temp_path)
-        with open(temp_path, "rb") as destination_handle:
+        # Issue #134 class: this second fsync (persisting the copystat metadata)
+        # must use a WRITABLE handle -- Windows maps os.fsync to CRT _commit/
+        # FlushFileBuffers, which fails EBADF on a read-only descriptor. "r+b"
+        # keeps the same durability guarantee on POSIX and makes it valid on
+        # Windows; content is never modified.
+        with open(temp_path, "r+b") as destination_handle:
             os.fsync(destination_handle.fileno())
         os.replace(temp_path, canonical_destination)
         _fsync_parent(parent)
