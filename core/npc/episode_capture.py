@@ -177,7 +177,7 @@ def capture_location_episode(
         world = party_tracker_data.get("worldConditions", {})
         world = world if isinstance(world, Mapping) else {}
         module = str(party_tracker_data.get("module") or "")
-        return store.commit_episode(
+        episode_id = store.commit_episode(
             module=module,
             location_id=leaving_location_id or str(world.get("currentLocationId") or ""),
             location_name=leaving_location_name,
@@ -186,6 +186,18 @@ def capture_location_episode(
             derived_from=derived_from,
             **result,
         )
+        # Phase 2: derive each witness's POV overlay from the committed canonical
+        # episode (code-only). Fail-open; POV failure never undoes the canonical write.
+        if episode_id:
+            try:
+                from core.npc.pov_overlay import derive_pov_episodes
+                stored = store.get_episode(episode_id)
+                if stored:
+                    for pov_npc_id, pov_rows in derive_pov_episodes(stored).items():
+                        rel.upsert_pov_episodes(pov_npc_id, pov_rows)
+            except Exception as pov_error:  # noqa: BLE001
+                _LOGGER.debug("pov overlay derivation failed: %r", pov_error)
+        return episode_id
     except Exception as error:  # noqa: BLE001 - fail-open; capture never breaks a turn
         _LOGGER.debug("location episode capture failed: %r", error)
         return None

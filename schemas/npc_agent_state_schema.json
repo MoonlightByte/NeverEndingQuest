@@ -54,7 +54,7 @@
       "type": "object",
       "additionalProperties": false,
       "patternProperties": {
-        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"type": "array", "items": {"type": "object"}}
+        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"type": "array", "maxItems": 512, "items": {"$ref": "#/$defs/povEpisode"}}
       }
     }
   },
@@ -239,6 +239,19 @@
         "status": {"const": "migrated"},
         "legacyBehaviorHint": {"type": "string", "maxLength": 500},
         "migratedEvidence": {"type": "integer", "minimum": 0, "maximum": 256}
+      }
+    },
+    "povEpisode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["episodeId", "povTag", "salienceScore", "pinned", "personalLine", "linkedEvidenceIds"],
+      "properties": {
+        "episodeId": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+        "povTag": {"enum": ["proud", "triumphant", "traumatic", "tender", "guilty", "grieving", "resentful", "afraid", "grateful", "protective", "amused", "smitten", "longing", "heartbroken"]},
+        "salienceScore": {"type": "number", "minimum": 0, "maximum": 1},
+        "pinned": {"type": "boolean"},
+        "personalLine": {"type": "string", "maxLength": 160},
+        "linkedEvidenceIds": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 80}}
       }
     }
   }

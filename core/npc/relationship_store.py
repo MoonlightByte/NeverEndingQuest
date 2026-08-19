@@ -237,6 +237,40 @@ def _history_add(history: str, event_id: str) -> str:
     return format(bits | (1 << index), "064x")
 
 
+# Per-NPC POV overlay (Phase 2). Bounded + pinned: pinned peaks never drop; routine
+# rows are capped by salience. The canonical episode ledger holds the shared truth;
+# these rows are the cheap per-NPC delta (how THIS npc holds it), code-derived.
+POV_TAGS = frozenset({
+    "proud", "triumphant", "traumatic", "tender", "guilty", "grieving", "resentful",
+    "afraid", "grateful", "protective", "amused", "smitten", "longing", "heartbroken",
+})
+_MAX_POV_NONPINNED = 40
+
+
+def _sanitize_pov_episode(value: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(value, Mapping):
+        return None
+    episode_id = value.get("episodeId")
+    try:
+        uuid.UUID(str(episode_id))
+    except (ValueError, AttributeError, TypeError):
+        return None
+    if value.get("povTag") not in POV_TAGS:
+        return None
+    try:
+        salience = max(0.0, min(1.0, round(float(value.get("salienceScore", 0.0)), 4)))
+    except (TypeError, ValueError):
+        salience = 0.0
+    return {
+        "episodeId": str(episode_id),
+        "povTag": value["povTag"],
+        "salienceScore": salience,
+        "pinned": bool(value.get("pinned")),
+        "personalLine": _text(value.get("personalLine"), 160),
+        "linkedEvidenceIds": _text_list(value.get("linkedEvidenceIds"), 8, 80),
+    }
+
+
 class RelationshipStore:
     """One path-scoped sidecar with fail-closed writes and fail-open reads."""
 
@@ -1295,6 +1329,55 @@ class RelationshipStore:
 
         self._mutate(update)
         return npc_id
+
+    def get_pov_episodes(self, npc_id: str) -> list[Dict[str, Any]]:
+        """The NPC's POV overlay rows, pinned first then by salience desc."""
+        rows = self.snapshot().get("episodes", {}).get(npc_id, [])
+        return [copy.deepcopy(r) for r in rows if isinstance(r, dict)]
+
+    def upsert_pov_episodes(
+        self, npc_id: str, pov_episodes: Iterable[Mapping[str, Any]]
+    ) -> bool:
+        """Idempotently write per-NPC POV rows with bounded+pinned retention.
+
+        Pinned peaks are never dropped; non-pinned rows are capped by salience. The
+        final list is deterministically ordered so a re-run with the same inputs is a
+        true no-op (idempotent). Keyed by episodeId (update-in-place)."""
+        sanitized = [
+            row for row in (_sanitize_pov_episode(e) for e in pov_episodes) if row
+        ]
+        if not sanitized or not isinstance(npc_id, str) or not npc_id:
+            return False
+
+        def update(document: Dict[str, Any]) -> Tuple[bool, None]:
+            episodes = document.setdefault("episodes", {})
+            by_id: Dict[str, Dict[str, Any]] = {}
+            for row in episodes.get(npc_id, []):
+                if isinstance(row, dict) and isinstance(row.get("episodeId"), str):
+                    by_id[row["episodeId"]] = row
+            for row in sanitized:
+                by_id[row["episodeId"]] = row
+            rows = list(by_id.values())
+            pinned = [r for r in rows if r.get("pinned")]
+            non_pinned = sorted(
+                (r for r in rows if not r.get("pinned")),
+                key=lambda r: (r.get("salienceScore", 0.0), r["episodeId"]),
+                reverse=True,
+            )[:_MAX_POV_NONPINNED]
+            merged = sorted(
+                pinned + non_pinned,
+                key=lambda r: (not r.get("pinned"), -r.get("salienceScore", 0.0), r["episodeId"]),
+            )[:512]
+            if merged == episodes.get(npc_id, []):
+                return False, None
+            if merged:
+                episodes[npc_id] = merged
+            else:
+                episodes.pop(npc_id, None)
+            return True, None
+
+        changed, _ = self._mutate(update)
+        return changed
 
 
 def assert_store_writable(
