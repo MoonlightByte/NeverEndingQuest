@@ -410,6 +410,9 @@ class SaveGameManager:
     _MANIFEST_STATE_PATHS = (
         "data/companion_memories/npc_agent_state.json",
         "data/companion_memories/episode_ledger.json",
+        # W5: the one-time episodic-upgrade resume marker travels with save/restore so
+        # a mid-upgrade save resumes correctly; skipped-if-absent keeps old saves valid.
+        "data/companion_memories/episodic_upgrade.json",
     )
 
     @staticmethod

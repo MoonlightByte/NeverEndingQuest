@@ -5053,6 +5053,16 @@ def main_game_loop():
     except Exception as e:
         debug(f"Could not initialize memories (non-fatal): {e}", category="startup")
 
+    # W5: one-time seamless upgrade of an existing game to EPISODIC memory. Distinct
+    # from the legacy initializer above; gated by NPC_VOICE_ENABLED, resumable, and
+    # fail-open (never blocks startup). Backfills companion episodes from the
+    # campaign's own journal/summaries so returning companions already remember.
+    try:
+        from core.npc.episodic_upgrade import check_and_run_episode_upgrade, default_progress
+        check_and_run_episode_upgrade(progress=default_progress)
+    except Exception as e:
+        debug(f"Episodic upgrade skipped (non-fatal): {e}", category="startup")
+
     # Reset startup state for this session. The lease file persists "kickoff_done"
     # from the previous session, which causes claim_kickoff_lease() to return
     # "already_done" and skip process_ai_response() entirely. Resetting here
