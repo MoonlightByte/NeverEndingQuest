@@ -60,6 +60,10 @@ def _capture_contained_json(module_dir, path):
         raise _T088SourceDriftError("T088 input is outside its module directory")
 
     flags = os.O_RDONLY
+    # Issue #134 class: O_BINARY keeps Windows CRT text mode from collapsing
+    # CRLF and truncating at 0x1A, so the T088 snapshot is the file's PHYSICAL
+    # bytes (matching every other byte-exact reader). POSIX: attr absent -> no-op.
+    flags |= getattr(os, "O_BINARY", 0)
     if hasattr(os, "O_CLOEXEC"):
         flags |= os.O_CLOEXEC
     if hasattr(os, "O_NOFOLLOW"):

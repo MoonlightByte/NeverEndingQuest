@@ -63,6 +63,14 @@ _CREDENTIAL_SHAPED_TEXT = re.compile(
 )
 _MANIFEST_MAX_ATTEMPTS = TRANSIENT_FILESYSTEM_ATTEMPTS
 _MANIFEST_RETRY_BACKOFF_SECONDS = TRANSIENT_FILESYSTEM_BACKOFF_SECONDS
+# Issue #134 root cause: on Windows, os.open() WITHOUT O_BINARY yields a CRT
+# descriptor in text-translation mode -- os.read() collapses CRLF to LF and
+# treats 0x1A as EOF, while fstat().st_size reports PHYSICAL bytes, so every
+# CRLF-bearing file deterministically failed "total != st_size" ("Manifest file
+# changed while read"); os.write() likewise expands LF to CRLF, corrupting
+# atomic byte writes. O_BINARY disables translation; it does not exist on POSIX
+# (0 there = no-op), so Linux/macOS behavior is bit-for-bit unchanged.
+_O_BINARY = getattr(os, "O_BINARY", 0)
 
 
 def assert_module_refresh_owned() -> None:
@@ -422,9 +430,13 @@ class ModuleLifecycleStore:
         descriptor = None
         created = False
         try:
+            # _O_BINARY (issue #134): without it, Windows text-mode os.write()
+            # expands LF to CRLF ON DISK, so the landed bytes differ from
+            # `payload` and every later byte-exact compare/digest of this file
+            # (including _replace_file_payload's landed == payload) mismatches.
             descriptor = os.open(
                 os.fspath(temporary),
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_BINARY,
                 0o600,
             )
             created = True
@@ -747,7 +759,10 @@ class ModuleLifecycleStore:
                     )
                 digest = hashlib.sha256()
                 total = 0
-                flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                # _O_BINARY (issue #134): physical-byte reads on Windows, else the
+                # CRT text mode under-reads CRLF files and the st_size comparison
+                # below false-fails every attempt.
+                flags = os.O_RDONLY | _O_BINARY | getattr(os, "O_NOFOLLOW", 0)
                 descriptor = os.open(os.fspath(child_path), flags)
                 try:
                     opened = os.fstat(descriptor)
