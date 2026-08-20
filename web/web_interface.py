@@ -481,6 +481,20 @@ def emit_compression_event(event_type, data):
 
 set_compression_callback(emit_compression_event)
 
+def _is_operational_diagnostic(clean_line):
+    """E2E gate 2a: operational diagnostics that must reach the Debug tab, not be
+    swallowed as DM narration. The DM-section terminators only recognize UPPERCASE
+    'DEBUG:/ERROR:/WARNING:'; recovery/quarantine/module lines carry an UNAMBIGUOUS
+    bracket tag and were being appended to the narration buffer. We match ONLY those
+    reserved bracket tags (by line prefix) -- deliberately NOT bare 'Error:'/'Warning:'
+    words, which in-fiction DM prose could legitimately start a wrapped line with
+    (a read-aloud sign/note), which would truncate narration. Engine diagnostics
+    that must surface use one of these tags."""
+    if not isinstance(clean_line, str):
+        return False
+    return clean_line.lstrip().startswith(('[LIFECYCLE]', '[MODULES]', '[STARTUP]'))
+
+
 class WebOutputCapture:
     """Captures output and routes it to appropriate queues"""
     def __init__(self, queue, original_stream, is_error=False):
@@ -650,9 +664,12 @@ class WebOutputCapture:
                             self.in_dm_section = False
                             self.dm_buffer = []
                     elif any(marker in clean_line for marker in ['DEBUG:', 'ERROR:', 'WARNING:']) or \
+                         _is_operational_diagnostic(clean_line) or \
                          clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line) or \
                          clean_line.startswith('>'):
                         # This ends the DM section - send accumulated DM content as single message
+                        # (issue #167 / E2E 2a: operational diagnostics now terminate the DM
+                        # section and route to debug instead of being swallowed as narration.)
                         self._flush_dm_buffer()
                         # Send this line to debug
                         try:
