@@ -251,6 +251,13 @@ def scan_available_modules():
 
     with module_refresh_lock() as acquired:
         if not acquired:
+            # Issue #167 diagnosability: this used to return [] silently and the
+            # player only ever saw "No modules available" -- print() reaches the
+            # web output capture, the logger does not (startup-marker finding).
+            print(
+                "Error: Module scan could not acquire the module refresh lock; "
+                "another operation is in progress. Restart and try again."
+            )
             return []
         recover_incomplete_refresh_commit()
         recovery = ModuleLifecycleStore("modules").recover()
@@ -259,42 +266,16 @@ def scan_available_modules():
                 "Module lifecycle recovery is required before startup scan",
                 category="startup",
             )
+            # Same diagnosability rule: without this print, an indeterminate
+            # lifecycle state (e.g. residue from previously failed module
+            # builds) masqueraded as "No modules available".
+            print(
+                "Error: A previous module build left the module store in a "
+                "state that needs recovery, so no modules can be listed yet. "
+                "See modules/.module_transactions for the pending state."
+            )
             return []
         return _scan_available_modules_locked()
-
-
-def _hydrate_module_from_masters(module_path):
-    """Issue #167: create MISSING live module files from their shipped *_BU.json
-    masters. The repository ships bundled adventures as _BU backups only (live
-    files are runtime state, historically created only by an explicit campaign
-    reset), so a completely fresh install had zero playable modules until the
-    player discovered Settings -> Reset Campaign. Heal forward at scan time
-    instead. STRICTLY additive: an existing live file is NEVER touched, so a
-    campaign in progress is never reset or overwritten. Runs under
-    module_refresh_lock (the caller holds it)."""
-    hydrated = 0
-    for root, _dirs, files in os.walk(module_path):
-        for name in files:
-            if not name.endswith("_BU.json"):
-                continue
-            master = os.path.join(root, name)
-            live = master[: -len("_BU.json")] + ".json"
-            if os.path.exists(live):
-                continue
-            try:
-                shutil.copy2(master, live)
-                hydrated += 1
-            except OSError as copy_error:
-                warning(
-                    f"Could not hydrate {live} from its _BU master: {copy_error}",
-                    category="startup",
-                )
-    if hydrated:
-        info(
-            f"First-run hydration: created {hydrated} live file(s) for "
-            f"{os.path.basename(module_path)} from shipped _BU masters",
-            category="startup",
-        )
 
 
 def _scan_available_modules_locked():
@@ -306,6 +287,14 @@ def _scan_available_modules_locked():
         print("Error: No modules directory found!")
         status_ready()
         return modules
+
+    # Issue #167: a completely fresh install ships the bundled adventures as
+    # *_BU.json masters only (live files are runtime state). Reuse the existing
+    # guarded hydrator (skips saved_games snapshots + support dirs; strictly
+    # only-if-missing, never overwrites) so any scan caller sees playable
+    # modules even if its entry path did not run the wizard's own hydration.
+    # Idempotent; runs under the module_refresh_lock the caller holds.
+    initialize_game_files_from_bu()
 
     catalog_names = os.listdir("modules")
     registry_path = os.path.join("modules", "world_registry.json")
@@ -348,10 +337,6 @@ def _scan_available_modules_locked():
             }:
                 continue
             
-            # Issue #167: fresh installs ship _BU masters only -- create any
-            # missing live files before analysis (additive; never overwrites).
-            _hydrate_module_from_masters(module_path)
-
             # Use module_stitcher detection method (current architecture)
             module_data = None
             try:
