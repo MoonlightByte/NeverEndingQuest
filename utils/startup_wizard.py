@@ -244,35 +244,30 @@ def startup_required(party_file="party_tracker.json"):
 # ===== MODULE MANAGEMENT =====
 
 def scan_available_modules():
-    """Recover module lifecycle state, then read one stable public catalog."""
-    from utils.commit_state import recover_incomplete_refresh_commit
-    from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
+    """List playable modules from disk.
+
+    P1 strip (post-715732d5 regression review): listing the adventures a player
+    can start is a READ-ONLY operation. Commit 715732d5 gated it behind
+    ModuleLifecycleStore.recover(), which returns INDETERMINATE for ANY leftover
+    build-transaction residue (or a stray desktop.ini under
+    modules/.module_transactions) and made the scan return [] -> "No modules
+    available" with both bundled adventures sitting on disk (issues #167/#172/
+    #173). The legacy scan (pre-715732d5) was a plain os.listdir and never had
+    this failure mode. We restore that: NO recover() gate on the read-only scan.
+    Crash-safe recovery still runs where it belongs -- in the module BUILD/publish
+    paths (createNewModule, campaign integration), which are unchanged.
+
+    The module_refresh_lock is kept (benign single-writer; guarantees any
+    downstream lock-ownership assertions pass and serializes against a
+    concurrent build) and returns a VISIBLE error on the rare contention case.
+    """
     from utils.module_refresh_lock import module_refresh_lock
 
     with module_refresh_lock() as acquired:
         if not acquired:
-            # Issue #167 diagnosability: this used to return [] silently and the
-            # player only ever saw "No modules available" -- print() reaches the
-            # web output capture, the logger does not (startup-marker finding).
             print(
                 "Error: Module scan could not acquire the module refresh lock; "
                 "another operation is in progress. Restart and try again."
-            )
-            return []
-        recover_incomplete_refresh_commit()
-        recovery = ModuleLifecycleStore("modules").recover()
-        if recovery.status is RecoveryStatus.INDETERMINATE:
-            warning(
-                "Module lifecycle recovery is required before startup scan",
-                category="startup",
-            )
-            # Same diagnosability rule: without this print, an indeterminate
-            # lifecycle state (e.g. residue from previously failed module
-            # builds) masqueraded as "No modules available".
-            print(
-                "Error: A previous module build left the module store in a "
-                "state that needs recovery, so no modules can be listed yet. "
-                "See modules/.module_transactions for the pending state."
             )
             return []
         return _scan_available_modules_locked()
@@ -293,30 +288,16 @@ def _scan_available_modules_locked():
     # guarded hydrator (skips saved_games snapshots + support dirs; strictly
     # only-if-missing, never overwrites) so any scan caller sees playable
     # modules even if its entry path did not run the wizard's own hydration.
-    # Idempotent; runs under the module_refresh_lock the caller holds.
     initialize_game_files_from_bu()
 
+    # P1 strip: the catalog is ALWAYS derived from disk (legacy behavior). Commit
+    # 715732d5 made world_registry.json the PREFERRED catalog, so an empty or
+    # partial registry (fresh install, or interrupted/failed registration) shadowed
+    # the real on-disk modules -> "No modules available" (#167/#173). The registry
+    # is metadata written by the build/integration path; it is NOT the source of
+    # truth for "what can I play". Reverting to os.listdir removes the shadow class
+    # entirely (including the partial-registry case a preference check can't cover).
     catalog_names = os.listdir("modules")
-    registry_path = os.path.join("modules", "world_registry.json")
-    if os.path.isfile(registry_path):
-        try:
-            registry = safe_json_load(registry_path)
-            if isinstance(registry, dict) and isinstance(
-                registry.get("modules"), dict
-            ):
-                registry_catalog = list(registry["modules"])
-                # Issue #167 guard: the registry is the PREFERRED catalog, but an
-                # empty or partial registry (fresh install, interrupted first
-                # registration) must never SHADOW real module directories on
-                # disk -- that made the game report "No modules available" while
-                # both bundled adventures sat in modules/. Fall back to the
-                # directory listing when the registry names nothing.
-                if registry_catalog:
-                    catalog_names = registry_catalog
-        except Exception:
-            # A corrupt registry must not hide on-disk modules either; keep the
-            # directory listing.
-            pass
 
     for item in catalog_names:
         module_path = f"modules/{item}"
