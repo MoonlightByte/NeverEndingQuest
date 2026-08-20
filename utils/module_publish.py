@@ -209,6 +209,54 @@ def _replace_entry(source: Path, destination: Path) -> None:
             time.sleep(_RENAME_BACKOFF_SECONDS * attempt)
 
 
+def _replace_exact_bytes(path: Path, payload: bytes) -> None:
+    """Durably replace one file with already-computed exact bytes.
+
+    Ported self-contained from ModuleStitcher._replace_exact_registry_bytes so
+    the atomic-publish path keeps the Issue #134 fix without depending on the
+    (P2c-deleted) store or importing the heavy stitcher. Without O_BINARY the
+    Windows CRT text mode expands LF->CRLF during os.write, so the landed bytes
+    differ from `payload` and the exact-byte readback below fails on every write.
+    """
+    temporary = path.parent / f".{path.name}.{uuid.uuid4().hex}.tmp"
+    descriptor = None
+    try:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        flags |= getattr(os, "O_BINARY", 0)
+        if hasattr(os, "O_CLOEXEC"):
+            flags |= os.O_CLOEXEC
+        descriptor = os.open(os.fspath(temporary), flags, 0o600)
+        view = memoryview(payload)
+        written = 0
+        while written < len(view):
+            count = os.write(descriptor, view[written:])
+            if not isinstance(count, int) or count <= 0:
+                raise OSError("Exact-byte write made no progress")
+            written += count
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = None
+        os.replace(temporary, path)
+        if os.name != "nt":
+            directory = os.open(
+                os.fspath(path.parent),
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        if path.read_bytes() != payload:
+            raise OSError("Exact-byte readback differs")
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def _assert_final_path_free(modules_dir: Path, final_name: str) -> None:
     """Windows-correct occupancy guard: os.replace cannot target an existing
     directory. Doubled check (exact path + case-insensitive alias scan) so a
@@ -278,7 +326,8 @@ def publish_module_atomic(
     build_fn: Callable[[Path, str], Any],
     *,
     modules_dir: os.PathLike | str = "modules",
-    registry_update_fn: Optional[Callable[[Path, str], None]] = None,
+    prepare_registry_fn: Optional[Callable[[Path, str], Optional[bytes]]] = None,
+    registry_filename: str = "world_registry.json",
 ) -> PublishResult:
     """Build a module in a temp workspace and atomically publish it live.
 
@@ -294,10 +343,17 @@ def publish_module_atomic(
             Its return value (the build payload) is returned to the caller via
             the closure; this function ignores it.
         modules_dir: the modules root.
-        registry_update_fn: optional ``registry_update_fn(module_path, final_name)``
-            invoked AFTER the module is live to update advisory metadata
-            (world_registry.json). A failure is logged and swallowed -- the
-            module is already published and the registry is advisory.
+        prepare_registry_fn: optional ``prepare_registry_fn(candidate_path, final_name)``
+            invoked on the built candidate BEFORE the rename (so any in-place
+            rewrite it performs -- e.g. area-ID conflict resolution -- happens on
+            the hidden candidate, never on a live module). It returns the exact
+            ``world_registry.json`` bytes to commit, or ``None`` to skip the
+            registry update. If it RAISES, the publish is aborted and
+            modules/<name>/ is never touched (a genuine conflict must not go
+            live). The returned bytes are committed AFTER the rename; a failure
+            of that final byte-write is advisory (logged, swallowed) because the
+            module is already live and the registry is advisory metadata.
+        registry_filename: the registry file to commit next to modules_dir.
 
     Returns:
         PublishResult(module_name, build_id, workspace_path).
@@ -319,26 +375,34 @@ def publish_module_atomic(
         candidate_path.mkdir(parents=True, mode=0o700)
         # 1. Build the complete module tree into the hidden temp workspace.
         build_fn(candidate_path, final_name)
+
+        # 2. Prepare the registry on the CANDIDATE (before it is live). Any
+        #    in-place rewrite (ID conflict resolution) touches only the hidden
+        #    candidate; a raise here aborts cleanly with modules/ untouched.
+        registry_bytes = None
+        if prepare_registry_fn is not None:
+            registry_bytes = prepare_registry_fn(candidate_path, final_name)
+
         _sync_directory(candidate_path)
         _sync_directory(workspace)
 
-        # 2. Occupancy guard, then the single atomic rename that makes it live.
+        # 3. Occupancy guard, then the single atomic rename that makes it live.
         _assert_final_path_free(modules_root, final_name)
         _replace_entry(candidate_path, modules_root / final_name)
         _sync_directory(modules_root)
 
-        # 3. Advisory registry update (never bricks the now-live module).
-        if registry_update_fn is not None:
+        # 4. Commit the advisory registry (never bricks the now-live module).
+        if registry_bytes is not None:
             try:
-                registry_update_fn(modules_root / final_name, final_name)
+                _replace_exact_bytes(modules_root / registry_filename, registry_bytes)
             except Exception as registry_error:
                 warning(
-                    "Module published but advisory registry update failed; "
+                    "Module published but advisory registry commit failed; "
                     f"module {final_name} is live regardless: {registry_error}",
                     category="module_management",
                 )
 
-        # 4. Marker so a crash-then-retry re-narrates instead of duplicating.
+        # 5. Marker so a crash-then-retry re-narrates instead of duplicating.
         write_publish_marker(modules_root, final_name, build_id)
     except BaseException:
         # The module never reached modules/<name>/ on this path (or the rename
