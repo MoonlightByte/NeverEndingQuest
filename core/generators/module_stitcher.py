@@ -422,23 +422,48 @@ class ModuleStitcher:
             self.world_registry['isolatedModules'] = True
             safe_write_json(self.world_registry_file, self.world_registry)
     
+    def _default_world_registry(self) -> Dict[str, Any]:
+        return {
+            "worldName": "Fantasy Adventure World",
+            "registryVersion": "1.0.0",
+            "lastUpdated": datetime.now().isoformat(),
+            "modules": {},
+            "areas": {},
+            "themes": {},
+            "isolatedModules": True,
+        }
+
     def _load_world_registry(self) -> Dict[str, Any]:
-        """Load world registry or create default"""
+        """Load the world registry, tolerating a corrupt/unreadable file.
+
+        Issue #173: the registry is ADVISORY metadata, not the source of truth for
+        which modules exist. A corrupt world_registry.json used to make this raise,
+        which crashed ModuleStitcher construction and therefore bricked the module
+        scan/list (every module skipped -> "No modules available") even with real
+        modules on disk. Now a corrupt file yields an in-memory default (the
+        corrupt file is left ON DISK for forensics; the build/integration path
+        rewrites a valid registry on its next success). Reads never brick.
+        """
         if os.path.exists(self.world_registry_file):
-            return safe_json_load(self.world_registry_file)
-        else:
-            # Create default world registry
-            default_registry = {
-                "worldName": "Fantasy Adventure World",
-                "registryVersion": "1.0.0",
-                "lastUpdated": datetime.now().isoformat(),
-                "modules": {},
-                "areas": {},
-                "themes": {},
-                "isolatedModules": True
-            }
-            safe_write_json(self.world_registry_file, default_registry)
-            return default_registry
+            try:
+                loaded = safe_json_load(self.world_registry_file)
+            except Exception as exc:
+                print(
+                    "[MODULES] world_registry.json is unreadable "
+                    f"({exc}); using default metadata. The file is left in place; "
+                    "it will be rebuilt on the next successful module registration."
+                )
+                return self._default_world_registry()
+            if isinstance(loaded, dict):
+                return loaded
+            print(
+                "[MODULES] world_registry.json is not a JSON object; using "
+                "default metadata (file left in place for inspection)."
+            )
+            return self._default_world_registry()
+        default_registry = self._default_world_registry()
+        safe_write_json(self.world_registry_file, default_registry)
+        return default_registry
 
     def _target_module_path(self, module_name: str) -> Optional[str]:
         """Return the exact, contained module path or ``None`` if unsafe."""
