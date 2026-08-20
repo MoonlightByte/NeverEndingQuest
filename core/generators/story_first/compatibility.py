@@ -201,11 +201,16 @@ def atomic_write_ascii(path: Path, text: str) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
-        directory_fd = os.open(str(path.parent), os.O_RDONLY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        # Issue #134 class: Windows cannot os.open() a directory at all (and
+        # fsync needs a writable CRT handle) -- guard exactly like
+        # encoding_utils/safe_json_dump does. File durability already came
+        # from the writable-handle fsync above.
+        if os.name != "nt":
+            directory_fd = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
     finally:
         if temporary.exists():
             temporary.unlink()

@@ -3165,6 +3165,11 @@ Create atmospheric travel narration that leads into this adventure."""
         descriptor = None
         try:
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            # Issue #134 class: without O_BINARY the Windows CRT text mode
+            # expands LF->CRLF during os.write, so the landed bytes differ from
+            # `payload` and the exact-byte readback below is GUARANTEED to fail
+            # ("Registry exact-byte readback differs") on every registration.
+            flags |= getattr(os, "O_BINARY", 0)
             if hasattr(os, "O_CLOEXEC"):
                 flags |= os.O_CLOEXEC
             descriptor = os.open(os.fspath(temporary), flags, 0o600)
