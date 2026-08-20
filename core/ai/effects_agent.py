@@ -233,7 +233,13 @@ def classify_effect(character_name, change_description, sheet, now_scalar, max_a
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ]
         if correction:
-            messages.append({"role": "system", "content": correction})
+            # user-role, not system: a trailing/mid-conversation system message
+            # breaks strict-alternation local chat templates (issue #168 class)
+            # -- Gemma-family templates reject or mishandle non-leading system
+            # turns, burning every retry exactly when the retry matters most.
+            # The correction is feedback to the model about ITS prior output,
+            # which is user-role semantics anyway. Same text, safe role.
+            messages.append({"role": "user", "content": correction})
         try:
             options = dict(call_config)
             response = capture_and_fanout(
