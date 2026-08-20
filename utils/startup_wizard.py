@@ -263,16 +263,50 @@ def scan_available_modules():
         return _scan_available_modules_locked()
 
 
+def _hydrate_module_from_masters(module_path):
+    """Issue #167: create MISSING live module files from their shipped *_BU.json
+    masters. The repository ships bundled adventures as _BU backups only (live
+    files are runtime state, historically created only by an explicit campaign
+    reset), so a completely fresh install had zero playable modules until the
+    player discovered Settings -> Reset Campaign. Heal forward at scan time
+    instead. STRICTLY additive: an existing live file is NEVER touched, so a
+    campaign in progress is never reset or overwritten. Runs under
+    module_refresh_lock (the caller holds it)."""
+    hydrated = 0
+    for root, _dirs, files in os.walk(module_path):
+        for name in files:
+            if not name.endswith("_BU.json"):
+                continue
+            master = os.path.join(root, name)
+            live = master[: -len("_BU.json")] + ".json"
+            if os.path.exists(live):
+                continue
+            try:
+                shutil.copy2(master, live)
+                hydrated += 1
+            except OSError as copy_error:
+                warning(
+                    f"Could not hydrate {live} from its _BU master: {copy_error}",
+                    category="startup",
+                )
+    if hydrated:
+        info(
+            f"First-run hydration: created {hydrated} live file(s) for "
+            f"{os.path.basename(module_path)} from shipped _BU masters",
+            category="startup",
+        )
+
+
 def _scan_available_modules_locked():
     """Find all available modules in modules/ directory"""
     status_loading()
     modules = []
-    
+
     if not os.path.exists("modules"):
         print("Error: No modules directory found!")
         status_ready()
         return modules
-    
+
     catalog_names = os.listdir("modules")
     registry_path = os.path.join("modules", "world_registry.json")
     if os.path.isfile(registry_path):
@@ -281,9 +315,19 @@ def _scan_available_modules_locked():
             if isinstance(registry, dict) and isinstance(
                 registry.get("modules"), dict
             ):
-                catalog_names = list(registry["modules"])
+                registry_catalog = list(registry["modules"])
+                # Issue #167 guard: the registry is the PREFERRED catalog, but an
+                # empty or partial registry (fresh install, interrupted first
+                # registration) must never SHADOW real module directories on
+                # disk -- that made the game report "No modules available" while
+                # both bundled adventures sat in modules/. Fall back to the
+                # directory listing when the registry names nothing.
+                if registry_catalog:
+                    catalog_names = registry_catalog
         except Exception:
-            catalog_names = []
+            # A corrupt registry must not hide on-disk modules either; keep the
+            # directory listing.
+            pass
 
     for item in catalog_names:
         module_path = f"modules/{item}"
@@ -304,6 +348,10 @@ def _scan_available_modules_locked():
             }:
                 continue
             
+            # Issue #167: fresh installs ship _BU masters only -- create any
+            # missing live files before analysis (additive; never overwrites).
+            _hydrate_module_from_masters(module_path)
+
             # Use module_stitcher detection method (current architecture)
             module_data = None
             try:
