@@ -363,6 +363,18 @@ def main():
                              "NPC creation if no explicit level is given.")
     args = parser.parse_args()
 
+    # The DM pipeline passes literal placeholders when a value is not
+    # established in play ('unknown', 'none', 'n/a', ...). Treat every such
+    # placeholder exactly like empty: the builder infers a sensible default.
+    # Rejecting them crashed party recruitment mid-turn (Scout Kira, live).
+    _UNSPECIFIED = {"unknown", "none", "n/a", "na", "null", "tbd", "?"}
+    if args.level is not None and args.level.strip().lower() in _UNSPECIFIED:
+        args.level = ""
+    if args.npc_class is not None and args.npc_class.strip().lower() in _UNSPECIFIED:
+        args.npc_class = ""
+    if args.race is not None and args.race.strip().lower() in _UNSPECIFIED:
+        args.race = ""
+
     npc_name_arg = args.npc_name
     npc_race_arg = args.race
     npc_class_arg = args.npc_class
