@@ -1032,7 +1032,9 @@ def create_module_validation_context(party_tracker_data, path_manager):
                 loc_id = location.get("locationId", "")
                 loc_name = location.get("name", "")
                 if loc_id:
-                    valid_location_ids.append(loc_id)
+                    valid_location_ids.append(
+                        f"{loc_id} ({loc_name})" if loc_name else loc_id
+                    )
                     
                     # Track NPCs by location
                     location_npcs = [npc.get("name") for npc in location.get("npcs", []) if npc.get("name")]
@@ -1050,8 +1052,10 @@ def create_module_validation_context(party_tracker_data, path_manager):
                 if npc_name and npc_name not in current_location_npcs:
                     current_location_npcs.append(npc_name)
             
-            # Just list the location IDs for current area since full details are below
-            validation_context += f"Current area ({current_area_id}) location IDs: "
+            # IDs AND names: the validator judges narration, and narration
+            # speaks in names. An ids-only list made it reject the area's own
+            # location names as hallucinations.
+            validation_context += f"Current area ({current_area_id}) locations: "
             if valid_location_ids:
                 validation_context += ", ".join(valid_location_ids)
             else:
@@ -1065,15 +1069,75 @@ def create_module_validation_context(party_tracker_data, path_manager):
         try:
             all_accessible_locations = []
             areas_included = set()
-            
-            # Get all locations from the location graph
-            for loc_id, node_info in location_graph.nodes.items():
-                area_id = node_info.get('area_id', '')
-                location_name = node_info.get('location_name', '')
-                if area_id and location_name:
-                    areas_included.add(area_id)
-                    all_accessible_locations.append(f"{loc_id} ({location_name}) in area {area_id}")
-            
+
+            graph = location_graph
+            if graph is not None and not getattr(graph, "nodes", None):
+                # A booted-but-empty graph has been observed live (0 nodes in
+                # a hosted world); one reload attempt is cheap.
+                try:
+                    graph.reload()
+                except Exception:
+                    pass
+
+            if graph is not None:
+                for loc_id, node_info in graph.nodes.items():
+                    area_id = node_info.get('area_id', '')
+                    location_name = node_info.get('location_name', '')
+                    if area_id and location_name:
+                        areas_included.add(area_id)
+                        all_accessible_locations.append(f"{loc_id} ({location_name}) in area {area_id}")
+
+            if not all_accessible_locations:
+                # NEVER hand the validator a context without the module-wide
+                # location list: it treats the current-area list as the whole
+                # world and auto-rejects every legitimate cross-area
+                # reference. Scan the module's area files directly (live
+                # first, pristine _BU as last resort).
+                warning(
+                    "VALIDATION: location graph unavailable/empty; building "
+                    "validator location list from area files",
+                    category="ai_validation",
+                )
+                seen_fallback = set()
+                safe_module = str(current_module or "").replace(" ", "_")
+                patterns = [
+                    os.path.join("modules", safe_module, "areas", "*.json"),
+                    os.path.join("modules", safe_module, "*.json"),
+                ]
+                candidate_files = []
+                for pattern in patterns:
+                    candidate_files.extend(glob.glob(pattern))
+                live_files = [f for f in candidate_files
+                              if not f.endswith(("_BU.json", "_backup.json"))]
+                bu_files = [f for f in candidate_files if f.endswith("_BU.json")]
+                for scan in (live_files, bu_files):
+                    if all_accessible_locations:
+                        break
+                    for area_path in scan:
+                        try:
+                            area_data = safe_json_load(area_path)
+                        except Exception:
+                            continue
+                        if not isinstance(area_data, dict):
+                            continue
+                        scanned_area_id = str(
+                            area_data.get("areaId")
+                            or os.path.splitext(os.path.basename(area_path))[0]
+                            .replace("_BU", "")
+                        )
+                        for location in area_data.get("locations", []):
+                            if not isinstance(location, dict):
+                                continue
+                            loc_id = str(location.get("locationId") or "").strip()
+                            loc_name = str(location.get("name") or "").strip()
+                            if not loc_id or loc_id.upper() in seen_fallback:
+                                continue
+                            seen_fallback.add(loc_id.upper())
+                            areas_included.add(scanned_area_id)
+                            all_accessible_locations.append(
+                                f"{loc_id} ({loc_name}) in area {scanned_area_id}"
+                            )
+
             validation_context += f"ALL ACCESSIBLE LOCATIONS (across {len(areas_included)} areas):\n"
             if all_accessible_locations:
                 # Sort by area for clarity
@@ -1083,7 +1147,7 @@ def create_module_validation_context(party_tracker_data, path_manager):
             else:
                 validation_context += "- No locations found in location graph"
             validation_context += "\n\n"
-            validation_context += "MULTI-AREA TRAVEL NOTE: transitionLocation can target ANY accessible location above, not just those in the current area.\n\n"
+            validation_context += "MULTI-AREA TRAVEL NOTE: transitionLocation can target ANY accessible location above, not just those in the current area. Mentioning, revealing, or discussing ANY location above in narration is always valid and is NOT a hallucination.\n\n"
                 
         except Exception as e:
             validation_context += f"ERROR: Could not load location graph data: {str(e)}\n\n"
