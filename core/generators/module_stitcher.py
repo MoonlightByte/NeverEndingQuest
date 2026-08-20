@@ -4817,6 +4817,51 @@ Respond with JSON:
             print(f"Error getting travel narration for {module_name}: {e}")
             return {}
     
+    def _disk_fallback_module_list(self) -> List[Dict[str, Any]]:
+        """Minimal module listing derived from on-disk public module directories,
+        used only when the registry names no modules (issue #167 class). Analysis
+        is detection-only (no travel narration, no registration, no writes)."""
+        support_roots = {
+            'backups', 'campaign_archives', 'campaign_summaries',
+            'conversation_history', 'default', 'encounters', 'logs',
+        }
+        listing: List[Dict[str, Any]] = []
+        modules_dir = 'modules'
+        if not os.path.isdir(modules_dir):
+            return listing
+        for name in sorted(os.listdir(modules_dir)):
+            if name.startswith('.') or name in support_roots:
+                continue
+            if not os.path.isdir(os.path.join(modules_dir, name)):
+                continue
+            try:
+                detected = self.analyze_module(name, include_travel_narration=False)
+            except Exception as detect_error:
+                print(f"Warning: Could not analyze module {name}: {detect_error}")
+                continue
+            areas = (detected or {}).get('areas') or {}
+            if not areas:
+                continue
+            listing.append({
+                "moduleName": name,
+                "plotObjective": '',
+                "levelRange": {},
+                "areaCount": len(areas),
+                "locationCount": sum(
+                    area.get('locationCount', 0) for area in areas.values()
+                    if isinstance(area, dict)
+                ),
+                "plotPointCount": 0,
+                "addedDate": '',
+                "hasTravel": False,
+            })
+        if listing:
+            print(
+                f"[MODULES] Registry names no modules; listing {len(listing)} "
+                "module(s) found on disk."
+            )
+        return listing
+
     def get_available_modules(self) -> List[Dict[str, Any]]:
         """Get list of all available modules with basic info"""
         try:
@@ -4855,7 +4900,16 @@ Respond with JSON:
                     "addedDate": module_data.get('addedDate', ''),
                     "hasTravel": bool(module_data.get('travelNarration'))
                 })
-            
+
+            # Issue #167 class: an empty (fresh/auto-created) registry used to
+            # make the toolkit/web module list silently empty even with real
+            # modules on disk -- the same registry-shadow defect fixed in the
+            # startup scan. Fall back to a disk-derived listing so on-disk
+            # modules are never invisible; registry data stays preferred when
+            # it has entries.
+            if not module_list:
+                module_list = self._disk_fallback_module_list()
+
             return sorted(module_list, key=lambda x: x['addedDate'])
             
         except Exception as e:
