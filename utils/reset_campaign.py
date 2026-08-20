@@ -192,14 +192,17 @@ def reset_global_state():
 
 def _recover_module_lifecycle_for_reset_locked():
     """Recover before reset work; leave receipts live until reset commits."""
-    from utils.commit_state import recover_incomplete_refresh_commit
     from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
 
-    recover_incomplete_refresh_commit()
+    # P2a: lifecycle recovery is advisory. Attempt it for its rollback side
+    # effect, but never refuse a reset over an INDETERMINATE classification --
+    # reset rebuilds every module from backups anyway, so inert transaction
+    # residue must not block the wipe. Receipt invalidation still runs downstream.
     lifecycle = ModuleLifecycleStore("modules")
     lifecycle_recovery = lifecycle.recover()
     if lifecycle_recovery.status is RecoveryStatus.INDETERMINATE:
-        raise RuntimeError("Module lifecycle recovery is required before reset")
+        print(f"{YELLOW}  [WARN] Module lifecycle recovery indeterminate; "
+              f"proceeding with reset (residue does not block reset){RESET}")
     return lifecycle
 
 

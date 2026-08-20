@@ -2992,23 +2992,23 @@ def _deliver_pending_module_receipt_locked(receipt, conversation_history):
 
 
 def _recover_pending_module_publications(conversation_history):
-    """Classify lifecycle state and deliver every committed pending receipt."""
-    from utils.commit_state import recover_incomplete_refresh_commit
-    from utils.module_lifecycle import (
-        ModuleLifecycleStore,
-        RecoveryStatus,
-    )
+    """Deliver every committed pending publication receipt.
+
+    P2a: the module-lifecycle recover() classification is NOT run on this
+    per-turn path. Inert transaction residue (a stray file, leftover staging
+    dir) must never suppress a DM turn or add per-turn recovery cost. A build
+    that failed never touched modules/, so there is nothing to "recover" here;
+    we only deliver receipts that were already committed to disk. The receipt
+    subsystem itself is removed in P2b.
+    """
+    from utils.module_lifecycle import ModuleLifecycleStore
     from utils.module_refresh_lock import module_refresh_lock
 
     try:
         with module_refresh_lock() as acquired:
             if not acquired:
                 return False
-            recover_incomplete_refresh_commit()
             store = ModuleLifecycleStore("modules")
-            recovery = store.recover()
-            if recovery.status is RecoveryStatus.INDETERMINATE:
-                return False
             receipts = tuple(
                 receipt
                 for receipt in store.list_publication_receipts()
