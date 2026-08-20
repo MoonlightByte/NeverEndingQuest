@@ -5,7 +5,7 @@
     {
       "id": "PP001",
       "title": "Desperate Defense",
-      "description": "The party arrives at Rangers' Outpost to find it in crisis. Three caravans have been massacred in five days with unnatural precision. Ranger Elen, the outpost's commander, recruits the party. Her prime lead is the captured Bandit Leader, Rusk, a man now terrified of his new master. The party must interrogate Rusk to learn the location of the main bandit camp and the identity of the sorcerer, Malarok, who now commands them. IMPORTANT: This plot point should be marked COMPLETED immediately after Rusk reveals the bandit camp location (old watchtower in Thornwood) and Malarok's identity - do not wait for expedition planning or other preparations.",
+      "description": "The party arrives at Rangers' Outpost to find it in crisis. Three caravans have been massacred in five days with unnatural precision. Ranger Elen, the outpost's commander, recruits the party. Her prime lead is the captured Bandit Leader, Rusk, a man now terrified of his new master. The party must interrogate Rusk to learn the location of the main bandit camp and the identity of the sorcerer, Malarok, who now commands them. IMPORTANT: This plot point should be marked COMPLETED immediately after Rusk reveals the bandit camp location (the Bandit Stronghold in the Thornwood Wilds) and Malarok's identity - do not wait for expedition planning or other preparations.",
       "location": "RO001",
       "nextPoints": [
         "PP002"
@@ -40,7 +40,7 @@
     {
       "id": "PP002",
       "title": "Into the Thornwood",
-      "description": "Following leads from Rusk, the party ventures into the Thornwood Wilds to find the main bandit camp, located in an old, crumbling watchtower. They must overcome unnaturally aggressive wildlife and bandit patrols to reach the camp, rescue any surviving captives, and find clues about Malarok's ultimate goal.",
+      "description": "Following leads from Rusk, the party ventures into the Thornwood Wilds to find the main bandit camp, the Bandit Stronghold, a fortified camp deep in the wilds. They must overcome unnaturally aggressive wildlife and bandit patrols to reach the camp, rescue any surviving captives, and find clues about Malarok's ultimate goal.",
       "location": "TW001",
       "nextPoints": [
         "PP003"
