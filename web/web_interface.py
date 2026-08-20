@@ -484,17 +484,15 @@ set_compression_callback(emit_compression_event)
 def _is_operational_diagnostic(clean_line):
     """E2E gate 2a: operational diagnostics that must reach the Debug tab, not be
     swallowed as DM narration. The DM-section terminators only recognize UPPERCASE
-    'DEBUG:/ERROR:/WARNING:'; recovery/scan/quarantine lines use bracket tags or
-    mixed-case 'Error:'/'Warning:' and were being appended to the narration buffer
-    (web/web_interface.py). Matched by line PREFIX so it never trips on the same
-    words inside real DM prose."""
+    'DEBUG:/ERROR:/WARNING:'; recovery/quarantine/module lines carry an UNAMBIGUOUS
+    bracket tag and were being appended to the narration buffer. We match ONLY those
+    reserved bracket tags (by line prefix) -- deliberately NOT bare 'Error:'/'Warning:'
+    words, which in-fiction DM prose could legitimately start a wrapped line with
+    (a read-aloud sign/note), which would truncate narration. Engine diagnostics
+    that must surface use one of these tags."""
     if not isinstance(clean_line, str):
         return False
-    stripped = clean_line.lstrip()
-    if stripped.startswith(('[LIFECYCLE]', '[MODULES]', '[STARTUP]')):
-        return True
-    low = stripped[:8].lower()
-    return low.startswith(('error:', 'warning:'))
+    return clean_line.lstrip().startswith(('[LIFECYCLE]', '[MODULES]', '[STARTUP]'))
 
 
 class WebOutputCapture:
