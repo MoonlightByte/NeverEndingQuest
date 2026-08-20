@@ -3131,15 +3131,30 @@ def _ordinary_action_failure_message_id(response, action, conversation_history):
     return "action-failure:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _action_failure_player_message(result):
+    """Pick the CURATED player message for a terminal action error. A module
+    lifecycle recovery-required failure gets a specific, actionable message
+    (E2E 2e/W3); everything else gets the generic safe text. Selection is by the
+    whitelisted `recovery_required` boolean only -- never raw internal text."""
+    from web.shared_state import (
+        SAFE_ACTION_FAILURE_MESSAGE,
+        MODULE_RECOVERY_FAILURE_MESSAGE,
+    )
+    source_data = result.get("response_data") if isinstance(result, dict) else {}
+    if isinstance(source_data, dict) and source_data.get("recovery_required") is True:
+        return MODULE_RECOVERY_FAILURE_MESSAGE
+    return SAFE_ACTION_FAILURE_MESSAGE
+
+
 def _safe_action_failure_result(result, message_id):
     """Whitelist action-error metadata and attach the canonical player text."""
-    from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
+    player_message = _action_failure_player_message(result)
 
     source_data = result.get("response_data") if isinstance(result, dict) else {}
     if not isinstance(source_data, dict):
         source_data = {}
     response_data = {
-        "player_message": SAFE_ACTION_FAILURE_MESSAGE,
+        "player_message": player_message,
         "message_id": message_id,
     }
     for field in ("retryable", "state_changed", "recovery_required"):
@@ -3156,7 +3171,7 @@ def _safe_action_failure_result(result, message_id):
             isinstance(result, dict) and result.get("needs_update") is True
         ),
         "needs_dm_response": False,
-        "player_message": SAFE_ACTION_FAILURE_MESSAGE,
+        "player_message": player_message,
         "message_id": message_id,
         "response_data": response_data,
     }
@@ -3169,10 +3184,11 @@ def _handle_ordinary_action_failure(
     conversation_history,
 ):
     """Persist and deliver one sanitized terminal error for an accepted turn."""
-    from web.shared_state import (
-        SAFE_ACTION_FAILURE_MESSAGE,
-        emit_player_output,
-    )
+    from web.shared_state import emit_player_output
+
+    # Curated player text: specific+actionable for a lifecycle recovery-required
+    # refusal (E2E 2e/W3), generic otherwise. Never raw internal error text.
+    player_message = _action_failure_player_message(result)
 
     message_id = _ordinary_action_failure_message_id(
         response, action, conversation_history
@@ -3191,7 +3207,7 @@ def _handle_ordinary_action_failure(
         conversation_history.append(
             {
                 "role": "system",
-                "content": SAFE_ACTION_FAILURE_MESSAGE,
+                "content": player_message,
                 "message_id": message_id,
             }
         )
@@ -3200,7 +3216,7 @@ def _handle_ordinary_action_failure(
     emit_player_output(
         {
             "type": "error",
-            "content": SAFE_ACTION_FAILURE_MESSAGE,
+            "content": player_message,
             "message_id": message_id,
         }
     )
@@ -5088,6 +5104,20 @@ def main_game_loop():
     if not os.path.exists("debug/logs/prompt_validation.json"):
         with open("debug/logs/prompt_validation.json", "w") as f:
             f.write("[]")  # Initialize with empty array
+
+    # Issue #167 / E2E gate 2d: hydrate missing live module files from their _BU
+    # masters on EVERY boot, not just new-game setup. The web entry runs this loop
+    # directly (web_interface.py:run_game_loop), and its existing-party path
+    # (startup_required() == False) otherwise never hydrates -- so an existing
+    # party that lost an area file (or a game copied without runtime files) booted
+    # into missing state that cached narration masked. main()/the wizard already
+    # call this on their paths; doing it here covers the web existing-party boot
+    # too. Idempotent (only-if-missing), guarded (never overwrites live files).
+    try:
+        from utils.startup_wizard import initialize_game_files_from_bu
+        initialize_game_files_from_bu()
+    except Exception as e:
+        debug(f"Startup module hydration skipped (non-fatal): {e}", category="startup")
 
     # Initialize companion memories from journal if needed
     try:

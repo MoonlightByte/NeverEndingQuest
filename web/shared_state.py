@@ -17,6 +17,19 @@ SAFE_ACTION_FAILURE_MESSAGE = (
     "that response were applied."
 )
 
+# E2E gates 2e / W3: when a module operation is refused because the module
+# lifecycle needs recovery (a leftover build transaction, or a stray file such
+# as desktop.ini under modules/.module_transactions), the player deserves an
+# actionable reason instead of the fully-generic message above. This is a
+# CURATED, player-safe string selected by the whitelisted `recovery_required`
+# flag -- it never carries raw internal/provider error text.
+MODULE_RECOVERY_FAILURE_MESSAGE = (
+    "That action could not be completed: the module system needs to finish "
+    "recovering from a previous interrupted build. No changes were made. "
+    "Restart the game to let recovery run; if it persists, clear leftover "
+    "files under modules/.module_transactions (they are safe to remove)."
+)
+
 _player_output_sink = None
 _player_output_sink_lock = threading.RLock()
 
