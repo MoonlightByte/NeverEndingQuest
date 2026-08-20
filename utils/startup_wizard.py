@@ -251,6 +251,13 @@ def scan_available_modules():
 
     with module_refresh_lock() as acquired:
         if not acquired:
+            # Issue #167 diagnosability: this used to return [] silently and the
+            # player only ever saw "No modules available" -- print() reaches the
+            # web output capture, the logger does not (startup-marker finding).
+            print(
+                "Error: Module scan could not acquire the module refresh lock; "
+                "another operation is in progress. Restart and try again."
+            )
             return []
         recover_incomplete_refresh_commit()
         recovery = ModuleLifecycleStore("modules").recover()
@@ -258,6 +265,14 @@ def scan_available_modules():
             warning(
                 "Module lifecycle recovery is required before startup scan",
                 category="startup",
+            )
+            # Same diagnosability rule: without this print, an indeterminate
+            # lifecycle state (e.g. residue from previously failed module
+            # builds) masqueraded as "No modules available".
+            print(
+                "Error: A previous module build left the module store in a "
+                "state that needs recovery, so no modules can be listed yet. "
+                "See modules/.module_transactions for the pending state."
             )
             return []
         return _scan_available_modules_locked()
@@ -267,12 +282,20 @@ def _scan_available_modules_locked():
     """Find all available modules in modules/ directory"""
     status_loading()
     modules = []
-    
+
     if not os.path.exists("modules"):
         print("Error: No modules directory found!")
         status_ready()
         return modules
-    
+
+    # Issue #167: a completely fresh install ships the bundled adventures as
+    # *_BU.json masters only (live files are runtime state). Reuse the existing
+    # guarded hydrator (skips saved_games snapshots + support dirs; strictly
+    # only-if-missing, never overwrites) so any scan caller sees playable
+    # modules even if its entry path did not run the wizard's own hydration.
+    # Idempotent; runs under the module_refresh_lock the caller holds.
+    initialize_game_files_from_bu()
+
     catalog_names = os.listdir("modules")
     registry_path = os.path.join("modules", "world_registry.json")
     if os.path.isfile(registry_path):
@@ -281,9 +304,19 @@ def _scan_available_modules_locked():
             if isinstance(registry, dict) and isinstance(
                 registry.get("modules"), dict
             ):
-                catalog_names = list(registry["modules"])
+                registry_catalog = list(registry["modules"])
+                # Issue #167 guard: the registry is the PREFERRED catalog, but an
+                # empty or partial registry (fresh install, interrupted first
+                # registration) must never SHADOW real module directories on
+                # disk -- that made the game report "No modules available" while
+                # both bundled adventures sat in modules/. Fall back to the
+                # directory listing when the registry names nothing.
+                if registry_catalog:
+                    catalog_names = registry_catalog
         except Exception:
-            catalog_names = []
+            # A corrupt registry must not hide on-disk modules either; keep the
+            # directory listing.
+            pass
 
     for item in catalog_names:
         module_path = f"modules/{item}"
