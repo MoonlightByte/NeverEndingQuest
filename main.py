@@ -1708,17 +1708,32 @@ def _assemble_validation_messages(
     candidate_response,
     compress_prefix=None,
     srd_context=None,
+    local_template_tail=False,
 ):
-    """Compress context first, then preserve the raw intent/candidate pair."""
+    """Compress context first, then preserve the raw intent/candidate pair.
+
+    local_template_tail (issue #168): the array otherwise ENDS on the assistant-role
+    candidate message. Strict-alternation chat templates on local models (e.g. Gemma
+    via LM Studio) treat a trailing assistant turn as an already-finished model turn
+    and emit an immediate end-of-turn -> empty content, finish_reason=stop, on every
+    call -- which hard-blocks gameplay now that T065 fails closed. For the Local/
+    Custom provider ONLY, append one minimal mechanical closing user turn so the
+    array ends on a user message with alternation intact. The exact raw-intent /
+    candidate pair is preserved verbatim and adjacent; cloud/legacy/gemini requests
+    are byte-identical to before.
+    """
     prefix = [dict(message) for message in validation_prefix]
     if compress_prefix is not None:
         prefix = compress_prefix(prefix)
     if srd_context:
         prefix.append({"role": "system", "content": srd_context})
-    return prefix + [
+    tail = [
         {"role": "user", "content": str(raw_user_input or "")},
         {"role": "assistant", "content": candidate_response},
     ]
+    if local_template_tail:
+        tail.append({"role": "user", "content": "Return the JSON verdict now."})
+    return prefix + tail
 
 
 def _normalize_semantic_rejection_reason(reason):
@@ -2037,11 +2052,14 @@ def validate_ai_response(
 
     # The semantic boundary is deliberately outside compression: the exact raw
     # player turn and exact candidate must remain the final adjacent pair.
+    # Snapshot the provider once here; the model-config selection below reuses it.
+    from model_config import MODEL_PROVIDER as _val_provider
     validation_messages_to_send = _assemble_validation_messages(
         validation_messages_to_send,
         user_input,
         response_to_validate,
         srd_context=srd_context,
+        local_template_tail=(_val_provider == "lmstudio"),
     )
 
     if '"action": "createNewModule"' in response_to_validate:
@@ -2059,7 +2077,6 @@ def validate_ai_response(
     max_validation_retries = 3
 
     # Select per-provider validation model config
-    from model_config import MODEL_PROVIDER as _val_provider
     if _val_provider == "openai":
         validation_config = config.DM_VALIDATION_GPT52_LOW
     elif _val_provider == "gemini":
