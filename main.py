@@ -3001,7 +3001,10 @@ def _recover_pending_module_publications(conversation_history):
     we only deliver receipts that were already committed to disk. The receipt
     subsystem itself is removed in P2b.
     """
-    from utils.module_lifecycle import ModuleLifecycleStore
+    from utils.module_lifecycle import (
+        ModuleLifecycleStore,
+        LifecycleIndeterminateError,
+    )
     from utils.module_refresh_lock import module_refresh_lock
 
     try:
@@ -3018,6 +3021,17 @@ def _recover_pending_module_publications(conversation_history):
             _deliver_pending_module_receipt(receipt, conversation_history)
             for receipt in receipts
         )
+    except LifecycleIndeterminateError:
+        # P2a: inert transaction residue makes receipt enumeration indeterminate.
+        # There is nothing deliverable to a normal turn, so skip QUIETLY -- do not
+        # log a publication-recovery failure on every DM turn (residue must not
+        # add per-turn noise). The receipt subsystem itself is removed in P2b.
+        debug(
+            "Publication-receipt enumeration indeterminate; skipping pending "
+            "delivery (inert residue)",
+            category="module_management",
+        )
+        return False
     except Exception as receipt_error:
         error(
             "FAILURE: Pending module publication delivery could not be completed",

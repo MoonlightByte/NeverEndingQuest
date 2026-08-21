@@ -664,7 +664,11 @@ class SaveGameManager:
                 _party_module_transition_lock,
             )
             from utils.module_refresh_lock import module_refresh_lock
-            from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
+            from utils.module_lifecycle import (
+                ModuleLifecycleStore,
+                RecoveryStatus,
+                LifecycleIndeterminateError,
+            )
 
             with _party_module_transition_lock():
                 with _active_combat_snapshot_lease():
@@ -684,10 +688,24 @@ class SaveGameManager:
                                 "with restore (inert residue does not block restore)",
                                 category="module_management",
                             )
-                        if any(
-                            not receipt.acknowledged
-                            for receipt in lifecycle.list_publication_receipts()
-                        ):
+                        try:
+                            pending_publication = any(
+                                not receipt.acknowledged
+                                for receipt in lifecycle.list_publication_receipts()
+                            )
+                        except LifecycleIndeterminateError:
+                            # P2a: inert residue makes receipt enumeration
+                            # indeterminate exactly like recover() above -- it must
+                            # not block a restore. A genuine pending receipt in a
+                            # residue-free store still refuses below.
+                            warning(
+                                "Publication-receipt enumeration indeterminate; "
+                                "proceeding with restore (inert residue does not "
+                                "block restore)",
+                                category="module_management",
+                            )
+                            pending_publication = False
+                        if pending_publication:
                             return (
                                 False,
                                 "A published module message is pending; retry restore after delivery",

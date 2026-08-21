@@ -62,12 +62,27 @@ def create_backup():
                 )
             if os.path.basename(dir) != "modules":
                 return []
-            return [
+            ignored = [
                 'backups',
                 '.module_transactions',
                 '.publication_transactions',
                 '.module_orphan_quarantine',
             ]
+            # The campaign completion lock (campaign.json.completion.transaction.lock)
+            # is HELD OPEN while reset runs inside _campaign_transaction_lock. On
+            # Windows, copying an open lock file fails with WinError 33
+            # (ERROR_LOCK_VIOLATION), aborting the whole reset backup. Lock and
+            # completion metadata are runtime recovery authority, never campaign
+            # save data (same rationale as the transaction roots above), so exclude
+            # every lock/completion runtime artifact from the backup.
+            ignored.extend(
+                name
+                for name in files
+                if name.endswith('.transaction.lock')
+                or name.endswith('.module-transition.lock')
+                or '.completion' in name
+            )
+            return ignored
 
         shutil.copytree("modules", os.path.join(backup_dir, "modules"), ignore=ignore_backups)
     
@@ -206,6 +221,25 @@ def _recover_module_lifecycle_for_reset_locked():
     return lifecycle
 
 
+def _invalidate_pending_receipts_tolerant(lifecycle):
+    """Retire old-timeline receipts, but never let inert residue block a reset.
+
+    P2a: invalidate_pending_publication_receipts_for_reset() enumerates the
+    staging/active roots with the strict enumerator, so leftover build debris
+    (a stray file under .module_transactions/active/) makes it raise
+    LifecycleIndeterminateError. A confirmed reset is wiping the timeline anyway,
+    so residue must not block it -- warn and proceed. The receipt subsystem is
+    removed entirely in P2b.
+    """
+    from utils.module_lifecycle import LifecycleIndeterminateError
+
+    try:
+        lifecycle.invalidate_pending_publication_receipts_for_reset()
+    except LifecycleIndeterminateError:
+        print(f"{YELLOW}  [WARN] Publication-receipt invalidation indeterminate; "
+              f"proceeding with reset (residue does not block reset){RESET}")
+
+
 def _reset_global_state_locked(*, lifecycle=None, reset_prepared=False):
     """Phase 3: Create fresh game state"""
     print(f"\n{CYAN}PHASE 3: Creating fresh game state...{RESET}")
@@ -222,7 +256,7 @@ def _reset_global_state_locked(*, lifecycle=None, reset_prepared=False):
         _assert_no_active_campaign_completion(campaign_file)
         if lifecycle is None:
             raise RuntimeError("Module lifecycle reset preflight is unavailable")
-        lifecycle.invalidate_pending_publication_receipts_for_reset()
+        _invalidate_pending_receipts_tolerant(lifecycle)
         _bump_campaign_lifecycle_epoch(campaign_file)
     
     # Reset party tracker to empty object (matches installer behavior)
@@ -407,7 +441,7 @@ def _perform_reset_logic_locked(lifecycle):
     # immediately before the first live campaign/module mutation.
     from core.managers.campaign_manager import _bump_campaign_lifecycle_epoch
 
-    lifecycle.invalidate_pending_publication_receipts_for_reset()
+    _invalidate_pending_receipts_tolerant(lifecycle)
     _bump_campaign_lifecycle_epoch("modules/campaign.json")
     
     # Phase 2: Reset all modules
