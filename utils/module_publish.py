@@ -13,18 +13,27 @@ Design (isolated single-writer per the server's per-player instance model):
   2. Build into ``modules/.module_build_<uuid>/<final_name>/`` via ``build_fn``.
   3. Resolve the final module name by VALUE (auto-suffix ``_v2``) -- never a
      content digest (project ban: identity is never derived from content).
-  4. Optionally update ``world_registry.json`` best-effort via a caller-supplied
-     ``registry_update_fn`` (advisory metadata; a failure here never bricks the
-     already-live module).
-  5. Atomic ``os.replace`` of the built dir into ``modules/<final_name>/`` with a
-     Windows-correct occupancy guard and a landed-state-proof retry (ported from
-     the store's ``_replace_entry`` -- os.replace can raise a transient OSError
-     on Windows even when the rename actually completed).
-  6. Write a lightweight publish MARKER (value identity = module name) so a
-     crash-then-retry re-delivers the creation narration instead of building a
-     duplicate ``_v2``. The marker is cleared once narration is confirmed.
-  7. On any failure the temp dir is orphaned (swept later); ``modules/<name>/``
-     is never touched.
+  4. Resolve area-ID conflicts and compute ``world_registry.json`` bytes on the
+     hidden candidate BEFORE it is live (via ``prepare_registry_fn``).
+  5. Atomic ``os.replace`` of the built dir into ``modules/<final_name>/`` -- the
+     COMMIT POINT -- with a Windows-correct occupancy guard and a landed-state-
+     proof retry (ported from the store's ``_replace_entry`` -- os.replace can
+     raise a transient OSError on Windows even when the rename actually
+     completed). Any failure up to and including this rename leaves
+     ``modules/<name>/`` untouched: the build simply did not happen.
+  6. Once the rename lands the module is LIVE and the publish has SUCCEEDED.
+     Every remaining step is best-effort and NEVER raises: the advisory
+     ``world_registry.json`` write is transient-retried and, if it still fails,
+     logged loudly (the live module self-heals on the next scan) -- it is never
+     turned into a "publication failed" (which would make a retry build a
+     duplicate).
+
+Idempotency note: there is deliberately NO cross-turn dedup marker. A module's
+name is not reliably known before the build (createNewModule may carry only a
+narrative) and the allocated final name may differ, so a name-keyed marker could
+never match a retry. A crash-then-recreate therefore yields a harmless SPARE
+module (a value-suffixed ``_v2``) the player can delete -- fail-forward: it never
+breaks, corrupts, or stops the game.
 """
 
 from __future__ import annotations
@@ -40,8 +49,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from utils.enhanced_logger import debug, warning, error
-from utils.encoding_utils import safe_json_dump, safe_json_load
+from utils.enhanced_logger import debug, error
 from utils.module_refresh_lock import assert_module_refresh_lock_owned
 from utils.transient_filesystem import (
     is_transient_filesystem_error,
@@ -52,7 +60,6 @@ from utils.transient_filesystem import (
 _MODULE_NAME_RE = re.compile(r"^[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*$")
 
 _BUILD_WORKSPACE_PREFIX = ".module_build_"
-_PUBLISH_MARKER_DIR = ".publish_markers"
 
 _RENAME_ATTEMPTS = 3
 _RENAME_BACKOFF_SECONDS = 0.05
@@ -270,55 +277,6 @@ def _assert_final_path_free(modules_dir: Path, final_name: str) -> None:
 
 
 # ----------------------------------------------------------------------------
-# Publish markers (value identity = module name; replaces the receipt dedup)
-# ----------------------------------------------------------------------------
-def _marker_dir(modules_dir: Path) -> Path:
-    return Path(modules_dir) / _PUBLISH_MARKER_DIR
-
-
-def _marker_path(modules_dir: Path, module_name: str) -> Path:
-    validate_module_name(module_name)
-    return _marker_dir(modules_dir) / f"{module_name}.json"
-
-
-def write_publish_marker(modules_dir: Path, module_name: str, build_id: str) -> None:
-    """Record 'published <module_name>; narration not yet confirmed'.
-
-    A retried createNewModule that sees this marker re-delivers the creation
-    narration instead of rebuilding a duplicate module.
-    """
-    marker_dir = _marker_dir(modules_dir)
-    marker_dir.mkdir(parents=True, exist_ok=True)
-    safe_json_dump(
-        {"module_name": module_name, "build_id": build_id},
-        str(_marker_path(modules_dir, module_name)),
-    )
-
-
-def read_publish_marker(modules_dir: Path, module_name: str) -> Optional[dict]:
-    """Return the marker for module_name, or None if narration is complete."""
-    path = _marker_path(modules_dir, module_name)
-    if not path.exists():
-        return None
-    data = safe_json_load(str(path))
-    return data if isinstance(data, dict) else None
-
-
-def clear_publish_marker(modules_dir: Path, module_name: str) -> None:
-    """Drop the marker once the creation narration is confirmed delivered."""
-    path = _marker_path(modules_dir, module_name)
-    try:
-        os.remove(path)
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        warning(
-            f"Could not clear publish marker for {module_name}: {exc}",
-            category="module_management",
-        )
-
-
-# ----------------------------------------------------------------------------
 # The atomic publish orchestrator
 # ----------------------------------------------------------------------------
 def publish_module_atomic(
@@ -386,32 +344,44 @@ def publish_module_atomic(
         _sync_directory(candidate_path)
         _sync_directory(workspace)
 
-        # 3. Occupancy guard, then the single atomic rename that makes it live.
+        # 3. Occupancy guard, then the single atomic rename -- the COMMIT POINT.
+        #    Any failure up to and including this rename leaves modules/<name>/
+        #    untouched (or, in the rare indeterminate-rename case, an orphan the
+        #    sweep retires); the build simply did not happen (fail-forward).
         _assert_final_path_free(modules_root, final_name)
         _replace_entry(candidate_path, modules_root / final_name)
-        _sync_directory(modules_root)
-
-        # 4. Commit the advisory registry (never bricks the now-live module).
-        if registry_bytes is not None:
-            try:
-                _replace_exact_bytes(modules_root / registry_filename, registry_bytes)
-            except Exception as registry_error:
-                warning(
-                    "Module published but advisory registry commit failed; "
-                    f"module {final_name} is live regardless: {registry_error}",
-                    category="module_management",
-                )
-
-        # 5. Marker so a crash-then-retry re-narrates instead of duplicating.
-        write_publish_marker(modules_root, final_name, build_id)
     except BaseException:
-        # The module never reached modules/<name>/ on this path (or the rename
-        # raised before landing). Leave the temp workspace as an orphan for the
-        # startup sweep rather than risk deleting a half-renamed entry here.
-        raise
-    finally:
         _cleanup_orphan_workspace(workspace)
+        raise
 
+    # ---- THE MODULE IS NOW LIVE ON DISK; nothing below may raise ----
+    # The publish has SUCCEEDED the instant the rename landed. Every remaining
+    # step is best-effort and must NEVER turn a live module into a "publication
+    # failed" -- that would make a retry build a duplicate. A registry-write
+    # failure is logged LOUDLY (never swallowed): the module is live and will be
+    # re-registered by the next scan_and_integrate, so it self-heals.
+    try:
+        _sync_directory(modules_root)
+    except Exception as sync_error:
+        debug(
+            f"Post-publish directory sync deferred for {final_name}: {sync_error}",
+            category="module_management",
+        )
+    if registry_bytes is not None:
+        try:
+            retry_transient_filesystem(
+                lambda: _replace_exact_bytes(
+                    modules_root / registry_filename, registry_bytes
+                )
+            )
+        except Exception as registry_error:
+            error(
+                f"Module PUBLISHED but its world_registry.json update failed; "
+                f"{final_name} is LIVE on disk and will be re-registered on the "
+                f"next module scan: {registry_error}",
+                category="module_management",
+            )
+    _cleanup_orphan_workspace(workspace)
     debug(
         f"Atomically published module {final_name} (build {build_id})",
         category="module_management",

@@ -3153,16 +3153,6 @@ def _complete_committed_module_followup_locked(
 
         conversation_history[:] = followup_history
         _emit_committed_module_message(narration, followup_id)
-        # Narration delivered -> the creation is fully complete. Clear the publish
-        # marker so a later createNewModule of the same name builds fresh instead
-        # of re-narrating. Best-effort: a marker-clear failure never breaks play.
-        if module_name:
-            try:
-                from utils.module_publish import clear_publish_marker
-
-                clear_publish_marker("modules", module_name)
-            except Exception:
-                pass
 
         completed = dict(result)
         completed["status"] = "published"

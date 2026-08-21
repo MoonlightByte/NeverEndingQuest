@@ -3066,15 +3066,29 @@ Create atmospheric travel narration that leads into this adventure."""
         module_name = validate_module_name(module_name)
         candidate = Path(candidate_path).resolve(strict=True)
         modules_root = Path(self.modules_dir).resolve(strict=True)
-        # Symlink/reparse safety: reject any link anywhere in the candidate tree
-        # before a normalization writer can follow it out of the workspace. The
-        # store used create_manifest() for this; here it is a self-contained walk.
-        if candidate.is_symlink():
-            raise ValueError("Managed candidate root is a symlink")
+        # Symlink/reparse safety: reject any link OR reparse point (Windows
+        # junction) anywhere in the candidate tree before a normalization writer
+        # can follow it out of the workspace. os.path.islink alone misses Windows
+        # junctions (they are reparse points, not symlinks), so also test the
+        # FILE_ATTRIBUTE_REPARSE_POINT attribute -- restoring the protection the
+        # store's create_manifest() provided.
+        def _is_link_or_reparse(p):
+            if os.path.islink(p):
+                return True
+            try:
+                attrs = os.lstat(p).st_file_attributes
+            except (OSError, AttributeError):
+                return False
+            return bool(attrs & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+
+        if _is_link_or_reparse(candidate):
+            raise ValueError("Managed candidate root is a link or reparse point")
         for root, dirs, files in os.walk(candidate):
             for entry in dirs + files:
-                if os.path.islink(os.path.join(root, entry)):
-                    raise ValueError("Managed candidate contains a symlink")
+                if _is_link_or_reparse(os.path.join(root, entry)):
+                    raise ValueError(
+                        "Managed candidate contains a link or reparse point"
+                    )
         if os.path.lexists(modules_root / module_name):
             raise FileExistsError("Managed module final path became occupied")
 

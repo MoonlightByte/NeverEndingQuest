@@ -2398,7 +2398,6 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 ai_driven_module_creation,
             )
             from core.generators.module_stitcher import get_module_stitcher
-            from utils.module_publish import read_publish_marker
             from utils.openai_usage_tracker import (
                 mark_module_build_outcome,
                 module_build_usage_scope,
@@ -2434,33 +2433,13 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         )
                         return failure
 
-                    # Value-based idempotency (no content hash, per the owner
-                    # ban): if this module NAME was already published but its
-                    # creation narration was not confirmed (a crash between the
-                    # atomic publish and the narration), a retry RE-NARRATES it
-                    # instead of building a duplicate. The marker is cleared once
-                    # the narration is delivered (main.py). No prior in-flight
-                    # state ever BLOCKS a new build -- fail-forward.
-                    requested_name = parameters.get("module_name")
-                    if requested_name:
-                        try:
-                            pending_marker = read_publish_marker(
-                                "modules", requested_name
-                            )
-                        except Exception:
-                            pending_marker = None
-                        if pending_marker is not None:
-                            marker_name = pending_marker.get(
-                                "module_name", requested_name
-                            )
-                            mark_module_build_outcome("published_replay")
-                            terminal_progress(
-                                "published",
-                                f"Module {marker_name} was already published; re-narrating.",
-                                marker_name,
-                            )
-                            return published_result(marker_name)
-
+                    # No cross-turn idempotency dedup: a createNewModule may carry
+                    # only a narrative (no module_name), and the allocated final
+                    # name may differ, so nothing can reliably match a retry to a
+                    # prior build. A crash-then-recreate yields a harmless SPARE
+                    # module the player can delete -- fail-forward, never a broken
+                    # or corrupted game. No prior in-flight state ever BLOCKS a
+                    # new build.
                     stitcher = get_module_stitcher()
                     try:
                         # Builds into a hidden temp workspace and atomically swaps
