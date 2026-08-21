@@ -2366,36 +2366,30 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             failure["response_data"]["build_id"] = build_id
             return failure
 
-        def published_result(receipt):
-            module_name = receipt.module_name
-            pending_message = (
-                f"Module {module_name} was published; follow-up narration is pending."
-            )
+        def published_result(module_name):
             dm_note = (
                 "Dungeon Master Note: New module "
                 f"'{module_name}' has been successfully created and integrated "
                 "into the world. Provide a useful player-facing transition "
                 "narration and return no actions."
             )
+            # P2b: atomic publish + value marker replace the receipt subsystem.
+            # The module is already live; always ask the DM to narrate its
+            # creation (needs_dm_response). A crash before narration leaves a
+            # publish marker so a retry re-narrates instead of rebuilding; the
+            # marker is cleared once the narration is delivered (main.py).
             return {
-                "status": (
-                    "published_replay" if receipt.acknowledged else "published"
-                ),
+                "status": "published",
                 "success": True,
                 "build_id": build_id,
                 "state_changed": True,
                 "retryable": False,
                 "needs_update": True,
-                "needs_dm_response": not receipt.acknowledged,
+                "needs_dm_response": True,
                 "response_data": {
                     "build_id": build_id,
-                    "receipt_build_id": receipt.build_id,
                     "module_name": module_name,
                     "dm_note": dm_note,
-                    "message_id": receipt.message_id,
-                    "message_digest": receipt.message_digest,
-                    "idempotency_key": receipt.idempotency_key,
-                    "pending_message": pending_message,
                 },
             }
 
@@ -2419,23 +2413,17 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             from core.generators.module_builder import (
                 ModuleCreationCancelledError,
                 ModuleCreationFailedError,
-                ModuleCreationRecoveryRequiredError,
                 ai_driven_module_creation,
             )
-            from core.generators.managed_module_builder import (
-                get_ready_managed_candidate,
-            )
             from core.generators.module_stitcher import get_module_stitcher
-            from utils.module_lifecycle import (
-                ModuleLifecycleStore,
-                RecoveryStatus,
-            )
+            from utils.module_publish import read_publish_marker
             from utils.openai_usage_tracker import (
                 mark_module_build_outcome,
                 module_build_usage_scope,
             )
-            # Creation and registration are one publication unit. Reconcile
-            # must never discover a half-built action-created module.
+            # Build + publish are one atomic unit: the module is built in a
+            # hidden temp workspace and swapped into modules/ in a single rename,
+            # so a failure never leaves a half-built module live (fail-forward).
             from utils.module_refresh_lock import module_refresh_lock
 
             with module_build_usage_scope(build_id=build_id) as build_context:
@@ -2464,72 +2452,48 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         )
                         return failure
 
-                    idempotency_key = _module_creation_idempotency_key(
-                        action,
-                        conversation_history,
-                    )
-                    from utils.commit_state import (
-                        recover_incomplete_refresh_commit,
-                    )
-
-                    recover_incomplete_refresh_commit()
-                    lifecycle = ModuleLifecycleStore("modules")
-                    recovery = lifecycle.recover()
-                    if recovery.status is RecoveryStatus.INDETERMINATE:
-                        mark_module_build_outcome("lifecycle_recovery_required")
-                        failure = module_failure(recovery_required=True)
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-
-                    existing_receipt = lifecycle.find_publication_receipt(
-                        idempotency_key=idempotency_key
-                    )
-                    if existing_receipt is not None:
-                        mark_module_build_outcome("published_replay")
-                        terminal_progress(
-                            "published",
-                            f"Module {existing_receipt.module_name} was already published.",
-                            existing_receipt.module_name,
-                        )
-                        return published_result(existing_receipt)
-
-                    unrelated_receipt = lifecycle.find_pending_receipt()
-                    if unrelated_receipt is not None:
-                        mark_module_build_outcome("delivery_pending")
-                        failure = module_failure(
-                            recovery_required=True,
-                            message=(
-                                "A previous module was published and its player "
-                                "message is still pending. Finish recovery before "
-                                "creating another module."
-                            ),
-                        )
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
+                    # Value-based idempotency (no content hash, per the owner
+                    # ban): if this module NAME was already published but its
+                    # creation narration was not confirmed (a crash between the
+                    # atomic publish and the narration), a retry RE-NARRATES it
+                    # instead of building a duplicate. The marker is cleared once
+                    # the narration is delivered (main.py). No prior in-flight
+                    # state ever BLOCKS a new build -- fail-forward.
+                    requested_name = parameters.get("module_name")
+                    if requested_name:
+                        try:
+                            pending_marker = read_publish_marker(
+                                "modules", requested_name
+                            )
+                        except Exception:
+                            pending_marker = None
+                        if pending_marker is not None:
+                            marker_name = pending_marker.get(
+                                "module_name", requested_name
+                            )
+                            mark_module_build_outcome("published_replay")
+                            terminal_progress(
+                                "published",
+                                f"Module {marker_name} was already published; re-narrating.",
+                                marker_name,
+                            )
+                            return published_result(marker_name)
 
                     stitcher = get_module_stitcher()
                     try:
+                        # Builds into a hidden temp workspace and atomically swaps
+                        # the module into modules/<name> in one rename, updating
+                        # the advisory registry via the store-free helper. A
+                        # failure here NEVER touches live state -- the build simply
+                        # did not happen and the player keeps playing.
                         success, module_name = ai_driven_module_creation(
                             parameters,
                             progress_callback=module_progress_callback,
                             policy="game",
                             prepare_candidate=(
-                                stitcher.prepare_managed_candidate_locked
+                                stitcher.build_publication_registry_bytes
                             ),
                         )
-                    except ModuleCreationRecoveryRequiredError:
-                        mark_module_build_outcome("builder_recovery_required")
-                        failure = module_failure(
-                            recovery_required=True
-                        )
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
                     except ModuleCreationCancelledError:
                         mark_module_build_outcome("not_generated")
                         failure = module_failure()
@@ -2538,10 +2502,10 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         )
                         return failure
                     except ModuleCreationFailedError as build_error:
-                        # The build now reports its reason instead of returning
-                        # a bare failure (issue #130). Log the detail, but keep
-                        # the player-facing message sanitized: provider output
-                        # must not leak into the DM conversation.
+                        # The build reports its reason instead of returning a bare
+                        # failure (issue #130). Log the detail, but keep the
+                        # player-facing message sanitized: provider output must
+                        # not leak into the DM conversation.
                         error(
                             f"Module creation failed: {build_error}",
                             exception=build_error,
@@ -2562,64 +2526,6 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         )
                         return failure
 
-                    active = get_ready_managed_candidate(module_name)
-                    if active is None:
-                        mark_module_build_outcome("ready_candidate_missing")
-                        failure = module_failure(recovery_required=True)
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-
-                    pending_message = (
-                        f"Module {module_name} was published; follow-up narration is pending."
-                    )
-                    message_id = "module-publication-" + hashlib.sha256(
-                        f"{active.build_id}:{idempotency_key}".encode("utf-8")
-                    ).hexdigest()[:32]
-                    message_digest = hashlib.sha256(
-                        pending_message.encode("utf-8")
-                    ).hexdigest()
-                    try:
-                        receipt = stitcher.publish_managed_candidate_locked(
-                            active,
-                            message_id=message_id,
-                            message_digest=message_digest,
-                            idempotency_key=idempotency_key,
-                        )
-                    except Exception as publication_error:
-                        warning(
-                            "Managed publication interrupted; classifying exact recovery state",
-                            category="module_management",
-                        )
-                        recovery = lifecycle.recover()
-                        if recovery.status is not RecoveryStatus.INDETERMINATE:
-                            receipt = lifecycle.find_pending_receipt(
-                                idempotency_key=idempotency_key
-                            )
-                            if receipt is not None:
-                                mark_module_build_outcome("published_recovered")
-                                terminal_progress(
-                                    "published",
-                                    f"Module {receipt.module_name} was published successfully.",
-                                    receipt.module_name,
-                                )
-                                return published_result(receipt)
-                            mark_module_build_outcome("not_published")
-                            failure = module_failure()
-                        else:
-                            error(
-                                "Managed publication recovery is indeterminate",
-                                exception=publication_error,
-                                category="module_management",
-                            )
-                            mark_module_build_outcome("publication_indeterminate")
-                            failure = module_failure(recovery_required=True)
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-
                     mark_module_build_outcome("published")
                     terminal_progress(
                         "published",
@@ -2631,7 +2537,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         category="module_management",
                     )
                     needs_conversation_history_update = True
-                    return published_result(receipt)
+                    return published_result(module_name)
         except Exception as module_error:
             error(
                 "FAILURE: Unexpected module creation pipeline error",

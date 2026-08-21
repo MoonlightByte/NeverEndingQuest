@@ -3338,23 +3338,24 @@ def _complete_committed_module_followup_locked(
     response,
     conversation_history,
 ):
-    """Deliver narration-only follow-up without undoing publication success."""
-    receipt = None
-    try:
-        receipt = _receipt_for_committed_module_result(result)
-        if receipt.acknowledged:
-            replay = dict(result)
-            replay["needs_dm_response"] = False
-            replay["status"] = "published_replay"
-            return replay
+    """Generate + deliver the creation narration for a just-published module.
 
+    P2b: the module is ALREADY live (published atomically by publish_module_atomic
+    before this returns). This runs the dedicated second DM call that narrates the
+    creation, then clears the publish marker. If anything here fails, the module
+    stays live and the game keeps playing -- the player may simply not see the
+    creation narration, and the publish marker is left in place so a later retry
+    can re-narrate (fail-forward; never hangs or corrupts).
+    """
+    response_data = result.get("response_data", {})
+    module_name = response_data.get("module_name")
+    try:
         accepted_message = {"role": "assistant", "content": response}
         if not (
             conversation_history
             and conversation_history[-1] == accepted_message
         ):
             conversation_history.append(accepted_message)
-        response_data = result.get("response_data", {})
         dm_note = response_data.get("dm_note")
         if isinstance(dm_note, str) and dm_note.strip():
             conversation_history.append(
@@ -3387,13 +3388,12 @@ def _complete_committed_module_followup_locked(
         if not narration:
             raise ValueError("Module follow-up narration became empty")
 
-        followup_id = f"{receipt.message_id}:followup"
+        followup_id = f"module-followup-{module_name}"
         followup_message = {
             "role": "assistant",
             "content": ai_response,
             "message_id": followup_id,
         }
-        plan = _plan_module_followup_delivery(receipt, followup_message)
         if not any(
             isinstance(message, dict)
             and message.get("message_id") == followup_id
@@ -3407,22 +3407,19 @@ def _complete_committed_module_followup_locked(
         )
         if saved is not True:
             raise OSError("Module follow-up history did not report success")
-        disk_history = load_json_file(json_file)
-        if not _history_has_exact_module_suffix(
-            disk_history,
-            plan.message_ids,
-            plan.suffix_digest,
-        ):
-            raise OSError("Module follow-up history readback differs")
 
         conversation_history[:] = followup_history
         _emit_committed_module_message(narration, followup_id)
-        if not _acknowledge_module_receipt(
-            receipt,
-            planned_message_ids=plan.message_ids,
-            planned_suffix_digest=plan.suffix_digest,
-        ):
-            raise RuntimeError("Module follow-up receipt was not acknowledged")
+        # Narration delivered -> the creation is fully complete. Clear the publish
+        # marker so a later createNewModule of the same name builds fresh instead
+        # of re-narrating. Best-effort: a marker-clear failure never breaks play.
+        if module_name:
+            try:
+                from utils.module_publish import clear_publish_marker
+
+                clear_publish_marker("modules", module_name)
+            except Exception:
+                pass
 
         completed = dict(result)
         completed["status"] = "published"
@@ -3434,14 +3431,19 @@ def _complete_committed_module_followup_locked(
         completed["response_data"] = completed_data
         return completed
     except Exception as followup_error:
+        # The module is already live; a narration failure must NOT hang or break
+        # the game. Leave the publish marker in place so a retry can re-narrate,
+        # and return a terminal published result -- the player keeps playing.
         error(
-            "FAILURE: Published module follow-up remains pending",
+            "Published module creation narration could not be delivered; the "
+            "module is live and the game continues",
             exception=followup_error,
             category="module_management",
         )
-        if receipt is not None:
-            _deliver_pending_module_receipt(receipt, conversation_history)
-        return _published_followup_pending_result(result, receipt)
+        fallback = dict(result)
+        fallback["status"] = "published"
+        fallback["needs_dm_response"] = False
+        return fallback
 
 
 def _agentic_post_combat_narration_pass(party_tracker_data):

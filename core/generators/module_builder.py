@@ -104,33 +104,31 @@ _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE = (
 
 def _run_managed_module_build(
     *,
-    managed,
     requested_name,
-    kind,
     story_first_candidate,
     compatible_candidate,
-    prepare_candidate,
-    defer_promotion,
+    prepare_registry_fn,
     use_story_first,
     progress_callback,
 ):
-    """Run story-first once, then safely dial down on model-format exhaustion.
+    """Build a module into a hidden temp workspace and atomically publish it.
 
-    Each story-first model stage owns its three bounded response attempts.  A
-    rejected hidden candidate is retired by ``ManagedModuleBuilder`` before the
-    compatible generator receives a fresh workspace. Local durability,
-    authentication, cancellation, interruption, and indeterminate lifecycle
+    Runs story-first once, then safely dials down to the compatible generator on
+    a bounded set of model-format exhaustion errors. Each attempt gets a FRESH
+    temp workspace via ``publish_module_atomic``; a build failure leaves an
+    orphan temp dir (swept later) and NEVER touches ``modules/<name>`` -- a
+    failed build is a failed action, not a broken or corrupted game (fail-
+    forward). Local durability, authentication, cancellation, and interruption
     failures deliberately bypass this fallback.
     """
+    from utils.module_publish import publish_module_atomic
 
     def run(candidate):
-        return managed.run(
-            requested_name=requested_name,
-            kind=kind,
-            build_candidate=candidate,
-            prepare_candidate=prepare_candidate,
-            defer_promotion=defer_promotion,
-            retain_story_first_failure=False,
+        return publish_module_atomic(
+            requested_name,
+            candidate,
+            modules_dir="modules",
+            prepare_registry_fn=prepare_registry_fn,
         )
 
     if not use_story_first:
@@ -3026,15 +3024,6 @@ def _ai_driven_module_creation_impl(
             category="module_creation",
         )
 
-        from core.generators.managed_module_builder import ManagedModuleBuilder
-        from utils.module_lifecycle import LifecycleIndeterminateError, LifecycleKind
-
-        kind = (
-            LifecycleKind.ACTION
-            if resolved_policy.name == "game"
-            else LifecycleKind.TOOLKIT
-        )
-
         def build_candidate(
             candidate_path: Path,
             final_name: str,
@@ -3137,7 +3126,7 @@ def _ai_driven_module_creation_impl(
             assigned_path = candidate_path.resolve(strict=False)
             actual_path = Path(builder.config.output_directory).resolve(strict=False)
             if builder.config.module_name != final_name or actual_path != assigned_path:
-                raise LifecycleIndeterminateError(
+                raise RuntimeError(
                     "Low-level module builder escaped its assigned identity"
                 )
 
@@ -3180,11 +3169,8 @@ def _ai_driven_module_creation_impl(
                 )
             return {"output_directory": os.fspath(candidate_path)}
 
-        managed = ManagedModuleBuilder(modules_dir=Path("modules"))
         result = _run_managed_module_build(
-            managed=managed,
             requested_name=module_name,
-            kind=kind,
             story_first_candidate=lambda candidate_path, final_name: build_candidate(
                 candidate_path,
                 final_name,
@@ -3195,15 +3181,13 @@ def _ai_driven_module_creation_impl(
                 final_name,
                 story_first_path=False,
             ),
-            prepare_candidate=prepare_candidate,
-            defer_promotion=(kind is LifecycleKind.ACTION),
+            prepare_registry_fn=prepare_candidate,
             use_story_first=use_story_first,
             progress_callback=progress_callback,
         )
         module_name = result.module_name
         info(
-            f"SUCCESS: Module '{module_name}' generated with status "
-            f"{result.status.value}",
+            f"SUCCESS: Module '{module_name}' created and published",
             category="module_creation",
         )
 
