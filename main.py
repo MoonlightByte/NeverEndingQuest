@@ -3088,10 +3088,9 @@ def _complete_committed_module_followup_locked(
 
     P2b: the module is ALREADY live (published atomically by publish_module_atomic
     before this returns). This runs the dedicated second DM call that narrates the
-    creation, then clears the publish marker. If anything here fails, the module
-    stays live and the game keeps playing -- the player may simply not see the
-    creation narration, and the publish marker is left in place so a later retry
-    can re-narrate (fail-forward; never hangs or corrupts).
+    creation. If anything here fails, the module stays live and the game keeps
+    playing -- the player may simply not see the creation narration this turn
+    (cosmetic, fail-forward; never hangs or corrupts).
     """
     response_data = result.get("response_data", {})
     module_name = response_data.get("module_name")
@@ -3165,8 +3164,8 @@ def _complete_committed_module_followup_locked(
         return completed
     except Exception as followup_error:
         # The module is already live; a narration failure must NOT hang or break
-        # the game. Leave the publish marker in place so a retry can re-narrate,
-        # and return a terminal published result -- the player keeps playing.
+        # the game. Return a terminal published result -- the player keeps
+        # playing; the creation narration is simply not shown this turn.
         error(
             "Published module creation narration could not be delivered; the "
             "module is live and the game continues",

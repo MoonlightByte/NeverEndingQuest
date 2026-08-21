@@ -2355,11 +2355,11 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 "into the world. Provide a useful player-facing transition "
                 "narration and return no actions."
             )
-            # P2b: atomic publish + value marker replace the receipt subsystem.
-            # The module is already live; always ask the DM to narrate its
-            # creation (needs_dm_response). A crash before narration leaves a
-            # publish marker so a retry re-narrates instead of rebuilding; the
-            # marker is cleared once the narration is delivered (main.py).
+            # P2b: atomic publish replaces the receipt subsystem. The module is
+            # already live; always ask the DM to narrate its creation
+            # (needs_dm_response). A crash before narration leaves the module live
+            # with no narration shown (cosmetic, fail-forward) -- there is no
+            # cross-turn dedup, so a later recreate yields a harmless spare module.
             return {
                 "status": "published",
                 "success": True,

@@ -122,6 +122,7 @@ def _run_managed_module_build(
     failures deliberately bypass this fallback.
     """
     from utils.module_publish import publish_module_atomic
+    from utils.module_refresh_lock import module_refresh_lock
 
     def run(candidate):
         return publish_module_atomic(
@@ -131,43 +132,58 @@ def _run_managed_module_build(
             prepare_registry_fn=prepare_registry_fn,
         )
 
-    if not use_story_first:
+    def _build_and_publish():
+        if not use_story_first:
+            return run(compatible_candidate)
+
+        fallback_message = None
+        try:
+            return run(story_first_candidate)
+        except BaseException as exc:
+            from core.generators.story_first.pipeline import StoryFirstPipelineError
+            from core.generators.story_first.settings import (
+                StoryFirstProviderUnsupportedError,
+            )
+
+            if isinstance(exc, StoryFirstProviderUnsupportedError):
+                fallback_message = _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE
+            elif isinstance(exc, StoryFirstPipelineError) and (
+                exc.failure_class in _STORY_FIRST_MODEL_FALLBACK_FAILURES
+            ):
+                fallback_message = STORY_FIRST_MODEL_FALLBACK_MESSAGE
+            else:
+                raise
+
+        warning(
+            "Story-first generation reached a bounded model limitation; "
+            "continuing with the compatible generator.",
+            category="module_generation",
+        )
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": 6,
+                    "total_stages": 9,
+                    "stage_name": "Adjusting generator",
+                    "percentage": 66,
+                    "message": fallback_message,
+                }
+            )
         return run(compatible_candidate)
 
-    fallback_message = None
-    try:
-        return run(story_first_candidate)
-    except BaseException as exc:
-        from core.generators.story_first.pipeline import StoryFirstPipelineError
-        from core.generators.story_first.settings import (
-            StoryFirstProviderUnsupportedError,
-        )
-
-        if isinstance(exc, StoryFirstProviderUnsupportedError):
-            fallback_message = _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE
-        elif isinstance(exc, StoryFirstPipelineError) and (
-            exc.failure_class in _STORY_FIRST_MODEL_FALLBACK_FAILURES
-        ):
-            fallback_message = STORY_FIRST_MODEL_FALLBACK_MESSAGE
-        else:
-            raise
-
-    warning(
-        "Story-first generation reached a bounded model limitation; "
-        "continuing with the compatible generator.",
-        category="module_generation",
-    )
-    if progress_callback:
-        progress_callback(
-            {
-                "stage": 6,
-                "total_stages": 9,
-                "stage_name": "Adjusting generator",
-                "percentage": 66,
-                "message": fallback_message,
-            }
-        )
-    return run(compatible_candidate)
+    # SHARED orchestration lock. The former ManagedModuleBuilder.run() acquired
+    # module_refresh_lock for EVERY build entry point (in-game, toolkit, headless,
+    # interactive); publish_module_atomic only ASSERTS ownership, so the lock must
+    # be taken HERE -- the one boundary all callers funnel through -- or the
+    # toolkit/headless/interactive callers fail the ownership assert. Reentrant:
+    # the in-game path already holds it (thread-local depth), so this nests safely.
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            raise ModuleCreationFailedError(
+                "Module creation is busy; no game state was changed. "
+                "Please retry shortly."
+            )
+        return _build_and_publish()
 
 
 def _is_auth_error(exc):
