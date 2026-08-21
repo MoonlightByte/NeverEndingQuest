@@ -491,21 +491,25 @@ class SaveGameManager:
                 # derive the save directory and metadata from the fresh party
                 # projection inside the same serialized snapshot boundary.
                 self._initialize_module_context()
-                from utils.commit_state import recover_incomplete_refresh_commit
-                from utils.module_lifecycle import (
-                    ModuleLifecycleStore,
-                    RecoveryStatus,
-                )
+                from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
                 from utils.module_refresh_lock import module_refresh_lock
 
                 with _active_combat_snapshot_lease():
                     with module_refresh_lock() as refresh_acquired:
                         if not refresh_acquired:
                             return False, "Module refresh is active; retry save"
-                        recover_incomplete_refresh_commit()
+                        # P2a: lifecycle recovery is advisory. Attempt it for its
+                        # rollback side effect, but never refuse a save over an
+                        # INDETERMINATE classification -- inert residue must not
+                        # block the player from saving. A failed build never
+                        # touched modules/, so the live state is safe to snapshot.
                         recovery = ModuleLifecycleStore("modules").recover()
                         if recovery.status is RecoveryStatus.INDETERMINATE:
-                            return False, "Module lifecycle recovery is required"
+                            warning(
+                                "Module lifecycle recovery indeterminate; proceeding "
+                                "with save (inert residue does not block save)",
+                                category="module_management",
+                            )
                         with _campaign_transaction_lock("modules/campaign.json"):
                             _assert_no_active_campaign_completion(
                                 "modules/campaign.json"
@@ -660,10 +664,10 @@ class SaveGameManager:
                 _party_module_transition_lock,
             )
             from utils.module_refresh_lock import module_refresh_lock
-            from utils.commit_state import recover_incomplete_refresh_commit
             from utils.module_lifecycle import (
                 ModuleLifecycleStore,
                 RecoveryStatus,
+                LifecycleIndeterminateError,
             )
 
             with _party_module_transition_lock():
@@ -671,15 +675,37 @@ class SaveGameManager:
                     with module_refresh_lock() as refresh_acquired:
                         if not refresh_acquired:
                             return False, "Module refresh is active; retry restore"
-                        recover_incomplete_refresh_commit()
+                        # P2a: lifecycle recovery is advisory -- do not refuse a
+                        # restore over an INDETERMINATE classification (inert
+                        # residue must not block loading). The unacknowledged-
+                        # receipt check below is intentionally left intact here;
+                        # it belongs to the receipt subsystem removed in P2b.
                         lifecycle = ModuleLifecycleStore("modules")
                         recovery = lifecycle.recover()
                         if recovery.status is RecoveryStatus.INDETERMINATE:
-                            return False, "Module lifecycle recovery is required"
-                        if any(
-                            not receipt.acknowledged
-                            for receipt in lifecycle.list_publication_receipts()
-                        ):
+                            warning(
+                                "Module lifecycle recovery indeterminate; proceeding "
+                                "with restore (inert residue does not block restore)",
+                                category="module_management",
+                            )
+                        try:
+                            pending_publication = any(
+                                not receipt.acknowledged
+                                for receipt in lifecycle.list_publication_receipts()
+                            )
+                        except LifecycleIndeterminateError:
+                            # P2a: inert residue makes receipt enumeration
+                            # indeterminate exactly like recover() above -- it must
+                            # not block a restore. A genuine pending receipt in a
+                            # residue-free store still refuses below.
+                            warning(
+                                "Publication-receipt enumeration indeterminate; "
+                                "proceeding with restore (inert residue does not "
+                                "block restore)",
+                                category="module_management",
+                            )
+                            pending_publication = False
+                        if pending_publication:
                             return (
                                 False,
                                 "A published module message is pending; retry restore after delivery",

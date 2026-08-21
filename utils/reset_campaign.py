@@ -51,23 +51,33 @@ def create_backup():
     if os.path.exists("modules"):
         print(f"Backing up modules directory...")
         def ignore_backups(dir, files):
-            # Runtime transaction/forensic roots are local recovery authority,
-            # not campaign save data. Copying them would make a later restore
-            # replay stale or contradictory lifecycle state.
-            if os.path.basename(dir) == "conversation_history":
-                return (
-                    ["pending_location_transition.json"]
-                    if "pending_location_transition.json" in files
-                    else []
-                )
-            if os.path.basename(dir) != "modules":
-                return []
-            return [
-                'backups',
-                '.module_transactions',
-                '.publication_transactions',
-                '.module_orphan_quarantine',
-            ]
+            # Runtime lock files (path_transaction_lock artifacts:
+            # .transaction.lock, .completion.transaction.lock,
+            # .module-transition.lock, .combat.lock, and PER-FILE locks like a
+            # nested per-quest lock) can sit next to ANY locked file at ANY depth
+            # -- not just the modules root. A lock HELD OPEN during reset fails the
+            # copy with WinError 33 (ERROR_LOCK_VIOLATION) on Windows and is never
+            # campaign save data, so exclude every lock file at EVERY depth.
+            base = os.path.basename(dir)
+            ignored = [name for name in files if name.endswith('.lock')]
+            if base == "conversation_history":
+                # Runtime transition marker is local recovery authority.
+                if "pending_location_transition.json" in files:
+                    ignored.append("pending_location_transition.json")
+                return ignored
+            if base == "modules":
+                # Transaction/forensic roots and campaign-completion metadata are
+                # local recovery authority, not campaign save data, and live only
+                # at the modules root (next to campaign.json). Copying them would
+                # make a later restore replay stale/contradictory lifecycle state.
+                ignored.extend([
+                    'backups',
+                    '.module_transactions',
+                    '.publication_transactions',
+                    '.module_orphan_quarantine',
+                ])
+                ignored.extend(name for name in files if '.completion' in name)
+            return ignored
 
         shutil.copytree("modules", os.path.join(backup_dir, "modules"), ignore=ignore_backups)
     
@@ -107,7 +117,20 @@ def create_backup():
     if os.path.exists("debug_log_backups"):
         print(f"Backing up debug_log_backups directory...")
         shutil.copytree("debug_log_backups", os.path.join(backup_dir, "debug_log_backups"))
-    
+
+    # Backup the AUTHORITATIVE root character store (unified players + NPCs;
+    # ModulePathManager.get_character_path resolves here). Nuclear reset clears
+    # this in Phase 4 to reach a truly virgin state (owner decision), so it MUST
+    # be backed up first -- every character remains restorable from the backup.
+    # Exclude any held lock file (.lock) to avoid a Windows lock-copy failure.
+    if os.path.exists("characters"):
+        print(f"Backing up characters directory...")
+        shutil.copytree(
+            "characters",
+            os.path.join(backup_dir, "characters"),
+            ignore=lambda d, files: [n for n in files if n.endswith('.lock')],
+        )
+
     print(f"{GREEN}✓ Backup complete: {backup_dir}{RESET}")
     return backup_dir
 
@@ -192,15 +215,37 @@ def reset_global_state():
 
 def _recover_module_lifecycle_for_reset_locked():
     """Recover before reset work; leave receipts live until reset commits."""
-    from utils.commit_state import recover_incomplete_refresh_commit
     from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
 
-    recover_incomplete_refresh_commit()
+    # P2a: lifecycle recovery is advisory. Attempt it for its rollback side
+    # effect, but never refuse a reset over an INDETERMINATE classification --
+    # reset rebuilds every module from backups anyway, so inert transaction
+    # residue must not block the wipe. Receipt invalidation still runs downstream.
     lifecycle = ModuleLifecycleStore("modules")
     lifecycle_recovery = lifecycle.recover()
     if lifecycle_recovery.status is RecoveryStatus.INDETERMINATE:
-        raise RuntimeError("Module lifecycle recovery is required before reset")
+        print(f"{YELLOW}  [WARN] Module lifecycle recovery indeterminate; "
+              f"proceeding with reset (residue does not block reset){RESET}")
     return lifecycle
+
+
+def _invalidate_pending_receipts_tolerant(lifecycle):
+    """Retire old-timeline receipts, but never let inert residue block a reset.
+
+    P2a: invalidate_pending_publication_receipts_for_reset() enumerates the
+    staging/active roots with the strict enumerator, so leftover build debris
+    (a stray file under .module_transactions/active/) makes it raise
+    LifecycleIndeterminateError. A confirmed reset is wiping the timeline anyway,
+    so residue must not block it -- warn and proceed. The receipt subsystem is
+    removed entirely in P2b.
+    """
+    from utils.module_lifecycle import LifecycleIndeterminateError
+
+    try:
+        lifecycle.invalidate_pending_publication_receipts_for_reset()
+    except LifecycleIndeterminateError:
+        print(f"{YELLOW}  [WARN] Publication-receipt invalidation indeterminate; "
+              f"proceeding with reset (residue does not block reset){RESET}")
 
 
 def _reset_global_state_locked(*, lifecycle=None, reset_prepared=False):
@@ -219,7 +264,7 @@ def _reset_global_state_locked(*, lifecycle=None, reset_prepared=False):
         _assert_no_active_campaign_completion(campaign_file)
         if lifecycle is None:
             raise RuntimeError("Module lifecycle reset preflight is unavailable")
-        lifecycle.invalidate_pending_publication_receipts_for_reset()
+        _invalidate_pending_receipts_tolerant(lifecycle)
         _bump_campaign_lifecycle_epoch(campaign_file)
     
     # Reset party tracker to empty object (matches installer behavior)
@@ -364,6 +409,16 @@ def clear_all_files():
         os.makedirs("data/companion_memories_compressed")
         print("  ✓ Cleared compressed companion memories")
 
+    # Clear the AUTHORITATIVE root character store (players + NPCs) for a truly
+    # virgin reset (owner decision). reset_module only clears the LEGACY
+    # module-local characters/ dirs, so without this the real character store
+    # (ModulePathManager.get_character_path -> characters/*.json) survived reset
+    # despite the "All characters cleared" claim. Already backed up in Phase 1.
+    if os.path.exists("characters"):
+        shutil.rmtree("characters")
+        os.makedirs("characters")
+        print("  [OK] Cleared characters directory (root player/NPC store)")
+
     # Clear campaign archives and summaries
     if os.path.exists("modules/campaign_archives"):
         shutil.rmtree("modules/campaign_archives")
@@ -404,7 +459,7 @@ def _perform_reset_logic_locked(lifecycle):
     # immediately before the first live campaign/module mutation.
     from core.managers.campaign_manager import _bump_campaign_lifecycle_epoch
 
-    lifecycle.invalidate_pending_publication_receipts_for_reset()
+    _invalidate_pending_receipts_tolerant(lifecycle)
     _bump_campaign_lifecycle_epoch("modules/campaign.json")
     
     # Phase 2: Reset all modules
