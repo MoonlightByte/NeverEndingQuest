@@ -51,37 +51,32 @@ def create_backup():
     if os.path.exists("modules"):
         print(f"Backing up modules directory...")
         def ignore_backups(dir, files):
-            # Runtime transaction/forensic roots are local recovery authority,
-            # not campaign save data. Copying them would make a later restore
-            # replay stale or contradictory lifecycle state.
-            if os.path.basename(dir) == "conversation_history":
-                return (
-                    ["pending_location_transition.json"]
-                    if "pending_location_transition.json" in files
-                    else []
-                )
-            if os.path.basename(dir) != "modules":
-                return []
-            ignored = [
-                'backups',
-                '.module_transactions',
-                '.publication_transactions',
-                '.module_orphan_quarantine',
-            ]
-            # The campaign completion lock (campaign.json.completion.transaction.lock)
-            # is HELD OPEN while reset runs inside _campaign_transaction_lock. On
-            # Windows, copying an open lock file fails with WinError 33
-            # (ERROR_LOCK_VIOLATION), aborting the whole reset backup. Lock and
-            # completion metadata are runtime recovery authority, never campaign
-            # save data (same rationale as the transaction roots above), so exclude
-            # every lock/completion runtime artifact from the backup.
-            ignored.extend(
-                name
-                for name in files
-                if name.endswith('.transaction.lock')
-                or name.endswith('.module-transition.lock')
-                or '.completion' in name
-            )
+            # Runtime lock files (path_transaction_lock artifacts:
+            # .transaction.lock, .completion.transaction.lock,
+            # .module-transition.lock, .combat.lock, and PER-FILE locks like a
+            # nested per-quest lock) can sit next to ANY locked file at ANY depth
+            # -- not just the modules root. A lock HELD OPEN during reset fails the
+            # copy with WinError 33 (ERROR_LOCK_VIOLATION) on Windows and is never
+            # campaign save data, so exclude every lock file at EVERY depth.
+            base = os.path.basename(dir)
+            ignored = [name for name in files if name.endswith('.lock')]
+            if base == "conversation_history":
+                # Runtime transition marker is local recovery authority.
+                if "pending_location_transition.json" in files:
+                    ignored.append("pending_location_transition.json")
+                return ignored
+            if base == "modules":
+                # Transaction/forensic roots and campaign-completion metadata are
+                # local recovery authority, not campaign save data, and live only
+                # at the modules root (next to campaign.json). Copying them would
+                # make a later restore replay stale/contradictory lifecycle state.
+                ignored.extend([
+                    'backups',
+                    '.module_transactions',
+                    '.publication_transactions',
+                    '.module_orphan_quarantine',
+                ])
+                ignored.extend(name for name in files if '.completion' in name)
             return ignored
 
         shutil.copytree("modules", os.path.join(backup_dir, "modules"), ignore=ignore_backups)
