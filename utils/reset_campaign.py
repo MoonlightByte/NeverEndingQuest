@@ -208,47 +208,11 @@ def reset_global_state():
         with module_refresh_lock() as refresh_acquired:
             if not refresh_acquired:
                 raise TimeoutError("Module refresh is active; retry reset")
-            lifecycle = _recover_module_lifecycle_for_reset_locked()
             with _campaign_transaction_lock("modules/campaign.json"):
-                return _reset_global_state_locked(lifecycle=lifecycle)
+                return _reset_global_state_locked()
 
 
-def _recover_module_lifecycle_for_reset_locked():
-    """Recover before reset work; leave receipts live until reset commits."""
-    from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
-
-    # P2a: lifecycle recovery is advisory. Attempt it for its rollback side
-    # effect, but never refuse a reset over an INDETERMINATE classification --
-    # reset rebuilds every module from backups anyway, so inert transaction
-    # residue must not block the wipe. Receipt invalidation still runs downstream.
-    lifecycle = ModuleLifecycleStore("modules")
-    lifecycle_recovery = lifecycle.recover()
-    if lifecycle_recovery.status is RecoveryStatus.INDETERMINATE:
-        print(f"{YELLOW}  [WARN] Module lifecycle recovery indeterminate; "
-              f"proceeding with reset (residue does not block reset){RESET}")
-    return lifecycle
-
-
-def _invalidate_pending_receipts_tolerant(lifecycle):
-    """Retire old-timeline receipts, but never let inert residue block a reset.
-
-    P2a: invalidate_pending_publication_receipts_for_reset() enumerates the
-    staging/active roots with the strict enumerator, so leftover build debris
-    (a stray file under .module_transactions/active/) makes it raise
-    LifecycleIndeterminateError. A confirmed reset is wiping the timeline anyway,
-    so residue must not block it -- warn and proceed. The receipt subsystem is
-    removed entirely in P2b.
-    """
-    from utils.module_lifecycle import LifecycleIndeterminateError
-
-    try:
-        lifecycle.invalidate_pending_publication_receipts_for_reset()
-    except LifecycleIndeterminateError:
-        print(f"{YELLOW}  [WARN] Publication-receipt invalidation indeterminate; "
-              f"proceeding with reset (residue does not block reset){RESET}")
-
-
-def _reset_global_state_locked(*, lifecycle=None, reset_prepared=False):
+def _reset_global_state_locked(*, reset_prepared=False):
     """Phase 3: Create fresh game state"""
     print(f"\n{CYAN}PHASE 3: Creating fresh game state...{RESET}")
 
@@ -259,12 +223,10 @@ def _reset_global_state_locked(*, lifecycle=None, reset_prepared=False):
     )
 
     if not reset_prepared:
-        # Refusal-capable checks must preserve the old timeline and its pending
-        # delivery authority.  Invalidate only after reset is certain to begin.
+        # P2b: reset no longer touches the module-lifecycle store or invalidates
+        # publication receipts (that subsystem is gone). Only the separate
+        # campaign-completion timeline needs guarding before the wipe begins.
         _assert_no_active_campaign_completion(campaign_file)
-        if lifecycle is None:
-            raise RuntimeError("Module lifecycle reset preflight is unavailable")
-        _invalidate_pending_receipts_tolerant(lifecycle)
         _bump_campaign_lifecycle_epoch(campaign_file)
     
     # Reset party tracker to empty object (matches installer behavior)
@@ -443,23 +405,21 @@ def perform_reset_logic():
         with module_refresh_lock() as refresh_acquired:
             if not refresh_acquired:
                 raise TimeoutError("Module refresh is active; retry reset")
-            lifecycle = _recover_module_lifecycle_for_reset_locked()
             with _campaign_transaction_lock("modules/campaign.json"):
                 _assert_no_active_campaign_completion("modules/campaign.json")
-                return _perform_reset_logic_locked(lifecycle)
+                return _perform_reset_logic_locked()
 
 
-def _perform_reset_logic_locked(lifecycle):
+def _perform_reset_logic_locked():
     """The core logic of the reset, without prompts or top-level error handling."""
     # Phase 1: Backup everything
     backup_dir = create_backup()
 
-    # Backup/refusal paths leave the old timeline intact.  Once the backup is
-    # durable, retire old delivery authority and invalidate stale workers once,
-    # immediately before the first live campaign/module mutation.
+    # P2b: reset no longer invalidates module-publication receipts (that
+    # subsystem is gone). Once the backup is durable, bump the campaign
+    # lifecycle epoch to retire stale workers before the first live mutation.
     from core.managers.campaign_manager import _bump_campaign_lifecycle_epoch
 
-    _invalidate_pending_receipts_tolerant(lifecycle)
     _bump_campaign_lifecycle_epoch("modules/campaign.json")
     
     # Phase 2: Reset all modules
