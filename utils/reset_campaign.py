@@ -117,7 +117,20 @@ def create_backup():
     if os.path.exists("debug_log_backups"):
         print(f"Backing up debug_log_backups directory...")
         shutil.copytree("debug_log_backups", os.path.join(backup_dir, "debug_log_backups"))
-    
+
+    # Backup the AUTHORITATIVE root character store (unified players + NPCs;
+    # ModulePathManager.get_character_path resolves here). Nuclear reset clears
+    # this in Phase 4 to reach a truly virgin state (owner decision), so it MUST
+    # be backed up first -- every character remains restorable from the backup.
+    # Exclude any held lock file (.lock) to avoid a Windows lock-copy failure.
+    if os.path.exists("characters"):
+        print(f"Backing up characters directory...")
+        shutil.copytree(
+            "characters",
+            os.path.join(backup_dir, "characters"),
+            ignore=lambda d, files: [n for n in files if n.endswith('.lock')],
+        )
+
     print(f"{GREEN}✓ Backup complete: {backup_dir}{RESET}")
     return backup_dir
 
@@ -395,6 +408,16 @@ def clear_all_files():
         shutil.rmtree("data/companion_memories_compressed")
         os.makedirs("data/companion_memories_compressed")
         print("  ✓ Cleared compressed companion memories")
+
+    # Clear the AUTHORITATIVE root character store (players + NPCs) for a truly
+    # virgin reset (owner decision). reset_module only clears the LEGACY
+    # module-local characters/ dirs, so without this the real character store
+    # (ModulePathManager.get_character_path -> characters/*.json) survived reset
+    # despite the "All characters cleared" claim. Already backed up in Phase 1.
+    if os.path.exists("characters"):
+        shutil.rmtree("characters")
+        os.makedirs("characters")
+        print("  ✓ Cleared characters directory (root player/NPC store)")
 
     # Clear campaign archives and summaries
     if os.path.exists("modules/campaign_archives"):
