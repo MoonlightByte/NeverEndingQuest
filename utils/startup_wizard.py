@@ -1585,6 +1585,58 @@ def initialize_startup_conversation():
     safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
     return conversation
 
+def _ensure_local_provider_alternation(messages, provider):
+    """Make a startup message array safe for strict-alternation local templates.
+
+    Issue #179 (same class as #168/#170). The startup wizard steers the DM
+    entirely with ``system``-role messages and calls the model with no user turn
+    (module/character selection greetings, the JSON-retry interview steps), so on
+    a fresh install with a strict local chat template the game hangs at start.
+    Validated directly against the real LM Studio server: qwen3.5-9b enforces TWO
+    constraints its Jinja template raises 500 on --
+
+      1. "No user query found in messages"  -> the array must end on a user turn.
+      2. "System message must be at the beginning" -> only ONE system message,
+         at the start (a second/mid/trailing system message is rejected).
+
+    This is applied REACTIVELY by get_ai_response -- only after a local-provider
+    call fails -- so lenient models (e.g. Gemma 12B), which accept the raw shape
+    and succeed on the first attempt, are never reshaped (byte-identical). Only a
+    strict template that actually 500s triggers a normalized retry.
+
+    For the local provider ONLY: keep the FIRST message's system as the single
+    leading system block, and convert every OTHER system message to a user turn
+    IN PLACE -- preserving its content and position. This is critical for the
+    JSON-retry interview step, whose directive ("return corrected JSON: <error>")
+    is a trailing system message that must stay the model's operative latest
+    instruction: merging it to the front and appending a generic nudge made the
+    model answer the nudge (prose) instead of emitting the corrected JSON.
+    Finally, ensure the array ends on a user turn.
+
+    An already-valid request (one leading system, turns ending on user) is
+    reconstructed identically, so this cannot alter a currently-working call.
+    OpenAI/Gemini/legacy are returned unchanged -- they accept the raw shape.
+    STARTUP-ONLY (utils/startup_wizard.get_ai_response); the main game loop and
+    every non-LM-Studio provider are untouched.
+    """
+    if provider != "lmstudio":
+        return messages
+    normalized = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content", "")
+        if role == "system" and not normalized:
+            normalized.append({"role": "system", "content": content})
+        elif role == "system":
+            normalized.append({"role": "user", "content": content})
+        else:
+            normalized.append({"role": role, "content": content})
+    if not normalized or normalized[-1].get("role") != "user":
+        normalized.append(
+            {"role": "user", "content": "Please respond based on the instructions above."}
+        )
+    return normalized
+
 def get_ai_response(conversation, response_format=None):
     """Return one persisted assistant turn, retrying provider failures safely.
 
@@ -1629,6 +1681,19 @@ def get_ai_response(conversation, response_format=None):
                     f"(attempt {attempt}/{STARTUP_AI_MAX_ATTEMPTS}): {exc}",
                     category="startup",
                 )
+                # Issue #179 (REACTIVE recovery): strict-alternation local
+                # templates (e.g. qwen via LM Studio) reject the wizard's
+                # system-only / trailing-system messages with a 500. After a
+                # local-provider failure, retry the remaining attempts with the
+                # alternation-normalized shape. Lenient models (e.g. Gemma) succeed
+                # on the first attempt and never reach here, so their successful
+                # requests are byte-identical -- no proactive reshape.
+                if MODEL_PROVIDER == "lmstudio":
+                    normalized = _ensure_local_provider_alternation(
+                        request_messages, MODEL_PROVIDER
+                    )
+                    if normalized != request_messages:
+                        request_messages = normalized
 
         if content is None:
             raise StartupAIResponseError(
