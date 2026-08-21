@@ -417,7 +417,7 @@ def clear_all_files():
     if os.path.exists("characters"):
         shutil.rmtree("characters")
         os.makedirs("characters")
-        print("  ✓ Cleared characters directory (root player/NPC store)")
+        print("  [OK] Cleared characters directory (root player/NPC store)")
 
     # Clear campaign archives and summaries
     if os.path.exists("modules/campaign_archives"):
