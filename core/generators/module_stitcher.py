@@ -3183,6 +3183,131 @@ Create atmospheric travel narration that leads into this adventure."""
             candidate_registry_bytes,
         )
 
+    def build_publication_registry_bytes(self, candidate_path, module_name):
+        """Store-free registry preparation for the atomic-publish path (P2b).
+
+        Runs on a freshly built module candidate (utils/module_publish's hidden
+        temp workspace) while the caller holds ``module_refresh_lock``: resolves
+        area-ID conflicts against the live registry (rewriting the candidate IN
+        PLACE), validates the module, and returns the exact ``world_registry.json``
+        bytes to commit after the atomic rename. Reuses the same helpers as the
+        legacy ``prepare_managed_candidate_locked`` but with NO ModuleLifecycleStore
+        dependency (that store is deleted in P2c).
+
+        Fail-forward contract: this runs on the HIDDEN candidate BEFORE the module
+        is made live. Any raise here aborts the publish with ``modules/<name>``
+        never touched -- the player's game is unaffected and the build simply did
+        not happen. Never operates on live module state.
+        """
+        from utils.module_publish import validate_module_name
+        from utils.module_refresh_lock import assert_module_refresh_lock_owned
+
+        assert_module_refresh_lock_owned()
+        module_name = validate_module_name(module_name)
+        candidate = Path(candidate_path).resolve(strict=True)
+        modules_root = Path(self.modules_dir).resolve(strict=True)
+        # Symlink/reparse safety: reject any link anywhere in the candidate tree
+        # before a normalization writer can follow it out of the workspace. The
+        # store used create_manifest() for this; here it is a self-contained walk.
+        if candidate.is_symlink():
+            raise ValueError("Managed candidate root is a symlink")
+        for root, dirs, files in os.walk(candidate):
+            for entry in dirs + files:
+                if os.path.islink(os.path.join(root, entry)):
+                    raise ValueError("Managed candidate contains a symlink")
+        if os.path.lexists(modules_root / module_name):
+            raise FileExistsError("Managed module final path became occupied")
+
+        prior_registry_bytes = Path(self.world_registry_file).read_bytes()
+        try:
+            prior_registry = json.loads(prior_registry_bytes.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError("World registry is not valid UTF-8 JSON") from exc
+        if (
+            not isinstance(prior_registry, dict)
+            or not isinstance(prior_registry.get("modules"), dict)
+            or not isinstance(prior_registry.get("areas"), dict)
+        ):
+            raise ValueError("World registry shape is invalid")
+        if self._registry_references_module(prior_registry, module_name):
+            raise ValueError("Allocated module name is already registry-owned")
+
+        candidate_text = os.fspath(candidate)
+        valid, reason = self._validate_required_publication_files(candidate_text)
+        if not valid:
+            raise ValueError(reason or "Managed module files are incomplete")
+        module_data = self._analyze_module_path(
+            candidate_text,
+            module_name,
+            include_travel_narration=False,
+        )
+        if not module_data or not module_data.get("areas"):
+            raise ValueError("Managed candidate could not be analyzed")
+
+        captured_areas = self._capture_area_documents_from_path(candidate_text)
+        normalized = self._resolve_id_conflicts(
+            module_name,
+            module_data,
+            _ModuleBackupResult(True, area_documents=captured_areas),
+            registry_snapshot=prior_registry,
+            module_path=candidate_text,
+        )
+        if normalized:
+            self._update_bu_files_after_conflict_resolution(
+                module_name,
+                module_path=candidate_text,
+            )
+            module_data = self._analyze_module_path(
+                candidate_text,
+                module_name,
+                include_travel_narration=False,
+            )
+        if not module_data or not module_data.get("areas"):
+            raise ValueError("Managed candidate re-analysis failed")
+
+        valid, reason = self._validate_required_publication_files(candidate_text)
+        if not valid:
+            raise ValueError(reason or "Normalized module files are incomplete")
+        overlap = set(module_data["areas"]).intersection(
+            prior_registry.get("areas", {})
+        )
+        if overlap:
+            raise ValueError(
+                "Managed candidate retains conflicting area IDs: "
+                + ", ".join(sorted(overlap))
+            )
+
+        module_data["travelNarration"] = self._generate_travel_narration(
+            module_data
+        )
+        safety = _coerce_module_safety_result(
+            self._validate_module_safety(
+                module_name,
+                module_data,
+                module_path=candidate_text,
+            )
+        )
+        if not safety.allows_integration:
+            raise ValueError(
+                f"Managed module safety {safety.status.value}: "
+                f"{safety.reason or 'No reason supplied'}"
+            )
+
+        candidate_registry = self._build_registry_candidate(
+            prior_registry,
+            module_name,
+            module_data,
+        )
+        return (
+            json.dumps(
+                candidate_registry,
+                ensure_ascii=False,
+                allow_nan=False,
+                indent=2,
+            )
+            + "\n"
+        ).encode("utf-8")
+
     @staticmethod
     def _replace_exact_registry_bytes(path: Path, payload: bytes) -> None:
         """Durably replace one registry with already-journaled exact bytes."""
