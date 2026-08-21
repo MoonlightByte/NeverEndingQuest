@@ -2503,26 +2503,12 @@ def handle_connect():
     # cache from an empty process-local deque.
     cached_messages = load_message_cache()
 
-    # A process may have stopped after durable module publication but before
-    # its narration receipt was acknowledged. Replay the stable-ID message
-    # before sending cache/queue state so reconnect is self-healing. The
-    # replay delivers through the player-output sink, so the sink must be
-    # claimed BEFORE the recovery call -- without it the message would fall
-    # back to a console print and the receipt would still be acknowledged,
-    # permanently losing the narration for web clients.
+    # Claim the player-output sink before any reconnect replay below (e.g. combat
+    # output recovery) so replayed prose reaches web clients rather than falling
+    # back to a console print. (P2b: the module-publication receipt recovery that
+    # used to run here is gone -- module creation now publishes atomically and
+    # narrates in the same turn, so there is nothing to replay on reconnect.)
     set_player_output_sink(_queue_safe_player_output)
-    try:
-        import main as game_main
-
-        receipt_history = game_main.load_json_file(game_main.json_file)
-        if not isinstance(receipt_history, list):
-            receipt_history = []
-        game_main._recover_pending_module_publications(receipt_history)
-    except Exception as receipt_error:
-        error(
-            f"Pending module delivery recovery deferred: {receipt_error}",
-            category="module_management",
-        )
 
     # Combat uses the same stable-ID player-output boundary. This recovery is
     # provider-free and mechanics-free; it only replays prose already stored

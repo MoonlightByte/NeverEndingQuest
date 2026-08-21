@@ -2803,37 +2803,10 @@ def _party_transition_projection(party_tracker_data):
     )
 
 
-def _module_history_suffix_digest(messages):
-    encoded = json.dumps(
-        messages,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
-def _history_has_exact_module_suffix(history, message_ids, suffix_digest):
-    count = len(message_ids)
-    if not isinstance(history, list) or count == 0 or len(history) < count:
-        return False
-    suffix = history[-count:]
-    if [message.get("message_id") for message in suffix if isinstance(message, dict)] != list(
-        message_ids
-    ):
-        return False
-    try:
-        return _module_history_suffix_digest(suffix) == suffix_digest
-    except (TypeError, ValueError):
-        return False
 
 
-def _publication_pending_message(receipt):
-    return (
-        f"Module {receipt.module_name} was published; "
-        "follow-up narration is pending."
-    )
 
 
 def _emit_committed_module_message(content, message_id):
@@ -2877,178 +2850,21 @@ def display_dm_narration(content, channel="main", color="blue"):
         print(colored("Dungeon Master:", color), colored(content, color))
 
 
-def _acknowledge_module_receipt(
-    receipt,
-    *,
-    planned_message_ids=None,
-    planned_suffix_digest=None,
-):
-    from utils.module_lifecycle import ModuleLifecycleStore
-    from utils.module_refresh_lock import module_refresh_lock
-
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            return False
-        store = ModuleLifecycleStore("modules")
-        outcome = store.acknowledge_receipt(
-            build_id=receipt.build_id,
-            message_id=receipt.message_id,
-            message_digest=receipt.message_digest,
-            planned_message_ids=planned_message_ids,
-            planned_suffix_digest=planned_suffix_digest,
-        )
-        return outcome.acknowledged is True
 
 
-def _deliver_pending_module_receipt(receipt, conversation_history):
-    """Serialize an entire committed delivery against restore/reset."""
-    from core.managers.campaign_manager import _party_module_transition_lock
-
-    with _party_module_transition_lock():
-        return _deliver_pending_module_receipt_locked(
-            receipt,
-            conversation_history,
-        )
 
 
-def _deliver_pending_module_receipt_locked(receipt, conversation_history):
-    """Replay or acknowledge one committed publication without rebuilding."""
-    from utils.module_lifecycle import ModuleLifecycleStore
-    from utils.module_refresh_lock import module_refresh_lock
-
-    disk_history = load_json_file(json_file)
-    if not isinstance(disk_history, list):
-        disk_history = []
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            return False
-        store = ModuleLifecycleStore("modules")
-        current_receipt = store.find_pending_receipt(build_id=receipt.build_id)
-        if current_receipt is None:
-            return False
-        if current_receipt != receipt:
-            raise ValueError("Pending module receipt identity changed")
-        plan = store.read_receipt_delivery_plan(build_id=receipt.build_id)
-    if plan is not None and _history_has_exact_module_suffix(
-        disk_history,
-        plan.message_ids,
-        plan.suffix_digest,
-    ):
-        for message in disk_history[-len(plan.message_ids):]:
-            content = message.get("content", "")
-            try:
-                parsed = json.loads(extract_json_from_codeblock(content))
-                narration = parsed.get("narration")
-                if isinstance(narration, str) and narration.strip():
-                    content = sanitize_text(narration)
-            except Exception:
-                pass
-            if isinstance(content, str) and content.strip():
-                _emit_committed_module_message(
-                    content,
-                    message["message_id"],
-                )
-        return _acknowledge_module_receipt(
-            receipt,
-            planned_message_ids=plan.message_ids,
-            planned_suffix_digest=plan.suffix_digest,
-        )
-
-    pending_content = _publication_pending_message(receipt)
-    if hashlib.sha256(pending_content.encode("utf-8")).hexdigest() != receipt.message_digest:
-        return False
-    pending_entry = {
-        "role": "system",
-        "content": pending_content,
-        "message_id": receipt.message_id,
-    }
-    on_disk = any(
-        isinstance(message, dict)
-        and message.get("message_id") == receipt.message_id
-        and message.get("content") == pending_content
-        for message in disk_history
-    )
-    if not on_disk:
-        if not any(
-            isinstance(message, dict)
-            and message.get("message_id") == receipt.message_id
-            for message in conversation_history
-        ):
-            conversation_history.append(pending_entry)
-        if _strictly_persist_conversation_history(conversation_history) is not True:
-            _emit_committed_module_message(pending_content, receipt.message_id)
-            return False
-        disk_history = load_json_file(json_file)
-        on_disk = isinstance(disk_history, list) and any(
-            isinstance(message, dict)
-            and message.get("message_id") == receipt.message_id
-            and message.get("content") == pending_content
-            for message in disk_history
-        )
-    _emit_committed_module_message(pending_content, receipt.message_id)
-    if not on_disk:
-        return False
-    return _acknowledge_module_receipt(receipt)
 
 
-def _recover_pending_module_publications(conversation_history):
-    """Deliver every committed pending publication receipt.
 
-    P2a: the module-lifecycle recover() classification is NOT run on this
-    per-turn path. Inert transaction residue (a stray file, leftover staging
-    dir) must never suppress a DM turn or add per-turn recovery cost. A build
-    that failed never touched modules/, so there is nothing to "recover" here;
-    we only deliver receipts that were already committed to disk. The receipt
-    subsystem itself is removed in P2b.
+
+def prepare_conversation_for_ai_request(conversation_history):
+    """Close queued transitions and rebuild context before any DM request.
+
+    P2b: the per-turn publication-receipt recovery is gone -- module creation
+    publishes atomically and narrates in the same turn, so there is nothing to
+    recover here.
     """
-    from utils.module_lifecycle import (
-        ModuleLifecycleStore,
-        LifecycleIndeterminateError,
-    )
-    from utils.module_refresh_lock import module_refresh_lock
-
-    try:
-        with module_refresh_lock() as acquired:
-            if not acquired:
-                return False
-            store = ModuleLifecycleStore("modules")
-            receipts = tuple(
-                receipt
-                for receipt in store.list_publication_receipts()
-                if not receipt.acknowledged
-            )
-        return all(
-            _deliver_pending_module_receipt(receipt, conversation_history)
-            for receipt in receipts
-        )
-    except LifecycleIndeterminateError:
-        # P2a: inert transaction residue makes receipt enumeration indeterminate.
-        # There is nothing deliverable to a normal turn, so skip QUIETLY -- do not
-        # log a publication-recovery failure on every DM turn (residue must not
-        # add per-turn noise). The receipt subsystem itself is removed in P2b.
-        debug(
-            "Publication-receipt enumeration indeterminate; skipping pending "
-            "delivery (inert residue)",
-            category="module_management",
-        )
-        return False
-    except Exception as receipt_error:
-        error(
-            "FAILURE: Pending module publication delivery could not be completed",
-            exception=receipt_error,
-            category="module_management",
-        )
-        return False
-
-
-def prepare_conversation_for_ai_request(
-    conversation_history,
-    *,
-    deliver_pending_publications=True,
-):
-    """Close queued transitions and rebuild context before any DM request."""
-    if deliver_pending_publications:
-        _recover_pending_module_publications(conversation_history)
     outcome = require_staged_module_completions_drained()
     if not (outcome["completed"] or outcome["cancelled"]):
         return outcome
@@ -3241,80 +3057,10 @@ def _handle_ordinary_action_failure(
     return _safe_action_failure_result(result, message_id)
 
 
-def _receipt_for_committed_module_result(result):
-    from utils.module_lifecycle import ModuleLifecycleStore
-    from utils.module_refresh_lock import module_refresh_lock
-
-    data = result.get("response_data") if isinstance(result, dict) else None
-    if not isinstance(data, dict):
-        raise ValueError("Committed module result has no receipt metadata")
-    build_id = data.get("receipt_build_id")
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            raise RuntimeError("Module receipt lock is unavailable")
-        receipt = ModuleLifecycleStore("modules").find_publication_receipt(
-            build_id=build_id
-        )
-    if receipt is None:
-        raise ValueError("Committed module receipt is unavailable")
-    expected = (
-        data.get("module_name"),
-        data.get("message_id"),
-        data.get("message_digest"),
-        data.get("idempotency_key"),
-    )
-    actual = (
-        receipt.module_name,
-        receipt.message_id,
-        receipt.message_digest,
-        receipt.idempotency_key,
-    )
-    if expected != actual:
-        raise ValueError("Committed module receipt metadata differs")
-    return receipt
 
 
-def _plan_module_followup_delivery(receipt, message):
-    from utils.module_lifecycle import ModuleLifecycleStore
-    from utils.module_refresh_lock import module_refresh_lock
-
-    suffix_digest = _module_history_suffix_digest([message])
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            raise RuntimeError("Module receipt lock is unavailable")
-        return ModuleLifecycleStore("modules").plan_receipt_delivery(
-            build_id=receipt.build_id,
-            message_ids=(message["message_id"],),
-            suffix_digest=suffix_digest,
-        )
 
 
-def _published_followup_pending_result(result, receipt=None):
-    data = dict(result.get("response_data", {}))
-    module_name = data.get("module_name")
-    if receipt is not None:
-        module_name = receipt.module_name
-        data.update(
-            {
-                "receipt_build_id": receipt.build_id,
-                "module_name": receipt.module_name,
-                "message_id": receipt.message_id,
-                "message_digest": receipt.message_digest,
-                "idempotency_key": receipt.idempotency_key,
-                "pending_message": _publication_pending_message(receipt),
-            }
-        )
-    return {
-        "status": "published_followup_pending",
-        "success": True,
-        "state_changed": True,
-        "retryable": False,
-        "needs_update": True,
-        "needs_dm_response": False,
-        "build_id": result.get("build_id"),
-        "response_data": data,
-        "module_name": module_name,
-    }
 
 
 def _complete_committed_module_followup(
@@ -3370,10 +3116,7 @@ def _complete_committed_module_followup_locked(
             return_party=True,
         )
         get_location_data_from_party_tracker(party_data)
-        ai_response = get_ai_response(
-            followup_history,
-            _skip_pending_publication_delivery=True,
-        )
+        ai_response = get_ai_response(followup_history)
         parsed = json.loads(extract_json_from_codeblock(ai_response))
         narration = parsed.get("narration") if isinstance(parsed, dict) else None
         actions = parsed.get("actions") if isinstance(parsed, dict) else None
@@ -4380,13 +4123,12 @@ def process_ai_response(
                     response,
                     conversation_history,
                 )
-            if isinstance(result, dict) and result.get("status") in {
-                "published",
-                "published_replay",
-                "published_followup_pending",
-            }:
+            if isinstance(result, dict) and result.get("status") == "published":
                 # Module publication is an irreversible terminal action for
-                # this response; never execute later sibling actions.
+                # this response; never execute later sibling actions. (P2b: the
+                # receipt-era published_replay/published_followup_pending states
+                # are gone -- atomic publish + in-turn narration yields one
+                # terminal "published" state.)
                 return result
             
             # Check for pending archive flag from module transitions
@@ -4681,20 +4423,13 @@ def _finalize_main_response_validation(
 def get_ai_response(
     conversation_history,
     validation_retry_count=0,
-    *,
-    _skip_pending_publication_delivery=False,
 ):
     global should_inject_creation_prompt
     # This is the centralized terminal/web provider boundary. A transition
     # published by another worker between turns must finish (in durable order)
     # before model selection or request construction. If the drain changed
     # campaign state, rebuild the already-assembled system context in place.
-    prepare_conversation_for_ai_request(
-        conversation_history,
-        deliver_pending_publications=(
-            not _skip_pending_publication_delivery
-        ),
-    )
+    prepare_conversation_for_ai_request(conversation_history)
     status_processing_ai()
     
     # Import action predictor and config

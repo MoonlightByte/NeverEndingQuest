@@ -473,24 +473,6 @@ def _module_creation_error_result(*, recovery_required=False, message=None):
     }
 
 
-def _module_creation_idempotency_key(action, conversation_history):
-    """Hash the accepted action and its pre-action history into an opaque key."""
-    payload = {
-        "action": action,
-        "history_prefix": conversation_history
-        if isinstance(conversation_history, list)
-        else [],
-    }
-    encoded = json.dumps(
-        payload,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
 def pre_validate_transition(
     parameters,
     party_tracker_data,
