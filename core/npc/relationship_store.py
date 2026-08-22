@@ -6,6 +6,7 @@ import copy
 import json
 import logging
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -217,6 +218,34 @@ def _identity_names(identity: Mapping[str, Any]) -> set[str]:
         if isinstance(value, str)
     )
     return {name for name in names if name}
+
+
+def _canonical_name_tokens(name: Any) -> Tuple[str, ...]:
+    """Canonical identity form for VALUE comparison at the identity boundary:
+    lowercase alphanumeric tokens (same canonicalization family as
+    normalize_character_name in updates/update_character_info.py). Deterministic
+    -- no fuzzy/ratio matching."""
+    if not isinstance(name, str):
+        return ()
+    return tuple(t for t in re.split(r"[^a-z0-9]+", name.strip().lower()) if t)
+
+
+def _legacy_name_matches_identity(legacy_name: str, identity: Mapping[str, Any]) -> bool:
+    """True when the legacy file's npc_name canonically resolves to this identity.
+    Rule (deterministic, value-level): canonical token tuples are equal, OR the
+    legacy tokens are a non-empty SUBSET of one registered name's tokens (real
+    files say "Kira" while the roster identity is "Scout Kira")."""
+    legacy_tokens = _canonical_name_tokens(legacy_name)
+    if not legacy_tokens:
+        return False
+    legacy_set = set(legacy_tokens)
+    for registered_name in _identity_names(identity):
+        registered_tokens = _canonical_name_tokens(registered_name)
+        if legacy_tokens == registered_tokens:
+            return True
+        if legacy_set and legacy_set <= set(registered_tokens):
+            return True
+    return False
 
 
 # Per-NPC POV overlay (Phase 2). Bounded + pinned: pinned peaks never drop; routine
@@ -1009,14 +1038,33 @@ class RelationshipStore:
             legacy_name = _text(value.get("npc_name"), 100)
             if not legacy_name:
                 continue
+            # Identity boundary: resolve the legacy file's npc name ONCE against
+            # the registered roster identities by canonical VALUE comparison
+            # (real legacy files say "Kira"; the roster identity is "Scout Kira").
+            # Exactly-one match imports; zero or ambiguous = skip LOUDLY, never guess.
             matching_ids = [
                 identity_id
                 for identity_id, registered in snapshot["identities"].items()
                 if registered.get("kind") == "npc"
-                and legacy_name in _identity_names(registered)
+                and _legacy_name_matches_identity(legacy_name, registered)
             ]
             if matching_ids == [npc_id]:
                 matches.append((candidate, raw, value))
+            elif len(matching_ids) != 1:
+                # Loud health record, deduped per store instance so per-turn
+                # migration sweeps do not spam the log.
+                warned = getattr(self, "_migration_match_warned", None)
+                if warned is None:
+                    warned = set()
+                    self._migration_match_warned = warned
+                if candidate.name not in warned:
+                    warned.add(candidate.name)
+                    record_store_health(
+                        "legacy_import_unresolved_identity",
+                        path=str(candidate),
+                        detail="npc_name=%r matched %d roster identities (need exactly 1); skipped"
+                        % (legacy_name, len(matching_ids)),
+                    )
         if len(matches) != 1:
             return False
         source_path, _raw_bytes, legacy = matches[0]
