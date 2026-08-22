@@ -20,7 +20,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from utils.encoding_utils import safe_json_load, safe_json_dump
-from utils.commit_state import recover_incomplete_refresh_commit
 from utils.module_refresh_lock import module_refresh_lock
 
 PARTY_TRACKER_FILE = "party_tracker.json"
@@ -128,9 +127,6 @@ def _reconcile_campaign_state_locked() -> Dict[str, Any]:
     """
     changes: List[str] = []
     module_name = ""
-    recovered_commit, recovery_result = recover_incomplete_refresh_commit()
-    if recovered_commit:
-        changes.append("modules/commit_state.json:rolled_back")
 
     party_tracker = _load_json_dict(PARTY_TRACKER_FILE)
     raw_module_name = party_tracker.get("module", "")
