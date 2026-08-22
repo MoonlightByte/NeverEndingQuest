@@ -479,10 +479,18 @@ class SaveGameManager:
                 parsed = json.loads(raw.decode("utf-8"))
             except (UnicodeError, ValueError, TypeError):
                 return False, "listed state file is not JSON"
-            if (
-                not isinstance(parsed, dict)
-                or parsed.get("schemaVersion") != entry["schemaVersion"]
-            ):
+            # DEFECT-2 fix (T8f): the writer records -1 for files WITHOUT a
+            # schemaVersion key (e.g. the episodic_upgrade marker), but
+            # parsed.get() returns None for those same files here -- so every
+            # save containing such a file failed its own restore validation
+            # (a B1 violation: loading a save is NEVER refused). Normalize the
+            # read exactly the way the writer does before comparing.
+            observed_version = (
+                parsed.get("schemaVersion", -1) if isinstance(parsed, dict) else -1
+            )
+            if observed_version is None:
+                observed_version = -1
+            if not isinstance(parsed, dict) or observed_version != entry["schemaVersion"]:
                 return False, "listed state schema version differs"
         return True, ""
 

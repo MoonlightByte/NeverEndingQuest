@@ -177,25 +177,19 @@
         "Keeper's Cottage"
       ],
       "areaConnectivityId": [
-        "B07"
+        "G001-B07"
       ],
       "npcs": [],
       "monsters": [
         {
           "name": "Skeleton",
-          "quantity": {"min": 2, "max": 4},
+          "number": "1d3+1",
           "disposition": "hostile",
           "strategy": "These animated remains of fallen guards rise from beneath the cobblestones when intruders cross the courtyard, attacking with rusty weapons and coordinated tactics."
         },
         {
           "name": "Shadow",
-          "quantity": {
-
-            "min": 2,
-
-            "max": 2
-
-          },
+          "number": 2,
           "disposition": "ambush",
           "strategy": "These insubstantial undead hide among the natural shadows cast by the walls and ruins, striking at isolated or weakened party members."
         }
@@ -267,13 +261,7 @@
       "monsters": [
         {
           "name": "Animated Armor",
-          "quantity": {
-
-            "min": 1,
-
-            "max": 1
-
-          },
+          "number": 1,
           "disposition": "guardian",
           "strategy": "This empty suit of armor guards the passage to the barracks, attacking anyone who approaches without speaking the old password or bearing a symbol of the keep's authority."
         }
@@ -372,19 +360,13 @@
       "monsters": [
         {
           "name": "Shadow",
-          "quantity": {"min": 1, "max": 4},
+          "number": "1d4",
           "disposition": "lurking",
           "strategy": "These shadows hide among the natural darkness cast by broken pews and columns, striking opportunistically at those who disturb holy symbols or approach the altar."
         },
         {
           "name": "Specter",
-          "quantity": {
-
-            "min": 1,
-
-            "max": 1
-
-          },
+          "number": 1,
           "disposition": "territorial",
           "strategy": "This is the vengeful spirit of a knight who died defending the chapel. It attacks anyone who approaches the secret compartment beneath the altar unless they first perform a gesture of respect for the fallen."
         }
@@ -468,25 +450,13 @@
       "monsters": [
         {
           "name": "Animated Weapon",
-          "quantity": {
-
-            "min": 2,
-
-            "max": 2
-
-          },
+          "number": 2,
           "disposition": "hostile",
           "strategy": "These corroded swords, spears, and axes rise into the air and attack intruders, focusing on unarmored targets."
         },
         {
           "name": "Skeletal Archer",
-          "quantity": {
-
-            "min": 2,
-
-            "max": 2
-
-          },
+          "number": 2,
           "disposition": "ambush",
           "strategy": "These undead remain motionless among debris until intruders reach the center of the room, then rise and attack from range."
         }
@@ -575,19 +545,13 @@
       "monsters": [
         {
           "name": "Phantom Servant",
-          "quantity": {"min": 2, "max": 4},
+          "number": "1d3+1",
           "disposition": "hostile",
           "strategy": "These spectral beings perform a mockery of their former duties, serving poisoned phantom food and attacking those who refuse their hospitality. (CR 1, AC 12, HP 24, Spectral Slam 1d6+2, Haunting Touch 1d8+1)"
         },
         {
           "name": "Mimic",
-          "quantity": {
-
-            "min": 1,
-
-            "max": 1
-
-          },
+          "number": 1,
           "disposition": "ambush",
           "strategy": "Disguised as an ornate chair at the head of the table, this creature waits for someone to sit before attacking. (CR 1, AC 12, HP 33, Pseudopod 1d6+2, Bite 1d6+2, Acid 1d4)"
         }
@@ -671,19 +635,13 @@
       "monsters": [
         {
           "name": "Gargoyle",
-          "quantity": {
-
-            "min": 2,
-
-            "max": 2
-
-          },
+          "number": 2,
           "disposition": "territorial",
           "strategy": "These creatures pose as decorative statues on the upper levels, attacking when intruders climb too high or disturb their perches."
         },
         {
           "name": "Shadow",
-          "quantity": {"min": 1, "max": 4},
+          "number": "1d4",
           "disposition": "hunting",
           "strategy": "These insubstantial undead slip between the arrow slits and cracks in the walls, attacking climbers when they're most vulnerable on the stairs."
         }
@@ -725,7 +683,7 @@
         }
       ],
       "dcChecks": [
-        "Strength DC 13: Safely navigate missing steps and unstable sections; Acrobatics or Athletics proficiency applies.",
+        "Acrobatics/Athletics DC 13: Safely navigate missing steps and unstable sections.",
         "Investigation DC 15: Interpret the celestial map's significance to the shadow relic.",
         "Perception DC 14: Spot the gargoyles before they animate.",
         "Arcana DC 16: Understand how to use the observatory's instruments for optimal timing against the relic."
@@ -768,13 +726,7 @@
       "monsters": [
         {
           "name": "Shadow of Sir Garran",
-          "quantity": {
-
-            "min": 1,
-
-            "max": 1
-
-          },
+          "number": 1,
           "disposition": "guardian",
           "strategy": "This is not Sir Garran himself but a powerful shadow aspect that defends his private sanctum. It uses the knight's fighting techniques and can manipulate objects in the room to its advantage."
         }

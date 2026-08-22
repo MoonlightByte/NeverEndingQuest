@@ -234,19 +234,32 @@ class _PendingVoice:
         self._inflight: Dict[str, Dict[str, Any]] = {}
         self._late: Dict[str, "NpcVoiceResult"] = {}
 
-    def register(self, npc_id: str, future) -> None:
+    def register(self, npc_id: str, ticket) -> None:
+        """Register a dispatch TICKET before the future exists (DEFECT-1 fix:
+        the executor may start the worker before submit() returns, so the
+        supersede check keys on a pre-created ticket, never the future)."""
         with self._lock:
             prior = self._inflight.get(npc_id)
             if prior is not None:
                 prior["superseded"] = True
-            self._inflight[npc_id] = {"future": future, "superseded": False}
+            self._inflight[npc_id] = {
+                "ticket": ticket,
+                "future": None,
+                "superseded": False,
+            }
 
-    def is_superseded(self, npc_id: str, future) -> bool:
+    def attach(self, npc_id: str, ticket, future) -> None:
+        with self._lock:
+            entry = self._inflight.get(npc_id)
+            if entry is not None and entry["ticket"] is ticket:
+                entry["future"] = future
+
+    def is_superseded(self, npc_id: str, ticket) -> bool:
         with self._lock:
             entry = self._inflight.get(npc_id)
             return (
                 entry is None
-                or entry["future"] is not future
+                or entry["ticket"] is not ticket
                 or entry["superseded"]
             )
 
@@ -268,7 +281,7 @@ class _PendingVoice:
         entry_future = None
         with self._lock:
             entry = self._inflight.get(npc_id)
-            if entry is not None and entry["future"].done():
+            if entry is not None and entry["future"] is not None and entry["future"].done():
                 self._inflight.pop(npc_id)
                 entry_future = entry["future"]
             elif entry is None:
@@ -895,14 +908,15 @@ class NpcVoiceService:
                         npc_id=npc_id,
                     )
 
-                future_box: Dict[str, Any] = {}
+                ticket = object()
+                _PENDING.register(npc_id, ticket)
 
                 def run_worker(
                     selected_packet: Mapping[str, Any] = packet_copy,
                     worker_npc_id: str = npc_id,
-                    box: Dict[str, Any] = future_box,
+                    worker_ticket=ticket,
                 ):
-                    if _PENDING.is_superseded(worker_npc_id, box.get("future")):
+                    if _PENDING.is_superseded(worker_npc_id, worker_ticket):
                         self._record(
                             kind="candidate",
                             disposition="superseded_unstarted",
@@ -940,8 +954,7 @@ class NpcVoiceService:
 
                 try:
                     future = _EXECUTOR.submit(run_worker)
-                    future_box["future"] = future
-                    _PENDING.register(npc_id, future)
+                    _PENDING.attach(npc_id, ticket, future)
                     future.add_done_callback(on_done)
                     futures[npc_id] = future
                 except Exception:
