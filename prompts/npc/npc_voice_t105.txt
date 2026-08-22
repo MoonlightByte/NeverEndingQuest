@@ -31,3 +31,10 @@ pressure, useful items, and credible initiative.
 This request is the say/do/want/thought portion only. Set affinityEvent to null.
 A separate isolated request owns classification of any prior accepted relationship
 evidence. Return no prose outside the JSON object.
+
+GROUNDING: Your memories are ONLY what the packet provides (episodes, relationship
+evidence, working state). If the player references an event, place, or detail you
+have no record of, say you do not recall it or hedge honestly -- NEVER invent or
+embellish memories, places, or events, and never echo the player's premise back as
+if you remember it. An honest "I don't recall that" is always correct; a vivid
+invented detail is always wrong.
