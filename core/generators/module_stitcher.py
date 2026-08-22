@@ -3100,8 +3100,19 @@ Create atmospheric travel narration that leads into this adventure."""
         if (
             not isinstance(prior_registry, dict)
             or not isinstance(prior_registry.get("modules"), dict)
-            or not isinstance(prior_registry.get("areas"), dict)
         ):
+            raise ValueError("World registry shape is invalid")
+        # Fresh-install registry: reconcile_campaign_state seeds
+        # world_registry.json with only a "modules" map (no module has ever
+        # published an area), so a genuinely fresh registry has NO "areas" key.
+        # Treat ONLY the absent key as an empty map, normalized on this
+        # DETACHED parsed copy -- the live file is never rewritten before
+        # publication (the only registry write remains the advisory commit
+        # after the atomic rename). An "areas" key that is present but not a
+        # dict (null, list, string) is still a corrupt registry -> fail closed.
+        if "areas" not in prior_registry:
+            prior_registry["areas"] = {}
+        elif not isinstance(prior_registry["areas"], dict):
             raise ValueError("World registry shape is invalid")
         if self._registry_references_module(prior_registry, module_name):
             raise ValueError("Allocated module name is already registry-owned")
