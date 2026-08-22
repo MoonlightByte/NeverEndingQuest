@@ -345,33 +345,38 @@ class RelationshipStore:
         if self.read_only:
             return False, None
         try:
-            with path_transaction_lock(
-                self.path,
-                suffix=".npc-agent.lock",
-                timeout_seconds=5.0,
-            ) as acquired:
-                if acquired is None:
-                    return False, None
-                if self.path.exists():
-                    current = self._read_existing()
-                    if current is None:
-                        self._latch_read_only("corrupt_or_unsupported")
-                        return False, None
-                else:
-                    current = new_state_document()
-                candidate = copy.deepcopy(current)
-                changed, result = callback(candidate)
-                if not changed:
-                    return False, result
-                candidate["revision"] = current["revision"] + 1
-                if not self._validate(candidate):
-                    return False, result
-                try:
-                    safe_json_dump(candidate, self.path, ensure_ascii=True)
-                except Exception:
-                    record_store_health("relationship_write_failed", path=str(self.path))
-                    return False, result
-                return True, result
+            while True:
+                with path_transaction_lock(
+                    self.path,
+                    suffix=".npc-agent.lock",
+                    timeout_seconds=5.0,
+                ) as acquired:
+                    if acquired is None:
+                        # B2-ii: busy = WAIT, never a dropped write (see episode_store).
+                        record_store_health(
+                            "relationship_lock_waiting", path=str(self.path)
+                        )
+                        continue
+                    if self.path.exists():
+                        current = self._read_existing()
+                        if current is None:
+                            self._latch_read_only("corrupt_or_unsupported")
+                            return False, None
+                    else:
+                        current = new_state_document()
+                    candidate = copy.deepcopy(current)
+                    changed, result = callback(candidate)
+                    if not changed:
+                        return False, result
+                    candidate["revision"] = current["revision"] + 1
+                    if not self._validate(candidate):
+                        return False, result
+                    try:
+                        safe_json_dump(candidate, self.path, ensure_ascii=True)
+                    except Exception:
+                        record_store_health("relationship_write_failed", path=str(self.path))
+                        return False, result
+                    return True, result
         except Exception:
             record_store_health("relationship_mutate_failed", path=str(self.path))
             return False, None

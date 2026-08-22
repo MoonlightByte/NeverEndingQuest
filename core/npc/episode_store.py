@@ -245,35 +245,40 @@ class EpisodeStore:
         if self.read_only:
             return "failed", None
         try:
-            with path_transaction_lock(
-                self.path, suffix=".episode-ledger.lock", timeout_seconds=5.0
-            ) as acquired:
-                if acquired is None:
-                    record_store_health("episode_lock_timeout", path=str(self.path))
-                    return "failed", None
-                if self.path.exists():
-                    current = self._read_existing()
-                    if current is None:
-                        self._latch_read_only("corrupt_or_unsupported")
-                        return "failed", None
-                else:
-                    current = new_ledger_document()
-                candidate = copy.deepcopy(current)
-                changed, result = callback(candidate)
-                if not changed:
-                    return "noop", result
-                candidate["revision"] = current["revision"] + 1
-                if not self._validate(candidate):
-                    record_store_health(
-                        "episode_write_invalid", path=str(self.path), detail="schema"
-                    )
-                    return "failed", result
-                try:
-                    safe_json_dump(candidate, self.path, ensure_ascii=True)
-                except Exception:
-                    record_store_health("episode_write_failed", path=str(self.path))
-                    return "failed", result
-                return "wrote", result
+            while True:
+                with path_transaction_lock(
+                    self.path, suffix=".episode-ledger.lock", timeout_seconds=5.0
+                ) as acquired:
+                    if acquired is None:
+                        # B2-ii: busy = WAIT, never a dropped memory write. The 5s
+                        # acquire window is a heartbeat interval, not a give-up;
+                        # each pass logs loudly and retries. flock releases on
+                        # process death, so a stuck holder cannot orphan us.
+                        record_store_health("episode_lock_waiting", path=str(self.path))
+                        continue
+                    if self.path.exists():
+                        current = self._read_existing()
+                        if current is None:
+                            self._latch_read_only("corrupt_or_unsupported")
+                            return "failed", None
+                    else:
+                        current = new_ledger_document()
+                    candidate = copy.deepcopy(current)
+                    changed, result = callback(candidate)
+                    if not changed:
+                        return "noop", result
+                    candidate["revision"] = current["revision"] + 1
+                    if not self._validate(candidate):
+                        record_store_health(
+                            "episode_write_invalid", path=str(self.path), detail="schema"
+                        )
+                        return "failed", result
+                    try:
+                        safe_json_dump(candidate, self.path, ensure_ascii=True)
+                    except Exception:
+                        record_store_health("episode_write_failed", path=str(self.path))
+                        return "failed", result
+                    return "wrote", result
         except Exception:
             record_store_health("episode_mutate_failed", path=str(self.path))
             return "failed", None
