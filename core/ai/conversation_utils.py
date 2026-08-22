@@ -553,7 +553,11 @@ def _recall_by_npc(player_line, packets, episode_store, current_location_id=None
             current_location_id=current_location_id,
         )
         if scored:
-            result[npc_id] = [s["episode"] for s in scored[:2]]
+            # Exact value match beats rank: the top-2 cap applies to rank-only
+            # candidates, but an episode flagged "exact" (a normalized anchor
+            # VALUE equals one of its typed-field values) is always included.
+            top = scored[:2] + [s for s in scored[2:] if s.get("exact")]
+            result[npc_id] = [s["episode"] for s in top]
     return result
 
 
