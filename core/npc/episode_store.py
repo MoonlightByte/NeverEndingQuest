@@ -303,6 +303,9 @@ class EpisodeStore:
         """
         episode_id = stable_episode_id(module, location_id, boundary_turn_id)
         derived = derived_from if derived_from in VALID_DERIVED_FROM else "location_summary"
+        # sourceHash here is WRITE-ONLY provenance metadata (T3 exemption,
+        # documented): nothing compares, gates, or dedups on it -- idempotency
+        # is keyed on stable_episode_id value coordinates above.
         source = source_hash if (isinstance(source_hash, str) and (source_hash == "" or (len(source_hash) == 64))) else ""
         game_day_value = game_day if isinstance(game_day, int) and game_day >= 0 else None
         # Materialize once (the iterable is read below) and fail LOUD if witnesses are
@@ -340,6 +343,7 @@ class EpisodeStore:
                 "witnessIds": _witness_ids(witness_ids),
                 "intensity": _clamp01(intensity),
                 "derivedFrom": derived,
+                # Write-only provenance; never used as identity (see above).
                 "sourceHash": source,
                 "promptVersion": _text(prompt_version, 40),
             }

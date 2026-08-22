@@ -23,7 +23,7 @@ from core.npc.voice_contracts import (
     RESPONSE_SCHEMA_VERSION,
     TASK_ID,
     ThoughtContractError,
-    canonical_hash,
+    canonical_json,
     gemini_response_schema,
     validate_packet,
     validate_thought_response,
@@ -172,6 +172,8 @@ def _safe_identifier(value: Any) -> str:
 
 
 def _identifier_hash(value: Any) -> str:
+    # Telemetry-only log sanitization (batch_hash/npc_hash fields), NEVER
+    # identity: nothing compares, gates, or dedups on this value.
     return hashlib.sha256(str(value).encode("utf-8", errors="replace")).hexdigest()[:16]
 
 
@@ -299,6 +301,8 @@ _PENDING = _PendingVoice()
 class NpcVoiceResult:
     npc_id: str
     npc_name: str
+    # Carries the VALUE cache key (canonical-JSON string), not a digest; the
+    # field name is kept for sidecar compatibility.
     content_hash: str
     thought: str
     affinity_event: Optional[Dict[str, Any]]
@@ -546,12 +550,15 @@ class NpcVoiceService:
             return None
 
     def _cache_key(self, packet: Mapping[str, Any], provider: str) -> str:
-        return canonical_hash(
+        # Value key (in-memory LRU): the lossless canonical-JSON STRING of the
+        # same material the retired digest covered -- equality of this string
+        # is equality of the underlying values, never a hash collision.
+        return canonical_json(
             {
                 "packet": packet,
                 "promptVersion": PROMPT_VERSION,
                 "responseSchemaVersion": RESPONSE_SCHEMA_VERSION,
-                "profileStoreRevision": canonical_hash(
+                "profileStoreRevision": canonical_json(
                     {
                         "profile": packet.get("npc", {}).get("profile"),
                         "relationship": packet.get("relationship"),
@@ -776,7 +783,9 @@ class NpcVoiceService:
                 if packet_copy["beat"]["relationshipEvidence"] is not None
                 else ""
             ),
-            packet_hash=canonical_hash(packet_copy),
+            # packetHash persistence is retired (digest identity ban); the
+            # store writes "" regardless and tolerates legacy hex on load.
+            packet_hash="",
             module=packet_copy["scene"]["module"],
             location_id=packet_copy["scene"]["locationId"],
             current_goal_reference=packet_copy["working"]["currentGoal"],

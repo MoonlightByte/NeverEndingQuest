@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import re
 from typing import Any, Dict, Iterable, Mapping
@@ -402,10 +401,6 @@ OUT_OF_COMBAT_CONTEXT_SCHEMA = strict_object(
 
 def canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
-
-
-def canonical_hash(value: Any) -> str:
-    return hashlib.sha256(canonical_json(value).encode("ascii")).hexdigest()
 
 
 def packet_schema(mode: str) -> Dict[str, Any]:

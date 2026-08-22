@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import logging
 from dataclasses import dataclass, replace
@@ -54,13 +53,11 @@ def _string(value: Any) -> str:
 
 
 def _batch_id(conversation_prefix: Iterable[Any], raw_input: str) -> str:
-    payload = json.dumps(
-        {"prefix": list(conversation_prefix), "input": raw_input},
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode("ascii")).hexdigest()[:32]
+    # Value-tuple identity, not a digest: the turn's position in the
+    # conversation plus the player input itself. Bounded to the packet
+    # beat.id contract (120 chars).
+    head = "beat|%d|" % len(list(conversation_prefix))
+    return (head + raw_input)[:120]
 
 
 def _raw_player_text(content: Any) -> str:
@@ -334,11 +331,9 @@ def _combat_fact_text(
 ) -> str:
     action = _string(fact.get("action")) or "an action"
     event_id = _string(fact.get("eventId"))
-    event_tag = (
-        hashlib.sha256(event_id.encode("utf-8")).hexdigest()[:12]
-        if event_id
-        else ""
-    )
+    # Display-only reference inside prompt text (never compared/gated): show
+    # the event id VALUE itself, truncated for prompt budget.
+    event_tag = event_id[:40] if event_id else ""
     details = []
     for target in fact.get("targets", []) if isinstance(fact.get("targets"), list) else []:
         if not isinstance(target, Mapping):
@@ -1034,17 +1029,12 @@ def run_combat_voice_stage(
             results=tuple(
                 replace(
                     result,
+                    # Value-tuple identity, not a digest: the combat beat id is
+                    # already a value tuple (encounter, round, revision, actor
+                    # window), which identifies this evidence application on
+                    # the subject's edge. Bounded to the sourceTurnId contract.
                     relationship_evidence_id=(
-                        "combat-evidence:%s" % hashlib.sha256(
-                            json.dumps(
-                                packets_by_npc_id[result.npc_id]["beat"][
-                                    "relationshipEvidence"
-                                ],
-                                ensure_ascii=True,
-                                sort_keys=True,
-                                separators=(",", ":"),
-                            ).encode("ascii")
-                        ).hexdigest()
+                        ("cev|%s" % packets_by_npc_id[result.npc_id]["beat"]["id"])[:120]
                         if packets_by_npc_id.get(result.npc_id, {}).get("beat", {}).get(
                             "relationshipEvidence"
                         ) is not None

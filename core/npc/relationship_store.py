@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import logging
 import os
@@ -39,7 +38,6 @@ MIGRATION_VERSION = "companion-memory-v1"
 DEFAULT_STATE_PATH = Path("data/companion_memories/npc_agent_state.json")
 DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "npc_agent_state_schema.json"
 PROJECT_IDENTITY_NAMESPACE = uuid.UUID("9b0f3d4d-bf49-5c2c-a8bb-4056bdc31fc1")
-ZERO_HASH = "0" * 64
 UNRESOLVED_TYPES = frozenset({"abandon", "betray", "rescue"})
 
 # Loud, non-fail-open persistence signal. A read-only latch or a turn that commits
@@ -73,14 +71,6 @@ def _canonical_json(value: Any) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
-
-
-def _sha256_bytes(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
-
-
-def _sha256_value(value: Any) -> str:
-    return _sha256_bytes(_canonical_json(value).encode("ascii"))
 
 
 def _text(value: Any, limit: int) -> str:
@@ -209,10 +199,13 @@ def _new_relationship(
         "current": _neutral(),
         "lastDecayDay": game_day,
         "evidence": [],
+        # appliedEventIds is the EXACT applied-event membership list (value ids).
+        # Legacy edges may also carry appliedEventHistory (a retired probabilistic
+        # bitmap that could silently drop colliding events) and evidenceHashChain
+        # (a retired tamper-evidence digest chain). Both are tolerated on load but
+        # never written or consulted for new edges.
         "appliedEventIds": [],
-        "appliedEventHistory": ZERO_HASH,
         "aggregateCounts": {},
-        "evidenceHashChain": ZERO_HASH,
     }
 
 
@@ -224,18 +217,6 @@ def _identity_names(identity: Mapping[str, Any]) -> set[str]:
         if isinstance(value, str)
     )
     return {name for name in names if name}
-
-
-def _history_contains(history: str, event_id: str) -> bool:
-    bits = int(history or ZERO_HASH, 16)
-    index = int(event_id[:8], 16) % 256
-    return bool(bits & (1 << index))
-
-
-def _history_add(history: str, event_id: str) -> str:
-    bits = int(history or ZERO_HASH, 16)
-    index = int(event_id[:8], 16) % 256
-    return format(bits | (1 << index), "064x")
 
 
 # Per-NPC POV overlay (Phase 2). Bounded + pinned: pinned peaks never drop; routine
@@ -612,7 +593,9 @@ class RelationshipStore:
         event: Mapping[str, Any],
         prompt_version: str,
     ) -> str:
-        return _sha256_value(
+        # Value-tuple identity (no digest): the lossless canonical-JSON encoding
+        # of exactly the fields that identify this event application.
+        return "evt|" + _canonical_json(
             [
                 "relationship-event/v2",
                 source_turn_id,
@@ -658,45 +641,50 @@ class RelationshipStore:
 
     @staticmethod
     def _prune_evidence(edge: Dict[str, Any]) -> None:
+        # appliedEventIds = kept typed-event ids PLUS previously-applied ids whose
+        # records were evicted (exact-membership dedup replaces the retired
+        # probabilistic bitmap, which could silently drop colliding events).
+        # Capped at 256 total; when over cap, the OLDEST evicted ids rotate out
+        # first (kept-record ids are never dropped).
         records = edge["evidence"]
+        prior_applied = list(dict.fromkeys(
+            value for value in edge.get("appliedEventIds", [])
+            if isinstance(value, str) and value
+        ))
         if len(records) <= 256:
-            edge["appliedEventIds"] = [
-                record["eventId"]
-                for record in records
-                if record["kind"] == "typedEvent"
-            ]
-            return
-        ranked = sorted(
-            enumerate(records),
-            key=lambda row: (
-                row[1]["magnitude"] == 3,
-                row[1]["gameDay"] if row[1]["gameDay"] is not None else -1,
-                row[0],
-            ),
-            reverse=True,
-        )
-        keep_indexes = {index for index, _record in ranked[:256]}
-        kept = []
-        for index, record in enumerate(records):
-            if index in keep_indexes:
-                kept.append(record)
-                continue
-            aggregate_key = record["eventType"] or "legacyEvidence"
-            counts = edge["aggregateCounts"]
-            counts[aggregate_key] = counts.get(aggregate_key, 0) + 1
-            edge["evidenceHashChain"] = _sha256_value(
-                [edge["evidenceHashChain"], record["eventId"]]
+            kept = records
+        else:
+            ranked = sorted(
+                enumerate(records),
+                key=lambda row: (
+                    row[1]["magnitude"] == 3,
+                    row[1]["gameDay"] if row[1]["gameDay"] is not None else -1,
+                    row[0],
+                ),
+                reverse=True,
             )
-            if record["kind"] == "typedEvent":
-                edge["appliedEventHistory"] = _history_add(
-                    edge["appliedEventHistory"], record["eventId"]
-                )
-        edge["evidence"] = kept
-        edge["appliedEventIds"] = [
+            keep_indexes = {index for index, _record in ranked[:256]}
+            kept = []
+            for index, record in enumerate(records):
+                if index in keep_indexes:
+                    kept.append(record)
+                    continue
+                aggregate_key = record["eventType"] or "legacyEvidence"
+                counts = edge["aggregateCounts"]
+                counts[aggregate_key] = counts.get(aggregate_key, 0) + 1
+            edge["evidence"] = kept
+        kept_ids = [
             record["eventId"]
             for record in kept
             if record["kind"] == "typedEvent"
         ]
+        evicted_ids = [
+            value
+            for value in prior_applied
+            if value not in kept_ids
+        ]
+        overflow = max(0, len(kept_ids) + len(evicted_ids) - 256)
+        edge["appliedEventIds"] = kept_ids + evicted_ids[overflow:]
 
     @staticmethod
     def _set_working(
@@ -782,9 +770,10 @@ class RelationshipStore:
             if prior_source is not None:
                 disposition["duplicate"] = True
                 return False, prior_source["eventId"]
-            if event_id in edge["appliedEventIds"] or _history_contains(
-                edge["appliedEventHistory"], event_id
-            ):
+            # Exact value membership. A replayed PRE-migration event mints a
+            # value id that cannot match its old digest id, but the
+            # sourceTurnId value comparison above already deduplicates it.
+            if event_id in edge["appliedEventIds"]:
                 disposition["duplicate"] = True
                 return False, event_id
             changed = created or self._apply_decay(edge, game_day)
@@ -814,7 +803,9 @@ class RelationshipStore:
                 "summary": evidence_summary,
                 "sourceTurnId": source_turn_id,
                 "promptVersion": _text(prompt_version, 80),
-                "packetHash": packet_hash if len(packet_hash) == 64 else "",
+                # packetHash retired (content digests are banned as identity);
+                # always written empty, legacy hex values tolerated on load.
+                "packetHash": "",
                 "gameDay": game_day,
                 "module": _text(module, 160),
                 "locationId": _text(location_id, 120),
@@ -822,6 +813,8 @@ class RelationshipStore:
                     _text(value, 240) for value in topic_ids if _text(value, 240)
                 ))[:12],
                 "unresolved": event["eventType"] in UNRESOLVED_TYPES,
+                # sourceHash retired (digest identity is banned); kept as an
+                # empty legacy-schema field for old-file compatibility.
                 "sourceHash": "",
             }
             edge["evidence"].append(record)
@@ -976,16 +969,21 @@ class RelationshipStore:
                 matches.append((candidate, raw, value))
         if len(matches) != 1:
             return False
-        source_path, raw_bytes, legacy = matches[0]
-        source_hash = _sha256_bytes(raw_bytes)
+        source_path, _raw_bytes, legacy = matches[0]
+        # Migration-record identity = the ACTUAL source values (lossless
+        # canonical-JSON string), never a digest. A legacy record that only has
+        # the retired sourceHash digest is tolerated but treated as
+        # non-matching, so migration re-runs ONCE; the per-memory value dedup
+        # below makes that re-run idempotent (nothing double-applies).
+        source_canonical = _canonical_json(legacy)
         migration_key = "%s|%s" % (MIGRATION_VERSION, npc_id)
         old_migration = snapshot["migrations"].get(migration_key)
-        if old_migration and old_migration.get("sourceHash") == source_hash:
+        if old_migration and old_migration.get("sourceCanonical") == source_canonical:
             return False
 
         def update(document: Dict[str, Any]) -> Tuple[bool, None]:
             prior = document["migrations"].get(migration_key)
-            if prior and prior.get("sourceHash") == source_hash:
+            if prior and prior.get("sourceCanonical") == source_canonical:
                 return False, None
             edge, _created = self._ensure_edge(
                 document, npc_id, counterparty_id, game_day
@@ -1001,14 +999,27 @@ class RelationshipStore:
             subject = document["identities"][npc_id]
             counterparty = document["identities"][counterparty_id]
             imported_count = 0
-            existing_hashes = {
-                record["sourceHash"] for record in edge["evidence"] if record["sourceHash"]
+            # Dedup imported memories by their exact values (canonical-JSON
+            # string of the memory object). Records written before this upgrade
+            # only carry the retired sourceHash digest, so their sourceTurnId
+            # (the memory's own stable id value) is the value-comparison
+            # fallback -- a re-run migration never double-applies them.
+            existing_values = {
+                record.get("sourceCanonical")
+                for record in edge["evidence"]
+                if record.get("sourceCanonical")
+            }
+            existing_turn_ids = {
+                record["sourceTurnId"]
+                for record in edge["evidence"]
+                if record["kind"] == "legacyEvidence" and record.get("sourceTurnId")
             }
             for index, memory in enumerate(legacy.get("core_memories", [])):
                 if not isinstance(memory, dict):
                     continue
-                memory_hash = _sha256_value(memory)
-                if memory_hash in existing_hashes:
+                memory_canonical = _canonical_json(memory)
+                source_turn_id = _text(memory.get("id"), 120) or "legacy-%d" % index
+                if memory_canonical in existing_values or source_turn_id in existing_turn_ids:
                     continue
                 summary = _text(
                     memory.get("journal_excerpt")
@@ -1021,7 +1032,10 @@ class RelationshipStore:
                 except (TypeError, ValueError):
                     velocity = 0.0
                 magnitude = max(0, min(3, int(round(abs(velocity) * 3))))
-                event_id = _sha256_value([MIGRATION_VERSION, npc_id, memory_hash])
+                # Value-tuple id from the same stable inputs (no digest).
+                event_id = "migration|" + _canonical_json(
+                    [MIGRATION_VERSION, npc_id, memory]
+                )
                 edge["evidence"].append(
                     {
                         "kind": "legacyEvidence",
@@ -1036,19 +1050,23 @@ class RelationshipStore:
                         "applied": False,
                         "delta": _neutral(),
                         "summary": summary,
-                        "sourceTurnId": _text(memory.get("id"), 120)
-                        or "legacy-%d" % index,
+                        "sourceTurnId": source_turn_id,
                         "promptVersion": "",
+                        # packetHash retired; empty legacy-schema field only.
                         "packetHash": "",
                         "gameDay": None,
                         "module": "",
                         "locationId": _text(memory.get("location"), 120),
                         "topicIds": [],
                         "unresolved": False,
-                        "sourceHash": memory_hash,
+                        # sourceHash retired; sourceCanonical is the lossless
+                        # value fingerprint used for import dedup.
+                        "sourceHash": "",
+                        "sourceCanonical": memory_canonical,
                     }
                 )
-                existing_hashes.add(memory_hash)
+                existing_values.add(memory_canonical)
+                existing_turn_ids.add(source_turn_id)
                 imported_count += 1
             self._prune_evidence(edge)
             behavior = legacy.get("behavioral_model")
@@ -1065,7 +1083,9 @@ class RelationshipStore:
                 "version": MIGRATION_VERSION,
                 "npcId": npc_id,
                 "sourcePath": relative_source[:500],
-                "sourceHash": source_hash,
+                # sourceCanonical replaces the retired sourceHash digest as the
+                # migration-record identity (full-value comparison).
+                "sourceCanonical": source_canonical,
                 "status": "migrated",
                 "legacyBehaviorHint": behavior_hint,
                 "migratedEvidence": imported_count,

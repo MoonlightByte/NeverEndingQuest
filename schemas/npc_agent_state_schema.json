@@ -77,10 +77,11 @@
     "profile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["profileVersion", "sourceHash", "voice", "goals", "fears", "values", "preferences", "boundaries", "conflictStyle", "initiativeTendency", "riskTolerance", "protectionPriorities", "retreatRules", "arcSeeds"],
+      "required": ["profileVersion", "voice", "goals", "fears", "values", "preferences", "boundaries", "conflictStyle", "initiativeTendency", "riskTolerance", "protectionPriorities", "retreatRules", "arcSeeds"],
       "properties": {
         "profileVersion": {"const": 1},
-        "sourceHash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "sourceHash": {"type": "string"},
+        "sourceCanonical": {"type": "string"},
         "voice": {
           "type": "object",
           "additionalProperties": false,
@@ -131,10 +132,10 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "eventId", "actorId", "targetId", "actor", "target", "eventType", "magnitude", "witnessed", "applied", "delta", "summary", "sourceTurnId", "promptVersion", "packetHash", "gameDay", "module", "locationId", "topicIds", "unresolved", "sourceHash"],
+      "required": ["kind", "eventId", "actorId", "targetId", "actor", "target", "eventType", "magnitude", "witnessed", "applied", "delta", "summary", "sourceTurnId", "promptVersion", "gameDay", "module", "locationId", "topicIds", "unresolved"],
       "properties": {
         "kind": {"enum": ["typedEvent", "legacyEvidence"]},
-        "eventId": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "eventId": {"type": "string", "minLength": 1},
         "actorId": {"type": "string", "minLength": 1, "maxLength": 240},
         "targetId": {"type": "string", "minLength": 1, "maxLength": 240},
         "actor": {"type": "string", "minLength": 1, "maxLength": 100},
@@ -147,13 +148,14 @@
         "summary": {"type": "string", "minLength": 1, "maxLength": 240},
         "sourceTurnId": {"type": "string", "minLength": 1, "maxLength": 120},
         "promptVersion": {"type": "string", "maxLength": 80},
-        "packetHash": {"type": "string", "pattern": "^$|^[0-9a-f]{64}$"},
+        "packetHash": {"type": "string"},
         "gameDay": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
         "module": {"type": "string", "maxLength": 160},
         "locationId": {"type": "string", "maxLength": 120},
         "topicIds": {"type": "array", "maxItems": 12, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 240}},
         "unresolved": {"type": "boolean"},
-        "sourceHash": {"type": "string", "pattern": "^$|^[0-9a-f]{64}$"}
+        "sourceHash": {"type": "string"},
+        "sourceCanonical": {"type": "string"}
       }
     },
     "aggregateCounts": {
@@ -166,7 +168,7 @@
     "relationship": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["subjectId", "counterpartyId", "baseline", "current", "lastDecayDay", "evidence", "appliedEventIds", "appliedEventHistory", "aggregateCounts", "evidenceHashChain"],
+      "required": ["subjectId", "counterpartyId", "baseline", "current", "lastDecayDay", "evidence", "appliedEventIds", "aggregateCounts"],
       "properties": {
         "subjectId": {"type": "string", "minLength": 1, "maxLength": 240},
         "counterpartyId": {"type": "string", "minLength": 1, "maxLength": 240},
@@ -175,10 +177,10 @@
         "current": {"$ref": "#/$defs/vector"},
         "lastDecayDay": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
         "evidence": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/evidence"}},
-        "appliedEventIds": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
-        "appliedEventHistory": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "appliedEventIds": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "appliedEventHistory": {"type": "string"},
         "aggregateCounts": {"$ref": "#/$defs/aggregateCounts"},
-        "evidenceHashChain": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        "evidenceHashChain": {"type": "string"}
       }
     },
     "workingState": {
@@ -231,12 +233,13 @@
     "migration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "npcId", "sourcePath", "sourceHash", "status", "legacyBehaviorHint", "migratedEvidence"],
+      "required": ["version", "npcId", "sourcePath", "status", "legacyBehaviorHint", "migratedEvidence"],
       "properties": {
         "version": {"const": "companion-memory-v1"},
         "npcId": {"type": "string", "minLength": 1, "maxLength": 240},
         "sourcePath": {"type": "string", "minLength": 1, "maxLength": 500},
-        "sourceHash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "sourceHash": {"type": "string"},
+        "sourceCanonical": {"type": "string"},
         "status": {"const": "migrated"},
         "legacyBehaviorHint": {"type": "string", "maxLength": 500},
         "migratedEvidence": {"type": "integer", "minimum": 0, "maximum": 256}

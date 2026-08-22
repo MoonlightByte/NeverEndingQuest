@@ -18,7 +18,7 @@ from core.ai import api_client
 from core.npc.relationship_store import RelationshipStore
 from core.npc.voice_contracts import (
     STRUCTURED_PROFILE_SCHEMA,
-    canonical_hash,
+    canonical_json,
     profile_gemini_response_schema,
 )
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
@@ -47,7 +47,7 @@ class NpcProfileUnavailable(RuntimeError):
 @dataclass(frozen=True)
 class ProfileSeedResult:
     profile: Dict[str, Any]
-    source_hash: str
+    source_canonical: str
     model: str = ""
     cached: bool = False
 
@@ -126,8 +126,15 @@ def _unique(values: Any, count: int, limit: int) -> list[str]:
     return result
 
 
-def profile_source_hash(source: Mapping[str, Any]) -> str:
-    return canonical_hash({"profileVersion": PROFILE_VERSION, "source": source})
+def profile_source_canonical(source: Mapping[str, Any]) -> str:
+    """Lossless value fingerprint of the profile source (no digest).
+
+    The canonical-JSON string of exactly the same {profileVersion, source}
+    material the retired sourceHash digest covered -- string equality of this
+    value is equivalent to value equality of those fields, so WHEN a profile
+    regenerates is unchanged.
+    """
+    return canonical_json({"profileVersion": PROFILE_VERSION, "source": source})
 
 
 def deterministic_fallback_profile(
@@ -271,7 +278,7 @@ class NpcProfileService:
         self,
         source: Mapping[str, Any],
         *,
-        source_hash_override: str = "",
+        source_canonical_override: str = "",
     ) -> ProfileSeedResult:
         if not isinstance(source, Mapping):
             raise ProfileContractError("profile source must be an object")
@@ -279,16 +286,17 @@ class NpcProfileService:
         if set(source) != required:
             raise ProfileContractError("profile source keys are invalid")
         source_copy = copy.deepcopy(dict(source))
-        source_digest = (
-            source_hash_override
-            if re.fullmatch(r"[0-9a-f]{64}", source_hash_override or "")
-            else profile_source_hash(source_copy)
+        # In-memory cache key = the lossless canonical value string itself.
+        source_fingerprint = (
+            source_canonical_override
+            if isinstance(source_canonical_override, str) and source_canonical_override
+            else profile_source_canonical(source_copy)
         )
-        cached = self.cache.get(source_digest)
+        cached = self.cache.get(source_fingerprint)
         if cached is not None:
             return ProfileSeedResult(
                 profile=cached.profile,
-                source_hash=cached.source_hash,
+                source_canonical=cached.source_canonical,
                 model=cached.model,
                 cached=True,
             )
@@ -316,10 +324,10 @@ class NpcProfileService:
                 profile = validate_profile(response.choices[0].message.content)
                 result = ProfileSeedResult(
                     profile=profile,
-                    source_hash=source_digest,
+                    source_canonical=source_fingerprint,
                     model=getattr(response, "model", None) or model,
                 )
-                self.cache.put(source_digest, result)
+                self.cache.put(source_fingerprint, result)
                 return result
             except ProfileContractError as exc:
                 last_error = exc
@@ -359,18 +367,24 @@ def seed_profile_best_effort(
         "sheet": dict(sheet),
         "lifecycle": lifecycle_value,
     }
-    source_digest = profile_source_hash(full_hash_source)
+    source_fingerprint = profile_source_canonical(full_hash_source)
     existing = store.get_profile(npc_id)
+    # Value-fingerprint gate: string equality of sourceCanonical <=> value
+    # equality of the same {profileVersion, source} material the retired
+    # sourceHash digest covered. A legacy profile that only carries sourceHash
+    # is tolerated on load but treated as non-matching here, so it regenerates
+    # ONCE; the write below persists sourceCanonical and the value gate then
+    # holds from that point on.
     if (
         isinstance(existing, dict)
         and existing.get("profileVersion") == PROFILE_VERSION
-        and existing.get("sourceHash") == source_digest
+        and existing.get("sourceCanonical") == source_fingerprint
     ):
         return existing
     fallback = deterministic_fallback_profile(sheet, lifecycle_value)
     persisted_fallback = {
         "profileVersion": PROFILE_VERSION,
-        "sourceHash": source_digest,
+        "sourceCanonical": source_fingerprint,
         **fallback,
     }
     store.store_profile(npc_id, persisted_fallback)
@@ -381,14 +395,14 @@ def seed_profile_best_effort(
             sheet=sheet,
             lifecycle=lifecycle_value,
         )
-        # Bind the compact request to the full authoritative source hash so
-        # mechanical sheet changes still invalidate a prior seed.
+        # Bind the compact request to the full authoritative source fingerprint
+        # so mechanical sheet changes still invalidate a prior seed.
         result = (service or _default_service()).seed(
-            source, source_hash_override=source_digest
+            source, source_canonical_override=source_fingerprint
         )
         seeded = {
             "profileVersion": PROFILE_VERSION,
-            "sourceHash": source_digest,
+            "sourceCanonical": source_fingerprint,
             **result.profile,
         }
         store.store_profile(npc_id, seeded)
