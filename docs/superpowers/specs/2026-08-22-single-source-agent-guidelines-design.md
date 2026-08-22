@@ -1,4 +1,4 @@
-# Canonical agent-guideline activation design
+# Canonical agent-guideline reference design
 
 ## Status and purpose
 
@@ -6,37 +6,28 @@ This document is an implementation and migration record. It is not policy author
 marked historical after the migration is accepted. GitHub issue #193 is the single canonical source
 of design and development policy for NeverEndingQuest.
 
-The migration makes that authority reliable in fresh Claude, Codex, and other repository-aware
-sessions without creating a second copy of the rules. It also incorporates the owner's latest
+The migration makes the existing Markdown instruction files point reliably to that authority
+without creating a second copy of the rules or a new loading mechanism. It also incorporates the owner's latest
 rulings about live approved features, automatic compatibility, real acceptance, review
 convergence, revision evidence, combat recovery, and post-review execution approval.
 
 This change governs development process only. It does not alter game code, prompts, schemas,
 configuration, tests, models, providers, or deployment.
 
-## Canonical source and bootstrap
+## Canonical source and references
 
 GitHub issue #193 is canonical. Repository files, tool memories, plans, handoffs, and this migration
 document defer to it on conflict. A policy change is made in issue #193 first; pointers and
-bootstrap text may then be updated, but no second document may paraphrase the policy as an
+reference text may then be updated, but no second document may paraphrase the policy as an
 independent authority.
 
-The repository root must contain a tracked `AGENTS.md` bootstrap. It must:
-
-1. identify issue #193 as canonical;
-2. require Part 1 at the start of every session;
-3. require the relevant Part 2 system page before diagnosis, design, or implementation;
-4. require Part 3 after a plan is written and before the plan is presented for owner approval;
-5. require Part 5 for owner rulings;
-6. stop work when issue #193 is unavailable or conflicts with another authoritative instruction;
-7. contain repository-operational facts needed to locate and apply the canonical policy, but not a
-   second full copy of the policy.
-
-`AGENTS.md` must not remain ignored. Fresh clones must receive the bootstrap automatically. A
-missing, ignored, stale, or untracked bootstrap is an activation failure.
+Existing repository Markdown instruction files identify issue #193 as canonical and direct agents
+to the relevant Parts 1, 2, 3, and 5. This migration does not introduce a new loading mechanism,
+activation mechanism, or tracked instruction file. Repository-operational facts may remain in the
+existing Markdown files when they do not copy or compete with canonical policy.
 
 Tool-specific memories may retain project history and current status. Their guideline entries must
-contain only a pointer to issue #193 and the tracked bootstrap; they must not copy or paraphrase the
+contain only a pointer to issue #193; they must not copy or paraphrase the
 rules. The existing retrospective feedback memory and its index entry become pointers.
 
 ## Required amendments to issue #193
@@ -257,9 +248,10 @@ work already accepted into the canonical issue.
    Part 1, the affected Part 2 system pages, Part 3 convergence, Part 4 operations, and Part 5.
 2. Separate Part 5 into ratified rulings and open owner decisions. Open entries are not described as
    ratified and cannot be cited as settled behavior.
-3. Remove `AGENTS.md` from `.gitignore` and add the minimal tracked bootstrap described above.
-4. Replace duplicate tool-memory guideline files and indexes with pointers to issue #193 and the
-   bootstrap. Do not alter unrelated project-history memories in this migration.
+3. Confirm the existing Markdown instruction files point to issue #193 without adding a new loading
+   mechanism, activation mechanism, or tracked instruction file.
+4. Replace duplicate tool-memory guideline files and indexes with pointers to issue #193. Do not
+   alter unrelated project-history memories in this migration.
 5. Mark this design historical and link to the accepted issue #193 revision after activation.
 
 ## Validation
@@ -268,17 +260,17 @@ Validation is documentation-only and must prove:
 
 1. issue #193 contains the approved rules and no contradictory cap, fixed-revision authority,
    hidden-rollout permission, post-review execution authority, or post-merge-only gate remains;
-2. the root `AGENTS.md` is tracked, present in a fresh clone, and points to issue #193 without
-   becoming a competing policy copy;
+2. the existing Markdown instruction files point to issue #193 without becoming competing policy
+   copies or introducing a new activation mechanism;
 3. tool memories contain pointers rather than duplicated policy;
 4. all changed documentation is ASCII-clean and renders correctly;
-5. the candidate diff contains only authorized documentation and bootstrap changes;
+5. the candidate diff contains only authorized documentation and reference changes;
 6. no game code, prompts, schemas, configuration, tests, models, providers, or deployment changed.
 
 ## Tracked follow-ups
 
 - Issue #193: canonical amendment, contradiction removal, and owner-ruling ledger update.
-- Issue #193 activation: tracked root bootstrap and tool-memory pointer conversion after the
+- Issue #193 activation: existing Markdown-reference and tool-memory pointer verification after the
   canonical text is accepted.
 - This migration record: mark historical and link forward after activation is complete.
 
@@ -286,7 +278,7 @@ Validation is documentation-only and must prove:
 
 | Decision | Owner ruling | Status |
 | --- | --- | --- |
-| D-1 | Issue #193 remains the single canonical policy authority. | RATIFIED |
+| D-1 | Issue #193 remains the single canonical policy authority; existing Markdown references point to it. | RATIFIED |
 | D-2 | Approved production features are live without kill switches, hidden rollouts, default-off controls, or opt-in architecture. | RATIFIED |
 | D-3 | Compatibility is selected automatically by live code; old player switch values have no authority. | RATIFIED |
 | D-4 | Required reviewers continue until evidence-backed convergence with no round cap or residual-finding escape. | RATIFIED |
