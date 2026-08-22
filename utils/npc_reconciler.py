@@ -60,6 +60,10 @@ def _capture_contained_json(module_dir, path):
         raise _T088SourceDriftError("T088 input is outside its module directory")
 
     flags = os.O_RDONLY
+    # Issue #134 class: O_BINARY keeps Windows CRT text mode from collapsing
+    # CRLF and truncating at 0x1A, so the T088 snapshot is the file's PHYSICAL
+    # bytes (matching every other byte-exact reader). POSIX: attr absent -> no-op.
+    flags |= getattr(os, "O_BINARY", 0)
     if hasattr(os, "O_CLOEXEC"):
         flags |= os.O_CLOEXEC
     if hasattr(os, "O_NOFOLLOW"):
@@ -122,7 +126,12 @@ def _durable_copy(source, destination):
             destination_handle.flush()
             os.fsync(destination_handle.fileno())
         shutil.copystat(canonical_source, temp_path)
-        with open(temp_path, "rb") as destination_handle:
+        # Issue #134 class: this second fsync (persisting the copystat metadata)
+        # must use a WRITABLE handle -- Windows maps os.fsync to CRT _commit/
+        # FlushFileBuffers, which fails EBADF on a read-only descriptor. "r+b"
+        # keeps the same durability guarantee on POSIX and makes it valid on
+        # Windows; content is never modified.
+        with open(temp_path, "r+b") as destination_handle:
             os.fsync(destination_handle.fileno())
         os.replace(temp_path, canonical_destination)
         _fsync_parent(parent)

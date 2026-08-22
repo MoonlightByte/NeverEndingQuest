@@ -1401,17 +1401,21 @@ class CampaignManager:
                 expected_lifecycle_epoch = _load_campaign_lifecycle_epoch(
                     self.campaign_file
                 )
-                recover_incomplete_refresh_commit()
                 from utils.module_lifecycle import (
                     ModuleLifecycleStore,
                     RecoveryStatus,
                 )
 
+                # P2a: lifecycle recovery is advisory here too. Do not abort the
+                # refresh over an INDETERMINATE classification -- inert residue
+                # must not block module integration. (This path is currently
+                # unreachable: refresh_modules_async has no callers.)
                 lifecycle_recovery = ModuleLifecycleStore("modules").recover()
                 if lifecycle_recovery.status is RecoveryStatus.INDETERMINATE:
-                    raise RuntimeError(
-                        "Managed module lifecycle recovery is indeterminate: "
-                        f"{lifecycle_recovery.reason}"
+                    warning(
+                        "Managed module lifecycle recovery indeterminate; "
+                        f"proceeding with refresh: {lifecycle_recovery.reason}",
+                        category="module_management",
                     )
                 from core.generators.module_stitcher import get_module_stitcher
 

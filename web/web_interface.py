@@ -481,6 +481,20 @@ def emit_compression_event(event_type, data):
 
 set_compression_callback(emit_compression_event)
 
+def _is_operational_diagnostic(clean_line):
+    """E2E gate 2a: operational diagnostics that must reach the Debug tab, not be
+    swallowed as DM narration. The DM-section terminators only recognize UPPERCASE
+    'DEBUG:/ERROR:/WARNING:'; recovery/quarantine/module lines carry an UNAMBIGUOUS
+    bracket tag and were being appended to the narration buffer. We match ONLY those
+    reserved bracket tags (by line prefix) -- deliberately NOT bare 'Error:'/'Warning:'
+    words, which in-fiction DM prose could legitimately start a wrapped line with
+    (a read-aloud sign/note), which would truncate narration. Engine diagnostics
+    that must surface use one of these tags."""
+    if not isinstance(clean_line, str):
+        return False
+    return clean_line.lstrip().startswith(('[LIFECYCLE]', '[MODULES]', '[STARTUP]'))
+
+
 class WebOutputCapture:
     """Captures output and routes it to appropriate queues"""
     def __init__(self, queue, original_stream, is_error=False):
@@ -650,9 +664,12 @@ class WebOutputCapture:
                             self.in_dm_section = False
                             self.dm_buffer = []
                     elif any(marker in clean_line for marker in ['DEBUG:', 'ERROR:', 'WARNING:']) or \
+                         _is_operational_diagnostic(clean_line) or \
                          clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line) or \
                          clean_line.startswith('>'):
                         # This ends the DM section - send accumulated DM content as single message
+                        # (issue #167 / E2E 2a: operational diagnostics now terminate the DM
+                        # section and route to debug instead of being swallowed as narration.)
                         self._flush_dm_buffer()
                         # Send this line to debug
                         try:
@@ -2486,26 +2503,12 @@ def handle_connect():
     # cache from an empty process-local deque.
     cached_messages = load_message_cache()
 
-    # A process may have stopped after durable module publication but before
-    # its narration receipt was acknowledged. Replay the stable-ID message
-    # before sending cache/queue state so reconnect is self-healing. The
-    # replay delivers through the player-output sink, so the sink must be
-    # claimed BEFORE the recovery call -- without it the message would fall
-    # back to a console print and the receipt would still be acknowledged,
-    # permanently losing the narration for web clients.
+    # Claim the player-output sink before any reconnect replay below (e.g. combat
+    # output recovery) so replayed prose reaches web clients rather than falling
+    # back to a console print. (P2b: the module-publication receipt recovery that
+    # used to run here is gone -- module creation now publishes atomically and
+    # narrates in the same turn, so there is nothing to replay on reconnect.)
     set_player_output_sink(_queue_safe_player_output)
-    try:
-        import main as game_main
-
-        receipt_history = game_main.load_json_file(game_main.json_file)
-        if not isinstance(receipt_history, list):
-            receipt_history = []
-        game_main._recover_pending_module_publications(receipt_history)
-    except Exception as receipt_error:
-        error(
-            f"Pending module delivery recovery deferred: {receipt_error}",
-            category="module_management",
-        )
 
     # Combat uses the same stable-ID player-output boundary. This recovery is
     # provider-free and mechanics-free; it only replays prose already stored

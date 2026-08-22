@@ -244,20 +244,30 @@ def startup_required(party_file="party_tracker.json"):
 # ===== MODULE MANAGEMENT =====
 
 def scan_available_modules():
-    """Recover module lifecycle state, then read one stable public catalog."""
-    from utils.commit_state import recover_incomplete_refresh_commit
-    from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
+    """List playable modules from disk.
+
+    P1 strip (post-715732d5 regression review): listing the adventures a player
+    can start is a READ-ONLY operation. Commit 715732d5 gated it behind
+    ModuleLifecycleStore.recover(), which returns INDETERMINATE for ANY leftover
+    build-transaction residue (or a stray desktop.ini under
+    modules/.module_transactions) and made the scan return [] -> "No modules
+    available" with both bundled adventures sitting on disk (issues #167/#172/
+    #173). The legacy scan (pre-715732d5) was a plain os.listdir and never had
+    this failure mode. We restore that: NO recover() gate on the read-only scan.
+    Crash-safe recovery still runs where it belongs -- in the module BUILD/publish
+    paths (createNewModule, campaign integration), which are unchanged.
+
+    The module_refresh_lock is kept (benign single-writer; guarantees any
+    downstream lock-ownership assertions pass and serializes against a
+    concurrent build) and returns a VISIBLE error on the rare contention case.
+    """
     from utils.module_refresh_lock import module_refresh_lock
 
     with module_refresh_lock() as acquired:
         if not acquired:
-            return []
-        recover_incomplete_refresh_commit()
-        recovery = ModuleLifecycleStore("modules").recover()
-        if recovery.status is RecoveryStatus.INDETERMINATE:
-            warning(
-                "Module lifecycle recovery is required before startup scan",
-                category="startup",
+            print(
+                "Error: Module scan could not acquire the module refresh lock; "
+                "another operation is in progress. Restart and try again."
             )
             return []
         return _scan_available_modules_locked()
@@ -267,23 +277,27 @@ def _scan_available_modules_locked():
     """Find all available modules in modules/ directory"""
     status_loading()
     modules = []
-    
+
     if not os.path.exists("modules"):
         print("Error: No modules directory found!")
         status_ready()
         return modules
-    
+
+    # Issue #167: a completely fresh install ships the bundled adventures as
+    # *_BU.json masters only (live files are runtime state). Reuse the existing
+    # guarded hydrator (skips saved_games snapshots + support dirs; strictly
+    # only-if-missing, never overwrites) so any scan caller sees playable
+    # modules even if its entry path did not run the wizard's own hydration.
+    initialize_game_files_from_bu()
+
+    # P1 strip: the catalog is ALWAYS derived from disk (legacy behavior). Commit
+    # 715732d5 made world_registry.json the PREFERRED catalog, so an empty or
+    # partial registry (fresh install, or interrupted/failed registration) shadowed
+    # the real on-disk modules -> "No modules available" (#167/#173). The registry
+    # is metadata written by the build/integration path; it is NOT the source of
+    # truth for "what can I play". Reverting to os.listdir removes the shadow class
+    # entirely (including the partial-registry case a preference check can't cover).
     catalog_names = os.listdir("modules")
-    registry_path = os.path.join("modules", "world_registry.json")
-    if os.path.isfile(registry_path):
-        try:
-            registry = safe_json_load(registry_path)
-            if isinstance(registry, dict) and isinstance(
-                registry.get("modules"), dict
-            ):
-                catalog_names = list(registry["modules"])
-        except Exception:
-            catalog_names = []
 
     for item in catalog_names:
         module_path = f"modules/{item}"
@@ -1571,6 +1585,58 @@ def initialize_startup_conversation():
     safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
     return conversation
 
+def _ensure_local_provider_alternation(messages, provider):
+    """Make a startup message array safe for strict-alternation local templates.
+
+    Issue #179 (same class as #168/#170). The startup wizard steers the DM
+    entirely with ``system``-role messages and calls the model with no user turn
+    (module/character selection greetings, the JSON-retry interview steps), so on
+    a fresh install with a strict local chat template the game hangs at start.
+    Validated directly against the real LM Studio server: qwen3.5-9b enforces TWO
+    constraints its Jinja template raises 500 on --
+
+      1. "No user query found in messages"  -> the array must end on a user turn.
+      2. "System message must be at the beginning" -> only ONE system message,
+         at the start (a second/mid/trailing system message is rejected).
+
+    This is applied REACTIVELY by get_ai_response -- only after a local-provider
+    call fails -- so lenient models (e.g. Gemma 12B), which accept the raw shape
+    and succeed on the first attempt, are never reshaped (byte-identical). Only a
+    strict template that actually 500s triggers a normalized retry.
+
+    For the local provider ONLY: keep the FIRST message's system as the single
+    leading system block, and convert every OTHER system message to a user turn
+    IN PLACE -- preserving its content and position. This is critical for the
+    JSON-retry interview step, whose directive ("return corrected JSON: <error>")
+    is a trailing system message that must stay the model's operative latest
+    instruction: merging it to the front and appending a generic nudge made the
+    model answer the nudge (prose) instead of emitting the corrected JSON.
+    Finally, ensure the array ends on a user turn.
+
+    An already-valid request (one leading system, turns ending on user) is
+    reconstructed identically, so this cannot alter a currently-working call.
+    OpenAI/Gemini/legacy are returned unchanged -- they accept the raw shape.
+    STARTUP-ONLY (utils/startup_wizard.get_ai_response); the main game loop and
+    every non-LM-Studio provider are untouched.
+    """
+    if provider != "lmstudio":
+        return messages
+    normalized = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content", "")
+        if role == "system" and not normalized:
+            normalized.append({"role": "system", "content": content})
+        elif role == "system":
+            normalized.append({"role": "user", "content": content})
+        else:
+            normalized.append({"role": role, "content": content})
+    if not normalized or normalized[-1].get("role") != "user":
+        normalized.append(
+            {"role": "user", "content": "Please respond based on the instructions above."}
+        )
+    return normalized
+
 def get_ai_response(conversation, response_format=None):
     """Return one persisted assistant turn, retrying provider failures safely.
 
@@ -1615,6 +1681,19 @@ def get_ai_response(conversation, response_format=None):
                     f"(attempt {attempt}/{STARTUP_AI_MAX_ATTEMPTS}): {exc}",
                     category="startup",
                 )
+                # Issue #179 (REACTIVE recovery): strict-alternation local
+                # templates (e.g. qwen via LM Studio) reject the wizard's
+                # system-only / trailing-system messages with a 500. After a
+                # local-provider failure, retry the remaining attempts with the
+                # alternation-normalized shape. Lenient models (e.g. Gemma) succeed
+                # on the first attempt and never reach here, so their successful
+                # requests are byte-identical -- no proactive reshape.
+                if MODEL_PROVIDER == "lmstudio":
+                    normalized = _ensure_local_provider_alternation(
+                        request_messages, MODEL_PROVIDER
+                    )
+                    if normalized != request_messages:
+                        request_messages = normalized
 
         if content is None:
             raise StartupAIResponseError(

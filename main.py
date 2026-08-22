@@ -1032,7 +1032,9 @@ def create_module_validation_context(party_tracker_data, path_manager):
                 loc_id = location.get("locationId", "")
                 loc_name = location.get("name", "")
                 if loc_id:
-                    valid_location_ids.append(loc_id)
+                    valid_location_ids.append(
+                        f"{loc_id} ({loc_name})" if loc_name else loc_id
+                    )
                     
                     # Track NPCs by location
                     location_npcs = [npc.get("name") for npc in location.get("npcs", []) if npc.get("name")]
@@ -1050,8 +1052,10 @@ def create_module_validation_context(party_tracker_data, path_manager):
                 if npc_name and npc_name not in current_location_npcs:
                     current_location_npcs.append(npc_name)
             
-            # Just list the location IDs for current area since full details are below
-            validation_context += f"Current area ({current_area_id}) location IDs: "
+            # IDs AND names: the validator judges narration, and narration
+            # speaks in names. An ids-only list made it reject the area's own
+            # location names as hallucinations.
+            validation_context += f"Current area ({current_area_id}) locations: "
             if valid_location_ids:
                 validation_context += ", ".join(valid_location_ids)
             else:
@@ -1065,15 +1069,75 @@ def create_module_validation_context(party_tracker_data, path_manager):
         try:
             all_accessible_locations = []
             areas_included = set()
-            
-            # Get all locations from the location graph
-            for loc_id, node_info in location_graph.nodes.items():
-                area_id = node_info.get('area_id', '')
-                location_name = node_info.get('location_name', '')
-                if area_id and location_name:
-                    areas_included.add(area_id)
-                    all_accessible_locations.append(f"{loc_id} ({location_name}) in area {area_id}")
-            
+
+            graph = location_graph
+            if graph is not None and not getattr(graph, "nodes", None):
+                # A booted-but-empty graph has been observed live (0 nodes in
+                # a hosted world); one reload attempt is cheap.
+                try:
+                    graph.reload()
+                except Exception:
+                    pass
+
+            if graph is not None:
+                for loc_id, node_info in graph.nodes.items():
+                    area_id = node_info.get('area_id', '')
+                    location_name = node_info.get('location_name', '')
+                    if area_id and location_name:
+                        areas_included.add(area_id)
+                        all_accessible_locations.append(f"{loc_id} ({location_name}) in area {area_id}")
+
+            if not all_accessible_locations:
+                # NEVER hand the validator a context without the module-wide
+                # location list: it treats the current-area list as the whole
+                # world and auto-rejects every legitimate cross-area
+                # reference. Scan the module's area files directly (live
+                # first, pristine _BU as last resort).
+                warning(
+                    "VALIDATION: location graph unavailable/empty; building "
+                    "validator location list from area files",
+                    category="ai_validation",
+                )
+                seen_fallback = set()
+                safe_module = str(current_module or "").replace(" ", "_")
+                patterns = [
+                    os.path.join("modules", safe_module, "areas", "*.json"),
+                    os.path.join("modules", safe_module, "*.json"),
+                ]
+                candidate_files = []
+                for pattern in patterns:
+                    candidate_files.extend(glob.glob(pattern))
+                live_files = [f for f in candidate_files
+                              if not f.endswith(("_BU.json", "_backup.json"))]
+                bu_files = [f for f in candidate_files if f.endswith("_BU.json")]
+                for scan in (live_files, bu_files):
+                    if all_accessible_locations:
+                        break
+                    for area_path in scan:
+                        try:
+                            area_data = safe_json_load(area_path)
+                        except Exception:
+                            continue
+                        if not isinstance(area_data, dict):
+                            continue
+                        scanned_area_id = str(
+                            area_data.get("areaId")
+                            or os.path.splitext(os.path.basename(area_path))[0]
+                            .replace("_BU", "")
+                        )
+                        for location in area_data.get("locations", []):
+                            if not isinstance(location, dict):
+                                continue
+                            loc_id = str(location.get("locationId") or "").strip()
+                            loc_name = str(location.get("name") or "").strip()
+                            if not loc_id or loc_id.upper() in seen_fallback:
+                                continue
+                            seen_fallback.add(loc_id.upper())
+                            areas_included.add(scanned_area_id)
+                            all_accessible_locations.append(
+                                f"{loc_id} ({loc_name}) in area {scanned_area_id}"
+                            )
+
             validation_context += f"ALL ACCESSIBLE LOCATIONS (across {len(areas_included)} areas):\n"
             if all_accessible_locations:
                 # Sort by area for clarity
@@ -1083,7 +1147,7 @@ def create_module_validation_context(party_tracker_data, path_manager):
             else:
                 validation_context += "- No locations found in location graph"
             validation_context += "\n\n"
-            validation_context += "MULTI-AREA TRAVEL NOTE: transitionLocation can target ANY accessible location above, not just those in the current area.\n\n"
+            validation_context += "MULTI-AREA TRAVEL NOTE: transitionLocation can target ANY accessible location above, not just those in the current area. Mentioning, revealing, or discussing ANY location above in narration is always valid and is NOT a hallucination.\n\n"
                 
         except Exception as e:
             validation_context += f"ERROR: Could not load location graph data: {str(e)}\n\n"
@@ -1645,8 +1709,20 @@ def _assemble_validation_messages(
     compress_prefix=None,
     srd_context=None,
     npc_voice_batch=None,
+    local_template_tail=False,
 ):
-    """Compress context first, then preserve the raw intent/candidate pair."""
+    """Compress context first, then preserve the raw intent/candidate pair.
+
+    local_template_tail (issue #168): the array otherwise ENDS on the assistant-role
+    candidate message. Strict-alternation chat templates on local models (e.g. Gemma
+    via LM Studio) treat a trailing assistant turn as an already-finished model turn
+    and emit an immediate end-of-turn -> empty content, finish_reason=stop, on every
+    call -- which hard-blocks gameplay now that T065 fails closed. For the Local/
+    Custom provider ONLY, append one minimal mechanical closing user turn so the
+    array ends on a user message with alternation intact. The exact raw-intent /
+    candidate pair is preserved verbatim and adjacent; cloud/legacy/gemini requests
+    are byte-identical to before.
+    """
     prefix = [dict(message) for message in validation_prefix]
     if compress_prefix is not None:
         prefix = compress_prefix(prefix)
@@ -1666,6 +1742,10 @@ def _assemble_validation_messages(
                 f"T105 validator guidance skipped: {type(voice_error).__name__}",
                 category="ai_validation",
             )
+    # local_template_tail (issue #168): the strict-template nudge must remain the
+    # FINAL user turn, so it is appended after any voice-context injection.
+    if local_template_tail:
+        messages.append({"role": "user", "content": "Return the JSON verdict now."})
     return messages
 
 
@@ -1986,12 +2066,15 @@ def validate_ai_response(
 
     # The semantic boundary is deliberately outside compression: the exact raw
     # player turn and exact candidate must remain the final adjacent pair.
+    # Snapshot the provider once here; the model-config selection below reuses it.
+    from model_config import MODEL_PROVIDER as _val_provider
     validation_messages_to_send = _assemble_validation_messages(
         validation_messages_to_send,
         user_input,
         response_to_validate,
         srd_context=srd_context,
         npc_voice_batch=npc_voice_batch,
+        local_template_tail=(_val_provider == "lmstudio"),
     )
     validation_messages_for_diagnostics = validation_messages_to_send
     if npc_voice_batch is not None:
@@ -2021,7 +2104,6 @@ def validate_ai_response(
     max_validation_retries = 3
 
     # Select per-provider validation model config
-    from model_config import MODEL_PROVIDER as _val_provider
     if _val_provider == "openai":
         validation_config = config.DM_VALIDATION_GPT52_LOW
     elif _val_provider == "gemini":
@@ -2753,37 +2835,10 @@ def _party_transition_projection(party_tracker_data):
     )
 
 
-def _module_history_suffix_digest(messages):
-    encoded = json.dumps(
-        messages,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
-def _history_has_exact_module_suffix(history, message_ids, suffix_digest):
-    count = len(message_ids)
-    if not isinstance(history, list) or count == 0 or len(history) < count:
-        return False
-    suffix = history[-count:]
-    if [message.get("message_id") for message in suffix if isinstance(message, dict)] != list(
-        message_ids
-    ):
-        return False
-    try:
-        return _module_history_suffix_digest(suffix) == suffix_digest
-    except (TypeError, ValueError):
-        return False
 
 
-def _publication_pending_message(receipt):
-    return (
-        f"Module {receipt.module_name} was published; "
-        "follow-up narration is pending."
-    )
 
 
 def _emit_committed_module_message(content, message_id):
@@ -2827,164 +2882,21 @@ def display_dm_narration(content, channel="main", color="blue"):
         print(colored("Dungeon Master:", color), colored(content, color))
 
 
-def _acknowledge_module_receipt(
-    receipt,
-    *,
-    planned_message_ids=None,
-    planned_suffix_digest=None,
-):
-    from utils.module_lifecycle import ModuleLifecycleStore
-    from utils.module_refresh_lock import module_refresh_lock
-
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            return False
-        store = ModuleLifecycleStore("modules")
-        outcome = store.acknowledge_receipt(
-            build_id=receipt.build_id,
-            message_id=receipt.message_id,
-            message_digest=receipt.message_digest,
-            planned_message_ids=planned_message_ids,
-            planned_suffix_digest=planned_suffix_digest,
-        )
-        return outcome.acknowledged is True
 
 
-def _deliver_pending_module_receipt(receipt, conversation_history):
-    """Serialize an entire committed delivery against restore/reset."""
-    from core.managers.campaign_manager import _party_module_transition_lock
-
-    with _party_module_transition_lock():
-        return _deliver_pending_module_receipt_locked(
-            receipt,
-            conversation_history,
-        )
 
 
-def _deliver_pending_module_receipt_locked(receipt, conversation_history):
-    """Replay or acknowledge one committed publication without rebuilding."""
-    from utils.module_lifecycle import ModuleLifecycleStore
-    from utils.module_refresh_lock import module_refresh_lock
-
-    disk_history = load_json_file(json_file)
-    if not isinstance(disk_history, list):
-        disk_history = []
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            return False
-        store = ModuleLifecycleStore("modules")
-        current_receipt = store.find_pending_receipt(build_id=receipt.build_id)
-        if current_receipt is None:
-            return False
-        if current_receipt != receipt:
-            raise ValueError("Pending module receipt identity changed")
-        plan = store.read_receipt_delivery_plan(build_id=receipt.build_id)
-    if plan is not None and _history_has_exact_module_suffix(
-        disk_history,
-        plan.message_ids,
-        plan.suffix_digest,
-    ):
-        for message in disk_history[-len(plan.message_ids):]:
-            content = message.get("content", "")
-            try:
-                parsed = json.loads(extract_json_from_codeblock(content))
-                narration = parsed.get("narration")
-                if isinstance(narration, str) and narration.strip():
-                    content = sanitize_text(narration)
-            except Exception:
-                pass
-            if isinstance(content, str) and content.strip():
-                _emit_committed_module_message(
-                    content,
-                    message["message_id"],
-                )
-        return _acknowledge_module_receipt(
-            receipt,
-            planned_message_ids=plan.message_ids,
-            planned_suffix_digest=plan.suffix_digest,
-        )
-
-    pending_content = _publication_pending_message(receipt)
-    if hashlib.sha256(pending_content.encode("utf-8")).hexdigest() != receipt.message_digest:
-        return False
-    pending_entry = {
-        "role": "system",
-        "content": pending_content,
-        "message_id": receipt.message_id,
-    }
-    on_disk = any(
-        isinstance(message, dict)
-        and message.get("message_id") == receipt.message_id
-        and message.get("content") == pending_content
-        for message in disk_history
-    )
-    if not on_disk:
-        if not any(
-            isinstance(message, dict)
-            and message.get("message_id") == receipt.message_id
-            for message in conversation_history
-        ):
-            conversation_history.append(pending_entry)
-        if _strictly_persist_conversation_history(conversation_history) is not True:
-            _emit_committed_module_message(pending_content, receipt.message_id)
-            return False
-        disk_history = load_json_file(json_file)
-        on_disk = isinstance(disk_history, list) and any(
-            isinstance(message, dict)
-            and message.get("message_id") == receipt.message_id
-            and message.get("content") == pending_content
-            for message in disk_history
-        )
-    _emit_committed_module_message(pending_content, receipt.message_id)
-    if not on_disk:
-        return False
-    return _acknowledge_module_receipt(receipt)
 
 
-def _recover_pending_module_publications(conversation_history):
-    """Classify lifecycle state and deliver every committed pending receipt."""
-    from utils.commit_state import recover_incomplete_refresh_commit
-    from utils.module_lifecycle import (
-        ModuleLifecycleStore,
-        RecoveryStatus,
-    )
-    from utils.module_refresh_lock import module_refresh_lock
-
-    try:
-        with module_refresh_lock() as acquired:
-            if not acquired:
-                return False
-            recover_incomplete_refresh_commit()
-            store = ModuleLifecycleStore("modules")
-            recovery = store.recover()
-            if recovery.status is RecoveryStatus.INDETERMINATE:
-                return False
-            receipts = tuple(
-                receipt
-                for receipt in store.list_publication_receipts()
-                if not receipt.acknowledged
-            )
-        return all(
-            _deliver_pending_module_receipt(receipt, conversation_history)
-            for receipt in receipts
-        )
-    except Exception as receipt_error:
-        error(
-            "FAILURE: Pending module publication delivery could not be completed",
-            exception=receipt_error,
-            category="module_management",
-        )
-        return False
 
 
-def prepare_conversation_for_ai_request(
-    conversation_history,
-    *,
-    deliver_pending_publications=True,
-):
-    """Close queued transitions and rebuild context before any DM request."""
-    if deliver_pending_publications:
-        _recover_pending_module_publications(conversation_history)
+def prepare_conversation_for_ai_request(conversation_history):
+    """Close queued transitions and rebuild context before any DM request.
+
+    P2b: the per-turn publication-receipt recovery is gone -- module creation
+    publishes atomically and narrates in the same turn, so there is nothing to
+    recover here.
+    """
     outcome = require_staged_module_completions_drained()
     if not (outcome["completed"] or outcome["cancelled"]):
         return outcome
@@ -3081,15 +2993,30 @@ def _ordinary_action_failure_message_id(response, action, conversation_history):
     return "action-failure:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _action_failure_player_message(result):
+    """Pick the CURATED player message for a terminal action error. A module
+    lifecycle recovery-required failure gets a specific, actionable message
+    (E2E 2e/W3); everything else gets the generic safe text. Selection is by the
+    whitelisted `recovery_required` boolean only -- never raw internal text."""
+    from web.shared_state import (
+        SAFE_ACTION_FAILURE_MESSAGE,
+        MODULE_RECOVERY_FAILURE_MESSAGE,
+    )
+    source_data = result.get("response_data") if isinstance(result, dict) else {}
+    if isinstance(source_data, dict) and source_data.get("recovery_required") is True:
+        return MODULE_RECOVERY_FAILURE_MESSAGE
+    return SAFE_ACTION_FAILURE_MESSAGE
+
+
 def _safe_action_failure_result(result, message_id):
     """Whitelist action-error metadata and attach the canonical player text."""
-    from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
+    player_message = _action_failure_player_message(result)
 
     source_data = result.get("response_data") if isinstance(result, dict) else {}
     if not isinstance(source_data, dict):
         source_data = {}
     response_data = {
-        "player_message": SAFE_ACTION_FAILURE_MESSAGE,
+        "player_message": player_message,
         "message_id": message_id,
     }
     for field in ("retryable", "state_changed", "recovery_required"):
@@ -3106,7 +3033,7 @@ def _safe_action_failure_result(result, message_id):
             isinstance(result, dict) and result.get("needs_update") is True
         ),
         "needs_dm_response": False,
-        "player_message": SAFE_ACTION_FAILURE_MESSAGE,
+        "player_message": player_message,
         "message_id": message_id,
         "response_data": response_data,
     }
@@ -3119,10 +3046,11 @@ def _handle_ordinary_action_failure(
     conversation_history,
 ):
     """Persist and deliver one sanitized terminal error for an accepted turn."""
-    from web.shared_state import (
-        SAFE_ACTION_FAILURE_MESSAGE,
-        emit_player_output,
-    )
+    from web.shared_state import emit_player_output
+
+    # Curated player text: specific+actionable for a lifecycle recovery-required
+    # refusal (E2E 2e/W3), generic otherwise. Never raw internal error text.
+    player_message = _action_failure_player_message(result)
 
     message_id = _ordinary_action_failure_message_id(
         response, action, conversation_history
@@ -3141,7 +3069,7 @@ def _handle_ordinary_action_failure(
         conversation_history.append(
             {
                 "role": "system",
-                "content": SAFE_ACTION_FAILURE_MESSAGE,
+                "content": player_message,
                 "message_id": message_id,
             }
         )
@@ -3150,7 +3078,7 @@ def _handle_ordinary_action_failure(
     emit_player_output(
         {
             "type": "error",
-            "content": SAFE_ACTION_FAILURE_MESSAGE,
+            "content": player_message,
             "message_id": message_id,
         }
     )
@@ -3161,80 +3089,10 @@ def _handle_ordinary_action_failure(
     return _safe_action_failure_result(result, message_id)
 
 
-def _receipt_for_committed_module_result(result):
-    from utils.module_lifecycle import ModuleLifecycleStore
-    from utils.module_refresh_lock import module_refresh_lock
-
-    data = result.get("response_data") if isinstance(result, dict) else None
-    if not isinstance(data, dict):
-        raise ValueError("Committed module result has no receipt metadata")
-    build_id = data.get("receipt_build_id")
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            raise RuntimeError("Module receipt lock is unavailable")
-        receipt = ModuleLifecycleStore("modules").find_publication_receipt(
-            build_id=build_id
-        )
-    if receipt is None:
-        raise ValueError("Committed module receipt is unavailable")
-    expected = (
-        data.get("module_name"),
-        data.get("message_id"),
-        data.get("message_digest"),
-        data.get("idempotency_key"),
-    )
-    actual = (
-        receipt.module_name,
-        receipt.message_id,
-        receipt.message_digest,
-        receipt.idempotency_key,
-    )
-    if expected != actual:
-        raise ValueError("Committed module receipt metadata differs")
-    return receipt
 
 
-def _plan_module_followup_delivery(receipt, message):
-    from utils.module_lifecycle import ModuleLifecycleStore
-    from utils.module_refresh_lock import module_refresh_lock
-
-    suffix_digest = _module_history_suffix_digest([message])
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            raise RuntimeError("Module receipt lock is unavailable")
-        return ModuleLifecycleStore("modules").plan_receipt_delivery(
-            build_id=receipt.build_id,
-            message_ids=(message["message_id"],),
-            suffix_digest=suffix_digest,
-        )
 
 
-def _published_followup_pending_result(result, receipt=None):
-    data = dict(result.get("response_data", {}))
-    module_name = data.get("module_name")
-    if receipt is not None:
-        module_name = receipt.module_name
-        data.update(
-            {
-                "receipt_build_id": receipt.build_id,
-                "module_name": receipt.module_name,
-                "message_id": receipt.message_id,
-                "message_digest": receipt.message_digest,
-                "idempotency_key": receipt.idempotency_key,
-                "pending_message": _publication_pending_message(receipt),
-            }
-        )
-    return {
-        "status": "published_followup_pending",
-        "success": True,
-        "state_changed": True,
-        "retryable": False,
-        "needs_update": True,
-        "needs_dm_response": False,
-        "build_id": result.get("build_id"),
-        "response_data": data,
-        "module_name": module_name,
-    }
 
 
 def _complete_committed_module_followup(
@@ -3258,23 +3116,23 @@ def _complete_committed_module_followup_locked(
     response,
     conversation_history,
 ):
-    """Deliver narration-only follow-up without undoing publication success."""
-    receipt = None
-    try:
-        receipt = _receipt_for_committed_module_result(result)
-        if receipt.acknowledged:
-            replay = dict(result)
-            replay["needs_dm_response"] = False
-            replay["status"] = "published_replay"
-            return replay
+    """Generate + deliver the creation narration for a just-published module.
 
+    P2b: the module is ALREADY live (published atomically by publish_module_atomic
+    before this returns). This runs the dedicated second DM call that narrates the
+    creation. If anything here fails, the module stays live and the game keeps
+    playing -- the player may simply not see the creation narration this turn
+    (cosmetic, fail-forward; never hangs or corrupts).
+    """
+    response_data = result.get("response_data", {})
+    module_name = response_data.get("module_name")
+    try:
         accepted_message = {"role": "assistant", "content": response}
         if not (
             conversation_history
             and conversation_history[-1] == accepted_message
         ):
             conversation_history.append(accepted_message)
-        response_data = result.get("response_data", {})
         dm_note = response_data.get("dm_note")
         if isinstance(dm_note, str) and dm_note.strip():
             conversation_history.append(
@@ -3289,10 +3147,7 @@ def _complete_committed_module_followup_locked(
             return_party=True,
         )
         get_location_data_from_party_tracker(party_data)
-        ai_response = get_ai_response(
-            followup_history,
-            _skip_pending_publication_delivery=True,
-        )
+        ai_response = get_ai_response(followup_history)
         parsed = json.loads(extract_json_from_codeblock(ai_response))
         narration = parsed.get("narration") if isinstance(parsed, dict) else None
         actions = parsed.get("actions") if isinstance(parsed, dict) else None
@@ -3307,13 +3162,12 @@ def _complete_committed_module_followup_locked(
         if not narration:
             raise ValueError("Module follow-up narration became empty")
 
-        followup_id = f"{receipt.message_id}:followup"
+        followup_id = f"module-followup-{module_name}"
         followup_message = {
             "role": "assistant",
             "content": ai_response,
             "message_id": followup_id,
         }
-        plan = _plan_module_followup_delivery(receipt, followup_message)
         if not any(
             isinstance(message, dict)
             and message.get("message_id") == followup_id
@@ -3327,22 +3181,9 @@ def _complete_committed_module_followup_locked(
         )
         if saved is not True:
             raise OSError("Module follow-up history did not report success")
-        disk_history = load_json_file(json_file)
-        if not _history_has_exact_module_suffix(
-            disk_history,
-            plan.message_ids,
-            plan.suffix_digest,
-        ):
-            raise OSError("Module follow-up history readback differs")
 
         conversation_history[:] = followup_history
         _emit_committed_module_message(narration, followup_id)
-        if not _acknowledge_module_receipt(
-            receipt,
-            planned_message_ids=plan.message_ids,
-            planned_suffix_digest=plan.suffix_digest,
-        ):
-            raise RuntimeError("Module follow-up receipt was not acknowledged")
 
         completed = dict(result)
         completed["status"] = "published"
@@ -3354,14 +3195,19 @@ def _complete_committed_module_followup_locked(
         completed["response_data"] = completed_data
         return completed
     except Exception as followup_error:
+        # The module is already live; a narration failure must NOT hang or break
+        # the game. Return a terminal published result -- the player keeps
+        # playing; the creation narration is simply not shown this turn.
         error(
-            "FAILURE: Published module follow-up remains pending",
+            "Published module creation narration could not be delivered; the "
+            "module is live and the game continues",
             exception=followup_error,
             category="module_management",
         )
-        if receipt is not None:
-            _deliver_pending_module_receipt(receipt, conversation_history)
-        return _published_followup_pending_result(result, receipt)
+        fallback = dict(result)
+        fallback["status"] = "published"
+        fallback["needs_dm_response"] = False
+        return fallback
 
 
 def _agentic_post_combat_narration_pass(party_tracker_data):
@@ -4257,6 +4103,13 @@ def process_ai_response(
         
         # Process all other actions sequentially
         for action in other_actions:
+            # Snapshot the history length BEFORE the handler runs: needs_response
+            # producers append their user-role note to this same list, and the
+            # follow-up block below must insert the assistant candidate BEFORE
+            # that note to keep chronology (candidate came first) and a user-role
+            # tail (issue #168: a trailing assistant turn makes strict-alternation
+            # local templates emit an immediate empty end-of-turn).
+            pre_action_len = len(conversation_history)
             try:
                 result = action_handler.process_action(
                     action,
@@ -4291,13 +4144,12 @@ def process_ai_response(
                     response,
                     conversation_history,
                 )
-            if isinstance(result, dict) and result.get("status") in {
-                "published",
-                "published_replay",
-                "published_followup_pending",
-            }:
+            if isinstance(result, dict) and result.get("status") == "published":
                 # Module publication is an irreversible terminal action for
-                # this response; never execute later sibling actions.
+                # this response; never execute later sibling actions. (P2b: the
+                # receipt-era published_replay/published_followup_pending states
+                # are gone -- atomic publish + in-turn narration yields one
+                # terminal "published" state.)
                 return result
             
             # Check for pending archive flag from module transitions
@@ -4383,12 +4235,20 @@ def process_ai_response(
                 if result.get("status") == "enter_levelup_mode":
                     return result
                 if result.get("status") == "needs_response":
-                    # Combat summary was added to conversation history, get AI response
-                    # CRITICAL FIX: Save the current response to conversation history before getting new response
+                    # The handler appended its user-role note (e.g. a storage
+                    # error) to this same list and saved. Keep the candidate in
+                    # history (the follow-up model must know what it already
+                    # said) but INSERT it before the handler's note: the
+                    # candidate chronologically precedes the note, and the
+                    # history tail must stay user-role -- a trailing assistant
+                    # turn makes strict-alternation local templates (Gemma via
+                    # LM Studio) emit an immediate empty end-of-turn, killing
+                    # the follow-up T067 call (issue #168 class).
                     current_response = {"role": "assistant", "content": response}
-                    conversation_history.append(current_response)
+                    insert_at = min(pre_action_len, len(conversation_history))
+                    conversation_history.insert(insert_at, current_response)
                     save_conversation_history(conversation_history)
-                    
+
                     # Now reload and get the new AI response
                     conversation_history = load_json_file("modules/conversation_history/conversation_history.json") or []
                     ai_response = get_ai_response(conversation_history)
@@ -4585,7 +4445,6 @@ def get_ai_response(
     conversation_history,
     validation_retry_count=0,
     *,
-    _skip_pending_publication_delivery=False,
     npc_voice_batch=None,
 ):
     global should_inject_creation_prompt
@@ -4593,12 +4452,7 @@ def get_ai_response(
     # published by another worker between turns must finish (in durable order)
     # before model selection or request construction. If the drain changed
     # campaign state, rebuild the already-assembled system context in place.
-    prepare_conversation_for_ai_request(
-        conversation_history,
-        deliver_pending_publications=(
-            not _skip_pending_publication_delivery
-        ),
-    )
+    prepare_conversation_for_ai_request(conversation_history)
     status_processing_ai()
     
     # Import action predictor and config
@@ -5045,6 +4899,20 @@ def main_game_loop():
     if not os.path.exists("debug/logs/prompt_validation.json"):
         with open("debug/logs/prompt_validation.json", "w") as f:
             f.write("[]")  # Initialize with empty array
+
+    # Issue #167 / E2E gate 2d: hydrate missing live module files from their _BU
+    # masters on EVERY boot, not just new-game setup. The web entry runs this loop
+    # directly (web_interface.py:run_game_loop), and its existing-party path
+    # (startup_required() == False) otherwise never hydrates -- so an existing
+    # party that lost an area file (or a game copied without runtime files) booted
+    # into missing state that cached narration masked. main()/the wizard already
+    # call this on their paths; doing it here covers the web existing-party boot
+    # too. Idempotent (only-if-missing), guarded (never overwrites live files).
+    try:
+        from utils.startup_wizard import initialize_game_files_from_bu
+        initialize_game_files_from_bu()
+    except Exception as e:
+        debug(f"Startup module hydration skipped (non-fatal): {e}", category="startup")
 
     # Initialize companion memories from journal if needed
     try:

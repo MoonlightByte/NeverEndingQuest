@@ -117,18 +117,18 @@
         "Trail rations and medical supplies from overturned wagon"
       ],
       "plotHooks": [
-        "The wounded scout witnessed bandits taking captives to Malarok's camp in the old watchtower",
+        "The wounded scout witnessed bandits taking captives to Malarok's camp at the Bandit Stronghold",
         "Bandit equipment shows signs of magical enhancement, suggesting Malarok's influence",
-        "Fresh tracks lead toward the crumbling watchtower where Malarok has established his base",
+        "Fresh tracks lead toward the Bandit Stronghold where Malarok has established his base",
         "The scout mentions seeing dark energy and hearing the sorcerer's voice commanding the bandits"
       ],
-      "dmInstructions": "This location serves as the entry point into the Thornwood investigation. The wounded scout provides crucial intelligence about Malarok's operations and the location of his watchtower base. Use this to drive the party toward the sorcerer's stronghold.",
+      "dmInstructions": "This location serves as the entry point into the Thornwood investigation. The wounded scout provides crucial intelligence about Malarok's operations and the location of his base at the Bandit Stronghold. Use this to drive the party toward it.",
       "doors": [],
       "traps": [],
       "dcChecks": [
         "Medicine DC 12: Treat the wounded scout's injuries effectively",
         "Investigation DC 11: Study the ambush site to find evidence of Malarok's magical corruption affecting the bandits",
-        "Survival DC 13: Follow the tracks leading toward Malarok's watchtower stronghold"
+        "Survival DC 13: Follow the tracks leading toward Malarok's Bandit Stronghold"
       ],
       "accessibility": "Forest clearing accessible from main trade road",
       "dangerLevel": "Medium",

@@ -576,21 +576,17 @@ class SaveGameManager:
                 # derive the save directory and metadata from the fresh party
                 # projection inside the same serialized snapshot boundary.
                 self._initialize_module_context()
-                from utils.commit_state import recover_incomplete_refresh_commit
-                from utils.module_lifecycle import (
-                    ModuleLifecycleStore,
-                    RecoveryStatus,
-                )
                 from utils.module_refresh_lock import module_refresh_lock
 
                 with _active_combat_snapshot_lease():
                     with module_refresh_lock() as refresh_acquired:
                         if not refresh_acquired:
                             return False, "Module refresh is active; retry save"
-                        recover_incomplete_refresh_commit()
-                        recovery = ModuleLifecycleStore("modules").recover()
-                        if recovery.status is RecoveryStatus.INDETERMINATE:
-                            return False, "Module lifecycle recovery is required"
+                        # P2b: save no longer consults the module-lifecycle store.
+                        # Module creation publishes atomically (build aside, one
+                        # swap) and never leaves a half-built module live, so the
+                        # live state is always safe to snapshot -- nothing to
+                        # recover, nothing that can block a save.
                         with _campaign_transaction_lock("modules/campaign.json"):
                             _assert_no_active_campaign_completion(
                                 "modules/campaign.json"
@@ -754,30 +750,17 @@ class SaveGameManager:
                 _party_module_transition_lock,
             )
             from utils.module_refresh_lock import module_refresh_lock
-            from utils.commit_state import recover_incomplete_refresh_commit
-            from utils.module_lifecycle import (
-                ModuleLifecycleStore,
-                RecoveryStatus,
-            )
 
             with _party_module_transition_lock():
                 with _active_combat_snapshot_lease():
                     with module_refresh_lock() as refresh_acquired:
                         if not refresh_acquired:
                             return False, "Module refresh is active; retry restore"
-                        recover_incomplete_refresh_commit()
-                        lifecycle = ModuleLifecycleStore("modules")
-                        recovery = lifecycle.recover()
-                        if recovery.status is RecoveryStatus.INDETERMINATE:
-                            return False, "Module lifecycle recovery is required"
-                        if any(
-                            not receipt.acknowledged
-                            for receipt in lifecycle.list_publication_receipts()
-                        ):
-                            return (
-                                False,
-                                "A published module message is pending; retry restore after delivery",
-                            )
+                        # P2b: restore no longer consults the module-lifecycle
+                        # store. Loading a save must NEVER be refused -- a
+                        # published module is already live on disk regardless of
+                        # any leftover marker, and a missing creation narration is
+                        # cosmetic. Fail-forward: always let the player load.
                         with _campaign_transaction_lock("modules/campaign.json"):
                             save_path = os.path.join(
                                 self.get_save_directory(),

@@ -1226,7 +1226,15 @@ def _load_user_settings():
 def _save_user_settings(settings):
     """Save non-secret settings to disk atomically with owner-only permissions."""
     tmp_path = _USER_SETTINGS_FILE + ".tmp"
-    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # Issue #134 class: O_BINARY keeps the CRT fd translation-free on Windows so
+    # only the text wrapper below performs newline translation (without it, the
+    # wrapper's \r\n is re-expanded to \r\r\n by the text-mode CRT layer).
+    # POSIX: attr absent -> no-op.
+    fd = os.open(
+        tmp_path,
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0),
+        0o600,
+    )
     with os.fdopen(fd, 'w') as f:
         json.dump(settings, f, indent=2)
     os.replace(tmp_path, _USER_SETTINGS_FILE)

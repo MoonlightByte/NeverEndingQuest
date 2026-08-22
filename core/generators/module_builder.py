@@ -104,72 +104,87 @@ _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE = (
 
 def _run_managed_module_build(
     *,
-    managed,
     requested_name,
-    kind,
     story_first_candidate,
     compatible_candidate,
-    prepare_candidate,
-    defer_promotion,
+    prepare_registry_fn,
     use_story_first,
     progress_callback,
 ):
-    """Run story-first once, then safely dial down on model-format exhaustion.
+    """Build a module into a hidden temp workspace and atomically publish it.
 
-    Each story-first model stage owns its three bounded response attempts.  A
-    rejected hidden candidate is retired by ``ManagedModuleBuilder`` before the
-    compatible generator receives a fresh workspace. Local durability,
-    authentication, cancellation, interruption, and indeterminate lifecycle
-    failures deliberately bypass this fallback.
+    Runs story-first once, then safely dials down to the compatible generator on
+    a bounded set of model-format exhaustion errors. Each attempt gets a FRESH
+    temp workspace via ``publish_module_atomic``; an ordinary build failure
+    removes its workspace best-effort and NEVER touches ``modules/<name>``. A
+    hard process crash can leave only a hidden, ignored workspace for P2c's
+    orphan sweep. A failed build is a failed action, not a broken or corrupted
+    game (fail-forward). Local durability, authentication, cancellation, and
+    interruption failures deliberately bypass this fallback.
     """
+    from utils.module_publish import publish_module_atomic
+    from utils.module_refresh_lock import module_refresh_lock
 
     def run(candidate):
-        return managed.run(
-            requested_name=requested_name,
-            kind=kind,
-            build_candidate=candidate,
-            prepare_candidate=prepare_candidate,
-            defer_promotion=defer_promotion,
-            retain_story_first_failure=False,
+        return publish_module_atomic(
+            requested_name,
+            candidate,
+            modules_dir="modules",
+            prepare_registry_fn=prepare_registry_fn,
         )
 
-    if not use_story_first:
+    def _build_and_publish():
+        if not use_story_first:
+            return run(compatible_candidate)
+
+        fallback_message = None
+        try:
+            return run(story_first_candidate)
+        except BaseException as exc:
+            from core.generators.story_first.pipeline import StoryFirstPipelineError
+            from core.generators.story_first.settings import (
+                StoryFirstProviderUnsupportedError,
+            )
+
+            if isinstance(exc, StoryFirstProviderUnsupportedError):
+                fallback_message = _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE
+            elif isinstance(exc, StoryFirstPipelineError) and (
+                exc.failure_class in _STORY_FIRST_MODEL_FALLBACK_FAILURES
+            ):
+                fallback_message = STORY_FIRST_MODEL_FALLBACK_MESSAGE
+            else:
+                raise
+
+        warning(
+            "Story-first generation reached a bounded model limitation; "
+            "continuing with the compatible generator.",
+            category="module_generation",
+        )
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": 6,
+                    "total_stages": 9,
+                    "stage_name": "Adjusting generator",
+                    "percentage": 66,
+                    "message": fallback_message,
+                }
+            )
         return run(compatible_candidate)
 
-    fallback_message = None
-    try:
-        return run(story_first_candidate)
-    except BaseException as exc:
-        from core.generators.story_first.pipeline import StoryFirstPipelineError
-        from core.generators.story_first.settings import (
-            StoryFirstProviderUnsupportedError,
-        )
-
-        if isinstance(exc, StoryFirstProviderUnsupportedError):
-            fallback_message = _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE
-        elif isinstance(exc, StoryFirstPipelineError) and (
-            exc.failure_class in _STORY_FIRST_MODEL_FALLBACK_FAILURES
-        ):
-            fallback_message = STORY_FIRST_MODEL_FALLBACK_MESSAGE
-        else:
-            raise
-
-    warning(
-        "Story-first generation reached a bounded model limitation; "
-        "continuing with the compatible generator.",
-        category="module_generation",
-    )
-    if progress_callback:
-        progress_callback(
-            {
-                "stage": 6,
-                "total_stages": 9,
-                "stage_name": "Adjusting generator",
-                "percentage": 66,
-                "message": fallback_message,
-            }
-        )
-    return run(compatible_candidate)
+    # SHARED orchestration lock. The former ManagedModuleBuilder.run() acquired
+    # module_refresh_lock for EVERY build entry point (in-game, toolkit, headless,
+    # interactive); publish_module_atomic only ASSERTS ownership, so the lock must
+    # be taken HERE -- the one boundary all callers funnel through -- or the
+    # toolkit/headless/interactive callers fail the ownership assert. Reentrant:
+    # the in-game path already holds it (thread-local depth), so this nests safely.
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            raise ModuleCreationFailedError(
+                "Module creation is busy; no game state was changed. "
+                "Please retry shortly."
+            )
+        return _build_and_publish()
 
 
 def _is_auth_error(exc):
@@ -399,8 +414,8 @@ class ModuleBuilder:
         self.location_gen = LocationGenerator()
         self.area_gen = AreaGenerator()
         
-        # Directory ownership belongs to ManagedModuleBuilder (production) or
-        # to the explicit low-level caller.  Construction must never create a
+        # Directory ownership belongs to the atomic publisher (production) or
+        # to the explicit low-level caller. Construction must never create a
         # discoverable public module path as a side effect.
     
     def log(self, message: str):
@@ -1022,8 +1037,8 @@ MODULE INDEPENDENCE RULES:
     def create_module_directories(self):
         """Initialize only the exact output directory assigned by the caller.
 
-        Name allocation and collision handling belong to ManagedModuleBuilder,
-        before this low-level writer runs.  This method never redirects output
+        Name allocation and collision handling belong to the atomic publisher
+        before this low-level writer runs. This method never redirects output
         to a sibling path and never writes through pre-existing content.
         """
         output_path = self.config.output_directory
@@ -2165,6 +2180,21 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             # orphaned worker (shutdown wait=False), so the build proceeds.
             import concurrent.futures
 
+            # Issue #134 follow-up: the thread timeout alone ABANDONS the worker
+            # but leaves its HTTP request streaming, so a local model (LM Studio)
+            # kept generating for thousands of tokens after the build had already
+            # moved on. For OpenAI-SDK-routed providers, also pass a per-request
+            # transport deadline: the SDK treats `timeout` as a request OPTION
+            # (never a payload field) and closes the connection on expiry --
+            # the disconnect is what actually stops local inference. The thread
+            # timeout stays as the backstop; timeout still lands on the same
+            # fail-closed skip path (module published unchanged post-T088).
+            # 110 < the 120s thread backstop so the transport reliably closes
+            # (and the worker exits with APITimeoutError -> the normal skip
+            # path) BEFORE the thread is ever abandoned.
+            if provider in ("openai", "legacy", "lmstudio"):
+                extra["timeout"] = 110
+
             def _t104_call():
                 return capture_and_fanout(
                     "T104", api_client.create_completion,
@@ -2905,7 +2935,7 @@ def _ai_driven_module_creation_impl(
     policy: Any = "game",
     prepare_candidate: Optional[Callable[[Path, str], Any]] = None,
 ) -> tuple[bool, Optional[str]]:
-    """Build one validated module through the hidden managed lifecycle.
+    """Build and atomically publish one validated module from hidden workspace.
 
     Args:
         params: Narrative plus optional snake-case typed toolkit values.
@@ -2914,8 +2944,8 @@ def _ai_driven_module_creation_impl(
 
     Returns:
         tuple[bool, Optional[str]]: (success_status, module_name)
-        The returned name is the lifecycle's exact allocated final name. Game
-        builds remain hidden in READY until the publication owner commits them.
+        The returned name is the atomic publisher's exact allocated final name.
+        A successful return means the complete module directory is already live.
     """
     module_name = None
     try:
@@ -3009,15 +3039,6 @@ def _ai_driven_module_creation_impl(
         debug(
             f"MODULE_CREATION: AI-driven module creation starting for '{module_name}'",
             category="module_creation",
-        )
-
-        from core.generators.managed_module_builder import ManagedModuleBuilder
-        from utils.module_lifecycle import LifecycleIndeterminateError, LifecycleKind
-
-        kind = (
-            LifecycleKind.ACTION
-            if resolved_policy.name == "game"
-            else LifecycleKind.TOOLKIT
         )
 
         def build_candidate(
@@ -3122,7 +3143,7 @@ def _ai_driven_module_creation_impl(
             assigned_path = candidate_path.resolve(strict=False)
             actual_path = Path(builder.config.output_directory).resolve(strict=False)
             if builder.config.module_name != final_name or actual_path != assigned_path:
-                raise LifecycleIndeterminateError(
+                raise RuntimeError(
                     "Low-level module builder escaped its assigned identity"
                 )
 
@@ -3165,11 +3186,8 @@ def _ai_driven_module_creation_impl(
                 )
             return {"output_directory": os.fspath(candidate_path)}
 
-        managed = ManagedModuleBuilder(modules_dir=Path("modules"))
         result = _run_managed_module_build(
-            managed=managed,
             requested_name=module_name,
-            kind=kind,
             story_first_candidate=lambda candidate_path, final_name: build_candidate(
                 candidate_path,
                 final_name,
@@ -3180,15 +3198,13 @@ def _ai_driven_module_creation_impl(
                 final_name,
                 story_first_path=False,
             ),
-            prepare_candidate=prepare_candidate,
-            defer_promotion=(kind is LifecycleKind.ACTION),
+            prepare_registry_fn=prepare_candidate,
             use_story_first=use_story_first,
             progress_callback=progress_callback,
         )
         module_name = result.module_name
         info(
-            f"SUCCESS: Module '{module_name}' generated with status "
-            f"{result.status.value}",
+            f"SUCCESS: Module '{module_name}' created and published",
             category="module_creation",
         )
 
@@ -3197,11 +3213,11 @@ def _ai_driven_module_creation_impl(
                 {
                     "stage": 8,
                     "total_stages": 9,
-                    "stage_name": "Generated",
+                    "stage_name": "Published",
                     "percentage": 88,
                     "status": "running",
                     "terminal": False,
-                    "message": f"Module {module_name} generated; awaiting publication...",
+                    "message": f"Module {module_name} published successfully.",
                 }
             )
 
@@ -3221,7 +3237,7 @@ def _ai_driven_module_creation_impl(
             exception=e,
             category="module_creation",
         )
-        # ManagedModuleBuilder retires only its exact UUID-owned workspace.
+        # The atomic publisher retires only its exact UUID-owned workspace.
         # No path-derived recursive cleanup is permitted here.
         #
         # Carry the reason out instead of returning (False, None): callers used

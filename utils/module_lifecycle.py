@@ -63,6 +63,14 @@ _CREDENTIAL_SHAPED_TEXT = re.compile(
 )
 _MANIFEST_MAX_ATTEMPTS = TRANSIENT_FILESYSTEM_ATTEMPTS
 _MANIFEST_RETRY_BACKOFF_SECONDS = TRANSIENT_FILESYSTEM_BACKOFF_SECONDS
+# Issue #134 root cause: on Windows, os.open() WITHOUT O_BINARY yields a CRT
+# descriptor in text-translation mode -- os.read() collapses CRLF to LF and
+# treats 0x1A as EOF, while fstat().st_size reports PHYSICAL bytes, so every
+# CRLF-bearing file deterministically failed "total != st_size" ("Manifest file
+# changed while read"); os.write() likewise expands LF to CRLF, corrupting
+# atomic byte writes. O_BINARY disables translation; it does not exist on POSIX
+# (0 there = no-op), so Linux/macOS behavior is bit-for-bit unchanged.
+_O_BINARY = getattr(os, "O_BINARY", 0)
 
 
 def assert_module_refresh_owned() -> None:
@@ -304,6 +312,14 @@ class ModuleLifecycleStore:
         self.staging_root = self.transaction_root / "staging"
         self.active_root = self.transaction_root / "active"
         self.resolved_root = self.transaction_root / "resolved"
+        # Evidence-preserving parking lot for unreadable/inconsistent DEAD
+        # transaction residue (issue #167 follow-through): corrupted resolved or
+        # staging debris -- e.g. journals written by the pre-#165 Windows
+        # text-mode writer -- previously made recover() INDETERMINATE forever,
+        # bricking module listing, saves, restores, builds, and resets at once.
+        # Quarantined directories are renamed here intact (never deleted, never
+        # mutated) and are ignored by recovery thereafter.
+        self.quarantine_root = self.transaction_root / "quarantined"
 
     # ------------------------------------------------------------------
     # Durable and containment primitives
@@ -422,9 +438,13 @@ class ModuleLifecycleStore:
         descriptor = None
         created = False
         try:
+            # _O_BINARY (issue #134): without it, Windows text-mode os.write()
+            # expands LF to CRLF ON DISK, so the landed bytes differ from
+            # `payload` and every later byte-exact compare/digest of this file
+            # (including _replace_file_payload's landed == payload) mismatches.
             descriptor = os.open(
                 os.fspath(temporary),
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_BINARY,
                 0o600,
             )
             created = True
@@ -502,13 +522,23 @@ class ModuleLifecycleStore:
             self._mkdir_exact(self.transaction_root, parent=self.modules_dir)
         else:
             self._require_plain_directory(self.transaction_root)
-        for root in (self.staging_root, self.active_root, self.resolved_root):
+        for root in (
+            self.staging_root,
+            self.active_root,
+            self.resolved_root,
+            self.quarantine_root,
+        ):
             if self._entry_stat(root) is None:
                 self._mkdir_exact(root, parent=self.transaction_root)
             else:
                 self._require_plain_directory(root)
 
-        for root in (self.staging_root, self.active_root, self.resolved_root):
+        for root in (
+            self.staging_root,
+            self.active_root,
+            self.resolved_root,
+            self.quarantine_root,
+        ):
             self._require_plain_directory(root)
 
     def _require_layout(self) -> None:
@@ -747,7 +777,10 @@ class ModuleLifecycleStore:
                     )
                 digest = hashlib.sha256()
                 total = 0
-                flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                # _O_BINARY (issue #134): physical-byte reads on Windows, else the
+                # CRT text mode under-reads CRLF files and the st_size comparison
+                # below false-fails every attempt.
+                flags = os.O_RDONLY | _O_BINARY | getattr(os, "O_NOFOLLOW", 0)
                 descriptor = os.open(os.fspath(child_path), flags)
                 try:
                     opened = os.fstat(descriptor)
@@ -815,6 +848,16 @@ class ModuleLifecycleStore:
     def _sync_tree(cls, root: Path) -> None:
         # Validate first, then synchronize every regular file and directory.
         cls.create_manifest(root)
+        if os.name == "nt":
+            # Windows: os.fsync maps to CRT _commit/FlushFileBuffers, which
+            # REQUIRES a writable handle -- fsync of an O_RDONLY descriptor
+            # fails EBADF (verified natively on Windows 11; PR #165 evidence:
+            # 3/3 read-only probes failed, writable descriptors succeeded).
+            # Per-file durability was already provided at write time by the
+            # writable-descriptor fsyncs in the atomic writers, and
+            # _sync_directory below already skips Windows for the same
+            # platform reason. Validation above still ran in full.
+            return
         directories: List[Path] = []
         for directory, child_dirs, child_files in os.walk(root, followlinks=False):
             directory_path = Path(directory)
@@ -1722,6 +1765,29 @@ class ModuleLifecycleStore:
             raise LifecycleIndeterminateError("Active identity does not match intent")
         return intent
 
+    def _quarantine_residue(self, transaction: Path, reason: str) -> Path:
+        """Identity-bound rename of one DEAD transaction's unreadable residue
+        into quarantine_root. Same discipline as _retire: rename only, contents
+        untouched, evidence preserved for forensics. Only ever called for
+        resolved/staging debris -- never for an active transaction (an active
+        authority with unreadable state stays fail-closed, because only there
+        could the live registry be mid-mutation)."""
+        target = self.quarantine_root / transaction.name
+        if self._entry_stat(target) is not None:
+            target = self.quarantine_root / (
+                f"{transaction.name}.{uuid4().hex[:8]}"
+            )
+        source_parent = transaction.parent
+        self._replace_entry(transaction, target)
+        self._sync_directory(source_parent)
+        self._sync_directory(self.quarantine_root)
+        print(
+            "[LIFECYCLE] Quarantined unreadable dead build residue "
+            f"'{transaction.name}' ({reason}); moved to "
+            f"{target} -- module operations can proceed."
+        )
+        return target
+
     def _retire(self, transaction: Path, build_id: str) -> Path:
         resolved = self._transaction_path(self.resolved_root, build_id)
         if self._entry_stat(resolved) is not None:
@@ -2146,6 +2212,27 @@ class ModuleLifecycleStore:
             result.append(path)
         return result
 
+    def _transaction_directories_tolerant(self, root: Path) -> List[Path]:
+        """Enumerate a DEAD root (resolved/staging) for recovery, quarantining
+        alien entries instead of failing the whole pass. The strict enumerator
+        raises INDETERMINATE for ANY entry whose name is not a valid UUID (or a
+        stray file), which let a single mangled/foreign entry under dead
+        residue permanently brick recovery (issue #167 class). Alien entries in
+        dead roots are inert by construction -> rename aside intact and keep
+        going. The ACTIVE root keeps the strict enumerator."""
+        self._require_plain_directory(root)
+        result = []
+        for entry in sorted(os.scandir(root), key=lambda item: item.name):
+            path = root / entry.name
+            try:
+                _validate_uuid(entry.name)
+                self._require_plain_directory(path)
+            except (ValueError, LifecycleIndeterminateError) as exc:
+                self._quarantine_residue(path, f"alien entry: {exc}")
+                continue
+            result.append(path)
+        return result
+
     def _resolve_hidden_transaction(
         self,
         transaction: Path,
@@ -2334,21 +2421,39 @@ class ModuleLifecycleStore:
         return outcome
 
     def _recover_once(self) -> RecoveryReport:
-        """Perform one complete recovery classification pass."""
+        """Perform one complete recovery classification pass.
+
+        Per-transaction corruption in DEAD trees (resolved evidence, staging
+        candidates that never touched public state) is quarantined -- renamed
+        aside intact -- and recovery continues (issue #167: unreadable residue
+        from previously failed builds used to make this INDETERMINATE forever,
+        bricking listing/saves/builds/resets with no remediation path). Whole-
+        pass INDETERMINATE remains for anything touching LIVE shared state:
+        multiple active authorities, an unreadable ACTIVE transaction, or an
+        ambiguous live registry -- those still fail closed.
+        """
         self.ensure_layout()
-        # Resolved records are retained evidence and must remain parseable.
-        for transaction in self._transaction_directories(self.resolved_root):
-            intent = self._load_intent(transaction)
-            outcome = self._load_outcome(transaction)
-            if (
-                intent["build_id"] != transaction.name
-                or outcome.build_id != transaction.name
-                or intent["token"] != outcome.token
-                or intent["final_name"] != outcome.module_name
-            ):
-                raise LifecycleIndeterminateError(
-                    "Resolved intent/outcome identity differs"
-                )
+        # Resolved records are retained evidence and must remain parseable; an
+        # unparseable one is dead debris (its build already ended) -> quarantine.
+        for transaction in self._transaction_directories_tolerant(self.resolved_root):
+            try:
+                intent = self._load_intent(transaction)
+                outcome = self._load_outcome(transaction)
+                if (
+                    intent["build_id"] != transaction.name
+                    or outcome.build_id != transaction.name
+                    or intent["token"] != outcome.token
+                    or intent["final_name"] != outcome.module_name
+                ):
+                    raise LifecycleIndeterminateError(
+                        "Resolved intent/outcome identity differs"
+                    )
+            except OSError as exc:
+                if is_transient_filesystem_error(exc, allow_missing=False):
+                    raise  # transient blips retry via recover(), not quarantine
+                self._quarantine_residue(transaction, str(exc))
+            except (ValueError, LifecycleIndeterminateError) as exc:
+                self._quarantine_residue(transaction, str(exc))
 
         active = self._transaction_directories(self.active_root)
         if len(active) > 1:
@@ -2357,24 +2462,46 @@ class ModuleLifecycleStore:
             )
 
         outcomes: List[LifecycleOutcome] = []
-        for transaction in self._transaction_directories(self.staging_root):
-            intent = self._load_intent(transaction)
-            if intent["build_id"] != transaction.name:
-                raise LifecycleIndeterminateError("Staging identity differs")
-            phase = LifecyclePhase(intent["phase"])
-            if phase not in {
-                LifecyclePhase.BUILDING,
-                LifecyclePhase.READY,
-                LifecyclePhase.NOT_PUBLISHED,
-            }:
-                raise LifecycleIndeterminateError("Staging phase is impossible")
-            outcomes.append(
-                self._resolve_hidden_transaction(
-                    transaction,
-                    intent,
-                    reason_code="INTERRUPTED_HIDDEN_BUILD",
+        for transaction in self._transaction_directories_tolerant(self.staging_root):
+            # Staging candidates have by construction never mutated public
+            # state (publication requires promotion to active first), so an
+            # unreadable/impossible one is inert debris -> quarantine intact.
+            try:
+                intent = self._load_intent(transaction)
+                if intent["build_id"] != transaction.name:
+                    raise LifecycleIndeterminateError("Staging identity differs")
+                phase = LifecyclePhase(intent["phase"])
+                if phase not in {
+                    LifecyclePhase.BUILDING,
+                    LifecyclePhase.READY,
+                    LifecyclePhase.NOT_PUBLISHED,
+                }:
+                    raise LifecycleIndeterminateError("Staging phase is impossible")
+            except OSError as exc:
+                if is_transient_filesystem_error(exc, allow_missing=False):
+                    raise
+                self._quarantine_residue(transaction, str(exc))
+                continue
+            except (ValueError, LifecycleIndeterminateError) as exc:
+                self._quarantine_residue(transaction, str(exc))
+                continue
+            try:
+                outcomes.append(
+                    self._resolve_hidden_transaction(
+                        transaction,
+                        intent,
+                        reason_code="INTERRUPTED_HIDDEN_BUILD",
+                    )
                 )
-            )
+            except OSError as exc:
+                if is_transient_filesystem_error(exc, allow_missing=False):
+                    raise
+                # Resolution failed on the candidate itself (e.g. a corrupt
+                # candidate tree from an old failed build). It never touched
+                # public state -> quarantine intact rather than brick recovery.
+                self._quarantine_residue(transaction, str(exc))
+            except (ValueError, LifecycleIndeterminateError) as exc:
+                self._quarantine_residue(transaction, str(exc))
 
         if active:
             transaction = active[0]
