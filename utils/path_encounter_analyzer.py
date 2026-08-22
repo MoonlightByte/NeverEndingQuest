@@ -173,6 +173,7 @@ def build_active_module_snapshot(
     edges: Dict[str, List[str]] = {}
     issues: List[Dict[str, Any]] = []
     invalid_location_ids: set[str] = set()
+    duplicate_area_ids: set[str] = set()
     canonical_sources: List[Dict[str, Any]] = []
 
     files = _area_files(module_dir)
@@ -224,6 +225,10 @@ def build_active_module_snapshot(
             )
             continue
         if area_id in areas:
+            # The first-loaded definition silently wins node registration, so
+            # the blemish taints that winner's OWN nodes as invalid (below)
+            # instead of failing the whole module or trusting load order.
+            duplicate_area_ids.add(area_id)
             issues.append(
                 _issue(
                     "duplicate_area_id",
@@ -371,6 +376,14 @@ def build_active_module_snapshot(
                 "evidence_hash": _canonical_hash(evidence),
             }
             edges[location_id] = list(dict.fromkeys(internal_connections))
+
+    # A duplicated area ID means the registered (first-loaded) nodes for that
+    # area cannot be trusted as the module's intent. Taint those winner nodes
+    # so routes through them fail scoped, not the entire module.
+    if duplicate_area_ids:
+        for location_id, node in nodes.items():
+            if node["area_id"] in duplicate_area_ids:
+                invalid_location_ids.add(location_id)
 
     location_name_to_id = _unique_mapping(
         (node.get("location_name"), location_id) for location_id, node in nodes.items()
@@ -529,9 +542,14 @@ def find_path_in_snapshot(
     The result is JSON-serializable and carries the snapshot identity, making
     it suitable for a durable transition checkpoint. Invalid or ambiguous
     nodes are never traversed.
+
+    Rejection is route-scoped: unrelated atlas blemishes elsewhere in the
+    module never fail a route that touches zero invalid nodes. A route that
+    REQUIRES an invalid node fails with a reason naming that specific node.
     """
     nodes = snapshot.get("nodes", {})
     invalid_ids = set(snapshot.get("invalid_location_ids", []))
+    edges = snapshot.get("edges", {})
     result = {
         "success": False,
         "path": [],
@@ -539,9 +557,6 @@ def find_path_in_snapshot(
         "snapshot_hash": snapshot.get("snapshot_hash", ""),
         "snapshot_identity": snapshot.get("snapshot_hash", ""),
     }
-    if snapshot.get("is_valid") is not True:
-        result["reason"] = "Active-module atlas validation failed"
-        return result
     if origin_id not in nodes:
         result["reason"] = (
             f"Origin {origin_id} is absent from the active-module snapshot"
@@ -552,31 +567,58 @@ def find_path_in_snapshot(
             f"Destination {destination_id} is absent from the active-module snapshot"
         )
         return result
-    if origin_id in invalid_ids or destination_id in invalid_ids:
-        result["reason"] = "Origin or destination has invalid or ambiguous atlas data"
+    if origin_id in invalid_ids:
+        result["reason"] = (
+            f"Origin {origin_id} has invalid or ambiguous atlas data"
+        )
+        return result
+    if destination_id in invalid_ids:
+        result["reason"] = (
+            f"Destination {destination_id} has invalid or ambiguous atlas data"
+        )
         return result
     if origin_id == destination_id:
         result.update(success=True, path=[origin_id])
         return result
 
-    queue = deque([(origin_id, [origin_id])])
-    visited = {origin_id}
-    edges = snapshot.get("edges", {})
-    while queue:
-        location_id, path = queue.popleft()
-        for neighbor_id in edges.get(location_id, []):
-            if (
-                neighbor_id in visited
-                or neighbor_id in invalid_ids
-                or neighbor_id not in nodes
-            ):
-                continue
-            candidate = path + [neighbor_id]
-            if neighbor_id == destination_id:
-                result.update(success=True, path=candidate)
-                return result
-            visited.add(neighbor_id)
-            queue.append((neighbor_id, candidate))
+    def _bfs(skip_invalid: bool) -> Optional[List[str]]:
+        queue = deque([(origin_id, [origin_id])])
+        visited = {origin_id}
+        while queue:
+            location_id, path = queue.popleft()
+            for neighbor_id in edges.get(location_id, []):
+                if (
+                    neighbor_id in visited
+                    or (skip_invalid and neighbor_id in invalid_ids)
+                    or neighbor_id not in nodes
+                ):
+                    continue
+                candidate = path + [neighbor_id]
+                if neighbor_id == destination_id:
+                    return candidate
+                visited.add(neighbor_id)
+                queue.append((neighbor_id, candidate))
+        return None
+
+    valid_path = _bfs(skip_invalid=True)
+    if valid_path:
+        result.update(success=True, path=valid_path)
+        return result
+
+    # Honest, scoped failure: if a route exists only through invalid nodes,
+    # name the specific node that blocks it instead of a generic refusal.
+    tainted_path = _bfs(skip_invalid=False)
+    if tainted_path:
+        blocking_id = next(
+            (step for step in tainted_path if step in invalid_ids), None
+        )
+        if blocking_id:
+            result["reason"] = (
+                f"Every route from {origin_id} to {destination_id} requires "
+                f"location {blocking_id}, which has invalid or ambiguous "
+                "atlas data"
+            )
+            return result
 
     result["reason"] = f"No valid route from {origin_id} to {destination_id}"
     return result
