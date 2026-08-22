@@ -1175,18 +1175,9 @@ def commit_accepted_ooc_voice_batch(
     committed = 0
     for result in batch.results:
         try:
-            if (
-                batch.generation_token
-                and result.generation_token != batch.generation_token
-            ):
-                if batch.telemetry is not None:
-                    batch.telemetry.record_disposition(
-                        "commit",
-                        "generation_rejected",
-                        batch_id=batch.batch_id,
-                        npc_id=result.npc_id,
-                    )
-                continue
+            # (T7) The old generation-token rejection filter is gone: tokens
+            # were deleted with the deadline machinery; every collected result
+            # belongs to this handle's batch by construction.
             # M7: the accepted advisory beat (say/do/want/thought) persists in
             # the working section of the sidecar; the store keeps the last beat
             # plus a rolling history capped at 10 (oldest-out, value-idempotent).

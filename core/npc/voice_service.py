@@ -10,7 +10,7 @@ import os
 import threading
 import time
 from collections import OrderedDict, deque
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
