@@ -1023,9 +1023,9 @@ def run_combat_voice_stage(
         )
         if not packet_rows:
             return _empty_combat_stage()
-        batch = (service or _default_service()).think_batch_best_effort(
+        batch = (service or _default_service()).dispatch_batch(
             [packet for _actor_id, packet in packet_rows]
-        )
+        ).collect_blocking()
         packets_by_npc_id = {
             packet["npc"]["id"]: packet for _actor_id, packet in packet_rows
         }
@@ -1152,22 +1152,32 @@ def run_ooc_voice_stage(
             relationship_store=relationship_store,
             fairness=selection,
         )
-        batch = (service or _default_service()).think_batch_best_effort(packets)
-        selection.record_merged(result.npc_id for result in batch.results)
-        return batch
+        handle = (service or _default_service()).dispatch_batch(packets)
+        # Fairness bookkeeping moves to collection time: record_merged runs in
+        # inject (below) against what actually merged, not what was dispatched.
+        handle._fairness_selection = selection
+        return handle
     except Exception as exc:
         _LOGGER.debug("T105 OOC stage skipped: %s", type(exc).__name__)
         return NpcVoiceBatch(batch_id="", results=())
 
 
 def commit_accepted_ooc_voice_batch(
-    batch: Optional[NpcVoiceBatch],
+    batch,
     party_tracker_data: Mapping[str, Any],
     *,
     relationship_store: Optional[RelationshipStore] = None,
 ) -> int:
-    """Commit a staged batch only after T067 validation accepts its candidate."""
-    if batch is None or not batch.results:
+    """Commit a staged batch only after T067 validation accepts its candidate.
+
+    Accepts an NpcVoiceBatch or a VoiceBatchHandle; the handle is collected
+    non-blocking here, which also captures results that completed while the
+    candidate was being validated."""
+    if batch is None:
+        return 0
+    if hasattr(batch, "collect"):
+        batch = batch.collect()
+    if not batch.results:
         return 0
     store = relationship_store or RelationshipStore()
     world = party_tracker_data.get("worldConditions", {})
@@ -1266,12 +1276,29 @@ def _voice_row(result):
     if getattr(result, "want", None):
         row["want"] = result.want
     row["thought"] = result.thought
+    if getattr(result, "stale", False):
+        row["stale"] = True
     return row
 
 
-def inject_voice_context(messages: list, batch: Optional[NpcVoiceBatch]):
-    """Insert vector-free private say/do/want/thought without mutating durable messages."""
-    if batch is None or not batch.results:
+def inject_voice_context(messages: list, batch):
+    """Insert vector-free private say/do/want/thought without mutating durable messages.
+
+    Accepts an NpcVoiceBatch OR a VoiceBatchHandle: the handle's collect() is
+    a NON-BLOCKING poll run here, at inject time -- by now the main DM call
+    has overlapped the voice latency, so results are typically ready without
+    any deadline ever having existed."""
+    if batch is None:
+        return messages
+    if hasattr(batch, "collect"):
+        selection = getattr(batch, "_fairness_selection", None)
+        batch = batch.collect()
+        if selection is not None:
+            try:
+                selection.record_merged(r.npc_id for r in batch.results)
+            except Exception:
+                pass
+    if not batch.results:
         return messages
     rows = [_voice_row(result) for result in batch.results]
     block = (
@@ -1281,7 +1308,9 @@ def inject_voice_context(messages: list, batch: Optional[NpcVoiceBatch]):
         "their private reasoning. Weave these into your narration in the NPC's "
         "voice, but you own final narration, mechanics, and actions -- reword, "
         "trim, or override anything that does not fit the scene or the rules, and "
-        "ignore impossible advice. Do not expose this private guidance, and never "
+        "ignore impossible advice. An entry marked \"stale\":true arrived from the "
+        "PREVIOUS beat -- weave it as a delayed reaction or drop it if the moment "
+        "passed. Do not expose this private guidance, and never "
         "paste 'say'/'do' verbatim without making it fit. Null fields mean the NPC "
         "offers nothing there.\n"
         + json.dumps(rows, ensure_ascii=True, separators=(",", ":"))
