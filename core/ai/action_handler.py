@@ -473,24 +473,6 @@ def _module_creation_error_result(*, recovery_required=False, message=None):
     }
 
 
-def _module_creation_idempotency_key(action, conversation_history):
-    """Hash the accepted action and its pre-action history into an opaque key."""
-    payload = {
-        "action": action,
-        "history_prefix": conversation_history
-        if isinstance(conversation_history, list)
-        else [],
-    }
-    encoded = json.dumps(
-        payload,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
 def pre_validate_transition(
     parameters,
     party_tracker_data,
@@ -919,6 +901,47 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_data):
     from core.managers.combat_manager import run_combat_simulation as run_combat
     return run_combat(encounter_id, party_tracker_data, location_data)
 
+
+def _cache_module_starting_location(
+    module_name: str,
+    starting_location: tuple,
+    *,
+    registry_path: str = "modules/world_registry.json",
+) -> bool:
+    """Merge one cache entry into the latest registry under its write lock."""
+    from utils.module_refresh_lock import module_refresh_lock
+
+    if (
+        not isinstance(module_name, str)
+        or not module_name
+        or not isinstance(starting_location, (tuple, list))
+        or len(starting_location) < 4
+    ):
+        return False
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            return False
+        world_registry = safe_json_load(registry_path)
+        if not isinstance(world_registry, dict):
+            return False
+        modules = world_registry.get("modules")
+        if not isinstance(modules, dict):
+            return False
+        module_data = modules.get(module_name)
+        # Never resurrect a module removed while the model call was in flight.
+        if not isinstance(module_data, dict):
+            return False
+        module_data["startingLocation"] = {
+            "locationId": starting_location[0],
+            "locationName": starting_location[1],
+            "areaId": starting_location[2],
+            "areaName": starting_location[3],
+            "determinedBy": "AI",
+            "timestamp": datetime.now().isoformat(),
+        }
+        safe_json_dump(world_registry, registry_path)
+        return True
+
 def get_module_starting_location(module_name: str) -> tuple:
     """Get the starting location for a module using AI analysis with caching"""
     try:
@@ -997,21 +1020,16 @@ def get_module_starting_location(module_name: str) -> tuple:
         
         # Cache the result in world registry
         if starting_location and world_registry:
-            if module_name not in world_registry['modules']:
-                world_registry['modules'][module_name] = {}
-            
-            world_registry['modules'][module_name]['startingLocation'] = {
-                'locationId': starting_location[0],
-                'locationName': starting_location[1], 
-                'areaId': starting_location[2],
-                'areaName': starting_location[3],
-                'determinedBy': 'AI',
-                'timestamp': datetime.now().isoformat()
-            }
-            
             try:
-                safe_json_dump(world_registry, world_registry_path)
-                info(f"SUCCESS: Cached AI-determined starting location for {module_name}", category="module_loading")
+                cached = _cache_module_starting_location(
+                    module_name,
+                    starting_location,
+                    registry_path=world_registry_path,
+                )
+                if cached:
+                    info(f"SUCCESS: Cached AI-determined starting location for {module_name}", category="module_loading")
+                else:
+                    warning(f"FILE_OP: Starting-location cache skipped for {module_name}; registry changed or refresh was busy", category="module_loading")
             except Exception as cache_err:
                 # INT-H5: a cache-WRITE failure must not discard an already-valid
                 # starting location and strand the player; log and continue.
@@ -2366,36 +2384,30 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             failure["response_data"]["build_id"] = build_id
             return failure
 
-        def published_result(receipt):
-            module_name = receipt.module_name
-            pending_message = (
-                f"Module {module_name} was published; follow-up narration is pending."
-            )
+        def published_result(module_name):
             dm_note = (
                 "Dungeon Master Note: New module "
                 f"'{module_name}' has been successfully created and integrated "
                 "into the world. Provide a useful player-facing transition "
                 "narration and return no actions."
             )
+            # P2b: atomic publish replaces the receipt subsystem. The module is
+            # already live; always ask the DM to narrate its creation
+            # (needs_dm_response). A crash before narration leaves the module live
+            # with no narration shown (cosmetic, fail-forward) -- there is no
+            # cross-turn dedup, so a later recreate yields a harmless spare module.
             return {
-                "status": (
-                    "published_replay" if receipt.acknowledged else "published"
-                ),
+                "status": "published",
                 "success": True,
                 "build_id": build_id,
                 "state_changed": True,
                 "retryable": False,
                 "needs_update": True,
-                "needs_dm_response": not receipt.acknowledged,
+                "needs_dm_response": True,
                 "response_data": {
                     "build_id": build_id,
-                    "receipt_build_id": receipt.build_id,
                     "module_name": module_name,
                     "dm_note": dm_note,
-                    "message_id": receipt.message_id,
-                    "message_digest": receipt.message_digest,
-                    "idempotency_key": receipt.idempotency_key,
-                    "pending_message": pending_message,
                 },
             }
 
@@ -2419,23 +2431,16 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             from core.generators.module_builder import (
                 ModuleCreationCancelledError,
                 ModuleCreationFailedError,
-                ModuleCreationRecoveryRequiredError,
                 ai_driven_module_creation,
             )
-            from core.generators.managed_module_builder import (
-                get_ready_managed_candidate,
-            )
             from core.generators.module_stitcher import get_module_stitcher
-            from utils.module_lifecycle import (
-                ModuleLifecycleStore,
-                RecoveryStatus,
-            )
             from utils.openai_usage_tracker import (
                 mark_module_build_outcome,
                 module_build_usage_scope,
             )
-            # Creation and registration are one publication unit. Reconcile
-            # must never discover a half-built action-created module.
+            # Build + publish are one atomic unit: the module is built in a
+            # hidden temp workspace and swapped into modules/ in a single rename,
+            # so a failure never leaves a half-built module live (fail-forward).
             from utils.module_refresh_lock import module_refresh_lock
 
             with module_build_usage_scope(build_id=build_id) as build_context:
@@ -2464,72 +2469,28 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         )
                         return failure
 
-                    idempotency_key = _module_creation_idempotency_key(
-                        action,
-                        conversation_history,
-                    )
-                    from utils.commit_state import (
-                        recover_incomplete_refresh_commit,
-                    )
-
-                    recover_incomplete_refresh_commit()
-                    lifecycle = ModuleLifecycleStore("modules")
-                    recovery = lifecycle.recover()
-                    if recovery.status is RecoveryStatus.INDETERMINATE:
-                        mark_module_build_outcome("lifecycle_recovery_required")
-                        failure = module_failure(recovery_required=True)
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-
-                    existing_receipt = lifecycle.find_publication_receipt(
-                        idempotency_key=idempotency_key
-                    )
-                    if existing_receipt is not None:
-                        mark_module_build_outcome("published_replay")
-                        terminal_progress(
-                            "published",
-                            f"Module {existing_receipt.module_name} was already published.",
-                            existing_receipt.module_name,
-                        )
-                        return published_result(existing_receipt)
-
-                    unrelated_receipt = lifecycle.find_pending_receipt()
-                    if unrelated_receipt is not None:
-                        mark_module_build_outcome("delivery_pending")
-                        failure = module_failure(
-                            recovery_required=True,
-                            message=(
-                                "A previous module was published and its player "
-                                "message is still pending. Finish recovery before "
-                                "creating another module."
-                            ),
-                        )
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-
+                    # No cross-turn idempotency dedup: a createNewModule may carry
+                    # only a narrative (no module_name), and the allocated final
+                    # name may differ, so nothing can reliably match a retry to a
+                    # prior build. A crash-then-recreate yields a harmless SPARE
+                    # module the player can delete -- fail-forward, never a broken
+                    # or corrupted game. No prior in-flight state ever BLOCKS a
+                    # new build.
                     stitcher = get_module_stitcher()
                     try:
+                        # Builds into a hidden temp workspace and atomically swaps
+                        # the module into modules/<name> in one rename, updating
+                        # the advisory registry via the store-free helper. A
+                        # failure here NEVER touches live state -- the build simply
+                        # did not happen and the player keeps playing.
                         success, module_name = ai_driven_module_creation(
                             parameters,
                             progress_callback=module_progress_callback,
                             policy="game",
                             prepare_candidate=(
-                                stitcher.prepare_managed_candidate_locked
+                                stitcher.build_publication_registry_bytes
                             ),
                         )
-                    except ModuleCreationRecoveryRequiredError:
-                        mark_module_build_outcome("builder_recovery_required")
-                        failure = module_failure(
-                            recovery_required=True
-                        )
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
                     except ModuleCreationCancelledError:
                         mark_module_build_outcome("not_generated")
                         failure = module_failure()
@@ -2538,10 +2499,10 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         )
                         return failure
                     except ModuleCreationFailedError as build_error:
-                        # The build now reports its reason instead of returning
-                        # a bare failure (issue #130). Log the detail, but keep
-                        # the player-facing message sanitized: provider output
-                        # must not leak into the DM conversation.
+                        # The build reports its reason instead of returning a bare
+                        # failure (issue #130). Log the detail, but keep the
+                        # player-facing message sanitized: provider output must
+                        # not leak into the DM conversation.
                         error(
                             f"Module creation failed: {build_error}",
                             exception=build_error,
@@ -2562,64 +2523,6 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         )
                         return failure
 
-                    active = get_ready_managed_candidate(module_name)
-                    if active is None:
-                        mark_module_build_outcome("ready_candidate_missing")
-                        failure = module_failure(recovery_required=True)
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-
-                    pending_message = (
-                        f"Module {module_name} was published; follow-up narration is pending."
-                    )
-                    message_id = "module-publication-" + hashlib.sha256(
-                        f"{active.build_id}:{idempotency_key}".encode("utf-8")
-                    ).hexdigest()[:32]
-                    message_digest = hashlib.sha256(
-                        pending_message.encode("utf-8")
-                    ).hexdigest()
-                    try:
-                        receipt = stitcher.publish_managed_candidate_locked(
-                            active,
-                            message_id=message_id,
-                            message_digest=message_digest,
-                            idempotency_key=idempotency_key,
-                        )
-                    except Exception as publication_error:
-                        warning(
-                            "Managed publication interrupted; classifying exact recovery state",
-                            category="module_management",
-                        )
-                        recovery = lifecycle.recover()
-                        if recovery.status is not RecoveryStatus.INDETERMINATE:
-                            receipt = lifecycle.find_pending_receipt(
-                                idempotency_key=idempotency_key
-                            )
-                            if receipt is not None:
-                                mark_module_build_outcome("published_recovered")
-                                terminal_progress(
-                                    "published",
-                                    f"Module {receipt.module_name} was published successfully.",
-                                    receipt.module_name,
-                                )
-                                return published_result(receipt)
-                            mark_module_build_outcome("not_published")
-                            failure = module_failure()
-                        else:
-                            error(
-                                "Managed publication recovery is indeterminate",
-                                exception=publication_error,
-                                category="module_management",
-                            )
-                            mark_module_build_outcome("publication_indeterminate")
-                            failure = module_failure(recovery_required=True)
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-
                     mark_module_build_outcome("published")
                     terminal_progress(
                         "published",
@@ -2631,7 +2534,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         category="module_management",
                     )
                     needs_conversation_history_update = True
-                    return published_result(receipt)
+                    return published_result(module_name)
         except Exception as module_error:
             error(
                 "FAILURE: Unexpected module creation pipeline error",
