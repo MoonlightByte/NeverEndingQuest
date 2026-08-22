@@ -26,6 +26,7 @@ from utils.enhanced_logger import debug, warning
 
 _AREA_FILE_RE = re.compile(r"^[A-Za-z]+\d+\.json$")
 _LOCATION_ID_RE = re.compile(r"^[A-Za-z]+\d+$")
+_COMPOSITE_CONNECTION_RE = re.compile(r"^([A-Za-z]+\d+)-([A-Za-z]+\d+)$")
 _BACKUP_SUFFIXES = ("_BU.json", "_backup.json")
 
 
@@ -420,6 +421,8 @@ def build_active_module_snapshot(
     # - schema area IDs/names paired through a unique reciprocal endpoint
     # - generated parallel pairs: areaConnectivity[N] names the area containing
     #   the exact gateway location in areaConnectivityId[N]
+    # - generated composite IDs: "AREA-LOC" in areaConnectivityId, resolved
+    #   iff LOC exists in AREA (area cross-checked)
     for source_id, node in nodes.items():
         external_targets: List[str] = []
         unresolved: List[str] = []
@@ -446,7 +449,24 @@ def build_active_module_snapshot(
                 else:
                     unresolved.append(reference)
             else:
-                unresolved.append(reference)
+                # Generated composite reference: "AREA-LOC" names the exact
+                # gateway location LOC inside area AREA. Bare location IDs
+                # never contain hyphens, so the form is unambiguous. It
+                # resolves iff LOC exists AND actually lives in AREA; any
+                # mismatch stays unresolved rather than masking a dangle.
+                composite = _COMPOSITE_CONNECTION_RE.fullmatch(reference)
+                if (
+                    composite
+                    and composite.group(2) in nodes
+                    and nodes[composite.group(2)]["area_id"] == composite.group(1)
+                ):
+                    if index < len(area_names):
+                        # The paired name is metadata for this same edge, not
+                        # a second independent connection to resolve.
+                        consumed_name_indexes.add(index)
+                    external_targets.append(composite.group(2))
+                else:
+                    unresolved.append(reference)
         for index, reference in enumerate(area_names):
             if index in consumed_name_indexes:
                 continue
