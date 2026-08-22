@@ -577,7 +577,7 @@ _declare(
         "NPC_VOICE_T105_LMSTUDIO",
     ),
     note="Per-NPC voice (+ isolated affinity classifier, same config) micro call, "
-         "gated by NPC_VOICE_ENABLED. OpenAI on cheapest luna|none (per-NPC per-turn "
+         "always on. OpenAI on cheapest luna|none (per-NPC per-turn "
          "micro tier). Distinct from T104 (NPC cross-area coherence). The Gemini "
          "response_schema is supplied by the service (core/npc/voice_service.py).",
 )
@@ -590,7 +590,7 @@ _declare(
         "NPC_PROFILE_T107_LMSTUDIO",
     ),
     note="One-time per-NPC profile seed (structured behavior profile) for the NPC "
-         "voice system, gated by NPC_VOICE_ENABLED. OpenAI on cheapest luna|none.",
+         "voice system, always on. OpenAI on cheapest luna|none.",
 )
 _declare(
     "T108",
@@ -602,7 +602,7 @@ _declare(
     ),
     note="Companion EPISODE extraction: attributed salient facts from full-fidelity "
          "encounter text into the canonical episode ledger, at per-location close and "
-         "module-leave consolidation. Gated by NPC_VOICE_ENABLED. OpenAI on luna|low "
+         "module-leave consolidation. Always on. OpenAI on luna|low "
          "(designated on a real-archive sample). The Gemini response_schema is supplied "
          "by the service (core/npc/episode_extraction.py).",
 )
@@ -616,8 +616,8 @@ _declare(
     ),
     note="Episodic RECALL anchor-parse: parses a player's 'remember when...' line into "
          "structured anchors; CODE selects the matching episodeIds from the NPC's own "
-         "index (model never selects episodes -> cannot fabricate). Gated by "
-         "NPC_VOICE_ENABLED. OpenAI luna|low. Service: core/npc/episode_recall.py.",
+         "index (model never selects episodes -> cannot fabricate). Always "
+         "on. OpenAI luna|low. Service: core/npc/episode_recall.py.",
 )
 _declare(
     "T113",
@@ -630,8 +630,8 @@ _declare(
     note="Episodic BACKFILL extraction: one-time upgrade of an existing game. Reads "
          "compressed journal/campaign-summary prose and SELECTS present companions from "
          "a CLOSED module roster (agentic presence, reconciled by code -> a name not in "
-         "the roster is dropped), producing attributed backfilled episodes. Gated by "
-         "NPC_VOICE_ENABLED, behind the upgrade progress UI. OpenAI luna|low (same tier "
+         "the roster is dropped), producing attributed backfilled episodes. Always "
+         "on, behind the upgrade progress UI. OpenAI luna|low (same tier "
          "as T108). Service: core/npc/episode_backfill.py.",
 )
 

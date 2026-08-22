@@ -97,12 +97,10 @@ set_script_name(__name__)
 def _update_npc_module_lifecycle_best_effort(party_tracker, source_turn_id):
     """Advance private active-NPC context after a committed party transition.
 
-    Best-effort and flag-gated: a failure never blocks the module transition.
+    Best-effort: a failure never blocks the module transition.
     Records the transition in the NPC voice relationship sidecar so departed /
     rejoined companions and per-module lifecycle stay consistent for T105.
     """
-    if getattr(config, "NPC_VOICE_ENABLED", False) is not True:
-        return
     try:
         from core.npc.relationship_store import RelationshipStore, game_day_ordinal
 
@@ -3008,19 +3006,17 @@ class CampaignManager:
         # completion. Best-effort, fail-open. Uses an explicit module_name snapshot so
         # the episode coordinate is the completed module, not a live-mutated tracker.
         try:
-            import config as _config
-            if getattr(_config, "NPC_VOICE_ENABLED", False) is True:
-                from core.npc.episode_capture import consolidate_module_episodes
-                from utils.module_path_manager import ModulePathManager
-                tracker_snapshot = copy.deepcopy(party_tracker_data)
-                if isinstance(tracker_snapshot, dict):
-                    tracker_snapshot["module"] = module_name
-                consolidate_module_episodes(
-                    conversation_history,
-                    tracker_snapshot,
-                    path_manager=ModulePathManager(module_name),
-                    player_name=(party_tracker_data.get("partyMembers") or [""])[0],
-                )
+            from core.npc.episode_capture import consolidate_module_episodes
+            from utils.module_path_manager import ModulePathManager
+            tracker_snapshot = copy.deepcopy(party_tracker_data)
+            if isinstance(tracker_snapshot, dict):
+                tracker_snapshot["module"] = module_name
+            consolidate_module_episodes(
+                conversation_history,
+                tracker_snapshot,
+                path_manager=ModulePathManager(module_name),
+                player_name=(party_tracker_data.get("partyMembers") or [""])[0],
+            )
         except Exception:
             pass
 

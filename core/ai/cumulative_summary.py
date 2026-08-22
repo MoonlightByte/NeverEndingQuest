@@ -383,8 +383,8 @@ def compress_conversation_history_on_transition(conversation_history, leaving_lo
     Uses location transition messages as markers.
     Returns the compressed conversation history.
 
-    party_tracker_data/path_manager/player_name are optional; when provided and
-    NPC_VOICE_ENABLED, a best-effort per-companion episode is captured from the raw
+    party_tracker_data/path_manager/player_name are optional; when provided,
+    a best-effort per-companion episode is captured from the raw
     segment before it is compressed away (Phase 1d). Capture is offloaded and
     fail-open -- it never gates, mutates, or blocks the summary/history.
     """
@@ -459,11 +459,9 @@ def compress_conversation_history_on_transition(conversation_history, leaving_lo
 
         # Phase 1d: best-effort per-companion episode capture from the SAME raw
         # segment, before it is compressed away. Offloaded (fire-and-forget) and
-        # fail-open: never gates or mutates the summary/history. Gated on the flag.
+        # fail-open: never gates or mutates the summary/history.
         try:
-            import config as _config
-            if (getattr(_config, "NPC_VOICE_ENABLED", False) is True
-                    and party_tracker_data is not None and path_manager is not None):
+            if party_tracker_data is not None and path_manager is not None:
                 from core.npc.episode_capture import (
                     capture_location_episode_async,
                     leaving_location_id_from_marker,

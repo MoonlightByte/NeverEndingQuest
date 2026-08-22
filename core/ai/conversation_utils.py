@@ -691,7 +691,6 @@ def build_companion_memory_message(
     party_tracker_data,
     conversation_history,
     *,
-    npc_voice_enabled,
     relationship_store=None,
     path_manager=None,
     json_loader=safe_json_load,
@@ -700,11 +699,6 @@ def build_companion_memory_message(
     ),
 ):
     """Select canonical active context, or preserve the exact legacy fallback."""
-    if not npc_voice_enabled:
-        return _build_legacy_companion_memory_message(
-            party_tracker_data, legacy_path
-        )
-
     try:
         from core.npc.relationship_store import RelationshipStore
 
@@ -835,16 +829,11 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
     new_history = [primary_system_prompt] if primary_system_prompt else []
 
     # Refresh exactly one companion context block immediately after the main prompt.
-    # T105: flag-off and unavailable-sidecar paths retain the Phase 6 legacy bytes.
+    # T105: unavailable-sidecar paths retain the Phase 6 legacy bytes.
     try:
-        import config as runtime_config
-
         memory_message = build_companion_memory_message(
             party_tracker_data,
             conversation_history,
-            npc_voice_enabled=(
-                getattr(runtime_config, "NPC_VOICE_ENABLED", False) is True
-            ),
         )
         if memory_message is not None:
             new_history.append(memory_message)

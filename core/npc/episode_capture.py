@@ -12,7 +12,7 @@ Ties the pieces together per the blind-review resolutions:
                   the player-blocking location-close seam is never gated on a model
                   call; the whole thing is best-effort and never mutates history.
 
-Everything is gated by NPC_VOICE_ENABLED at the call site and fail-open here.
+Everything is always on at the call site and fail-open here.
 """
 
 from __future__ import annotations

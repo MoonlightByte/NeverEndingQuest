@@ -1928,14 +1928,11 @@ def summarize_dialogue(
 
 
 def _capture_combat_episode_best_effort(conversation_history, encounter_data, party_tracker_data):
-    """W2 seam shared by both combat-exit paths (legacy + agentic). Gated on
-    NPC_VOICE_ENABLED; offloaded fire-and-forget; deepcopies transcript + encounter so
-    the worker reads a stable snapshot after the caller archives/clears live state.
+    """W2 seam shared by both combat-exit paths (legacy + agentic). Offloaded
+    fire-and-forget; deepcopies transcript + encounter so the worker reads a
+    stable snapshot after the caller archives/clears live state.
     Fail-open: any problem here never affects combat exit."""
     try:
-        import config as _config
-        if getattr(_config, "NPC_VOICE_ENABLED", False) is not True:
-            return
         if not isinstance(encounter_data, dict) or not isinstance(party_tracker_data, dict):
             return
         import copy as _copy
@@ -4227,14 +4224,11 @@ Player: {initial_prompt_text}"""
                path_manager,
                monster_templates,
            )
-           # T105: build the per-turn NPC-voice advisory batch (flag-gated,
-           # fail-open) and hand the accepted intents to the agentic intent
-           # model as advisory-only input. Voice never breaks the combat turn.
+           # T105: build the per-turn NPC-voice advisory batch (fail-open)
+           # and hand the accepted intents to the agentic intent model as
+           # advisory-only input. Voice never breaks the combat turn.
            npc_voice_intents = {}
-           if (
-               getattr(config, "NPC_VOICE_ENABLED", False) is True
-               and agentic_recovery["action"] in {"continue", "regenerate_intent"}
-           ):
+           if agentic_recovery["action"] in {"continue", "regenerate_intent"}:
                try:
                    from core.npc.voice_context import (
                        commit_accepted_combat_voice_batch,
@@ -4704,32 +4698,31 @@ Rules:
        # window. The batch is request-local and is reused for every T045/T040
        # correction attempt below.
        legacy_voice_batch = None
-       if getattr(config, "NPC_VOICE_ENABLED", False) is True:
-           try:
-               from core.npc.voice_context import run_legacy_combat_voice_stage
+       try:
+           from core.npc.voice_context import run_legacy_combat_voice_stage
 
-               character_paths, context_sheets = _agentic_combat_context(
-                   encounter_data,
-                   path_manager,
-                   monster_templates,
-               )
-               legacy_voice_stage = run_legacy_combat_voice_stage(
-                   encounter_data=encounter_data,
-                   turn_window=turn_window_json,
-                   character_paths=character_paths,
-                   context_sheets=context_sheets,
-                   party_tracker_data=party_tracker_data,
-                   location_info=location_info,
-                   player_input=raw_combat_input_text,
-                   conversation_prefix=conversation_history,
-               )
-               legacy_voice_batch = legacy_voice_stage.batch
-           except Exception as exc:
-               debug(
-                   "T105 legacy combat stage skipped: %s"
-                   % type(exc).__name__,
-                   category="combat_events",
-               )
+           character_paths, context_sheets = _agentic_combat_context(
+               encounter_data,
+               path_manager,
+               monster_templates,
+           )
+           legacy_voice_stage = run_legacy_combat_voice_stage(
+               encounter_data=encounter_data,
+               turn_window=turn_window_json,
+               character_paths=character_paths,
+               context_sheets=context_sheets,
+               party_tracker_data=party_tracker_data,
+               location_info=location_info,
+               player_input=raw_combat_input_text,
+               conversation_prefix=conversation_history,
+           )
+           legacy_voice_batch = legacy_voice_stage.batch
+       except Exception as exc:
+           debug(
+               "T105 legacy combat stage skipped: %s"
+               % type(exc).__name__,
+               category="combat_events",
+           )
 
        # Get AI response with validation and retries
        max_retries = 5

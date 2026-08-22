@@ -2413,7 +2413,7 @@ def check_and_process_location_transitions(conversation_history, party_tracker_d
             
             # Compress conversation history (also captures per-companion episodes
             # from the raw segment before it is compressed away -- Phase 1d,
-            # offloaded + fail-open, gated on NPC_VOICE_ENABLED)
+            # offloaded + fail-open, always on)
             compressed_history = compress_conversation_history_on_transition(
                 conversation_history,
                 leaving_location_name,
@@ -4922,7 +4922,7 @@ def main_game_loop():
         debug(f"Could not initialize memories (non-fatal): {e}", category="startup")
 
     # W5: one-time seamless upgrade of an existing game to EPISODIC memory. Distinct
-    # from the legacy initializer above; gated by NPC_VOICE_ENABLED, resumable, and
+    # from the legacy initializer above; always on, resumable, and
     # fail-open (never blocks startup). Backfills companion episodes from the
     # campaign's own journal/summaries so returning companions already remember.
     try:
@@ -6025,27 +6025,26 @@ def main_game_loop():
         conversation_history.append({"role": "user", "content": user_input_with_note})
         save_conversation_history(conversation_history)
 
-        # Run T105 once per substantive player beat. The feature is default-off,
+        # Run T105 once per substantive player beat. The feature is always on,
         # and every composition/provider/validation failure collapses to an
         # empty immutable batch without changing the authoritative turn.
         npc_voice_batch = None
-        if getattr(config, "NPC_VOICE_ENABLED", False) is True:
-            try:
-                from core.npc.voice_context import run_ooc_voice_stage
+        try:
+            from core.npc.voice_context import run_ooc_voice_stage
 
-                npc_voice_batch = run_ooc_voice_stage(
-                    party_tracker_data=party_tracker_data,
-                    player_name=player_name_actual,
-                    raw_input=user_input_text,
-                    location_data=location_data,
-                    conversation_prefix=conversation_history[:-1],
-                    path_manager=path_manager,
-                )
-            except Exception as voice_error:
-                debug(
-                    f"T105 OOC stage skipped: {type(voice_error).__name__}",
-                    category="ai_routing",
-                )
+            npc_voice_batch = run_ooc_voice_stage(
+                party_tracker_data=party_tracker_data,
+                player_name=player_name_actual,
+                raw_input=user_input_text,
+                location_data=location_data,
+                conversation_prefix=conversation_history[:-1],
+                path_manager=path_manager,
+            )
+        except Exception as voice_error:
+            debug(
+                f"T105 OOC stage skipped: {type(voice_error).__name__}",
+                category="ai_routing",
+            )
 
         validation_prefix_length = len(conversation_history)
         retry_count = 0

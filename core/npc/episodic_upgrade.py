@@ -15,7 +15,7 @@ Design decisions:
 - Fail-open: a read-only store or any failure DISABLES the upgrade for the session and
   records a loud health event; the game always loads and plays. Backfill is idempotent
   (stable coordinates), so a partial/interrupted run simply resumes.
-- Gated by NPC_VOICE_ENABLED at the seam. A fresh game (no history) is marked complete
+- Always on at the seam. A fresh game (no history) is marked complete
   immediately so detection never re-runs.
 """
 
@@ -228,12 +228,8 @@ def check_and_run_episode_upgrade(
     marker_path: str = MARKER_PATH,
 ) -> Dict[str, Any]:
     """First-run detector + orchestrator, called ONCE at the startup seam beside the
-    legacy check_and_initialize_on_startup. Gated by NPC_VOICE_ENABLED. Fail-open."""
+    legacy check_and_initialize_on_startup. Always on. Fail-open."""
     try:
-        import config as _config
-        if getattr(_config, "NPC_VOICE_ENABLED", False) is not True:
-            return {"status": "disabled_flag"}
-
         marker = read_marker(marker_path)
         if is_complete(marker):
             return {"status": "already_complete"}

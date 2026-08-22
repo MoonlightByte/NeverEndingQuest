@@ -12,7 +12,7 @@ Design rules honored:
   the present set (name -> identity id); a merely-mentioned absent companion gets
   nothing. The EpisodeStore is the final sanitizing/validating gate.
 - Best-effort / fail-open: any failure returns None; a location close still happens.
-- Gated at the call site by NPC_VOICE_ENABLED; model bound via the T108 registry.
+- Always on at the call site; model bound via the T108 registry.
 """
 
 from __future__ import annotations

@@ -509,10 +509,8 @@ def _capture_rolling_episode_best_effort(
     messages, current_segment, filtered_to_compress, location_info, party_data
 ):
     """Offload a companion episode from the raw window about to be compressed.
-    Gated on NPC_VOICE_ENABLED, fail-open, never mutates or blocks the save path."""
+    Fail-open, never mutates or blocks the save path."""
     try:
-        if getattr(config, "NPC_VOICE_ENABLED", False) is not True:
-            return
         if not isinstance(party_data, dict) or not filtered_to_compress:
             return
         from core.npc.episode_capture import capture_location_episode_async

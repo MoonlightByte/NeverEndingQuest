@@ -912,8 +912,6 @@ def _apply_party_npc_lifecycle(
     source_turn_id,
 ):
     """Best-effort post-commit lifecycle hook; never rolls back the roster."""
-    if getattr(config, "NPC_VOICE_ENABLED", False) is not True:
-        return False
     try:
         from core.npc.profile_service import seed_profile_best_effort
         from core.npc.relationship_store import RelationshipStore, game_day_ordinal

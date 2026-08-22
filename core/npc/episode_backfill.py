@@ -18,7 +18,7 @@ Provenance: derived_from="backfill" (already reserved in the ledger schema -> no
 change). Coordinates are `backfill-journal-<loc>-<seq>` / `backfill-summary-<module>`,
 all `backfill-` prefixed so they are lexically disjoint from live prefixes
 (close-/roll-/combat-) and a re-run is an idempotent no-op. Everything is fail-open and
-gated by NPC_VOICE_ENABLED at the call site (the upgrade orchestrator, W5).
+always on at the call site (the upgrade orchestrator, W5).
 """
 
 from __future__ import annotations
