@@ -1523,22 +1523,21 @@ def _known_module_locations(module_name):
     return locations
 
 
-def _validate_required_transition_action(
-    response_data, user_input, party_tracker_data
-):
-    """Require a matching transition for an explicit move to a known place.
+def _expected_committed_destination(user_input, party_tracker_data):
+    """Return the known destination a committed move explicitly targets.
 
-    This deliberately guards only deterministic cases: committed movement plus
-    an exact known location ID or name. Ambiguous narrative references remain
-    the semantic validator's responsibility.
+    This is the deterministic half of the transition contract: committed
+    movement plus an exact known location ID or name. Returns a dict with
+    ``location_id`` and ``location_name``, or None when the input does not
+    deterministically commit to a known destination.
     """
-    if not isinstance(response_data, dict) or not isinstance(user_input, str):
-        return True, ""
+    if not isinstance(user_input, str):
+        return None
     movement_match = _COMMITTED_MOVEMENT_PATTERN.search(user_input)
     if not movement_match:
-        return True, ""
+        return None
     if _HYPOTHETICAL_MOVEMENT_PATTERN.search(user_input):
-        return True, ""
+        return None
 
     world_conditions = (party_tracker_data or {}).get("worldConditions") or {}
     current_location_id = str(
@@ -1572,14 +1571,34 @@ def _validate_required_transition_action(
         if match_positions:
             destination_position = max(match_positions)
             if destination_position >= movement_match.start():
-                candidates.append((destination_position, location_id))
+                candidates.append(
+                    (destination_position, location_id, location_name)
+                )
 
     if not candidates:
-        return True, ""
+        return None
 
     # In phrases such as "walk from A to B", the last mentioned non-current
     # known location is the destination.
-    expected_location_id = max(candidates, key=lambda item: item[0])[1]
+    _, expected_id, expected_name = max(candidates, key=lambda item: item[0])
+    return {"location_id": expected_id, "location_name": expected_name}
+
+
+def _validate_required_transition_action(
+    response_data, user_input, party_tracker_data
+):
+    """Require a matching transition for an explicit move to a known place.
+
+    This deliberately guards only deterministic cases: committed movement plus
+    an exact known location ID or name. Ambiguous narrative references remain
+    the semantic validator's responsibility.
+    """
+    if not isinstance(response_data, dict):
+        return True, ""
+    expected = _expected_committed_destination(user_input, party_tracker_data)
+    if expected is None:
+        return True, ""
+    expected_location_id = expected["location_id"]
     actions = response_data.get("actions", [])
     transition_index = None
     encounter_index = None
@@ -1607,7 +1626,9 @@ def _validate_required_transition_action(
         "The player explicitly moved to known location "
         f"{expected_location_id}, so the response must include "
         "transitionLocation targeting that exact location before any "
-        "location-dependent actions.",
+        "location-dependent actions. Emit the transition even if you are "
+        "unsure the route is passable; the travel system verifies routes "
+        "and resolves an impassable one honestly.",
     )
 
 
@@ -4427,13 +4448,19 @@ def _finalize_main_response_validation(
     validation_prefix_length,
     candidate_response,
     candidate_valid,
+    fallback_text=None,
 ):
-    """Remove retry-only messages and block rejected T067 state actions."""
+    """Remove retry-only messages and block rejected T067 state actions.
+
+    ``fallback_text`` replaces the generic out-of-fiction fallback with one
+    honest in-fiction narration (travel-contradiction path); it is never
+    stacked on top of it.
+    """
     cleaned_history = conversation_history[:validation_prefix_length]
     if candidate_valid and candidate_response:
         return cleaned_history, candidate_response
 
-    fallback_message = (
+    fallback_message = fallback_text or (
         "I could not safely resolve that action after several attempts. "
         "No game state was changed; please rephrase or try a simpler action."
     )
@@ -6053,6 +6080,10 @@ def main_game_loop():
         valid_response_received = False
         ai_response_content = None
         approved_transition_plan = None
+        # Set when the travel gate rejects the exact transition the
+        # deterministic contract demanded: the turn resolves with one honest
+        # in-fiction narration instead of an unwinnable retry loop.
+        travel_contradiction_narration = None
 
         while retry_count < 5 and not valid_response_received:
             # Authorization belongs only to this candidate response. A retry
@@ -6248,6 +6279,53 @@ def main_game_loop():
                         )
 
                         if not transition_approved:
+                            # Coherence short-circuit: if the gate just
+                            # rejected the EXACT transition the deterministic
+                            # contract demands for this input, a retry is
+                            # unwinnable (each side rejects the other's
+                            # required response). Resolve the turn with one
+                            # honest in-fiction narration; state untouched.
+                            expected_destination = _expected_committed_destination(
+                                user_input_text, party_tracker_data
+                            )
+                            rejected_target = str(
+                                action.get("parameters", {}).get("newLocation", "")
+                            ).strip()
+                            if (
+                                expected_destination is not None
+                                and rejected_target.casefold()
+                                == expected_destination["location_id"].casefold()
+                                and str(transition_error).startswith(
+                                    "[TRAVEL SYSTEM] Travel could not be planned"
+                                )
+                            ):
+                                destination_label = (
+                                    expected_destination["location_name"]
+                                    or expected_destination["location_id"]
+                                )
+                                current_place = (
+                                    party_tracker_data.get("worldConditions", {})
+                                    .get("currentLocation")
+                                    or "where you are"
+                                )
+                                travel_contradiction_narration = (
+                                    f"You gather the party to set out for "
+                                    f"{destination_label}, but from "
+                                    f"{current_place} no passable way there "
+                                    "can be found right now. The party stays "
+                                    "put, ready to act -- you can try a "
+                                    "different route, search for another way "
+                                    "through, or do something else."
+                                )
+                                transition_check_passed = False
+                                info(
+                                    "VALIDATION: Travel gate contradicts the "
+                                    "transition contract for "
+                                    f"{rejected_target}; resolving with one "
+                                    "honest in-fiction narration",
+                                    category="location_transitions",
+                                )
+                                break
                             # Transition blocked - append error and retry
                             # DO NOT save failed assistant response - it teaches AI wrong pattern
                             # AI only needs Error Note to understand the correction needed
@@ -6281,6 +6359,11 @@ def main_game_loop():
                 })
                 retry_count += 1
                 transition_check_passed = False
+
+            if travel_contradiction_narration is not None:
+                # Unwinnable contract-vs-gate contradiction: end the retry
+                # loop now; the exhaustion path emits the honest narration.
+                break
 
             if not transition_check_passed:
                 continue  # Skip to next retry iteration
@@ -6556,16 +6639,24 @@ def main_game_loop():
                 retry_count += 1
     
         if not valid_response_received:
-            error(
-                "FAILURE: Failed to generate a valid response after 5 attempts. "
-                "Rejected responses will not be processed.",
-                category="ai_validation",
-            )
+            if travel_contradiction_narration is not None:
+                info(
+                    "VALIDATION: Travel contradiction resolved with one "
+                    "honest in-fiction narration; no state changed.",
+                    category="location_transitions",
+                )
+            else:
+                error(
+                    "FAILURE: Failed to generate a valid response after 5 attempts. "
+                    "Rejected responses will not be processed.",
+                    category="ai_validation",
+                )
             conversation_history, _ = _finalize_main_response_validation(
                 conversation_history,
                 validation_prefix_length,
                 ai_response_content,
                 candidate_valid=False,
+                fallback_text=travel_contradiction_narration,
             )
             save_conversation_history(conversation_history)
             fallback_text = conversation_history[-1]["content"]

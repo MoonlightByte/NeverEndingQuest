@@ -543,11 +543,19 @@ def pre_validate_transition(
         path_message = route.get("reason", "")
 
         if not success:
+            # The "Travel could not be planned" prefix is a code-owned
+            # sentinel: main.py's travel-contradiction short-circuit matches
+            # it to resolve a contract-demanded destination honestly instead
+            # of burning retries. Keep the prefix stable.
             return finish(
                 False,
-                "[TRAVEL SYSTEM] Travel could not be planned safely: "
-                f"{path_message or 'no connected route exists'}. Choose a "
-                "reachable destination from the atlas.",
+                "[TRAVEL SYSTEM] Travel could not be planned: "
+                f"{path_message or 'no connected route exists'}. Do not move "
+                "the party and do not substitute a destination the player "
+                "did not ask for. Narrate in-fiction that this route is not "
+                "passable right now and let the player choose their next "
+                "action; only use transitionLocation for a destination that "
+                "is reachable in the atlas.",
             )
 
         # Analyze path for encounters and blocking
