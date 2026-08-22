@@ -87,7 +87,6 @@ from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 from utils.module_refresh_lock import module_refresh_lock
 from utils.path_transaction_lock import path_transaction_lock
-from utils.commit_state import recover_incomplete_refresh_commit
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 
 # Set script name for logging
@@ -1358,142 +1357,10 @@ class CampaignManager:
         )
         return campaign
     
-    def refresh_modules(self):
-        """Scan and integrate modules explicitly, then sync campaign availability."""
-        with module_refresh_lock() as acquired:
-            if not acquired:
-                return {
-                    "success": False,
-                    "newly_integrated": [],
-                    "available_modules": self.campaign_data.get("availableModules", []),
-                    "error": "module_refresh_lock_timeout",
-                }
-            try:
-                expected_lifecycle_epoch = _load_campaign_lifecycle_epoch(
-                    self.campaign_file
-                )
-                from utils.module_lifecycle import (
-                    ModuleLifecycleStore,
-                    RecoveryStatus,
-                )
+    # P2c: refresh_modules / refresh_modules_async removed -- both were dead
+    # (zero callers) and were the last consumers of the deleted transactional
+    # lifecycle store. scan_and_integrate_new_modules() is the live scan path.
 
-                # P2a: lifecycle recovery is advisory here too. Do not abort the
-                # refresh over an INDETERMINATE classification -- inert residue
-                # must not block module integration. (This path is currently
-                # unreachable: refresh_modules_async has no callers.)
-                lifecycle_recovery = ModuleLifecycleStore("modules").recover()
-                if lifecycle_recovery.status is RecoveryStatus.INDETERMINATE:
-                    warning(
-                        "Managed module lifecycle recovery indeterminate; "
-                        f"proceeding with refresh: {lifecycle_recovery.reason}",
-                        category="module_management",
-                    )
-                from core.generators.module_stitcher import get_module_stitcher
-
-                stitcher = get_module_stitcher()
-                newly_integrated = stitcher.scan_and_integrate_new_modules()
-
-                self.party_tracker_data = safe_json_load("party_tracker.json")
-                if self.party_tracker_data and newly_integrated:
-                    updated_loc = self.party_tracker_data.get("worldConditions", {}).get("currentLocationId", "Unknown")
-                    info(
-                        f"INITIALIZATION: Reloaded party tracker after integration. Location: {updated_loc}",
-                        category="module_loading",
-                    )
-
-                world_registry = stitcher.world_registry
-                if world_registry and "modules" in world_registry:
-                    world_modules = set(world_registry["modules"].keys())
-                    merge_result = {
-                        "missing_modules": set(),
-                        "lifecycle_changed": False,
-                    }
-
-                    def merge_modules(campaign):
-                        if _load_campaign_lifecycle_epoch(
-                            self.campaign_file
-                        ) != expected_lifecycle_epoch:
-                            merge_result["lifecycle_changed"] = True
-                            return False
-                        available = campaign.get("availableModules")
-                        if not isinstance(available, list):
-                            available = []
-                        current_available = set(available)
-                        missing_modules = world_modules - current_available
-                        merge_result["missing_modules"] = missing_modules
-                        all_updates = set(newly_integrated) | missing_modules
-                        if not all_updates:
-                            return False
-                        current_available.update(all_updates)
-                        campaign["availableModules"] = list(current_available)
-                        campaign["lastUpdated"] = datetime.now().isoformat()
-                        return True
-
-                    self.campaign_data, _changed = mutate_campaign_state(
-                        self.campaign_file,
-                        merge_modules,
-                        summaries_dir=self.summaries_dir,
-                        archives_dir=self.archives_dir,
-                        # A reset may delete the file while an older manager
-                        # instance still carries the prior timeline in memory.
-                        fallback=_default_campaign_data(),
-                    )
-                    missing_modules = merge_result["missing_modules"]
-
-                    if merge_result["lifecycle_changed"]:
-                        warning(
-                            "Campaign lifecycle changed during module refresh; "
-                            "availability sync deferred",
-                            category="module_loading",
-                        )
-
-                    if newly_integrated:
-                        info(
-                            f"INITIALIZATION: Integrated {len(newly_integrated)} new modules: {', '.join(newly_integrated)}",
-                            category="module_loading",
-                        )
-                    if missing_modules:
-                        info(
-                            f"INITIALIZATION: Synced {len(missing_modules)} existing modules: {', '.join(missing_modules)}",
-                            category="module_loading",
-                        )
-
-                return {
-                    "success": True,
-                    "newly_integrated": list(newly_integrated),
-                    "available_modules": self.campaign_data.get("availableModules", []),
-                }
-            except Exception as e:
-                # Best-effort rollback on failure during refresh commit.
-                try:
-                    recover_incomplete_refresh_commit()
-                except Exception:
-                    pass
-                warning(f"INITIALIZATION: Failed to scan for new modules: {e}", category="module_loading")
-                return {
-                    "success": False,
-                    "newly_integrated": [],
-                    "available_modules": self.campaign_data.get("availableModules", []),
-                    "error": str(e),
-                }
-
-    def refresh_modules_async(self, max_seconds: int = 3):
-        """Run refresh with a bounded wait; return quickly on timeout."""
-        executor = ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(self.refresh_modules)
-        try:
-            return future.result(timeout=max_seconds)
-        except FuturesTimeoutError:
-            future.cancel()
-            return {
-                "success": False,
-                "newly_integrated": [],
-                "available_modules": self.campaign_data.get("availableModules", []),
-                "error": "refresh_timeout",
-            }
-        finally:
-            executor.shutdown(wait=False, cancel_futures=True)
-    
     def get_campaign_context(self) -> str:
         """Get campaign context for AI conversations"""
         context_parts = []

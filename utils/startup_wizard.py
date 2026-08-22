@@ -254,8 +254,8 @@ def scan_available_modules():
     available" with both bundled adventures sitting on disk (issues #167/#172/
     #173). The legacy scan (pre-715732d5) was a plain os.listdir and never had
     this failure mode. We restore that: NO recover() gate on the read-only scan.
-    Crash-safe recovery still runs where it belongs -- in the module BUILD/publish
-    paths (createNewModule, campaign integration), which are unchanged.
+    The transactional store itself was later removed entirely (P2b/P2c):
+    builds are crash-safe by construction (hidden build-aside + atomic swap).
 
     The module_refresh_lock is kept (benign single-writer; guarantees any
     downstream lock-ownership assertions pass and serializes against a

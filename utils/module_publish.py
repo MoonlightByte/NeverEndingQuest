@@ -176,7 +176,7 @@ def _sync_directory(path: Path) -> None:
 def _replace_entry(source: Path, destination: Path) -> None:
     """Move one entry with bounded sharing retry and landed-state proof.
 
-    Ported verbatim from ModuleLifecycleStore._replace_entry: on Windows an
+    Ported verbatim from the removed lifecycle store's _replace_entry: on Windows an
     ``os.replace`` can raise a transient sharing/lock OSError even when the
     rename actually landed, so we re-stat both paths and compare inode/device/
     file-type identity before deciding success vs indeterminate vs retry.

@@ -3124,7 +3124,7 @@ Create atmospheric travel narration that leads into this adventure."""
         PLACE), validates the module, and returns the exact ``world_registry.json``
         bytes to commit after the atomic rename. Reuses the proven ModuleStitcher
         registry helpers (_resolve_id_conflicts, _build_registry_candidate, ...)
-        with NO ModuleLifecycleStore dependency (that store is deleted in P2c).
+        with NO dependency on the removed transactional lifecycle store.
 
         Fail-forward contract: this runs on the HIDDEN candidate BEFORE the module
         is made live. Any raise here aborts the publish with ``modules/<name>``
@@ -4790,17 +4790,9 @@ Respond with JSON:
                     category="module_integration",
                 )
                 return []
-            from utils.commit_state import recover_incomplete_refresh_commit
-            from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
-
-            recover_incomplete_refresh_commit()
-            recovery = ModuleLifecycleStore(self.modules_dir).recover()
-            if recovery.status is RecoveryStatus.INDETERMINATE:
-                warning(
-                    "Module integration blocked by indeterminate lifecycle recovery",
-                    category="module_integration",
-                )
-                return []
+            # P2c: the transactional lifecycle store is gone. A failed build
+            # never touches modules/ (atomic build-aside + swap), so there is
+            # nothing to "recover" before a scan -- integrate directly.
             return self._scan_and_integrate_new_modules_locked()
 
     def _scan_and_integrate_new_modules_locked(self) -> List[str]:
