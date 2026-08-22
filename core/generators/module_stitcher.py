@@ -3042,6 +3042,78 @@ Create atmospheric travel narration that leads into this adventure."""
             module_restoration_proven=True,
         )
 
+    def _registry_with_live_publication_identities(
+        self, registry: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Return a detached conflict view augmented from live module trees.
+
+        A freshly seeded registry can legitimately contain only its ``modules``
+        map.  Conflict resolution still needs the identifiers owned by those
+        already-live modules.  Rebuild that conflict-only view from disk while
+        the caller owns ``module_refresh_lock``; never rewrite the live registry
+        as part of discovery.
+        """
+        from utils.module_refresh_lock import assert_module_refresh_lock_owned
+
+        assert_module_refresh_lock_owned()
+        conflict_registry = deepcopy(registry)
+        conflict_areas = conflict_registry.get("areas")
+        if not isinstance(conflict_areas, dict):
+            raise ValueError("World registry shape is invalid")
+
+        support_roots = {
+            "backups",
+            "campaign_archives",
+            "campaign_summaries",
+            "conversation_history",
+            "default",
+            "encounters",
+            "logs",
+        }
+        try:
+            with os.scandir(self.modules_dir) as scan:
+                entries = sorted(scan, key=lambda entry: entry.name)
+        except OSError as exc:
+            raise ValueError("Live module roots could not be inspected") from exc
+
+        for entry in entries:
+            module_name = entry.name
+            if module_name.startswith(".") or module_name in support_roots:
+                continue
+            if entry.is_symlink():
+                raise ValueError("Live module root is a link")
+            if self._is_symlink_or_reparse(entry.path):
+                raise ValueError("Live module root is a reparse point")
+            try:
+                is_directory = entry.is_dir(follow_symlinks=False)
+            except OSError as exc:
+                raise ValueError("Live module root could not be inspected") from exc
+            if not is_directory:
+                continue
+            module_path = self._target_module_path(module_name)
+            if module_path is None:
+                raise ValueError("Live module path is not contained")
+            if not os.path.isdir(os.path.join(module_path, "areas")):
+                continue
+
+            area_ids, _location_ids, reason = (
+                self._module_identity_sets_for_conflict_scan(module_path)
+            )
+            if area_ids is None:
+                raise ValueError(
+                    f"Live module identities could not be inspected: {reason}"
+                )
+            for area_id in area_ids:
+                owner = conflict_areas.get(area_id)
+                if owner is None:
+                    conflict_areas[area_id] = {"module": module_name}
+                    continue
+                if not isinstance(owner, dict) or owner.get("module") != module_name:
+                    raise ValueError(
+                        f"Found duplicate live area identity: {area_id}"
+                    )
+
+        return conflict_registry
 
     def build_publication_registry_bytes(self, candidate_path, module_name):
         """Store-free registry preparation for the atomic-publish path (P2b).
@@ -3114,6 +3186,9 @@ Create atmospheric travel narration that leads into this adventure."""
             prior_registry["areas"] = {}
         elif not isinstance(prior_registry["areas"], dict):
             raise ValueError("World registry shape is invalid")
+        conflict_registry = self._registry_with_live_publication_identities(
+            prior_registry
+        )
         if self._registry_references_module(prior_registry, module_name):
             raise ValueError("Allocated module name is already registry-owned")
 
@@ -3134,7 +3209,7 @@ Create atmospheric travel narration that leads into this adventure."""
             module_name,
             module_data,
             _ModuleBackupResult(True, area_documents=captured_areas),
-            registry_snapshot=prior_registry,
+            registry_snapshot=conflict_registry,
             module_path=candidate_text,
         )
         if normalized:
@@ -3153,13 +3228,22 @@ Create atmospheric travel narration that leads into this adventure."""
         valid, reason = self._validate_required_publication_files(candidate_text)
         if not valid:
             raise ValueError(reason or "Normalized module files are incomplete")
-        overlap = set(module_data["areas"]).intersection(
-            prior_registry.get("areas", {})
+        remaining_conflict, conflict_reason = (
+            self._detect_legacy_publication_conflicts(
+                module_name,
+                candidate_text,
+                conflict_registry,
+            )
         )
-        if overlap:
+        if remaining_conflict is None:
             raise ValueError(
-                "Managed candidate retains conflicting area IDs: "
-                + ", ".join(sorted(overlap))
+                "Managed candidate conflict absence could not be proven: "
+                + conflict_reason
+            )
+        if remaining_conflict:
+            raise ValueError(
+                "Managed candidate retains conflicting identities: "
+                + conflict_reason
             )
 
         module_data["travelNarration"] = self._generate_travel_narration(
@@ -3880,16 +3964,27 @@ Create atmospheric travel narration that leads into this adventure."""
 
             # Check for area ID conflicts
             conflicting_areas = []
-            for area_id in module_data.get('areas', {}):
+            candidate_area_ids = list(module_data.get('areas', {}))
+            for area_id in candidate_area_ids:
                 if area_id in existing_areas:
                     conflicting_areas.append(area_id)
+
+            # Allocation must avoid BOTH live IDs and every other area already
+            # present in this candidate. Otherwise HH001 conflicting with a
+            # live module can be renamed onto the candidate's own HH002.json,
+            # overwriting that file before the old one is removed.
+            occupied_areas = deepcopy(existing_areas)
+            for area_id in candidate_area_ids:
+                occupied_areas.setdefault(area_id, {"module": module_name})
 
             if conflicting_areas:
                 print(f"  - Found {len(conflicting_areas)} area ID conflicts: {conflicting_areas}")
 
                 # Generate new unique area IDs
                 for old_area_id in conflicting_areas:
-                    new_area_id = self._generate_unique_area_id(old_area_id, existing_areas, module_name)
+                    new_area_id = self._generate_unique_area_id(
+                        old_area_id, occupied_areas, module_name
+                    )
 
                     # Update area file
                     original_area = next(
@@ -3921,8 +4016,8 @@ Create atmospheric travel narration that leads into this adventure."""
                                     old_location.replace(old_area_id, new_area_id, 1)
                                 )
 
-                    # Update existing areas registry for future conflict checks
-                    existing_areas[new_area_id] = {"module": module_name}
+                    # Reserve each allocation for later candidate conflicts.
+                    occupied_areas[new_area_id] = {"module": module_name}
 
             self._apply_exact_id_mapping_to_module(
                 module_path,
@@ -3939,6 +4034,10 @@ Create atmospheric travel narration that leads into this adventure."""
                 module_path,
                 current_area_documents,
                 registry_snapshot=registry,
+                fail_closed=(
+                    os.path.abspath(module_path)
+                    != os.path.abspath(os.path.join(self.modules_dir, module_name))
+                ),
             )
             conflicts_resolved += location_conflicts
 
@@ -4135,6 +4234,7 @@ Create atmospheric travel narration that leads into this adventure."""
         module_path: str,
         backup_area_documents: Dict[str, Dict[str, Any]],
         registry_snapshot: Optional[Dict[str, Any]] = None,
+        fail_closed: bool = False,
     ) -> int:
         """
         Ensures all location IDs in a new module are globally unique.
@@ -4147,30 +4247,46 @@ Create atmospheric travel narration that leads into this adventure."""
         """
         print(f"DEBUG: [Module Stitcher] Validating global uniqueness of location IDs for {module_name}...")
 
-        # 1. Get all existing location IDs from the world registry
+        # 1. Get all existing location IDs from the live module trees named by
+        # the detached conflict registry. Do not reconstruct an area filename
+        # from its JSON areaId: legacy packages may not have matching stems,
+        # and silently skipping that lookup would miss a real collision.
         all_existing_loc_ids = set()
         registry = (
             registry_snapshot
             if registry_snapshot is not None
             else self.world_registry
         )
-        for area_id in registry.get('areas', {}):
-            # To get actual location IDs, we must load the area file
-            try:
-                area_info = registry['areas'][area_id]
-                existing_module_name = area_info.get('module')
-                if not existing_module_name:
-                    continue
-                
-                path_manager = ModulePathManager(existing_module_name)
-                area_file_path = path_manager.get_area_path(area_id)
-                area_data = safe_json_load(area_file_path)
-                if area_data:
-                    for loc in area_data.get('locations', []):
-                        if loc.get('locationId'):
-                            all_existing_loc_ids.add(loc.get('locationId'))
-            except Exception:
-                continue # Skip if file can't be read
+        existing_module_names = {
+            area_info.get("module")
+            for area_info in registry.get("areas", {}).values()
+            if isinstance(area_info, dict)
+            and isinstance(area_info.get("module"), str)
+            and area_info.get("module") != module_name
+        }
+        for existing_module_name in sorted(existing_module_names):
+            existing_path = self._target_module_path(existing_module_name)
+            if existing_path is None:
+                raise ValueError("Registered module path is unsafe")
+            state, _entry_stat, state_reason = self._exact_module_entry_state(
+                existing_module_name, existing_path
+            )
+            # Preserve compatibility with a registry entry whose package was
+            # removed. There is no live identity to collide with in that case.
+            if state == "absent":
+                continue
+            if state != "directory":
+                raise ValueError(
+                    f"Registered module path is unsafe: {state_reason}"
+                )
+            _area_ids, location_ids, reason = (
+                self._module_identity_sets_for_conflict_scan(existing_path)
+            )
+            if location_ids is None:
+                raise ValueError(
+                    f"Live module identities could not be inspected: {reason}"
+                )
+            all_existing_loc_ids.update(location_ids)
 
         # 2. Get all location IDs from the NEW module
         new_module_loc_ids = set()
@@ -4229,7 +4345,14 @@ Create atmospheric travel narration that leads into this adventure."""
                 from core.generators.module_generator import ModuleGenerator
                 temp_generator = ModuleGenerator()
                 updated_area_data = temp_generator.update_area_with_prefix(area_data, new_prefix)
-                safe_write_json(area_file_path, updated_area_data)
+                if safe_write_json(area_file_path, updated_area_data) is not True:
+                    raise OSError(
+                        f"Could not persist location-ID rewrite: {area_filename}"
+                    )
+                if safe_json_load(area_file_path) != updated_area_data:
+                    raise OSError(
+                        f"Location-ID rewrite failed readback: {area_filename}"
+                    )
                 conflicts_resolved += len(updated_area_data.get('locations', []))
 
         # After re-prefixing, we need to update all references to the old IDs
@@ -4241,6 +4364,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 os.path.abspath(module_path)
                 == os.path.abspath(os.path.join(self.modules_dir, module_name))
             ),
+            fail_closed=fail_closed,
         )
 
         return conflicts_resolved
@@ -4288,6 +4412,7 @@ Create atmospheric travel narration that leads into this adventure."""
         *,
         module_path: Optional[str] = None,
         update_party_tracker: bool = True,
+        fail_closed: bool = False,
     ) -> None:
         """
         Update all internal references to location IDs after re-prefixing using a safe, recursive JSON traversal.
@@ -4302,6 +4427,10 @@ Create atmospheric travel narration that leads into this adventure."""
             # Build ID mapping from the immutable area documents captured by
             # the descriptor-relative backup before any mutation.
             if not backup_area_documents:
+                if fail_closed:
+                    raise ValueError(
+                        "No original area documents are available for ID rewrite"
+                    )
                 print(f"DEBUG: [Module Stitcher] WARNING: No proven backup area data found for {module_name}, cannot build ID mapping for reference updates.")
                 return
 
@@ -4355,10 +4484,19 @@ Create atmospheric travel narration that leads into this adventure."""
                             
                             # Check if any changes were made before writing
                             if data != updated_data:
-                                safe_write_json(file_path, updated_data)
+                                if safe_write_json(file_path, updated_data) is not True:
+                                    raise OSError(
+                                        f"Could not persist ID references: {file_path}"
+                                    )
+                                if safe_json_load(file_path) != updated_data:
+                                    raise OSError(
+                                        f"ID reference readback differs: {file_path}"
+                                    )
                                 print(f"DEBUG: [Module Stitcher] Updated location ID references in {os.path.relpath(file_path, module_path)}")
                         
                         except Exception as e:
+                            if fail_closed:
+                                raise
                             print(f"DEBUG: [Module Stitcher] WARNING: Could not process {file_path} for ID updates: {e}")
 
             # CRITICAL: Update party_tracker.json if this module is currently active
@@ -4383,6 +4521,8 @@ Create atmospheric travel narration that leads into this adventure."""
                     print(f"DEBUG: [Module Stitcher] WARNING: Could not update party_tracker.json: {tracker_error}")
 
         except Exception as e:
+            if fail_closed:
+                raise
             print(f"DEBUG: [Module Stitcher] ERROR: Failed to update location references for {module_name}: {e}")
     
     def _validate_module_safety(

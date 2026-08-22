@@ -19,8 +19,9 @@ Design (isolated single-writer per the server's per-player instance model):
      COMMIT POINT -- with a Windows-correct occupancy guard and a landed-state-
      proof retry (ported from the store's ``_replace_entry`` -- os.replace can
      raise a transient OSError on Windows even when the rename actually
-     completed). Any failure up to and including this rename leaves
-     ``modules/<name>/`` untouched: the build simply did not happen.
+     completed). A proven pre-rename failure leaves ``modules/<name>/``
+     untouched. An indeterminate rename can leave the complete candidate live
+     or absent, but never exposes a partial directory copy.
   6. Once the rename lands the module is LIVE and the publish has SUCCEEDED.
      Every remaining step is best-effort and NEVER raises: the advisory
      ``world_registry.json`` write is transient-retried and, if it still fails,
@@ -317,8 +318,10 @@ def publish_module_atomic(
         PublishResult(module_name, build_id, workspace_path).
 
     Raises:
-        PublishError / PublishIndeterminateError on a build or rename failure;
-        modules/<name>/ is guaranteed untouched on any raise.
+        PublishError / PublishIndeterminateError on a build or rename failure.
+        A proven pre-commit failure leaves modules/<name>/ untouched. In the
+        rare indeterminate-rename case, the complete candidate may be live or
+        absent, but a partially copied public module is never exposed.
     """
     assert_module_refresh_lock_owned()
     modules_root = Path(modules_dir).absolute()
@@ -345,9 +348,9 @@ def publish_module_atomic(
         _sync_directory(workspace)
 
         # 3. Occupancy guard, then the single atomic rename -- the COMMIT POINT.
-        #    Any failure up to and including this rename leaves modules/<name>/
-        #    untouched (or, in the rare indeterminate-rename case, an orphan the
-        #    sweep retires); the build simply did not happen (fail-forward).
+        #    A failure before this rename leaves modules/<name>/ untouched. In
+        #    the rare indeterminate-rename case, the complete candidate may be
+        #    live or absent; the operation never exposes a partial copy.
         _assert_final_path_free(modules_root, final_name)
         _replace_entry(candidate_path, modules_root / final_name)
     except BaseException:
@@ -390,13 +393,13 @@ def publish_module_atomic(
 
 
 def _cleanup_orphan_workspace(workspace: Path) -> None:
-    """Best-effort removal of an empty/leftover temp build workspace."""
+    """Best-effort removal of this invocation's temp build workspace."""
     if not workspace.exists():
         return
     try:
         shutil.rmtree(workspace)
     except OSError as exc:
-        # Non-fatal: the startup orphan sweep will retire it later.
+        # Non-fatal: hidden workspaces are ignored; P2c owns the orphan sweep.
         debug(
             f"Left build workspace {workspace.name} for later sweep: {exc}",
             category="module_management",

@@ -115,11 +115,12 @@ def _run_managed_module_build(
 
     Runs story-first once, then safely dials down to the compatible generator on
     a bounded set of model-format exhaustion errors. Each attempt gets a FRESH
-    temp workspace via ``publish_module_atomic``; a build failure leaves an
-    orphan temp dir (swept later) and NEVER touches ``modules/<name>`` -- a
-    failed build is a failed action, not a broken or corrupted game (fail-
-    forward). Local durability, authentication, cancellation, and interruption
-    failures deliberately bypass this fallback.
+    temp workspace via ``publish_module_atomic``; an ordinary build failure
+    removes its workspace best-effort and NEVER touches ``modules/<name>``. A
+    hard process crash can leave only a hidden, ignored workspace for P2c's
+    orphan sweep. A failed build is a failed action, not a broken or corrupted
+    game (fail-forward). Local durability, authentication, cancellation, and
+    interruption failures deliberately bypass this fallback.
     """
     from utils.module_publish import publish_module_atomic
     from utils.module_refresh_lock import module_refresh_lock
@@ -413,8 +414,8 @@ class ModuleBuilder:
         self.location_gen = LocationGenerator()
         self.area_gen = AreaGenerator()
         
-        # Directory ownership belongs to ManagedModuleBuilder (production) or
-        # to the explicit low-level caller.  Construction must never create a
+        # Directory ownership belongs to the atomic publisher (production) or
+        # to the explicit low-level caller. Construction must never create a
         # discoverable public module path as a side effect.
     
     def log(self, message: str):
@@ -1036,8 +1037,8 @@ MODULE INDEPENDENCE RULES:
     def create_module_directories(self):
         """Initialize only the exact output directory assigned by the caller.
 
-        Name allocation and collision handling belong to ManagedModuleBuilder,
-        before this low-level writer runs.  This method never redirects output
+        Name allocation and collision handling belong to the atomic publisher
+        before this low-level writer runs. This method never redirects output
         to a sibling path and never writes through pre-existing content.
         """
         output_path = self.config.output_directory
@@ -2934,7 +2935,7 @@ def _ai_driven_module_creation_impl(
     policy: Any = "game",
     prepare_candidate: Optional[Callable[[Path, str], Any]] = None,
 ) -> tuple[bool, Optional[str]]:
-    """Build one validated module through the hidden managed lifecycle.
+    """Build and atomically publish one validated module from hidden workspace.
 
     Args:
         params: Narrative plus optional snake-case typed toolkit values.
@@ -2943,8 +2944,8 @@ def _ai_driven_module_creation_impl(
 
     Returns:
         tuple[bool, Optional[str]]: (success_status, module_name)
-        The returned name is the lifecycle's exact allocated final name. Game
-        builds remain hidden in READY until the publication owner commits them.
+        The returned name is the atomic publisher's exact allocated final name.
+        A successful return means the complete module directory is already live.
     """
     module_name = None
     try:
@@ -3212,11 +3213,11 @@ def _ai_driven_module_creation_impl(
                 {
                     "stage": 8,
                     "total_stages": 9,
-                    "stage_name": "Generated",
+                    "stage_name": "Published",
                     "percentage": 88,
                     "status": "running",
                     "terminal": False,
-                    "message": f"Module {module_name} generated; awaiting publication...",
+                    "message": f"Module {module_name} published successfully.",
                 }
             )
 
@@ -3236,7 +3237,7 @@ def _ai_driven_module_creation_impl(
             exception=e,
             category="module_creation",
         )
-        # ManagedModuleBuilder retires only its exact UUID-owned workspace.
+        # The atomic publisher retires only its exact UUID-owned workspace.
         # No path-derived recursive cleanup is permitted here.
         #
         # Carry the reason out instead of returning (False, None): callers used

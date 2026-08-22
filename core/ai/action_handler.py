@@ -901,6 +901,47 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_data):
     from core.managers.combat_manager import run_combat_simulation as run_combat
     return run_combat(encounter_id, party_tracker_data, location_data)
 
+
+def _cache_module_starting_location(
+    module_name: str,
+    starting_location: tuple,
+    *,
+    registry_path: str = "modules/world_registry.json",
+) -> bool:
+    """Merge one cache entry into the latest registry under its write lock."""
+    from utils.module_refresh_lock import module_refresh_lock
+
+    if (
+        not isinstance(module_name, str)
+        or not module_name
+        or not isinstance(starting_location, (tuple, list))
+        or len(starting_location) < 4
+    ):
+        return False
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            return False
+        world_registry = safe_json_load(registry_path)
+        if not isinstance(world_registry, dict):
+            return False
+        modules = world_registry.get("modules")
+        if not isinstance(modules, dict):
+            return False
+        module_data = modules.get(module_name)
+        # Never resurrect a module removed while the model call was in flight.
+        if not isinstance(module_data, dict):
+            return False
+        module_data["startingLocation"] = {
+            "locationId": starting_location[0],
+            "locationName": starting_location[1],
+            "areaId": starting_location[2],
+            "areaName": starting_location[3],
+            "determinedBy": "AI",
+            "timestamp": datetime.now().isoformat(),
+        }
+        safe_json_dump(world_registry, registry_path)
+        return True
+
 def get_module_starting_location(module_name: str) -> tuple:
     """Get the starting location for a module using AI analysis with caching"""
     try:
@@ -979,21 +1020,16 @@ def get_module_starting_location(module_name: str) -> tuple:
         
         # Cache the result in world registry
         if starting_location and world_registry:
-            if module_name not in world_registry['modules']:
-                world_registry['modules'][module_name] = {}
-            
-            world_registry['modules'][module_name]['startingLocation'] = {
-                'locationId': starting_location[0],
-                'locationName': starting_location[1], 
-                'areaId': starting_location[2],
-                'areaName': starting_location[3],
-                'determinedBy': 'AI',
-                'timestamp': datetime.now().isoformat()
-            }
-            
             try:
-                safe_json_dump(world_registry, world_registry_path)
-                info(f"SUCCESS: Cached AI-determined starting location for {module_name}", category="module_loading")
+                cached = _cache_module_starting_location(
+                    module_name,
+                    starting_location,
+                    registry_path=world_registry_path,
+                )
+                if cached:
+                    info(f"SUCCESS: Cached AI-determined starting location for {module_name}", category="module_loading")
+                else:
+                    warning(f"FILE_OP: Starting-location cache skipped for {module_name}; registry changed or refresh was busy", category="module_loading")
             except Exception as cache_err:
                 # INT-H5: a cache-WRITE failure must not discard an already-valid
                 # starting location and strand the player; log and continue.
