@@ -5274,6 +5274,11 @@ def main_game_loop():
             debug(f"STATE_CHANGE: reconcile_campaign_state result: {reconcile_result}", category="startup")
         except Exception as reconcile_exc:
             warning(f"INITIALIZATION: reconcile_campaign_state failed: {reconcile_exc}", category="startup")
+
+        # P2c: retire stale hidden build residue (crash orphans). Never
+        # raises, never blocks -- housekeeping only.
+        from utils.module_publish import sweep_orphan_build_workspaces
+        sweep_orphan_build_workspaces()
     
         # Path manager already initialized above for both paths
         # Just verify it's using the correct module

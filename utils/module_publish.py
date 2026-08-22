@@ -50,8 +50,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from utils.enhanced_logger import debug, error
-from utils.module_refresh_lock import assert_module_refresh_lock_owned
+from utils.enhanced_logger import debug, error, info
+from utils.module_refresh_lock import (
+    assert_module_refresh_lock_owned,
+    module_refresh_lock,
+)
 from utils.transient_filesystem import (
     is_transient_filesystem_error,
     retry_transient_filesystem,
@@ -399,8 +402,82 @@ def _cleanup_orphan_workspace(workspace: Path) -> None:
     try:
         shutil.rmtree(workspace)
     except OSError as exc:
-        # Non-fatal: hidden workspaces are ignored; P2c owns the orphan sweep.
+        # Non-fatal: hidden workspaces are ignored; the startup sweep retires it.
         debug(
             f"Left build workspace {workspace.name} for later sweep: {exc}",
             category="module_management",
         )
+
+
+# Orphans younger than this are NEVER swept: another worker sharing this
+# GAME_ROOT could still be mid-build. Real builds run minutes; a day-old
+# hidden workspace can only be crash residue.
+_ORPHAN_SWEEP_MIN_AGE_SECONDS = 24 * 60 * 60
+
+# Residue of the removed transactional lifecycle store (pre-P2c). No writer
+# for this directory exists anymore, so it can never be "in progress" -- the
+# age threshold is kept anyway as clock-skew insurance.
+_LEGACY_STORE_DIRNAME = ".module_transactions"
+
+
+def sweep_orphan_build_workspaces(
+    modules_dir="modules",
+    *,
+    min_age_seconds: float = _ORPHAN_SWEEP_MIN_AGE_SECONDS,
+) -> int:
+    """Retire crash-orphaned hidden build residue. NEVER raises, NEVER blocks.
+
+    Removes ``modules/.module_build_*`` workspaces (and the legacy
+    ``modules/.module_transactions`` store directory) whose mtime is older
+    than ``min_age_seconds``, under ``module_refresh_lock``. A busy lock, a
+    missing directory, or any OSError just skips -- startup must never be
+    delayed or broken by residue cleanup (fail-forward). Returns the number
+    of entries removed.
+    """
+    removed = 0
+    try:
+        modules_root = Path(modules_dir).absolute()
+        if not modules_root.is_dir():
+            return 0
+        with module_refresh_lock() as acquired:
+            if not acquired:
+                debug(
+                    "Orphan sweep skipped: module refresh is busy",
+                    category="module_management",
+                )
+                return 0
+            now = time.time()
+            for entry in list(modules_root.iterdir()):
+                name = entry.name
+                if not (
+                    name.startswith(_BUILD_WORKSPACE_PREFIX)
+                    or name == _LEGACY_STORE_DIRNAME
+                ):
+                    continue
+                try:
+                    age = now - entry.lstat().st_mtime
+                    if age < min_age_seconds:
+                        debug(
+                            f"Orphan sweep kept young workspace {name} "
+                            f"(age {age:.0f}s)",
+                            category="module_management",
+                        )
+                        continue
+                    if entry.is_dir() and not entry.is_symlink():
+                        shutil.rmtree(entry)
+                    else:
+                        entry.unlink()
+                    removed += 1
+                    info(
+                        f"Orphan sweep removed stale build residue: {name}",
+                        category="module_management",
+                    )
+                except OSError as exc:
+                    debug(
+                        f"Orphan sweep left {name}: {exc}",
+                        category="module_management",
+                    )
+    except Exception as exc:
+        # Absolute backstop: sweeping is housekeeping, never a startup gate.
+        debug(f"Orphan sweep skipped: {exc}", category="module_management")
+    return removed
