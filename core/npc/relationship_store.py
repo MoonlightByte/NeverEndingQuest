@@ -692,6 +692,27 @@ class RelationshipStore:
         edge["appliedEventIds"] = kept_ids + evicted_ids[overflow:]
 
     @staticmethod
+    def _sanitize_advisory(value: Any) -> Optional[Dict[str, Any]]:
+        """Bound one accepted say/do/want advisory beat (M7 persistence).
+
+        Caps mirror the T105 contract (say 240 / do 200 / want 200); thought
+        shares the 300-char working-intent bound. Returns None when the beat
+        carries no substance."""
+        if not isinstance(value, Mapping):
+            return None
+        beat = {
+            "say": _text(value.get("say"), 240),
+            "do": _text(value.get("do"), 200),
+            "want": _text(value.get("want"), 200),
+            "thought": _text(value.get("thought"), 300),
+            "beatId": _text(value.get("beatId"), 120),
+            "stale": bool(value.get("stale")),
+        }
+        if not (beat["say"] or beat["do"] or beat["want"] or beat["thought"]):
+            return None
+        return beat
+
+    @staticmethod
     def _set_working(
         document: Dict[str, Any],
         npc_id: str,
@@ -720,7 +741,29 @@ class RelationshipStore:
             else None,
             "sceneId": _text(working.get("sceneId"), 240),
         }
-        if document["working"].get(npc_id) == candidate:
+        # M7: persist the accepted say/do/want advisory beat. Retention rule
+        # (value): keep the LAST accepted advisory per NPC plus a rolling
+        # advisoryHistory capped at 10 entries, oldest-out; a re-commit of the
+        # identical beat appends nothing (idempotent, value comparison).
+        existing = document["working"].get(npc_id)
+        existing = existing if isinstance(existing, dict) else {}
+        advisory = RelationshipStore._sanitize_advisory(working.get("advisory"))
+        if advisory is not None:
+            candidate["advisory"] = advisory
+            history = [
+                row for row in existing.get("advisoryHistory", [])
+                if isinstance(row, dict)
+            ]
+            if not history or history[-1] != advisory:
+                history = (history + [advisory])[-10:]
+            candidate["advisoryHistory"] = history
+        else:
+            # An advisory-less working refresh never erases persisted beats.
+            if isinstance(existing.get("advisory"), dict):
+                candidate["advisory"] = existing["advisory"]
+            if isinstance(existing.get("advisoryHistory"), list):
+                candidate["advisoryHistory"] = existing["advisoryHistory"]
+        if existing == candidate:
             return False
         document["working"][npc_id] = candidate
         return True
@@ -848,6 +891,7 @@ class RelationshipStore:
         mood_tags: Iterable[str] = (),
         expires_after_turn: Optional[int] = None,
         scene_id: str = "",
+        advisory: Optional[Mapping[str, Any]] = None,
     ) -> bool:
         working = {
             "currentPrivateIntent": thought,
@@ -857,6 +901,7 @@ class RelationshipStore:
             "moodTags": list(mood_tags),
             "expiresAfterTurn": expires_after_turn,
             "sceneId": scene_id,
+            "advisory": advisory,
         }
 
         def update(document: Dict[str, Any]) -> Tuple[bool, None]:

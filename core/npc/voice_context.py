@@ -1187,6 +1187,17 @@ def commit_accepted_ooc_voice_batch(
                         npc_id=result.npc_id,
                     )
                 continue
+            # M7: the accepted advisory beat (say/do/want/thought) persists in
+            # the working section of the sidecar; the store keeps the last beat
+            # plus a rolling history capped at 10 (oldest-out, value-idempotent).
+            advisory = {
+                "say": result.say or "",
+                "do": result.do or "",
+                "want": result.want or "",
+                "thought": result.thought or "",
+                "beatId": result.source_turn_id or batch.batch_id,
+                "stale": bool(getattr(result, "stale", False)),
+            }
             working = {
                 "currentPrivateIntent": result.thought,
                 "sourceTurn": result.source_turn_id or batch.batch_id,
@@ -1195,6 +1206,7 @@ def commit_accepted_ooc_voice_batch(
                 "moodTags": list(result.mood_tags),
                 "expiresAfterTurn": result.expires_after_turn,
                 "sceneId": result.scene_id,
+                "advisory": advisory,
             }
             if result.affinity_event is not None:
                 application = store.apply_event(
@@ -1233,6 +1245,7 @@ def commit_accepted_ooc_voice_batch(
                     mood_tags=result.mood_tags,
                     expires_after_turn=result.expires_after_turn,
                     scene_id=result.scene_id,
+                    advisory=advisory,
                 )
                 committed += int(working_mutated)
                 if batch.telemetry is not None:

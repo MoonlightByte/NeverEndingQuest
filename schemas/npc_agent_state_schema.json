@@ -194,7 +194,21 @@
         "openQuestion": {"type": "string", "maxLength": 240},
         "moodTags": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 60}},
         "expiresAfterTurn": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
-        "sceneId": {"type": "string", "maxLength": 240}
+        "sceneId": {"type": "string", "maxLength": 240},
+        "advisory": {"$ref": "#/$defs/advisoryBeat"},
+        "advisoryHistory": {"type": "array", "maxItems": 10, "items": {"$ref": "#/$defs/advisoryBeat"}}
+      }
+    },
+    "advisoryBeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "say": {"type": "string", "maxLength": 240},
+        "do": {"type": "string", "maxLength": 200},
+        "want": {"type": "string", "maxLength": 200},
+        "thought": {"type": "string", "maxLength": 300},
+        "beatId": {"type": "string", "maxLength": 120},
+        "stale": {"type": "boolean"}
       }
     },
     "lifecycleEvent": {
