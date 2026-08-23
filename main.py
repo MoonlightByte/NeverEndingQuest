@@ -1584,19 +1584,16 @@ def _expected_committed_destination(user_input, party_tracker_data):
     return {"location_id": expected_id, "location_name": expected_name}
 
 
-def _validate_required_transition_action(
-    response_data, user_input, party_tracker_data
-):
+def _validate_required_transition_action(response_data, expected):
     """Require a matching transition for an explicit move to a known place.
 
-    This deliberately guards only deterministic cases: committed movement plus
-    an exact known location ID or name. Ambiguous narrative references remain
+    ``expected`` is the precomputed result of
+    ``_expected_committed_destination`` for this turn's input. This
+    deliberately guards only deterministic cases: committed movement plus an
+    exact known location ID or name. Ambiguous narrative references remain
     the semantic validator's responsibility.
     """
-    if not isinstance(response_data, dict):
-        return True, ""
-    expected = _expected_committed_destination(user_input, party_tracker_data)
-    if expected is None:
+    if not isinstance(response_data, dict) or expected is None:
         return True, ""
     expected_location_id = expected["location_id"]
     actions = response_data.get("actions", [])
@@ -5995,6 +5992,11 @@ def main_game_loop():
         # deterministic contract demanded: the turn resolves with one honest
         # in-fiction narration instead of an unwinnable retry loop.
         travel_contradiction_narration = None
+        # One deterministic destination per turn's input; shared by the
+        # transition contract and the contradiction short-circuit.
+        expected_turn_destination = _expected_committed_destination(
+            user_input_text, party_tracker_data
+        )
 
         while retry_count < 5 and not valid_response_received:
             # Authorization belongs only to this candidate response. A retry
@@ -6089,7 +6091,7 @@ def main_game_loop():
                 response_data = json.loads(ai_response_content)
                 transition_contract_valid, transition_contract_error = (
                     _validate_required_transition_action(
-                        response_data, user_input_text, party_tracker_data
+                        response_data, expected_turn_destination
                     )
                 )
                 if not transition_contract_valid:
@@ -6195,9 +6197,7 @@ def main_game_loop():
                             # unwinnable (each side rejects the other's
                             # required response). Resolve the turn with one
                             # honest in-fiction narration; state untouched.
-                            expected_destination = _expected_committed_destination(
-                                user_input_text, party_tracker_data
-                            )
+                            expected_destination = expected_turn_destination
                             rejected_target = str(
                                 action.get("parameters", {}).get("newLocation", "")
                             ).strip()
