@@ -51,6 +51,7 @@ See LICENSE file for full terms.
 # - Template Method: Consistent action processing pipeline
 # ============================================================================
 
+import copy
 import json
 import hashlib
 import subprocess
@@ -190,6 +191,19 @@ class ApprovedTransitionPlan:
     evidence_identity: str
 
 
+@dataclass(frozen=True)
+class TransitionPrevalidationOutcome:
+    """Private, non-persisted result of one transition prevalidation pass."""
+
+    approved: bool
+    reason_code: str
+    message: str = ""
+    facts: dict = None
+    plan: object = None
+    intermediate_destination_id: str = ""
+    intermediate_destination_name: str = ""
+
+
 def _stable_transition_hash(value):
     """Return a deterministic identity for JSON-like transition evidence."""
     encoded = json.dumps(
@@ -285,6 +299,731 @@ def _write_location_transition_checkpoint(checkpoint):
     safe_json_dump(checkpoint, PENDING_LOCATION_TRANSITION_FILE)
 
 
+def _new_current_transition_checkpoint(
+    *,
+    module_name,
+    origin_area_id,
+    origin_location_id,
+    origin_location_name,
+    destination_location_id,
+    destination_location_name,
+    destination_area_id,
+    destination_area_name,
+    conversation_history,
+    deferred_actions,
+    origin_party_tracker,
+):
+    """Build the approved v2 record without content-derived authority."""
+    operation_id = str(uuid4())
+    persisted_history = safe_json_load(
+        "modules/conversation_history/conversation_history.json"
+    )
+    if not isinstance(persisted_history, list):
+        persisted_history = json.loads(json.dumps(conversation_history))
+    segment_start = 0
+    for index in range(len(persisted_history) - 1, -1, -1):
+        message = persisted_history[index]
+        content = message.get("content", "") if isinstance(message, dict) else ""
+        if isinstance(message, dict) and message.get("role") == "user" and (
+            "Location transition:" in content or "Module transition:" in content
+        ):
+            segment_start = index + 1
+            break
+    origin_segment = persisted_history[segment_start:]
+    journal = safe_json_load("journal.json")
+    journal_entries = (
+        journal.get("entries", [])
+        if isinstance(journal, dict) and isinstance(journal.get("entries"), list)
+        else []
+    )
+    world = origin_party_tracker.get("worldConditions", {})
+    staged_journal_entry = {
+        "date": "%s %s %s"
+        % (
+            world.get("year", "N/A"),
+            world.get("month", "N/A"),
+            world.get("day", "N/A"),
+        ),
+        "time": world.get("time", "N/A"),
+        "location": sanitize_text(origin_location_name),
+        "summary": None,
+    }
+    path_manager = ModulePathManager(str(module_name))
+    action_records = []
+    for index, action in enumerate(deferred_actions or []):
+        action_record = {
+            "index": index,
+            "operation_id": str(uuid4()),
+            "family": action.get("action") if isinstance(action, dict) else None,
+            "status": "pending",
+            "action": json.loads(json.dumps(action)),
+            "receipt": None,
+        }
+        if action_record["family"] == "updateTime":
+            from updates.update_world_time import calculate_world_time_fields
+
+            parameters = action.get("parameters", {})
+            minutes = int(parameters.get("timeEstimate"))
+            clock_before = {
+                field: world.get(field)
+                for field in ("time", "day", "month", "year")
+            }
+            action_record["receipt"] = {
+                "kind": "updateTime",
+                "minutes": minutes,
+                "before": clock_before,
+                "after": calculate_world_time_fields(world, minutes),
+            }
+        elif action_record["family"] == "removeEffect":
+            from core.managers.effects_runtime import prepare_remove_effect
+
+            parameters = action.get("parameters", {})
+            action_record["receipt"] = prepare_remove_effect(
+                parameters.get("characterName"),
+                effect_id=parameters.get("effectId"),
+                name=parameters.get("effectName"),
+                reason=parameters.get("reason") or "removed",
+            )
+        elif action_record["family"] == "establishHub":
+            from core.managers.campaign_manager import prepare_hub_establishment
+
+            parameters = action.get("parameters", {})
+            hub_name = parameters.get("hubName")
+            if not hub_name:
+                raise ValueError("establishHub requires hubName")
+            action_record["receipt"] = prepare_hub_establishment(
+                hub_name,
+                {
+                    "hubType": parameters.get("hubType", "settlement"),
+                    "description": parameters.get("description", ""),
+                    "services": parameters.get("services", []),
+                    "ownership": parameters.get("ownership", "party"),
+                },
+            )
+            action_record["receipt"]["note"] = {
+                "message_id": str(uuid4()),
+                "content": (
+                    "Dungeon Master Note: '%s' has been established as a hub "
+                    "location. The party can now return here from other adventures."
+                    % sanitize_text(hub_name)
+                ),
+            }
+        elif action_record["family"] == "listSaves":
+            action_record["receipt"] = {
+                "kind": "listSaves",
+                "message_id": str(uuid4()),
+            }
+        elif action_record["family"] == "saveGame":
+            parameters = action.get("parameters", {})
+            action_record["receipt"] = {
+                "kind": "saveGame",
+                "description": parameters.get("description", ""),
+                "save_mode": parameters.get("saveMode", "essential"),
+                "save_folder": "save_%s_%s"
+                % (
+                    datetime.now().strftime("%Y%m%d_%H%M%S"),
+                    action_record["operation_id"].split("-")[0],
+                ),
+                "message_id": str(uuid4()),
+            }
+        elif action_record["family"] == "deleteSave":
+            from updates.save_game_manager import SaveGameManager
+
+            parameters = action.get("parameters", {})
+            action_record["receipt"] = SaveGameManager().prepare_staged_delete(
+                parameters.get("saveFolder"), action_record["operation_id"]
+            )
+            action_record["receipt"]["message_id"] = str(uuid4())
+        elif action_record["family"] == "exitGame":
+            action_record["receipt"] = {"kind": "exitGame"}
+        action_records.append(action_record)
+    return {
+        "version": 2,
+        "kind": "current_transition",
+        "movement_kind": "within_module",
+        "operation_id": operation_id,
+        # Compatibility key for callers which correlate v1 and v2 without
+        # interpreting either record's identity scheme.
+        "transition_id": operation_id,
+        "module_name": str(module_name),
+        "origin_area_id": str(origin_area_id),
+        "origin_area_path": path_manager.get_area_path(str(origin_area_id)),
+        "origin_location_id": str(origin_location_id),
+        "origin_location_name": sanitize_text(origin_location_name),
+        "destination_location_id": str(destination_location_id),
+        "destination_location_name": sanitize_text(destination_location_name),
+        "destination_area_id": str(destination_area_id),
+        "destination_area_name": sanitize_text(destination_area_name),
+        "origin_history_boundary": segment_start,
+        "origin_segment_before": json.loads(json.dumps(origin_segment)),
+        "departure_summary": {"status": "pending", "text": None, "provider_response_id": None},
+        "departure_commit": {
+            "status": "pending",
+            "transaction_id": str(uuid4()),
+            "area_path": path_manager.get_area_path(str(origin_area_id)),
+            "area_owned_before": None,
+            "area_owned_after": None,
+            "journal_entry_index": len(journal_entries),
+            "journal_entry_before": None,
+            "journal_entry_after": staged_journal_entry,
+        },
+        "location_reconciliation": {
+            "status": "pending",
+            "operation_id": str(uuid4()),
+            "area_path": path_manager.get_area_path(str(origin_area_id)),
+            "location_id": str(origin_location_id),
+            "monsters_before": None,
+            "monsters_after": None,
+        },
+        "narration": {
+            "status": "pending",
+            "text": None,
+            "message_id": str(uuid4()),
+            "history_index": None,
+            "history_entry_before": None,
+            "history_entry_after": None,
+        },
+        "conversation_compaction": {"status": "pending"},
+        "chunked_chronicle": {"status": "pending"},
+        "legacy_memory": {"status": "pending", "journal_operation_id": operation_id, "targets": []},
+        "episode": {
+            "status": "pending",
+            "episode_operation_id": str(uuid4()),
+            "boundary_turn_id": None,
+            "source_entries_before": json.loads(json.dumps(origin_segment)),
+            "episode_id": None,
+        },
+        "deferred_actions": {
+            "status": "pending" if action_records else "committed",
+            "actions": action_records,
+            "cursor": 0,
+            "receipts": [],
+        },
+        "plot_update": None,
+        "module_handoff": None,
+        "legacy_repair": None,
+        "final_context": {"status": "pending"},
+        "phase": "planned",
+    }
+
+
+def resolve_cross_module_target_projection(target_module, parameters):
+    """Resolve one represented module destination to canonical IDs and names.
+
+    The model chooses the module and may request an explicit represented
+    destination.  Code owns identity reconciliation: it neither guesses from
+    prose nor silently combines an area from one location with a location from
+    another.  Invalid structured references return facts to the agent before
+    any checkpoint or gameplay mutation exists.
+    """
+    parameters = parameters if isinstance(parameters, dict) else {}
+    default_location_id, default_location_name, default_area_id, default_area_name = (
+        get_module_starting_location(target_module)
+    )
+    supplied = {
+        key: str(parameters.get(key) or "").strip()
+        for key in (
+            "currentAreaId",
+            "currentArea",
+            "currentLocationId",
+            "currentLocation",
+        )
+    }
+    if not any(supplied.values()):
+        return {
+            "currentAreaId": str(default_area_id),
+            "currentArea": str(default_area_name),
+            "currentLocationId": str(default_location_id),
+            "currentLocation": str(default_location_name),
+        }
+    if not supplied["currentAreaId"] or not supplied["currentLocationId"]:
+        raise ValueError(
+            "an explicit module destination requires both currentAreaId and "
+            "currentLocationId"
+        )
+
+    path_manager = ModulePathManager(str(target_module))
+    matched = None
+    for candidate_area_id in path_manager.get_area_ids() or []:
+        area_data = safe_json_load(path_manager.get_area_path(candidate_area_id))
+        if not isinstance(area_data, dict):
+            continue
+        for location in area_data.get("locations") or []:
+            if (
+                isinstance(location, dict)
+                and str(location.get("locationId") or "")
+                == supplied["currentLocationId"]
+            ):
+                matched = (
+                    str(area_data.get("areaId") or candidate_area_id),
+                    str(area_data.get("areaName") or ""),
+                    str(location.get("locationId") or ""),
+                    str(location.get("name") or ""),
+                )
+                break
+        if matched is not None:
+            break
+    if matched is None:
+        raise ValueError(
+            "currentLocationId %s does not exist in module %s"
+            % (supplied["currentLocationId"], target_module)
+        )
+    area_id, area_name, location_id, location_name = matched
+    if supplied["currentAreaId"] != area_id:
+        raise ValueError(
+            "currentLocationId %s belongs to currentAreaId %s, not %s"
+            % (location_id, area_id, supplied["currentAreaId"])
+        )
+    if supplied["currentArea"] and supplied["currentArea"] != area_name:
+        raise ValueError(
+            "currentAreaId %s is named %s, not %s"
+            % (area_id, area_name, supplied["currentArea"])
+        )
+    if supplied["currentLocation"] and supplied["currentLocation"] != location_name:
+        raise ValueError(
+            "currentLocationId %s is named %s, not %s"
+            % (location_id, location_name, supplied["currentLocation"])
+        )
+    return {
+        "currentAreaId": area_id,
+        "currentArea": area_name,
+        "currentLocationId": location_id,
+        "currentLocation": location_name,
+    }
+
+
+def stage_cross_module_root_checkpoint(
+    action,
+    clock_action,
+    conversation_history,
+    party_tracker_data,
+    narration_source,
+):
+    """Stage canonical updatePartyTracker -> updateTime module travel."""
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    if not isinstance(action, dict) or action.get("action") != "updatePartyTracker":
+        raise ValueError("cross-module travel must begin with updatePartyTracker")
+    if not isinstance(clock_action, dict) or clock_action.get("action") != "updateTime":
+        raise ValueError("cross-module travel requires one updateTime tail")
+    parameters = copy.deepcopy(action.get("parameters") or {})
+    source_module = str(party_tracker_data.get("module") or "")
+    target_module = str(parameters.get("module") or "")
+    if not source_module or not target_module or source_module == target_module:
+        raise ValueError("cross-module travel requires a different module")
+    target_values = resolve_cross_module_target_projection(
+        target_module, parameters
+    )
+    parameters.update(target_values)
+    parameters["module"] = target_module
+    source_world = party_tracker_data.get("worldConditions") or {}
+    checkpoint = _new_current_transition_checkpoint(
+        module_name=source_module,
+        origin_area_id=source_world.get("currentAreaId", ""),
+        origin_location_id=source_world.get("currentLocationId", ""),
+        origin_location_name=source_world.get("currentLocation", ""),
+        destination_location_id=target_values["currentLocationId"],
+        destination_location_name=target_values["currentLocation"],
+        destination_area_id=target_values["currentAreaId"],
+        destination_area_name=target_values["currentArea"],
+        conversation_history=conversation_history,
+        deferred_actions=[clock_action],
+        origin_party_tracker=party_tracker_data,
+    )
+    checkpoint["movement_kind"] = "cross_module_root"
+    source_projection = {
+        "module": source_module,
+        **{
+            key: source_world.get(key)
+            for key in (
+                "currentAreaId",
+                "currentArea",
+                "currentLocationId",
+                "currentLocation",
+            )
+        },
+    }
+    target_projection = {"module": target_module, **target_values}
+    checkpoint["module_handoff"] = {
+        "status": "pending",
+        "completion_id": checkpoint["operation_id"],
+        "source_projection": source_projection,
+        "target_projection": target_projection,
+        "parameters": parameters,
+        "transition_history": json.loads(json.dumps(conversation_history)),
+    }
+    checkpoint["location_reconciliation"]["status"] = "not_applicable"
+    checkpoint["departure_summary"]["status"] = "not_applicable"
+    checkpoint["departure_commit"]["status"] = "not_applicable"
+    checkpoint["episode"]["status"] = "not_applicable"
+    checkpoint["conversation_compaction"]["status"] = "not_applicable"
+    checkpoint["chunked_chronicle"]["status"] = "not_applicable"
+    checkpoint["legacy_memory"]["status"] = "not_applicable"
+    checkpoint["narration"]["source_prompt"] = str(narration_source or "")
+    checkpoint["narration"]["status"] = "deferred_to_module_handoff"
+    checkpoint["phase"] = "narration_deferred"
+    with _party_module_transition_lock():
+        existing = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
+        if isinstance(existing, dict):
+            raise RuntimeError("a prior location transition is awaiting recovery")
+        _write_location_transition_checkpoint(checkpoint)
+    return checkpoint
+
+
+def load_current_transition_checkpoint(operation_id=None):
+    checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
+    if not isinstance(checkpoint, dict):
+        return None
+    if checkpoint.get("version") != 2 or checkpoint.get("kind") != "current_transition":
+        return None
+    if operation_id and checkpoint.get("operation_id") != operation_id:
+        return None
+    return checkpoint
+
+
+def prepare_current_transition_actions(operation_id):
+    """Freeze required semantic sibling proposals before movement."""
+    checkpoint = load_current_transition_checkpoint(operation_id)
+    if checkpoint is None:
+        raise RuntimeError("current transition checkpoint is unavailable")
+    records = checkpoint["deferred_actions"]["actions"]
+    for index, record in enumerate(records):
+        family = record.get("family")
+        if family not in {
+            "updatePlot",
+            "moveBackgroundNPC",
+            "updateCharacterInfo",
+            "storageInteraction",
+            "updatePartyNPCs",
+            "updatePartyTracker",
+        } or record.get(
+            "receipt"
+        ) is not None:
+            continue
+        parameters = record["action"].get("parameters", {})
+        if family == "updatePlot":
+            from updates.plot_update import prepare_plot_update
+
+            receipt = prepare_plot_update(
+                parameters.get("plotPointId"),
+                parameters.get("newStatus"),
+                parameters.get("plotImpact"),
+            )
+            receipt["quest_projection"] = {"status": "pending"}
+        elif family == "moveBackgroundNPC":
+            receipt = prepare_background_npc_movement(
+                parameters.get("npcName"),
+                parameters.get("context", ""),
+                parameters.get("currentLocation"),
+                safe_json_load("party_tracker.json"),
+            )
+        elif family == "updateCharacterInfo":
+            from core.managers.effects_runtime import prepare_character_update
+
+            party = safe_json_load("party_tracker.json") or {}
+            character_name = (
+                parameters.get("characterName")
+                or parameters.get("npcName")
+                or next(iter(party.get("partyMembers", []) or []), None)
+            )
+            changes = parameters.get("changes")
+            if isinstance(changes, dict):
+                changes = json.dumps(changes)
+            receipt = prepare_character_update(
+                character_name, changes, party
+            )
+        elif family == "storageInteraction":
+            from core.managers.storage_processor import process_storage_request
+            from core.managers.storage_manager import StorageManager
+
+            party = safe_json_load("party_tracker.json") or {}
+            character_name = parameters.get("characterName") or next(
+                iter(party.get("partyMembers", []) or []), None
+            )
+            if not character_name:
+                raise ValueError("storageInteraction requires a character")
+            description = parameters.get("description")
+            if not isinstance(description, str) or not description.strip():
+                raise ValueError("storageInteraction requires a description")
+            proposal = process_storage_request(
+                description,
+                character_name,
+                structural_reissue=True,
+            )
+            if not proposal.get("success"):
+                raise RuntimeError("required storage proposal was not accepted")
+            receipt = StorageManager(
+                ensure_storage=False
+            ).prepare_staged_operation(
+                proposal["operation"], record["operation_id"]
+            )
+            receipt["message_id"] = str(uuid4())
+        elif family == "updatePartyNPCs":
+            receipt = prepare_party_npc_update(
+                parameters, record["operation_id"]
+            )
+        else:
+            source_module = str(checkpoint.get("module_name") or "")
+            target_module = str(parameters.get("module") or "")
+            if not target_module or target_module == source_module:
+                raise ValueError("post-local module handoff requires another module")
+            location_id, location_name, area_id, area_name = (
+                get_module_starting_location(target_module)
+            )
+            supplied_area = str(parameters.get("currentAreaId") or "").strip()
+            supplied_location = str(
+                parameters.get("currentLocationId") or ""
+            ).strip()
+            if supplied_area and supplied_area != str(area_id):
+                raise ValueError("module handoff area ID is not canonical")
+            if supplied_location and supplied_location != str(location_id):
+                raise ValueError("module handoff location ID is not canonical")
+            exact_parameters = copy.deepcopy(parameters)
+            exact_parameters.update(
+                {
+                    "module": target_module,
+                    "currentAreaId": str(area_id),
+                    "currentArea": str(area_name),
+                    "currentLocationId": str(location_id),
+                    "currentLocation": str(location_name),
+                }
+            )
+            receipt = {
+                "kind": "updatePartyTracker",
+                "operation_id": record["operation_id"],
+                "completion_id": record["operation_id"],
+                "status": "staged",
+                "parameters": exact_parameters,
+                "source_projection": {
+                    "module": source_module,
+                    "currentAreaId": checkpoint.get("destination_area_id"),
+                    "currentArea": checkpoint.get("destination_area_name"),
+                    "currentLocationId": checkpoint.get(
+                        "destination_location_id"
+                    ),
+                    "currentLocation": checkpoint.get(
+                        "destination_location_name"
+                    ),
+                },
+                "target_projection": {
+                    "module": target_module,
+                    "currentAreaId": str(area_id),
+                    "currentArea": str(area_name),
+                    "currentLocationId": str(location_id),
+                    "currentLocation": str(location_name),
+                },
+            }
+        receipt.update(
+            {
+                "operation_id": record["operation_id"],
+                "status": "staged",
+            }
+        )
+        checkpoint = load_current_transition_checkpoint(operation_id)
+        checkpoint["deferred_actions"]["actions"][index]["receipt"] = receipt
+        if family == "updatePartyTracker":
+            checkpoint["module_handoff"] = {
+                "status": "pending",
+                "action_index": index,
+                "completion_id": receipt["completion_id"],
+                "source_projection": copy.deepcopy(receipt["source_projection"]),
+                "target_projection": copy.deepcopy(receipt["target_projection"]),
+            }
+            checkpoint["narration"]["status"] = "deferred_to_module_handoff"
+            checkpoint["phase"] = "narration_deferred"
+        _write_location_transition_checkpoint(checkpoint)
+    return load_current_transition_checkpoint(operation_id)
+
+
+def update_current_transition_checkpoint(operation_id, **changes):
+    checkpoint = load_current_transition_checkpoint(operation_id)
+    if checkpoint is None:
+        return None
+    checkpoint.update(changes)
+    _write_location_transition_checkpoint(checkpoint)
+    return checkpoint
+
+
+def resolve_current_transition_reconciliation(operation_id, transition_context):
+    """Resolve advisory T091 and durably receipt its exact owned values."""
+    checkpoint = load_current_transition_checkpoint(operation_id)
+    if checkpoint is None:
+        raise RuntimeError("current transition checkpoint is unavailable")
+    receipt = checkpoint["location_reconciliation"]
+    if receipt.get("status") in {"committed", "attempted_unavailable"}:
+        return receipt["status"]
+
+    from utils import reconcile_location_state
+    from utils.capture.live_provider_call import LiveProviderUnavailable
+
+    try:
+        proposal = reconcile_location_state.prepare_reconciliation(
+            checkpoint["origin_area_id"],
+            checkpoint["origin_location_id"],
+            transition_context["origin_history_segment"],
+        )
+    except LiveProviderUnavailable:
+        receipt["status"] = "attempted_unavailable"
+        _write_location_transition_checkpoint(checkpoint)
+        return receipt["status"]
+    receipt.update(
+        {
+            "status": "pending",
+            "area_path": proposal["area_path"],
+            "location_id": proposal["location_id"],
+            "monsters_before": proposal["monsters_before"],
+            "monsters_after": proposal["monsters_after"],
+        }
+    )
+    _write_location_transition_checkpoint(checkpoint)
+    outcome = reconcile_location_state.apply_reconciliation(receipt)
+    receipt["status"] = (
+        "committed" if outcome in {"committed", "already_committed"}
+        else "blocked_conflict"
+    )
+    checkpoint["phase"] = (
+        "reconciliation_resolved"
+        if receipt["status"] == "committed"
+        else "blocked_conflict"
+    )
+    _write_location_transition_checkpoint(checkpoint)
+    return receipt["status"]
+
+
+def resolve_current_transition_departure(operation_id, transition_context):
+    """Run required T016/T015 outside locks, then commit once on game thread."""
+    checkpoint = load_current_transition_checkpoint(operation_id)
+    if checkpoint is None:
+        raise RuntimeError("current transition checkpoint is unavailable")
+    summary_record = checkpoint["departure_summary"]
+    commit_record = checkpoint["departure_commit"]
+    if commit_record.get("status") == "committed":
+        return summary_record.get("text")
+
+    from core.ai import adv_summary
+
+    if summary_record.get("status") != "accepted":
+        action_projection = [
+            {
+                "action": "transitionLocation",
+                "parameters": {
+                    "newLocation": checkpoint["destination_location_id"]
+                },
+                "workflow_status": "committed",
+            }
+        ]
+        for action_record in checkpoint["deferred_actions"].get("actions", []):
+            projected_action = copy.deepcopy(action_record.get("action"))
+            if not isinstance(projected_action, dict):
+                continue
+            projected_action["workflow_status"] = str(
+                action_record.get("status") or "pending"
+            )
+            action_projection.append(projected_action)
+        proposal = adv_summary.prepare_departure_summary(
+            transition_context["origin_history_segment"],
+            transition_context["origin_party_tracker"],
+            transition_context["origin_location_info"]["name"],
+            checkpoint["origin_area_id"],
+            checkpoint["origin_location_id"],
+            structured_actions=action_projection,
+        )
+        area_before = proposal["area_before"]
+        location_index = next(
+            index
+            for index, location in enumerate(area_before["locations"])
+            if location.get("locationId") == checkpoint["origin_location_id"]
+        )
+        summary_record.update(
+            {
+                "status": "accepted",
+                "text": proposal["summary"],
+                "provider_response_id": None,
+            }
+        )
+        staged_journal_entry = copy.deepcopy(
+            commit_record["journal_entry_after"]
+        )
+        staged_journal_entry["summary"] = proposal["summary"]
+        commit_record.update(
+            {
+                "status": "staged",
+                "area_path": proposal["area_path"],
+                "area_owned_before": copy.deepcopy(
+                    proposal["area_before"]["locations"][location_index]
+                ),
+                "area_owned_after": copy.deepcopy(
+                    proposal["area_after"]["locations"][location_index]
+                ),
+                "journal_entry_after": staged_journal_entry,
+            }
+        )
+        checkpoint["phase"] = "departure_pending"
+        _write_location_transition_checkpoint(checkpoint)
+
+    area_data = safe_json_load(commit_record["area_path"])
+    journal_data = safe_json_load("journal.json")
+    if not isinstance(area_data, dict) or not isinstance(
+        area_data.get("locations"), list
+    ):
+        raise RuntimeError("departure area is unavailable during commit")
+    if not isinstance(journal_data, dict) or not isinstance(
+        journal_data.get("entries"), list
+    ):
+        raise RuntimeError("journal is unavailable during departure commit")
+    target = next(
+        (
+            location
+            for location in area_data["locations"]
+            if location.get("locationId") == checkpoint["origin_location_id"]
+        ),
+        None,
+    )
+    if target == commit_record["area_owned_after"]:
+        journal_index = commit_record["journal_entry_index"]
+        if (
+            journal_index < len(journal_data["entries"])
+            and journal_data["entries"][journal_index]
+            == commit_record["journal_entry_after"]
+        ):
+            commit_record["status"] = "committed"
+            checkpoint["phase"] = "departure_committed"
+            _write_location_transition_checkpoint(checkpoint)
+            return summary_record["text"]
+    if target != commit_record["area_owned_before"]:
+        commit_record["status"] = "blocked_conflict"
+        checkpoint["phase"] = "blocked_conflict"
+        _write_location_transition_checkpoint(checkpoint)
+        raise RuntimeError("departure area changed outside the staged operation")
+    if len(journal_data["entries"]) != commit_record["journal_entry_index"]:
+        commit_record["status"] = "blocked_conflict"
+        checkpoint["phase"] = "blocked_conflict"
+        _write_location_transition_checkpoint(checkpoint)
+        raise RuntimeError("departure journal changed outside the staged operation")
+
+    area_after = copy.deepcopy(area_data)
+    for index, location in enumerate(area_after["locations"]):
+        if location.get("locationId") == checkpoint["origin_location_id"]:
+            area_after["locations"][index] = copy.deepcopy(
+                commit_record["area_owned_after"]
+            )
+            break
+    journal_after = copy.deepcopy(journal_data)
+    journal_after["entries"].append(
+        copy.deepcopy(commit_record["journal_entry_after"])
+    )
+    adv_summary.commit_departure_summary(
+        commit_record["area_path"],
+        area_data,
+        area_after,
+        journal_after,
+    )
+    commit_record["status"] = "committed"
+    checkpoint["phase"] = "departure_committed"
+    _write_location_transition_checkpoint(checkpoint)
+    return summary_record["text"]
+
+
 def _remove_location_transition_checkpoint():
     try:
         os.remove(PENDING_LOCATION_TRANSITION_FILE)
@@ -299,7 +1038,8 @@ def complete_location_transition_checkpoint(transition_id):
     checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
     if not isinstance(checkpoint, dict):
         return False
-    if checkpoint.get("transition_id") != transition_id:
+    checkpoint_identity = checkpoint.get("operation_id") or checkpoint.get("transition_id")
+    if checkpoint_identity != transition_id:
         return False
     checkpoint["phase"] = "completed"
     _write_location_transition_checkpoint(checkpoint)
@@ -318,8 +1058,22 @@ def mark_location_transition_deferred_pending(transition_id, deferred_actions):
     checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
     if not isinstance(checkpoint, dict):
         return False
-    if checkpoint.get("transition_id") != transition_id:
+    checkpoint_identity = checkpoint.get("operation_id") or checkpoint.get("transition_id")
+    if checkpoint_identity != transition_id:
         return False
+    if checkpoint.get("version") == 2:
+        deferred = checkpoint.get("deferred_actions")
+        if not isinstance(deferred, dict):
+            return False
+        staged_actions = deferred.get("actions")
+        if not isinstance(staged_actions, list):
+            return False
+        if [item.get("action") for item in staged_actions] != list(deferred_actions or []):
+            return False
+        checkpoint["phase"] = "deferred_actions_pending"
+        deferred["status"] = "pending" if staged_actions else "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return True
     checkpoint["phase"] = "deferred_actions_pending"
     checkpoint["deferred_action_count"] = len(deferred_actions or [])
     checkpoint["deferred_actions_identity"] = _stable_transition_hash(
@@ -327,6 +1081,513 @@ def mark_location_transition_deferred_pending(transition_id, deferred_actions):
     )
     _write_location_transition_checkpoint(checkpoint)
     return True
+
+
+def _publish_stable_transition_message(message_id, content, *, role="system"):
+    """Append one checkpoint-owned message to canonical history exactly once."""
+    history_path = "modules/conversation_history/conversation_history.json"
+    history = safe_json_load(history_path)
+    if not isinstance(history, list):
+        raise RuntimeError("conversation history is unavailable")
+    if any(
+        isinstance(item, dict) and item.get("message_id") == message_id
+        for item in history
+    ):
+        return "already_published"
+    history.append(
+        {"role": role, "content": content, "message_id": message_id}
+    )
+    safe_json_dump(history, history_path)
+    return "published"
+
+
+def _current_save_listing():
+    from updates.save_game_manager import SaveGameManager
+
+    saves = SaveGameManager().list_save_games()
+    if not saves:
+        return "No save games found."
+    lines = ["Available save games:"]
+    for index, save in enumerate(saves, 1):
+        lines.extend(
+            [
+                "%s. %s" % (index, save.get("save_folder", "Unknown")),
+                "   Date: %s" % save.get("save_date_readable", "Unknown date"),
+                "   Module: %s" % save.get("module", "Unknown"),
+                "   Mode: %s" % save.get("save_mode", "unknown"),
+                "   Description: %s" % save.get("description", "No description"),
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def apply_current_transition_action(operation_id, action_index):
+    """Apply one staged v2 sibling through its reviewed family receipt."""
+    checkpoint = load_current_transition_checkpoint(operation_id)
+    if checkpoint is None:
+        raise RuntimeError("current transition checkpoint is unavailable")
+    deferred = checkpoint.get("deferred_actions")
+    records = deferred.get("actions") if isinstance(deferred, dict) else None
+    if not isinstance(records, list) or action_index >= len(records):
+        raise RuntimeError("staged deferred action is unavailable")
+    record = records[action_index]
+    if record.get("index") != action_index:
+        raise RuntimeError("staged deferred action order is invalid")
+    if record.get("status") == "committed":
+        deferred["cursor"] = max(int(deferred.get("cursor", 0)), action_index + 1)
+        return "committed"
+    family = record.get("family")
+    receipt = record.get("receipt")
+    if not isinstance(receipt, dict):
+        raise RuntimeError(
+            "deferred action family %s has no approved v2 receipt" % family
+        )
+
+    from core.managers.campaign_manager import _party_module_transition_lock
+    from updates.update_world_time import apply_staged_world_time
+
+    if family == "updatePlot":
+        from updates.plot_update import apply_staged_plot_update
+        from utils.quest_player_formatter import (
+            apply_staged_player_quests,
+            prepare_player_quests,
+            refresh_staged_player_quest_source,
+        )
+
+        if receipt.get("status") != "plot_committed":
+            with _party_module_transition_lock():
+                outcome = apply_staged_plot_update(receipt)
+                if outcome == "blocked_conflict":
+                    record["status"] = "blocked_conflict"
+                    checkpoint["phase"] = "blocked_conflict"
+                    _write_location_transition_checkpoint(checkpoint)
+                    return outcome
+                receipt["status"] = "plot_committed"
+                _write_location_transition_checkpoint(checkpoint)
+
+        checkpoint = load_current_transition_checkpoint(operation_id)
+        record = checkpoint["deferred_actions"]["actions"][action_index]
+        receipt = record["receipt"]
+        quest_receipt = receipt.get("quest_projection")
+        if quest_receipt == {"status": "pending"}:
+            quest_receipt = prepare_player_quests(receipt["module"])
+            checkpoint = load_current_transition_checkpoint(operation_id)
+            record = checkpoint["deferred_actions"]["actions"][action_index]
+            record["receipt"]["quest_projection"] = quest_receipt
+            _write_location_transition_checkpoint(checkpoint)
+
+        checkpoint = load_current_transition_checkpoint(operation_id)
+        record = checkpoint["deferred_actions"]["actions"][action_index]
+        receipt = record["receipt"]
+        if receipt["quest_projection"].get("status") == "staged":
+            source_outcome = refresh_staged_player_quest_source(
+                receipt["quest_projection"]
+            )
+            if source_outcome == "blocked_conflict":
+                record["status"] = "blocked_conflict"
+                checkpoint["phase"] = "blocked_conflict"
+                _write_location_transition_checkpoint(checkpoint)
+                return source_outcome
+            _write_location_transition_checkpoint(checkpoint)
+        outcome = apply_staged_player_quests(receipt["quest_projection"])
+        if outcome == "blocked_conflict":
+            record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            return outcome
+        record["receipt"]["quest_projection"]["status"] = (
+            "attempted_unavailable"
+            if outcome == "attempted_unavailable"
+            else "committed"
+        )
+        record["status"] = "committed"
+        deferred = checkpoint["deferred_actions"]
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+            }
+        )
+        if deferred["cursor"] >= len(deferred["actions"]):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "removeEffect":
+        from core.managers.effects_runtime import apply_staged_remove_effect
+
+        outcome = apply_staged_remove_effect(receipt)
+        if outcome == "blocked_conflict":
+            record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            return outcome
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "establishHub":
+        from core.managers.campaign_manager import apply_staged_hub_establishment
+
+        outcome = apply_staged_hub_establishment(receipt)
+        if outcome == "blocked_conflict":
+            record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            return outcome
+        note = receipt["note"]
+        _publish_stable_transition_message(
+            note["message_id"], note["content"], role="user"
+        )
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "listSaves":
+        _publish_stable_transition_message(
+            receipt["message_id"], _current_save_listing()
+        )
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "moveBackgroundNPC":
+        if receipt.get("before") is None:
+            materialize_staged_background_npc_movement(receipt)
+            _write_location_transition_checkpoint(checkpoint)
+        outcome = apply_staged_background_npc_movement(receipt)
+        if outcome == "blocked_conflict":
+            record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            return outcome
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "saveGame":
+        from updates.save_game_manager import SaveGameManager
+
+        success, message = SaveGameManager().create_save_game(
+            receipt["description"],
+            receipt["save_mode"],
+            save_folder=receipt["save_folder"],
+        )
+        if not success:
+            raise RuntimeError("staged save could not complete: %s" % message)
+        _publish_stable_transition_message(
+            receipt["message_id"], "Game saved successfully! %s" % message
+        )
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+                "save_folder": receipt["save_folder"],
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "deleteSave":
+        from updates.save_game_manager import SaveGameManager
+
+        outcome = SaveGameManager().apply_staged_delete(receipt)
+        if outcome == "blocked_conflict":
+            record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            return outcome
+        _publish_stable_transition_message(
+            receipt["message_id"],
+            "Save game deleted: %s" % receipt["save_folder"],
+        )
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "exitGame":
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "updateCharacterInfo":
+        from core.managers.effects_runtime import apply_staged_character_update
+
+        outcome = apply_staged_character_update(receipt)
+        if outcome == "blocked_conflict":
+            record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            return outcome
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "storageInteraction":
+        from core.managers.storage_manager import StorageManager
+
+        outcome = StorageManager.apply_staged_operation(receipt)
+        if outcome == "blocked_conflict":
+            record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            return outcome
+        _publish_stable_transition_message(
+            receipt["message_id"], "Storage: %s" % receipt["message"]
+        )
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "updatePartyNPCs":
+        party = safe_json_load("party_tracker.json")
+        if not isinstance(party, dict) or not isinstance(
+            party.get("partyNPCs"), list
+        ):
+            raise RuntimeError("party roster is unavailable")
+        if party["partyNPCs"] == receipt["roster_before"]:
+            with _party_module_transition_lock():
+                latest = safe_json_load("party_tracker.json")
+                if latest.get("partyNPCs") != receipt["roster_before"]:
+                    outcome = "blocked_conflict"
+                else:
+                    latest["partyNPCs"] = copy.deepcopy(receipt["roster_after"])
+                    safe_json_dump(latest, "party_tracker.json")
+                    outcome = "committed"
+        elif party["partyNPCs"] == receipt["roster_after"]:
+            outcome = "committed"
+        else:
+            outcome = "blocked_conflict"
+        if outcome == "blocked_conflict":
+            record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            return outcome
+        receipt["phase"] = "roster_committed"
+        _write_location_transition_checkpoint(checkpoint)
+        lifecycle_ok = _apply_party_npc_lifecycle(
+            safe_json_load("party_tracker.json") or party,
+            receipt["operation"],
+            receipt["npc_name"],
+            receipt["npc_path"],
+            receipt.get("lifecycle_context"),
+            receipt["operation_id"],
+        )
+        receipt["lifecycle_status"] = (
+            "committed" if lifecycle_ok else "attempted_unavailable"
+        )
+        receipt["phase"] = "lifecycle_resolved"
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+                "lifecycle": receipt["lifecycle_status"],
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family == "updatePartyTracker":
+        from core.managers.campaign_manager import CampaignManager
+        from main import retry_staged_module_completions, save_conversation_history
+
+        def projection(value):
+            world = value.get("worldConditions") if isinstance(value, dict) else None
+            world = world if isinstance(world, dict) else {}
+            return {
+                "module": value.get("module") if isinstance(value, dict) else None,
+                "currentAreaId": world.get("currentAreaId"),
+                "currentArea": world.get("currentArea"),
+                "currentLocationId": world.get("currentLocationId"),
+                "currentLocation": world.get("currentLocation"),
+            }
+
+        party = safe_json_load("party_tracker.json") or {}
+        current = projection(party)
+        completion_party = copy.deepcopy(party)
+        source = receipt["source_projection"]
+        target = receipt["target_projection"]
+        history = safe_json_load(
+            "modules/conversation_history/conversation_history.json"
+        ) or []
+        marker = {
+            "role": "user",
+            "content": "Module transition: %s to %s"
+            % (source["module"], target["module"]),
+        }
+        if current == source:
+            transition_history = list(history)
+            if not transition_history or transition_history[-1] != marker:
+                transition_history.append(marker)
+            original, updated = CampaignManager().publish_party_module_transition(
+                source["module"],
+                target["module"],
+                receipt["parameters"],
+                transition_history,
+                receipt["completion_id"],
+            )
+            save_conversation_history(
+                transition_history, strict=True, allow_compression=False
+            )
+            party = updated
+            completion_party = original
+            current = projection(party)
+        elif current != target:
+            record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            return "blocked_conflict"
+        pending = {
+            "from_module": source["module"],
+            "to_module": target["module"],
+            "party_tracker_data": completion_party,
+            "completion_id": receipt["completion_id"],
+        }
+        targeted, completion = retry_staged_module_completions(
+            pending, safe_json_load(
+                "modules/conversation_history/conversation_history.json"
+            ) or []
+        )
+        if completion["failed"] or completion["blocked"]:
+            raise RuntimeError("module handoff completion remains pending")
+        if targeted is None and receipt["completion_id"] not in completion["completed"]:
+            raise RuntimeError("module handoff completion receipt is absent")
+        receipt["status"] = "authority_transferred"
+        checkpoint["module_handoff"]["status"] = "authority_transferred"
+        checkpoint["phase"] = "module_authority_transferred"
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+                "completion_id": receipt["completion_id"],
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
+
+    if family != "updateTime":
+        raise RuntimeError(
+            "deferred action family %s has no approved v2 receipt" % family
+        )
+
+    with _party_module_transition_lock():
+        outcome = apply_staged_world_time(receipt["before"], receipt["after"])
+        if outcome == "blocked_conflict":
+            record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            return outcome
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+    return "committed"
 
 
 def recover_pending_location_transition(party_tracker_data, conversation_history):
@@ -340,6 +1601,102 @@ def recover_pending_location_transition(party_tracker_data, conversation_history
     checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
     if not isinstance(checkpoint, dict):
         return {"status": "none"}
+
+    if checkpoint.get("version") == 2:
+        if checkpoint.get("kind") != "current_transition":
+            return {
+                "status": "resume_required",
+                "kind": checkpoint.get("kind"),
+            }
+        if checkpoint.get("movement_kind") == "cross_module_root":
+            handoff = checkpoint.get("module_handoff")
+            party_projection = {
+                "module": party_tracker_data.get("module"),
+                **{
+                    key: (party_tracker_data.get("worldConditions") or {}).get(key)
+                    for key in (
+                        "currentAreaId",
+                        "currentArea",
+                        "currentLocationId",
+                        "currentLocation",
+                    )
+                },
+            }
+            if isinstance(handoff, dict) and party_projection in (
+                handoff.get("source_projection"),
+                handoff.get("target_projection"),
+            ):
+                return {
+                    "status": "resume_required",
+                    "operation_id": checkpoint.get("operation_id"),
+                    "phase": checkpoint.get("phase"),
+                }
+            return {
+                "status": "blocked",
+                "reason": "party state matches neither staged module projection",
+            }
+        handoff = checkpoint.get("module_handoff")
+        if isinstance(handoff, dict):
+            world = party_tracker_data.get("worldConditions") or {}
+            party_projection = {
+                "module": party_tracker_data.get("module"),
+                "currentAreaId": world.get("currentAreaId"),
+                "currentArea": world.get("currentArea"),
+                "currentLocationId": world.get("currentLocationId"),
+                "currentLocation": world.get("currentLocation"),
+            }
+            if party_projection == handoff.get("target_projection"):
+                return {
+                    "status": "resume_required",
+                    "operation_id": checkpoint.get("operation_id"),
+                    "phase": checkpoint.get("phase"),
+                }
+        current_id = str(
+            party_tracker_data.get("worldConditions", {}).get(
+                "currentLocationId", ""
+            )
+        )
+        origin_id = str(checkpoint.get("origin_location_id", ""))
+        destination_id = str(checkpoint.get("destination_location_id", ""))
+        phase = checkpoint.get("phase")
+        if phase == "completed":
+            _remove_location_transition_checkpoint()
+            return {"status": "completed"}
+        if phase == "planned" and current_id == origin_id:
+            _remove_location_transition_checkpoint()
+            return {"status": "replan_required"}
+        if current_id != destination_id:
+            return {
+                "status": "blocked",
+                "reason": (
+                    "party location does not match the v2 transition's "
+                    "staged destination"
+                ),
+            }
+        final_context = checkpoint.get("final_context")
+        deferred = checkpoint.get("deferred_actions")
+        narration = checkpoint.get("narration")
+        if (
+            isinstance(final_context, dict)
+            and final_context.get("status") == "committed"
+            and isinstance(deferred, dict)
+            and deferred.get("status") == "committed"
+            and isinstance(narration, dict)
+            and narration.get("status") == "published"
+        ):
+            _remove_location_transition_checkpoint()
+            return {
+                "status": "completed",
+                "operation_id": checkpoint.get("operation_id"),
+            }
+        # V2 never falls into the v1 deterministic-close path: doing so would
+        # discard accepted summary/enrichment/sibling work. The live workflow
+        # resumes this exact record under provider supervision.
+        return {
+            "status": "resume_required",
+            "operation_id": checkpoint.get("operation_id"),
+            "phase": phase,
+        }
 
     origin_id = str(checkpoint.get("origin_location_id", ""))
     destination_id = str(checkpoint.get("destination_location_id", ""))
@@ -494,8 +1851,8 @@ def pre_validate_transition(
         path_manager: ModulePathManager instance
 
     Returns:
-        Tuple (approved: bool, error_message: str), or a three-tuple ending
-        in ApprovedTransitionPlan when ``return_plan=True``.
+        Tuple (approved: bool, error_message: str), or a private
+        TransitionPrevalidationOutcome when ``return_plan=True``.
         - If approved: (True, "")
         - If blocked: (False, "Detailed error message with instructions")
     """
@@ -507,16 +1864,36 @@ def pre_validate_transition(
     from core.ai.transition_validator import validate_transition_request
     from utils.file_operations import safe_read_json
 
-    def finish(approved, message, plan=None):
+    def finish(
+        approved,
+        message,
+        plan=None,
+        *,
+        reason_code=None,
+        facts=None,
+        intermediate_destination_id="",
+        intermediate_destination_name="",
+    ):
         if return_plan:
-            return approved, message, plan
+            return TransitionPrevalidationOutcome(
+                approved=bool(approved),
+                reason_code=reason_code or ("approved" if approved else "uncertain"),
+                message=message or "",
+                facts=dict(facts or {}),
+                plan=plan,
+                intermediate_destination_id=str(intermediate_destination_id or ""),
+                intermediate_destination_name=str(intermediate_destination_name or ""),
+            )
         return approved, message
 
     try:
         new_location_id = parameters.get("newLocation", "")
         if not new_location_id:
-            # No location specified, let normal validator handle it
-            return finish(True, "")
+            return finish(
+                False,
+                "transitionLocation requires a canonical newLocation value.",
+                reason_code="destination_absent",
+            )
 
         world_conditions = party_tracker_data.get("worldConditions", {})
         if world_conditions.get("activeCombatEncounter"):
@@ -525,6 +1902,8 @@ def pre_validate_transition(
                 "[TRAVEL SYSTEM] Travel is unavailable while combat is active. "
                 "Resolve or explicitly end the active combat encounter before "
                 "using transitionLocation.",
+                reason_code="active_combat",
+                facts={"active_combat": True},
             )
 
         # Get current location from party tracker
@@ -543,19 +1922,23 @@ def pre_validate_transition(
         path_message = route.get("reason", "")
 
         if not success:
-            # The "Travel could not be planned" prefix is a code-owned
-            # sentinel: main.py's travel-contradiction short-circuit matches
-            # it to resolve a contract-demanded destination honestly instead
-            # of burning retries. Keep the prefix stable.
+            nodes = snapshot.get("nodes", {})
+            invalid_ids = set(snapshot.get("invalid_location_ids", []))
+            if new_location_id not in nodes:
+                reason_code = "destination_absent"
+            elif new_location_id in invalid_ids:
+                reason_code = "destination_invalid"
+            else:
+                reason_code = "no_valid_route"
             return finish(
                 False,
-                "[TRAVEL SYSTEM] Travel could not be planned: "
-                f"{path_message or 'no connected route exists'}. Do not move "
-                "the party and do not substitute a destination the player "
-                "did not ask for. Narrate in-fiction that this route is not "
-                "passable right now and let the player choose their next "
-                "action; only use transitionLocation for a destination that "
-                "is reachable in the atlas.",
+                path_message or "No fully valid route exists.",
+                reason_code=reason_code,
+                facts={
+                    "requested_destination_id": str(new_location_id),
+                    "route_reason": path_message or "No fully valid route exists.",
+                    "must_not_move": True,
+                },
             )
 
         # Analyze path for encounters and blocking
@@ -626,6 +2009,8 @@ def pre_validate_transition(
                     "[TRAVEL SYSTEM] The route review returned an uncertain "
                     "or invalid decision. Do not move the party; regenerate "
                     "the response and plan the route again.",
+                    reason_code="uncertain",
+                    facts={"must_not_move": True},
                 )
             # Build error message with explicit instructions
             stop_location = transition_result.get("stop_location", "")
@@ -661,7 +2046,22 @@ def pre_validate_transition(
             if transition_result.get("plot_guidance"):
                 error_msg += f"\n\nPLOT GUIDANCE: {transition_result['plot_guidance']}"
 
-            return finish(False, error_msg)
+            return finish(
+                False,
+                error_msg,
+                reason_code="intermediate_stop",
+                facts={
+                    "original_destination_id": str(new_location_id),
+                    "stop_location_id": str(stop_location or ""),
+                    "stop_location_name": str(stop_location_name or ""),
+                    "reason": str(reason or ""),
+                    "narrative_guidance": str(narrative_guidance or ""),
+                    "requires_encounter": bool(requires_encounter),
+                    "plot_guidance": transition_result.get("plot_guidance"),
+                },
+                intermediate_destination_id=stop_location,
+                intermediate_destination_name=stop_location_name,
+            )
 
         plan = _approved_transition_plan(
             origin_location_id=current_location_id,
@@ -674,7 +2074,13 @@ def pre_validate_transition(
             topology_identity=snapshot.get("topology_identity")
             or snapshot.get("snapshot_hash"),
         )
-        return finish(True, "", plan)
+        return finish(
+            True,
+            "",
+            plan,
+            reason_code="approved",
+            facts={"destination_location_id": str(new_location_id)},
+        )
 
     except Exception as e:
         debug(f"Transition pre-validation error: {e}", category="location_transitions")
@@ -683,6 +2089,8 @@ def pre_validate_transition(
             "[TRAVEL SYSTEM] Travel planning could not be completed safely. "
             "Do not move the party; regenerate the response or ask the player "
             "to try the route again.",
+            reason_code="planning_exception",
+            facts={"must_not_move": True},
         )
 
 
@@ -909,6 +2317,114 @@ def update_party_npcs(party_tracker_data, operation, npc):
 
     safe_json_dump(party_tracker_data, "party_tracker.json")
     info(f"STATE_CHANGE: Party NPCs updated - {operation} {npc['name']}", category="character_updates")
+
+
+def prepare_party_npc_update(parameters, operation_id):
+    """Freeze one roster mutation and its canonical sheet before movement."""
+    operation = parameters.get("operation")
+    npc = parameters.get("npc")
+    if operation not in {"add", "remove"} or not isinstance(npc, dict):
+        raise ValueError("updatePartyNPCs requires add/remove and an npc object")
+    npc_name = npc.get("name")
+    if not isinstance(npc_name, str) or not npc_name.strip():
+        raise ValueError("updatePartyNPCs requires an exact NPC name")
+    party = safe_json_load("party_tracker.json")
+    if not isinstance(party, dict) or not isinstance(party.get("partyNPCs"), list):
+        raise RuntimeError("party roster is unavailable")
+    roster_before = copy.deepcopy(party["partyNPCs"])
+    module_name = str(party.get("module", "")).replace(" ", "_")
+    path_manager = ModulePathManager(module_name)
+    from updates.update_character_info import (
+        find_character_file_fuzzy,
+        normalize_character_name,
+    )
+
+    matched_name = find_character_file_fuzzy(npc_name)
+    npc_path = path_manager.get_character_path(
+        matched_name or normalize_character_name(npc_name)
+    )
+    sheet = safe_json_load(npc_path) if os.path.exists(npc_path) else None
+    if operation == "add" and not isinstance(sheet, dict):
+        from core.generators.npc_builder import build_npc_file, load_schema
+
+        schema = load_schema("schemas/char_schema.json")
+        if not isinstance(schema, dict):
+            raise RuntimeError("NPC character schema is unavailable")
+        party_level = None
+        members = party.get("partyMembers") or []
+        if members:
+            player_path = path_manager.get_character_path(
+                normalize_character_name(str(members[0]))
+            )
+            player_sheet = safe_json_load(player_path)
+            if isinstance(player_sheet, dict):
+                party_level = player_sheet.get("level")
+        sheet = build_npc_file(
+            npc_name,
+            schema,
+            npc.get("race"),
+            npc.get("class"),
+            npc.get("level") or party_level,
+            npc.get("background"),
+            path_manager=path_manager,
+            structural_reissue=True,
+        )
+        if not isinstance(sheet, dict):
+            raise RuntimeError("required NPC sheet was not accepted")
+        resolved_name = sheet.get("name") or npc_name
+        npc_path = path_manager.get_character_path(
+            normalize_character_name(resolved_name)
+        )
+        sheet = safe_json_load(npc_path) or sheet
+    elif operation == "remove" and not isinstance(sheet, dict):
+        # Removal still uses the canonical roster display identity. A missing
+        # sheet is retained as an explicit lifecycle-unavailable fact rather
+        # than causing code to invent another NPC identity.
+        roster_match = next(
+            (
+                item
+                for item in roster_before
+                if isinstance(item, dict) and item.get("name") == npc_name
+            ),
+            None,
+        )
+        if roster_match is None:
+            raise ValueError("NPC is not present in the party roster")
+
+    display_name = (
+        sheet.get("name") if isinstance(sheet, dict) else npc_name
+    ) or npc_name
+    roster_after = copy.deepcopy(roster_before)
+    if operation == "add":
+        if not any(
+            isinstance(item, dict) and item.get("name") == display_name
+            for item in roster_after
+        ):
+            roster_after.append(
+                {
+                    "name": display_name,
+                    "role": npc.get("role", npc.get("class", "Companion")),
+                }
+            )
+    else:
+        roster_after = [
+            item
+            for item in roster_after
+            if not isinstance(item, dict) or item.get("name") != npc_name
+        ]
+    return {
+        "kind": "updatePartyNPCs",
+        "operation_id": operation_id,
+        "phase": "sheet_ready",
+        "operation": operation,
+        "npc_name": display_name,
+        "npc_path": npc_path,
+        "sheet": copy.deepcopy(sheet),
+        "roster_before": roster_before,
+        "roster_after": roster_after,
+        "lifecycle_context": copy.deepcopy(parameters.get("lifecycleContext")),
+        "lifecycle_status": "pending",
+    }
 
 
 def _apply_party_npc_lifecycle(
@@ -1404,6 +2920,7 @@ def process_action(
     conversation_history,
     *,
     approved_transition_plan=None,
+    transition_deferred_actions=None,
 ):
     """Process an action based on its type
     
@@ -1875,62 +3392,49 @@ def process_action(
 
         transition_checkpoint = None
         if pending_archive is None:
-            existing_checkpoint = safe_json_load(
-                PENDING_LOCATION_TRANSITION_FILE
+            from core.managers.campaign_manager import (
+                _party_module_transition_lock,
             )
-            if isinstance(existing_checkpoint, dict):
-                return create_return(
-                    status="error",
-                    needs_update=False,
-                    response_data={
-                        "error_message": (
-                            "A prior location transition is awaiting recovery"
-                        ),
-                        "retryable": True,
-                        "error_code": "transition_plan_stale",
-                    },
+
+            with _party_module_transition_lock():
+                existing_checkpoint = safe_json_load(
+                    PENDING_LOCATION_TRANSITION_FILE
                 )
-            transition_id = _stable_transition_hash(
-                {
-                    "plan": {
-                        "origin": approved_transition_plan.origin_location_id,
-                        "destination": approved_transition_plan.destination_location_id,
-                        "module": approved_transition_plan.module_name,
-                        "path": approved_transition_plan.path,
-                        "topology": approved_transition_plan.topology_identity,
-                        "evidence": approved_transition_plan.evidence_identity,
-                    },
-                    # Bind identical route plans to the accepted turn without
-                    # persisting player text or provider prompts.
-                    "history_identity": _stable_transition_hash(
-                        conversation_history
+                if isinstance(existing_checkpoint, dict):
+                    return create_return(
+                        status="error",
+                        needs_update=False,
+                        response_data={
+                            "error_message": (
+                                "A prior location transition is awaiting recovery"
+                            ),
+                            "retryable": True,
+                            "error_code": "transition_plan_stale",
+                        },
+                    )
+                transition_checkpoint = _new_current_transition_checkpoint(
+                    module_name=approved_transition_plan.module_name,
+                    origin_area_id=current_area_id,
+                    origin_location_id=current_location_id,
+                    origin_location_name=current_location_name,
+                    destination_location_id=new_location_name_or_id,
+                    destination_location_name=destination_node.get(
+                        "location_name", new_location_name_or_id
                     ),
-                }
-            )
-            transition_checkpoint = {
-                "version": 1,
-                "transition_id": transition_id,
-                "phase": "planned",
-                "origin_location_id": current_location_id,
-                "origin_location_name": current_location_name,
-                "destination_location_id": new_location_name_or_id,
-                "destination_location_name": destination_node.get(
-                    "location_name", new_location_name_or_id
-                ),
-                # Marker recovery searches only at/after this accepted-turn
-                # boundary, so an older identical A->B trip cannot satisfy it.
-                "history_boundary": len(conversation_history),
-                "history_prefix_identity": _stable_transition_hash(
-                    conversation_history
-                ),
-                "plan_identity": _stable_transition_hash(
-                    {
-                        "topology": approved_transition_plan.topology_identity,
-                        "evidence": approved_transition_plan.evidence_identity,
-                    }
-                ),
-            }
-            _write_location_transition_checkpoint(transition_checkpoint)
+                    destination_area_id=destination_node.get("area_id", ""),
+                    destination_area_name=destination_node.get("area_name", ""),
+                    conversation_history=conversation_history,
+                    deferred_actions=transition_deferred_actions,
+                    origin_party_tracker=authoritative_party,
+                )
+                transition_id = transition_checkpoint["operation_id"]
+                _write_location_transition_checkpoint(transition_checkpoint)
+
+            # Required semantic sibling proposals are frozen before movement,
+            # outside the party/module mutation lock. A provider wait can
+            # therefore neither hold the transition fence nor strand a
+            # partially applied player turn.
+            prepare_current_transition_actions(transition_id)
         
         # Use enhanced location manager with auto-generated area connectivity ID
         def run_location_transition():
@@ -1946,6 +3450,7 @@ def process_action(
                     "topology_identity": verified_transition_context.get("topology_identity"),
                     **destination_node,
                 },
+                defer_post_commit=True,
             )
 
         if pending_archive is not None:
@@ -1982,179 +3487,88 @@ def process_action(
                     },
                 )
         else:
-            transition_prompt = run_location_transition()
-            if transition_prompt and transition_checkpoint is not None:
-                transition_checkpoint["phase"] = "movement_committed"
-                _write_location_transition_checkpoint(transition_checkpoint)
-
-        if transition_prompt:
-            if transition_checkpoint is not None:
-                transition_checkpoint["phase"] = "marker_narration_pending"
-                _write_location_transition_checkpoint(transition_checkpoint)
-            # Get the new location ID from party tracker after transition
-            # The location manager updates party_tracker.json before we get here
-            try:
-                updated_party_tracker = safe_json_load("party_tracker.json")
-                new_location_name = updated_party_tracker["worldConditions"]["currentLocation"]
-                new_location_id = updated_party_tracker["worldConditions"]["currentLocationId"]
-                # Include location IDs in the transition message for reliable matching
-                conversation_history.append({"role": "user", "content": f"Location transition: {sanitize_text(current_location_name)} ({current_location_id}) to {sanitize_text(new_location_name)} ({new_location_id})"})
-            except Exception as e:
-                warning(f"FAILURE: Could not get updated location IDs: {str(e)}", category="location_transitions")
-                # Fallback to original format if we can't get the IDs
-                conversation_history.append({"role": "user", "content": f"Location transition: {sanitize_text(current_location_name)} to {sanitize_text(new_location_name_or_id)}"})
-            
-            # Save conversation history immediately after adding transition marker
-            if __name__ != "__main__":
-
-                sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
-            from main import save_conversation_history
-            save_conversation_history(
-                conversation_history,
-                strict=True,
-                allow_compression=False,
+            from core.managers.campaign_manager import (
+                _party_module_transition_lock,
             )
 
-            # GENERATE TRANSITION NARRATION using the transition_prompt
-            info("STATE_CHANGE: Generating transition narration using AI", category="location_transitions")
-            try:
-                # Build prompt for transition narration
-                transition_messages = [
-                    {"role": "system", "content": "You are a skilled Dungeon Master narrating a location transition."},
-                    {"role": "user", "content": transition_prompt}
-                ]
-
-                # T013: per-provider model selection via the shared DM_MAIN
-                # named-config dicts (same pattern/dicts as T031 et al). Legacy
-                # resolves to gpt-4.1-2025-04-14 -- identical to the prior
-                # get_model_for_callsite() path -- so existing games are unchanged.
-                # Named dicts also carry provider params (reasoning_effort /
-                # thinking_level) the bare-string helper could not.
-                from model_config import MODEL_PROVIDER
-                if MODEL_PROVIDER == "openai":
-                    transition_cfg = config.DM_MAIN_GPT52_NONE
-                elif MODEL_PROVIDER == "gemini":
-                    transition_cfg = config.DM_MAIN_GEMINI_PRO_LOW
-                elif MODEL_PROVIDER == "lmstudio":
-                    transition_cfg = config.DM_MAIN_LMSTUDIO
-                else:  # legacy
-                    transition_cfg = config.DM_MAIN_LEGACY
-
-                transition_response = capture_and_fanout(
-                    "T013",
-                    api_client.create_completion,
-                    _request_provider=MODEL_PROVIDER,
-                    messages=transition_messages,
-                    model=transition_cfg["model"],
-                    temperature=0.7,
-                    # CRIT-2: transition narration is plain prose. Without this the router
-                    # defaults to JSON mode (api_client.py), which 400s on a prompt that
-                    # never mentions "json" and silently falls back to a generic line.
-                    response_format=None,
-                    **{k: v for k, v in transition_cfg.items() if k != "model"}
-                )
-
-                # Persist and correlate the same normalized value. safe_json_dump
-                # normalizes smart punctuation, so retaining the raw provider
-                # string here makes main.py unable to find and replace the T013
-                # placeholder after a real model uses curly quotes or em dashes.
-                transition_narration = sanitize_text(
-                    transition_response.choices[0].message.content.strip()
-                ).strip()
-                if not transition_narration:
-                    raise ValueError("T013 returned empty transition narration")
-                info("SUCCESS: Transition narration generated", category="location_transitions")
-
-                # Save transition narration to conversation history as assistant message
-                conversation_history.append({"role": "assistant", "content": transition_narration})
-                save_conversation_history(
-                    conversation_history,
-                    strict=True,
-                    allow_compression=False,
-                )
-                debug("SUCCESS: Transition narration saved to conversation history", category="location_transitions")
-
-            except Exception as e:
-                error(f"FAILURE: Failed to generate transition narration", exception=e, category="location_transitions")
-                transition_narration = sanitize_text(
-                    f"The party travels to {new_location_name}."
-                )
-                # Save fallback narration too
-                conversation_history.append({"role": "assistant", "content": transition_narration})
-                save_conversation_history(
-                    conversation_history,
-                    strict=True,
-                    allow_compression=False,
-                )
-
-            # Keep the checkpoint until main.py durably replaces T013 with the
-            # final T063/T064 narration. A restart can safely accept the saved
-            # T013 prose as its deterministic recovery narration.
-            
-            # CAMPAIGN INTEGRATION: refresh the ready intent with T013 history.
-            try:
-                if pending_archive is not None:
-                    info(
-                        "STATE_CHANGE: Cross-module transition detected "
-                        f"during location change: {pending_archive['from_module']} "
-                        f"-> {pending_archive['to_module']}",
-                        category="module_management",
+            with _party_module_transition_lock():
+                locked_party = safe_json_load("party_tracker.json")
+                locked_valid, locked_error, _locked_context = (
+                    verify_approved_transition_plan(
+                        approved_transition_plan,
+                        party_tracker_data=locked_party,
+                        destination_location_id=new_location_name_or_id,
+                        location_graph=None,
+                        return_context=True,
                     )
-                    campaign_manager.mark_module_completion_intent_ready(
-                        pending_archive["from_module"],
-                        pending_archive["completion_id"],
-                        conversation_history=conversation_history,
-                    )
-                    debug(
-                        "STATE_CHANGE: Updated party tracker module to "
-                        f"{pending_archive['to_module']}",
-                        category="module_management",
-                    )
-                else:
-                    debug(f"STATE_CHANGE: Within-module transition: {current_location_id} -> {new_location_id}", category="location_transitions")
-                    
-            except Exception as e:
-                error(
-                    "FAILURE: Campaign transition could not be durably staged",
-                    exception=e,
-                    category="module_management",
                 )
-                response_data = {
-                    "transition_narration": transition_narration,
-                    "error_message": str(e),
-                }
-                if pending_archive is not None:
-                    publication_state = _completion_publication_state(
-                        campaign_manager,
-                        pending_archive,
+                if not locked_valid:
+                    pending = load_current_transition_checkpoint(transition_id)
+                    if pending is not None and pending.get("phase") == "planned":
+                        _remove_location_transition_checkpoint()
+                    return create_return(
+                        status="error",
+                        needs_update=False,
+                        response_data={
+                            "error_message": locked_error,
+                            "retryable": True,
+                            "error_code": "transition_plan_stale",
+                        },
                     )
-                    response_data["pending_archive"] = pending_archive
-                    response_data["completion_publication_state"] = (
-                        publication_state
+                transition_result = run_location_transition()
+            transition_context = (
+                transition_result if isinstance(transition_result, dict) else None
+            )
+            transition_prompt = (
+                transition_context.get("transition_prompt")
+                if transition_context is not None
+                else transition_result
+            )
+            if transition_prompt and transition_checkpoint is not None:
+                with _party_module_transition_lock():
+                    current_checkpoint = load_current_transition_checkpoint(
+                        transition_id
                     )
-                    response_data["transition_recovery_required"] = (
-                        publication_state != "absent"
-                    )
-                return create_return(
-                    status="error",
-                    needs_update=True,
-                    response_data=response_data,
+                    if current_checkpoint is None:
+                        raise RuntimeError(
+                            "current transition checkpoint disappeared before movement receipt"
+                        )
+                    current_checkpoint["phase"] = "movement_committed"
+                    _write_location_transition_checkpoint(current_checkpoint)
+
+            if transition_prompt and transition_context is not None:
+                reconciliation_status = resolve_current_transition_reconciliation(
+                    transition_id, transition_context
                 )
-            
-            info("SUCCESS: Location transition complete", category="location_transitions")
-            needs_conversation_history_update = True  # Trigger conversation history reload
-            # Return the exact T013 history value to the transition orchestrator.
-            # A different assistant completion can finish while T063/T064 are
-            # running, so the final narration must correlate by placeholder
-            # identity instead of replacing an arbitrary nearby assistant.
-            response_data = {"transition_narration": transition_narration}
+                if reconciliation_status == "blocked_conflict":
+                    return create_return(
+                        status="error",
+                        needs_update=False,
+                        response_data={
+                            "error_message": (
+                                "The origin location changed while its committed "
+                                "departure was being reconciled. Recovery is "
+                                "required before another turn."
+                            ),
+                            "retryable": False,
+                            "error_code": "transition_recovery_conflict",
+                        },
+                    )
+                departure_summary = resolve_current_transition_departure(
+                    transition_id, transition_context
+                )
+                transition_context["departure_summary"] = departure_summary
+
+        if transition_prompt:
+            info("SUCCESS: Location movement and departure state committed", category="location_transitions")
+            response_data = {
+                "transition_prompt": transition_prompt,
+                "departure_summary": transition_context.get("departure_summary"),
+            }
             if transition_checkpoint is not None:
-                response_data["location_transition_id"] = (
-                    transition_checkpoint["transition_id"]
-                )
-            if pending_archive is not None:
-                response_data["pending_archive"] = pending_archive
+                response_data["location_transition_id"] = transition_checkpoint[
+                    "operation_id"
+                ]
             return create_return(needs_update=True, response_data=response_data)
              # After transition, the current_location_data in the main loop might be stale.
             # We need to ensure the AI response processing uses the *new* location data.
@@ -3364,6 +4778,115 @@ def move_background_npc(npc_name, context, current_location_hint=None, party_tra
             traceback.print_exc()
             return False
 
+
+def prepare_background_npc_movement(
+    npc_name, context, current_location_hint=None, party_tracker_data=None
+):
+    """Freeze one required T014 decision and its exact area mutation."""
+    from utils.module_refresh_lock import module_refresh_lock
+
+    party = party_tracker_data or safe_json_load("party_tracker.json")
+    module_name = str((party or {}).get("module", "")).replace(" ", "_")
+    if not module_name:
+        raise RuntimeError("No current module for moveBackgroundNPC")
+    path_manager = ModulePathManager(module_name)
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            raise RuntimeError("module refresh is busy")
+        with _npc_movement_lock(module_name):
+            found = find_npc_in_areas(
+                npc_name, path_manager, current_location_hint
+            )
+            if not found:
+                raise ValueError("referenced background NPC does not exist")
+            area_file, location_id, npc_data = found
+            area_before = safe_json_load(area_file)
+    correction = context
+    attempt = 1
+    while True:
+        decision = get_ai_npc_movement_decision(
+            npc_name,
+            correction,
+            npc_data,
+            area_before,
+            location_id,
+            module_name,
+            (party or {}).get("partyNPCs", []),
+            attempt,
+        )
+        validation = validate_npc_movement_decision(
+            decision, area_before, location_id, (party or {}).get("partyNPCs", [])
+        )
+        if validation["valid"]:
+            break
+        correction = "%s\n\nCorrection facts: %s" % (
+            context,
+            validation["reason"],
+        )
+        attempt += 1
+    return {
+        "kind": "moveBackgroundNPC",
+        "module": module_name,
+        "area_path": area_file,
+        "location_id": location_id,
+        "npc_name": npc_name,
+        "proposal": decision,
+        # The semantic decision is frozen before movement. Its exact file
+        # values are materialized only after earlier travel stages finish, so
+        # the departure summary cannot become a false whole-area conflict.
+        "before": None,
+        "after": None,
+    }
+
+
+def materialize_staged_background_npc_movement(receipt):
+    """Freeze T014's exact post-departure area values before its first write."""
+    import copy
+    from utils.module_refresh_lock import module_refresh_lock
+
+    if receipt.get("before") is not None:
+        return receipt
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            raise RuntimeError("module refresh is busy")
+        with _npc_movement_lock(receipt["module"]):
+            current = safe_json_load(receipt["area_path"])
+            if not isinstance(current, dict):
+                raise RuntimeError("background NPC area is unavailable")
+            after = copy.deepcopy(current)
+            path_manager = ModulePathManager(receipt["module"])
+            if not execute_npc_movement_decision(
+                receipt["proposal"],
+                after,
+                receipt["location_id"],
+                receipt["npc_name"],
+                path_manager,
+            ):
+                raise RuntimeError(
+                    "accepted background NPC proposal no longer matches current state"
+                )
+            receipt["before"] = current
+            receipt["after"] = after
+    return receipt
+
+
+def apply_staged_background_npc_movement(receipt):
+    """Apply or recognize one frozen T014 area value."""
+    from utils.module_refresh_lock import module_refresh_lock
+
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            raise RuntimeError("module refresh is busy")
+        with _npc_movement_lock(receipt["module"]):
+            current = safe_json_load(receipt["area_path"])
+            if current == receipt["after"]:
+                return "already_committed"
+            if current != receipt["before"]:
+                return "blocked_conflict"
+            if not safe_write_json(receipt["area_path"], receipt["after"]):
+                raise RuntimeError("background NPC area write failed")
+    return "committed"
+
 def find_npc_in_areas(npc_name, path_manager, location_hint=None):
     """Find an NPC in area files, returning (area_file, location_id, npc_data)"""
     import glob
@@ -3574,14 +5097,13 @@ Remember: This is a background NPC management action, not party NPC management."
         ai_response = response.choices[0].message.content.strip()
         debug(f"AI_CALL: Movement decision response: {ai_response}", category="ai_operations")
         
-        # Parse JSON response
-        import re
-        json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group())
-        else:
-            error("AI_CALL: No valid JSON found in AI response", category="ai_operations")
-            return None
+        # Parse the structured response directly. Gameplay meaning comes from
+        # the typed fields, never a brace-shaped substring found in prose.
+        if ai_response.startswith("```json"):
+            ai_response = ai_response[len("```json") :]
+        if ai_response.endswith("```"):
+            ai_response = ai_response[: -len("```")]
+        return json.loads(ai_response.strip())
             
     except Exception as e:
         error(f"AI_CALL: AI decision failed: {str(e)}", category="ai_operations")

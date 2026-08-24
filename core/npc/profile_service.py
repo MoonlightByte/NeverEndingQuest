@@ -279,6 +279,7 @@ class NpcProfileService:
         source: Mapping[str, Any],
         *,
         source_canonical_override: str = "",
+        max_attempts: int = MAX_ATTEMPTS,
     ) -> ProfileSeedResult:
         if not isinstance(source, Mapping):
             raise ProfileContractError("profile source must be an object")
@@ -303,7 +304,7 @@ class NpcProfileService:
         provider = model_config.get_provider()
         last_error: Optional[BaseException] = None
         retry_reason = ""
-        for attempt in range(MAX_ATTEMPTS):
+        for attempt in range(max_attempts):
             config = _config_for_provider(provider)
             model = config.pop("model")
             response = None
@@ -398,7 +399,9 @@ def seed_profile_best_effort(
         # Bind the compact request to the full authoritative source fingerprint
         # so mechanical sheet changes still invalidate a prior seed.
         result = (service or _default_service()).seed(
-            source, source_canonical_override=source_fingerprint
+            source,
+            source_canonical_override=source_fingerprint,
+            max_attempts=1,
         )
         seeded = {
             "profileVersion": PROFILE_VERSION,

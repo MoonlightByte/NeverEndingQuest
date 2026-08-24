@@ -49,8 +49,10 @@
 # while respecting token limitations and performance requirements.
 # ============================================================================
 
+import copy
 import json
 import os
+import re
 from datetime import datetime
 from core.ai import api_client
 import config
@@ -517,6 +519,79 @@ def compress_conversation_history_on_transition(conversation_history, leaving_lo
         debug_print(f"No messages to summarize for {leaving_location_name}")
         return conversation_history
 
+
+def compact_with_accepted_departure_summary(
+    conversation_history,
+    *,
+    source_index,
+    source_entries_before,
+    leaving_location_name,
+    summary,
+    summary_message_id,
+):
+    """Replace one exact raw segment using the already accepted T016 text."""
+    if not isinstance(source_index, int) or source_index < 0:
+        raise ValueError("departure compaction source index is invalid")
+    if not isinstance(source_entries_before, list):
+        raise TypeError("departure compaction source must be a list")
+    summary_entry = {
+        "role": "assistant",
+        "content": (
+            "=== LOCATION SUMMARY ===\n\n%s:\n%s\n%s"
+            % (
+                leaving_location_name,
+                "-" * len(leaving_location_name + ":"),
+                summary,
+            )
+        ),
+        "message_id": summary_message_id,
+    }
+    if (
+        source_index < len(conversation_history)
+        and conversation_history[source_index] == summary_entry
+    ):
+        return conversation_history, summary_entry
+    current_slice = conversation_history[
+        source_index : source_index + len(source_entries_before)
+    ]
+    # Loading an existing game applies the long-standing DM-note compaction
+    # before travel recovery runs.  That formatting-only normalization can
+    # therefore be the exact on-disk value after a restart even though the
+    # transition staged the unabridged value before movement.  Accept only
+    # those two exact representations; every other change remains a conflict.
+    normalized_source = normalize_legacy_dm_notes(source_entries_before)
+    if current_slice not in (source_entries_before, normalized_source):
+        raise ValueError("departure conversation segment changed before compaction")
+    result = list(conversation_history)
+    result[
+        source_index : source_index + len(source_entries_before)
+    ] = [summary_entry]
+    return result, summary_entry
+
+
+def normalize_legacy_dm_notes(conversation_history):
+    """Return the legacy request-history representation without mutating input."""
+    normalized = copy.deepcopy(conversation_history)
+    for message in normalized:
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if not (
+            message.get("role") == "user"
+            and isinstance(content, str)
+            and content.startswith("Dungeon Master Note:")
+        ):
+            continue
+        parts = content.split("Player:", 1)
+        if len(parts) != 2:
+            continue
+        date_time = re.search(r"Current date and time: ([^.]+)", parts[0])
+        if date_time:
+            message["content"] = (
+                f"Dungeon Master Note: {date_time.group(0)}. Player:{parts[1]}"
+            )
+    return normalized
+
 def generate_enhanced_adventure_summary(conversation_history_data, party_tracker_data, leaving_location_name):
     """
     Generate an enhanced adventure summary when leaving a location.
@@ -585,9 +660,16 @@ def generate_enhanced_adventure_summary(conversation_history_data, party_tracker
     # Generate the summary using the same function
     summary = generate_location_summary(leaving_location_name, location_messages)
     
-    # For journal entries, we want a more detailed summary
+    return enhance_location_summary(summary)
+
+
+def enhance_location_summary(summary):
+    """Run the legacy T019 enrichment over one already accepted T018 summary.
+
+    Keeping this proposal step separate lets old-save repair freeze every
+    mutation before it exposes a journal, memory, or conversation write.
+    """
     if summary:
-        # Enhance the summary with specific details
         messages = [
             {"role": "system", "content": """Expand this summary into a detailed journal entry that captures ALL important details:
 - Exact sequence of events
@@ -636,7 +718,7 @@ Keep the narrative engaging but factual. Use only standard ASCII characters -- n
         except Exception as e:
             debug_print(f"ERROR: Failed to enhance adventure summary: {str(e)}")
             return summary  # Return original if enhancement fails
-    
+
     return None
 
 def update_journal_with_summary(adventure_summary, party_tracker_data, location_name):

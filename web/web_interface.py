@@ -2580,13 +2580,16 @@ def handle_action(data):
     """Handle direct action requests from the UI (save, load, reset)."""
     action_type = data.get('action')
     parameters = data.get('parameters', {})
+    from utils.capture.live_provider_call import get_live_turn_scope
+
+    live_scope = get_live_turn_scope()
     debug(f"WEB_REQUEST: Received direct action from client: {action_type}", category="web_interface")
 
     if action_type in {'saveGame', 'restoreGame', 'nuclearReset'}:
         try:
             from core.managers.status_manager import status_manager
 
-            if status_manager.is_processing():
+            if status_manager.is_processing() and live_scope is None:
                 emit('error', {
                     'message': (
                         'The game is finishing the current action. '
@@ -2615,6 +2618,36 @@ def handle_action(data):
             manager = SaveGameManager()
             description = parameters.get("description", "")
             save_mode = parameters.get("saveMode", "essential")
+            if live_scope is not None:
+                from utils.capture.live_provider_call import queue_live_save
+
+                session_id = getattr(request, 'sid', None) or 'unknown-session'
+                operation_id = "save:%s:%s:%s" % (
+                    session_id,
+                    description,
+                    save_mode,
+                )
+                emit('system_message', {
+                    'content': 'Save accepted and queued until the current turn reaches a safe boundary.'
+                })
+
+                def execute_save():
+                    return manager.create_save_game(description, save_mode)
+
+                def complete_save(outcome):
+                    success, message = outcome
+                    if success:
+                        socketio.emit('system_message', {'content': f"Game saved: {message}"}, to=session_id)
+                    else:
+                        socketio.emit('error', {'message': f"Save failed: {message}"}, to=session_id)
+
+                queued_id = queue_live_save(
+                    execute_save, complete_save, operation_id
+                )
+                if queued_id is None:
+                    live_scope.quiescent.wait()
+                    complete_save(execute_save())
+                return
             success, message = manager.create_save_game(description, save_mode)
             if success:
                 emit('system_message', {'content': f"Game saved: {message}"})
@@ -2628,6 +2661,25 @@ def handle_action(data):
             from updates.save_game_manager import SaveGameManager
             manager = SaveGameManager()
             save_folder = parameters.get("saveFolder")
+            if live_scope is not None:
+                from utils.capture.live_provider_call import request_live_turn_supersession
+
+                operation = request_live_turn_supersession("restore")
+                if operation['kind'] == 'turn_complete':
+                    live_scope.quiescent.wait()
+                elif not operation['accepted']:
+                    emit('error', {
+                        'message': (
+                            'Another lifecycle operation is already pending: '
+                            + operation['kind']
+                        )
+                    })
+                    return
+                emit('system_message', {
+                    'content': 'Load accepted. The current turn is stopping safely before the save is restored.',
+                    'operation_id': operation['operation_id'],
+                })
+                live_scope.quiescent.wait()
             success, message = manager.restore_save_game(save_folder)
             if success:
                 emit('restore_complete', {'message': 'Game restored successfully. Server restarting...'})
@@ -2654,6 +2706,25 @@ def handle_action(data):
 
     elif action_type == 'nuclearReset':
         try:
+            if live_scope is not None:
+                from utils.capture.live_provider_call import request_live_turn_supersession
+
+                operation = request_live_turn_supersession("reset")
+                if operation['kind'] == 'turn_complete':
+                    live_scope.quiescent.wait()
+                elif not operation['accepted']:
+                    emit('error', {
+                        'message': (
+                            'Another lifecycle operation is already pending: '
+                            + operation['kind']
+                        )
+                    })
+                    return
+                emit('system_message', {
+                    'content': 'Reset accepted. The current turn is stopping safely before reset.',
+                    'operation_id': operation['operation_id'],
+                })
+                live_scope.quiescent.wait()
             reset_campaign.perform_reset_logic()
             # Clear the message cache on campaign reset
             global message_cache
@@ -3633,6 +3704,19 @@ def handle_user_exit():
     """Handle intentional user exit - log and clean up"""
     try:
         print("INFO: User has initiated exit from the game")
+        from utils.capture.live_provider_call import (
+            get_live_turn_scope,
+            request_live_turn_supersession,
+        )
+
+        live_scope = get_live_turn_scope()
+        if live_scope is not None:
+            operation = request_live_turn_supersession("web_exit")
+            emit('system_message', {
+                'content': 'Exit accepted. The current turn is stopping safely.',
+                'operation_id': operation['operation_id'],
+            })
+            live_scope.quiescent.wait()
         emit('exit_acknowledged', {'message': 'Exit acknowledged'})
         # Note: We do NOT shut down the server here
         # Multiple users might be connected, and server shutdown is an admin function
@@ -4314,6 +4398,12 @@ def run_game_loop():
         except Exception:
             pass
     finally:
+        try:
+            from utils.capture.live_provider_call import abort_live_turn_scope
+
+            abort_live_turn_scope()
+        except Exception:
+            pass
         # Restore original streams safely
         try:
             sys.stdout = original_stdout

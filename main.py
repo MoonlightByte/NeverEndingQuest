@@ -69,6 +69,7 @@ See LICENSE file for full terms.
 # ============================================================================
 
 import json
+import copy
 import hashlib
 import subprocess
 import os
@@ -77,6 +78,10 @@ import sys
 import codecs
 import glob
 import time
+import shutil
+import tempfile
+from uuid import uuid4
+from pathlib import Path
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T063", "main.py", 636)
@@ -126,10 +131,9 @@ from core.managers import location_manager
 from utils.location_path_finder import LocationGraph
 from core.ai import action_handler
 from core.ai.cumulative_summary import (
-    generate_enhanced_adventure_summary,
-    update_journal_with_summary,
-    compress_conversation_history_on_transition,
-    check_and_compact_missing_summaries
+    compact_with_accepted_departure_summary,
+    enhance_location_summary,
+    generate_location_summary,
 )
 from core.managers.status_manager import (
     status_manager, status_ready, status_processing_ai, status_validating,
@@ -623,15 +627,100 @@ def get_location_data_from_party_tracker(party_tracker_data):
         return None
     return location_manager.get_location_info(current_location, current_area, current_area_id)
 
+
+def generate_transition_narration(transition_prompt, party_tracker_data):
+    """Run layer 1/3 (T013) from committed, updated location context.
+
+    Travel narration is deliberately a three-agent chain: T013 produces this
+    transition/departure layer, T063 produces arrival from the exact target and
+    roster, and T064 stitches both.  It is one player turn; do not collapse the
+    chain into a static location description when enforcing the single-turn
+    gameplay boundary.
+    """
+    destination = party_tracker_data["worldConditions"]["currentLocation"]
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Narrate this committed transition using only the supplied "
+                "observable facts. Address the sole player character in second "
+                "person (you/your), never as a third-person protagonist. Return "
+                "plain narration only and invent no mechanics, creatures, traps, "
+                "secrets, choices, or outcomes."
+            ),
+        },
+        {"role": "user", "content": transition_prompt},
+    ]
+    try:
+        from model_config import MODEL_PROVIDER
+
+        if MODEL_PROVIDER == "openai":
+            narration_config = config.DM_MAIN_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            narration_config = config.DM_MAIN_GEMINI_PRO_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            narration_config = config.DM_MAIN_LMSTUDIO
+        else:
+            narration_config = config.DM_MAIN_LEGACY
+        response = capture_and_fanout(
+            "T013",
+            api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
+            messages=messages,
+            model=narration_config["model"],
+            temperature=0.7,
+            response_format=None,
+            **{
+                key: value
+                for key, value in narration_config.items()
+                if key != "model"
+            },
+        )
+        try:
+            from utils.api_logger import log_api_call
+
+            log_api_call(
+                "transition_narration",
+                messages,
+                response,
+                metadata={
+                    "temperature": 0.7,
+                    "context": "committed_transition_layer_1_of_3",
+                },
+            )
+        except Exception as log_error:
+            debug(
+                "T013 evidence logging unavailable: %s"
+                % type(log_error).__name__,
+                category="narrative_generation",
+            )
+        narration = sanitize_text(response.choices[0].message.content).strip()
+        if not narration:
+            raise ValueError("T013 returned empty narration")
+        return narration
+    except Exception as narration_error:
+        warning(
+            "T013 unavailable; retaining deterministic committed-arrival prose: %s"
+            % type(narration_error).__name__,
+            category="narrative_generation",
+        )
+        return "You complete the journey and arrive at %s." % destination
+
 def generate_arrival_narration(departure_narration, party_tracker_data, conversation_history):
     """
-    Takes the departure narration and generates a seamless arrival narration.
+    Run layer 2/3 (T063) from T013 plus the committed target/roster projection.
     """
     debug("STATE_CHANGE: Generating cinematic arrival narration...", category="narrative_generation")
     
     # Get details for the new location from the (now updated) party tracker
     new_location_name = party_tracker_data["worldConditions"]["currentLocation"]
     new_area_name = party_tracker_data["worldConditions"]["currentArea"]
+    player_names = [str(name) for name in party_tracker_data.get("partyMembers", [])]
+    npc_names = [
+        str(item.get("name"))
+        for item in party_tracker_data.get("partyNPCs", [])
+        if isinstance(item, dict) and item.get("name")
+    ]
 
     # Construct the special prompt
     arrival_prompt = f"""
@@ -641,8 +730,13 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
     1.  Feel like a direct continuation of the departure text.
     2.  Focus on sensory details (sights, sounds, smells) of the new location.
     3.  Set the mood and atmosphere of the new environment.
-    4.  Incorporate the reactions or immediate impressions of the player characters and NPCs.
+    4.  Incorporate reactions only for actors in the exact committed roster below.
     5.  Do not repeat any information from the departure text. Just write the arrival part.
+
+    EXACT COMMITTED ROSTER:
+    Player characters: {json.dumps(player_names, ensure_ascii=False)}
+    Party NPCs: {json.dumps(npc_names, ensure_ascii=False)}
+    Do not add, imply, count, or describe any other companion.
 
     DEPARTURE NARRATION (for context):
     ---
@@ -652,12 +746,17 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
     Now, write the arrival narration.
     """
     
-    # We can also add the most recent non-system messages for better context
-    recent_context = [msg for msg in conversation_history if msg.get("role") != "system"][-5:]
-
     narration_request_messages = [
-        {"role": "system", "content": "You are a master storyteller specializing in immersive, cinematic narrations."},
-        *recent_context,
+        {
+            "role": "system",
+            "content": (
+                "You narrate only the committed arrival supplied in this "
+                "request. Address the sole player character in second person "
+                "(you/your). The exact committed roster in the request is an "
+                "actor boundary: do not import, imply, or count any other "
+                "actor, event, or location from earlier conversation."
+            ),
+        },
         {"role": "user", "content": arrival_prompt}
     ]
 
@@ -724,14 +823,13 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
         return sanitized_arrival
     except Exception as e:
         error(f"FAILURE: Failed to generate arrival narration", exception=e, category="narrative_generation")
-        return f"(The journey to {new_location_name} is uneventful.)" # Fallback text
+        return f"You arrive at {new_location_name}."  # Deterministic fallback.
 
 
 # <--- NEW FUNCTION to blend the departure and arrival narrations --->
 def generate_seamless_transition_narration(departure_narration, arrival_narration):
     """
-    Takes two separate narration blocks (departure and arrival) and uses an AI
-    to rewrite them into a single, cohesive, and seamless narrative.
+    Run layer 3/3 (T064), preserving both accepted layers as one seamless turn.
     """
     debug("STATE_CHANGE: Blending departure and arrival narrations into a seamless whole...", category="narrative_generation")
 
@@ -749,6 +847,9 @@ Your task is to rewrite them into a single, cohesive, and cinematic narration.
 - Smooth out the transition so it feels like one continuous story beat.
 - Enhance the prose where possible to create a more engaging and atmospheric experience.
 - Do not add new plot points or actions; your role is to refine the existing narrative flow.
+- Do not add, count, or imply any actor who is not explicitly identified in the source blocks.
+- Address the sole player character only in second person (you/your), never as a third-person protagonist.
+- End after the committed arrival with one open in-fiction invitation for the player to choose their next immediate action. Do not enumerate options and do not perform that next action.
 
 DEPARTURE NARRATION:
 ---
@@ -817,6 +918,672 @@ Now, provide the rewritten, seamless narration.
         # Fallback to simple concatenation if the API call fails
         debug("STATE_CHANGE: Falling back to simple concatenation.", category="narrative_generation")
         return f"{departure_narration}\n\n{arrival_narration}"
+
+
+def _exact_party_module_projection(party):
+    world = party.get("worldConditions") if isinstance(party, dict) else None
+    world = world if isinstance(world, dict) else {}
+    return {
+        "module": party.get("module") if isinstance(party, dict) else None,
+        "currentAreaId": world.get("currentAreaId"),
+        "currentArea": world.get("currentArea"),
+        "currentLocationId": world.get("currentLocationId"),
+        "currentLocation": world.get("currentLocation"),
+    }
+
+
+def _transition_narration_action_context(checkpoint):
+    """Expose accepted, receipt-backed turn facts to the prose-only narrator.
+
+    The actions remain mechanical authority; this projection only prevents the
+    final destination narration from erasing the player-visible meaning of the
+    accepted turn.  Control-only actions retain their existing dedicated
+    messages and are not folded into scene prose.
+    """
+    deferred = checkpoint.get("deferred_actions")
+    records = deferred.get("actions") if isinstance(deferred, dict) else None
+    if not isinstance(records, list):
+        return ""
+    public_actions = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        family = record.get("family")
+        if family in {
+            "saveGame",
+            "listSaves",
+            "deleteSave",
+            "exitGame",
+            "updatePartyTracker",
+        }:
+            continue
+        action = record.get("action")
+        receipt = record.get("receipt")
+        if not isinstance(action, dict) or not isinstance(receipt, dict):
+            continue
+        fact = {
+            "action": family,
+            "parameters": copy.deepcopy(action.get("parameters") or {}),
+        }
+        if family == "updatePartyNPCs":
+            before_names = [
+                item.get("name")
+                for item in receipt.get("roster_before", [])
+                if isinstance(item, dict) and item.get("name")
+            ]
+            after_names = [
+                item.get("name")
+                for item in receipt.get("roster_after", [])
+                if isinstance(item, dict) and item.get("name")
+            ]
+            fact["receiptResult"] = {
+                "partyNPCNamesBefore": before_names,
+                "partyNPCNamesAfter": after_names,
+            }
+        elif family == "updateTime":
+            fact["receiptResult"] = {
+                "before": copy.deepcopy(receipt.get("before")),
+                "after": copy.deepcopy(receipt.get("after")),
+            }
+        public_actions.append(fact)
+    if not public_actions:
+        return ""
+    return (
+        "\n\nACCEPTED TURN FACTS (structured, receipt-backed; acknowledge "
+        "every outcome without inventing details, extra companions, or "
+        "mechanics. An NPC removed after arrival leaves the traveling party "
+        "at this destination; names in partyNPCNamesAfter are the only NPC "
+        "companions still traveling with the player):\n"
+        + json.dumps(public_actions, ensure_ascii=False, sort_keys=True)
+    )
+
+
+def _transition_outcome_lines(checkpoint, party):
+    """Render exact accepted outcomes that scene prose is not allowed to lose."""
+    deferred = checkpoint.get("deferred_actions")
+    records = deferred.get("actions") if isinstance(deferred, dict) else None
+    if not isinstance(records, list):
+        return []
+    world = party.get("worldConditions") if isinstance(party, dict) else {}
+    destination = (world or {}).get("currentLocation") or "the destination"
+    lines = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        family = record.get("family")
+        receipt = record.get("receipt")
+        if not isinstance(receipt, dict):
+            continue
+        if family == "removeEffect":
+            lines.append(
+                "%s ends on %s."
+                % (receipt.get("name") or "The effect", receipt.get("owner") or "its target")
+            )
+        elif family == "updatePartyNPCs":
+            if receipt.get("operation") == "add":
+                lines.append(
+                    "%s joins your traveling party at %s."
+                    % (receipt.get("npc_name"), destination)
+                )
+            elif receipt.get("operation") == "remove":
+                lines.append(
+                    "%s leaves your traveling party at %s."
+                    % (receipt.get("npc_name"), destination)
+                )
+        elif family == "moveBackgroundNPC":
+            proposal = receipt.get("proposal") or {}
+            if proposal.get("action") == "move":
+                lines.append(
+                    "%s relocates to %s."
+                    % (receipt.get("npc_name"), proposal.get("newLocation"))
+                )
+            elif proposal.get("action") == "remove":
+                lines.append("%s leaves the area." % receipt.get("npc_name"))
+            elif proposal.get("action") == "update_status":
+                lines.append(
+                    "%s's status changes as agreed." % receipt.get("npc_name")
+                )
+    return [line for line in lines if "None" not in line]
+
+
+def _append_transition_outcomes(narration, checkpoint, party):
+    lines = _transition_outcome_lines(checkpoint, party)
+    if not lines:
+        return narration
+    return "%s\n\n%s" % (narration.rstrip(), " ".join(lines))
+
+
+def _resume_cross_module_root(operation_id, *, publish=True):
+    """Resume the random-ID module handoff, clock tail, and target narration."""
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    if checkpoint is None:
+        return {"status": "none"}
+    handoff = checkpoint.get("module_handoff")
+    if not isinstance(handoff, dict):
+        return {"status": "blocked", "reason": "module handoff receipt is missing"}
+    party = load_json_file("party_tracker.json") or {}
+    projection = _exact_party_module_projection(party)
+    source = handoff["source_projection"]
+    target = handoff["target_projection"]
+    pending = {
+        "from_module": source["module"],
+        "to_module": target["module"],
+        "completion_id": handoff["completion_id"],
+        "party_tracker_data": copy.deepcopy(party),
+    }
+    history = load_json_file(json_file) or []
+    if projection == source:
+        transition_history = copy.deepcopy(handoff["transition_history"])
+        marker = {
+            "role": "user",
+            "content": "Module transition: %s to %s"
+            % (source["module"], target["module"]),
+        }
+        if not transition_history or transition_history[-1] != marker:
+            transition_history.append(marker)
+        from core.managers.campaign_manager import CampaignManager
+
+        original, updated = CampaignManager().publish_party_module_transition(
+            source["module"],
+            target["module"],
+            handoff["parameters"],
+            transition_history,
+            handoff["completion_id"],
+        )
+        pending["party_tracker_data"] = original
+        save_conversation_history(
+            transition_history, strict=True, allow_compression=False
+        )
+        party = updated
+        projection = _exact_party_module_projection(party)
+        checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+        checkpoint["module_handoff"]["status"] = "published"
+        checkpoint["phase"] = "module_handoff_pending"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+    if projection != target:
+        return {
+            "status": "blocked",
+            "reason": "party state matches neither staged module projection",
+        }
+
+    targeted, completion = retry_staged_module_completions(
+        pending,
+        load_json_file(json_file) or [],
+    )
+    if completion["failed"] or completion["blocked"]:
+        return {"status": "pending", "reason": "module completion remains pending"}
+    if targeted is None and handoff["completion_id"] not in completion["completed"]:
+        return {"status": "pending", "reason": "module completion receipt is absent"}
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    checkpoint["module_handoff"]["status"] = "authority_transferred"
+    checkpoint["phase"] = "module_authority_transferred"
+    action_handler._write_location_transition_checkpoint(checkpoint)
+
+    deferred = checkpoint["deferred_actions"]
+    while int(deferred.get("cursor", 0)) < len(deferred.get("actions", [])):
+        cursor = int(deferred.get("cursor", 0))
+        outcome = action_handler.apply_current_transition_action(operation_id, cursor)
+        if outcome == "blocked_conflict":
+            return {"status": "blocked", "reason": "handoff clock conflict"}
+        checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+        deferred = checkpoint["deferred_actions"]
+    checkpoint["phase"] = "handoff_clock_committed"
+    action_handler._write_location_transition_checkpoint(checkpoint)
+
+    history, party = rebuild_conversation_for_current_party(
+        load_json_file(json_file) or [], return_party=True
+    )
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    narration = checkpoint["narration"]
+    if narration.get("status") == "deferred_to_module_handoff":
+        first = generate_transition_narration(
+            narration.get("source_prompt") or "Describe the committed arrival.",
+            party,
+        )
+        arrival = generate_arrival_narration(first, party, history)
+        final_text = generate_seamless_transition_narration(first, arrival)
+        final_text = _append_transition_outcomes(final_text, checkpoint, party)
+        entry = {
+            "role": "assistant",
+            "content": final_text,
+            "message_id": narration["message_id"],
+        }
+        existing = next(
+            (
+                i
+                for i, item in enumerate(history)
+                if isinstance(item, dict)
+                and item.get("message_id") == narration["message_id"]
+            ),
+            None,
+        )
+        narration.update(
+            {
+                "status": "retained",
+                "text": final_text,
+                "history_index": len(history) if existing is None else existing,
+                "history_entry_after": entry,
+            }
+        )
+        checkpoint["phase"] = "narration_retained"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+        if existing is None:
+            history.append(entry)
+            save_conversation_history(history, strict=True, allow_compression=False)
+        elif history[existing] != entry:
+            return {"status": "blocked", "reason": "handoff narration conflict"}
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    if publish and checkpoint["narration"].get("status") == "retained":
+        display_dm_narration(
+            checkpoint["narration"]["text"],
+            message_id=checkpoint["narration"]["message_id"],
+        )
+        checkpoint["narration"]["status"] = "published"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    checkpoint["final_context"].update(
+        {
+            "status": "committed",
+            "party_projection_after": _exact_party_module_projection(party),
+        }
+    )
+    checkpoint["phase"] = "final_context_committed"
+    action_handler._write_location_transition_checkpoint(checkpoint)
+    final_text = checkpoint["narration"].get("text", "")
+    action_handler.complete_location_transition_checkpoint(operation_id)
+    return {"status": "completed", "narration": final_text}
+
+
+def _resume_v2_location_transition(operation_id, *, publish=True):
+    """Resume one committed-movement v2 workflow from its durable receipts."""
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    if checkpoint is None:
+        return {"status": "none"}
+    if checkpoint.get("movement_kind") == "cross_module_root":
+        return _resume_cross_module_root(operation_id, publish=publish)
+    party = load_json_file("party_tracker.json") or {}
+    world = party.get("worldConditions", {})
+    handoff = checkpoint.get("module_handoff")
+    handoff_target_active = (
+        isinstance(handoff, dict)
+        and handoff.get("status") == "authority_transferred"
+        and _exact_party_module_projection(party)
+        == handoff.get("target_projection")
+    )
+    if not handoff_target_active and str(world.get("currentLocationId", "")) != str(
+        checkpoint.get("destination_location_id", "")
+    ):
+        return {
+            "status": "blocked",
+            "reason": "party location no longer matches the staged destination",
+        }
+    context = {
+        "origin_history_segment": checkpoint["origin_segment_before"],
+        "origin_party_tracker": party,
+        "origin_location_info": {
+            "name": checkpoint["origin_location_name"],
+            "locationId": checkpoint["origin_location_id"],
+        },
+    }
+    reconciliation = checkpoint["location_reconciliation"]
+    if reconciliation.get("status") not in {
+        "committed",
+        "attempted_unavailable",
+    }:
+        outcome = action_handler.resolve_current_transition_reconciliation(
+            operation_id, context
+        )
+        if outcome == "blocked_conflict":
+            return {"status": "blocked", "reason": "origin reconciliation conflict"}
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    if checkpoint["departure_commit"].get("status") != "committed":
+        action_handler.resolve_current_transition_departure(operation_id, context)
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+
+    narration_record = checkpoint["narration"]
+    if narration_record.get("status") == "pending":
+        destination_data = get_location_data_from_party_tracker(party) or {}
+        transition_prompt = location_manager._build_transition_narration_prompt(
+            destination_data,
+            area_id=world.get("currentAreaId"),
+            area_name=world.get("currentArea"),
+            storage_description=location_manager.format_storage_description(
+                location_manager.get_storage_at_location(
+                    world.get("currentLocationId")
+                )
+            ),
+        )
+        transition_prompt += _transition_narration_action_context(checkpoint)
+        first = generate_transition_narration(transition_prompt, party)
+        arrival = generate_arrival_narration(
+            first, party, load_json_file(json_file) or []
+        )
+        final_text = generate_seamless_transition_narration(first, arrival)
+        final_text = _append_transition_outcomes(final_text, checkpoint, party)
+        narration_entry = {
+            "role": "assistant",
+            "content": final_text,
+            "message_id": narration_record["message_id"],
+        }
+        history = load_json_file(json_file) or []
+        existing = next(
+            (
+                index
+                for index, message in enumerate(history)
+                if isinstance(message, dict)
+                and message.get("message_id") == narration_record["message_id"]
+            ),
+            None,
+        )
+        narration_record.update(
+            {
+                "text": final_text,
+                "history_index": len(history) if existing is None else existing,
+                "history_entry_before": None,
+                "history_entry_after": narration_entry,
+            }
+        )
+        checkpoint["phase"] = "narration_pending"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+        if existing is None:
+            history.append(narration_entry)
+            save_conversation_history(
+                history, strict=True, allow_compression=False
+            )
+        elif history[existing] != narration_entry:
+            return {"status": "blocked", "reason": "narration identity conflict"}
+        checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+        checkpoint["narration"]["status"] = "retained"
+        checkpoint["phase"] = "narration_retained"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    episode = checkpoint["episode"]
+    if episode.get("status") == "pending":
+        try:
+            from core.npc.episode_capture import (
+                boundary_turn_id_for_position,
+                capture_location_episode,
+            )
+
+            boundary_turn_id = boundary_turn_id_for_position(
+                sum(
+                    1
+                    for message in (load_json_file(json_file) or [])
+                    if isinstance(message, dict)
+                    and message.get("role") == "user"
+                    and "Location transition:" in message.get("content", "")
+                )
+                + 1
+            )
+            episode["boundary_turn_id"] = boundary_turn_id
+            episode_id = capture_location_episode(
+                leaving_location_name=checkpoint["origin_location_name"],
+                leaving_location_id=checkpoint["origin_location_id"],
+                segment_messages=episode["source_entries_before"],
+                party_tracker_data=party,
+                path_manager=ModulePathManager(checkpoint["module_name"]),
+                boundary_turn_id=boundary_turn_id,
+                player_name=(party.get("partyMembers") or [""])[0],
+            )
+            episode["episode_id"] = episode_id
+            episode["status"] = "committed" if episode_id else "attempted_unavailable"
+        except Exception as exc:
+            episode["status"] = "attempted_unavailable"
+            warning(
+                "T108 episode unavailable during transition resume: %s"
+                % type(exc).__name__,
+                category="conversation_management",
+            )
+        action_handler._write_location_transition_checkpoint(checkpoint)
+
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    compaction = checkpoint["conversation_compaction"]
+    if compaction.get("status") != "committed":
+        from core.ai.cumulative_summary import compact_with_accepted_departure_summary
+
+        current_history = load_json_file(json_file) or []
+        summary_message_id = compaction.get("summary_message_id") or str(uuid4())
+        compacted, summary_entry = compact_with_accepted_departure_summary(
+            current_history,
+            source_index=checkpoint["origin_history_boundary"],
+            source_entries_before=checkpoint["origin_segment_before"],
+            leaving_location_name=checkpoint["origin_location_name"],
+            summary=checkpoint["departure_summary"]["text"],
+            summary_message_id=summary_message_id,
+        )
+        marker = {
+            "role": "user",
+            "content": "Location transition: %s (%s) to %s (%s)"
+            % (
+                checkpoint["origin_location_name"],
+                checkpoint["origin_location_id"],
+                world.get("currentLocation"),
+                world.get("currentLocationId"),
+            ),
+        }
+        summary_index = next(
+            i
+            for i, message in enumerate(compacted)
+            if isinstance(message, dict)
+            and message.get("message_id") == summary_message_id
+        )
+        if summary_index + 1 >= len(compacted) or compacted[summary_index + 1] != marker:
+            compacted.insert(summary_index + 1, marker)
+        compaction.update(
+            {
+                "status": "pending",
+                "source_index": checkpoint["origin_history_boundary"],
+                "source_entries_before": checkpoint["origin_segment_before"],
+                "result_entries_after": [summary_entry, marker],
+                "summary_message_id": summary_message_id,
+            }
+        )
+        action_handler._write_location_transition_checkpoint(checkpoint)
+        save_conversation_history(compacted, strict=True, allow_compression=False)
+        checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+        checkpoint["conversation_compaction"]["status"] = "committed"
+        checkpoint["phase"] = "history_compacted"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    chronicle = checkpoint["chunked_chronicle"]
+    if chronicle.get("status") == "pending":
+        from core.ai.chunked_compression_integration import (
+            check_and_perform_chunked_compression,
+        )
+
+        history_before = load_json_file(json_file) or []
+        chronicle.update(
+            {
+                "source_index": 0,
+                "source_entries_before": history_before,
+                "result_entries_after": None,
+            }
+        )
+        action_handler._write_location_transition_checkpoint(checkpoint)
+        try:
+            changed = check_and_perform_chunked_compression()
+            history_after = load_json_file(json_file) or []
+            checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+            checkpoint["chunked_chronicle"].update(
+                {
+                    "status": "committed" if changed else "not_due",
+                    "result_entries_after": history_after,
+                }
+            )
+        except Exception as exc:
+            checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+            checkpoint["chunked_chronicle"]["status"] = "attempted_unavailable"
+            warning(
+                "T027 chronicle remained unavailable during resume: %s"
+                % type(exc).__name__,
+                category="conversation_management",
+            )
+        action_handler._write_location_transition_checkpoint(checkpoint)
+
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    memory = checkpoint["legacy_memory"]
+    if memory.get("status") == "pending":
+        from core.memories.companion_memory import CompanionMemoryManager
+        from utils.npc_name_canonicalizer import get_canonical_name
+
+        canonical_npcs = []
+        for npc in party.get("partyNPCs", []):
+            npc_name = npc.get("name", "") if isinstance(npc, dict) else str(npc)
+            if npc_name:
+                canonical = get_canonical_name(npc_name)
+                if canonical:
+                    canonical_npcs.append(canonical)
+        memory["roster_before"] = canonical_npcs
+        action_handler._write_location_transition_checkpoint(checkpoint)
+        if canonical_npcs:
+            manager = CompanionMemoryManager()
+            manager.process_journal_operation(
+                checkpoint["departure_commit"]["journal_entry_after"],
+                canonical_npcs,
+                checkpoint["operation_id"],
+            )
+            try:
+                subprocess.run(
+                    [
+                        sys.executable,
+                        "scripts/memory_management/compress_memories.py",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+            except Exception as exc:
+                warning(
+                    "Legacy memory compression remained unavailable: %s"
+                    % type(exc).__name__,
+                    category="conversation_management",
+                )
+            memory["status"] = "committed"
+        else:
+            memory["status"] = "not_applicable"
+        checkpoint["phase"] = "enrichments_committed"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    deferred = checkpoint["deferred_actions"]
+    while int(deferred.get("cursor", 0)) < len(deferred.get("actions", [])):
+        cursor = int(deferred.get("cursor", 0))
+        if deferred["actions"][cursor].get("family") in {"saveGame", "exitGame"}:
+            break
+        outcome = action_handler.apply_current_transition_action(operation_id, cursor)
+        if outcome == "blocked_conflict":
+            return {"status": "blocked", "reason": "deferred action conflict"}
+        checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+        deferred = checkpoint["deferred_actions"]
+
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    narration_record = checkpoint["narration"]
+    handoff = checkpoint.get("module_handoff")
+    if (
+        narration_record.get("status") == "deferred_to_module_handoff"
+        and isinstance(handoff, dict)
+        and handoff.get("status") == "authority_transferred"
+    ):
+        target_party = load_json_file("party_tracker.json") or {}
+        target_history, target_party = rebuild_conversation_for_current_party(
+            load_json_file(json_file) or [], return_party=True
+        )
+        first = generate_transition_narration(
+            "Describe the committed arrival at the new module from the "
+            "authoritative destination context.",
+            target_party,
+        )
+        arrival = generate_arrival_narration(first, target_party, target_history)
+        final_text = generate_seamless_transition_narration(first, arrival)
+        final_text = _append_transition_outcomes(
+            final_text, checkpoint, target_party
+        )
+        entry = {
+            "role": "assistant",
+            "content": final_text,
+            "message_id": narration_record["message_id"],
+        }
+        existing = next(
+            (
+                index
+                for index, item in enumerate(target_history)
+                if isinstance(item, dict)
+                and item.get("message_id") == narration_record["message_id"]
+            ),
+            None,
+        )
+        narration_record.update(
+            {
+                "status": "retained",
+                "text": final_text,
+                "history_index": len(target_history)
+                if existing is None
+                else existing,
+                "history_entry_after": entry,
+            }
+        )
+        checkpoint["phase"] = "narration_retained"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+        if existing is None:
+            target_history.append(entry)
+            save_conversation_history(
+                target_history, strict=True, allow_compression=False
+            )
+        elif target_history[existing] != entry:
+            return {"status": "blocked", "reason": "handoff narration conflict"}
+
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    narration_record = checkpoint["narration"]
+    if publish and narration_record.get("status") == "retained":
+        display_dm_narration(
+            narration_record["text"], message_id=narration_record["message_id"]
+        )
+        checkpoint["narration"]["status"] = "published"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+
+    final_history = load_json_file(json_file) or []
+    final_party = load_json_file("party_tracker.json") or {}
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    checkpoint["final_context"].update(
+        {
+            "status": "committed",
+            "history_before": final_history,
+            "history_after": final_history,
+            "party_projection_after": _party_transition_projection(final_party),
+            "context_after": get_location_data_from_party_tracker(final_party),
+        }
+    )
+    checkpoint["phase"] = "final_context_committed"
+    action_handler._write_location_transition_checkpoint(checkpoint)
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    deferred = checkpoint["deferred_actions"]
+    while int(deferred.get("cursor", 0)) < len(deferred.get("actions", [])):
+        cursor = int(deferred.get("cursor", 0))
+        if deferred["actions"][cursor].get("family") not in {"saveGame", "exitGame"}:
+            raise RuntimeError(
+                "only a final saveGame or exitGame may follow final context"
+            )
+        outcome = action_handler.apply_current_transition_action(operation_id, cursor)
+        if outcome == "blocked_conflict":
+            return {"status": "blocked", "reason": "save action conflict"}
+        checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+        deferred = checkpoint["deferred_actions"]
+    terminal_action = None
+    if checkpoint["deferred_actions"].get("actions"):
+        last_family = checkpoint["deferred_actions"]["actions"][-1].get("family")
+        if last_family == "exitGame":
+            terminal_action = "exit"
+    final_narration = checkpoint["narration"].get("text", "")
+    action_handler.complete_location_transition_checkpoint(operation_id)
+    return {
+        "status": "completed",
+        "operation_id": operation_id,
+        "narration": final_narration,
+        "terminal_action": terminal_action,
+    }
 
 
 def replace_transition_narration(
@@ -1026,7 +1793,7 @@ def create_module_validation_context(party_tracker_data, path_manager):
         try:
             with open(area_file, "r", encoding="utf-8") as file:
                 area_data = json.load(file)
-            
+
             valid_location_ids = []
             for location in area_data.get("locations", []):
                 loc_id = location.get("locationId", "")
@@ -1044,7 +1811,7 @@ def create_module_validation_context(party_tracker_data, path_manager):
                     # Collect NPCs for current location
                     if loc_id == current_location_id:
                         current_location_npcs = location_npcs.copy()  # Start with location NPCs
-            
+
             # Add party NPCs to current location (they travel with the party)
             party_npcs = party_tracker_data.get("partyNPCs", [])
             for party_npc in party_npcs:
@@ -1452,183 +2219,6 @@ def validate_json_structure(response_text):
         return False, None, f"Validation error: {str(e)}"
 
 
-_COMMITTED_MOVEMENT_PATTERN = re.compile(
-    r"\b(?:"
-    r"go|goes|going|went|"
-    r"travel|travels|traveled|travelling|traveling|"
-    r"walk|walks|walked|walking|"
-    r"move|moves|moved|moving|"
-    r"proceed|proceeds|proceeded|proceeding|"
-    r"return|returns|returned|returning|"
-    r"enter|enters|entered|entering|"
-    r"journey|journeys|journeyed|journeying"
-    r")\b"
-    r"|\bhead(?:s|ed|ing)?\b(?=\s+(?:to|toward|towards|for|back))"
-    r"|\bleav(?:e|es|ing)\b(?=\s+(?:for|to|from))"
-    r"|\bmake\s+(?:my|our|the)\s+way\b",
-    re.IGNORECASE,
-)
-_HYPOTHETICAL_MOVEMENT_PATTERN = re.compile(
-    r"\b(?:what\s+(?:would|could)|what\s+happens?|tell\s+me)\b.{0,60}"
-    r"\bif\b.{0,30}"
-    r"\b(?:go|travel|walk|head|move|proceed|return|leave|enter|journey)\b",
-    re.IGNORECASE,
-)
-
-
-def _known_module_locations(module_name):
-    """Return known location IDs/names from local module area files."""
-    if not isinstance(module_name, str) or not module_name.strip():
-        return []
-
-    safe_module_name = module_name.replace(" ", "_")
-    area_patterns = (
-        os.path.join("modules", safe_module_name, "areas", "*.json"),
-        os.path.join("modules", safe_module_name, "*.json"),
-    )
-    locations = []
-    seen_ids = set()
-    for pattern in area_patterns:
-        for area_path in glob.glob(pattern):
-            filename = os.path.basename(area_path)
-            if filename.endswith(("_BU.json", "_backup.json")):
-                continue
-            try:
-                area_data = safe_json_load(area_path)
-            except Exception:
-                continue
-            if not isinstance(area_data, dict):
-                continue
-            for location in area_data.get("locations", []):
-                if not isinstance(location, dict):
-                    continue
-                location_id = location.get("locationId")
-                location_name = location.get("name")
-                if not isinstance(location_id, str) or not location_id.strip():
-                    continue
-                normalized_id = location_id.strip().upper()
-                if normalized_id in seen_ids:
-                    continue
-                seen_ids.add(normalized_id)
-                locations.append(
-                    {
-                        "location_id": location_id.strip(),
-                        "location_name": (
-                            location_name.strip()
-                            if isinstance(location_name, str)
-                            else ""
-                        ),
-                    }
-                )
-    return locations
-
-
-def _expected_committed_destination(user_input, party_tracker_data):
-    """Return the known destination a committed move explicitly targets.
-
-    This is the deterministic half of the transition contract: committed
-    movement plus an exact known location ID or name. Returns a dict with
-    ``location_id`` and ``location_name``, or None when the input does not
-    deterministically commit to a known destination.
-    """
-    if not isinstance(user_input, str):
-        return None
-    movement_match = _COMMITTED_MOVEMENT_PATTERN.search(user_input)
-    if not movement_match:
-        return None
-    if _HYPOTHETICAL_MOVEMENT_PATTERN.search(user_input):
-        return None
-
-    world_conditions = (party_tracker_data or {}).get("worldConditions") or {}
-    current_location_id = str(
-        world_conditions.get("currentLocationId") or ""
-    ).strip().upper()
-    input_text = user_input.casefold()
-    candidates = []
-    for location in _known_module_locations(
-        (party_tracker_data or {}).get("module", "")
-    ):
-        location_id = location["location_id"]
-        normalized_id = location_id.upper()
-        if normalized_id == current_location_id:
-            continue
-
-        match_positions = []
-        id_match = re.search(
-            rf"(?<![A-Za-z0-9]){re.escape(location_id)}(?![A-Za-z0-9])",
-            user_input,
-            re.IGNORECASE,
-        )
-        if id_match:
-            match_positions.append(id_match.start())
-
-        location_name = location["location_name"]
-        if location_name:
-            name_position = input_text.rfind(location_name.casefold())
-            if name_position >= 0:
-                match_positions.append(name_position)
-
-        if match_positions:
-            destination_position = max(match_positions)
-            if destination_position >= movement_match.start():
-                candidates.append(
-                    (destination_position, location_id, location_name)
-                )
-
-    if not candidates:
-        return None
-
-    # In phrases such as "walk from A to B", the last mentioned non-current
-    # known location is the destination.
-    _, expected_id, expected_name = max(candidates, key=lambda item: item[0])
-    return {"location_id": expected_id, "location_name": expected_name}
-
-
-def _validate_required_transition_action(response_data, expected):
-    """Require a matching transition for an explicit move to a known place.
-
-    ``expected`` is the precomputed result of
-    ``_expected_committed_destination`` for this turn's input. This
-    deliberately guards only deterministic cases: committed movement plus an
-    exact known location ID or name. Ambiguous narrative references remain
-    the semantic validator's responsibility.
-    """
-    if not isinstance(response_data, dict) or expected is None:
-        return True, ""
-    expected_location_id = expected["location_id"]
-    actions = response_data.get("actions", [])
-    transition_index = None
-    encounter_index = None
-    for action_index, action in enumerate(
-        actions if isinstance(actions, list) else []
-    ):
-        if not isinstance(action, dict):
-            continue
-        if action.get("action") == "createEncounter" and encounter_index is None:
-            encounter_index = action_index
-        if action.get("action") != "transitionLocation":
-            continue
-        target = (action.get("parameters") or {}).get("newLocation")
-        if str(target or "").strip().casefold() == expected_location_id.casefold():
-            transition_index = action_index
-            break
-
-    if transition_index is not None and (
-        encounter_index is None or transition_index < encounter_index
-    ):
-        return True, ""
-
-    return (
-        False,
-        "The player explicitly moved to known location "
-        f"{expected_location_id}, so the response must include "
-        "transitionLocation targeting that exact location before any "
-        "location-dependent actions. Emit the transition even if you are "
-        "unsure the route is passable; the travel system verifies routes "
-        "and resolves an impassable one honestly.",
-    )
-
-
 _ENHANCED_DM_NOTE_PREFIX = "Dungeon Master Note:"
 _ENHANCED_PLAYER_MARKER = " Player: "
 _INVENTORY_CONTEXT_MARKER = "\n[Inventory Context:"
@@ -1767,22 +2357,6 @@ def _assemble_validation_messages(
     return messages
 
 
-def _normalize_semantic_rejection_reason(reason):
-    return " ".join(str(reason or "").casefold().split())
-
-
-def _advance_semantic_rejection_streak(previous_reason, count, reason):
-    normalized = _normalize_semantic_rejection_reason(reason)
-    non_semantic_prefixes = (
-        "json structure error:",
-        "npc name error:",
-        "response validation was unavailable",
-    )
-    if not normalized or normalized.startswith(non_semantic_prefixes):
-        return None, 0, False
-    next_count = count + 1 if normalized == previous_reason else 1
-    return normalized, next_count, next_count >= 2
-
 def validate_ai_response(
     primary_response,
     user_input,
@@ -1791,6 +2365,7 @@ def validate_ai_response(
     party_tracker_data,
     srd_context=None,
     npc_voice_batch=None,
+    transition_facts=None,
 ):
     print("DEBUG: NPC validation running...")
     status_validating()
@@ -2021,6 +2596,21 @@ def validate_ai_response(
     validation_conversation = [
         {"role": "system", "content": validation_prompt_text},
         {"role": "system", "content": structure_validation_note},
+        (
+            {
+                "role": "system",
+                "content": (
+                    "Accepted Travel Agent facts for this turn (JSON): "
+                    + json.dumps(
+                        transition_facts,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                ),
+            }
+            if transition_facts
+            else None
+        ),
         {"role": "system", "content": npc_validation_context},  # Always include, even if empty
         {"role": "system", "content": location_details},
         {"role": "system", "content": module_data_context},
@@ -2119,8 +2709,6 @@ def validate_ai_response(
         json.dump(validation_messages_for_diagnostics, f, indent=2, ensure_ascii=False)
     print(f"DEBUG: [MAIN VALIDATION] Exported validation messages to debug/api_captures/main_validation_messages_to_api.json")
     
-    max_validation_retries = 3
-
     # Select per-provider validation model config
     if _val_provider == "openai":
         validation_config = config.DM_VALIDATION_GPT52_LOW
@@ -2131,27 +2719,22 @@ def validate_ai_response(
     else:  # legacy
         validation_config = config.DM_VALIDATION_LEGACY
 
-    for attempt in range(max_validation_retries):
-        try:
-            validation_result = capture_and_fanout("T065", api_client.create_completion,
-                _request_provider=_val_provider,
-                messages=validation_messages_to_send,
-                model=validation_config["model"],
-                temperature=0.1,
-                **{k: v for k, v in validation_config.items() if k != "model"})
-        except Exception as provider_error:
-            warning(
-                f"VALIDATION: T065 provider attempt {attempt + 1}/"
-                f"{max_validation_retries} failed: {provider_error}",
-                category="ai_validation",
-            )
-            continue
+    attempt = 0
+    while True:
+        attempt += 1
+        validation_result = capture_and_fanout("T065", api_client.create_completion,
+            _request_provider=_val_provider,
+            _live_selected=True,
+            messages=validation_messages_to_send,
+            model=validation_config["model"],
+            temperature=0.1,
+            **{k: v for k, v in validation_config.items() if k != "model"})
 
         # Log API call to master log
         try:
             from utils.api_logger import log_api_call
             log_api_call("validation", validation_messages_for_diagnostics, validation_result,
-                        metadata={"attempt": attempt+1, "max_retries": max_validation_retries})
+                        metadata={"attempt": attempt, "max_retries": None})
         except Exception as e:
             print(f"[API_LOG] Warning: Failed to log validation call: {e}")
 
@@ -2175,7 +2758,7 @@ def validate_ai_response(
                 validation_pair = {
                     "timestamp": datetime.now().isoformat(),
                     "user_input": user_input,  # What the user originally said
-                    "assistant_response": response_to_validate if attempt == 0 else validation_messages_to_send[-1]["content"],
+                    "assistant_response": response_to_validate,
                     "structure_validation": {
                         "needed_fix": fixed_response != primary_response,
                         "message": structure_message,
@@ -2186,7 +2769,7 @@ def validate_ai_response(
                         "reason": reason,
                         "raw_response": validation_response
                     },
-                    "attempt": attempt + 1,
+                    "attempt": attempt,
                     # Actual model: capture_and_fanout overrides to the registry
                     # binding before the call, so read it from the response, not
                     # the pre-override validation_config.
@@ -2223,20 +2806,9 @@ def validate_ai_response(
                 return (True, response_to_validate)  # Return tuple with validation status and content
 
         except (json.JSONDecodeError, ValueError, TypeError):
-            debug(f"VALIDATION: Invalid JSON from validation model (Attempt {attempt + 1}/{max_validation_retries})", category="ai_validation")
+            debug(f"VALIDATION: Invalid JSON from validation model (attempt {attempt}); reissuing the same validation packet", category="ai_validation")
             debug(f"VALIDATION: Problematic response: {validation_response}", category="ai_validation")
             continue  # Retry the validation
-
-    # If we've exhausted all retries and still don't have a valid JSON response
-    warning(
-        "VALIDATION: T065 was unavailable or malformed after all retries; "
-        "rejecting the candidate so the main response loop can recover.",
-        category="ai_validation",
-    )
-    return (
-        False,
-        "Response validation was unavailable after three attempts; regenerate safely.",
-    )
 
 def load_validation_prompt():
     from model_config import COMPRESSION_ENABLED
@@ -2332,135 +2904,335 @@ def remove_duplicate_messages(conversation_history):
     return cleaned_history
 
 def truncate_dm_notes(conversation_history):
-    for message in conversation_history:
-        if message["role"] == "user" and message["content"].startswith("Dungeon Master Note:"):
-            parts = message["content"].split("Player:", 1)
-            if len(parts) == 2:
-                date_time = re.search(r"Current date and time: ([^.]+)", parts[0])
-                if date_time:
-                    message["content"] = f"Dungeon Master Note: {date_time.group(0)}. Player:{parts[1]}"
+    from core.ai.cumulative_summary import normalize_legacy_dm_notes
+
+    normalized = normalize_legacy_dm_notes(conversation_history)
+    conversation_history[:] = normalized
     return conversation_history
+
+
+def _legacy_absent_target(path):
+    return {"path": str(path), "exists": False, "value": None}
+
+
+def _legacy_json_target(path):
+    path = Path(path)
+    if not path.exists():
+        return _legacy_absent_target(path)
+    return {
+        "path": str(path),
+        "exists": True,
+        "value": safe_json_load(path),
+    }
+
+
+def _find_legacy_location_repair(conversation_history):
+    """Return the earliest raw legacy transition segment that can be repaired."""
+    transitions = []
+    for index, message in enumerate(conversation_history):
+        content = message.get("content", "") if isinstance(message, dict) else ""
+        if message.get("role") == "user" and content.startswith("Location transition:"):
+            transitions.append((index, message))
+
+    for ordinal, (transition_index, transition_message) in enumerate(transitions):
+        if transition_index > 0:
+            previous = conversation_history[transition_index - 1]
+            if (
+                previous.get("role") == "assistant"
+                and previous.get("content", "").startswith("=== LOCATION SUMMARY ===")
+            ):
+                continue
+        has_following_play = any(
+            item.get("role") == "assistant"
+            or (
+                item.get("role") == "user"
+                and not item.get("content", "").startswith("Dungeon Master Note:")
+            )
+            for item in conversation_history[transition_index + 1 :]
+            if isinstance(item, dict)
+        )
+        if not has_following_play:
+            continue
+
+        previous_boundary = -1
+        for index in range(transition_index - 1, -1, -1):
+            item = conversation_history[index]
+            content = item.get("content", "") if isinstance(item, dict) else ""
+            if (
+                item.get("role") == "user"
+                and content.startswith("Location transition:")
+            ) or (
+                item.get("role") == "assistant"
+                and content.startswith("=== LOCATION SUMMARY ===")
+            ):
+                previous_boundary = index
+                break
+        if previous_boundary < 0:
+            for index in range(transition_index - 1, -1, -1):
+                if conversation_history[index].get("role") == "system":
+                    previous_boundary = index
+                    break
+
+        content = transition_message.get("content", "")
+        match = re.match(
+            r"Location transition: (.+?) \(([A-Z]+\d+)\) to (.+?) \(([A-Z]+\d+)\)$",
+            content,
+        )
+        if match:
+            leaving_name = match.group(1).strip()
+        else:
+            parts = content[len("Location transition:") :].split(" to ", 1)
+            if len(parts) != 2 or not parts[0].strip():
+                continue
+            leaving_name = parts[0].strip()
+
+        source_index = previous_boundary + 1
+        source_entries = copy.deepcopy(
+            conversation_history[source_index:transition_index]
+        )
+        summary_messages = [
+            copy.deepcopy(item)
+            for item in source_entries
+            if item.get("role") != "system"
+            and not (
+                item.get("role") == "user"
+                and item.get("content", "").startswith("Error Note:")
+            )
+        ]
+        if not summary_messages:
+            continue
+        return {
+            "transition_ordinal": ordinal,
+            "transition_message": copy.deepcopy(transition_message),
+            "source_index": source_index,
+            "source_entries_before": source_entries,
+            "summary_messages": summary_messages,
+            "leaving_location_name": leaving_name,
+        }
+    return None
+
+
+def _prepare_legacy_memory_targets(journal_entry, party_tracker_data, operation_id):
+    """Compute legacy companion-memory mutations in an isolated temporary tree."""
+    source_dir = Path("data/companion_memories")
+    before = {
+        str(path): _legacy_json_target(path)
+        for path in source_dir.glob("*.json")
+    }
+    with tempfile.TemporaryDirectory(prefix="neq-legacy-memory-") as temporary:
+        temporary_root = Path(temporary)
+        temporary_data = temporary_root / "data" / "companion_memories"
+        temporary_data.parent.mkdir(parents=True, exist_ok=True)
+        if source_dir.exists():
+            shutil.copytree(source_dir, temporary_data)
+        else:
+            temporary_data.mkdir(parents=True, exist_ok=True)
+
+        original_cwd = Path.cwd()
+        repository_root = Path(__file__).resolve().parent
+        try:
+            os.chdir(temporary_root)
+            from core.memories.companion_memory import CompanionMemoryManager
+            from utils.npc_name_canonicalizer import get_canonical_name
+
+            party_npcs = []
+            for npc in party_tracker_data.get("partyNPCs", []):
+                name = npc.get("name", "") if isinstance(npc, dict) else str(npc)
+                if name:
+                    canonical = get_canonical_name(name)
+                    if canonical:
+                        party_npcs.append(canonical)
+            manager = CompanionMemoryManager()
+            manager.process_journal_operation(
+                copy.deepcopy(journal_entry), party_npcs, operation_id
+            )
+            compression = subprocess.run(
+                [
+                    sys.executable,
+                    str(
+                        repository_root
+                        / "scripts"
+                        / "memory_management"
+                        / "compress_memories.py"
+                    ),
+                ],
+                cwd=temporary_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if compression.returncode != 0:
+                raise RuntimeError(
+                    "legacy memory compression failed with exit code %s"
+                    % compression.returncode
+                )
+        finally:
+            os.chdir(original_cwd)
+
+        after_paths = list(temporary_data.glob("*.json"))
+        targets = []
+        relative_paths = set(before)
+        relative_paths.update(
+            str(Path("data/companion_memories") / path.name)
+            for path in after_paths
+        )
+        for relative in sorted(relative_paths):
+            temporary_path = temporary_root / relative
+            after = _legacy_json_target(temporary_path)
+            after["path"] = relative
+            prior = before.get(relative, _legacy_absent_target(relative))
+            if prior["exists"] != after["exists"] or prior["value"] != after["value"]:
+                targets.append({"before": prior, "after": after})
+        return targets
+
+
+def _apply_legacy_json_target(target):
+    before = target["before"]
+    after = target["after"]
+    path = Path(after["path"])
+    current = _legacy_json_target(path)
+    if current["exists"] == after["exists"] and current["value"] == after["value"]:
+        return "already_applied"
+    if current["exists"] != before["exists"] or current["value"] != before["value"]:
+        return "blocked_conflict"
+    if after["exists"]:
+        safe_json_dump(after["value"], path)
+    elif path.exists():
+        path.unlink()
+    return "applied"
+
+
+def _apply_legacy_repair_checkpoint_unlocked(checkpoint, conversation_history):
+    repair = checkpoint.get("legacy_repair") or {}
+    targets = [repair.get("journal")] + list(repair.get("memory_targets") or [])
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        outcome = _apply_legacy_json_target(target)
+        if outcome == "blocked_conflict":
+            checkpoint["phase"] = "blocked_conflict"
+            action_handler._write_location_transition_checkpoint(checkpoint)
+            return conversation_history
+        target["status"] = "committed"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+
+    summary_entry = repair["summary_entry_after"]
+    source_index = repair["source_index"]
+    if (
+        source_index < len(conversation_history)
+        and conversation_history[source_index] == summary_entry
+    ):
+        compacted = conversation_history
+    else:
+        compacted, _ = compact_with_accepted_departure_summary(
+            conversation_history,
+            source_index=source_index,
+            source_entries_before=repair["source_entries_before"],
+            leaving_location_name=repair["leaving_location_name"],
+            summary=repair["summary"],
+            summary_message_id=repair["summary_message_id"],
+        )
+        save_conversation_history(compacted)
+    repair["conversation_status"] = "committed"
+    checkpoint["phase"] = "completed"
+    action_handler._write_location_transition_checkpoint(checkpoint)
+    action_handler._remove_location_transition_checkpoint()
+    return compacted
+
+
+def _apply_legacy_repair_checkpoint(checkpoint, conversation_history):
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    with _party_module_transition_lock():
+        return _apply_legacy_repair_checkpoint_unlocked(
+            checkpoint, conversation_history
+        )
 
 def check_and_process_location_transitions(conversation_history, party_tracker_data, path_manager):
     """
     Check if there are any unprocessed location transitions in the conversation history
     and process them to create summaries and compress the history.
     """
-    # Find the most recent transition that hasn't been processed yet
-    last_transition_index = None
-    last_transition_content = None
-    
-    for i in range(len(conversation_history) - 1, -1, -1):
-        msg = conversation_history[i]
-        if msg.get("role") == "user" and "Location transition:" in msg.get("content", ""):
-            last_transition_index = i
-            last_transition_content = msg.get("content", "")
-            break
-    
-    if last_transition_index is None:
-        # No transitions found
+    existing = safe_json_load(action_handler.PENDING_LOCATION_TRANSITION_FILE)
+    if isinstance(existing, dict):
+        if existing.get("version") == 2 and existing.get("kind") == "legacy_repair":
+            return _apply_legacy_repair_checkpoint(existing, conversation_history)
         return conversation_history
-    
-    # Check if this transition has already been processed (has a summary right before it)
-    if last_transition_index > 0:
-        prev_msg = conversation_history[last_transition_index - 1]
-        if "=== LOCATION SUMMARY ===" in prev_msg.get("content", ""):
-            # This transition has already been processed
+
+    repair = _find_legacy_location_repair(conversation_history)
+    if repair is None:
+        return conversation_history
+
+    summary = generate_location_summary(
+        repair["leaving_location_name"], repair["summary_messages"]
+    )
+    if not summary:
+        return conversation_history
+    enhanced_summary = enhance_location_summary(summary) or summary
+
+    world = party_tracker_data.get("worldConditions") or {}
+    journal_target_before = _legacy_json_target("journal.json")
+    journal_before = copy.deepcopy(journal_target_before["value"])
+    if not isinstance(journal_before, dict):
+        journal_before = {"entries": []}
+    journal_entry = {
+        "date": "%s %s %s"
+        % (world.get("year", "N/A"), world.get("month", "N/A"), world.get("day", "N/A")),
+        "time": world.get("time", "N/A"),
+        "location": repair["leaving_location_name"],
+        "summary": enhanced_summary,
+    }
+    journal_after = copy.deepcopy(journal_before)
+    journal_after.setdefault("entries", []).append(journal_entry)
+    operation_id = str(uuid4())
+    memory_targets = _prepare_legacy_memory_targets(
+        journal_entry, party_tracker_data, operation_id
+    )
+    summary_message_id = str(uuid4())
+    summary_entry = {
+        "role": "assistant",
+        "content": "=== LOCATION SUMMARY ===\n\n%s:\n%s\n%s"
+        % (
+            repair["leaving_location_name"],
+            "-" * len(repair["leaving_location_name"] + ":"),
+            enhanced_summary,
+        ),
+        "message_id": summary_message_id,
+    }
+    checkpoint = {
+        "version": 2,
+        "kind": "legacy_repair",
+        "operation_id": operation_id,
+        "phase": "staged",
+        "legacy_repair": {
+            "transition_ordinal": repair["transition_ordinal"],
+            "transition_message": repair["transition_message"],
+            "source_index": repair["source_index"],
+            "source_entries_before": repair["source_entries_before"],
+            "leaving_location_name": repair["leaving_location_name"],
+            "summary": enhanced_summary,
+            "summary_message_id": summary_message_id,
+            "summary_entry_after": summary_entry,
+            "journal": {
+                "before": journal_target_before,
+                "after": {
+                    "path": "journal.json",
+                    "exists": True,
+                    "value": journal_after,
+                },
+                "status": "pending",
+            },
+            "memory_targets": memory_targets,
+            "conversation_status": "pending",
+        },
+    }
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    with _party_module_transition_lock():
+        if Path(action_handler.PENDING_LOCATION_TRANSITION_FILE).exists():
             return conversation_history
-    
-    # Check if there's already a summary after this transition
-    # If there are regular conversation messages after the transition, we should process it
-    has_conversation_after = False
-    for i in range(last_transition_index + 1, len(conversation_history)):
-        msg = conversation_history[i]
-        # Skip system messages and DM notes
-        if msg.get("role") == "assistant" or (msg.get("role") == "user" and "Dungeon Master Note:" not in msg.get("content", "")):
-            has_conversation_after = True
-            break
-    
-    if not has_conversation_after:
-        # No conversation after the transition yet, wait for next round
-        return conversation_history
-    
-    # Extract the leaving location from the transition message
-    # New format: "Location transition: [from_location] (ID) to [to_location] (ID)"
-    # Old format: "Location transition: [from_location] to [to_location]"
-    try:
-        import re
-        # Try to extract with IDs first (new format)
-        id_pattern = r'Location transition: (.+?) \(([A-Z]\d+)\) to (.+?) \(([A-Z]\d+)\)'
-        id_match = re.match(id_pattern, last_transition_content)
-        
-        if id_match:
-            # New format with IDs
-            leaving_location_name = id_match.group(1)
-            leaving_location_id = id_match.group(2)
-            debug(f"STATE_CHANGE: Extracted from new format - Location: {leaving_location_name}, ID: {leaving_location_id}", category="location_transitions")
-        else:
-            # Fall back to old format
-            parts = last_transition_content.split(" to ")
-            if len(parts) == 2:
-                from_part = parts[0].replace("Location transition: ", "").strip()
-                leaving_location_name = from_part
-                leaving_location_id = None
-                debug(f"STATE_CHANGE: Extracted from old format - Location: {leaving_location_name}", category="location_transitions")
-            else:
-                warning("VALIDATION: Could not parse transition message format", category="location_transitions")
-                return conversation_history
-    except Exception as e:
-        error(f"FAILURE: Error parsing transition message", exception=e, category="location_transitions")
-        return conversation_history
-    
-    debug(f"STATE_CHANGE: Processing transition from {leaving_location_name}", category="location_transitions")
-    
-    try:
-        # Generate enhanced adventure summary
-        adventure_summary = generate_enhanced_adventure_summary(
-            conversation_history,
-            party_tracker_data,
-            leaving_location_name
-        )
-        
-        if adventure_summary:
-            # Update journal with the summary
-            update_journal_with_summary(
-                adventure_summary,
-                party_tracker_data,
-                leaving_location_name
-            )
-            
-            # Compress conversation history (also captures per-companion episodes
-            # from the raw segment before it is compressed away -- Phase 1d,
-            # offloaded + fail-open, always on)
-            compressed_history = compress_conversation_history_on_transition(
-                conversation_history,
-                leaving_location_name,
-                party_tracker_data=party_tracker_data,
-                path_manager=path_manager,
-                player_name=(party_tracker_data.get("partyMembers") or [""])[0],
-            )
-            
-            # Check if chunked compression is needed after creating the location summary
-            try:
-                from core.ai.chunked_compression_integration import check_and_perform_chunked_compression
-                if check_and_perform_chunked_compression():
-                    debug("SUCCESS: Chunked compression performed after location transition", category="conversation_management")
-                    # Reload the compressed history
-                    compressed_history = load_json_file(json_file) or compressed_history
-            except Exception as e:
-                error(f"FAILURE: Chunked compression check failed", exception=e, category="conversation_management")
-            
-            debug("SUCCESS: Location summary and compression completed", category="location_transitions")
-            return compressed_history
-        else:
-            debug("STATE_CHANGE: No adventure summary generated", category="location_transitions")
-            return conversation_history
-            
-    except Exception as e:
-        error(f"FAILURE: Failed to process location transition", exception=e, category="location_transitions")
-        import traceback
-        traceback.print_exc()
-        return conversation_history
+        action_handler._write_location_transition_checkpoint(checkpoint)
+    return _apply_legacy_repair_checkpoint(checkpoint, conversation_history)
 
 def check_and_process_module_transitions(conversation_history, party_tracker_data):
     """
@@ -2874,7 +3646,7 @@ def _emit_committed_module_message(content, message_id):
     return delivered is True
 
 
-def display_dm_narration(content, channel="main", color="blue"):
+def display_dm_narration(content, channel="main", color="blue", message_id=None):
     """Deliver DM narration through the frontend sink, else the console.
 
     A frontend (web or headless) that installed a player-output sink gets
@@ -2894,6 +3666,7 @@ def display_dm_narration(content, channel="main", color="blue"):
                 "type": "narration",
                 "channel": channel,
                 "content": content,
+                "message_id": message_id,
             }
         )
     if delivered is not True:
@@ -3296,6 +4069,26 @@ def process_ai_response(
     global needs_conversation_history_update
     from contextlib import ExitStack
 
+    json_content = extract_json_from_codeblock(response)
+    parsed_response = json.loads(json_content)
+    actions = parsed_response.get("actions", [])
+    if not isinstance(actions, list):
+        actions = []
+    first_action = actions[0] if actions and isinstance(actions[0], dict) else {}
+    first_parameters = first_action.get("parameters", {})
+    if not isinstance(first_parameters, dict):
+        first_parameters = {}
+    current_module = str((party_tracker_data or {}).get("module", ""))
+    requested_module = str(first_parameters.get("module", ""))
+    is_travel_workflow = any(
+        isinstance(action, dict) and action.get("action") == "transitionLocation"
+        for action in actions
+    ) or (
+        first_action.get("action") == "updatePartyTracker"
+        and bool(requested_module)
+        and requested_module != current_module
+    )
+
     response_fences = ExitStack()
 
     try:
@@ -3303,10 +4096,11 @@ def process_ai_response(
             _party_module_transition_lock,
         )
 
-        # One accepted response is a party-state transaction. This is the
-        # linearization fence for the request snapshot, recovery drain,
-        # display, state actions, and any ordered follow-up.
-        response_fences.enter_context(_party_module_transition_lock())
+        # Preserve the legacy response-wide fence for ordinary responses.
+        # Travel has its own checkpoint-v2 transaction and must release every
+        # mutation lock before T091/T016/T015/T013/T063/T064 provider work.
+        if not is_travel_workflow:
+            response_fences.enter_context(_party_module_transition_lock())
         caller_projection = _party_transition_projection(party_tracker_data)
         if (
             caller_projection is not None
@@ -3374,6 +4168,13 @@ def process_ai_response(
                 "retryable": True,
                 "error": transition_recovery.get("reason"),
             }
+        if transition_recovery.get("status") == "resume_required":
+            return {
+                "status": "transition_context_pending",
+                "retryable": True,
+                "operation_id": transition_recovery.get("operation_id"),
+                "phase": transition_recovery.get("phase"),
+            }
         if transition_recovery.get("status") == "recovered":
             if transition_recovery.get("deferred_actions_not_replayed"):
                 warning(
@@ -3387,10 +4188,6 @@ def process_ai_response(
                 "status": "transition_state_changed",
                 "retryable": True,
             }
-
-        json_content = extract_json_from_codeblock(response)
-        parsed_response = json.loads(json_content)
-        actions = parsed_response.get("actions", [])
 
         # Movement is the transaction boundary for its response. Reject the
         # entire candidate before level-up or any other action can mutate
@@ -3410,6 +4207,52 @@ def process_ai_response(
                 "error": (
                     "A response containing transitionLocation must contain "
                     "exactly one transition and it must be the first action"
+                ),
+            }
+
+        first_action = actions[0] if actions and isinstance(actions[0], dict) else {}
+        first_params = first_action.get("parameters")
+        first_params = first_params if isinstance(first_params, dict) else {}
+        current_module = str((party_tracker_data or {}).get("module") or "")
+        target_module = str(first_params.get("module") or "")
+        if (
+            first_action.get("action") == "updatePartyTracker"
+            and target_module
+            and target_module != current_module
+        ):
+            if len(actions) != 2 or not isinstance(actions[1], dict) or actions[1].get(
+                "action"
+            ) != "updateTime":
+                return {
+                    "status": "invalid_transition_actions",
+                    "retryable": True,
+                    "error": (
+                        "Cross-module travel must be updatePartyTracker followed "
+                        "by exactly one updateTime action"
+                    ),
+                }
+            accepted_history = list(conversation_history)
+            accepted_history.append({"role": "assistant", "content": response})
+            checkpoint = action_handler.stage_cross_module_root_checkpoint(
+                first_action,
+                actions[1],
+                accepted_history,
+                load_json_file("party_tracker.json") or party_tracker_data,
+                parsed_response.get("narration", ""),
+            )
+            resumed = _resume_v2_location_transition(
+                checkpoint["operation_id"], publish=True
+            )
+            if resumed.get("status") != "completed":
+                return {
+                    "status": "transition_context_pending",
+                    "retryable": True,
+                    "error": resumed.get("reason", "module handoff remains pending"),
+                }
+            return {
+                "role": "assistant",
+                "content": json.dumps(
+                    {"narration": resumed.get("narration", ""), "actions": []}
                 ),
             }
         
@@ -3485,6 +4328,7 @@ def process_ai_response(
         if is_transition:
             debug("STATE_CHANGE: Transition action detected. Holding departure narration.", category="location_transitions")
             transition_placeholder = None
+            committed_transition_prompt = None
             location_transition_id = None
             pending_archive_info = None
 
@@ -3514,6 +4358,11 @@ def process_ai_response(
                         if action.get("action") == "transitionLocation"
                         else None
                     ),
+                    transition_deferred_actions=(
+                        deferred_actions
+                        if action.get("action") == "transitionLocation"
+                        else None
+                    ),
                 )
                 actions_processed = True
                 if isinstance(result, dict):
@@ -3527,6 +4376,9 @@ def process_ai_response(
                         placeholder = response_data.get("transition_narration")
                         if isinstance(placeholder, str) and placeholder:
                             transition_placeholder = placeholder
+                        prompt_value = response_data.get("transition_prompt")
+                        if isinstance(prompt_value, str) and prompt_value:
+                            committed_transition_prompt = prompt_value
                         checkpoint_id = response_data.get(
                             "location_transition_id"
                         )
@@ -3657,17 +4509,50 @@ def process_ai_response(
                     needs_conversation_history_update = True
             if actions_processed:
                 party_tracker_data = load_json_file("party_tracker.json")
+
+            if location_transition_id is not None:
+                resumed = _resume_v2_location_transition(
+                    location_transition_id, publish=True
+                )
+                if resumed.get("status") != "completed":
+                    return {
+                        "status": "transition_context_pending",
+                        "retryable": True,
+                        "error": resumed.get("reason", "transition resume pending"),
+                    }
+                if resumed.get("terminal_action") == "exit":
+                    return "exit"
+                return {
+                    "role": "assistant",
+                    "content": json.dumps(
+                        {
+                            "narration": resumed.get("narration", ""),
+                            "actions": [],
+                        }
+                    ),
+                }
             
             # Step 2: Reload the state to get the NEW location context
             fresh_party_data = load_json_file("party_tracker.json")
             fresh_conversation_history = load_json_file(json_file) or []
             
-            # Step 3: Generate the arrival narration using the new helper function
-            arrival_narration = generate_arrival_narration(departure_narration, fresh_party_data, fresh_conversation_history)
+            # Step 3: generate every prose layer from the committed, disclosure-
+            # filtered destination projection. No transient placeholder is saved.
+            transition_narration = generate_transition_narration(
+                committed_transition_prompt or departure_narration,
+                fresh_party_data,
+            )
+            arrival_narration = generate_arrival_narration(
+                transition_narration,
+                fresh_party_data,
+                fresh_conversation_history,
+            )
             
             # <--- MODIFIED SECTION: Use the new seamless narration generator --->
             # Step 4: Blend the departure and arrival narrations into a single, cohesive story.
-            full_narration = generate_seamless_transition_narration(departure_narration, arrival_narration)
+            full_narration = generate_seamless_transition_narration(
+                transition_narration, arrival_narration
+            )
 
             # T063/T064 may overlap another worker's transition. Do not save
             # or display narration for a destination that was superseded while
@@ -3714,25 +4599,298 @@ def process_ai_response(
                         category="location_transitions",
                     )
 
-            # Step 5: Replace the raw transition narration with the seamless version in history
-            # This ensures conversation history matches what the player saw
+            if location_transition_id is not None:
+                transition_checkpoint = (
+                    action_handler.load_current_transition_checkpoint(
+                        location_transition_id
+                    )
+                )
+                episode_record = transition_checkpoint["episode"]
+                if episode_record.get("status") == "pending":
+                    try:
+                        from core.npc.episode_capture import (
+                            boundary_turn_id_for_position,
+                            capture_location_episode,
+                        )
+
+                        boundary_turn_id = boundary_turn_id_for_position(
+                            sum(
+                                1
+                                for message in (
+                                    load_json_file(json_file) or []
+                                )
+                                if isinstance(message, dict)
+                                and message.get("role") == "user"
+                                and "Location transition:"
+                                in message.get("content", "")
+                            )
+                            + 1
+                        )
+                        episode_record["boundary_turn_id"] = boundary_turn_id
+                        episode_id = capture_location_episode(
+                            leaving_location_name=transition_checkpoint[
+                                "origin_location_name"
+                            ],
+                            leaving_location_id=transition_checkpoint[
+                                "origin_location_id"
+                            ],
+                            segment_messages=episode_record[
+                                "source_entries_before"
+                            ],
+                            party_tracker_data=fresh_party_data,
+                            path_manager=ModulePathManager(
+                                transition_checkpoint["module_name"]
+                            ),
+                            boundary_turn_id=boundary_turn_id,
+                            player_name=(
+                                fresh_party_data.get("partyMembers") or [""]
+                            )[0],
+                        )
+                        episode_record["status"] = (
+                            "committed"
+                            if episode_id
+                            else "attempted_unavailable"
+                        )
+                        episode_record["episode_id"] = episode_id
+                    except Exception as episode_error:
+                        episode_record["status"] = "attempted_unavailable"
+                        warning(
+                            "T108 episode unavailable after local cleanup: %s"
+                            % type(episode_error).__name__,
+                            category="conversation_management",
+                        )
+                    action_handler._write_location_transition_checkpoint(
+                        transition_checkpoint
+                    )
+
+                compaction_record = transition_checkpoint[
+                    "conversation_compaction"
+                ]
+                if compaction_record.get("status") != "committed":
+                    from core.ai.cumulative_summary import (
+                        compact_with_accepted_departure_summary,
+                    )
+
+                    current_history = load_json_file(json_file) or []
+                    summary_message_id = (
+                        compaction_record.get("summary_message_id")
+                        or str(uuid4())
+                    )
+                    compacted_history, summary_entry = (
+                        compact_with_accepted_departure_summary(
+                            current_history,
+                            source_index=transition_checkpoint[
+                                "origin_history_boundary"
+                            ],
+                            source_entries_before=transition_checkpoint[
+                                "origin_segment_before"
+                            ],
+                            leaving_location_name=transition_checkpoint[
+                                "origin_location_name"
+                            ],
+                            summary=transition_checkpoint[
+                                "departure_summary"
+                            ]["text"],
+                            summary_message_id=summary_message_id,
+                        )
+                    )
+                    world = fresh_party_data["worldConditions"]
+                    transition_marker = {
+                        "role": "user",
+                        "content": (
+                            "Location transition: %s (%s) to %s (%s)"
+                            % (
+                                transition_checkpoint["origin_location_name"],
+                                transition_checkpoint["origin_location_id"],
+                                world["currentLocation"],
+                                world["currentLocationId"],
+                            )
+                        ),
+                    }
+                    summary_index = next(
+                        index
+                        for index, message in enumerate(compacted_history)
+                        if isinstance(message, dict)
+                        and message.get("message_id") == summary_message_id
+                    )
+                    if (
+                        summary_index + 1 >= len(compacted_history)
+                        or compacted_history[summary_index + 1]
+                        != transition_marker
+                    ):
+                        compacted_history.insert(
+                            summary_index + 1, transition_marker
+                        )
+                    compaction_record.update(
+                        {
+                            "status": "pending",
+                            "source_index": transition_checkpoint[
+                                "origin_history_boundary"
+                            ],
+                            "source_entries_before": transition_checkpoint[
+                                "origin_segment_before"
+                            ],
+                            "result_entries_after": [
+                                summary_entry,
+                                transition_marker,
+                            ],
+                            "summary_message_id": summary_message_id,
+                        }
+                    )
+                    action_handler._write_location_transition_checkpoint(
+                        transition_checkpoint
+                    )
+                    save_conversation_history(
+                        compacted_history,
+                        strict=True,
+                        allow_compression=False,
+                    )
+                    compaction_record["status"] = "committed"
+                    transition_checkpoint["phase"] = "history_compacted"
+                    action_handler._write_location_transition_checkpoint(
+                        transition_checkpoint
+                    )
+
+                chronicle_record = transition_checkpoint["chunked_chronicle"]
+                if chronicle_record.get("status") == "pending":
+                    from core.ai.chunked_compression_integration import (
+                        check_and_perform_chunked_compression,
+                    )
+
+                    history_before_chronicle = load_json_file(json_file) or []
+                    chronicle_record.update(
+                        {
+                            "source_index": 0,
+                            "source_entries_before": history_before_chronicle,
+                            "result_entries_after": None,
+                        }
+                    )
+                    action_handler._write_location_transition_checkpoint(
+                        transition_checkpoint
+                    )
+                    chronicle_changed = check_and_perform_chunked_compression()
+                    history_after_chronicle = load_json_file(json_file) or []
+                    chronicle_record["result_entries_after"] = (
+                        history_after_chronicle
+                    )
+                    chronicle_record["status"] = (
+                        "committed" if chronicle_changed else "not_due"
+                    )
+                    action_handler._write_location_transition_checkpoint(
+                        transition_checkpoint
+                    )
+
+                memory_record = transition_checkpoint["legacy_memory"]
+                if memory_record.get("status") == "pending":
+                    from core.memories.companion_memory import (
+                        CompanionMemoryManager,
+                    )
+                    from utils.npc_name_canonicalizer import get_canonical_name
+
+                    canonical_npcs = []
+                    for npc in fresh_party_data.get("partyNPCs", []):
+                        npc_name = (
+                            npc.get("name", "")
+                            if isinstance(npc, dict)
+                            else str(npc)
+                        )
+                        if npc_name:
+                            canonical_name = get_canonical_name(npc_name)
+                            if canonical_name:
+                                canonical_npcs.append(canonical_name)
+                    memory_record["roster_before"] = canonical_npcs
+                    action_handler._write_location_transition_checkpoint(
+                        transition_checkpoint
+                    )
+                    if canonical_npcs:
+                        memory_manager = CompanionMemoryManager()
+                        memory_manager.process_journal_operation(
+                            transition_checkpoint["departure_commit"][
+                                "journal_entry_after"
+                            ],
+                            canonical_npcs,
+                            transition_checkpoint["operation_id"],
+                        )
+                        try:
+                            subprocess.run(
+                                [
+                                    sys.executable,
+                                    "scripts/memory_management/compress_memories.py",
+                                ],
+                                capture_output=True,
+                                text=True,
+                                timeout=30,
+                                check=False,
+                            )
+                        except Exception as memory_compression_error:
+                            warning(
+                                "Legacy memory compression remained unavailable: %s"
+                                % type(memory_compression_error).__name__,
+                                category="conversation_management",
+                            )
+                        memory_record["status"] = "committed"
+                    else:
+                        memory_record["status"] = "not_applicable"
+                    transition_checkpoint["phase"] = "enrichments_committed"
+                    action_handler._write_location_transition_checkpoint(
+                        transition_checkpoint
+                    )
+
+            # Stage and retain the one final narration before player delivery.
             fresh_conversation_history = load_json_file(json_file) or []
-            if replace_transition_narration(
-                fresh_conversation_history,
-                full_narration,
-                expected_placeholder=transition_placeholder,
-            ):
-                debug("SUCCESS: Replaced raw transition narration with seamless version in history", category="location_transitions")
+            narration_message_id = None
+            if location_transition_id is not None:
+                transition_checkpoint = (
+                    action_handler.load_current_transition_checkpoint(
+                        location_transition_id
+                    )
+                )
+                if transition_checkpoint is None:
+                    return {
+                        "status": "transition_context_pending",
+                        "retryable": True,
+                        "error": "transition checkpoint disappeared before narration",
+                    }
+                narration_record = transition_checkpoint["narration"]
+                narration_message_id = narration_record["message_id"]
+                narration_entry = {
+                    "role": "assistant",
+                    "content": full_narration,
+                    "message_id": narration_message_id,
+                }
+                existing_index = next(
+                    (
+                        index
+                        for index, message in enumerate(fresh_conversation_history)
+                        if isinstance(message, dict)
+                        and message.get("message_id") == narration_message_id
+                    ),
+                    None,
+                )
+                if existing_index is None:
+                    narration_record.update(
+                        {
+                            "status": "pending",
+                            "text": full_narration,
+                            "history_index": len(fresh_conversation_history),
+                            "history_entry_before": None,
+                            "history_entry_after": narration_entry,
+                        }
+                    )
+                    transition_checkpoint["phase"] = "narration_pending"
+                    action_handler._write_location_transition_checkpoint(
+                        transition_checkpoint
+                    )
+                    fresh_conversation_history.append(narration_entry)
+                elif fresh_conversation_history[existing_index] != narration_entry:
+                    return {
+                        "status": "transition_context_pending",
+                        "retryable": True,
+                        "error": "stable narration identity conflicts with history",
+                    }
             else:
-                # Do not clobber an unrelated assistant message when the
-                # placeholder is missing; append the narration as a recoverable
-                # record associated with the completed transition.
                 fresh_conversation_history.append(
                     {"role": "assistant", "content": full_narration}
-                )
-                warning(
-                    "Transition placeholder missing; appended seamless narration",
-                    category="location_transitions",
                 )
 
             save_conversation_history(
@@ -3740,6 +4898,17 @@ def process_ai_response(
                 strict=True,
                 allow_compression=False,
             )
+            if location_transition_id is not None:
+                transition_checkpoint = (
+                    action_handler.load_current_transition_checkpoint(
+                        location_transition_id
+                    )
+                )
+                transition_checkpoint["narration"]["status"] = "retained"
+                transition_checkpoint["phase"] = "narration_retained"
+                action_handler._write_location_transition_checkpoint(
+                    transition_checkpoint
+                )
             def finish_location_transition_checkpoint():
                 if location_transition_id is None:
                     return
@@ -3754,7 +4923,20 @@ def process_ai_response(
 
             # Party movement and the exact narration the player is about to
             # but it must not create a history/display mismatch.
-            display_dm_narration(full_narration)
+            display_dm_narration(
+                full_narration,
+                message_id=narration_message_id,
+            )
+            if location_transition_id is not None:
+                transition_checkpoint = (
+                    action_handler.load_current_transition_checkpoint(
+                        location_transition_id
+                    )
+                )
+                transition_checkpoint["narration"]["status"] = "published"
+                action_handler._write_location_transition_checkpoint(
+                    transition_checkpoint
+                )
 
             if pending_archive_info:
                 try:
@@ -3836,7 +5018,35 @@ def process_ai_response(
 
             # Only now may later actions (especially saveGame) observe and
             # snapshot the destination timeline.
-            for action in deferred_actions:
+            for deferred_index, action in enumerate(deferred_actions):
+                if location_transition_id is not None:
+                    staged_checkpoint = (
+                        action_handler.load_current_transition_checkpoint(
+                            location_transition_id
+                        )
+                    )
+                    if staged_checkpoint is not None:
+                        staged_result = (
+                            action_handler.apply_current_transition_action(
+                                location_transition_id, deferred_index
+                            )
+                        )
+                        if staged_result == "blocked_conflict":
+                            return {
+                                "status": "transition_context_pending",
+                                "retryable": True,
+                                "error": (
+                                    "a staged deferred action conflicts with "
+                                    "the authoritative state"
+                                ),
+                            }
+                        party_tracker_data = load_json_file("party_tracker.json")
+                        deferred_location_data = (
+                            get_location_data_from_party_tracker(
+                                party_tracker_data
+                            )
+                        )
+                        continue
                 result = action_handler.process_action(
                     action,
                     party_tracker_data,
@@ -3985,7 +5195,35 @@ def process_ai_response(
                             )
                         )
 
-            # Every ordered action returned successfully. Only now is the
+            # Every ordered action returned successfully. Freeze and verify
+            # the final accepted history/party/context before retiring the
+            # runtime checkpoint; queued Save may run only after this point.
+            if location_transition_id is not None:
+                final_checkpoint = (
+                    action_handler.load_current_transition_checkpoint(
+                        location_transition_id
+                    )
+                )
+                final_history = load_json_file(json_file) or []
+                final_party = load_json_file("party_tracker.json") or {}
+                final_context = get_location_data_from_party_tracker(final_party)
+                final_checkpoint["final_context"].update(
+                    {
+                        "status": "committed",
+                        "history_before": final_history,
+                        "history_after": final_history,
+                        "party_projection_after": _party_transition_projection(
+                            final_party
+                        ),
+                        "context_after": final_context,
+                    }
+                )
+                final_checkpoint["phase"] = "final_context_committed"
+                action_handler._write_location_transition_checkpoint(
+                    final_checkpoint
+                )
+
+            # Every receipt and final context is durable. Only now is the
             # within-module transition checkpoint safe to retire.
             finish_location_transition_checkpoint()
 
@@ -4440,43 +5678,21 @@ def save_conversation_history(
             raise
         return False
 
-def _finalize_main_response_validation(
-    conversation_history,
-    validation_prefix_length,
-    candidate_response,
-    candidate_valid,
-    fallback_text=None,
-):
-    """Remove retry-only messages and block rejected T067 state actions.
-
-    ``fallback_text`` replaces the generic out-of-fiction fallback with one
-    honest in-fiction narration (travel-contradiction path); it is never
-    stacked on top of it.
-    """
-    cleaned_history = conversation_history[:validation_prefix_length]
-    if candidate_valid and candidate_response:
-        return cleaned_history, candidate_response
-
-    fallback_message = fallback_text or (
-        "I could not safely resolve that action after several attempts. "
-        "No game state was changed; please rephrase or try a simpler action."
-    )
-    cleaned_history.append({"role": "assistant", "content": fallback_message})
-    return cleaned_history, None
-
-
-def get_ai_response(
+def _get_ai_response_impl(
     conversation_history,
     validation_retry_count=0,
     *,
     npc_voice_batch=None,
+    prepare_history=True,
+    live_selected=False,
 ):
     global should_inject_creation_prompt
     # This is the centralized terminal/web provider boundary. A transition
     # published by another worker between turns must finish (in durable order)
     # before model selection or request construction. If the drain changed
     # campaign state, rebuild the already-assembled system context in place.
-    prepare_conversation_for_ai_request(conversation_history)
+    if prepare_history:
+        prepare_conversation_for_ai_request(conversation_history)
     status_processing_ai()
     
     # Import action predictor and config
@@ -4662,6 +5878,7 @@ def get_ai_response(
     print(f"DEBUG: [MAIN.PY] Using model: {selected_config['model']} (provider: {MODEL_PROVIDER})")
     response = capture_and_fanout("T067", api_client.create_completion,
         _request_provider=MODEL_PROVIDER,
+        _live_selected=live_selected,
         messages=messages_to_send,
         model=selected_config["model"],
         temperature=TEMPERATURE,
@@ -4723,6 +5940,38 @@ def get_ai_response(
     #     print(f"Warning: Could not log training data: {e}")
     
     return content
+
+
+def get_ai_response(
+    conversation_history,
+    validation_retry_count=0,
+    *,
+    npc_voice_batch=None,
+):
+    """Legacy synchronous T067 path used outside the live player-turn seam."""
+    return _get_ai_response_impl(
+        conversation_history,
+        validation_retry_count=validation_retry_count,
+        npc_voice_batch=npc_voice_batch,
+        prepare_history=True,
+        live_selected=False,
+    )
+
+
+def _get_live_ai_response(
+    prepared_request_history,
+    validation_retry_count=0,
+    *,
+    npc_voice_batch=None,
+):
+    """Send an already-prepared, detached outer-turn T067 request."""
+    return _get_ai_response_impl(
+        prepared_request_history,
+        validation_retry_count=validation_retry_count,
+        npc_voice_batch=npc_voice_batch,
+        prepare_history=False,
+        live_selected=True,
+    )
 
 def ensure_main_system_prompt(conversation_history, main_system_prompt_text):
     """
@@ -5407,13 +6656,9 @@ def main_game_loop():
         # Use the new order_conversation_messages function
         conversation_history = order_conversation_messages(conversation_history, main_system_prompt_text)
     
-        # Check for missing summaries at game startup
-        debug("STATE_CHANGE: Checking for missing location summaries at startup", category="startup")
-        conversation_history = check_and_compact_missing_summaries(
-            conversation_history,
-            party_tracker_data
-        )
-    
+        # Old-format repair is intentionally deferred until the first real
+        # prompt opens the cancellable player-turn scope. Startup must never
+        # hide an unbounded provider call before Save/Load/Reset are reachable.
         save_conversation_history(conversation_history)
 
         # Exactly-once kickoff with recovery; process precomputed return-response if present.
@@ -5456,29 +6701,6 @@ def main_game_loop():
             save_conversation_history(conversation_history)
             needs_conversation_history_update = False
 
-        # Your essential cleanup script remains here, running every cycle.
-        # Loop until all unprocessed location transitions are handled
-        transitions_were_processed = False
-        while True:
-            original_length = len(conversation_history)
-            conversation_history = check_and_process_location_transitions(conversation_history, party_tracker_data, path_manager)
-            if len(conversation_history) == original_length:
-                break  # No compression occurred, we're done
-            else:
-                transitions_were_processed = True  # Mark that we did actual work
-        save_conversation_history(conversation_history)
-        
-        # Only check for chunked compression if we actually processed transitions
-        if transitions_were_processed:
-            try:
-                from core.ai.chunked_compression_integration import check_and_perform_chunked_compression
-                if check_and_perform_chunked_compression():
-                    debug("SUCCESS: Chunked compression performed after processing old transitions", category="conversation_management")
-                    # Reload the compressed history
-                    conversation_history = load_json_file(json_file) or conversation_history
-            except Exception as e:
-                error(f"FAILURE: Chunked compression check failed", exception=e, category="conversation_management")
-    
         # DISABLED: Module summary insertion now handled by inject_campaign_summaries with separate system messages
         # conversation_history = check_and_process_module_transitions(conversation_history, party_tracker_data)
         save_conversation_history(conversation_history)
@@ -6046,6 +7268,83 @@ def main_game_loop():
             srd_context=turn_srd_context,
         )
         
+        from utils.capture.live_provider_call import open_live_turn_scope
+
+        live_turn_scope = open_live_turn_scope()
+
+        pending_v2 = action_handler.recover_pending_location_transition(
+            party_tracker_data,
+            conversation_history,
+        )
+        if pending_v2.get("status") == "resume_required" and pending_v2.get(
+            "operation_id"
+        ):
+            live_turn_scope.phase = "MUTATING"
+            resumed_v2 = _resume_v2_location_transition(
+                pending_v2["operation_id"], publish=True
+            )
+            if resumed_v2.get("status") != "completed":
+                from utils.capture.live_provider_call import finish_live_turn_scope
+
+                finish_live_turn_scope(live_turn_scope)
+                print(
+                    "[SYSTEM] The prior travel turn remains safely paused for "
+                    "recovery; no new action was applied."
+                )
+                continue
+            party_tracker_data = load_json_file("party_tracker.json") or party_tracker_data
+            conversation_history = load_json_file(json_file) or conversation_history
+            location_data = get_location_data_from_party_tracker(party_tracker_data)
+            live_turn_scope.phase = "PRE_MUTATION"
+
+        # Old-format repairs are advisory and may invoke T018/T019/T087/T027.
+        # They run only after the real prompt/control surface exists and inside
+        # the cancellable live scope; current v2 markers are already preceded
+        # by their accepted T016 summary and therefore take this path zero times.
+        transitions_were_processed = False
+        while True:
+            original_history = copy.deepcopy(conversation_history)
+            repaired_history = check_and_process_location_transitions(
+                conversation_history,
+                party_tracker_data,
+                path_manager,
+            )
+            if repaired_history == original_history:
+                break
+            conversation_history = repaired_history
+            transitions_were_processed = True
+        if transitions_were_processed:
+            save_conversation_history(conversation_history)
+            try:
+                from core.ai.chunked_compression_integration import (
+                    check_and_perform_chunked_compression,
+                )
+
+                check_and_perform_chunked_compression()
+                conversation_history = load_json_file(json_file) or conversation_history
+            except Exception as legacy_compression_error:
+                warning(
+                    "Legacy chronicle enrichment remained unavailable: %s"
+                    % type(legacy_compression_error).__name__,
+                    category="conversation_management",
+                )
+        pending_legacy = safe_json_load(
+            action_handler.PENDING_LOCATION_TRANSITION_FILE
+        )
+        if (
+            isinstance(pending_legacy, dict)
+            and pending_legacy.get("version") == 2
+            and pending_legacy.get("kind") == "legacy_repair"
+        ):
+            from utils.capture.live_provider_call import finish_live_turn_scope
+
+            finish_live_turn_scope(live_turn_scope)
+            print(
+                "[SYSTEM] An older travel record is safely paused for exact "
+                "recovery; no new action was applied."
+            )
+            continue
+        pre_turn_accepted_history = copy.deepcopy(conversation_history)
         conversation_history.append({"role": "user", "content": user_input_with_note})
         save_conversation_history(conversation_history)
 
@@ -6072,50 +7371,62 @@ def main_game_loop():
 
         validation_prefix_length = len(conversation_history)
         retry_count = 0
-        previous_semantic_rejection = None
-        consecutive_semantic_rejections = 0
         valid_response_received = False
         ai_response_content = None
         approved_transition_plan = None
-        # Set when the travel gate rejects the exact transition the
-        # deterministic contract demanded: the turn resolves with one honest
-        # in-fiction narration instead of an unwinnable retry loop.
-        travel_contradiction_narration = None
-        # One deterministic destination per turn's input; shared by the
-        # transition contract and the contradiction short-circuit.
-        expected_turn_destination = _expected_committed_destination(
-            user_input_text, party_tracker_data
-        )
+        rejected_candidate = None
+        retry_correction = None
+        planner_projection = None
 
-        while retry_count < 5 and not valid_response_received:
+        while not valid_response_received:
+            if live_turn_scope.is_superseded():
+                conversation_history[:] = pre_turn_accepted_history
+                save_conversation_history(conversation_history)
+                break
             # Authorization belongs only to this candidate response. A retry
             # must obtain a new plan from the current atlas/evidence snapshot.
             approved_transition_plan = None
-            # Pass validation retry count for intelligent model escalation
+            # Durable completion/rebuild work sees authoritative accepted
+            # history only. Retry material is appended to a detached view.
+            prepare_conversation_for_ai_request(conversation_history)
+            request_history = copy.deepcopy(conversation_history)
+            if rejected_candidate:
+                request_history.append(
+                    {"role": "assistant", "content": rejected_candidate}
+                )
+            if planner_projection:
+                request_history.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "Accepted Travel Agent facts for this turn (JSON): "
+                            + json.dumps(
+                                planner_projection,
+                                ensure_ascii=False,
+                                sort_keys=True,
+                            )
+                        ),
+                    }
+                )
+            if retry_correction:
+                request_history.append(
+                    {"role": "user", "content": retry_correction}
+                )
+            from utils.capture.live_provider_call import LiveProviderSuperseded
             try:
-                ai_response_content = get_ai_response(
-                    conversation_history,
+                ai_response_content = _get_live_ai_response(
+                    request_history,
                     validation_retry_count=retry_count,
                     npc_voice_batch=npc_voice_batch,
                 )
-            except Exception as response_error:
-                error(
-                    f"FAILURE: T067 provider call failed on attempt "
-                    f"{retry_count + 1}/5",
-                    exception=response_error,
-                    category="ai_validation",
-                )
-                status_retrying(retry_count + 1, 5)
-                conversation_history.append({
-                    "role": "user",
-                    "content": (
-                        "Error Note: The previous response attempt was unavailable. "
-                        "Please generate the requested response again."
-                    ),
-                })
+            except LiveProviderSuperseded:
+                conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
-                retry_count += 1
-                continue
+                break
+            if live_turn_scope.is_superseded():
+                conversation_history[:] = pre_turn_accepted_history
+                save_conversation_history(conversation_history)
+                break
 
             # PRE-PROCESSING: Fix incorrect updatePartyTracker usage for within-module travel
             # This must happen BEFORE any validation to prevent wrong action from being checked
@@ -6173,46 +7484,13 @@ def main_game_loop():
             except (json.JSONDecodeError, Exception) as e:
                 debug(f"Could not pre-process actions: {e}", category="action_preprocessing")
 
-            # Deterministic state contract: when the player's input commits to
-            # an exact known destination, narration alone cannot move the
-            # party. Reject responses that omit the matching state action
-            # before asking the semantic validator.
+            # Structural transition checks precede semantic validation. Route
+            # authority follows T065, so mechanically safe but semantically
+            # wrong candidates never consume T021 or atlas work.
+            transition_check_passed = True
+            transition_action = None
             try:
                 response_data = json.loads(ai_response_content)
-                transition_contract_valid, transition_contract_error = (
-                    _validate_required_transition_action(
-                        response_data, expected_turn_destination
-                    )
-                )
-                if not transition_contract_valid:
-                    conversation_history.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Error Note: {transition_contract_error} "
-                                "Please regenerate the complete response."
-                            ),
-                        }
-                    )
-                    retry_count += 1
-                    info(
-                        "VALIDATION: Missing required transition action; "
-                        f"retry {retry_count}",
-                        category="location_transitions",
-                    )
-                    continue
-            except (json.JSONDecodeError, TypeError) as e:
-                # Structural validation below owns malformed response data.
-                debug(
-                    f"Could not apply transition contract: {e}",
-                    category="location_transitions",
-                )
-
-            # PRE-VALIDATION: Check for transitionLocation and call transition intelligence agent
-            transition_check_passed = True
-            try:
-                import json
-                response_data = json.loads(ai_response_content)  # Re-parse in case it was modified
                 actions = response_data.get("actions", [])
 
                 transition_indexes = [
@@ -6225,26 +7503,23 @@ def main_game_loop():
                     len(transition_indexes) != 1
                     or transition_indexes[0] != 0
                 ):
-                    conversation_history.append({
-                        "role": "user",
-                        "content": (
-                            "Error Note: transitionLocation must be the first "
-                            "action and may appear only once. Put time, save, "
-                            "and all other state changes after it."
-                        ),
-                    })
                     retry_count += 1
                     transition_check_passed = False
+                    rejected_candidate = ai_response_content
+                    retry_correction = (
+                        "The previous structured response was rejected: "
+                        "transitionLocation must be the first action and may "
+                        "appear only once. Put time, save, and all other state "
+                        "changes after it. Return the complete corrected JSON."
+                    )
                     info(
                         "VALIDATION: Rejected unsafe transition action order; "
                         f"retry {retry_count}",
                         category="location_transitions",
                     )
 
-                # Check if any action is transitionLocation
                 for action in actions if transition_check_passed else []:
                     if isinstance(action, dict) and action.get("action") == "transitionLocation":
-                        # Quick check: Reject same-location transitions immediately (no agent needed)
                         new_location = action.get("parameters", {}).get("newLocation", "")
                         current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
 
@@ -6262,121 +7537,155 @@ def main_game_loop():
 
                             # Don't retry - continue with modified response
                             info(f"VALIDATION: Same-location action stripped, continuing with narration only", category="location_transitions")
-                            break  # Exit action checking loop, proceed to normal validation
+                            transition_action = None
+                            break
+                        transition_action = action
+                        break
 
-                        # Found transitionLocation - call transition intelligence agent
-                        from core.ai.action_handler import pre_validate_transition
+                first_candidate = (
+                    actions[0]
+                    if transition_check_passed
+                    and actions
+                    and isinstance(actions[0], dict)
+                    else {}
+                )
+                first_candidate_params = first_candidate.get("parameters")
+                first_candidate_params = (
+                    first_candidate_params
+                    if isinstance(first_candidate_params, dict)
+                    else {}
+                )
+                candidate_module = str(first_candidate_params.get("module") or "")
+                if (
+                    transition_check_passed
+                    and first_candidate.get("action") == "updatePartyTracker"
+                    and candidate_module
+                    and candidate_module
+                    != str(party_tracker_data.get("module") or "")
+                    and (
+                        len(actions) != 2
+                        or not isinstance(actions[1], dict)
+                        or actions[1].get("action") != "updateTime"
+                    )
+                ):
+                    retry_count += 1
+                    transition_check_passed = False
+                    rejected_candidate = ai_response_content
+                    retry_correction = (
+                        "The previous structured response was rejected: direct "
+                        "travel to another existing module must contain exactly "
+                        "two actions in this order: updatePartyTracker, then "
+                        "updateTime. Do not add updatePlot or any later action. "
+                        "Return the complete corrected JSON."
+                    )
+                    status_retrying(retry_count)
 
-                        (
-                            transition_approved,
-                            transition_error,
-                            candidate_transition_plan,
-                        ) = pre_validate_transition(
-                            action.get("parameters", {}),
-                            party_tracker_data,
-                            conversation_history,
-                            location_graph,
-                            path_manager,
-                            return_plan=True,
+                if (
+                    transition_check_passed
+                    and first_candidate.get("action") == "updatePartyTracker"
+                    and candidate_module
+                    and candidate_module
+                    != str(party_tracker_data.get("module") or "")
+                ):
+                    try:
+                        action_handler.resolve_cross_module_target_projection(
+                            candidate_module, first_candidate_params
                         )
+                    except ValueError as exc:
+                        retry_count += 1
+                        transition_check_passed = False
+                        rejected_candidate = ai_response_content
+                        retry_correction = (
+                            "The previous structured response was rejected "
+                            "before mutation because its module destination "
+                            "references conflict: %s. Use canonical IDs and "
+                            "names from the target module, or provide only the "
+                            "module so code can use its represented starting "
+                            "location. Return the complete corrected JSON."
+                            % str(exc)
+                        )
+                        status_retrying(retry_count)
 
-                        if not transition_approved:
-                            # Coherence short-circuit: if the gate just
-                            # rejected the EXACT transition the deterministic
-                            # contract demands for this input, a retry is
-                            # unwinnable (each side rejects the other's
-                            # required response). Resolve the turn with one
-                            # honest in-fiction narration; state untouched.
-                            expected_destination = expected_turn_destination
-                            rejected_target = str(
-                                action.get("parameters", {}).get("newLocation", "")
-                            ).strip()
-                            if (
-                                expected_destination is not None
-                                and rejected_target.casefold()
-                                == expected_destination["location_id"].casefold()
-                                and str(transition_error).startswith(
-                                    "[TRAVEL SYSTEM] Travel could not be planned"
-                                )
-                            ):
-                                destination_label = (
-                                    expected_destination["location_name"]
-                                    or expected_destination["location_id"]
-                                )
-                                current_place = (
-                                    party_tracker_data.get("worldConditions", {})
-                                    .get("currentLocation")
-                                    or "where you are"
-                                )
-                                travel_contradiction_narration = (
-                                    f"You gather the party to set out for "
-                                    f"{destination_label}, but from "
-                                    f"{current_place} no passable way there "
-                                    "can be found right now. The party stays "
-                                    "put, ready to act -- you can try a "
-                                    "different route, search for another way "
-                                    "through, or do something else."
-                                )
-                                transition_check_passed = False
-                                info(
-                                    "VALIDATION: Travel gate contradicts the "
-                                    "transition contract for "
-                                    f"{rejected_target}; resolving with one "
-                                    "honest in-fiction narration",
-                                    category="location_transitions",
-                                )
-                                break
-                            # Transition blocked - append error and retry
-                            # DO NOT save failed assistant response - it teaches AI wrong pattern
-                            # AI only needs Error Note to understand the correction needed
-                            conversation_history.append({
-                                "role": "user",
-                                "content": f"Error Note: {transition_error}. Please adjust your response accordingly."
-                            })
-                            retry_count += 1
-                            transition_check_passed = False
-                            info(f"VALIDATION: Transition blocked by intelligence agent, retry {retry_count}", category="location_transitions")
-                            break  # Don't check other actions, retry immediately
-                        approved_transition_plan = candidate_transition_plan
+                if transition_check_passed and transition_indexes:
+                    # Owner ruling 2026-08-23: one model response resolves one
+                    # immediate semantic beat.  After within-module travel,
+                    # only travel-owned bookkeeping may remain in this turn.
+                    # T065 owns the semantic judgment (including whether an
+                    # updatePlot describes the immediate travel outcome); this
+                    # structured-family envelope prevents future player plans
+                    # from becoming additional post-arrival turns.
+                    supported_siblings = {
+                        "updateTime",
+                        "updatePlot",
+                    }
+                    unsupported = [
+                        item.get("action") if isinstance(item, dict) else type(item).__name__
+                        for item in actions[1:]
+                        if not isinstance(item, dict)
+                        or item.get("action") not in supported_siblings
+                    ]
+                    contract_error = None
+                    if unsupported:
+                        contract_error = (
+                            "Travel ends at the committed destination. These "
+                            "actions belong to a later player turn and cannot "
+                            "execute after arrival: %s. Preserve the later "
+                            "intent in narration, invite the player's next "
+                            "action, and return only transitionLocation plus "
+                            "travel-owned updateTime/updatePlot bookkeeping."
+                            % ", ".join(map(str, unsupported))
+                        )
+                    if contract_error:
+                        retry_count += 1
+                        transition_check_passed = False
+                        rejected_candidate = ai_response_content
+                        retry_correction = (
+                            "The previous structured response was rejected. "
+                            + contract_error
+                            + " Return the complete corrected JSON."
+                        )
+                        status_retrying(retry_count)
 
             except json.JSONDecodeError as e:
                 # Structural validation below owns malformed provider JSON.
                 debug(f"Could not parse response for transition planning: {e}", category="location_transitions")
             except Exception as e:
-                # Planning failures are safety failures. Never let a provider,
-                # atlas, or evidence exception fall through into movement.
                 error(
-                    "FAILURE: Transition planning raised unexpectedly",
+                    "FAILURE: Transition structural check raised unexpectedly",
                     exception=e,
                     category="location_transitions",
                 )
-                conversation_history.append({
-                    "role": "user",
-                    "content": (
-                        "Error Note: Travel planning could not be completed "
-                        "safely. Do not move the party. Regenerate the response."
-                    ),
-                })
                 retry_count += 1
                 transition_check_passed = False
-
-            if travel_contradiction_narration is not None:
-                # Unwinnable contract-vs-gate contradiction: end the retry
-                # loop now; the exhaustion path emits the honest narration.
-                break
+                rejected_candidate = ai_response_content
+                retry_correction = (
+                    "The previous structured response could not be checked "
+                    "safely. Return a complete corrected JSON response."
+                )
 
             if not transition_check_passed:
                 continue  # Skip to next retry iteration
 
-            validation_result = validate_ai_response(
-                ai_response_content,
-                user_input_text,
-                validation_prompt_text,
-                conversation_history,
-                party_tracker_data,
-                srd_context=turn_srd_context,
-                npc_voice_batch=npc_voice_batch,
-            )
+            if live_turn_scope.is_superseded():
+                conversation_history[:] = pre_turn_accepted_history
+                save_conversation_history(conversation_history)
+                break
+
+            try:
+                validation_result = validate_ai_response(
+                    ai_response_content,
+                    user_input_text,
+                    validation_prompt_text,
+                    request_history,
+                    party_tracker_data,
+                    srd_context=turn_srd_context,
+                    npc_voice_batch=npc_voice_batch,
+                    transition_facts=planner_projection,
+                )
+            except LiveProviderSuperseded:
+                conversation_history[:] = pre_turn_accepted_history
+                save_conversation_history(conversation_history)
+                break
 
             # Unpack the validation result tuple
             is_valid = False
@@ -6392,22 +7701,147 @@ def main_game_loop():
                 # Handle old-style return (shouldn't happen after our change)
                 is_valid = validation_result is True
                 validation_reason = validation_result if isinstance(validation_result, str) else ""
+
+            if live_turn_scope.is_superseded():
+                conversation_history[:] = pre_turn_accepted_history
+                save_conversation_history(conversation_history)
+                break
             
             if is_valid:
+                # Semantic agreement is established before route authority.
+                # Reparse after T065 because structural normalization may have
+                # returned corrected candidate content.
+                validated_data = json.loads(ai_response_content)
+                validated_actions = validated_data.get("actions", [])
+                validated_transition_indexes = [
+                    index
+                    for index, action in enumerate(validated_actions)
+                    if isinstance(action, dict)
+                    and action.get("action") == "transitionLocation"
+                ]
+                if validated_transition_indexes and (
+                    len(validated_transition_indexes) != 1
+                    or validated_transition_indexes[0] != 0
+                ):
+                    rejected_candidate = ai_response_content
+                    retry_correction = (
+                        "The normalized response is structurally unsafe: "
+                        "transitionLocation must appear once and first. Return "
+                        "the complete corrected JSON response."
+                    )
+                    retry_count += 1
+                    status_retrying(retry_count)
+                    continue
+                transition_action = next(
+                    (
+                        action
+                        for action in validated_actions
+                        if isinstance(action, dict)
+                        and action.get("action") == "transitionLocation"
+                    ),
+                    None,
+                )
+                if transition_action is not None:
+                    proposed_location = str(
+                        (transition_action.get("parameters") or {}).get(
+                            "newLocation", ""
+                        )
+                    )
+                    current_location = str(
+                        party_tracker_data.get("worldConditions", {}).get(
+                            "currentLocationId", ""
+                        )
+                    )
+                    if proposed_location == current_location:
+                        validated_actions.remove(transition_action)
+                        validated_data["actions"] = validated_actions
+                        ai_response_content = json.dumps(validated_data)
+                        transition_action = None
+                if transition_action is not None:
+                    from core.ai.action_handler import pre_validate_transition
+
+                    try:
+                        route_outcome = pre_validate_transition(
+                            transition_action.get("parameters", {}),
+                            party_tracker_data,
+                            conversation_history,
+                            location_graph,
+                            path_manager,
+                            return_plan=True,
+                        )
+                    except LiveProviderSuperseded:
+                        conversation_history[:] = pre_turn_accepted_history
+                        save_conversation_history(conversation_history)
+                        break
+                    if not route_outcome.approved:
+                        rejected_candidate = ai_response_content
+                        planner_projection = {
+                            "reason_code": route_outcome.reason_code,
+                            **dict(route_outcome.facts or {}),
+                        }
+                        if route_outcome.reason_code == "intermediate_stop":
+                            retry_correction = (
+                                "Revise the complete response using the accepted "
+                                "Travel Agent facts. Narrate movement toward the "
+                                "player's original goal, but transition only to "
+                                f"{route_outcome.intermediate_destination_id} "
+                                f"({route_outcome.intermediate_destination_name}). "
+                                "Use that transitionLocation first and do not "
+                                "transition to the original final destination in "
+                                "this turn."
+                            )
+                        elif route_outcome.reason_code in {
+                            "no_valid_route",
+                            "active_combat",
+                        }:
+                            retry_correction = (
+                                "Revise the complete response from the accepted "
+                                "Travel Agent facts. Do not include "
+                                "transitionLocation or invent another destination. "
+                                "Give one honest in-fiction explanation and leave "
+                                "the next choice to the player."
+                            )
+                        elif route_outcome.reason_code in {
+                            "destination_absent",
+                            "destination_invalid",
+                        }:
+                            retry_correction = (
+                                "The proposed destination is not a usable canonical "
+                                "destination. Do not move the party or describe it "
+                                "as an impassable known route. Ask the player one "
+                                "focused clarification in the complete JSON response."
+                            )
+                        else:
+                            retry_correction = (
+                                "Travel planning did not produce an accepted route. "
+                                "Keep the party in place and regenerate the complete "
+                                "response from the supplied structured facts."
+                            )
+                        retry_count += 1
+                        status_retrying(retry_count)
+                        info(
+                            "VALIDATION: Transition outcome %s; retry %s"
+                            % (route_outcome.reason_code, retry_count),
+                            category="location_transitions",
+                        )
+                        continue
+                    approved_transition_plan = route_outcome.plan
+
+                if live_turn_scope.is_superseded():
+                    conversation_history[:] = pre_turn_accepted_history
+                    save_conversation_history(conversation_history)
+                    break
+
                 valid_response_received = True
+                live_turn_scope.phase = "MUTATING"
                 debug(f"SUCCESS: Valid response generated on attempt {retry_count + 1}", category="ai_validation")
 
                 # Failed candidates and validator feedback are retry context,
                 # not durable game history. Only the accepted candidate may
                 # cross into process_ai_response and its state handlers.
-                conversation_history, ai_response_content = (
-                    _finalize_main_response_validation(
-                        conversation_history,
-                        validation_prefix_length,
-                        ai_response_content,
-                        candidate_valid=True,
-                    )
-                )
+                conversation_history = conversation_history[
+                    :validation_prefix_length
+                ]
                 save_conversation_history(conversation_history)
 
                 # T105 relationship events are staged until this exact T067
@@ -6491,8 +7925,12 @@ def main_game_loop():
                 # After processing, we only need to check for control flow signals.
                 # Everything else (including history updates) has been handled by process_ai_response.
                 if final_result == "exit":
+                    from utils.capture.live_provider_call import finish_live_turn_scope
+                    finish_live_turn_scope(live_turn_scope)
                     return
                 elif final_result == "restart":
+                    from utils.capture.live_provider_call import finish_live_turn_scope
+                    finish_live_turn_scope(live_turn_scope)
                     print("\n[SYSTEM] Restarting game with restored save...\n")
                     main_game_loop()
                     return
@@ -6601,68 +8039,31 @@ def main_game_loop():
             elif not is_valid and validation_reason:
                 # Validation failed with a reason
                 debug(f"VALIDATION: Validation failed. Reason: {validation_reason}", category="ai_validation")
-                status_retrying(retry_count + 1, 5)
-                (
-                    previous_semantic_rejection,
-                    consecutive_semantic_rejections,
-                    repeated_semantic_rejection,
-                ) = _advance_semantic_rejection_streak(
-                    previous_semantic_rejection,
-                    consecutive_semantic_rejections,
-                    validation_reason,
-                )
-                # CRITICAL: Save the failed assistant response so the AI can see what it did wrong
-                if ai_response_content:
-                    conversation_history.append({"role": "assistant", "content": ai_response_content})
+                status_retrying(retry_count + 1)
                 correction_context = (
                     "\n\n%s" % turn_srd_context if turn_srd_context else ""
                 )
-                conversation_history.append({
-                    "role": "user",
-                    "content": (
-                        "Error Note: Your previous response failed validation. "
-                        f"Reason: {validation_reason}. Please adjust your response "
-                        f"accordingly.{correction_context}"
-                    ),
-                })
-                save_conversation_history(conversation_history)
+                rejected_candidate = ai_response_content
+                retry_correction = (
+                    "Your previous response failed semantic validation. "
+                    f"Reason: {validation_reason}. Return the complete corrected "
+                    f"JSON response.{correction_context}"
+                )
                 retry_count += 1
-                if repeated_semantic_rejection:
-                    warning(
-                        "VALIDATION: Stopping after two identical consecutive "
-                        "semantic rejection reasons.",
-                        category="ai_validation",
-                    )
-                    break
             else: 
                 warning(f"VALIDATION: Unexpected validation result: is_valid={is_valid}, reason={validation_reason}. Retrying.", category="ai_validation")
+                rejected_candidate = ai_response_content
+                retry_correction = (
+                    "The previous validation result was not usable. Return the "
+                    "complete corrected JSON response for the player's action."
+                )
                 retry_count += 1
-    
+
         if not valid_response_received:
-            if travel_contradiction_narration is not None:
-                info(
-                    "VALIDATION: Travel contradiction resolved with one "
-                    "honest in-fiction narration; no state changed.",
-                    category="location_transitions",
-                )
-            else:
-                error(
-                    "FAILURE: Failed to generate a valid response after 5 attempts. "
-                    "Rejected responses will not be processed.",
-                    category="ai_validation",
-                )
-            conversation_history, _ = _finalize_main_response_validation(
-                conversation_history,
-                validation_prefix_length,
-                ai_response_content,
-                candidate_valid=False,
-                fallback_text=travel_contradiction_narration,
-            )
-            save_conversation_history(conversation_history)
-            fallback_text = conversation_history[-1]["content"]
-            display_dm_narration(fallback_text)
-    
-        status_ready()
+            from utils.capture.live_provider_call import finish_live_turn_scope
+
+            finish_live_turn_scope(live_turn_scope)
+            return
 
         # This block now only runs if a response was NOT held
         # CRITICAL: Reload party tracker to ensure we have the latest module information after any updates
@@ -6687,6 +8088,10 @@ def main_game_loop():
         conversation_history = order_conversation_messages(conversation_history, main_system_prompt_text)
     
         save_conversation_history(conversation_history)
+
+        from utils.capture.live_provider_call import finish_live_turn_scope
+
+        finish_live_turn_scope(live_turn_scope)
 
 def main():
     """Main entry point with startup wizard integration"""

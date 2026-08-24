@@ -248,7 +248,7 @@ def review_ambiguous_segments(
         "Return JSON only.\n\n" + json.dumps(packet, ensure_ascii=False, sort_keys=True)
     )
 
-    try:
+    while True:
         transition_config = _transition_config()
         response = capture_and_fanout(
             "T021",
@@ -258,6 +258,7 @@ def review_ambiguous_segments(
                 {"role": "user", "content": user_message},
             ],
             _request_provider=model_config.MODEL_PROVIDER,
+            _live_selected=True,
             model=transition_config["model"],
             temperature=TRANSITION_VALIDATOR_TEMPERATURE,
             **{
@@ -265,10 +266,6 @@ def review_ambiguous_segments(
             },
         )
         response_text = response.choices[0].message.content
-        if not isinstance(response_text, str) or not response_text.strip():
-            return _uncertain_reviews(
-                segments, "Transition reviewer returned no content"
-            )
 
         try:
             from utils.api_logger import log_api_call
@@ -291,23 +288,28 @@ def review_ambiguous_segments(
                 category="transition_validation",
             )
 
-        normalized = _normalize_reviews(json.loads(response_text), segments)
-        if normalized is None:
-            return _uncertain_reviews(
-                segments, "Transition reviewer returned an invalid contract"
+        try:
+            decoded = json.loads(response_text)
+        except json.JSONDecodeError:
+            warning(
+                "Transition reviewer returned malformed JSON; reissuing the "
+                "same evidence packet",
+                category="transition_validation",
             )
+            continue
+        normalized = _normalize_reviews(decoded, segments)
+        if normalized is None:
+            warning(
+                "Transition reviewer returned an invalid contract; reissuing "
+                "the same evidence packet",
+                category="transition_validation",
+            )
+            continue
         info(
             f"Transition reviewer classified {len(normalized)} ambiguous segment(s)",
             category="transition_validation",
         )
         return normalized
-    except json.JSONDecodeError:
-        return _uncertain_reviews(
-            segments, "Transition reviewer returned malformed JSON"
-        )
-    except Exception as exc:
-        error(f"Transition reviewer failed: {exc}", category="transition_validation")
-        return _uncertain_reviews(segments, "Transition reviewer provider failure")
 
 
 def _legacy_blocked_result(segment: Dict[str, Any], reason: str) -> Dict[str, Any]:

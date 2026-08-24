@@ -94,11 +94,21 @@ class StatusManager:
             message: The status message to display
             is_processing: Whether the system is currently processing (disables input)
         """
+        if not is_processing:
+            try:
+                from utils.capture.live_provider_call import get_live_turn_scope
+
+                scope = get_live_turn_scope()
+                if scope is not None and scope.phase != "QUIESCENT":
+                    return False
+            except ImportError:
+                pass
         with self._lock:
             self._status = message
             self._is_processing = is_processing
             if self._status_callback:
                 self._status_callback(message, is_processing)
+        return True
                 
     def get_status(self) -> tuple[str, bool]:
         """Get the current status and processing state
@@ -151,9 +161,13 @@ def status_validating():
     """Set status for response validation"""
     status_manager.update_status("Validating response format...", True)
 
-def status_retrying(attempt: int, max_attempts: int = 3):
+def status_retrying(attempt: int, max_attempts: int = None):
     """Set status for retry attempts"""
-    status_manager.update_status(f"Retrying response (attempt {attempt}/{max_attempts})...", True)
+    if max_attempts is None:
+        message = f"Retrying response (attempt {attempt})..."
+    else:
+        message = f"Retrying response (attempt {attempt}/{max_attempts})..."
+    status_manager.update_status(message, True)
 
 def status_transitioning_location():
     """Set status for location transition"""

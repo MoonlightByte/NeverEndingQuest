@@ -49,7 +49,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   establishHub: gain base ownership
   createNewModule: ONLY after specific commitment ("Yes investigate barrow")
   exitGame: end session
-  storageInteraction: store/retrieve items AFTER payment
+  storageInteraction: sole store/retrieve item-transfer authority; REJECT duplicate updateCharacterInfo for those items; a distinct fee update may precede it
   updatePartyTracker: module/location updates; triggers archiving
   moveBackgroundNPC: NPCs not in party (captured/killed/relocated)
   updatePartyNPCs: add/remove traveling companions
@@ -61,7 +61,10 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 
 @TRANSITION_ACTION_ORDER={
   rule: transitionLocation MUST appear exactly once and MUST be the first action
-  after_transition: updateTime, updatePlot, saveGame, and all other state actions
+  one_turn: Travel ends at committed arrival; preserve later "then" clauses as deferred player intent and invite the next action
+  after_transition: ONLY travel-owned updateTime and immediate travel-result updatePlot
+  forbidden_after: character, roster, storage, hub, save-management, exit, module-handoff, or any other downstream action
+  cross_module: EXACTLY updatePartyTracker then updateTime
   invalid: Any action before transitionLocation OR multiple transitionLocation actions
 }
 
@@ -108,6 +111,8 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 
 @MULTI_AREA_TRAVEL={
   valid: Single transitionLocation to final destination with journey narration
+  accepted_stop: If supplied accepted Travel Agent facts authorize stop X, narration may retain original goal but the single first transitionLocation MUST target X only
+  unavailable: If supplied accepted facts say no valid route, no transitionLocation, no alternate destination, honest in-fiction explanation, player owns next choice
   invalid: Multiple transitions for one request
   required: updateTime for full journey
 }
@@ -177,10 +182,10 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   createNewModule: {"narrative":str} #EXACTLY this one non-empty key; MUST be sole action; only after explicit commitment to one specific hook. Full shape: {"action":"createNewModule","parameters":{"narrative":"[complete concept and labeled technical fields]"}}
   updateEncounter: {"encounterId":str,"changes":obj}
   updatePartyTracker: {"module":str_opt,"currentAreaId":str_opt,"currentArea":str_opt,"currentLocationId":str_opt,"currentLocation":str_opt} #all optional
-  saveGame: {"saveName":str}
-  restoreGame: {"saveName":str}
+  saveGame: {"description":str,"saveMode":str} #saveMode: essential|full
+  restoreGame: {"saveFolder":str}
   listSaves: {}
-  deleteSave: {"saveName":str}
+  deleteSave: {"saveFolder":str}
 }
 
 @OUTPUT_CONSTRAINTS={
@@ -192,7 +197,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 @CLARIFICATIONS={
   1:Empty actions OK if waiting for input/consent
   2:NEVER ask player to roll for NPCs--DM rolls them
-  3:transitionLocation REQUIRED when party states moving
+  3:transitionLocation REQUIRED for actual chosen movement; not for discussion/questions/plans/quotes/negation. Supplied accepted Travel Agent stop/no-route facts govern the destination or honest no-transition exception
   4:INVENTORY QUERIES: "How many arrows?" / "Check inventory" = NO updateCharacterInfo needed (just narrate counts)
   5:Item loss/drop/trade REQUIRES updateCharacterInfo
   6:Ignore "Location transition:" user messages--system notes

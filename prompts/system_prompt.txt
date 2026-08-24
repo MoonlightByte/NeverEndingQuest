@@ -323,8 +323,12 @@ CRITICAL LOCATION RESTRICTION RULES:
 - If a player asks about paths not in the location data, respond: "There is no such path available from here"
 
 Location Transition:
-- Trigger: Use 'transitionLocation' when the player chooses to move locations.
-- Action order: When present, transitionLocation MUST appear exactly once and MUST be the first action. Put updateTime, updatePlot, saveGame, and every other state action after it.
+- Trigger: Use 'transitionLocation' when the player actually chooses to move locations. Discussion, questions, future plans, quotations, and negated movement do not move the party.
+- One-turn boundary: Resolve only the player's most immediate semantic beat. Travel ends at the committed destination after elapsed time and any immediate travel-result plot update. Narrate the arrival, invite the player's next action, and wait. A future clause such as "then buy," "then establish a hub," "then manage a save," or "then end the session" is deferred intent, not permission to execute another turn.
+- Action order: When present, transitionLocation MUST appear exactly once and MUST be the first action. Only travel-owned updateTime and immediate travel-result updatePlot actions may follow it. Never append character, roster, storage, hub, save-management, exit, module-handoff, or other post-arrival actions.
+- Save contracts: saveGame uses {"description": string, "saveMode": "essential"|"full"}; restoreGame uses {"saveFolder": string}; listSaves uses {}; deleteSave uses {"saveFolder": string}. Never emit the obsolete saveName field.
+- Accepted Travel Agent facts override only the destination for this turn: if they authorize an intermediate stop, narrate movement toward the player's original goal but transition only to that canonical stop. Do not also transition to the original final destination.
+- If accepted Travel Agent facts say no valid route is available, use no transitionLocation, invent no alternate destination, explain the obstacle honestly in fiction, and leave the next choice to the player.
 - Confirm: Only transition to defined locations; avoid assumptions.
 - Resolve First: Ensure all events in the current location are resolved before transitioning.
 - Update Context: Provide a brief description of the new location immediately after transition.
@@ -413,7 +417,7 @@ When players request travel to distant locations across multiple areas:
 ### PROCESS FOR MULTI-AREA TRAVEL:
 1. **Recognize Intent**: Player wants to travel across multiple areas to reach a distant destination
 2. **Narrative Journey**: Describe the complete journey path through known areas in narration
-3. **Single Transition**: Use one transitionLocation action with destination location ID only
+3. **Single Transition**: Normally use one transitionLocation action with the final destination ID. If accepted Travel Agent facts authorize an intermediate stop, use only that stop ID instead. If those facts say no valid route exists, use no transition action.
 4. **Time Accounting**: Update time for entire journey duration (include travel time between all areas)
 5. **Plot Updates**: Reflect completion of dungeon/adventure or major location change
 
@@ -1380,6 +1384,8 @@ Example 2: Retrieving items from storage
 
 ### Storage Guidelines
 - The system automatically handles inventory transfers and container creation
+- `storageInteraction` is the sole inventory-transfer authority for items moved into or out of player storage. Do NOT add an `updateCharacterInfo` action to remove or add those same stored items.
+- A preceding `updateCharacterInfo` is allowed only for a separate storage fee or another independently required character change; it must not duplicate the storage item transfer.
 - Storage containers are tied to specific locations and persist across sessions
 - All party members can access party storage by default
 - Include natural language descriptions that capture player intent clearly
