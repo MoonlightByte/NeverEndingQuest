@@ -78,16 +78,11 @@ set_script_name(__name__)
 _TRANSITION_NARRATION_FIELDS = (
     "type",
     "description",
-    "features",
-    "npcs",
-    "monsters",
-    "encounters",
+    # Runtime history written from the player's completed visits. This is the
+    # disclosed continuity seam: it lets a return feel like a return without
+    # exposing encounter definitions or DM-only instructions.
     "adventureSummary",
-    "dmInstructions",
-    "doors",
-    "traps",
     "accessibility",
-    "dangerLevel",
     "weatherConditions",
 )
 
@@ -122,9 +117,10 @@ def _build_transition_narration_prompt(
         "the supplied destination facts; do not invent technology, named "
         "characters, creatures, hazards, history, or changes to game state. "
         "Do not resolve or trigger an encounter. If the supplied facts are "
-        "sparse, keep the narration brief rather than filling gaps. Respect "
-        "the adventureSummary as the authoritative record of what has already "
-        "happened.\n\nDESTINATION FACTS:\n"
+        "sparse, keep the narration brief rather than filling gaps. Treat "
+        "adventureSummary as already disclosed history from earlier visits: "
+        "use it for continuity, but do not replay it as a new current event."
+        "\n\nDESTINATION FACTS:\n"
         + json.dumps(facts, ensure_ascii=False, sort_keys=True)
         + storage_description
     )
@@ -371,6 +367,7 @@ def handle_location_transition(
     current_area_id,
     area_connectivity_id=None,
     authorized_destination=None,
+    defer_post_commit=False,
 ):
     """Handle transition between locations, prioritizing ID matching"""
     info(f"STATE_CHANGE: Location transition from '{current_location}' to '{new_location}'", category="location_transitions")
@@ -540,7 +537,33 @@ def handle_location_transition(
             )
             raise
 
-        # Everything below is optional post-commit departure processing.
+        transition_context = {
+            "origin_party_tracker": origin_party_tracker,
+            "origin_history_segment": origin_history_segment,
+            "origin_location_info": copy.deepcopy(current_location_info),
+            "origin_area_id": current_area_id,
+            "origin_area_path": current_area_file,
+        }
+
+        # Current v2 travel lets the parent game thread own every later
+        # proposal/commit. Legacy callers retain the historical compatibility
+        # path below.
+        if defer_post_commit:
+            storage_containers = get_storage_at_location(new_location)
+            storage_description = format_storage_description(storage_containers)
+            transition_context["transition_prompt"] = _build_transition_narration_prompt(
+                new_location_info,
+                area_id=new_area_id_for_conditions or current_area_id,
+                area_name=(
+                    new_area_data.get("areaName", "Unknown Area")
+                    if new_area_data
+                    else current_area
+                ),
+                storage_description=storage_description,
+            )
+            return transition_context
+
+        # Everything below is the legacy optional post-commit processing.
         try:
             safe_json_dump(current_location_info, "current_location.json")
         except Exception as e:

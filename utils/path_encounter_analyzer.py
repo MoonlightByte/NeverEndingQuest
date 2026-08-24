@@ -634,9 +634,9 @@ def find_path_in_snapshot(
         )
         if blocking_id:
             result["reason"] = (
-                f"Every route from {origin_id} to {destination_id} requires "
-                f"location {blocking_id}, which has invalid or ambiguous "
-                "atlas data"
+                f"No fully valid route from {origin_id} to {destination_id} "
+                f"exists. One candidate route crosses location {blocking_id}, "
+                "which has invalid or ambiguous atlas data"
             )
             return result
 

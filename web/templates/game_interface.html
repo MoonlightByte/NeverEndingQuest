@@ -5571,6 +5571,30 @@
             requestInitiativeData(); // Check for combat on game start
         });
 
+        const neqBaseDocumentTitle = document.title;
+        let neqReadyTitleMarked = false;
+        let neqWasProcessing = false;
+
+        function applyNeqProcessingTransition(isProcessing) {
+            const nextProcessing = !!isProcessing;
+            if (neqWasProcessing && !nextProcessing && document.hidden) {
+                document.title = 'Adventure ready — ' + neqBaseDocumentTitle;
+                neqReadyTitleMarked = true;
+            }
+            neqWasProcessing = nextProcessing;
+        }
+
+        function clearNeqReadyTitle() {
+            if (!neqReadyTitleMarked) return;
+            document.title = neqBaseDocumentTitle;
+            neqReadyTitleMarked = false;
+        }
+
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) clearNeqReadyTitle();
+        });
+        window.addEventListener('focus', clearNeqReadyTitle);
+
         socket.on('game_resumed', (data) => {
             // Issue #122: a reopened tab reattaching to a live game. Restore the
             // gameStarted switch (without it, sendInput() silently drops input)
@@ -5583,6 +5607,7 @@
             document.getElementById('load-button').disabled = false;
             document.getElementById('reset-button').disabled = false;
             const busy = !!(data && data.is_processing);
+            applyNeqProcessingTransition(busy);
             document.getElementById('user-input').disabled = busy;
             document.getElementById('send-button').disabled = busy;
             if (!busy) {
@@ -5793,6 +5818,7 @@
         socket.on('status_update', (data) => {
             const input = document.getElementById('user-input');
             const sendButton = document.getElementById('send-button');
+            applyNeqProcessingTransition(data.is_processing);
             if (data.is_processing) {
                 input.placeholder = data.message;
                 input.disabled = true;

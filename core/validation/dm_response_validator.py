@@ -55,6 +55,10 @@ class DMResponseValidator:
             "createNewModule",
             "establishHub",
             "storageInteraction",
+            "saveGame",
+            "restoreGame",
+            "listSaves",
+            "deleteSave",
             "exitGame"
         ]
         
@@ -209,6 +213,10 @@ class DMResponseValidator:
             "updateEncounter": ["encounterId", "changes"],
             "createNewModule": ["narrative"],
             "updatePartyTracker": [],  # Various fields allowed
+            "saveGame": ["description", "saveMode"],
+            "restoreGame": ["saveFolder"],
+            "listSaves": [],
+            "deleteSave": ["saveFolder"],
             "exitGame": []  # No parameters required
         }
         

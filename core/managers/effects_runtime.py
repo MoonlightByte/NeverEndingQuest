@@ -144,6 +144,24 @@ def update_character_with_effects(
     return success
 
 
+def _resolve_effect_reference(effects, *, effect_id=None, name=None):
+    """Reconcile explicit structured identity without reading narrative prose."""
+    candidates = [effect for effect in effects if isinstance(effect, dict)]
+    if effect_id:
+        id_matches = [
+            effect
+            for effect in candidates
+            if effect.get("effectId") == effect_id
+        ]
+        if id_matches:
+            if name and any(effect.get("name") != name for effect in id_matches):
+                return []
+            return id_matches
+    if name:
+        return [effect for effect in candidates if effect.get("name") == name]
+    return []
+
+
 def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"):
     """Deterministically remove one uniquely identified active effect."""
     if not campaign_effects_migrated():
@@ -151,15 +169,9 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
             "removeEffect is unavailable until the campaign effects conversion completes"
         )
     resolved, _role, path, sheet = _resolve_character(character_name)
-    matches = [
-        effect
-        for effect in sheet.get("temporaryEffects", []) or []
-        if isinstance(effect, dict)
-        and (
-            (effect_id and effect.get("effectId") == effect_id)
-            or (not effect_id and name and effect.get("name") == name)
-        )
-    ]
+    matches = _resolve_effect_reference(
+        sheet.get("temporaryEffects", []) or [], effect_id=effect_id, name=name
+    )
     if len(matches) != 1:
         raise EffectsRuntimeError("removeEffect requires exactly one active match")
     effect = matches[0]
@@ -184,6 +196,125 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
         "name": effect.get("name"),
         "reason": reason,
     }
+
+
+def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="removed"):
+    """Freeze the exact sheet mutation for one v2 travel sibling."""
+    if not campaign_effects_migrated():
+        raise EffectsRuntimeError(
+            "removeEffect is unavailable until the campaign effects conversion completes"
+        )
+    resolved, role, path, sheet = _resolve_character(character_name)
+    matches = _resolve_effect_reference(
+        sheet.get("temporaryEffects", []) or [], effect_id=effect_id, name=name
+    )
+    if len(matches) != 1:
+        raise EffectsRuntimeError("removeEffect requires exactly one active match")
+    effect = matches[0]
+    operation = {
+        "op": "remove",
+        "effectId": effect.get("effectId"),
+        "name": effect.get("name"),
+    }
+    return {
+        "kind": "removeEffect",
+        "owner": resolved,
+        "role": role,
+        "path": path,
+        "before": deepcopy(sheet.get("temporaryEffects", []) or []),
+        "after": deepcopy(
+            apply_effect_ops(sheet, [operation]).get("temporaryEffects", []) or []
+        ),
+        "effectId": effect.get("effectId"),
+        "name": effect.get("name"),
+        "reason": reason,
+    }
+
+
+def prepare_character_update(character_name, changes, party_tracker_data=None):
+    """Freeze required T078/T079 output and advisory sheet corrections."""
+    resolved, role, _path, sheet = _resolve_character(character_name)
+    result = classify_effect(
+        resolved,
+        changes,
+        effective_sheet(sheet),
+        _world_scalar(party_tracker_data),
+        structural_reissue=True,
+    )
+    operation = None
+    if result["operation"] == "add":
+        operation = {"op": "add", "effect": result["effect"]}
+    elif result["operation"] == "remove":
+        operation = _remove_operation(result, sheet)
+    receipt = _update_character_info_unlocked(
+        resolved,
+        changes,
+        character_role=role,
+        managed_effect_operation=operation,
+        prepare_only=True,
+        structural_reissue=True,
+    )
+    if not isinstance(receipt, dict):
+        raise EffectsRuntimeError("required character proposal was not prepared")
+    try:
+        from core.validation.character_validator import AICharacterValidator
+
+        validation = AICharacterValidator().validate_and_correct_character_smart_with_result(
+            deepcopy(receipt["after"]), max_attempts=1
+        )
+        receipt["after"] = validation.data
+        receipt["advisory_validation"] = {
+            "status": "accepted" if validation.success else "fallback",
+            "error": None if validation.success else str(validation.error or "unavailable"),
+        }
+    except Exception as exc:
+        receipt["advisory_validation"] = {
+            "status": "attempted_unavailable",
+            "error": type(exc).__name__,
+        }
+    receipt["effect_proposal"] = result
+    return receipt
+
+
+def apply_staged_character_update(receipt):
+    """Apply or recognize one exact prepared character sheet."""
+    with _get_character_update_lock(receipt["owner"], receipt.get("role")):
+        with path_transaction_lock(
+            receipt["path"], suffix=".effects.lock", timeout_seconds=30.0
+        ) as locked:
+            if locked is None:
+                raise EffectsRuntimeError("character file is busy")
+            current = safe_json_load(receipt["path"])
+            if current == receipt["after"]:
+                return "already_committed"
+            if current != receipt["before"]:
+                return "blocked_conflict"
+            if not safe_write_json(receipt["path"], receipt["after"]):
+                raise EffectsRuntimeError("character update could not be persisted")
+    return "committed"
+
+
+def apply_staged_remove_effect(receipt):
+    """Apply or recognize a frozen exact removeEffect sheet value."""
+    with _get_character_update_lock(receipt["owner"], receipt.get("role")):
+        with path_transaction_lock(
+            receipt["path"], suffix=".effects.lock", timeout_seconds=30.0
+        ) as locked:
+            if locked is None:
+                raise EffectsRuntimeError("character effect file is busy")
+            current = safe_json_load(receipt["path"])
+            if not isinstance(current, dict):
+                raise EffectsRuntimeError("character sheet became unavailable")
+            current_effects = current.get("temporaryEffects", []) or []
+            if current_effects == receipt["after"]:
+                return "already_committed"
+            if current_effects != receipt["before"]:
+                return "blocked_conflict"
+            updated = deepcopy(current)
+            updated["temporaryEffects"] = deepcopy(receipt["after"])
+            if not safe_write_json(receipt["path"], updated):
+                raise EffectsRuntimeError("effect removal could not be persisted")
+    return "committed"
 
 
 def _party_sheets(party):

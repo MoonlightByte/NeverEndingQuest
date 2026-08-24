@@ -73,6 +73,7 @@ class HeadlessSession:
         self._seed_character_file = None
         self._seed_module = None
         self._last_startup_marker = None
+        self._last_status = None
 
     # -- bootstrap ---------------------------------------------------------
 
@@ -205,6 +206,12 @@ class HeadlessSession:
                 reason = "player_exit"
         finally:
             try:
+                from utils.capture.live_provider_call import abort_live_turn_scope
+
+                abort_live_turn_scope()
+            except Exception:
+                pass
+            try:
                 self._stdout_shim.flush()
             except Exception:
                 pass
@@ -251,6 +258,10 @@ class HeadlessSession:
         # Raw text already went to the mirror log regardless.
 
     def _on_status(self, message, is_processing):
+        status_key = (str(message), bool(is_processing))
+        if status_key == self._last_status:
+            return
+        self._last_status = status_key
         self.writer.emit("status", message=message,
                          is_processing=bool(is_processing))
 
@@ -343,8 +354,27 @@ class HeadlessSession:
         self.input_queue.put(content)
 
     def request_quit(self):
+        from utils.capture.live_provider_call import (
+            get_live_turn_scope,
+            request_live_turn_supersession,
+        )
+
+        # Preserve the historical terminal reason even when a live turn must
+        # quiesce first. The engine thread may finish its superseded turn while
+        # this control thread is waiting; setting the intent afterward races
+        # that completion and misreports a player quit as ``engine_stop``.
         self._quitting = True
         self.prompt_pending.clear()
+        scope = get_live_turn_scope()
+        if scope is not None:
+            operation = request_live_turn_supersession("quit")
+            self.writer.emit(
+                "operation",
+                name="quit",
+                status="accepted_deferred",
+                operation_id=operation["operation_id"],
+            )
+            scope.quiescent.wait()
         self.input_queue.put(EOF_SENTINEL)
 
     def handle_command(self, command):
@@ -368,8 +398,14 @@ class HeadlessSession:
             self.request_quit()
             return
 
-        if name in ("save", "restore", "delete_save") and not \
-                self.prompt_pending.is_set():
+        from utils.capture.live_provider_call import get_live_turn_scope
+
+        live_scope = get_live_turn_scope()
+        busy_persistence = (
+            name == "delete_save"
+            or (name in ("save", "restore") and live_scope is None)
+        )
+        if busy_persistence and not self.prompt_pending.is_set():
             result(False, error="engine is busy; wait for the next prompt "
                                 "event before %s" % name)
             return
@@ -380,6 +416,37 @@ class HeadlessSession:
             if name == "list_saves":
                 result(True, data=manager.list_save_games())
             elif name == "save":
+                if live_scope is not None:
+                    from utils.capture.live_provider_call import queue_live_save
+
+                    self.writer.emit(
+                        "operation",
+                        id=command_id,
+                        name="save",
+                        status="accepted_deferred",
+                    )
+
+                    def execute_save():
+                        return manager.create_save_game(
+                            description=args.get("description", ""),
+                            save_mode=args.get("save_mode", "essential"),
+                        )
+
+                    def complete_save(outcome):
+                        ok, message = outcome
+                        result(
+                            bool(ok),
+                            data={"message": message} if ok else None,
+                            error=None if ok else message,
+                        )
+
+                    queued_id = queue_live_save(
+                        execute_save, complete_save, command_id
+                    )
+                    if queued_id is None:
+                        live_scope.quiescent.wait()
+                        complete_save(execute_save())
+                    return
                 ok, message = manager.create_save_game(
                     description=args.get("description", ""),
                     save_mode=args.get("save_mode", "essential"))
@@ -398,6 +465,33 @@ class HeadlessSession:
                 if not folder:
                     result(False, error="restore requires args.save_folder")
                     return
+                if live_scope is not None:
+                    from utils.capture.live_provider_call import (
+                        request_live_turn_supersession,
+                    )
+
+                    operation = request_live_turn_supersession(
+                        "restore", str(command_id)
+                    )
+                    if operation["kind"] == "turn_complete":
+                        live_scope.quiescent.wait()
+                    elif not operation["accepted"]:
+                        result(
+                            False,
+                            error=(
+                                "another lifecycle operation is already pending: "
+                                + operation["kind"]
+                            ),
+                        )
+                        return
+                    self.writer.emit(
+                        "operation",
+                        id=command_id,
+                        name="restore",
+                        status="accepted_deferred",
+                        operation_id=operation["operation_id"],
+                    )
+                    live_scope.quiescent.wait()
                 ok, message = manager.restore_save_game(folder)
                 if not ok:
                     result(False, error=message)

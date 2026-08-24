@@ -1218,6 +1218,95 @@ def _default_campaign_data() -> Dict[str, Any]:
     }
 
 
+def prepare_hub_establishment(hub_name, hub_data):
+    """Freeze the exact campaign fields owned by one establishHub action."""
+    manager = CampaignManager()
+    campaign = copy.deepcopy(manager.campaign_data)
+    hubs = campaign.get("hubs") if isinstance(campaign.get("hubs"), dict) else {}
+    world = (
+        campaign.get("worldState")
+        if isinstance(campaign.get("worldState"), dict)
+        else {}
+    )
+    established = datetime.now().isoformat()
+    hub_record = {
+        "establishedDate": established,
+        "hubType": hub_data.get("hubType", "settlement"),
+        "description": hub_data.get("description", ""),
+        "services": copy.deepcopy(hub_data.get("services", [])),
+        "connectedModules": copy.deepcopy(hub_data.get("connectedModules", [])),
+        "ownership": hub_data.get("ownership", "party"),
+    }
+    return {
+        "kind": "establishHub",
+        "campaign_path": manager.campaign_file,
+        "hub_name": hub_name,
+        "before": {
+            "hub_exists": hub_name in hubs,
+            "hub": copy.deepcopy(hubs.get(hub_name)),
+            "world_hub_exists": "hubEstablished" in world,
+            "world_hub": world.get("hubEstablished"),
+            "hub_module_exists": "hubModule" in campaign,
+            "hub_module": campaign.get("hubModule"),
+            "last_updated_exists": "lastUpdated" in campaign,
+            "last_updated": campaign.get("lastUpdated"),
+        },
+        "after": {
+            "hub_exists": True,
+            "hub": hub_record,
+            "world_hub_exists": True,
+            "world_hub": True,
+            "hub_module_exists": True,
+            "hub_module": campaign.get("hubModule") or hub_name,
+            "last_updated_exists": True,
+            "last_updated": established,
+        },
+    }
+
+
+def apply_staged_hub_establishment(receipt):
+    """Apply or recognize the owned establishHub campaign fields."""
+    outcome = {"value": None}
+
+    def owned(campaign):
+        hubs = campaign.get("hubs") if isinstance(campaign.get("hubs"), dict) else {}
+        world = (
+            campaign.get("worldState")
+            if isinstance(campaign.get("worldState"), dict)
+            else {}
+        )
+        return {
+            "hub_exists": receipt["hub_name"] in hubs,
+            "hub": copy.deepcopy(hubs.get(receipt["hub_name"])),
+            "world_hub_exists": "hubEstablished" in world,
+            "world_hub": world.get("hubEstablished"),
+            "hub_module_exists": "hubModule" in campaign,
+            "hub_module": campaign.get("hubModule"),
+            "last_updated_exists": "lastUpdated" in campaign,
+            "last_updated": campaign.get("lastUpdated"),
+        }
+
+    def mutate(campaign):
+        current = owned(campaign)
+        if current == receipt["after"]:
+            outcome["value"] = "already_committed"
+            return False
+        if current != receipt["before"]:
+            outcome["value"] = "blocked_conflict"
+            return False
+        campaign.setdefault("hubs", {})[receipt["hub_name"]] = copy.deepcopy(
+            receipt["after"]["hub"]
+        )
+        campaign.setdefault("worldState", {})["hubEstablished"] = True
+        campaign["hubModule"] = receipt["after"]["hub_module"]
+        campaign["lastUpdated"] = receipt["after"]["last_updated"]
+        outcome["value"] = "committed"
+        return True
+
+    mutate_campaign_state(receipt["campaign_path"], mutate)
+    return outcome["value"]
+
+
 def _validate_completion_intent(
     intent: Dict[str, Any],
     intent_path: str,

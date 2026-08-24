@@ -378,7 +378,8 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
         Update all relevant fields based on the events that have occurred, including but not limited to:
         - Update 'adventureSummary' with a brief summary of what occurred at this location (2-3 sentences).
         - Modify 'description' if the location has changed significantly.
-        - Update 'npcs', 'monsters', 'resourcesAvailable', 'plotHooks', etc., based on recent events. Be aware of any mispellings of NPCs or monsters and make sure to not create new entities if the player commands it, directs it, or mispells. For example, if the area started with an NPC called Mordenkainen, and the player refers to the NPC as Mordy, don't add Mordy to the NPC list in addition to Mordenkainen.
+        - Preserve 'npcs' and 'monsters' exactly. Dedicated presence workflows reconcile those fields; this chronicle-derived update does not own creature placement.
+        - Update 'resourcesAvailable', 'plotHooks', and other narrative location fields only when the accepted summary establishes a real change.
         - Create a new 'encounter' entry for this update. The encounterId should be the location's locationId (e.g., 'R01', 'R02') appended with '-E' and then the next sequential number (e.g., if locationId is 'R01' and there are 2 existing encounters, the new encounterId should be 'R01-E3'). Do NOT include the area ID prefix.
         - Adjust 'dangerLevel' if applicable.
         - Update any other fields that may have changed due to the party's actions such as items removed or added, damage to the location, traps disabled, doors smashed, or anything else impacting the area.
@@ -542,8 +543,25 @@ def convert_to_dialogue(trimmed_data):
         {"role": "user", "content": dialogue.strip()}
     ]
 
-def generate_adventure_summary(conversation_history_data, party_tracker_data, leaving_location_name):
+def generate_adventure_summary(
+    conversation_history_data,
+    party_tracker_data,
+    leaving_location_name,
+    structured_actions=None,
+):
     status_generating_summary()
+    structured_projection_message = {
+        "role": "system",
+        "content": (
+            "STRUCTURED ACTION PROJECTION FOR THE RESOLVED TURN:\n"
+            + json.dumps(structured_actions or [], ensure_ascii=True)
+            + "\nThis projection is evidence for which state-changing "
+            "actions the accepted turn actually proposed. Its absence is "
+            "not permission to turn a player's requested outcome into "
+            "history. Reconcile it with the Dungeon Master's resolved "
+            "narration; do not quote or mention this projection."
+        ),
+    }
     messages = [
         {
             "role": "system",
@@ -565,6 +583,14 @@ You may include brief direct quotes only when they are notable turning points, e
 
 Do NOT:
 - Include events from previous or future locations.
+- Treat a player's request, plan, prediction, or command as an event that
+  occurred. The Dungeon Master's resolved response establishes the semantic
+  outcome.
+- Claim a state-changing action occurred unless the resolved Dungeon Master
+  response supports it and the corresponding structured action is present in
+  the supplied action projection. A proposed structured action may still be
+  awaiting its code-owned commit, so describe the resolved intent without
+  inventing its mechanical result.
 - Speculate about the future or characters’ intentions.
 - Use first-person narration or dialogue-heavy exchanges.
 - Use bullet points, headings, or formatting.
@@ -573,6 +599,7 @@ Do NOT:
 
 Your writing should feel immersive, literary, and grounded -- like a historical entry capturing a poignant moment in time. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode. Do NOT use markdown formatting (no **, no ###, no bullet points)."""
         },
+        structured_projection_message,
         {"role": "user", "content": "Summarize this conversation per instructions:"},
         *conversation_history_data
     ]
@@ -595,6 +622,7 @@ Your writing should feel immersive, literary, and grounded -- like a historical 
         debug_print(f"Error writing to trimmed_summary_dump.json: {e}")
 
     dialogue_data = convert_to_dialogue(trimmed_data)
+    dialogue_data.insert(1, structured_projection_message)
     try:
         safe_json_dump(dialogue_data, 'dialogue_summary.json')
     except IOError as e:
@@ -1111,6 +1139,81 @@ def commit_departure_summary(
                     journal_path,
                     expected_journal_before,
                 )
+
+
+def prepare_departure_summary(
+    conversation_history,
+    party_tracker,
+    leaving_location_name,
+    current_area_id,
+    leaving_location_id,
+    structured_actions=None,
+):
+    """Run T016/T015 and return exact commit material without writing targets."""
+    if not isinstance(conversation_history, list):
+        raise DepartureSummaryError("conversation history is unavailable or invalid")
+    if not isinstance(party_tracker, dict):
+        raise DepartureSummaryError("party tracker is unavailable or invalid")
+
+    adventure_summary = generate_adventure_summary(
+        conversation_history,
+        party_tracker,
+        leaving_location_name,
+        structured_actions=structured_actions,
+    )
+    if not isinstance(adventure_summary, str) or not adventure_summary.strip():
+        raise DepartureSummaryError("T016 did not produce an adventure summary")
+
+    current_module = party_tracker.get("module", "").replace(" ", "_")
+    area_path = ModulePathManager(current_module or None).get_area_path(current_area_id)
+    area_before = load_json_file(area_path)
+    if not isinstance(area_before, dict) or not isinstance(
+        area_before.get("locations"), list
+    ):
+        raise DepartureSummaryError("departure area is unavailable or invalid")
+    leaving_index = next(
+        (
+            index
+            for index, location in enumerate(area_before["locations"])
+            if isinstance(location, dict)
+            and location.get("locationId") == leaving_location_id
+        ),
+        None,
+    )
+    if leaving_index is None:
+        raise DepartureSummaryError("canonical departure location is absent")
+    location_before = copy.deepcopy(area_before["locations"][leaving_index])
+    updated_location = update_location_json(
+        adventure_summary,
+        copy.deepcopy(location_before),
+        current_area_id,
+    )
+    if not isinstance(updated_location, dict):
+        raise DepartureSummaryError("T015 did not produce a location update")
+    # T091 and T014 are the dedicated presence authorities. T015 owns the
+    # chronicle-derived location description, not creature placement. Preserve
+    # the accepted lists so a summary proposal cannot silently add, remove, or
+    # relocate an entity outside its responsible workflow lane.
+    for presence_field in ("monsters", "npcs"):
+        updated_location[presence_field] = copy.deepcopy(
+            location_before.get(presence_field, [])
+        )
+    area_after = copy.deepcopy(area_before)
+    area_after["locations"][leaving_index] = updated_location
+    journal_after = build_journal_update(
+        adventure_summary,
+        party_tracker,
+        leaving_location_name,
+    )
+    return {
+        "summary": adventure_summary,
+        "area_path": area_path,
+        "area_before": area_before,
+        "area_after": area_after,
+        "journal_after": journal_after,
+        "journal_entry_index": len(journal_after.get("entries", [])) - 1,
+        "journal_entry_after": copy.deepcopy(journal_after["entries"][-1]),
+    }
 
 
 def run_departure_summary(
