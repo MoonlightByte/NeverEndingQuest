@@ -10,6 +10,7 @@ export interface InitiativeState {
   active: boolean
   combatants: Combatant[]
   round: number
+  recovery?: { required: boolean; message: string; actions: string[] } | null
 }
 
 export interface WorldState {
@@ -108,6 +109,7 @@ export const useWorld = create<WorldState>((set) => ({
           active: payload.active,
           combatants: payload.combatants,
           round: payload.round ?? 0,
+          recovery: payload.recovery ?? null,
         },
       }
     }),

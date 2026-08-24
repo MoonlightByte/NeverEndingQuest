@@ -11,6 +11,10 @@ from typing import Any, Dict, List, Optional
 import config
 import model_config
 from core.ai import api_client
+from core.combat.invocation import (
+    InvocationSupersededError,
+    require_current_invocation,
+)
 from model_config import TRANSITION_VALIDATOR_TEMPERATURE
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.enhanced_logger import debug, error, info, warning
@@ -223,6 +227,7 @@ def _normalize_reviews(
 def review_ambiguous_segments(
     ambiguous_segments: List[Dict[str, Any]],
     travel_context: Optional[Dict[str, Any]] = None,
+    invocation_claim=None,
 ) -> List[Dict[str, Any]]:
     """Use T021 to classify only the supplied ambiguous route segments.
 
@@ -249,6 +254,8 @@ def review_ambiguous_segments(
     )
 
     try:
+        if invocation_claim is not None:
+            require_current_invocation(invocation_claim)
         transition_config = _transition_config()
         response = capture_and_fanout(
             "T021",
@@ -264,6 +271,8 @@ def review_ambiguous_segments(
                 key: value for key, value in transition_config.items() if key != "model"
             },
         )
+        if invocation_claim is not None:
+            require_current_invocation(invocation_claim)
         response_text = response.choices[0].message.content
         if not isinstance(response_text, str) or not response_text.strip():
             return _uncertain_reviews(
@@ -301,6 +310,8 @@ def review_ambiguous_segments(
             category="transition_validation",
         )
         return normalized
+    except InvocationSupersededError:
+        raise
     except json.JSONDecodeError:
         return _uncertain_reviews(
             segments, "Transition reviewer returned malformed JSON"
@@ -351,6 +362,7 @@ def validate_transition_request(
     transition_atlas: str,
     plot_data: Dict,
     party_level: int = 1,
+    invocation_claim=None,
 ) -> Dict[str, Any]:
     """Backward-compatible bridge for the existing action-handler callsite.
 
@@ -412,6 +424,7 @@ def validate_transition_request(
                 "plot_data": plot_data,
                 "party_level": party_level,
             },
+            invocation_claim=invocation_claim,
         )
         reviews_by_id = {review["location_id"]: review for review in reviews}
 

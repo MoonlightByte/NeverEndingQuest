@@ -174,7 +174,7 @@ export interface ServerEvents {
   npc_details_response: { npcName: string; data: Record<string, unknown> | null; modalType: 'saves' | 'skills' | 'spells'; error?: string };
   npc_inventory_response: { npcName: string; data: unknown[] | null; error?: string };
   party_data_response: { members: Array<Record<string, unknown>>; location_npcs?: Array<Record<string, unknown>>; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
-  initiative_data_response: { active: boolean; combatants: Array<Record<string, unknown>>; round?: number; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
+  initiative_data_response: { active: boolean; combatants: Array<Record<string, unknown>>; round?: number; recovery?: { required: boolean; message: string; actions: string[] } | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   plot_data_response: { data: { plotPoints: Array<{ id: string; title: string; description: string; status: string; sideQuests?: unknown[] }> } | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   storage_data_response: { data: Record<string, unknown>; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   exit_acknowledged: { message: string };

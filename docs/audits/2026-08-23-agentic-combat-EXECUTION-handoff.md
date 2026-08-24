@@ -25,6 +25,10 @@ doc: the design authority is the converged plan (see below) + live issue #193.
   `additionalProperties:false` at root/combatState/creatures.
 - **Env division:** Claude runs OpenAI-on-WSL headless+live. Gemma (LM Studio absent) and native
   Windows are BLOCKED in Claude's env -> Codex's authoritative acceptance pass.
+- **Acceptance provider update (2026-08-24):** Gemma is not available for this implementation.
+  The owner directs all combat acceptance to the configured real OpenAI provider on native Windows,
+  using shipped `run_headless.py serve` plus both live browser surfaces (legacy `/` and React
+  `/play/`). Gemma unavailability no longer blocks combat checkpoint commits.
 - **AC-D11 DROPPED** ("AC-D11 is stupid"): NO token limits, NO rate throttling; full token access;
   player experience first, optimization later. (Consistent with #193 no-max_tokens.)
 

@@ -648,6 +648,12 @@ class SaveGameManager:
     
     def restore_save_game(self, save_folder: str) -> Tuple[bool, str]:
         """Replace one save timeline under the shared campaign boundary."""
+        from core.combat.invocation import (
+            begin_invocation_supersession,
+            end_invocation_supersession,
+        )
+
+        invocation_barrier = begin_invocation_supersession("load")
         try:
             from core.managers.campaign_manager import (
                 _assert_no_active_campaign_completion,
@@ -690,6 +696,8 @@ class SaveGameManager:
                 category="save_game",
             )
             return False, f"Failed to restore save game: {exc}"
+        finally:
+            end_invocation_supersession(invocation_barrier)
 
     def _restore_save_game_locked(self, save_folder: str) -> Tuple[bool, str]:
         """

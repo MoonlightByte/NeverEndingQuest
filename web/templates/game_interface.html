@@ -4692,6 +4692,19 @@
             // The input field being enabled is our signal that it's the player's turn.
             const isPlayerTurn = !document.getElementById('user-input').disabled;
 
+            // Typed encounters receive the committed current actor/controller
+            // projection from the server. Never infer ownership from source type.
+            const typedCurrent = Array.from(items).find(item =>
+                item.dataset.current === 'true' && item.dataset.controller === 'human'
+            );
+            const hasTypedOwnership = Array.from(items).some(item =>
+                item.dataset.controller === 'human' || item.dataset.controller === 'actor_agent'
+            );
+            if (hasTypedOwnership) {
+                if (isPlayerTurn && typedCurrent) typedCurrent.classList.add('active');
+                return;
+            }
+
             if (isPlayerTurn && playerName && initiativeOrder.length > 0) {
                 const playerItem = document.querySelector(`.initiative-item[data-name="${playerName}"]`);
                 if (playerItem) {
@@ -6544,6 +6557,15 @@
             container.style.display = 'flex'; // Show the tracker
             partyContainer.style.display = 'none'; // Hide party display during combat
             container.innerHTML = ''; // Clear any old items
+
+            if (response.recovery && response.recovery.required) {
+                const recoveryNotice = document.createElement('div');
+                recoveryNotice.className = 'combat-recovery-notice';
+                recoveryNotice.setAttribute('role', 'alert');
+                recoveryNotice.setAttribute('aria-live', 'assertive');
+                recoveryNotice.textContent = response.recovery.message || 'Combat recovery needs attention -- Load or Reset';
+                container.appendChild(recoveryNotice);
+            }
             
             // When in combat, hide the adventure box and show combat box
             headerLabel.style.display = 'none';
@@ -6560,6 +6582,11 @@
                 const item = document.createElement('div');
                 item.classList.add('initiative-item', combatant.type);
                 item.dataset.name = combatant.name; // Use a data attribute for easy selection
+                if (combatant.combatantId) item.dataset.combatantId = combatant.combatantId;
+                if (combatant.controller) item.dataset.controller = combatant.controller;
+                if (typeof combatant.isCurrent === 'boolean') {
+                    item.dataset.current = combatant.isCurrent ? 'true' : 'false';
+                }
                 
                 // Preserve hover state if this was the previously hovered item
                 if (currentlyHoveredName === combatant.name) {

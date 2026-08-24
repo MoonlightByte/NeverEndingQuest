@@ -368,7 +368,7 @@ class HeadlessSession:
             self.request_quit()
             return
 
-        if name in ("save", "restore", "delete_save") and not \
+        if name in ("delete_save",) and not \
                 self.prompt_pending.is_set():
             result(False, error="engine is busy; wait for the next prompt "
                                 "event before %s" % name)

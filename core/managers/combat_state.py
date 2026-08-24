@@ -157,11 +157,12 @@ def is_hostile(creature):
 
 
 def combat_provenance(encounter):
-    """Three-way provenance router for the agentic-combat rollout (absence-safe).
+    """Return the accepted combat route, or require recovery for invalid typed state.
 
     - "typed"     : a new agentic encounter carrying sceneFacts.contractVersion.
     - "pre_typed" : an opted-in agentic encounter from before typed scene facts.
     - "legacy"    : everything else, including every pre-existing encounter.
+    - "recovery_required": sceneFacts is present without the supported contract.
 
     An encounter that lacks all of the new fields is always "legacy" and is
     handled exactly as on origin/main. Absence is never an error and no
@@ -169,33 +170,35 @@ def combat_provenance(encounter):
     """
     if not isinstance(encounter, dict):
         return "legacy"
-    scene = encounter.get("sceneFacts")
-    if isinstance(scene, dict) and scene.get("contractVersion") is not None:
-        return "typed"
+    if "sceneFacts" in encounter:
+        scene = encounter.get("sceneFacts")
+        if (
+            isinstance(scene, dict)
+            and scene.get("contractVersion") == "typed-agentic-v1"
+        ):
+            return "typed"
+        return "recovery_required"
     state = encounter.get("combatState")
     if isinstance(state, dict) and state.get("pipelineMode") == "agentic":
         return "pre_typed"
     return "legacy"
 
 
-def resolve_creature_controller(creature, scene_facts=None):
+def resolve_creature_controller(creature, combat_state=None):
     """Resolve who controls a creature ("human" or "actor_agent").
 
-    Prefers an accepted typed participant's controller when present; otherwise
+    Prefers the accepted combatState.controllers entry when present; otherwise
     falls back to the existing type-based rule (player -> human, everything else
-    -> actor_agent). Absence-safe: for any encounter without sceneFacts this is
-    byte-identical in effect to today's behavior.
+    -> actor_agent). Absence-safe: for any encounter without the controller map
+    this is byte-identical in effect to today's behavior.
     """
     combatant_id = creature.get("combatantId") if isinstance(creature, dict) else None
-    if isinstance(scene_facts, dict) and combatant_id is not None:
-        for participant in (scene_facts.get("participants") or []):
-            if not isinstance(participant, dict):
-                continue
-            if participant.get("combatantId") == combatant_id:
-                controller = participant.get("controller")
-                if controller in ("human", "actor_agent"):
-                    return controller
-                break
+    if isinstance(combat_state, dict) and combatant_id is not None:
+        controllers = combat_state.get("controllers")
+        entry = controllers.get(combatant_id) if isinstance(controllers, dict) else None
+        controller = entry.get("controller") if isinstance(entry, dict) else None
+        if controller in ("human", "actor_agent"):
+            return controller
     if isinstance(creature, dict) and str(creature.get("type") or "").lower() == "player":
         return "human"
     return "actor_agent"
@@ -218,6 +221,23 @@ def player_control_unavailable(encounter):
     The shipped recovery pause is reserved for a player who is actually at
     zero HP or has a resolved non-active status.
     """
+    if combat_provenance(encounter) == "typed":
+        state = encounter.get("combatState") or {}
+        human_actors = [
+            creature
+            for creature in encounter.get("creatures", [])
+            if isinstance(creature, dict)
+            and creature.get("combatantId") in initiative_eligible_ids(encounter)
+            and resolve_creature_controller(creature, state) == "human"
+        ]
+        return bool(human_actors) and all(
+            normalize_status(actor.get("status")) != ACTIVE_STATUS
+            or (
+                isinstance(actor.get("currentHitPoints"), (int, float))
+                and actor["currentHitPoints"] <= 0
+            )
+            for actor in human_actors
+        )
     players = [
         creature
         for creature in encounter.get("creatures", [])
@@ -293,8 +313,13 @@ def combatant_by_id(encounter, combatant_id):
 
 def canonical_initiative_order(encounter):
     ensure_combatant_ids(encounter)
+    eligible_ids = initiative_eligible_ids(encounter)
     ordered = sorted(
-        encounter["creatures"],
+        (
+            creature
+            for creature in encounter["creatures"]
+            if creature["combatantId"] in eligible_ids
+        ),
         key=lambda creature: (
             -int(creature.get("initiative", 0)),
             -int(creature.get("initiativeTieBreaker", 0)),
@@ -302,6 +327,165 @@ def canonical_initiative_order(encounter):
         ),
     )
     return [creature["combatantId"] for creature in ordered]
+
+
+def initiative_eligible_ids(encounter):
+    """Return the committed initiative membership for this provenance route."""
+    creature_ids = {
+        creature["combatantId"] for creature in encounter.get("creatures", [])
+    }
+    if combat_provenance(encounter) != "typed":
+        return creature_ids
+    scene = encounter.get("sceneFacts") or {}
+    return {
+        participant.get("combatantId")
+        for participant in scene.get("participants", [])
+        if isinstance(participant, dict)
+        and participant.get("initiativeEligible") is True
+        and participant.get("combatantId") in creature_ids
+    }
+
+
+def initiative_ui_projection(encounter):
+    """Project initiative order and typed input ownership for UI consumers.
+
+    Legacy encounters retain the existing living-roster/raw-initiative shape.
+    Typed encounters are projected strictly from the committed stable ledger;
+    observers never appear merely because they are alive, and source ``type``
+    never decides who owns the current input window.
+    """
+    creatures = [
+        creature
+        for creature in encounter.get("creatures", [])
+        if isinstance(creature, dict) and is_combatant_targetable(creature)
+    ]
+    if combat_provenance(encounter) != "typed":
+        return [
+            deepcopy(creature)
+            for creature in sorted(
+                creatures,
+                key=lambda creature: creature.get("initiative", 0),
+                reverse=True,
+            )
+        ]
+
+    state = encounter.get("combatState")
+    if not isinstance(state, dict):
+        return []
+    order = state.get("initiativeOrder")
+    if not isinstance(order, list):
+        return []
+    by_id = {
+        creature.get("combatantId"): creature
+        for creature in creatures
+        if isinstance(creature.get("combatantId"), str)
+    }
+    eligible = initiative_eligible_ids(encounter)
+    committed_order = [
+        combatant_id
+        for combatant_id in order
+        if combatant_id in eligible and combatant_id in by_id
+    ]
+
+    current_id = None
+    if state.get("phase") not in {"complete", "recovery_required"} and committed_order:
+        cursor = state.get("turnCursor", 0)
+        if type(cursor) is not int:
+            cursor = 0
+        cursor = max(0, min(cursor, len(committed_order) - 1))
+        acted = set(state.get("actedThisRound", []))
+        for offset in range(len(committed_order)):
+            combatant_id = committed_order[(cursor + offset) % len(committed_order)]
+            creature = by_id[combatant_id]
+            if combatant_id not in acted and is_turn_eligible(creature):
+                current_id = combatant_id
+                break
+
+    projection = []
+    for combatant_id in committed_order:
+        creature = deepcopy(by_id[combatant_id])
+        creature["controller"] = resolve_creature_controller(creature, state)
+        creature["isCurrent"] = combatant_id == current_id
+        projection.append(creature)
+    return projection
+
+
+def _history_marks_encounter(history, encounter_id):
+    prefix = "Current Combat Encounter:"
+    markers = [
+        message.get("content", "").strip()[len(prefix):].strip()
+        for message in history
+        if isinstance(message, dict)
+        and message.get("role") == "system"
+        and isinstance(message.get("content"), str)
+        and message["content"].strip().startswith(prefix)
+    ] if isinstance(history, list) else []
+    return bool(markers) and markers[-1] == encounter_id
+
+
+def activate_encounter(expected_tracker_value, encounter_id, history_marker):
+    """Durably publish a prepared typed encounter using conditional activation.
+
+    The complete combat history is written before the tracker can point at the
+    encounter.  The short party-transition authority covers the comparison and
+    all three writes.  A competing active encounter wins without allowing this
+    candidate to replace its history or tracker authority.
+    """
+    from core.managers.campaign_manager import _party_module_transition_lock
+    from utils.encoding_utils import safe_json_load
+    from utils.file_operations import safe_write_json
+
+    encounter_id = str(encounter_id or "").strip()
+    if not encounter_id or not _history_marks_encounter(history_marker, encounter_id):
+        raise CombatStateConflict("Activation requires a full matching combat history")
+    expected = str(expected_tracker_value or "").strip()
+    encounter_path = "modules/encounters/encounter_%s.json" % encounter_id
+    history_path = "modules/conversation_history/combat_conversation_history.json"
+
+    with _party_module_transition_lock():
+        tracker = safe_json_load("party_tracker.json")
+        encounter = safe_json_load(encounter_path)
+        if not isinstance(tracker, dict) or not isinstance(encounter, dict):
+            raise CombatStateConflict("Activation authority files are unavailable")
+        state = encounter.get("combatState")
+        activation = state.get("activation") if isinstance(state, dict) else None
+        if (
+            combat_provenance(encounter) != "typed"
+            or not isinstance(activation, dict)
+            or activation.get("encounterId") != encounter_id
+        ):
+            raise CombatStateConflict("Encounter lacks matching typed activation authority")
+
+        world = tracker.setdefault("worldConditions", {})
+        current = str(world.get("activeCombatEncounter") or "").strip()
+        if current not in ("", expected, encounter_id):
+            activation["status"] = "superseded"
+            activation["trackerActivated"] = False
+            if not safe_write_json(encounter_path, encounter):
+                raise CombatStateConflict("Could not persist superseded activation")
+            return False
+
+        # A cleared expected encounter is a legitimate fresh retry. Record the
+        # exact value actually compared while authority remains continuously held.
+        activation["expectedTrackerEncounterId"] = current or None
+        if current != encounter_id:
+            if not safe_write_json(history_path, history_marker):
+                raise CombatStateConflict("Could not persist combat history before activation")
+            world["activeCombatEncounter"] = encounter_id
+            if not safe_write_json("party_tracker.json", tracker):
+                raise CombatStateConflict("Could not conditionally activate encounter")
+        else:
+            existing_history = safe_json_load(history_path)
+            if not _history_marks_encounter(existing_history, encounter_id):
+                if not safe_write_json(history_path, history_marker):
+                    raise CombatStateConflict("Could not repair activated combat history")
+
+        activation["status"] = "active"
+        activation["historyMarkerEncounterId"] = encounter_id
+        activation["trackerActivated"] = True
+        if not safe_write_json(encounter_path, encounter):
+            raise CombatStateConflict("Could not finalize encounter activation receipt")
+        return encounter
 
 
 def _completion_state(existing=None):
@@ -345,8 +529,13 @@ def ensure_combat_state(encounter, new_encounter=False, pipeline_mode=None):
     state["completion"] = _completion_state(state.get("completion"))
 
     valid_ids = {c["combatantId"] for c in encounter["creatures"]}
+    initiative_ids = initiative_eligible_ids(encounter)
     order = state.get("initiativeOrder")
-    if not isinstance(order, list) or len(order) != len(valid_ids) or set(order) != valid_ids:
+    if (
+        not isinstance(order, list)
+        or len(order) != len(initiative_ids)
+        or set(order) != initiative_ids
+    ):
         state["initiativeOrder"] = canonical_initiative_order(encounter)
         order = state["initiativeOrder"]
     if state.get("phase") not in VALID_PHASES:
@@ -358,14 +547,13 @@ def ensure_combat_state(encounter, new_encounter=False, pipeline_mode=None):
     # unknown-version sceneFacts fails closed to recovery rather than being silently
     # misread; only the supported typed contract is accepted.
     scene = encounter.get("sceneFacts")
-    if scene is not None and (
+    if "sceneFacts" in encounter and (
         not isinstance(scene, dict)
-        or (
-            scene.get("contractVersion") is not None
-            and scene.get("contractVersion") != "typed-agentic-v1"
-        )
+        or scene.get("contractVersion") != "typed-agentic-v1"
     ):
         state["phase"] = "recovery_required"
+    elif isinstance(scene, dict) and scene.get("contractVersion") == "typed-agentic-v1":
+        state.setdefault("recoveryConflict", None)
     if type(state.get("revision")) is not int or state["revision"] < 0:
         state["revision"] = 0
     if type(state.get("round")) is not int or state["round"] < 1:
@@ -374,7 +562,9 @@ def ensure_combat_state(encounter, new_encounter=False, pipeline_mode=None):
         state["turnCursor"] = 0
     state["turnCursor"] = max(0, min(state["turnCursor"], max(len(order) - 1, 0)))
     state["actedThisRound"] = list(dict.fromkeys(
-        actor_id for actor_id in state.get("actedThisRound", []) if actor_id in valid_ids
+        actor_id
+        for actor_id in state.get("actedThisRound", [])
+        if actor_id in initiative_ids
     ))
     state["appliedTurnIds"] = list(dict.fromkeys(
         str(item) for item in state.get("appliedTurnIds", []) if item
@@ -414,7 +604,7 @@ def expected_actor_ids(encounter, stop_after_player=True):
         if not creature or not is_turn_eligible(creature):
             continue
         result.append(actor_id)
-        if stop_after_player and creature.get("type") == "player":
+        if stop_after_player and _current_controller(encounter, creature) == "human":
             break
     return result
 
@@ -431,14 +621,14 @@ def expected_automatic_actor_ids(encounter):
         creature = combatant_by_id(encounter, actor_id)
         if not creature or not is_turn_eligible(creature):
             continue
-        if creature.get("type") == "player":
+        if _current_controller(encounter, creature) == "human":
             break
         result.append(actor_id)
     return result
 
 
 def expected_player_window_ids(encounter):
-    """Return the player's turn followed by all remaining turns this round."""
+    """Return the next human-controlled turn and the remaining round window."""
     state = ensure_combat_state(encounter)
     order = state["initiativeOrder"]
     result = []
@@ -451,11 +641,16 @@ def expected_player_window_ids(encounter):
         if not creature or not is_turn_eligible(creature):
             continue
         if not found_player:
-            if creature.get("type") != "player":
+            if _current_controller(encounter, creature) != "human":
                 return []
             found_player = True
         result.append(actor_id)
     return result
+
+
+def _current_controller(encounter, creature):
+    state = encounter.get("combatState") if isinstance(encounter, dict) else None
+    return resolve_creature_controller(creature, state)
 
 
 def _skipped_actor_ids_through_window(encounter, actor_ids):
@@ -657,9 +852,9 @@ def commit_turn(encounter, turn_id, applied_event_ids):
         if actor_id not in state["actedThisRound"]:
             state["actedThisRound"].append(actor_id)
     round_actor_ids = {
-        c["combatantId"]
-        for c in encounter["creatures"]
-        if is_combatant_targetable(c)
+        actor_id
+        for actor_id in state["initiativeOrder"]
+        if is_combatant_targetable(combatant_by_id(encounter, actor_id))
     }
     if round_actor_ids and round_actor_ids.issubset(set(state["actedThisRound"])):
         state["round"] += 1
@@ -732,6 +927,16 @@ def recovery_action(encounter):
                     "skippedActorIds": skipped,
                 }
         return {"action": "continue", "actorIds": actors}
+    conflict = state.get("recoveryConflict")
+    if (
+        isinstance(conflict, dict)
+        and conflict.get("status") == "pending"
+    ):
+        return {
+            "action": "pause_recovery_conflict",
+            "pendingTurn": deepcopy(pending),
+            "recoveryConflict": deepcopy(conflict),
+        }
     if (
         pending.get("clockOnly") is True
         and state.get("phase") == "recovery_required"
