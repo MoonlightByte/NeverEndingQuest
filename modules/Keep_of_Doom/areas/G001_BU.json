@@ -28,7 +28,8 @@
         "type": "outpost",
         "connections": [
           "B01",
-          "B04"
+          "B04",
+          "B08"
         ],
         "coordinates": "X3Y1"
       },
@@ -198,11 +199,8 @@
         {
           "name": "Shadow",
           "quantity": {
-
             "min": 2,
-
             "max": 2
-
           },
           "disposition": "hostile",
           "strategy": "These remnants of the keep's dark influence lurk near the ancient standing stones, attracted to the flickering runes. They emerge from the shadows between the stones when travelers disturb the area, seeking to drain their strength and vitality."
@@ -210,13 +208,10 @@
         {
           "name": "Twig Blight",
           "quantity": {
-
             "min": 3,
-
             "max": 3
-
           },
-          "disposition": "territorial", 
+          "disposition": "territorial",
           "strategy": "Animated by the forest's corruption, these plant creatures hide among the natural undergrowth around the trail markers. They attack when the party investigates the signs of Elen's passage or disturbs the offerings at the stones."
         }
       ],
@@ -312,11 +307,8 @@
         {
           "name": "Giant Spider",
           "quantity": {
-
             "min": 1,
-
             "max": 1
-
           },
           "disposition": "territorial",
           "strategy": "The spider has made its home in the rafters and attacks anyone who disturbs its web-covered nest. It prefers to drop onto unsuspecting prey from above."
@@ -324,11 +316,8 @@
         {
           "name": "Swarm of Spiders",
           "quantity": {
-
             "min": 1,
-
             "max": 1
-
           },
           "disposition": "neutral",
           "strategy": "These smaller spiders nest in the darkest corners and only attack if their areas are disturbed."
@@ -417,11 +406,8 @@
         {
           "name": "Shadow",
           "quantity": {
-
             "min": 1,
-
             "max": 1
-
           },
           "disposition": "hostile",
           "strategy": "A guardian shadow bound to protect the secret path, it emerges from the darkness when intruders approach the hidden entrance."
@@ -691,11 +677,8 @@
         {
           "name": "Will-o'-Wisp",
           "quantity": {
-
             "min": 2,
-
             "max": 2
-
           },
           "disposition": "hostile",
           "strategy": "These malevolent lights try to lead travelers into deep water or quicksand before attacking with electrical discharges."
@@ -703,11 +686,8 @@
         {
           "name": "Shambling Mound",
           "quantity": {
-
             "min": 1,
-
             "max": 1
-
           },
           "disposition": "territorial",
           "strategy": "This monstrous plant creature hides beneath the surface, emerging to engulf creatures that wander too close to its territory."

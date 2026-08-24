@@ -12,7 +12,7 @@
         "RO04"
       ],
       "coordinates": "X2Y2",
-      "name": "Forked Trails Crossing"
+      "name": "Rangers' Command Post"
     },
     {
       "id": "RO02",
@@ -22,7 +22,7 @@
         "RO04"
       ],
       "coordinates": "X2Y3",
-      "name": "Moonlit Waters Edge"
+      "name": "Supply Depot"
     },
     {
       "id": "RO03",
@@ -33,7 +33,7 @@
         "RO06"
       ],
       "coordinates": "X1Y2",
-      "name": "Shattered Sentinel Stones"
+      "name": "Trader's Rest"
     },
     {
       "id": "RO04",
@@ -43,7 +43,7 @@
         "RO02"
       ],
       "coordinates": "X3Y2",
-      "name": "Mistshadow Ford"
+      "name": "Scout's Watch"
     },
     {
       "id": "RO05",
@@ -67,8 +67,8 @@
   "layout": [
     [
       "RO05",
-      "   ",
-      "   "
+      "    ",
+      "    "
     ],
     [
       "RO03",
@@ -76,14 +76,9 @@
       "RO04"
     ],
     [
-      "   ",
-      "RO02",
-      "   "
-    ],
-    [
       "RO06",
-      "   ",
-      "   "
+      "RO02",
+      "    "
     ]
   ]
 }

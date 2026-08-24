@@ -655,7 +655,7 @@ body {
     filter: none;
   }
 
-  .neq-tabs { height: 40px; border-bottom: 1px solid #444; background: #333; }
+  .neq-tabs { min-height: 40px; border-bottom: 1px solid #444; background: #333; }
   .neq-tab-button {
     border-top: 0;
     border-left: 0;
@@ -675,6 +675,31 @@ body {
     color: #4caf50;
   }
   .neq-tab-button:last-child { border-right: none; }
+
+  /* Plan Task 7 fix round 1 (F1): the legacy-parity rule above fixed a
+     10px/13.3333px padding+font-size sized for the original 6-tab strip.
+     Adding the Map tab makes 7, which truncates to ~4 characters
+     ("Cha…", "Inv…") at that size. `@import "tailwindcss"` and this whole
+     parity block are both unlayered plain CSS (no `@layer`), so a
+     same-specificity Tailwind utility (`text-[10px]`, `px-0.5`) can't beat
+     `.neq-tab-button` above by winning the cascade -- it needs strictly
+     higher specificity instead, which is what the compound selector below
+     gives it, deterministically, regardless of stylesheet order. Verified
+     against `dist/assets/*.css` after `npm run build` (see task-7-report.md
+     addendum) rather than via a jsdom computed-style test: Vitest's jsdom
+     environment doesn't run Tailwind's build-time CSS pipeline, so it can't
+     exercise this cascade. */
+  .neq-tabs .neq-tab-button {
+    padding: 4px 3px;
+    font-size: 12px;
+    letter-spacing: -0.1px;
+    /* Long labels ("Spells & Magic") may wrap to two lines rather than
+       shrinking every tab's type below readability (user-approved). */
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.15;
+  }
 
   .neq-character-tab { padding: 0; background: #0a0a0a; }
   .neq-character-sheet {

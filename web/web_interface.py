@@ -2922,6 +2922,47 @@ def handle_location_data_request(data=None):
     except Exception as e:
         emit('location_data_response', _ui_response(data, {'data': None, 'error': str(e)}))
 
+@socketio.on('request_map_data')
+def handle_map_data_request(data=None):
+    """Handle requests for the spoiler-safe fog-of-war map of the current area.
+
+    SECURITY BOUNDARY: fog-of-war on the client is cosmetic only -- anything
+    emitted here is readable in devtools, so the projection performed by
+    project_map_payload() must never leak unrevealed room names/types or any
+    narrative/DM-only fields. See web/map_projection.py.
+    """
+    try:
+        from utils.file_operations import safe_read_json
+        from web.map_projection import project_map_payload, derive_revealed, resolve_area_path
+
+        party_tracker = safe_read_json('party_tracker.json')
+        if not party_tracker:
+            emit('map_data_response', _ui_response(data, {'data': None, 'error': 'Game not started'}))
+            return
+
+        module = (party_tracker.get('module') or '').replace(' ', '_')
+        world_conditions = party_tracker.get('worldConditions', {}) or {}
+        area_id = world_conditions.get('currentAreaId')
+        current_loc = world_conditions.get('currentLocationId')
+
+        try:
+            area_path = resolve_area_path(module, area_id)
+        except ValueError:
+            emit('map_data_response', _ui_response(data, {'data': None, 'error': 'Invalid area'}))
+            return
+
+        area = safe_read_json(area_path)
+        if not area:
+            emit('map_data_response', _ui_response(data, {'data': None, 'error': 'Area data unavailable'}))
+            return
+
+        revealed = derive_revealed(area, current_loc)
+        map_payload = project_map_payload(area, revealed, current_loc)
+        emit('map_data_response', _ui_response(data, {'data': map_payload}))
+
+    except Exception as e:
+        emit('map_data_response', _ui_response(data, {'data': None, 'error': str(e)}))
+
 @socketio.on('request_npc_saves')
 def handle_npc_saves_request(data):
     """Handle requests for NPC saving throws"""

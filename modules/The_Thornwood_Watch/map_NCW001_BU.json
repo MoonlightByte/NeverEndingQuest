@@ -11,7 +11,7 @@
         "NC03"
       ],
       "coordinates": "X2Y2",
-      "name": "Gloomsap Cavern"
+      "name": "Corrupted Entry Cave"
     },
     {
       "id": "NC02",
@@ -22,17 +22,18 @@
         "NC05"
       ],
       "coordinates": "X1Y2",
-      "name": "Twisted Briar Grove"
+      "name": "Blighted Thornbriar Grove"
     },
     {
       "id": "NC03",
       "type": "cave",
       "connections": [
         "NC01",
-        "NC04"
+        "NC04",
+        "NC05"
       ],
       "coordinates": "X2Y3",
-      "name": "Hollow Shade Den"
+      "name": "Hollow of the Withered Hart"
     },
     {
       "id": "NC04",
@@ -42,22 +43,23 @@
         "NC03"
       ],
       "coordinates": "X1Y3",
-      "name": "Forsaken Hearth Encampment"
+      "name": "Doomed Explorer's Camp"
     },
     {
       "id": "NC05",
       "type": "hilltop",
       "connections": [
-        "NC02"
+        "NC02",
+        "NC03"
       ],
       "coordinates": "X1Y1",
-      "name": "Shrouded Sentinel Rise"
+      "name": "The Corrupted Nexus"
     }
   ],
   "layout": [
     [
       "NC05",
-      "   "
+      "    "
     ],
     [
       "NC02",

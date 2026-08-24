@@ -17,7 +17,8 @@
         "type": "clearing",
         "connections": [
           "TW02",
-          "TW04"
+          "TW04",
+          "TW06"
         ],
         "coordinates": "X2Y2",
         "name": "Ambush Site"
@@ -67,6 +68,7 @@
         "id": "TW06",
         "type": "cave",
         "connections": [
+          "TW01",
           "TW04"
         ],
         "coordinates": "X1Y1",
@@ -80,13 +82,13 @@
         "TW03"
       ],
       [
-        "   ",
+        "    ",
         "TW01",
         "TW02"
       ],
       [
-        "   ",
-        "   ",
+        "    ",
+        "    ",
         "TW05"
       ]
     ]
@@ -303,7 +305,8 @@
       "coordinates": "X2Y1",
       "connectivity": [
         "TW01",
-        "TW03"
+        "TW03",
+        "TW06"
       ],
       "areaConnectivity": [],
       "areaConnectivityId": [],
@@ -485,6 +488,7 @@
       "description": "A narrow cave mouth, partially obscured by thorny bushes, leads into darkness. The sounds of snarling wolves and the desperate clang of steel echo from within. Inside, Wounded Ranger Gareth and Merchant Kael are cornered, making a desperate stand against several unnaturally aggressive wolves corrupted by Malarok's influence.",
       "coordinates": "X1Y1",
       "connectivity": [
+        "TW01",
         "TW04"
       ],
       "areaConnectivity": [],

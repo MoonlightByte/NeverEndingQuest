@@ -79,7 +79,7 @@
     {
       "id": "B08",
       "name": "Secret Forest Path",
-      "type": "path",
+      "type": "trail",
       "connections": [
         "B02",
         "B09"

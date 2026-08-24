@@ -21,44 +21,47 @@
           "RO04"
         ],
         "coordinates": "X2Y2",
-        "name": "Forked Trails Crossing"
+        "name": "Rangers' Command Post"
       },
       {
         "id": "RO02",
         "type": "riverside",
         "connections": [
-          "RO01"
+          "RO01",
+          "RO04"
         ],
         "coordinates": "X2Y3",
-        "name": "Moonlit Waters Edge"
+        "name": "Supply Depot"
       },
       {
         "id": "RO03",
         "type": "ruins",
         "connections": [
           "RO01",
-          "RO05"
+          "RO05",
+          "RO06"
         ],
         "coordinates": "X1Y2",
-        "name": "Shattered Sentinel Stones"
+        "name": "Trader's Rest"
       },
       {
         "id": "RO04",
         "type": "riverside",
         "connections": [
-          "RO01"
+          "RO01",
+          "RO02"
         ],
         "coordinates": "X3Y2",
-        "name": "Mistshadow Ford"
+        "name": "Scout's Watch"
       },
       {
         "id": "RO05",
-        "type": "cave",
+        "type": "ruins",
         "connections": [
           "RO03"
         ],
         "coordinates": "X1Y1",
-        "name": "Feral Hollow"
+        "name": "Forgotten Waystation"
       },
       {
         "id": "RO06",
@@ -73,8 +76,8 @@
     "layout": [
       [
         "RO05",
-        "   ",
-        "   "
+        "    ",
+        "    "
       ],
       [
         "RO03",
@@ -82,14 +85,9 @@
         "RO04"
       ],
       [
-        "   ",
-        "RO02",
-        "   "
-      ],
-      [
         "RO06",
-        "   ",
-        "   "
+        "RO02",
+        "    "
       ]
     ]
   },
@@ -334,7 +332,8 @@
       "description": "A raised wooden platform overlooks the river crossing, providing clear sight lines across the water and into the forest beyond. Scout Neris maintains vigilant watch from this vantage point, her spyglass scanning for threats while signal mirrors catch the light for long-distance communication. The sound of flowing water masks quiet conversations about patrol routes and suspicious movement. Scattered around the base of the platform are what appear to be dead branches and twisted wood debris, but careful observation might reveal something more sinister lurking among the detritus.",
       "coordinates": "X3Y2",
       "connectivity": [
-        "RO01"
+        "RO01",
+        "RO02"
       ],
       "areaConnectivity": [],
       "areaConnectivityId": [],

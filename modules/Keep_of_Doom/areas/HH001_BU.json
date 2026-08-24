@@ -14,7 +14,7 @@
     "rooms": [
       {
         "id": "A01",
-        "name": "Shop A01",
+        "name": "Harrow's Hollow General Store",
         "type": "shop",
         "connections": [
           "A02",
@@ -26,7 +26,7 @@
       },
       {
         "id": "A02",
-        "name": "Square A02",
+        "name": "Harrow's Hollow Town Square",
         "type": "square",
         "connections": [
           "A01"
@@ -35,7 +35,7 @@
       },
       {
         "id": "A03",
-        "name": "Gate A03",
+        "name": "East Gate and Guardhouse",
         "type": "gate",
         "connections": [
           "A01",
@@ -46,7 +46,7 @@
       },
       {
         "id": "A04",
-        "name": "Barracks A04",
+        "name": "Militia Barracks",
         "type": "barracks",
         "connections": [
           "A01"
@@ -55,7 +55,7 @@
       },
       {
         "id": "A05",
-        "name": "Tavern A05",
+        "name": "The Wyrd Lantern Inn",
         "type": "tavern",
         "connections": [
           "A01",
@@ -69,8 +69,8 @@
         "name": "Smuggler's Tunnel",
         "type": "tunnel",
         "connections": [
-          "A05",
-          "A03"
+          "A03",
+          "A05"
         ],
         "coordinates": "X1Y3"
       }
@@ -87,7 +87,7 @@
         "A02"
       ],
       [
-        "   ",
+        "A06",
         "A03",
         "   "
       ]
@@ -604,8 +604,8 @@
       "description": "This narrow, stone-lined passage winds beneath Harrow's Hollow, a remnant from the town's less lawful past. The air is damp and musty, carrying hints of earth and old secrets. Rough-hewn walls show tool marks from hasty construction, while ancient timber supports creak ominously overhead. Water drips steadily in the darkness, pooling in worn grooves where countless feet once carried contraband. Fresh scuff marks and a torn piece of blue fabric suggest Scout Elen passed this way recently. The tunnel slopes gently downward from the inn's cellar before rising again toward the East Gate, following the town's natural contours. Shadows dance at the edge of your light, and every sound echoes strangely in the confined space.",
       "coordinates": "X1Y3",
       "connectivity": [
-        "A05",
-        "A03"
+        "A03",
+        "A05"
       ],
       "areaConnectivity": [],
       "areaConnectivityId": [],
@@ -615,11 +615,8 @@
           "id": "giant_rat",
           "name": "Giant Rat",
           "quantity": {
-
             "min": 3,
-
             "max": 3
-
           },
           "disposition": "hostile",
           "strategy": "The rats nest in the tunnel and attack anyone who disturbs their territory, emerging from cracks in the walls."

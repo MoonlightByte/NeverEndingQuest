@@ -1,7 +1,7 @@
 {
   "mapId": "MAP_5",
   "mapName": "Town Map",
-  "totalRooms": 5,
+  "totalRooms": 6,
   "rooms": [
     {
       "id": "A01",
@@ -29,7 +29,9 @@
       "name": "East Gate and Guardhouse",
       "type": "gate",
       "connections": [
-        "A01"
+        "A01",
+        "A05",
+        "A06"
       ],
       "coordinates": "X2Y3"
     },
@@ -47,9 +49,21 @@
       "name": "The Wyrd Lantern Inn",
       "type": "tavern",
       "connections": [
-        "A01"
+        "A01",
+        "A03",
+        "A06"
       ],
       "coordinates": "X1Y2"
+    },
+    {
+      "id": "A06",
+      "name": "Smuggler's Tunnel",
+      "type": "tunnel",
+      "connections": [
+        "A03",
+        "A05"
+      ],
+      "coordinates": "X1Y3"
     }
   ],
   "layout": [
@@ -64,7 +78,7 @@
       "A02"
     ],
     [
-      "   ",
+      "A06",
       "A03",
       "   "
     ]

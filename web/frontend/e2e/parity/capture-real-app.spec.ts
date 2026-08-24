@@ -41,6 +41,9 @@ test('capture real application legacy and React parity surfaces', async ({ brows
   await capture(legacy, '01-character', true)
   await capture(react, '01-character', false)
 
+  // 'map' (plan Task 7) is intentionally excluded from this capture list: the
+  // legacy desktop UI has no Map tab to pair it against, so there is no
+  // parity screenshot to assert -- it's a React-only addition.
   const tabs = [
     { name: '02-inventory', legacy: 'Inventory', react: 'Inventory' },
     { name: '03-spells', legacy: 'Spells & Magic', react: 'Spells & Magic' },

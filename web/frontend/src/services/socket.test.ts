@@ -45,10 +45,10 @@ describe('socket reconnect synchronization', () => {
     expect(socketMock.emit.mock.calls.map(([event]) => event)).toEqual([
       'request_location_data', 'request_party_data', 'request_initiative_data', 'request_ui_snapshot',
       'request_player_data', 'request_player_data', 'request_player_data', 'request_player_data',
-      'request_plot_data', 'request_storage_data',
+      'request_plot_data', 'request_storage_data', 'request_map_data',
       'request_location_data', 'request_party_data', 'request_initiative_data', 'request_ui_snapshot',
       'request_player_data', 'request_player_data', 'request_player_data', 'request_player_data',
-      'request_plot_data', 'request_storage_data',
+      'request_plot_data', 'request_storage_data', 'request_map_data',
     ])
     for (const [event, payload] of socketMock.emit.mock.calls) {
       if (event === 'request_player_data') expect(payload).toMatchObject({ dataType: expect.any(String) })

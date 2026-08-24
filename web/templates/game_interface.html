@@ -7,12 +7,27 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
     <style>
+        @font-face {
+            font-family: 'IM Fell English';
+            src: url('/static/fonts/im-fell-english-regular.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'IM Fell English';
+            src: url('/static/fonts/im-fell-english-italic.woff2') format('woff2');
+            font-weight: normal;
+            font-style: italic;
+            font-display: swap;
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
-        
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #1a1a1a;
@@ -1765,7 +1780,7 @@
             display: flex;
             background-color: #333;
             border-bottom: 1px solid #444;
-            height: 40px; /* Fixed height to prevent shift */
+            min-height: 40px; /* was fixed 40px; min- lets long tab labels wrap to two lines */
             flex-shrink: 0; /* Don't allow shrinking */
         }
         
@@ -1780,20 +1795,48 @@
             font-weight: bold;
             transition: all 0.3s;
         }
-        
+
         .tab-button:last-child {
             border-right: none;
         }
-        
+
         .tab-button:hover {
             background-color: #3a3a3a;
             color: #e0e0e0;
         }
-        
+
         .tab-button.active {
             background-color: #2c2c2c;
             color: #4CAF50;
             border-bottom: 2px solid #4CAF50;
+        }
+
+        /* Task 8 fix round: adding the Map tab makes 7 buttons in the
+           right-panel .tabs row. The base .tab-button rule above (flex: 1
+           1 0%, 10px padding, inherited ~font-size, default white-space)
+           was sized for 6 -- at 7 it clips "Character" and wraps "Spells &
+           Magic" to two lines. Mirrors the React Map tab's fix for the
+           identical problem (commit ce0d7f8, tokens.css's `.neq-tabs
+           .neq-tab-button` + RightPanelTabs.tsx's flex-auto): a same-
+           specificity-beating scoped selector (`.tabs .tab-button`, not a
+           change to the shared `.tab-button` base rule, which other
+           dynamically-built tab strips in this file also use) with a
+           smaller font, tighter padding, `white-space: nowrap` (stops the
+           wrap), and `flex: 1 1 auto` (content-based basis) instead of the
+           base rule's `flex: 1` (1 1 0%) -- a 0%-basis split grows every
+           button to equal widths regardless of label length, which is
+           exactly what starves "Spells & Magic" while "Map" sits on wasted
+           padding; a content-sized basis gives each button room for its
+           own label first and only splits the leftover slack evenly. */
+        .tabs .tab-button {
+            flex: 1 1 auto;
+            padding: 4px 3px;
+            font-size: 12px;
+            letter-spacing: -0.1px;
+            /* Long labels ("Spells & Magic") may wrap to two lines rather
+               than shrinking every tab below readability (user-approved). */
+            white-space: normal;
+            line-height: 1.15;
         }
         
         .tab-content-wrapper {
@@ -1815,6 +1858,316 @@
             background-color: #1a1a1a;
         }
         
+        /* Map tab (Task 8): toolbar, stage, placeholder, current-room pulse. */
+        .map-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+            padding: 4px 6px;
+            background: #232323;
+            border-bottom: 1px solid #383838;
+            flex-shrink: 0;
+        }
+
+        .map-zoom-indicator {
+            font-size: 10px;
+            color: #888;
+            font-variant-numeric: tabular-nums;
+            margin-right: 2px;
+        }
+
+        .map-toolbar-btn {
+            font: inherit;
+            font-size: 10.5px;
+            background: #333;
+            color: #cfcfcf;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 3px 7px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .map-toolbar-btn:hover {
+            background: #3d3d3d;
+            color: #fff;
+        }
+
+        /* Letterboxed to the map's 4:3 aspect and does NOT grow to fill the
+           tab -- the remaining vertical space belongs to the Explorer's
+           Notes card rendered below it (ported from demo/neq-notes.html's
+           .map-stage rule / the React Map tab's .neq-map-stage-wrap). While
+           no map data has loaded yet (no notes card is rendered to claim
+           that space), #map-tab.map-notes-empty falls back to the original
+           flex:1 behavior so the placeholder isn't stranded above a dead
+           void. */
+        #map-stage {
+            flex-shrink: 0;
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            position: relative;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            overflow: hidden;
+            background: #1a1a1a;
+            touch-action: none;
+        }
+
+        #map-tab.map-notes-empty #map-stage {
+            flex: 1;
+            aspect-ratio: auto;
+        }
+
+        #map-stage svg {
+            width: 100%;
+            height: auto;
+            max-height: 100%;
+            display: block;
+        }
+
+        .map-placeholder {
+            margin: auto;
+            padding: 20px;
+            color: #777;
+            font-style: italic;
+            text-align: center;
+        }
+
+        .neq-map-here-dot {
+            fill: #d64545;
+            stroke: #1a1a1a;
+            stroke-width: 3;
+        }
+
+        .neq-map-here-ring {
+            fill: none;
+            stroke: #d64545;
+            stroke-width: 4.5;
+            transform-box: fill-box;
+            transform-origin: center;
+            animation: neq-map-pulse 1.8s ease-out infinite;
+        }
+
+        @keyframes neq-map-pulse {
+            0%   { r: 15; stroke-opacity: 0.95; }
+            75%  { r: 48; stroke-opacity: 0; }
+            100% { r: 48; stroke-opacity: 0; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .neq-map-here-ring { animation: none; r: 24; stroke-opacity: 0.55; }
+        }
+
+        /* =====================================================================
+           Explorer's Notes panel (Task: legacy explorer's notes) -- ported
+           from demo/neq-notes.html/.js (the approved mockup) and the React
+           Map tab's MapTab.css (`.neq-notes-*`), prefixed `.map-notes-` here
+           to avoid colliding with the React build's own classes if both ever
+           share a page. Fills the tab height remaining below the letterboxed
+           #map-stage.
+           ===================================================================== */
+        .map-notes-wrap {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            padding: 10px;
+            background: #1a1a1a;
+        }
+
+        .map-notes-card {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            flex-direction: column;
+            overflow: hidden;
+            border: 3px solid #3b2b17;
+            border-radius: 2px;
+            background: #e7d6ac;
+            background-image:
+                radial-gradient(ellipse at top left, rgba(255, 255, 255, 0.1), transparent 55%),
+                radial-gradient(ellipse at bottom right, rgba(0, 0, 0, 0.08), transparent 55%);
+            box-shadow:
+                inset 0 0 0 6px #e7d6ac,
+                inset 0 0 0 7px #3b2b17;
+            color: #3b2b17;
+            font-family: 'IM Fell English', Georgia, serif;
+        }
+
+        .map-notes-header {
+            display: flex;
+            flex: none;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+            border-bottom: 1.5px solid rgba(59, 43, 23, 0.55);
+            padding: 12px 16px 7px;
+        }
+
+        .map-notes-title {
+            font-variant: small-caps;
+            font-size: 17px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: #3b2b17;
+            white-space: nowrap;
+        }
+
+        .map-notes-progress {
+            color: #8e1f10;
+            font-size: 12px;
+            font-style: italic;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        /* Positioning context so a row's offsetTop is measured against this
+           scroll container, not some higher positioned ancestor -- see the
+           auto-scroll logic in mapper-glue.js for why scrollIntoView isn't
+           used here instead. */
+        .map-notes-scroll {
+            position: relative;
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 4px 16px 20px;
+        }
+        .map-notes-scroll::-webkit-scrollbar {
+            width: 9px;
+        }
+        .map-notes-scroll::-webkit-scrollbar-thumb {
+            border-radius: 5px;
+            background: rgba(59, 43, 23, 0.35);
+        }
+        .map-notes-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .map-notes-list {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .map-notes-row {
+            display: flex;
+            width: 100%;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            border: none;
+            border-bottom: 1px dotted rgba(59, 43, 23, 0.35);
+            background: none;
+            padding: 5px 4px;
+            color: inherit;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+        .map-notes-row:last-child {
+            border-bottom: none;
+        }
+        .map-notes-row:hover,
+        .map-notes-row:focus-visible {
+            background: rgba(59, 43, 23, 0.08);
+            outline: none;
+        }
+        .map-notes-row:hover .map-notes-row-name,
+        .map-notes-row:focus-visible .map-notes-row-name {
+            text-decoration: underline;
+            text-decoration-color: rgba(59, 43, 23, 0.45);
+        }
+        .map-notes-row.is-focused {
+            background: rgba(142, 31, 16, 0.09);
+        }
+
+        .map-notes-row-main {
+            display: flex;
+            min-width: 0;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .map-notes-row-name {
+            overflow: hidden;
+            font-size: 15px;
+            line-height: 1.25;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .map-notes-row-type {
+            flex-shrink: 0;
+            color: #8e1f10;
+            font-size: 11px;
+            font-style: italic;
+            letter-spacing: 0.2px;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .map-notes-row.is-current .map-notes-row-name,
+        .map-notes-row.is-current .map-notes-row-type {
+            font-weight: 700;
+        }
+
+        /* Small static pulse dot inline in the notes list -- CSS-only,
+           independent of the SVG marker on the map itself. */
+        .map-notes-dot {
+            position: relative;
+            flex-shrink: 0;
+            width: 9px;
+            height: 9px;
+        }
+        .map-notes-dot::before,
+        .map-notes-dot::after {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            content: '';
+        }
+        .map-notes-dot::before {
+            box-shadow: 0 0 0 1px rgba(59, 43, 23, 0.4);
+            background: #8e1f10;
+        }
+        .map-notes-dot::after {
+            border: 1.6px solid #8e1f10;
+            animation: map-notes-dot-pulse 1.8s ease-out infinite;
+        }
+        @keyframes map-notes-dot-pulse {
+            0%   { transform: scale(1); opacity: 0.9; }
+            75%  { transform: scale(3.2); opacity: 0; }
+            100% { transform: scale(3.2); opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .map-notes-dot::after { animation: none; transform: scale(1.8); opacity: 0.45; }
+        }
+
+        .map-notes-undiscovered {
+            margin-top: 8px;
+            color: rgba(59, 43, 23, 0.62);
+            font-size: 12.5px;
+            font-style: italic;
+        }
+
+        .map-notes-excerpt-rule {
+            margin: 12px 0 8px;
+            border: none;
+            border-top: 1px solid rgba(59, 43, 23, 0.4);
+        }
+
+        .map-notes-excerpt {
+            display: -webkit-box;
+            overflow: hidden;
+            color: rgba(59, 43, 23, 0.8);
+            font-size: 12.5px;
+            font-style: italic;
+            line-height: 1.5;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+        }
+
         /* --- ADD THIS NEW CSS RULE --- */
         #npcs-tab .panel-content {
             overflow-y: auto; /* Ensure vertical scrolling is enabled */
@@ -4611,6 +4964,7 @@
                 <button class="tab-button" onclick="switchTab('npcs')">NPCs</button>
                 <button id="journal-btn" class="tab-button">Journal</button>
                 <button class="tab-button" onclick="switchTab('debug')">Debug</button>
+                <button class="tab-button" onclick="switchTab('map')">Map</button>
             </div>
             <div class="tab-content-wrapper">
             <div class="tab-content" id="debug-tab" style="display: none;">
@@ -4641,6 +4995,25 @@
             <div class="tab-content" id="npcs-tab" style="display: none;">
                 <div class="panel-content" id="npcs-content">
                     <div class="loading">Loading NPC information...</div>
+                </div>
+            </div>
+            <div class="tab-content map-notes-empty" id="map-tab" style="display: none;">
+                <div class="map-toolbar">
+                    <span class="map-zoom-indicator" id="map-zoom-indicator">100%</span>
+                    <button class="map-toolbar-btn" id="map-reset-btn" onclick="mapResetView()">&#x27F2; reset</button>
+                    <button class="map-toolbar-btn" id="map-full-btn" onclick="mapFullView()">&#x25AD; full</button>
+                </div>
+                <div id="map-stage">
+                    <div class="map-placeholder" id="map-placeholder">The map is blank&hellip;</div>
+                </div>
+                <div class="map-notes-wrap" id="map-notes-wrap" style="display: none;">
+                    <div class="map-notes-card">
+                        <div class="map-notes-header">
+                            <span class="map-notes-title">Explorer&rsquo;s Notes</span>
+                            <span class="map-notes-progress" id="map-notes-progress"></span>
+                        </div>
+                        <div class="map-notes-scroll" id="map-notes-scroll"></div>
+                    </div>
                 </div>
             </div>
             </div> <!-- End tab-content-wrapper -->
@@ -5841,18 +6214,70 @@
             document.getElementById(`${tabName}-tab`).style.display = 'flex';
             event.target.classList.add('active');
             
+            if (window.NeqMap) window.NeqMap.tabVisible = (tabName === 'map');
+
             if (tabName === 'inventory') loadInventory();
             else if (tabName === 'stats') loadCharacterStats();
             else if (tabName === 'spells') loadSpellsAndMagic();
             else if (tabName === 'npcs') loadNPCs();
+            else if (tabName === 'map') {
+                // Lazy init (brief #5): the map is only ever built once #map-tab
+                // is actually visible. If a response arrived while hidden it was
+                // buffered on window.NeqMap.lastData -- render it now instead of
+                // waiting on the network round trip.
+                if (window.NeqMap && window.NeqMap.lastData !== undefined) renderMapData(window.NeqMap.lastData);
+                refreshMapData();
+            }
         }
-        
+
         function loadInventory() { socket.emit('request_player_data', { dataType: 'inventory' }); }
         function loadCharacterStats() { socket.emit('request_player_data', { dataType: 'stats' }); }
         function loadSpellsAndMagic() { socket.emit('request_player_data', { dataType: 'inventory' }); }
         function loadNPCs() { socket.emit('request_player_data', { dataType: 'npcs' }); }
         function loadLocationData() { socket.emit('request_location_data'); }
-        
+        function refreshMapData() { socket.emit('request_map_data'); }
+
+        // Map tab (Task 8) glue: lazily builds a NeqMapGlue controller against
+        // #map-stage the first time it's needed, then routes every
+        // map_data_response through it. See web/static/js/mapper-glue.js for
+        // the structural-diff/auto-fit/pan-zoom logic itself.
+        function ensureMapController() {
+            if (!window.NeqMap || !window.NeqMap.createMap || typeof NeqMapGlue === 'undefined') return null;
+            if (!window.NeqMap.controller) {
+                const stage = document.getElementById('map-stage');
+                const notesEls = {
+                    wrap: document.getElementById('map-notes-wrap'),
+                    progress: document.getElementById('map-notes-progress'),
+                    scroll: document.getElementById('map-notes-scroll'),
+                };
+                window.NeqMap.controller = NeqMapGlue.createMapController(stage, window.NeqMap.createMap, (pct) => {
+                    const indicator = document.getElementById('map-zoom-indicator');
+                    if (indicator) indicator.textContent = pct + '%';
+                }, notesEls);
+            }
+            return window.NeqMap.controller;
+        }
+
+        function renderMapData(data) {
+            const controller = ensureMapController();
+            if (!controller) return;
+            controller.update(data);
+            const placeholder = document.getElementById('map-placeholder');
+            if (placeholder) placeholder.style.display = data ? 'none' : 'block';
+            const mapTab = document.getElementById('map-tab');
+            if (mapTab) mapTab.classList.toggle('map-notes-empty', !data);
+        }
+
+        function mapResetView() {
+            const controller = window.NeqMap && window.NeqMap.controller;
+            if (controller) controller.reset(window.NeqMap.lastData);
+        }
+
+        function mapFullView() {
+            const controller = window.NeqMap && window.NeqMap.controller;
+            if (controller) controller.full();
+        }
+
         // Display inventory data
         let originalInventoryData = null;
         function displayInventory(data, preserveOriginal = false) {
@@ -6510,6 +6935,23 @@
         });
         
         socket.on('location_data_response', (response) => { displayLocationData(response.data); });
+
+        // Map tab (Task 8): buffer the payload always, but only render into
+        // #map-stage while it's actually visible (see switchTab's 'map'
+        // branch, which flushes this buffer on activation).
+        socket.on('map_data_response', (resp) => {
+            if (!resp) return;
+            // F7: a response can arrive before the deferred `<script type=module>`
+            // below has set window.NeqMap (classic scripts run at parse time, the
+            // module runs after full parse). Stash it instead of dropping it; the
+            // module bootstrap replays it once window.NeqMap exists.
+            if (!window.NeqMap) {
+                window.__neqMapPending = resp.data || null;
+                return;
+            }
+            window.NeqMap.lastData = resp.data || null;
+            if (window.NeqMap.tabVisible) renderMapData(window.NeqMap.lastData);
+        });
         
         // Socket listener for initiative data
         socket.on('initiative_data_response', (response) => {
@@ -6970,6 +7412,7 @@
             else if (activeTab === 'character') loadCharacterStats();
             else if (activeTab === 'spells & magic') loadSpellsAndMagic();
             else if (activeTab === 'npcs') loadNPCs();
+            else if (activeTab === 'map') refreshMapData();
         }, 5000);
         
         document.addEventListener('DOMContentLoaded', () => {
@@ -8615,6 +9058,20 @@
             <img id="popup-image" style="display: none; width: 100%; height: auto; border-radius: 5px;" src="" alt="Character Portrait"/>
         </div>
     </div>
-    
+
+    <!-- Map tab (Task 8): pure glue helpers (classic script, no ESM import needed) -->
+    <script src="/static/js/mapper-glue.js"></script>
+    <!-- Vendored mapper lib is ESM; expose its createMap to the classic script via window.NeqMap -->
+    <script type="module">
+        import { createMap } from '/static/js/mapper/mapper.js';
+        window.NeqMap = { createMap: createMap, controller: null, lastData: null, tabVisible: false };
+        // F7: replay a map_data_response that arrived before this module ran.
+        if (window.__neqMapPending !== undefined) {
+            window.NeqMap.lastData = window.__neqMapPending;
+            delete window.__neqMapPending;
+            if (window.NeqMap.tabVisible && typeof renderMapData === 'function') renderMapData(window.NeqMap.lastData);
+        }
+    </script>
+
 </body>
 </html>

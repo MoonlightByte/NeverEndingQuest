@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ServerEvents } from '../contract/events'
+import type { MapDataPayload } from '../types/map'
 
 export type LocationData = NonNullable<ServerEvents['location_data_response']['data']>
 export type PartyMember = Record<string, unknown>
@@ -31,6 +32,20 @@ export interface WorldState {
   /** Player storage (storage_data_response). */
   storage: Record<string, unknown> | null
   storageError: string | null
+  /** Spoiler-safe fog-of-war map for the current area (map_data_response). */
+  mapData: MapDataPayload | null
+  mapDataError: string | null
+  /**
+   * Highest `revision` ever accepted into `mapData`, across all areas.
+   * `revision` is one server-wide monotonic counter shared by every
+   * `_ui_response` event (see web/web_interface.py::_ui_response), not a
+   * per-area sequence, so a response with a lower revision than this floor
+   * is always stale -- even for a *different* areaId (e.g. a delayed/retried
+   * response for a previous area arriving after the area transition already
+   * landed). A genuine area transition always carries a higher revision than
+   * anything seen for the prior area, so it is still accepted.
+   */
+  mapDataRevision: number
   revisions: Record<'location' | 'party' | 'initiative' | 'plot' | 'storage', number>
 
   beginConnection: (epoch: number) => void
@@ -40,6 +55,7 @@ export interface WorldState {
   setInitiative: (payload: ServerEvents['initiative_data_response']) => void
   setPlot: (payload: ServerEvents['plot_data_response']) => void
   setStorage: (payload: ServerEvents['storage_data_response']) => void
+  setMapData: (payload: ServerEvents['map_data_response']) => void
 }
 
 export const useWorld = create<WorldState>((set) => ({
@@ -56,12 +72,16 @@ export const useWorld = create<WorldState>((set) => ({
   plotError: null,
   storage: null,
   storageError: null,
+  mapData: null,
+  mapDataError: null,
+  mapDataRevision: -1,
   revisions: { location: -1, party: -1, initiative: -1, plot: -1, storage: -1 },
 
   beginConnection: (epoch) =>
     set((s) => epoch <= s.connectionEpoch ? {} : ({
       connectionEpoch: epoch,
       serverInstanceId: null,
+      mapDataRevision: -1,
       revisions: { location: -1, party: -1, initiative: -1, plot: -1, storage: -1 },
     })),
   bindServerInstance: (epoch, serverInstanceId) =>
@@ -132,4 +152,23 @@ export const useWorld = create<WorldState>((set) => ({
     }
     return payload.error ? common : { ...common, storage: payload.data }
   }),
+  setMapData: (payload) =>
+    set((s) => {
+      if (payload.server_instance_id && s.serverInstanceId && payload.server_instance_id !== s.serverInstanceId) return {}
+      const serverInstanceId = payload.server_instance_id ?? s.serverInstanceId
+      // `{data: null}` (transient read failure, or no active area yet) is a
+      // decision NOT to update mapData: it only surfaces the error and keeps
+      // whatever map was last displayed, so a single flaky read never blanks
+      // the panel mid-session. Only a non-null payload ever replaces mapData.
+      if (!payload.data) {
+        return { serverInstanceId, mapDataError: payload.error ?? null }
+      }
+      if (payload.revision !== undefined && payload.revision < s.mapDataRevision) return {}
+      return {
+        serverInstanceId,
+        mapData: payload.data,
+        mapDataError: null,
+        mapDataRevision: payload.revision ?? s.mapDataRevision,
+      }
+    }),
 }))

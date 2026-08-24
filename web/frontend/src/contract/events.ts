@@ -1,9 +1,13 @@
 /**
  * FROZEN SOCKET CONTRACT — extracted from web/web_interface.py (2026-07-16 workflow
- * p4-frontend-inventory: 31 client->server handlers, 56 server->client emits).
+ * p4-frontend-inventory: 31 client->server handlers, 56 server->client emits;
+ * 2026-08 map-tab workflow added request_map_data/map_data_response, see
+ * web/map_projection.py for the payload's security boundary).
  * This file is the single source of truth for every socket event the player app uses.
  * Do NOT add events here without verifying the server side exists.
  */
+
+import type { MapDataPayload } from '../types/map'
 
 // ---------- shared shapes ----------
 export type MessageType =
@@ -70,6 +74,7 @@ export interface ClientEvents {
   request_plot_data: RequestMeta | undefined;
   request_storage_data: RequestMeta | undefined;
   request_ui_snapshot: RequestMeta | undefined;
+  request_map_data: RequestMeta | undefined;
   request_npc_saves: { npcName: string };
   request_npc_skills: { npcName: string };
   request_npc_spells: { npcName: string };
@@ -112,6 +117,7 @@ export const CLIENT_EVENT_ARITY = {
   request_plot_data: 0,
   request_storage_data: 0,
   request_ui_snapshot: 0,
+  request_map_data: 0,
   request_npc_saves: 1,
   request_npc_skills: 1,
   request_npc_spells: 1,
@@ -177,6 +183,7 @@ export interface ServerEvents {
   initiative_data_response: { active: boolean; combatants: Array<Record<string, unknown>>; round?: number; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   plot_data_response: { data: { plotPoints: Array<{ id: string; title: string; description: string; status: string; sideQuests?: unknown[] }> } | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   storage_data_response: { data: Record<string, unknown>; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
+  map_data_response: { data: MapDataPayload | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   exit_acknowledged: { message: string };
   provider_changed: { provider: string };
   local_endpoint_changed: { base_url: string; model: string; has_key: boolean };

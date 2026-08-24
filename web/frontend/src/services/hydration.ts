@@ -9,6 +9,7 @@ export const HYDRATION_EVENTS = [
   'request_player_data',
   'request_plot_data',
   'request_storage_data',
+  'request_map_data',
 ] as const
 
 export type HydrationEvent = (typeof HYDRATION_EVENTS)[number]

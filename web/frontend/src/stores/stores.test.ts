@@ -144,6 +144,46 @@ describe('world convergence', () => {
   })
 })
 
+describe('map data', () => {
+  const areaA = { areaId: 'A01', areaName: 'Area A', map: { mapId: 'A01', mapName: 'Area A', rooms: [] }, area: {}, revealed: [], currentLocationId: null }
+  const areaB = { areaId: 'B02', areaName: 'Area B', map: { mapId: 'B02', mapName: 'Area B', rooms: [] }, area: {}, revealed: [], currentLocationId: null }
+
+  it('ignores a delayed lower revision for the same area', () => {
+    useWorld.getState().setMapData({ data: { ...areaA, areaName: 'Newer read' }, revision: 5 })
+    useWorld.getState().setMapData({ data: { ...areaA, areaName: 'Stale read' }, revision: 4 })
+    expect(useWorld.getState().mapData?.areaName).toBe('Newer read')
+  })
+
+  it('accepts a genuine area transition carrying a higher revision', () => {
+    useWorld.getState().setMapData({ data: areaA, revision: 10 })
+    useWorld.getState().setMapData({ data: areaB, revision: 15 })
+    expect(useWorld.getState().mapData?.areaId).toBe('B02')
+    expect(useWorld.getState().mapDataRevision).toBe(15)
+  })
+
+  it('rejects a delayed lower-revision response for a previous area instead of reverting to it', () => {
+    useWorld.getState().setMapData({ data: areaA, revision: 10 })
+    useWorld.getState().setMapData({ data: areaB, revision: 15 })
+    useWorld.getState().setMapData({ data: { ...areaA, areaName: 'Stale delayed read' }, revision: 12 })
+    expect(useWorld.getState().mapData?.areaId).toBe('B02')
+    expect(useWorld.getState().mapDataRevision).toBe(15)
+  })
+
+  it('accepts a response with an undefined revision without crashing or lowering the floor', () => {
+    useWorld.getState().setMapData({ data: areaA, revision: 10 })
+    useWorld.getState().setMapData({ data: areaB, revision: undefined })
+    expect(useWorld.getState().mapData?.areaId).toBe('B02')
+    expect(useWorld.getState().mapDataRevision).toBe(10)
+  })
+
+  it('keeps the last good map on a {data: null} error instead of blanking it', () => {
+    useWorld.getState().setMapData({ data: areaA, revision: 1 })
+    useWorld.getState().setMapData({ data: null, error: 'temporary read failure', revision: 2 })
+    expect(useWorld.getState().mapData?.areaId).toBe('A01')
+    expect(useWorld.getState().mapDataError).toBe('temporary read failure')
+  })
+})
+
 describe('operation reducers', () => {
   it('terminates a failed compression instead of leaving its overlay running', () => {
     useDialogs.getState().compressionStart({ total_sections: 4 })

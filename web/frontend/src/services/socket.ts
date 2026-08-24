@@ -79,6 +79,11 @@ function refreshAuthoritativeState(): void {
   }
   emitC('request_plot_data', undefined)
   emitC('request_storage_data', undefined)
+  // Payload-only refresh: MapTab (Task 7) additionally polls while active, but
+  // keeping this here means the map is never more than one connection-refresh
+  // stale even before the tab has mounted, and a redundant response is cheap
+  // (store write, no render for an unmounted tab).
+  emitC('request_map_data', undefined)
 }
 
 // ---------- transport-level ----------
@@ -170,6 +175,9 @@ on('plot_data_response', (p) => {
 })
 on('storage_data_response', (p) => {
   if (hydration.accept('request_storage_data', p)) useWorld.getState().setStorage(p)
+})
+on('map_data_response', (p) => {
+  if (hydration.accept('request_map_data', p)) useWorld.getState().setMapData(p)
 })
 
 // ---------- player / NPC data ----------

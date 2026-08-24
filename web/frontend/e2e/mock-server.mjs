@@ -5,6 +5,18 @@ import { fileURLToPath } from 'node:url'
 import { Server } from 'socket.io'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
+// Canned map_data_response: the real server-shaped output of
+// web/map_projection.py::project_map_payload() against
+// modules/Keep_of_Doom/areas/HH001_BU.json with a mid-reveal set (A01-A03
+// revealed, A04-A06 still fogged). Same fixture the React vitest integration
+// suite uses -- see ../src/components/sheet/__fixtures__/mapDataMidReveal.json
+// and its generating script, mapDataMidReveal.gen.py, in that same directory.
+const mapDataMidReveal = JSON.parse(
+  fs.readFileSync(
+    path.resolve(here, '..', 'src', 'components', 'sheet', '__fixtures__', 'mapDataMidReveal.json'),
+    'utf8',
+  ),
+)
 const dist = path.resolve(here, '..', 'dist')
 const port = Number(process.env.NEQ_E2E_PORT ?? 4174)
 const supportedHydrationModes = new Set(['legacy', 'correlated', 'mixed', 'delayed'])
@@ -139,6 +151,7 @@ io.on('connection', (socket) => {
     location_npcs: locationNpcs,
   }))
   socket.on('request_initiative_data', (requestPayload) => hydrate('initiative_data_response', requestPayload, initiative))
+  socket.on('request_map_data', (requestPayload) => hydrate('map_data_response', requestPayload, { data: mapDataMidReveal }))
   socket.on('request_player_data', (requestPayload) => {
     const { dataType } = requestPayload
     if (dataType === 'stats') socket.emit('player_data_response', { dataType, data: stats })

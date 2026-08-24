@@ -4,13 +4,14 @@ import { HydrationCoordinator } from './hydration'
 
 describe('client event arity contract', () => {
   it('is exhaustive and preserves the legacy zero-argument hydration packets', () => {
-    expect(Object.keys(CLIENT_EVENT_ARITY)).toHaveLength(31)
+    expect(Object.keys(CLIENT_EVENT_ARITY)).toHaveLength(32)
     expect(CLIENT_EVENT_ARITY.request_location_data).toBe(0)
     expect(CLIENT_EVENT_ARITY.request_party_data).toBe(0)
     expect(CLIENT_EVENT_ARITY.request_initiative_data).toBe(0)
     expect(CLIENT_EVENT_ARITY.request_plot_data).toBe(0)
     expect(CLIENT_EVENT_ARITY.request_storage_data).toBe(0)
     expect(CLIENT_EVENT_ARITY.request_ui_snapshot).toBe(0)
+    expect(CLIENT_EVENT_ARITY.request_map_data).toBe(0)
     expect(CLIENT_EVENT_ARITY.request_player_data).toBe(1)
   })
 })
