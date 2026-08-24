@@ -154,6 +154,12 @@ In the 'plan' field, always state clearly when the player’s turn is not yet ac
 
 This helps enforce initiative timing discipline during output generation.
 
+NARRATION vs LEDGER (STRICT SEPARATION)
+The "narration" is pure cinematic prose -- what the player sees, hears, and feels. It states NO numbers: no damage amounts, no HP totals or "HP X to Y" or "reduced to N hit points", no ammo/arrow/inventory counts or "expends an arrow" or "arrows 70 to 69", no spell-slot counts, no AC, no dice results. Convey the OUTCOME in fiction only -- a telling wound, a kill, a clean miss.
+ALL mechanical bookkeeping (damage, HP, ammo, spell slots, status) lives ONLY in the "actions" array (actions[].changes) and is applied SILENTLY. The player reads story; the ledger updates off-screen. Never narrate the bookkeeping.
+GOOD narration: "Kira draws and looses; the arrow buries itself deep in the ghoul's chest and brackish blood sprays the wall. She lets slip a grim, satisfied smile." (Her spent arrow and the ghoul's wound are recorded only in actions[].changes, never in the prose.)
+BAD narration: "Kira shoots an arrow for 6 piercing damage, reducing the ghoul to 2 HP; her arrows drop from 70 to 69."
+
 Follow these general Combat Rules (Hits and Damage):
 1. Attack Roll:
 - Roll a d20 and add the attack modifier.
