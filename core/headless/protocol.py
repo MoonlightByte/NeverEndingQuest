@@ -27,6 +27,7 @@ VALID_COMMAND_NAMES = {
     "save",
     "list_saves",
     "restore",
+    "reset",
     "delete_save",
     "quit",
 }

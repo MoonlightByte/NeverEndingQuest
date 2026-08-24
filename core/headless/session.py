@@ -64,6 +64,7 @@ class HeadlessSession:
         self._quitting = False
         self._exit_lock = threading.Lock()
         self._exit_emitted = False
+        self._restart_in_progress = threading.Event()
         self._engine_thread = None
         self._stdout_shim = None
         self._raw_log = None
@@ -208,7 +209,11 @@ class HeadlessSession:
                 self._stdout_shim.flush()
             except Exception:
                 pass
-            self.emit_exit(reason, detail)
+            # Restore/Reset own the terminal restart event.  Suppress the
+            # engine thread's ordinary player_exit while one of those
+            # lifecycle operations is deliberately unwinding the prompt.
+            if not self._restart_in_progress.is_set():
+                self.emit_exit(reason, detail)
 
     def _pump_module_progress(self):
         from web.shared_state import module_progress_queue
@@ -366,6 +371,34 @@ class HeadlessSession:
         if name == "quit":
             result(True)
             self.request_quit()
+            return
+        if name == "reset":
+            if args.get("confirmed") is not True:
+                result(False, error="reset requires args.confirmed=true")
+                return
+            self._restart_in_progress.set()
+            try:
+                # The synchronous combat loop can retain module/campaign
+                # authority while it waits at a player prompt.  End and join
+                # that exact engine before Reset attempts to acquire the same
+                # authority; no filesystem lock is held during this wait.
+                self.request_quit()
+                if self._engine_thread is not None:
+                    self._engine_thread.join()
+                from utils.reset_campaign import perform_reset_logic
+
+                backup_dir = perform_reset_logic()
+                result(
+                    True,
+                    data={
+                        "message": "Campaign reset complete",
+                        "backup_dir": backup_dir,
+                    },
+                )
+                self.emit_exit("restart", "campaign reset; relaunch the session")
+            except Exception as exc:
+                result(False, error="%s: %s" % (type(exc).__name__, exc))
+                self.emit_exit("error", "campaign reset failed")
             return
 
         if name in ("delete_save",) and not \

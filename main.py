@@ -210,9 +210,15 @@ def _active_combat_recovery(party_tracker):
         return None
     if not state.get("pauseReason"):
         return None
+    conflict = state.get("recoveryConflict")
     return {
         "encounter_id": encounter_id,
         "reason": state.get("pauseReason", "combat_recovery_required"),
+        "message": (
+            conflict.get("playerMessage")
+            if isinstance(conflict, dict)
+            else None
+        ),
     }
 _conversation_history_dirty = False
 _dirty_conversation_history = None
@@ -5265,11 +5271,30 @@ def main_game_loop():
             recovery = _active_combat_recovery(party_tracker_data)
             if recovery:
                 display_dm_narration(
-                    "Combat remains paused. Load or restore a save before "
-                    "resuming encounter %s; no post-combat narration was "
-                    "requested." % active_encounter_id,
+                    recovery.get("message")
+                    or (
+                        "Combat remains paused. Load or restore a save before "
+                        "resuming encounter %s; no post-combat narration was "
+                        "requested." % active_encounter_id
+                    ),
                     channel="combat",
                     color="yellow",
+                )
+                # A recovered combat bypasses the ordinary startup-kickoff
+                # path.  Reuse its established already-done marker so web
+                # clients enter the playable state and keep Load/Reset
+                # operable while the encounter remains safely paused.
+                startup_state = load_startup_state() or {}
+                emit_startup_marker(
+                    "startup_kickoff_skipped",
+                    source="combat_recovery",
+                    result="already_done",
+                    startup_attempt_id=startup_state.get(
+                        "startup_attempt_id"
+                    ),
+                    state_version=startup_state.get("state_version"),
+                    lease_owner=startup_state.get("lease_owner"),
+                    attempt_count=startup_state.get("attempt_count"),
                 )
             else:
                 display_dm_narration(

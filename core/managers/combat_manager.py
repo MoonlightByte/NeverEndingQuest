@@ -1371,6 +1371,7 @@ def _agentic_actor_window(encounter_data):
         "deliver_committed_events",
         "pause_invalid_delivery",
         "pause_untimed_incapacitation",
+        "pause_recovery_conflict",
     }:
         actor_ids = []
     else:
@@ -1383,6 +1384,7 @@ def _agentic_actor_window(encounter_data):
         "deliver_committed_events",
         "pause_invalid_delivery",
         "pause_untimed_incapacitation",
+        "pause_recovery_conflict",
     } or (
         recovery["action"] == "regenerate_intent"
         and recovery["pendingTurn"].get("clockOnly") is True
@@ -4013,6 +4015,19 @@ Player: {initial_prompt_text}"""
            agentic_actor_ids, automatic_initiative_step = _agentic_actor_window(
                encounter_data
            )
+           if agentic_recovery["action"] == "pause_recovery_conflict":
+               recovery_message = (
+                   (agentic_recovery.get("recoveryConflict") or {}).get(
+                       "playerMessage"
+                   )
+                   or "Combat recovery needs attention -- Load or Reset"
+               )
+               from core.managers.status_manager import status_manager
+               status_manager.update_status(
+                   recovery_message,
+                   is_processing=False,
+               )
+               return None, None
            automatic_turn_window = [
                (combatant_by_id(encounter_data, actor_id) or {}).get(
                    "name", "Unknown"
