@@ -353,6 +353,19 @@ def ensure_combat_state(encounter, new_encounter=False, pipeline_mode=None):
         state["phase"] = "recovery_required"
     if state.get("pipelineMode") not in {"legacy", "agentic"}:
         state["phase"] = "recovery_required"
+    # Absence-safe typed scene-facts guard: an encounter WITHOUT sceneFacts (every
+    # pre-existing/legacy encounter) is untouched here. A present-but-malformed or
+    # unknown-version sceneFacts fails closed to recovery rather than being silently
+    # misread; only the supported typed contract is accepted.
+    scene = encounter.get("sceneFacts")
+    if scene is not None and (
+        not isinstance(scene, dict)
+        or (
+            scene.get("contractVersion") is not None
+            and scene.get("contractVersion") != "typed-agentic-v1"
+        )
+    ):
+        state["phase"] = "recovery_required"
     if type(state.get("revision")) is not int or state["revision"] < 0:
         state["revision"] = 0
     if type(state.get("round")) is not int or state["round"] < 1:
