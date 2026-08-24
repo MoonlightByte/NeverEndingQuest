@@ -34,21 +34,24 @@ _supersession_barriers = set()
 class InvocationSupersededError(RuntimeError):
     """Raised when a nested boundary observes a fenced invocation."""
 
+    def __init__(self, message, claim=None):
+        super().__init__(message)
+        self.claim = claim
+
 
 def begin_invocation(callsite, wait_observer=None):
-    """Wait structurally, then become the sole live logical invocation."""
+    """Become the sole live invocation without reviving an overlapping attempt.
+
+    An attempt submitted while another logical operation is live waits for that
+    operation to settle so callers can retain honest progress.  It is then
+    rejected with its own identity instead of becoming a later provider
+    dispatch against whatever state the first operation produced.  An attempt
+    submitted while only a Load/Reset barrier is active may start after the
+    barrier ends because it did not overlap an accepted gameplay operation.
+    """
     global _current, _generation
     last_notice = 0.0
     with _condition:
-        while _current is not None or _supersession_barriers:
-            now = time.monotonic()
-            if wait_observer is not None and now - last_notice >= 1.0:
-                try:
-                    wait_observer(_current)
-                except Exception:
-                    pass
-                last_notice = now
-            _condition.wait(timeout=0.25)
         _generation += 1
         claim = InvocationClaim(
             logical_invocation_id="combat-invocation:%s" % uuid.uuid4().hex,
@@ -57,6 +60,24 @@ def begin_invocation(callsite, wait_observer=None):
             callsite=str(callsite),
             owner_thread_id=threading.get_ident(),
         )
+        overlapped_live_invocation = _current is not None
+        while _current is not None or _supersession_barriers:
+            if _current is not None:
+                overlapped_live_invocation = True
+            now = time.monotonic()
+            if wait_observer is not None and now - last_notice >= 1.0:
+                try:
+                    wait_observer(_current)
+                except Exception:
+                    pass
+                last_notice = now
+            _condition.wait(timeout=0.25)
+        if overlapped_live_invocation:
+            raise InvocationSupersededError(
+                "Combat invocation overlapped a completed or superseded "
+                "logical operation and cannot dispatch later",
+                claim=claim,
+            )
         _current = claim
         return claim
 
