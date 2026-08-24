@@ -156,6 +156,51 @@ def is_hostile(creature):
     )
 
 
+def combat_provenance(encounter):
+    """Three-way provenance router for the agentic-combat rollout (absence-safe).
+
+    - "typed"     : a new agentic encounter carrying sceneFacts.contractVersion.
+    - "pre_typed" : an opted-in agentic encounter from before typed scene facts.
+    - "legacy"    : everything else, including every pre-existing encounter.
+
+    An encounter that lacks all of the new fields is always "legacy" and is
+    handled exactly as on origin/main. Absence is never an error and no
+    migration is performed: old, completed encounters keep working untouched.
+    """
+    if not isinstance(encounter, dict):
+        return "legacy"
+    scene = encounter.get("sceneFacts")
+    if isinstance(scene, dict) and scene.get("contractVersion") is not None:
+        return "typed"
+    state = encounter.get("combatState")
+    if isinstance(state, dict) and state.get("pipelineMode") == "agentic":
+        return "pre_typed"
+    return "legacy"
+
+
+def resolve_creature_controller(creature, scene_facts=None):
+    """Resolve who controls a creature ("human" or "actor_agent").
+
+    Prefers an accepted typed participant's controller when present; otherwise
+    falls back to the existing type-based rule (player -> human, everything else
+    -> actor_agent). Absence-safe: for any encounter without sceneFacts this is
+    byte-identical in effect to today's behavior.
+    """
+    combatant_id = creature.get("combatantId") if isinstance(creature, dict) else None
+    if isinstance(scene_facts, dict) and combatant_id is not None:
+        for participant in (scene_facts.get("participants") or []):
+            if not isinstance(participant, dict):
+                continue
+            if participant.get("combatantId") == combatant_id:
+                controller = participant.get("controller")
+                if controller in ("human", "actor_agent"):
+                    return controller
+                break
+    if isinstance(creature, dict) and str(creature.get("type") or "").lower() == "player":
+        return "human"
+    return "actor_agent"
+
+
 def all_hostiles_resolved(encounter):
     hostiles = [c for c in encounter.get("creatures", []) if is_hostile(c)]
     return bool(hostiles) and all(
