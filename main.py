@@ -7311,6 +7311,9 @@ def main_game_loop():
         rejected_candidate = None
         retry_correction = None
         planner_projection = None
+        # [travel-clean #209] NPC voice advisory is deferred until the voice line
+        # lands; keep the parameter inert so the turn threads None, not a NameError.
+        npc_voice_batch = None
 
         while not valid_response_received:
             if live_turn_scope.is_superseded():
