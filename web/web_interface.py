@@ -542,6 +542,36 @@ class WebOutputCapture:
             self.dm_buffer = []
             self.dm_section_is_startup = False
     
+    def _mark_ready_from_player_prompt(self, clean_line):
+        """Publish web readiness when the engine reaches its input prompt.
+
+        ``input(prompt)`` writes the prompt without a trailing newline.  The
+        legacy page waits for ``game_started``, so checking only completed
+        lines can leave it stuck on ``Starting...`` even though the engine is
+        already blocked for the player's command.
+        """
+        global startup_handoff_active, startup_ready_emitted
+        if not (
+            clean_line.startswith('[')
+            and ('HP:' in clean_line or 'XP:' in clean_line)
+        ):
+            return False
+        if not startup_ready_emitted:
+            startup_handoff_active = False
+            startup_ready_emitted = True
+            debug_output_queue.put({
+                'type': 'debug',
+                'content': '[STARTUP_FALLBACK] game_started emitted via prompt detection - primary marker path may have failed',
+                'timestamp': datetime.now().isoformat()
+            })
+            socketio.emit(
+                "startup_status", {"status": "ready", "phase": "prompt_detected"}
+            )
+            socketio.emit(
+                'game_started', {'message': 'Game started successfully'}
+            )
+        return True
+
     def write(self, text):
         global startup_handoff_active, startup_ready_emitted
         # Write to original stream for console visibility (with error handling)
@@ -615,18 +645,7 @@ class WebOutputCapture:
                         continue
                 
                 # Check if this is a player status/prompt line
-                if clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line):
-                    # Fallback: if primary marker path failed, emit on prompt detection
-                    if not startup_ready_emitted:
-                        startup_handoff_active = False
-                        startup_ready_emitted = True
-                        debug_output_queue.put({
-                            'type': 'debug',
-                            'content': '[STARTUP_FALLBACK] game_started emitted via prompt detection - primary marker path may have failed',
-                            'timestamp': datetime.now().isoformat()
-                        })
-                        socketio.emit("startup_status", {"status": "ready", "phase": "prompt_detected"})
-                        socketio.emit('game_started', {'message': 'Game started successfully'})
+                if self._mark_ready_from_player_prompt(clean_line):
                     # This is a player prompt - send to debug
                     debug_output_queue.put({
                         'type': 'debug',
@@ -765,6 +784,11 @@ class WebOutputCapture:
             # Keep the incomplete line in buffer
             self.buffer = lines[-1]
     
+        # ``input(prompt)`` does not append a newline. Inspect the buffered
+        # fragment as well so both web clients become playable at the exact
+        # point where the engine begins accepting input.
+        self._mark_ready_from_player_prompt(self.strip_ansi_codes(self.buffer))
+
     def strip_ansi_codes(self, text):
         """Remove ANSI escape codes from text"""
         import re
