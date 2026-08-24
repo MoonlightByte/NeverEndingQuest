@@ -217,15 +217,7 @@ def _finalize(effect, now_scalar, owner, change_description):
     return normalized
 
 
-def classify_effect(
-    character_name,
-    change_description,
-    sheet,
-    now_scalar,
-    max_attempts=2,
-    *,
-    structural_reissue=False,
-):
+def classify_effect(character_name, change_description, sheet, now_scalar, max_attempts=2):
     """Return ``{shouldTrack, effect}`` without mutating any state."""
     provider, call_config = _provider_config()
     payload = {
@@ -235,9 +227,7 @@ def classify_effect(
     }
     correction = None
     last_error = None
-    _attempt = 0
-    while structural_reissue or _attempt < max(1, int(max_attempts)):
-        _attempt += 1
+    for _attempt in range(max(1, int(max_attempts))):
         messages = [
             {"role": "system", "content": _system_prompt()},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},

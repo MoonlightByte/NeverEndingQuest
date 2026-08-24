@@ -45,7 +45,6 @@ class CompanionMemoryManager:
         self.day_counter = 0
         self.last_date = None
         self.processed_entries = set()  # Track processed entries to avoid duplicates
-        self.last_processed_journal_operation_id = None
 
         # Configuration
         self.config_file = self.data_dir / 'memory_config.json'
@@ -201,22 +200,6 @@ class CompanionMemoryManager:
             self.save_all_memories()
 
         return memories_created
-
-    def process_journal_operation(
-        self,
-        journal_entry: Dict[str, Any],
-        party_npcs: Optional[List[str]],
-        operation_id: str,
-    ) -> Dict[str, CoreMemory]:
-        """Apply one serialized transition journal operation once."""
-        if not isinstance(operation_id, str) or not operation_id:
-            raise ValueError("journal operation id is required")
-        if self.last_processed_journal_operation_id == operation_id:
-            return {}
-        result = self.process_journal_entry(journal_entry, party_npcs)
-        self.last_processed_journal_operation_id = operation_id
-        self.save_configuration()
-        return result
 
     def apply_emotional_decay(self, emotion_vector: EmotionalVector, days_passed: int) -> None:
         """Apply decay to emotional state over time"""
@@ -447,8 +430,7 @@ class CompanionMemoryManager:
             'max_memories_per_npc': 5,
             'retrieval_pull_threshold': self.retrieval_system.pull_threshold,
             'total_memories_created': self.crystallizer.memory_counter,
-            'npc_interaction_counts': dict(self.interaction_counts),
-            'lastProcessedJournalOperationId': self.last_processed_journal_operation_id,
+            'npc_interaction_counts': dict(self.interaction_counts)
         }
         
         safe_json_dump(config, self.config_file)
@@ -475,9 +457,6 @@ class CompanionMemoryManager:
         
         if 'npc_interaction_counts' in config:
             self.interaction_counts.update(config['npc_interaction_counts'])
-        operation_id = config.get('lastProcessedJournalOperationId')
-        if operation_id is None or isinstance(operation_id, str):
-            self.last_processed_journal_operation_id = operation_id
     
     def clear_npc_memories(self, npc_name: str) -> None:
         """Clear all memories for a specific NPC"""

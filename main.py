@@ -1425,6 +1425,12 @@ def _resume_v2_location_transition(operation_id, *, publish=True):
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
     memory = checkpoint["legacy_memory"]
     if memory.get("status") == "pending":
+        # [travel-clean #209] Legacy companion-memory reconciliation is deferred until the
+        # voice/episodic line lands on main; CompanionMemoryManager.process_journal_operation
+        # is absent here. Mark the phase resolved so recovery converges, then skip the block.
+        memory["status"] = "not_applicable"
+        action_handler._write_location_transition_checkpoint(checkpoint)
+    if memory.get("status") == "__deferred_209__":
         from core.memories.companion_memory import CompanionMemoryManager
         from utils.npc_name_canonicalizer import get_canonical_name
 
@@ -2988,6 +2994,10 @@ def _find_legacy_location_repair(conversation_history):
 
 def _prepare_legacy_memory_targets(journal_entry, party_tracker_data, operation_id):
     """Compute legacy companion-memory mutations in an isolated temporary tree."""
+    # [travel-clean #209] Legacy companion-memory reconciliation is deferred until the
+    # voice/episodic line lands on main; CompanionMemoryManager.process_journal_operation
+    # is absent here, so there are no legacy-memory targets to prepare.
+    return []
     source_dir = Path("data/companion_memories")
     before = {
         str(path): _legacy_json_target(path)
@@ -4756,6 +4766,11 @@ def process_ai_response(
 
                 memory_record = transition_checkpoint["legacy_memory"]
                 if memory_record.get("status") == "pending":
+                    # [travel-clean #209] legacy companion-memory reconciliation deferred until
+                    # the voice/episodic line lands; process_journal_operation is absent here.
+                    memory_record["status"] = "not_applicable"
+                    action_handler._write_location_transition_checkpoint(transition_checkpoint)
+                if memory_record.get("status") == "__deferred_209__":
                     from core.memories.companion_memory import (
                         CompanionMemoryManager,
                     )

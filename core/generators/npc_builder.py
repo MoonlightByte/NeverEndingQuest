@@ -104,16 +104,7 @@ def save_json(file_name, data):
     print(f"{RED}Error saving to {file_name}: atomic write failed{RESET}")
     return False
 
-def generate_npc(
-    npc_name,
-    schema,
-    npc_race=None,
-    npc_class=None,
-    npc_level=None,
-    npc_background=None,
-    *,
-    structural_reissue=False,
-):
+def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None, npc_background=None):
     system_prompt_text = load_prompt("prompts/generators/npc_builder_prompt.txt") # Renamed variable
     if not system_prompt_text:
         return None
@@ -189,9 +180,7 @@ Adhere strictly to 5e rules and the provided schema."""
     last_ai_response = None
     last_parsed_data = None
 
-    attempt = 0
-    while structural_reissue or attempt <= _max_retries:
-        attempt += 1
+    for attempt in range(_max_retries + 1):
         try:
             response = capture_and_fanout("T035", api_client.create_completion,
                 _request_provider=MODEL_PROVIDER,
@@ -219,8 +208,7 @@ Adhere strictly to 5e rules and the provided schema."""
                 last_json_err = e
                 last_validation_err = None
                 warning(
-                    f"NPC build attempt {attempt}/"
-                    f"{'unbounded' if structural_reissue else _max_retries + 1} "
+                    f"NPC build attempt {attempt + 1}/{_max_retries + 1} "
                     f"returned invalid JSON: {str(e)}",
                     category="npc_creation",
                 )
@@ -229,8 +217,7 @@ Adhere strictly to 5e rules and the provided schema."""
                 last_json_err = None
                 last_validation_err = e
                 warning(
-                    f"NPC build attempt {attempt}/"
-                    f"{'unbounded' if structural_reissue else _max_retries + 1} "
+                    f"NPC build attempt {attempt + 1}/{_max_retries + 1} "
                     f"failed schema validation: {str(e)}",
                     category="npc_creation",
                 )
@@ -310,8 +297,6 @@ def build_npc_file(
     npc_level=None,
     npc_background=None,
     path_manager=None,
-    *,
-    structural_reissue=False,
 ):
     """Generate and save one NPC as a deduplicated target transaction."""
     path_manager = path_manager or _active_module_path_manager()
@@ -338,7 +323,6 @@ def build_npc_file(
             npc_class,
             npc_level,
             npc_background,
-            structural_reissue=structural_reissue,
         )
         if not generated:
             return None

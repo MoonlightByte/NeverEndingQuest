@@ -1585,8 +1585,6 @@ class AICharacterValidator:
     def validate_and_correct_character_with_result(
         self,
         character_data: Dict[str, Any],
-        *,
-        max_attempts: int = 3,
     ) -> CharacterValidationResult:
         """
         AI-powered validation and correction of character data
@@ -1611,8 +1609,7 @@ class AICharacterValidator:
 
         # OPTIMIZATION: Batch all validations into a single AI call
         ai_result = self.ai_validate_all_batched_with_result(
-            copy.deepcopy(original_snapshot),
-            max_attempts=max_attempts,
+            copy.deepcopy(original_snapshot)
         )
         if not ai_result.success:
             warning(
@@ -1705,8 +1702,6 @@ class AICharacterValidator:
     def validate_and_correct_character_smart_with_result(
         self,
         character_data: Dict[str, Any],
-        *,
-        max_attempts: int = 3,
     ) -> CharacterValidationResult:
         """
         Smart validation that only calls validators that need updates
@@ -1750,25 +1745,19 @@ class AICharacterValidator:
             )
 
         if needs['ac']:
-            result = self.ai_validate_armor_class_with_result(
-                corrected_data, max_attempts=max_attempts
-            )
+            result = self.ai_validate_armor_class_with_result(corrected_data)
             if not result.success:
                 return failed_after_deterministic(result, "T051")
             corrected_data = result.data
         
         if needs['inventory']:
-            result = self.ai_validate_inventory_categories_with_result(
-                corrected_data, max_attempts=max_attempts
-            )
+            result = self.ai_validate_inventory_categories_with_result(corrected_data)
             if not result.success:
                 return failed_after_deterministic(result, "T052")
             corrected_data = result.data
         
         if needs['currency']:
-            result = self.ai_consolidate_inventory_with_result(
-                corrected_data, max_attempts=max_attempts
-            )
+            result = self.ai_consolidate_inventory_with_result(corrected_data)
             if not result.success:
                 return failed_after_deterministic(result, "T054")
             corrected_data = result.data
@@ -1891,8 +1880,6 @@ class AICharacterValidator:
     def ai_validate_armor_class_with_result(
         self,
         character_data: Dict[str, Any],
-        *,
-        max_attempts: int = 3,
     ) -> CharacterValidationResult:
         """
         Use AI to validate and correct Armor Class calculation with caching
@@ -1951,6 +1938,7 @@ class AICharacterValidator:
             {"role": "system", "content": self.get_validator_system_prompt()},
             {"role": "user", "content": validation_prompt},
         ]
+        max_attempts = 3
         last_error: BaseException = RuntimeError("T051 validation attempts exhausted")
         for attempt in range(1, max_attempts + 1):
             ai_response = None
@@ -2024,8 +2012,6 @@ class AICharacterValidator:
     def ai_validate_inventory_categories_with_result(
         self,
         character_data: Dict[str, Any],
-        *,
-        max_attempts: int = 3,
     ) -> CharacterValidationResult:
         """
         Use AI to validate and correct inventory item categorization with caching
@@ -2076,6 +2062,7 @@ class AICharacterValidator:
         print(f"DEBUG: [Validation Cache] Running inventory validation for {character_name} - {len(inventory_data['equipment'])} items to check")
         info(f"[Validation Cache] Running inventory validation for {character_name} - {len(inventory_data['equipment'])} items to check", category="character_validation")
         
+        max_attempts = 3
         attempt = 1
         corrections_before = copy.deepcopy(self.corrections_made)
         
@@ -2904,8 +2891,6 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
     def ai_validate_all_batched_with_result(
         self,
         character_data: Dict[str, Any],
-        *,
-        max_attempts: int = 3,
     ) -> CharacterValidationResult:
         """
         OPTIMIZED: Batch all AI validations into a single request
@@ -2942,6 +2927,7 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         # never corruption). The retry only re-attempts to obtain a good
         # response; parse_combined_validation_response is unchanged, so no
         # section applies corrections more aggressively.
+        max_attempts = 3
         attempt = 1
         corrections_before = copy.deepcopy(self.corrections_made)
         last_error: BaseException = RuntimeError("T053 validation attempts exhausted")
@@ -3677,8 +3663,6 @@ Remember to return a single JSON response with all four validation results."""
     def ai_consolidate_inventory_with_result(
         self,
         character_data: Dict[str, Any],
-        *,
-        max_attempts: int = 3,
     ) -> CharacterValidationResult:
         """
         Use AI to consolidate loose currency and ammunition into their proper sections with caching
@@ -3739,6 +3723,7 @@ Remember to return a single JSON response with all four validation results."""
         print(f"DEBUG: [AI Validator] Checking {character_name}'s inventory for consolidation opportunities...")
         info(f"[Validation Cache] Running currency consolidation for {character_name} - {len(consolidation_data['equipment'])} items to check", category="character_validation")
         
+        max_attempts = 3
         attempt = 1
         corrections_before = copy.deepcopy(self.corrections_made)
         
