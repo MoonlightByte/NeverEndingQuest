@@ -153,6 +153,24 @@ def _intent_correction(exc, batch=None):
             "choice. Ask only for the earliest unresolved roll and use one "
             "exact spellName; a later pass may request the next roll."
         )
+    legal_targets = feedback.get("legalTargets")
+    if isinstance(legal_targets, list):
+        rendered_targets = [
+            str(target).strip()
+            for target in legal_targets
+            if isinstance(target, str) and target.strip()
+        ]
+        if rendered_targets:
+            instruction += (
+                " For the rejected actor, targetId must be exactly one of "
+                "legalTargets (%s), or choose a non-attack action."
+                % ", ".join(rendered_targets)
+            )
+        else:
+            instruction += (
+                " No legalTargets remain; the rejected actor must choose a "
+                "non-attack action."
+            )
     correction = {
         "error": str(exc),
         "actorId": getattr(exc, "actor_id", None),

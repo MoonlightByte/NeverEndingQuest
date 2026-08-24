@@ -388,14 +388,16 @@ def initiative_ui_projection(encounter):
     ]
 
     current_id = None
-    if state.get("phase") not in {"complete", "recovery_required"} and committed_order:
+    if state.get("phase") not in {"complete", "recovery_required"} and order:
         cursor = state.get("turnCursor", 0)
         if type(cursor) is not int:
             cursor = 0
-        cursor = max(0, min(cursor, len(committed_order) - 1))
+        cursor = max(0, min(cursor, len(order) - 1))
         acted = set(state.get("actedThisRound", []))
-        for offset in range(len(committed_order)):
-            combatant_id = committed_order[(cursor + offset) % len(committed_order)]
+        for offset in range(len(order)):
+            combatant_id = order[(cursor + offset) % len(order)]
+            if combatant_id not in eligible or combatant_id not in by_id:
+                continue
             creature = by_id[combatant_id]
             if combatant_id not in acted and is_turn_eligible(creature):
                 current_id = combatant_id

@@ -79,6 +79,11 @@ _SLOT_RE = re.compile(
     r"\b(?:level\s*)?(\d+)(?:st|nd|rd|th)?[- ]level\s+spell\s+slot\b",
     re.IGNORECASE,
 )
+_AMMUNITION_RE = re.compile(
+    r"\b(?:uses?|used|expends?|expended|spends?|spent|leaving|left(?:\s+with)?)"
+    r"\D{0,24}(\d+)\s+(?:arrows?|bolts?|ammunition|ammo)\b",
+    re.IGNORECASE,
+)
 
 
 def _bounded_copy(value, max_list=80):
@@ -565,24 +570,19 @@ def lint_combat_narration(narration, dossier):
         if match.group(0).casefold() not in allowed_names:
             rejects.append("unknown_titled_entity")
             break
-    values = _allowed_values(dossier)
     mechanical_checks = (
-        (_DAMAGE_RE, "damage"),
-        (_HEAL_RE, "healing"),
-        (_HP_RE, "hp"),
-        (_AC_RE, "ac"),
-        (_ROUND_RE, "round"),
-        (_ATTACK_ROLL_RE, "attackRoll"),
-        (_SLOT_RE, "slotLevel"),
+        _DAMAGE_RE,
+        _HEAL_RE,
+        _HP_RE,
+        _AC_RE,
+        _ROUND_RE,
+        _ATTACK_ROLL_RE,
+        _SLOT_RE,
+        _AMMUNITION_RE,
     )
-    for pattern, bucket in mechanical_checks:
-        allowed = values[bucket]
-        for match in pattern.finditer(text):
-            claimed = int(match.group(1))
-            if allowed and claimed not in allowed:
-                rejects.append("mechanical_number_mismatch")
-                break
-        if "mechanical_number_mismatch" in rejects:
+    for pattern in mechanical_checks:
+        if pattern.search(text):
+            rejects.append("mechanical_bookkeeping_leak")
             break
     facts = ((dossier or {}).get("authoritativeFacts") or {}).get("events") or []
     combatants = [
@@ -765,7 +765,7 @@ def progressive_narration_feedback(previous_attempt, dossier):
         ),
         "You Must Fix This": (
             "Correct every listed violation; do not repeat or introduce an entity, "
-            "action, or number outside the final authoritative facts."
+            "action, or mechanical bookkeeping detail."
         ),
         "Corrective Action Required": (
             "Return one corrected JSON narration object grounded only in the supplied "

@@ -472,8 +472,12 @@ def request_intent_batch(
 T097_SCENE_CONTRACT_SENTENCE = (
     "Use the supplied scene dossier and final authoritative facts as the complete "
     "truth for this pass; narrate only listed combatants, actions, equipment, "
-    "spells, results, and numbers, and never introduce or imply a conflicting "
-    "entity or mechanic."
+    "spells, and results, and never introduce or imply a conflicting entity or "
+    "mechanic. Narration contains no mechanical bookkeeping: no attack or damage "
+    "rolls, damage amounts, HP totals or transitions, AC values, ammunition or "
+    "resource counts, spell-slot levels, or dice expressions. Convey every outcome "
+    "through fiction only; the authoritative event ledger remains silent backend "
+    "state."
 )
 
 
@@ -510,7 +514,8 @@ def request_narration_candidate(
                 "coveredEventIds must contain every authoritative eventId exactly once "
                 "in that same order and is never shown to the player. Do not change, "
                 "invent, or recalculate mechanics; do not announce actions beyond these "
-                "events. Keep the prose vivid, clear, and concise. "
+                "events. Do not quote bookkeeping from the event data. Keep the prose "
+                "vivid, clear, and concise. "
                 + T097_SCENE_CONTRACT_SENTENCE
             ),
         },
