@@ -6352,12 +6352,36 @@ def main_game_loop():
             )
         )
         if pending_transition_recovery.get("status") == "blocked":
-            error(
-                "FAILURE: Startup stopped because an interrupted location "
-                "transition does not match authoritative party state",
+            # [travel #210] The interrupted transition is un-appliable (party
+            # state matches neither its origin/destination nor a staged module
+            # projection). recover() has already retired the residue. Startup is
+            # a play path (B1): never engine_stop here -- surface a player-facing
+            # notice and fall through to the playable loop at the authoritative
+            # party location, where the player can continue or load a save.
+            world = (party_tracker_data or {}).get("worldConditions", {}) or {}
+            here = (
+                world.get("currentLocation")
+                or world.get("currentLocationId")
+                or "where you are"
+            )
+            warning(
+                "Interrupted location transition could not be auto-completed; "
+                "the un-appliable record was discarded and startup continues "
+                "from the authoritative party location. reason=%s"
+                % pending_transition_recovery.get("reason"),
                 category="location_transitions",
             )
-            return
+            # Player-visible in web + headless + terminal: the DM narration
+            # section is the only cross-mode player output surface (a bare
+            # "[SYSTEM]" line would route to the debug stream). Register is an
+            # owner decision (D-210-2); the out-of-fiction channel is issue #212.
+            print(
+                "Dungeon Master: A prior travel action didn't finish cleanly, "
+                "so you remain where the party actually stands - %s. You can "
+                "continue from here, or load an earlier save to redo that "
+                "journey." % here
+            )
+            # fall through: boot into the normal playable loop (no engine_stop)
         if pending_transition_recovery.get("status") == "recovered":
             if pending_transition_recovery.get(
                 "deferred_actions_not_replayed"

@@ -1631,8 +1631,21 @@ def recover_pending_location_transition(party_tracker_data, conversation_history
                     "operation_id": checkpoint.get("operation_id"),
                     "phase": checkpoint.get("phase"),
                 }
+            # [travel #210] The staged cross-module transition is un-appliable:
+            # authoritative party state matches neither the source nor target
+            # projection. Retire the residue here (the lifecycle owner) so it
+            # cannot re-block every subsequent boot (#167), and fail forward.
+            warning(
+                "Discarding un-appliable interrupted transition "
+                "(cross-module op=%s phase=%s): authoritative party state "
+                "matches neither staged module projection."
+                % (checkpoint.get("operation_id"), checkpoint.get("phase")),
+                category="location_transitions",
+            )
+            _remove_location_transition_checkpoint()
             return {
                 "status": "blocked",
+                "discarded": True,
                 "reason": "party state matches neither staged module projection",
             }
         handoff = checkpoint.get("module_handoff")
@@ -1666,8 +1679,20 @@ def recover_pending_location_transition(party_tracker_data, conversation_history
             _remove_location_transition_checkpoint()
             return {"status": "replan_required"}
         if current_id != destination_id:
+            # [travel #210] Un-appliable: party is at neither origin nor the
+            # staged destination, so the transition can never be resumed
+            # (resume requires party-at-destination). Retire it and fail
+            # forward instead of leaving residue that re-blocks every boot.
+            warning(
+                "Discarding un-appliable interrupted transition "
+                "(v2 origin=%s dest=%s current=%s): party location matches "
+                "neither." % (origin_id, destination_id, current_id),
+                category="location_transitions",
+            )
+            _remove_location_transition_checkpoint()
             return {
                 "status": "blocked",
+                "discarded": True,
                 "reason": (
                     "party location does not match the v2 transition's "
                     "staged destination"
@@ -1713,8 +1738,18 @@ def recover_pending_location_transition(party_tracker_data, conversation_history
         _remove_location_transition_checkpoint()
         return {"status": "replan_required"}
     if current_id != destination_id:
+        # [travel #210] Un-appliable v1 residue: party at neither origin nor
+        # destination. Retire it and fail forward (see the v2 sites above).
+        warning(
+            "Discarding un-appliable interrupted transition "
+            "(v1 origin=%s dest=%s current=%s): party location matches "
+            "neither." % (origin_id, destination_id, current_id),
+            category="location_transitions",
+        )
+        _remove_location_transition_checkpoint()
         return {
             "status": "blocked",
+            "discarded": True,
             "reason": "party location does not match pending transition",
         }
 
