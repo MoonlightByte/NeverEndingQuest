@@ -5,8 +5,9 @@ episodic code). Nothing merged. This is the clean, voice-free travel-recovery li
 the `0bbb5f19` mega-commit on `fix/travel-contract-coherence`.
 
 > **Tip moved since first handoff.** `d42ebdf8` = extraction; `04644183` = this handoff doc;
-> **`6625cca4` = the #210 startup-fail-forward fix** (see the new section at the bottom:
-> "ADDENDUM 2026-08-24 -- #210 acceptance"). `git pull` before starting.
+> `6625cca4` = the #210 startup-fail-forward fix (ADDENDUM 2026-08-24); `e0a9aa04` = README
+> thinking-off note; **`e18f7248` = the #210 PLAYER-STREAM fix that resolves the two defects your
+> Windows acceptance found** (see "ADDENDUM 2026-08-25" at the bottom). `git pull` before starting.
 
 ## What this branch is
 The recoverable within-module transition work (crash-convergent checkpoint machine + single-turn
@@ -143,5 +144,64 @@ your arm, a cross-module `blocked` probe would close that boundary.
 ### Do NOT on this branch
 - No voice/episodic (#209). Do not implement the #212 OOC channel or the #211 exception-branch fix
   here -- both are separate, owner-mandated work.
+
+Report results back; on any diff/fix, Claude re-runs the OpenAI/WSL arm.
+
+---
+
+## ADDENDUM 2026-08-25 -- #210 PLAYER-STREAM fix (resolves your two Windows blocking defects)
+
+Commit **`e18f7248`** `fix(travel): #210 player-stream defects (stale-location resume; notice
+absorbs diagnostic)`. This directly answers the two blocking defects in your native-Windows
+acceptance (`docs/audits/2026-08-24-travel-recovery-windows-210-acceptance.md`; #210 comment).
+Converged 5/5 under the #193 Part 3 blind panel; Claude ran full OpenAI/WSL acceptance (ALL PASS).
+**Codex owns the authoritative native-Windows + Gemma re-run.** Plan + evidence:
+`docs/audits/2026-08-25-issue-210-player-stream-defects-plan.md` (see its §12).
+
+### What changed (main.py only, +47/-6; additive, no history deletion, no new mechanism)
+- **Fix A (your Defect 1: wrong-location resume narration).** `check_and_inject_return_message`
+  gains an optional `location_note`; the startup call site builds an authoritative clause from
+  `party_tracker["worldConditions"]` (`.get()`, degrade-to-omit) and inserts it into the resume note
+  AFTER the idempotency phrase: *"The party is currently at <name> (<id>) in the <area> area -- recap
+  and narrate THIS location ... refer to the location by name ... do not treat any earlier location
+  in the history as current."* T067 now narrates the authoritative location instead of inferring the
+  stale one from interrupted-turn history. Empty note == original byte-for-byte. Hardens ALL resumes;
+  no-op on already-correct ones.
+- **Fix B (your Defect 2: notice absorbed a diagnostic line).** A guarded `sys.stdout.flush()` after
+  the #210 notice `print` closes the DM-narration section before the next startup diagnostic
+  (`[SaveGameManager] INITIALIZATION: ...`), which was being absorbed. Guarded with
+  `except (BrokenPipeError, OSError, ValueError): pass` (matches `emit_startup_marker`) so a broken
+  terminal pipe cannot abort boot.
+
+### Re-run on native Windows AND Gemma (Keep_of_Doom; NOT Shadows_of_Frostmere)
+Reproduce the discard-boot and assert PLAYER-STREAM CONTENT (your acceptance already has the harness):
+1. Kill@`movement_committed` for a within-module travel (e.g. E03->E01); tamper
+   `party_tracker.currentLocationId` to a third valid location (e.g. E05 Storage Vaults) so recovery
+   is `blocked`; relaunch.
+2. **Assert (Fix A):** the resume "welcome back" narration NAMES the authoritative location
+   (Storage Vaults / E05) and does NOT present the stale location (Torture Chamber / E03) as current;
+   it agrees with the deterministic #210 notice. Cross-check the captured request
+   (`debug/api_captures/api_calls_master.jsonl`, endpoint `main_dm`): the resume note carries
+   *"The party is currently at Storage Vaults (E05) ..."*.
+3. **Assert (Fix B):** the #210 notice reaches the player surface as ONE clean message
+   (headless: a `narration` event; web `run_web.py`: game pane) with NO `[SaveGameManager]` /
+   `INITIALIZATION` text; that diagnostic instead appears on the debug stream.
+4. Confirm normal (untampered) resume still narrates the correct location (no regression).
+
+Deterministic shortcut (avoids the flaky travel-kill race): on a clean save, set party to E05 and
+write a minimal v2 checkpoint `{version:2, kind:"current_transition", movement_kind:"within_module",
+module_handoff:null, phase:"movement_committed", origin_location_id:"E03",
+destination_location_id:"E01"}` at `modules/conversation_history/pending_location_transition.json`,
+then boot -> blocked -> discard -> notice + welcome-back. (Claude used exactly this.)
+
+### Heads-up (NOT a fix target now -- owner deprioritized)
+If the save carries an accumulated chronicle/location-summary backlog, boot runs a synchronous
+compression pass first, so **the first prompt can take a long window** (minutes on OpenAI; worse on
+Gemma). The game DOES reach the prompt once compression finishes. Tracked as **#213**; owner says
+it's a peculiar, infrequent scenario -- give boot a generous window; do not treat slow-boot-due-to-
+backlog as a #210 failure.
+
+### Do NOT on this branch
+No voice/episodic (#209); do not implement the #212 OOC channel or the #213 compression rework here.
 
 Report results back; on any diff/fix, Claude re-runs the OpenAI/WSL arm.
