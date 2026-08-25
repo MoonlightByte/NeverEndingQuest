@@ -554,14 +554,19 @@ def exit_game():
     print("Fond farewell until we meet again!")
     exit()
 
-def check_and_inject_return_message(conversation_history, is_combat_active=False):
+def check_and_inject_return_message(conversation_history, is_combat_active=False, location_note=""):
     """
     Checks if a 'player has returned' message needs to be injected at startup.
-    
+
     Args:
         conversation_history: List of conversation messages
         is_combat_active: Boolean indicating if combat is currently active (prevents duplicate injection)
-        
+        location_note: Optional authoritative "current location" clause (built from
+            party_tracker worldConditions by the caller). Inserted into the resume
+            note so the welcome-back narration reflects the authoritative location
+            instead of a stale one inferred from interrupted-turn history (#210).
+            Empty string keeps the original note byte-for-byte.
+
     Returns:
         Tuple of (updated_conversation_history, was_injected)
     """
@@ -607,10 +612,13 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
         debug("STATE_CHANGE: Added combat recovery marker", category="session_management")
         return conversation_history, True
     
-    # Normal (non-combat) resume message injection
+    # Normal (non-combat) resume message injection. The optional location_note
+    # (authoritative "current location" clause) is inserted AFTER the idempotency
+    # key phrase ("Resume the game, the player has returned") so the guard at the
+    # top of this function still matches; empty keeps the note byte-identical.
     return_message = {
         "role": "user",
-        "content": "Dungeon Master Note: Resume the game, the player has returned. Welcome the player back warmly. Have the party members acknowledge their return with brief in-character reactions. Provide a concise atmospheric recap of the immediate situation and surroundings, then naturally prompt for the player's next action while maintaining immersion in the ongoing narrative. IMPORTANT: Do NOT use transitionLocation action - the party is already at their current location. Just provide narrative and prompts."
+        "content": "Dungeon Master Note: Resume the game, the player has returned. " + location_note + "Welcome the player back warmly. Have the party members acknowledge their return with brief in-character reactions. Provide a concise atmospheric recap of the immediate situation and surroundings, then naturally prompt for the player's next action while maintaining immersion in the ongoing narrative. IMPORTANT: Do NOT use transitionLocation action - the party is already at their current location. Just provide narrative and prompts."
     }
     conversation_history.append(return_message)
     debug("STATE_CHANGE: Injected 'player has returned' message at startup", category="session_management")
@@ -6381,6 +6389,15 @@ def main_game_loop():
                 "continue from here, or load an earlier save to redo that "
                 "journey." % here
             )
+            # [travel #210] Flush so the DM-narration section is emitted and
+            # CLOSED before the next startup diagnostic line, which would
+            # otherwise be absorbed into this notice's narration block. Guarded
+            # like emit_startup_marker's flush so a broken/closed terminal pipe
+            # cannot raise into the boot except-branch and abort startup.
+            try:
+                sys.stdout.flush()
+            except (BrokenPipeError, OSError, ValueError):
+                pass
             # fall through: boot into the normal playable loop (no engine_stop)
         if pending_transition_recovery.get("status") == "recovered":
             if pending_transition_recovery.get(
@@ -6570,7 +6587,31 @@ def main_game_loop():
         # Don't inject if we already did it for combat resume
         was_injected = False  # Initialize to track if we generated a response for return message
         if not combat_was_resumed:
-            conversation_history, was_injected = check_and_inject_return_message(conversation_history, is_combat_active=False)
+            # [travel #210] Name the authoritative current location in the resume
+            # note so the welcome-back narrates THIS location, not a stale one
+            # inferred from interrupted-turn history. Read the post-recovery
+            # party_tracker (discard recovery above does not mutate it); degrade
+            # to omit the clause if any field is missing (never raise at boot).
+            resume_location_note = ""
+            try:
+                _pt_now = load_json_file("party_tracker.json") or {}
+                _wc = (_pt_now.get("worldConditions") or {}) if isinstance(_pt_now, dict) else {}
+                _loc_name = _wc.get("currentLocation")
+                _loc_id = _wc.get("currentLocationId")
+                _area_name = _wc.get("currentArea")
+                if _loc_name and _loc_id:
+                    _area_frag = (" in the %s area" % _area_name) if _area_name else ""
+                    resume_location_note = (
+                        "The party is currently at %s (%s)%s -- recap and narrate "
+                        "THIS location and situation; refer to the location by name "
+                        "in the narration; do not treat any earlier location in the "
+                        "history as current. " % (_loc_name, _loc_id, _area_frag)
+                    )
+            except Exception:
+                resume_location_note = ""
+            conversation_history, was_injected = check_and_inject_return_message(
+                conversation_history, is_combat_active=False,
+                location_note=resume_location_note)
             if was_injected:
                 save_conversation_history(conversation_history)
                 # The leased kickoff generates from the fully reconciled and
