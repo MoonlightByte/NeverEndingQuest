@@ -25,6 +25,7 @@ from core.ai.srd_reference import (
     load_srd_reference_index,
     normalize_rule_name,
 )
+from core.managers.combat_state import combatant_by_id, resolve_creature_controller
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.character_sheet_contract import extract_json_object
 
@@ -477,7 +478,21 @@ T097_SCENE_CONTRACT_SENTENCE = (
     "rolls, damage amounts, HP totals or transitions, AC values, ammunition or "
     "resource counts, spell-slot levels, or dice expressions. Convey every outcome "
     "through fiction only; the authoritative event ledger remains silent backend "
-    "state."
+    "state. PlayerInput and authoritative facts contain silent mechanics for grounding "
+    "only. Never repeat or explain their numbers, rules, action economy, or mechanical "
+    "effects. BAD: You deal 7 damage and spend your Action. BAD: Dodge gives attacks "
+    "disadvantage and gives you advantage on Dexterity saves. GOOD: Your mace caves "
+    "the creature into the floor. GOOD: You settle behind your shield and track every "
+    "movement. The narrationContext controllers map is authoritative for perspective: "
+    "refer to the sole human-controlled combatant in second person (you/your) in "
+    "every narration reference except another character's in-world direct address; "
+    "an actor_agent-controlled combatant remains in third person regardless of its "
+    "creature type. When event.actorId maps to human, narrate that actor as you/your. "
+    "Narrate a target as you/your only when that target's exact combatant ID maps to human. "
+    "GOOD: You spring at Eirik's shield and bite him. BAD: The Snow Rat springs toward "
+    "your shield and bites you. The narrationContext runtime instance labels are internal identity "
+    "labels, not player-facing names. For each entry, preserve which exact combatant "
+    "acted and use playerFacingName naturally in the prose. Never print runtimeLabel."
 )
 
 
@@ -495,9 +510,60 @@ def request_narration_candidate(
     model = str(call_config.get("model") or "unknown")
     dossier = dict(scene_dossier or {})
     authoritative_facts = dossier.pop("authoritativeFacts", {})
+    combat_state = encounter.get("combatState") or {}
+    controllers = {}
+    for row in dossier.get("combatants", []) or []:
+        if not isinstance(row, dict):
+            continue
+        combatant_id = row.get("combatantId")
+        creature = combatant_by_id(encounter, combatant_id)
+        if creature is None:
+            continue
+        controllers[combatant_id] = resolve_creature_controller(
+            creature, combat_state
+        )
+
+    participants = (encounter.get("sceneFacts") or {}).get("participants") or []
+    source_anchors = {}
+    source_occurrences = {}
+    runtime_instance_labels = {}
+    for participant in participants:
+        if not isinstance(participant, dict):
+            continue
+        combatant_id = participant.get("combatantId")
+        creature = combatant_by_id(encounter, combatant_id)
+        source_kind = participant.get("sourceKind")
+        source_ref = participant.get("sourceRef")
+        if (
+            creature is None
+            or creature.get("type") == "player"
+            or source_kind not in ("monster", "character")
+            or not isinstance(source_ref, str)
+            or not source_ref.strip()
+        ):
+            continue
+        display_name = participant.get("displayName")
+        if not isinstance(display_name, str) or not display_name.strip():
+            continue
+        occurrence = source_occurrences.get(source_ref, 0) + 1
+        source_occurrences[source_ref] = occurrence
+        anchor = source_anchors.setdefault(source_ref, display_name)
+        if (
+            occurrence > 1
+            and display_name == "%s_%d" % (anchor, occurrence)
+        ):
+            runtime_instance_labels[combatant_id] = {
+                "runtimeLabel": display_name,
+                "playerFacingName": anchor,
+            }
+
     payload = {
         "playerInput": player_input,
         "sceneDossier": dossier,
+        "narrationContext": {
+            "controllers": controllers,
+            "runtimeInstanceLabels": runtime_instance_labels,
+        },
     }
     if correction:
         payload["correction"] = correction
