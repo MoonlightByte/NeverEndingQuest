@@ -321,6 +321,7 @@ class _WelcomeLifecycle:
         self.live_history = None  # the loop's live list; set before input parks
         self.worker = None
         self.recovery_used = False
+        self.pending_receipt = None  # mutation attempted; only a terminal receipt CAS remains
         self._next_lease_renew = time.monotonic() + _WELCOME_LEASE_RENEW_SECONDS
 
     def is_terminal(self):
@@ -416,11 +417,63 @@ def _apply_welcome(lifecycle):
         lifecycle.phase = "APPLYING"
         disposition = lifecycle.disposition
         content = lifecycle.slot
+        pending_receipt = lifecycle.pending_receipt
     history = (
         lifecycle.live_history
         if lifecycle.live_history is not None
         else lifecycle.frozen_history
     )
+
+    if pending_receipt is not None:
+        # A terminal receipt CAS previously hit transient lock contention
+        # (the 5s coordination wait). Side effects are NEVER re-run here;
+        # only the receipt is retried by the 0.5s pump. lock_timeout retries
+        # again; genuine stale identity loss is terminal.
+        if pending_receipt.get("call") == "failed":
+            failed_result = mark_kickoff_failed(
+                lifecycle.startup_attempt_id, lifecycle.lease_owner,
+                pending_receipt.get("error") or "welcome_apply_failed",
+            )
+            if failed_result.get("status") == "lock_timeout":
+                with lifecycle.lock:
+                    if lifecycle.phase == "APPLYING":
+                        lifecycle.phase = "APPLY_PENDING"
+                return
+            _remove_welcome_note(lifecycle, history)
+            try:
+                save_conversation_history(history)
+            except Exception:
+                pass
+            _finish_welcome(lifecycle, "FAILED")
+            return
+        update_result = mark_kickoff_done(
+            lifecycle.startup_attempt_id, lifecycle.lease_owner
+        )
+        receipt_status = update_result.get("status")
+        if receipt_status == "lock_timeout":
+            with lifecycle.lock:
+                if lifecycle.phase == "APPLYING":
+                    lifecycle.phase = "APPLY_PENDING"
+            return
+        if receipt_status != "updated":
+            emit_startup_marker(
+                "startup_kickoff_stale_discarded",
+                source="welcome_worker",
+                result=receipt_status or "stale",
+                startup_attempt_id=lifecycle.startup_attempt_id,
+                lease_owner=lifecycle.lease_owner,
+            )
+            _finish_welcome(lifecycle, "STALE_DISCARDED")
+            return
+        emit_startup_marker(
+            "startup_kickoff_done",
+            source="welcome_worker",
+            result="updated",
+            startup_attempt_id=lifecycle.startup_attempt_id,
+            lease_owner=lifecycle.lease_owner,
+        )
+        _finish_welcome(lifecycle, "APPLIED")
+        return
 
     if disposition in {"SUPERSEDED"}:
         _remove_welcome_note(lifecycle, history)
@@ -428,7 +481,16 @@ def _apply_welcome(lifecycle):
             save_conversation_history(history)
         except Exception:
             pass
-        mark_kickoff_done(lifecycle.startup_attempt_id, lifecycle.lease_owner)
+        receipt = mark_kickoff_done(
+            lifecycle.startup_attempt_id, lifecycle.lease_owner
+        )
+        if receipt.get("status") == "lock_timeout":
+            # Transient contention: the pump re-runs this whole discard path
+            # (note removal above is idempotent by exact value identity).
+            with lifecycle.lock:
+                if lifecycle.phase == "APPLYING":
+                    lifecycle.phase = "APPLY_PENDING"
+            return
         emit_startup_marker(
             "startup_kickoff_done",
             source="welcome_worker",
@@ -442,10 +504,18 @@ def _apply_welcome(lifecycle):
     if disposition == "FAILED" or content is None:
         # First genuine failure: PRESERVE the note (it is the instruction the
         # one authorized forced recovery retries); final exhaustion removes it.
-        mark_kickoff_failed(
+        failed_receipt = mark_kickoff_failed(
             lifecycle.startup_attempt_id, lifecycle.lease_owner,
             lifecycle.error or "welcome_generation_failed",
         )
+        if failed_receipt.get("status") == "lock_timeout":
+            # Transient contention must not skip the authorized first-failure
+            # recovery: nothing is mutated before this receipt, so the pump
+            # re-runs this whole FAILED path.
+            with lifecycle.lock:
+                if lifecycle.phase == "APPLYING":
+                    lifecycle.phase = "APPLY_PENDING"
+            return
         current = load_startup_state()
         if (
             not lifecycle.recovery_used
@@ -502,7 +572,16 @@ def _apply_welcome(lifecycle):
             save_conversation_history(history)
         except Exception:
             pass
-        mark_kickoff_done(lifecycle.startup_attempt_id, lifecycle.lease_owner)
+        receipt = mark_kickoff_done(
+            lifecycle.startup_attempt_id, lifecycle.lease_owner
+        )
+        if receipt.get("status") == "lock_timeout":
+            # Transient contention: the pump re-runs this fence path (the
+            # fence re-evaluates; note removal is value-idempotent).
+            with lifecycle.lock:
+                if lifecycle.phase == "APPLYING":
+                    lifecycle.phase = "APPLY_PENDING"
+            return
         emit_startup_marker(
             "startup_kickoff_done",
             source="welcome_worker",
@@ -525,6 +604,15 @@ def _apply_welcome(lifecycle):
             lifecycle.startup_attempt_id, lifecycle.lease_owner,
             lease_seconds=3600,
         )
+    if "lock_timeout" in (
+        lease_renew.get("status"), processing_lock.get("status")
+    ):
+        # r9 section 3: a missed renewal attempt is retryable and never
+        # discards a live owned worker. The pump re-runs this handback.
+        with lifecycle.lock:
+            if lifecycle.phase == "APPLYING":
+                lifecycle.phase = "APPLY_PENDING"
+        return
     if processing_lock.get("status") != "updated":
         _remove_welcome_note(lifecycle, history)
         try:
@@ -574,9 +662,19 @@ def _apply_welcome(lifecycle):
                 % process_result.get("status", "unknown")
             )
     except BaseException as exc:
-        mark_kickoff_failed(
+        failed_receipt = mark_kickoff_failed(
             lifecycle.startup_attempt_id, lifecycle.lease_owner, str(exc)
         )
+        if failed_receipt.get("status") == "lock_timeout":
+            # Side effects may have run; never re-enter the apply. Park a
+            # receipt-only retry for the pump.
+            with lifecycle.lock:
+                lifecycle.pending_receipt = {
+                    "call": "failed", "error": str(exc),
+                }
+                if lifecycle.phase == "APPLYING":
+                    lifecycle.phase = "APPLY_PENDING"
+            return
         _remove_welcome_note(lifecycle, history)
         try:
             save_conversation_history(history)
@@ -591,6 +689,14 @@ def _apply_welcome(lifecycle):
     update_result = mark_kickoff_done(
         lifecycle.startup_attempt_id, lifecycle.lease_owner
     )
+    if update_result.get("status") == "lock_timeout":
+        # Transient contention on the success receipt: park a receipt-only
+        # retry for the pump; never re-run the apply.
+        with lifecycle.lock:
+            lifecycle.pending_receipt = {"call": "done"}
+            if lifecycle.phase == "APPLYING":
+                lifecycle.phase = "APPLY_PENDING"
+        return
     if update_result.get("status") != "updated":
         # Mutation succeeded but the completion receipt CAS did not: never
         # report clean APPLIED; surface the true status and leave the state
