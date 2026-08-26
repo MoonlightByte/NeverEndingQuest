@@ -32,7 +32,73 @@
 ## CONVERGENCE (2026-08-25) — review complete, awaiting owner execution approval
 Part-3 blind panel converged over two rounds. Round 1 (8 reviewers) + off-thread round (6 reviewers) raised blocking findings (F1 lease TTL; GL-1 honesty; CR-1/CR-2/CR-3 concurrency; input-relock; acceptance probe gaps). All folded (r2-r4 + D-214-4=A). Convergence re-review (Concurrency, Fail-Forward, Player-Experience, Acceptance) returned LGTM with zero residual blocking; Consumer/Compat, Leanness, Platform-Provider, Legacy were LGTM with cautions now folded. Per #193 convergence completes REVIEW ONLY and authorizes neither execution nor merge — the owner approves execution after this presentation. NOT yet implemented; no production code written.
 
-## r6 — SECOND CODEX RE-REVIEW REVISION (AUTHORITATIVE; supersedes r5 where they differ)
+## r7 — CONSOLIDATED EXECUTION-READY SPEC (SINGLE AUTHORITATIVE SOURCE)
+> **THIS SECTION IS THE ONLY spec to implement. Everything below (r6, r5, r4 consolidated, r1-r4 tasks) is HISTORICAL PROVENANCE — DO NOT IMPLEMENT from it; it contains superseded/contradictory steps (typed-sentinel, worker-set-quiescent, T067-only scope, hash fence).** Grounded against code @ 351a1fc5+.
+
+### Objective & decisions
+Remove the banned 120s startup-kickoff abort (it abandons a running future) so a slow local model's resume welcome runs to completion, delivered OFF-THREAD so Save/Load/Reset stay reachable immediately. Owner rulings: D-214-1=B (off-thread welcome), D-214-2=YES (startup save allow_compression=False), D-214-3=YES (updatePlot ungated; verify-only), D-214-4=A (separate non-input-locking welcome status), headless-serve + web BOTH off-thread; raw terminal synchronous (limited-mode).
+
+### Lifecycle (one in-memory, game-thread-owned state per startup)
+`CLAIMED -> GENERATING -> PROVIDER_COMPLETE -> APPLY_PENDING -> APPLYING -> QUIESCENT`; terminals `SUPERSEDED | FAILED | STALE_DISCARDED`. Worker owns GENERATING + setting `provider_complete` (its subprocess child reaped). Game thread owns APPLY_PENDING->APPLYING (process_ai_response)->QUIESCENT, ALL history/state mutation, lease completion, and setting `quiescent`. `provider_complete` and `quiescent` are SEPARATE; Load/Reset wait on `quiescent` only.
+
+### 1. Detached execution context — EXPLICIT ARGS, not the global (the crux)
+The live scope is a module-global singleton (`_active_scope`, live_provider_call.py:121; `open_live_turn_scope` raises on a 2nd opener :128). A welcome worker and a live player turn cannot share it. So the welcome worker gets its OWN `LiveTurnScope` + non-locking status sink, threaded as EXPLICIT PARAMETERS (not the global, not a bare contextvar — `ThreadPoolExecutor.submit` does not propagate contextvars):
+- Add an optional `scope=`/`status=` (detached-context) parameter to: `_get_ai_response_impl` (main.py:5678) -> `capture_and_fanout` (multi_model_capture.py:379; forwards to `call_live_provider`) -> `call_live_provider` (live_provider_call.py:389: `scope = passed_scope or get_live_turn_scope()`) AND -> the compression chain `ParallelConversationCompressor.process_conversation_history` -> `compress_section` -> `compress_with_ai`(T084, ai_narrative_compressor_agentic.py:267) / `compress_location`(T085, location_compressor.py:297) -> their `capture_and_fanout(_live_selected="advisory", scope=...)`.
+- **T082** (predict_actions_required, action_predictor.py:167) is NOT in the live allowlist (`_LIVE_TASK_IDS`) and runs synchronous in-process. Do NOT allowlist it (doctrine change). Instead add a between-stages `scope.is_superseded()` cancellation check on the worker thread AFTER `predict_actions_required` returns (main.py:5712) and again before the T067 call (main.py:5855), raising `LiveProviderSuperseded`. Residual in-flight T082 window is one short (~200-token) call, bounded by the provider timeout — acceptable; escalate to allowlisting only if an in-flight T082 must be killable.
+- **T067**: pass the welcome scope + `_live_selected` explicitly (already explicit at main.py:5857).
+- Capture VARIANTS are already suppressed on the live path (`variants = [] if live_policy`, multi_model_capture.py:552) — no telemetry fan-out from the worker.
+- Initial `status_processing_ai` (main.py:5693) must route through the welcome status sink, never the global input-locking `is_processing`.
+- PRE-IMPLEMENTATION CONFIRM: the character-sheet compressor (conversation_compressor_parallel.py:579) — if it issues its own provider call it inherits the same global-scope hazard and must take the explicit carrier too.
+- Acceptance proves genuine cancellation INDEPENDENTLY during T082 (between-stages), during T084/T085 compression, and during T067; plus a player-turn OVERLAP test proving welcome compression never binds the player scope.
+
+### 2. Preflight (F4) — RESOLVED: no off-thread T038/T039
+`prepare_conversation_for_ai_request` (main.py:3676) -> `require_staged_module_completions_drained` -> `drain_module_completion_intents` -> `complete_module` (campaign_manager.py:2468) can fire T038 (:3278) / T039 (:3331) provider calls PLUS authoritative writes under the transition lock — a game-thread operation. BUT startup runs the authoritative drain UNCONDITIONALLY at main.py:6269 BEFORE the kickoff seam (6685), and nothing between re-stages an intent, so at the kickoff seam the queue is provably empty. CONTRACT: the welcome worker calls `_get_ai_response_impl(..., prepare_history=False)` and NEVER calls `prepare_conversation_for_ai_request`; the sole authoritative drain stays on the game thread at 6269. No split needed for #214. (If future off-thread GENERATION is ever needed, the split seam is `complete_module` where generate+durable-write are fused.)
+
+### 3. Lease keepalive (F4) — check every poll, renew when DUE
+The game-thread lifecycle pump CHECKS on every 0.5s input-poll iteration while state is GENERATING, but calls `renew_kickoff_lease` only when structurally DUE (e.g. remaining lease < half TTL) using the existing keepalive/expiry contract — NOT every poll (that would be ~540 `save_state`/state_version writes per 4.5-min startup = churn/lock contention). A missed renewal attempt is retryable and never discards a live owned worker. A crash stops renewal -> recovery; a live worker never expires; a reclaimed owner is fenced by the value fence (section 5). Terminal lease disposition: player-first / Load / Reset -> `mark_kickoff_done` + note removal; provider fails -> `mark_kickoff_failed`; worker completes but fence fails -> STALE_DISCARDED; shutdown -> supersede+reap.
+
+### 4. Wake / handback pump (both adapters); readline returns str
+Both input adapters are pollable `queue.get(timeout=0.5)` loops (WebInput.readline web_interface.py:807; HeadlessInput.readline streams.py:111; headless has the `EOF_SENTINEL` precedent). Add a `WELCOME_READY` control sentinel. `readline` must return a STRING, so it CONSUMES the sentinel internally, invokes a game-thread control CALLBACK (runs the apply/discard handback), then CONTINUES waiting for real input. Wake on ALL terminals: success, supersession, failure, stale-discard, shutdown. Load/Reset ENQUEUE a wake before waiting; player enqueue places the control boundary BEFORE the player text (or otherwise guarantees handback+reap completes before that text is processed). Raw terminal (plain input()) is exempt (synchronous limited-mode).
+
+### 5. Apply-authority = full VALUE fence (no digest, no phrase, no state_version)
+At apply time on the game thread the welcome applies iff ALL hold — pure value comparison, no content-derived digest and no prose parse:
+- `is_kickoff_claim_still_active(startup_attempt_id, lease_owner)` True (reuse startup_handoff_state.py:178 / main.py:348);
+- retained exact PRE-NOTE and ACCEPTED-HISTORY snapshots compare equal by COMPLETE VALUE (mirror the shipped `pre_turn_accepted_history` idiom, main.py:7367/7385) — catches same-length substitutions the count check misses;
+- retained in-memory note/operation identity matches;
+- authoritative location projection `worldConditions.currentLocationId` unchanged.
+Do NOT parse the idempotency phrase. Do NOT use `state_version` (renew_kickoff_lease -> save_state increments it, startup_handoff_state.py:129 — would contradict section 3).
+
+### 6. Note consume-exactly-once
+The resume note (check_and_inject_return_message, main.py:557, saved 6616) is never removed today. On APPLY: keep the note+welcome pair. On DISCARD (player-first / superseded / stale): the game thread REMOVES the note (snapshot pre-note history + restore, mirror main.py:7385) so it can neither contaminate the next T067 turn nor re-fire a welcome next startup; record terminal via `mark_kickoff_done` (next startup's claim -> already_done).
+
+### 7. Save/Load/Reset scope-explicit
+Resolve effective scope = `get_live_turn_scope() or get_active_welcome_scope()` at the gate (web_interface.py:2592) AND the restore body (2664) AND the reset body (2709). Save QUEUES against the welcome scope and executes on the game-thread safe boundary AFTER apply/discard. Load/Reset SUPERSEDE the welcome scope, reap the child, wait final `quiescent`, THEN mutate.
+
+### 8. Status sink (D-214-4=A)
+A scope-owned non-input-locking status emitter threaded (explicit, section 1) through `_emit_working` / retry-wait (live_provider_call.py:318) and the initial status. Foreground live turns retain the global input-locking `is_processing=True` — verify.
+
+### 9. Write audit (complete)
+| Writer | file:line | Class | Disposition |
+|---|---|---|---|
+| api master log | utils/api_logger.py:75 (append) | A safe | leave |
+| usage/telemetry | utils/openai_usage_tracker.py:543/563/579 (append, locked) | A safe | leave |
+| capture variants | multi_model_capture.py:310 | A (suppressed on live path :552) | leave |
+| model_captures/errors.log | multi_model_capture.py:148 (append) | A safe | leave |
+| main_conversation_messages_to_api.json | main.py:5822 (fixed-path overwrite) | **B race** | scope-unique filename or SUPPRESS for the worker |
+| compression input temp | main.py:5791-5819 (NamedTemporaryFile, unlinked) | B (already request-unique) | leave |
+| compression_cache.json | conversation_compressor_parallel.py:165 (tmp+os.replace under flock, merge-on-write) | B-mitigated (lock+merge safe) | leave (worker warms cache = benefit) |
+| T038/T039 completion writes | campaign_manager.py:3299/2468/2404/2316 | **C authoritative** | excluded off-thread via prepare_history=False (section 2) |
+| conversation history | (not written in _get_ai_response_impl; caller persists) | C | worker generates only; game thread persists |
+
+### 10. File allowlist (exact)
+`main.py`; `utils/capture/multi_model_capture.py`; `utils/capture/live_provider_call.py`; `utils/compression/conversation_compressor_parallel.py`; `utils/compression/ai_narrative_compressor_agentic.py`; `location_compressor.py` (confirm path: `utils/compression/` or `core/generators/`); `web/web_interface.py`; `core/headless/streams.py`; `core/managers/status_manager.py` (status sink); `utils/startup_handoff_state.py` (renew-when-due helper if not reusable); ignored/local tests. NOT: `core/ai/api_client.py` response semantics, model registry, prompts, schemas, persistence formats, combat, `campaign_manager.complete_module` (preflight stays game-thread), raw terminal path, and never stage the unrelated React test.
+
+### 11. Acceptance (consolidated; native web AND headless; one op at a time; no synthetic)
+Slow-Gemma welcome completes with NO player input (pump delivers it); cancellation proven INDEPENDENTLY during T082, during T084/T085, during T067; player-turn OVERLAP proving welcome compression never binds the player scope; worker completion just-before/just-after player enqueue (exactly one assistant turn on disk + child PID exited); Load just-before provider_complete and during handback (no torn write); Save during generation and during handback (queue-then-apply; integrity intact); player-first REMOVES the resume note (no dup, no lost action); Load/Reset on both SUPERSEDED and FAILED workers; no-input worker FAILURE still reaches QUIESCENT; lease renewal during poll-only idle proving the 180s fence never fires on a live worker AND that renewal is when-due not every-poll; a pending STAGED completion at startup proves no unbounded pre-prompt wait (drained at 6269); same-COUNT history replacement caught by the value fence; initial background status never sets global is_processing=True; #210 regression (authoritative E05 note + clean notice) intact; real 600s provider DISCONNECT/RECONNECT reissue then next fresh connection succeeds (killed-request cost reported UNKNOWN unless billing observed).
+
+---
+
+## r6 — SECOND CODEX RE-REVIEW REVISION (HISTORICAL — superseded by r7; DO NOT IMPLEMENT)
 
 codex-wsl round-2 re-review of r5 = Verdict B with 4 blockers (all accepted; two confirmed against the code investigation). r6 corrects them; everything else in r5 stands.
 
