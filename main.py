@@ -70,6 +70,7 @@ See LICENSE file for full terms.
 
 import json
 import copy
+import threading
 import hashlib
 import subprocess
 import os
@@ -91,7 +92,6 @@ register_callsite("T066", "main.py", 2450)
 register_callsite("T067", "main.py", 3817)
 from datetime import datetime, timedelta
 from termcolor import colored
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 # Import encoding utilities
 from utils.encoding_utils import (
@@ -289,16 +289,400 @@ def emit_startup_marker(phase, **extra):
             pass
 
 
-def _run_get_ai_response_with_timeout(conversation_history, timeout_seconds=120):
-    executor = ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(get_ai_response, conversation_history)
+# --- Off-thread startup welcome lifecycle (issue #214, D-214-1=B) ----------
+# One in-memory, game-thread-owned lifecycle per startup. The worker owns
+# GENERATING and provider_complete (child reaped); the GAME THREAD owns the
+# handback (apply/discard), ALL history/state mutation, lease completion, and
+# final quiescence. PHASE and DISPOSITION are separate; every disposition
+# flows through the game-thread handback to QUIESCENT, so Load/Reset (which
+# wait on quiescence) can never wait forever.
+_WELCOME_LEASE_RENEW_SECONDS = 60.0
+
+
+class _WelcomeLifecycle:
+    def __init__(self, scope, frozen_history, note_message,
+                 party_tracker_data, location_data,
+                 startup_attempt_id, lease_owner, location_id):
+        from utils.capture.live_provider_call import LiveTurnScope  # noqa: F401
+        self.lock = threading.RLock()
+        self.phase = "CLAIMED"
+        self.disposition = None
+        self.scope = scope
+        self.frozen_history = frozen_history
+        self.accepted_snapshot = copy.deepcopy(frozen_history)
+        self.note_message = copy.deepcopy(note_message) if note_message else None
+        self.party_tracker_data = party_tracker_data
+        self.location_data = location_data
+        self.startup_attempt_id = startup_attempt_id
+        self.lease_owner = lease_owner
+        self.location_id = location_id
+        self.slot = None
+        self.error = None
+        self.provider_complete = threading.Event()
+        self.live_history = None  # the loop's live list; set before input parks
+        self.worker = None
+        self.recovery_used = False
+        self._next_lease_renew = time.monotonic() + _WELCOME_LEASE_RENEW_SECONDS
+
+    def is_terminal(self):
+        with self.lock:
+            return self.phase == "QUIESCENT"
+
+
+_welcome_lifecycle = None
+
+
+def _welcome_status(message):
+    """Non-input-locking presentational status (D-214-4=A)."""
     try:
-        return future.result(timeout=timeout_seconds)
-    except FuturesTimeoutError:
-        future.cancel()
-        raise
+        status_manager.emit_welcome_event(message)
+    except Exception:
+        pass
+
+
+def _welcome_worker_main(lifecycle):
+    """Worker: detached T067 generation only. No history/state mutation."""
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    try:
+        _welcome_status("The DM is recalling your journey...")
+        content = _get_ai_response_impl(
+            lifecycle.frozen_history,
+            prepare_history=False,
+            live_selected=True,
+            detached_context={
+                "scope": lifecycle.scope,
+                "status": _welcome_status,
+            },
+        )
+        with lifecycle.lock:
+            lifecycle.slot = content
+    except LiveProviderSuperseded:
+        with lifecycle.lock:
+            if lifecycle.disposition is None:
+                lifecycle.disposition = "SUPERSEDED"
+    except BaseException as exc:  # genuine generation failure
+        with lifecycle.lock:
+            lifecycle.error = "%s: %s" % (type(exc).__name__, exc)
+            if lifecycle.disposition is None:
+                lifecycle.disposition = "FAILED"
     finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+        with lifecycle.lock:
+            if lifecycle.phase == "GENERATING":
+                lifecycle.phase = "PROVIDER_COMPLETE"
+        lifecycle.provider_complete.set()
+
+
+def _remove_welcome_note(lifecycle, history):
+    """Remove the resume note by exact VALUE identity (never a phrase parse)."""
+    if lifecycle.note_message is None or history is None:
+        return False
+    for index in range(len(history) - 1, -1, -1):
+        if history[index] == lifecycle.note_message:
+            del history[index]
+            return True
+    return False
+
+
+def _finish_welcome(lifecycle, disposition):
+    """Game-thread terminal: set disposition, quiescence, clear registry."""
+    from utils.capture.live_provider_call import clear_welcome_scope
+    with lifecycle.lock:
+        lifecycle.disposition = disposition
+        lifecycle.phase = "QUIESCENT"
+    clear_welcome_scope(lifecycle.scope)
+    with lifecycle.scope.lock:
+        lifecycle.scope.controls_open = False
+    lifecycle.scope.phase = "QUIESCENT"
+    lifecycle.scope.quiescent.set()
+    global _welcome_lifecycle
+    if _welcome_lifecycle is lifecycle:
+        _welcome_lifecycle = None
+
+
+def _apply_welcome(lifecycle):
+    """Game-thread handback: apply or discard the completed welcome."""
+    from utils.startup_handoff_state import (
+        is_kickoff_claim_still_active,
+        renew_kickoff_lease,
+        lock_kickoff_processing,
+        mark_kickoff_done,
+        mark_kickoff_failed,
+        try_consume_forced_recovery,
+        load_startup_state,
+    )
+    with lifecycle.lock:
+        if lifecycle.phase == "QUIESCENT":
+            return
+        lifecycle.phase = "APPLYING"
+        disposition = lifecycle.disposition
+        content = lifecycle.slot
+    history = (
+        lifecycle.live_history
+        if lifecycle.live_history is not None
+        else lifecycle.frozen_history
+    )
+
+    if disposition in {"SUPERSEDED"}:
+        _remove_welcome_note(lifecycle, history)
+        try:
+            save_conversation_history(history)
+        except Exception:
+            pass
+        mark_kickoff_done(lifecycle.startup_attempt_id, lifecycle.lease_owner)
+        emit_startup_marker(
+            "startup_kickoff_done",
+            source="welcome_worker",
+            result="superseded_discarded",
+            startup_attempt_id=lifecycle.startup_attempt_id,
+            lease_owner=lifecycle.lease_owner,
+        )
+        _finish_welcome(lifecycle, "SUPERSEDED")
+        return
+
+    if disposition == "FAILED" or content is None:
+        # First genuine failure: PRESERVE the note (it is the instruction the
+        # one authorized forced recovery retries); final exhaustion removes it.
+        mark_kickoff_failed(
+            lifecycle.startup_attempt_id, lifecycle.lease_owner,
+            lifecycle.error or "welcome_generation_failed",
+        )
+        current = load_startup_state()
+        if (
+            not lifecycle.recovery_used
+            and current.get("status") == "kickoff_failed"
+            and try_consume_forced_recovery(
+                current.get("startup_attempt_id", "")
+            ).get("status") == "consumed"
+        ):
+            emit_startup_marker(
+                "startup_watchdog_forced_kickoff",
+                source="welcome_worker",
+                result="forcing_recovery",
+                startup_attempt_id=lifecycle.startup_attempt_id,
+                lease_owner=lifecycle.lease_owner,
+            )
+            _finish_welcome(lifecycle, "FAILED")
+            _spawn_welcome_worker(
+                history,
+                lifecycle.note_message,
+                lifecycle.party_tracker_data,
+                lifecycle.location_data,
+                recovery=True,
+            )
+            return
+        _remove_welcome_note(lifecycle, history)
+        try:
+            save_conversation_history(history)
+        except Exception:
+            pass
+        warning(
+            "INITIALIZATION: Startup welcome failed after recovery: %s"
+            % (lifecycle.error,),
+            category="startup",
+        )
+        _finish_welcome(lifecycle, "FAILED")
+        return
+
+    # Value fence (r9 section 5): identity + complete-value comparison only.
+    fence_ok = is_kickoff_claim_still_active(
+        lifecycle.startup_attempt_id, lifecycle.lease_owner
+    )
+    if fence_ok:
+        fence_ok = history == lifecycle.accepted_snapshot
+    if fence_ok and lifecycle.location_id:
+        try:
+            _pt = load_json_file("party_tracker.json") or {}
+            _loc = (_pt.get("worldConditions") or {}).get("currentLocationId")
+            fence_ok = str(_loc or "") == str(lifecycle.location_id)
+        except Exception:
+            fence_ok = False
+    if not fence_ok:
+        _remove_welcome_note(lifecycle, history)
+        try:
+            save_conversation_history(history)
+        except Exception:
+            pass
+        mark_kickoff_done(lifecycle.startup_attempt_id, lifecycle.lease_owner)
+        emit_startup_marker(
+            "startup_kickoff_done",
+            source="welcome_worker",
+            result="stale_discarded",
+            startup_attempt_id=lifecycle.startup_attempt_id,
+            lease_owner=lifecycle.lease_owner,
+        )
+        _finish_welcome(lifecycle, "STALE_DISCARDED")
+        return
+
+    renew_kickoff_lease(
+        lifecycle.startup_attempt_id, lifecycle.lease_owner, lease_seconds=900
+    )
+    lock_kickoff_processing(
+        lifecycle.startup_attempt_id, lifecycle.lease_owner, lease_seconds=3600
+    )
+    try:
+        process_result = process_ai_response(
+            content,
+            lifecycle.party_tracker_data,
+            lifecycle.location_data,
+            history,
+        )
+        (
+            process_result,
+            lifecycle.party_tracker_data,
+            lifecycle.location_data,
+            history,
+        ) = resolve_retryable_ai_result(
+            process_result,
+            lifecycle.party_tracker_data,
+            lifecycle.location_data,
+            history,
+        )
+        if (
+            isinstance(process_result, dict)
+            and (
+                process_result.get("retryable") is True
+                or process_result.get("status") == "error"
+            )
+        ):
+            raise RuntimeError(
+                "startup welcome processing pending: %s"
+                % process_result.get("status", "unknown")
+            )
+    except BaseException as exc:
+        mark_kickoff_failed(
+            lifecycle.startup_attempt_id, lifecycle.lease_owner, str(exc)
+        )
+        _remove_welcome_note(lifecycle, history)
+        try:
+            save_conversation_history(history)
+        except Exception:
+            pass
+        warning(
+            "INITIALIZATION: Startup welcome apply failed: %s" % (exc,),
+            category="startup",
+        )
+        _finish_welcome(lifecycle, "FAILED")
+        return
+    mark_kickoff_done(lifecycle.startup_attempt_id, lifecycle.lease_owner)
+    emit_startup_marker(
+        "startup_kickoff_done",
+        source="welcome_worker",
+        result="updated",
+        startup_attempt_id=lifecycle.startup_attempt_id,
+        lease_owner=lifecycle.lease_owner,
+    )
+    _welcome_status("")
+    _finish_welcome(lifecycle, "APPLIED")
+
+
+def service_welcome_lifecycle():
+    """Game-thread pump: runs on every 0.5s input poll (and loop points).
+
+    Renews the kickoff lease when structurally due while GENERATING and runs
+    the handback once the worker reports provider_complete. Safe no-op when
+    no welcome is pending.
+    """
+    lifecycle = _welcome_lifecycle
+    if lifecycle is None:
+        return
+    with lifecycle.lock:
+        if lifecycle.phase == "QUIESCENT":
+            return
+        generating = lifecycle.phase in {"CLAIMED", "GENERATING"}
+    if generating and not lifecycle.provider_complete.is_set():
+        now = time.monotonic()
+        if now >= lifecycle._next_lease_renew:
+            lifecycle._next_lease_renew = now + _WELCOME_LEASE_RENEW_SECONDS
+            try:
+                from utils.startup_handoff_state import renew_kickoff_lease
+                renew_kickoff_lease(
+                    lifecycle.startup_attempt_id,
+                    lifecycle.lease_owner,
+                    lease_seconds=180,
+                )
+            except Exception:
+                pass  # retryable next pump; never discards a live worker
+        return
+    if lifecycle.provider_complete.is_set():
+        with lifecycle.lock:
+            if lifecycle.phase in {"PROVIDER_COMPLETE"}:
+                lifecycle.phase = "APPLY_PENDING"
+            elif lifecycle.phase != "APPLY_PENDING":
+                return
+        _apply_welcome(lifecycle)
+
+
+def finalize_welcome_before_player_turn():
+    """Player acted: supersede a pending welcome and complete its handback
+    BEFORE the player's text is processed (CR-1 discard-before-process)."""
+    lifecycle = _welcome_lifecycle
+    if lifecycle is None:
+        return
+    if not lifecycle.is_terminal():
+        lifecycle.scope.request_supersession("player_acted")
+        # Bounded structurally: supersession is observed within the child
+        # poll interval and the child is reaped before the worker exits.
+        lifecycle.provider_complete.wait()
+        service_welcome_lifecycle()
+
+
+def _spawn_welcome_worker(conversation_history, note_message,
+                          party_tracker_data, location_data, recovery=False):
+    """Game thread: claim the kickoff lease and start the detached worker."""
+    from utils.capture.live_provider_call import (
+        LiveTurnScope,
+        register_welcome_scope,
+    )
+    from utils.startup_handoff_state import claim_kickoff_lease
+    claim = claim_kickoff_lease(source="welcome_worker")
+    if claim.get("status") != "claimed":
+        emit_startup_marker(
+            "startup_kickoff_skipped",
+            source="welcome_worker",
+            result=claim.get("status"),
+        )
+        return None
+    location_id = ""
+    try:
+        location_id = (
+            (party_tracker_data or {}).get("worldConditions") or {}
+        ).get("currentLocationId") or ""
+    except Exception:
+        location_id = ""
+    scope = LiveTurnScope()
+    register_welcome_scope(scope)
+    lifecycle = _WelcomeLifecycle(
+        scope=scope,
+        frozen_history=copy.deepcopy(conversation_history),
+        note_message=note_message,
+        party_tracker_data=party_tracker_data,
+        location_data=location_data,
+        startup_attempt_id=claim.get("startup_attempt_id"),
+        lease_owner=claim.get("lease_owner"),
+        location_id=location_id,
+    )
+    lifecycle.recovery_used = recovery
+    lifecycle.live_history = conversation_history
+    global _welcome_lifecycle
+    _welcome_lifecycle = lifecycle
+    with lifecycle.lock:
+        lifecycle.phase = "GENERATING"
+    worker = threading.Thread(
+        target=_welcome_worker_main,
+        args=(lifecycle,),
+        name="startup-welcome-worker",
+        daemon=False,
+    )
+    lifecycle.worker = worker
+    worker.start()
+    emit_startup_marker(
+        "startup_kickoff_attempted",
+        source="welcome_worker",
+        result="claimed",
+        startup_attempt_id=lifecycle.startup_attempt_id,
+        lease_owner=lifecycle.lease_owner,
+    )
+    return lifecycle
 
 
 def _run_startup_kickoff_once(
@@ -342,7 +726,10 @@ def _run_startup_kickoff_once(
         if precomputed_response is not None:
             initial_ai_response = precomputed_response
         else:
-            initial_ai_response = _run_get_ai_response_with_timeout(conversation_history, timeout_seconds=120)
+            # #214: no deadline. The synchronous kickoff (terminal
+            # limited-mode) runs the model to completion; web/headless use
+            # the off-thread welcome worker instead of this path.
+            initial_ai_response = get_ai_response(conversation_history)
 
         # Fence stale/expired workers before applying side effects.
         if not is_kickoff_claim_still_active(startup_attempt_id, lease_owner):
@@ -430,19 +817,6 @@ def _run_startup_kickoff_once(
             attempt_count=update_result.get("state", {}).get("attempt_count"),
         )
         return "done"
-    except FuturesTimeoutError:
-        fail_result = mark_kickoff_failed(startup_attempt_id, lease_owner, "kickoff_timeout")
-        emit_startup_marker(
-            "startup_kickoff_failed",
-            source=source,
-            result="timeout",
-            error_code="kickoff_timeout",
-            startup_attempt_id=startup_attempt_id,
-            state_version=fail_result.get("state", {}).get("state_version"),
-            lease_owner=lease_owner,
-            attempt_count=fail_result.get("state", {}).get("attempt_count"),
-        )
-        return "timeout"
     except Exception as exc:
         fail_result = mark_kickoff_failed(startup_attempt_id, lease_owner, str(exc))
         emit_startup_marker(
@@ -6655,6 +7029,11 @@ def main_game_loop():
             conversation_history, was_injected = check_and_inject_return_message(
                 conversation_history, is_combat_active=False,
                 location_note=resume_location_note)
+            resume_note_message = (
+                copy.deepcopy(conversation_history[-1])
+                if was_injected and conversation_history
+                else None
+            )
             if was_injected:
                 save_conversation_history(conversation_history)
                 # The leased kickoff generates from the fully reconciled and
@@ -6722,19 +7101,43 @@ def main_game_loop():
         # Old-format repair is intentionally deferred until the first real
         # prompt opens the cancellable player-turn scope. Startup must never
         # hide an unbounded provider call before Save/Load/Reset are reachable.
-        save_conversation_history(conversation_history)
+        # D-214-2: the startup save never blocks on a compression provider
+        # call; compression happens in the per-turn loop where it belongs.
+        save_conversation_history(conversation_history, allow_compression=False)
 
-        # Exactly-once kickoff with recovery; process precomputed return-response if present.
-        kickoff_result = run_startup_kickoff_with_recovery(
-            conversation_history,
-            party_tracker_data,
-            location_data,
-        )
-        if kickoff_result.get("status") != "done":
-            warning(
-                f"INITIALIZATION: Startup kickoff did not complete cleanly: {kickoff_result}",
-                category="startup",
+        # #214 D-214-1=B: on the queue-backed input surfaces (web + headless
+        # serve), the welcome generates OFF-THREAD so the main loop (and
+        # Save/Load/Reset) is interactive immediately; the game thread pumps
+        # the lifecycle from the input poll and applies the result when it
+        # arrives. Raw terminal (real stdin) keeps the synchronous kickoff
+        # (owner-approved limited-mode difference) with no deadline.
+        if hasattr(sys.stdin, "queue"):
+            # Run the first-iteration normalizers BEFORE freezing the fence
+            # snapshot so the loop-top truncate/dedup is a no-op against it
+            # (both are idempotent).
+            conversation_history = truncate_dm_notes(conversation_history)
+            conversation_history = remove_duplicate_messages(conversation_history)
+            save_conversation_history(conversation_history, allow_compression=False)
+            from core.managers.status_manager import set_input_poll_hook
+            set_input_poll_hook(service_welcome_lifecycle)
+            _spawn_welcome_worker(
+                conversation_history,
+                resume_note_message if not combat_was_resumed else None,
+                party_tracker_data,
+                location_data,
             )
+        else:
+            # Exactly-once synchronous kickoff (terminal limited-mode).
+            kickoff_result = run_startup_kickoff_with_recovery(
+                conversation_history,
+                party_tracker_data,
+                location_data,
+            )
+            if kickoff_result.get("status") != "done":
+                warning(
+                    f"INITIALIZATION: Startup kickoff did not complete cleanly: {kickoff_result}",
+                    category="startup",
+                )
 
     # Add safeguard against infinite loops in non-interactive environments
     empty_input_count = 0
@@ -6748,6 +7151,13 @@ def main_game_loop():
         print("[DEBUG] Top of main game loop iteration")
         conversation_history = truncate_dm_notes(conversation_history)
         conversation_history = remove_duplicate_messages(conversation_history)
+
+        # #214: keep the pending welcome bound to the loop's LIVE history
+        # object and service the lifecycle once per iteration (the input
+        # adapters also pump it on every 0.5s poll while parked).
+        if _welcome_lifecycle is not None:
+            _welcome_lifecycle.live_history = conversation_history
+            service_welcome_lifecycle()
 
         if needs_conversation_history_update:
             debug("STATE_CHANGE: Reloading conversation history from disk due to needs_conversation_history_update flag", category="conversation_management")
@@ -6859,8 +7269,13 @@ def main_game_loop():
         else:
             # Reset counter on valid input
             empty_input_count = 0
-    
-        party_tracker_data = load_json_file("party_tracker.json") 
+
+        # #214 CR-1: the player acted. A still-pending welcome is superseded
+        # and its handback (discard + note removal) completes BEFORE this
+        # input is processed, so two assistant turns can never interleave.
+        finalize_welcome_before_player_turn()
+
+        party_tracker_data = load_json_file("party_tracker.json")
 
         combat_recovery = _active_combat_recovery(party_tracker_data)
         if combat_recovery:

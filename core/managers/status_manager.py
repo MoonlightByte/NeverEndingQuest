@@ -149,8 +149,50 @@ class StatusManager:
         with self._lock:
             return self._is_processing
 
+    # --- Background startup-welcome channel (issue #214, D-214-4=A) -------
+    # A SEPARATE presentational status for the off-thread startup welcome,
+    # mirroring the compression-progress channel. It shows honest motion
+    # ("The DM is recalling your journey...") WITHOUT driving the global
+    # input-locking is_processing flag a foreground turn uses.
+
+    def set_welcome_callback(self, callback: Callable[[str], None]):
+        self._welcome_callback = callback
+
+    def emit_welcome_event(self, message: str):
+        callback = getattr(self, "_welcome_callback", None)
+        if callback:
+            try:
+                callback(message)
+            except Exception:
+                pass  # presentational only; never affects gameplay
+
 # Global status manager instance
 status_manager = StatusManager()
+
+# --- Input-poll lifecycle pump hook (issue #214) ---------------------------
+# The blocking input adapters (WebInput.readline / HeadlessInput.readline)
+# poll their queue every 0.5s ON THE GAME THREAD. Registering a pump here
+# lets the game thread service the off-thread welcome lifecycle (lease
+# renewal, handback apply/discard, quiescence) between polls without fake
+# player input. Absent hook = zero behavior change.
+_input_poll_hook = None
+
+
+def set_input_poll_hook(hook):
+    global _input_poll_hook
+    _input_poll_hook = hook
+
+
+def run_input_poll_hook():
+    hook = _input_poll_hook
+    if hook is None:
+        return
+    try:
+        hook()
+    except Exception:
+        # The pump must never break the input loop; failures surface through
+        # the lifecycle's own terminal handling, not the adapter.
+        pass
 
 # Convenience functions for common status updates
 def status_processing_ai():
