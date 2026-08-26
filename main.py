@@ -422,10 +422,22 @@ def _apply_welcome(lifecycle):
         try_consume_forced_recovery,
         load_startup_state,
     )
+    # Completion-boundary reconcile: the GAME THREAD is the acceptance
+    # authority, not worker exception timing. A supersession that landed
+    # after the worker stored its result (worker already exited, so it can
+    # never observe LiveProviderSuperseded) must still discard the slot -
+    # unless the mutation already ran (a post-mutation pending_receipt).
+    scope_superseded = lifecycle.scope.is_superseded()
     with lifecycle.lock:
         if lifecycle.phase == "QUIESCENT":
             return
         lifecycle.phase = "APPLYING"
+        if (
+            scope_superseded
+            and lifecycle.disposition is None
+            and lifecycle.pending_receipt is None
+        ):
+            lifecycle.disposition = "SUPERSEDED"
         disposition = lifecycle.disposition
         content = lifecycle.slot
         pending_receipt = lifecycle.pending_receipt

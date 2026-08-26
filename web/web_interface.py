@@ -2732,7 +2732,14 @@ def handle_action(data):
                         "save:%s:%s:%s" % (session_id, description, save_mode),
                     )
                     if followup is None:
-                        complete_welcome_save(execute_welcome_save())
+                        # No authoritative queue accepted it: honest retry -
+                        # the retry lands on the plain no-welcome path.
+                        emit('error', {
+                            'message': (
+                                'The welcome-back narration just completed. '
+                                'Please retry the save.'
+                            )
+                        })
                 return
             success, message = manager.create_save_game(description, save_mode)
             if success:
@@ -2783,7 +2790,11 @@ def handle_action(data):
                         )
                     })
                     return
-                if not operation['accepted']:
+                if not operation['accepted'] and operation['kind'] != 'player_acted':
+                    # player_acted only cancels the welcome - it is NOT a
+                    # committed destructive claim; Load stays reachable
+                    # (#193: Load is never refused). Real destructive
+                    # conflicts (restore/reset) still arbitrate first-wins.
                     emit('error', {
                         'message': (
                             'Another lifecycle operation is already pending: '
@@ -2885,7 +2896,8 @@ def handle_action(data):
                         )
                     })
                     return
-                if not operation['accepted']:
+                if not operation['accepted'] and operation['kind'] != 'player_acted':
+                    # Same rule as Load: player_acted is welcome-cancel only.
                     emit('error', {
                         'message': (
                             'Another lifecycle operation is already pending: '

@@ -533,7 +533,10 @@ class HeadlessSession:
                             command_id,
                         )
                         if followup is None:
-                            complete_welcome_save(execute_welcome_save())
+                            # No authoritative queue accepted it: honest
+                            # retry (lands on the plain no-welcome path).
+                            result(False, error="the welcome-back narration "
+                                                "just completed; retry save")
                     return
                 ok, message = manager.create_save_game(
                     description=args.get("description", ""),
@@ -595,7 +598,13 @@ class HeadlessSession:
                         result(False, error="the welcome-back narration just "
                                             "completed; retry restore")
                         return
-                    if not operation.get("accepted"):
+                    if (
+                        not operation.get("accepted")
+                        and operation.get("kind") != "player_acted"
+                    ):
+                        # player_acted only cancels the welcome - it is NOT
+                        # a committed destructive claim; restore stays
+                        # reachable (#193: Load is never refused).
                         result(
                             False,
                             error=(
