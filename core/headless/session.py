@@ -526,8 +526,10 @@ class HeadlessSession:
                             command_id,
                         )
                     if queued is None:
-                        result(False, error="the welcome-back narration "
-                                            "just completed; retry save")
+                        # Authoritative state says the welcome is gone:
+                        # route the SAME command through the existing
+                        # no-welcome contract by re-dispatch.
+                        self.handle_command(command)
                         return
                     # Acceptance only once a queue holds the record.
                     self.writer.emit(
@@ -615,8 +617,11 @@ class HeadlessSession:
                         operation_id=str(command_id),
                     )
                     if claim["status"] == "closed":
-                        result(False, error="the welcome-back narration just "
-                                            "completed; retry restore")
+                        # Closed before the claim: no welcome remains.
+                        # restore is NEVER refused (#193) - re-dispatch the
+                        # SAME command through the existing foreground/idle
+                        # contract; never mutate against the stale scope.
+                        self.handle_command(command)
                         return
                     if claim["status"] == "conflict":
                         result(

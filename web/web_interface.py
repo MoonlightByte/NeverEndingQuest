@@ -2726,13 +2726,10 @@ def handle_action(data):
                         "save:%s:%s:%s" % (session_id, description, save_mode),
                     )
                 if queued_id is None:
-                    emit('error', {
-                        'message': (
-                            'The welcome-back narration just completed. '
-                            'Please retry the save.'
-                        )
-                    })
-                    return
+                    # Authoritative state says the welcome is gone: route
+                    # the SAME request through the existing no-welcome
+                    # contract (re-dispatch re-evaluates every scope).
+                    return handle_action(data)
                 # Acceptance is emitted only once a queue holds the record -
                 # never an accepted-then-retry contradiction.
                 emit('system_message', {
@@ -2807,13 +2804,12 @@ def handle_action(data):
                     execute_welcome_restore, complete_welcome_restore,
                 )
                 if claim['status'] == 'closed':
-                    emit('error', {
-                        'message': (
-                            'The welcome-back narration just completed. '
-                            'Please retry the load.'
-                        )
-                    })
-                    return
+                    # Closed before the claim: no welcome remains. Load is
+                    # NEVER refused (#193) - route the SAME request through
+                    # the existing foreground/idle contract by re-dispatch;
+                    # never execute against the stale scope, never ask the
+                    # player to resubmit.
+                    return handle_action(data)
                 if claim['status'] == 'conflict':
                     emit('error', {
                         'message': (
@@ -2904,13 +2900,9 @@ def handle_action(data):
                     execute_welcome_reset, complete_welcome_reset,
                 )
                 if claim['status'] == 'closed':
-                    emit('error', {
-                        'message': (
-                            'The welcome-back narration just completed. '
-                            'Please retry the reset.'
-                        )
-                    })
-                    return
+                    # Same rule as Load: re-dispatch through the existing
+                    # no-welcome contract.
+                    return handle_action(data)
                 if claim['status'] == 'conflict':
                     emit('error', {
                         'message': (
