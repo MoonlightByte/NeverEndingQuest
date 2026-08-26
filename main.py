@@ -513,12 +513,37 @@ def _apply_welcome(lifecycle):
         _finish_welcome(lifecycle, "STALE_DISCARDED")
         return
 
-    renew_kickoff_lease(
+    # Same checked transition contract as the synchronous path: mutation may
+    # begin only after BOTH the lease renewal and the processing claim
+    # CAS-succeed; anything else is a non-mutating stale discard.
+    lease_renew = renew_kickoff_lease(
         lifecycle.startup_attempt_id, lifecycle.lease_owner, lease_seconds=900
     )
-    lock_kickoff_processing(
-        lifecycle.startup_attempt_id, lifecycle.lease_owner, lease_seconds=3600
-    )
+    processing_lock = {"status": "not_attempted"}
+    if lease_renew.get("status") == "updated":
+        processing_lock = lock_kickoff_processing(
+            lifecycle.startup_attempt_id, lifecycle.lease_owner,
+            lease_seconds=3600,
+        )
+    if processing_lock.get("status") != "updated":
+        _remove_welcome_note(lifecycle, history)
+        try:
+            save_conversation_history(history)
+        except Exception:
+            pass
+        emit_startup_marker(
+            "startup_kickoff_stale_discarded",
+            source="welcome_worker",
+            result=(
+                lease_renew.get("status", "stale")
+                if lease_renew.get("status") != "updated"
+                else processing_lock.get("status", "stale")
+            ),
+            startup_attempt_id=lifecycle.startup_attempt_id,
+            lease_owner=lifecycle.lease_owner,
+        )
+        _finish_welcome(lifecycle, "STALE_DISCARDED")
+        return
     try:
         process_result = process_ai_response(
             content,
@@ -563,7 +588,23 @@ def _apply_welcome(lifecycle):
         )
         _finish_welcome(lifecycle, "FAILED")
         return
-    mark_kickoff_done(lifecycle.startup_attempt_id, lifecycle.lease_owner)
+    update_result = mark_kickoff_done(
+        lifecycle.startup_attempt_id, lifecycle.lease_owner
+    )
+    if update_result.get("status") != "updated":
+        # Mutation succeeded but the completion receipt CAS did not: never
+        # report clean APPLIED; surface the true status and leave the state
+        # file to the existing startup receipt reconciler, exactly like the
+        # synchronous path's post-mutation stale discard.
+        emit_startup_marker(
+            "startup_kickoff_stale_discarded",
+            source="welcome_worker",
+            result=update_result.get("status", "stale"),
+            startup_attempt_id=lifecycle.startup_attempt_id,
+            lease_owner=lifecycle.lease_owner,
+        )
+        _finish_welcome(lifecycle, "STALE_DISCARDED")
+        return
     emit_startup_marker(
         "startup_kickoff_done",
         source="welcome_worker",
@@ -623,6 +664,34 @@ def finalize_welcome_before_player_turn():
         # poll interval and the child is reaped before the worker exits.
         lifecycle.provider_complete.wait()
         service_welcome_lifecycle()
+
+
+def shutdown_welcome_lifecycle(reason="engine_stop"):
+    """Engine-teardown terminal (r9 section 3): supersede a pending welcome,
+    run the handback directly (the input-poll pump is gone once the loop has
+    exited), and reap the non-daemon worker. Safe no-op when none pending.
+    A finished-but-unapplied welcome is DISCARDED here, never applied, and
+    teardown never spawns a recovery worker."""
+    lifecycle = _welcome_lifecycle
+    if lifecycle is None:
+        return
+    try:
+        if not lifecycle.is_terminal():
+            with lifecycle.lock:
+                lifecycle.recovery_used = True
+            lifecycle.scope.request_supersession(reason)
+            lifecycle.provider_complete.wait()
+            with lifecycle.lock:
+                if lifecycle.disposition is None:
+                    lifecycle.disposition = "SUPERSEDED"
+                if lifecycle.phase == "PROVIDER_COMPLETE":
+                    lifecycle.phase = "APPLY_PENDING"
+            _apply_welcome(lifecycle)
+        worker = lifecycle.worker
+        if worker is not None and worker.is_alive():
+            worker.join()
+    except Exception:
+        pass
 
 
 def _spawn_welcome_worker(conversation_history, note_message,

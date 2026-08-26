@@ -170,6 +170,10 @@ class HeadlessSession:
         # load-bearing for the status callback).
         set_status_callback(self._on_status)
         set_player_output_sink(self._on_player_output)
+        # web.web_interface (pulled in by the main import chain) claims the
+        # welcome callback at import time too; reclaim it or #214 welcome
+        # liveness would flow to Socket.IO instead of this NDJSON stream.
+        status_manager.set_welcome_callback(self._on_welcome)
         self._dm_main = dm_main
 
         self.writer.emit(
@@ -206,6 +210,13 @@ class HeadlessSession:
             if self._quitting:
                 reason = "player_exit"
         finally:
+            try:
+                shutdown = getattr(
+                    self._dm_main, "shutdown_welcome_lifecycle", None)
+                if shutdown is not None:
+                    shutdown("engine_stop")
+            except Exception:
+                pass
             try:
                 from utils.capture.live_provider_call import abort_live_turn_scope
 
@@ -362,9 +373,26 @@ class HeadlessSession:
 
     def request_quit(self):
         from utils.capture.live_provider_call import (
+            get_active_welcome_scope,
             get_live_turn_scope,
             request_live_turn_supersession,
         )
+
+        # #214: a background startup welcome must quiesce BEFORE the quit
+        # intent is latched. The game thread is parked at the prompt, and its
+        # readline pump is the only path that services the welcome discard
+        # handback -- but that pump stops the moment self._quitting is set,
+        # so waiting after latching would deadlock. The supersession lets the
+        # child exit instead of burning provider work past a player quit.
+        welcome_scope = get_active_welcome_scope()
+        if welcome_scope is not None:
+            welcome_scope.request_supersession("quit")
+            self.writer.emit(
+                "operation",
+                name="quit",
+                status="accepted_deferred",
+            )
+            welcome_scope.quiescent.wait()
 
         # Preserve the historical terminal reason even when a live turn must
         # quiesce first. The engine thread may finish its superseded turn while
@@ -405,9 +433,16 @@ class HeadlessSession:
             self.request_quit()
             return
 
-        from utils.capture.live_provider_call import get_live_turn_scope
+        from utils.capture.live_provider_call import (
+            get_active_welcome_scope,
+            get_live_turn_scope,
+        )
 
         live_scope = get_live_turn_scope()
+        # #214: the detached startup welcome is deliberately NOT the live
+        # turn scope; persistence commands must still coordinate with its
+        # game-thread handback (the readline pump) instead of overlapping it.
+        welcome_scope = get_active_welcome_scope()
         busy_persistence = (
             name == "delete_save"
             or (name in ("save", "restore") and live_scope is None)
@@ -454,6 +489,18 @@ class HeadlessSession:
                         live_scope.quiescent.wait()
                         complete_save(execute_save())
                     return
+                if welcome_scope is not None:
+                    # #214: Save never cancels a healthy background welcome -
+                    # it waits for the game-thread handback (apply or
+                    # discard) to reach quiescence, then executes; never
+                    # concurrent with welcome persistence.
+                    self.writer.emit(
+                        "operation",
+                        id=command_id,
+                        name="save",
+                        status="accepted_deferred",
+                    )
+                    welcome_scope.quiescent.wait()
                 ok, message = manager.create_save_game(
                     description=args.get("description", ""),
                     save_mode=args.get("save_mode", "essential"))
@@ -499,6 +546,20 @@ class HeadlessSession:
                         operation_id=operation["operation_id"],
                     )
                     live_scope.quiescent.wait()
+                if welcome_scope is not None:
+                    # #214: Load supersedes a pending background welcome,
+                    # then waits for the game-thread discard handback (child
+                    # reaped, note removed, quiescence set) BEFORE mutating
+                    # state - no torn write, no orphaned worker applying
+                    # against the restored campaign.
+                    welcome_scope.request_supersession("restore")
+                    self.writer.emit(
+                        "operation",
+                        id=command_id,
+                        name="restore",
+                        status="accepted_deferred",
+                    )
+                    welcome_scope.quiescent.wait()
                 ok, message = manager.restore_save_game(folder)
                 if not ok:
                     result(False, error=message)

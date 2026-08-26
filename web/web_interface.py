@@ -842,6 +842,14 @@ class WebInput:
                 # Convert to string if needed
                 return str(user_input) + '\n'
             except queue.Empty:
+                # #214: the game thread parks here between turns; this pump
+                # services the off-thread startup-welcome lifecycle (lease
+                # renewal, handback apply/discard) without fake player input.
+                try:
+                    from core.managers.status_manager import run_input_poll_hook
+                    run_input_poll_hook()
+                except Exception:
+                    pass
                 continue
             except (BrokenPipeError, OSError, IOError, EOFError):
                 # Genuine end-of-input: return '' so input() raises EOFError and
@@ -3788,6 +3796,17 @@ def handle_user_exit():
                 'operation_id': operation['operation_id'],
             })
             live_scope.quiescent.wait()
+        from utils.capture.live_provider_call import get_active_welcome_scope
+        welcome_scope = get_active_welcome_scope()
+        if welcome_scope is not None:
+            # #214: player exit must not leave welcome work attached to the
+            # exited player - supersede, then wait for the game-thread
+            # discard handback (readline pump) to reach quiescence.
+            welcome_scope.request_supersession("web_exit")
+            emit('system_message', {
+                'content': 'Exit accepted. The welcome-back narration is stopping safely.',
+            })
+            welcome_scope.quiescent.wait()
         emit('exit_acknowledged', {'message': 'Exit acknowledged'})
         # Note: We do NOT shut down the server here
         # Multiple users might be connected, and server shutdown is an admin function
@@ -4469,6 +4488,12 @@ def run_game_loop():
         except Exception:
             pass
     finally:
+        try:
+            # #214 r9 section 3: teardown supersedes + reaps a pending
+            # background welcome (discard, never apply) before scope abort.
+            dm_main.shutdown_welcome_lifecycle("engine_stop")
+        except Exception:
+            pass
         try:
             from utils.capture.live_provider_call import abort_live_turn_scope
 
