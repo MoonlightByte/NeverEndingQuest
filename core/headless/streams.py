@@ -131,6 +131,14 @@ class HeadlessInput:
             try:
                 user_input = self.queue.get(timeout=0.5)
             except queue_module.Empty:
+                # #214: the game thread parks here between turns; this pump
+                # services the off-thread startup-welcome lifecycle (lease
+                # renewal, handback apply/discard) without fake player input.
+                try:
+                    from core.managers.status_manager import run_input_poll_hook
+                    run_input_poll_hook()
+                except Exception:
+                    pass
                 continue
             except Exception:
                 return ""

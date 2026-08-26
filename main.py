@@ -386,6 +386,7 @@ def _remove_welcome_note(lifecycle, history):
 def _finish_welcome(lifecycle, disposition):
     """Game-thread terminal: set disposition, quiescence, clear registry."""
     from utils.capture.live_provider_call import clear_welcome_scope
+    _welcome_status("")  # clear the presentational channel on every terminal
     with lifecycle.lock:
         lifecycle.disposition = disposition
         lifecycle.phase = "QUIESCENT"
@@ -571,7 +572,6 @@ def _apply_welcome(lifecycle):
         startup_attempt_id=lifecycle.startup_attempt_id,
         lease_owner=lifecycle.lease_owner,
     )
-    _welcome_status("")
     _finish_welcome(lifecycle, "APPLIED")
 
 
@@ -7147,6 +7147,10 @@ def main_game_loop():
     if combat_was_resumed:
         print("[DEBUG] SUCCESS: Main loop reached after combat resumption!")
         debug("SUCCESS: Main game loop reached after combat resumption", category="session_management")
+    # #214: the loop is about to read input - the UI unlocks NOW, even while
+    # a background welcome is still generating (D-214-1=B). The web layer maps
+    # this marker to startup_status:ready + game_started.
+    emit_startup_marker("startup_loop_ready", source="main_loop", result="ready")
     while True:
         print("[DEBUG] Top of main game loop iteration")
         conversation_history = truncate_dm_notes(conversation_history)

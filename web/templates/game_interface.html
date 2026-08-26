@@ -5832,6 +5832,19 @@
             // This single call now handles all highlighting logic.
             highlightCurrentTurn();
         });
+
+        // #214 D-214-4=A: background startup-welcome liveness. Honest motion
+        // in the placeholder WITHOUT disabling input - the player can type,
+        // Save, Load, or Reset at any time while the welcome generates.
+        socket.on('welcome_progress', (data) => {
+            const input = document.getElementById('user-input');
+            if (!input || input.disabled) return; // never fight a real turn's lock
+            if (data && data.message) {
+                input.placeholder = data.message + " (you can act anytime)";
+            } else {
+                input.placeholder = "Enter your command...";
+            }
+        });
         
         // User interaction functions
         function startGame() {

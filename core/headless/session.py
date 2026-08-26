@@ -128,9 +128,10 @@ class HeadlessSession:
         # Callbacks are transport-agnostic seams; register before the engine
         # import so nothing races them.
         from core.managers.status_manager import (
-            set_status_callback, set_compression_callback)
+            set_status_callback, set_compression_callback, status_manager)
         set_status_callback(self._on_status)
         set_compression_callback(self._on_compression)
+        status_manager.set_welcome_callback(self._on_welcome)
         from web.shared_state import set_player_output_sink
         set_player_output_sink(self._on_player_output)
 
@@ -271,6 +272,12 @@ class HeadlessSession:
         except Exception:
             payload = {"data": str(data)}
         self.writer.emit("compression", event=event_type, **payload)
+
+    def _on_welcome(self, message):
+        # #214 D-214-4=A: background startup-welcome liveness. A separate
+        # additive NDJSON event type - deliberately NOT a "status" event, so
+        # harnesses never read it as input-locking processing state.
+        self.writer.emit("welcome_progress", message=str(message))
 
     def _on_player_output(self, payload):
         # Structured sink messages (all DM narration since P2, plus module

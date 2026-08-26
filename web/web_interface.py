@@ -481,6 +481,18 @@ def emit_compression_event(event_type, data):
 
 set_compression_callback(emit_compression_event)
 
+def emit_welcome_progress(message):
+    """#214 D-214-4=A: background startup-welcome liveness. A SEPARATE
+    presentational channel - never status_update{is_processing}, so it can
+    never lock the command input."""
+    socketio.emit('welcome_progress', {'message': message})
+
+try:
+    from core.managers.status_manager import status_manager as _status_manager_instance
+    _status_manager_instance.set_welcome_callback(emit_welcome_progress)
+except Exception:
+    pass
+
 def _is_operational_diagnostic(clean_line):
     """E2E gate 2a: operational diagnostics that must reach the Debug tab, not be
     swallowed as DM narration. The DM-section terminators only recognize UPPERCASE
@@ -587,7 +599,11 @@ class WebOutputCapture:
                         }:
                             startup_handoff_active = True
                             socketio.emit("startup_status", {"status": "in_progress", "phase": phase})
-                        if phase == "startup_kickoff_done":
+                        if phase in {"startup_kickoff_done", "startup_loop_ready"}:
+                            # #214: startup_loop_ready fires when the game
+                            # loop reaches its input read - input unlocks
+                            # IMMEDIATELY while a background welcome may still
+                            # be generating (D-214-1=B).
                             startup_handoff_active = False
                             socketio.emit("startup_status", {"status": "ready", "phase": phase})
                             # Marker is authoritative - emit immediately when detected
@@ -2565,6 +2581,16 @@ def handle_connect():
 def handle_user_input(data):
     """Handle input from the user"""
     user_input = data.get('input', '')
+    # #214 CR-1: supersede a pending background welcome AT THE ENQUEUE
+    # BOUNDARY, before the game thread can pop this text - the game thread
+    # then completes the discard handback before processing the input.
+    try:
+        from utils.capture.live_provider_call import get_active_welcome_scope
+        welcome_scope = get_active_welcome_scope()
+        if welcome_scope is not None:
+            welcome_scope.request_supersession("player_acted")
+    except Exception:
+        pass
     # Commit the player-visible ledger entry before releasing the command to
     # the game thread, so a fast local response cannot appear above its input.
     message = {
@@ -2580,16 +2606,26 @@ def handle_action(data):
     """Handle direct action requests from the UI (save, load, reset)."""
     action_type = data.get('action')
     parameters = data.get('parameters', {})
-    from utils.capture.live_provider_call import get_live_turn_scope
+    from utils.capture.live_provider_call import (
+        get_live_turn_scope,
+        get_active_welcome_scope,
+    )
 
     live_scope = get_live_turn_scope()
+    # #214: a background startup welcome must never make the gate refuse
+    # Save/Load/Reset (effective scope = player-turn scope OR welcome scope).
+    welcome_scope = get_active_welcome_scope()
     debug(f"WEB_REQUEST: Received direct action from client: {action_type}", category="web_interface")
 
     if action_type in {'saveGame', 'restoreGame', 'nuclearReset'}:
         try:
             from core.managers.status_manager import status_manager
 
-            if status_manager.is_processing() and live_scope is None:
+            if (
+                status_manager.is_processing()
+                and live_scope is None
+                and welcome_scope is None
+            ):
                 emit('error', {
                     'message': (
                         'The game is finishing the current action. '
@@ -2648,6 +2684,23 @@ def handle_action(data):
                     live_scope.quiescent.wait()
                     complete_save(execute_save())
                 return
+            if welcome_scope is not None:
+                # #214: Save never cancels a healthy background welcome - it
+                # queues and executes at the game-thread safe boundary after
+                # the welcome applies or is discarded (never concurrent).
+                emit('system_message', {
+                    'content': (
+                        'Save accepted and queued until the welcome-back '
+                        'narration reaches a safe boundary.'
+                    )
+                })
+                welcome_scope.quiescent.wait()
+                success, message = manager.create_save_game(description, save_mode)
+                if success:
+                    emit('system_message', {'content': f"Game saved: {message}"})
+                else:
+                    emit('error', {'message': f"Save failed: {message}"})
+                return
             success, message = manager.create_save_game(description, save_mode)
             if success:
                 emit('system_message', {'content': f"Game saved: {message}"})
@@ -2680,6 +2733,16 @@ def handle_action(data):
                     'operation_id': operation['operation_id'],
                 })
                 live_scope.quiescent.wait()
+            if welcome_scope is not None:
+                # #214: Load supersedes a pending background welcome, then
+                # waits for the game thread to finish the discard handback
+                # (child reaped, note removed, quiescence set) BEFORE any
+                # mutation/os._exit - no torn write, no orphaned child.
+                welcome_scope.request_supersession("restore")
+                emit('system_message', {
+                    'content': 'Load accepted. The welcome-back narration is stopping safely first.',
+                })
+                welcome_scope.quiescent.wait()
             success, message = manager.restore_save_game(save_folder)
             if success:
                 emit('restore_complete', {'message': 'Game restored successfully. Server restarting...'})
@@ -2725,6 +2788,14 @@ def handle_action(data):
                     'operation_id': operation['operation_id'],
                 })
                 live_scope.quiescent.wait()
+            if welcome_scope is not None:
+                # #214: same discipline as Load - supersede, then wait for the
+                # game-thread handback to reach quiescence before mutating.
+                welcome_scope.request_supersession("reset")
+                emit('system_message', {
+                    'content': 'Reset accepted. The welcome-back narration is stopping safely first.',
+                })
+                welcome_scope.quiescent.wait()
             reset_campaign.perform_reset_logic()
             # Clear the message cache on campaign reset
             global message_cache
