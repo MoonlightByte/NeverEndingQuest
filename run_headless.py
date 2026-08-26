@@ -9,7 +9,7 @@ Primary agentic mode (NDJSON protocol on stdio; see docs/HEADLESS_MODE.md):
     python run_headless.py serve [--game-dir DIR] [--debug]
                                  [--module NAME --character FILE]
 
-CI-style scripted smoke (feeds inputs, enforces a per-turn silence timeout):
+CI-style scripted smoke (feeds inputs, reports prolonged per-turn silence):
     python run_headless.py script inputs.txt [--max-turns N]
                                  [--timeout-per-turn SECONDS] [...]
 
@@ -19,7 +19,7 @@ No-engine utilities:
     python run_headless.py saves    {list|create|restore|delete} [...]
 
 Exit codes: 0 clean (player_exit / engine_stop / restart), 2 engine error,
-3 per-turn timeout (script mode), 4 bootstrap/usage error.
+4 bootstrap/usage error. A live operation is never ended for silence alone.
 """
 
 import argparse
@@ -135,14 +135,15 @@ class ScriptDriver:
         while not done.wait(0.5):
             if timeout_per_turn and \
                     time.time() - last_activity[0] > timeout_per_turn:
-                # emit_exit dedupes: a late engine exit (e.g. the hung
-                # provider call finally failing during teardown) will not
-                # produce a second, contradictory exit event.
-                self._session.emit_exit(
-                    "error",
-                    "no engine activity for %ss (per-turn timeout)"
-                    % timeout_per_turn)
-                return EXIT_TIMEOUT
+                self._session.writer.emit(
+                    "status",
+                    content=(
+                        "The scripted headless turn is still running after "
+                        "%ss of silence." % timeout_per_turn
+                    ),
+                    is_processing=True,
+                    source="script_wait",
+                )
         return None
 
 
@@ -387,7 +388,7 @@ def build_parser():
     script.add_argument("inputs", help="text file: one player input per line")
     script.add_argument("--max-turns", type=int, default=50)
     script.add_argument("--timeout-per-turn", type=float, default=300.0,
-                        help="max seconds of engine silence before aborting")
+                        help="seconds of engine silence between wait notices")
     add_common(script)
     script.set_defaults(func=cmd_script)
 

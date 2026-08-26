@@ -1142,6 +1142,19 @@ When the Combat Commitment Point is reached (excluding historical records), you 
 ### Combat Initialization:
 - When a combat situation arises, use the "createEncounter" action to initialize the combat.
 - Specify the player character, any NPCs, and the monsters involved in the encounter.
+- Include a complete `scene` proposal. Participant keys are positional and exact:
+  `player:0`, then `npc:0`, `npc:1`, ... in `npcs` order, and `monster:0`,
+  `monster:1`, ... in `monsters` order. Never use a name as a participant key.
+- Every listed participant appears exactly once with `participation`
+  (`active`, `observer`, `hidden`, `unaware`, or `departed`), boolean
+  `initiativeEligible`, `persistence` (`canonical_character` for the player and
+  canonical NPCs; `encounter` for encounter monsters), and `controller`
+  (`human` or `actor_agent`). Presence, relationship, controller, and initiative
+  eligibility are separate facts; never infer one from another.
+- `scene.relations` uses exact `subjectKey`, `objectKey`, and a concise semantic
+  `disposition`. `scene.objectives` uses `ownerKeys`, `kind`, `targetKeys`, and
+  `status`. `scene.disclosureGrants` uses `observerKey` and exact observable
+  `factPaths`; omit private facts rather than exposing them.
 - After sending this action, wait for the combat encounter to be created before proceeding with combat narration.
 - Once the encounter is created, the combat will be managed by a separate system. Your role will be to narrate the events and outcomes of the combat based on the information provided by the combat system.
 
@@ -1157,7 +1170,16 @@ Combat Summary:
           "player": "<player_name>",
           "npcs": ["<npc1>", "<npc2>", ...],
           "monsters": ["<monster1>", "<monster2>", ...],
-          "encounterSummary": "<brief_description_of_combat_situation>"
+          "encounterSummary": "<brief_description_of_combat_situation>",
+          "scene": {
+            "participants": [
+              {"participantKey":"player:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"human"},
+              {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"persistence":"encounter","controller":"actor_agent"}
+            ],
+            "relations": [{"subjectKey":"monster:0","objectKey":"player:0","disposition":"hostile"}],
+            "objectives": [{"ownerKeys":["monster:0"],"kind":"drive_off","targetKeys":["player:0"],"status":"active"}],
+            "disclosureGrants": []
+          }
         }
       }
     ]
@@ -1175,7 +1197,19 @@ Sample 1 - The party has entered combat with an orc in the hidden entrance to th
         "player": "Norn",
         "npcs": ["Gilly", "Elara", "Thalor"],
         "monsters": ["Orc"],
-        "encounterSummary": "An orc has appeared, ready to attack, as the party stands before the hidden entrance to the Dwarven Complex."
+        "encounterSummary": "An orc has appeared, ready to attack, as the party stands before the hidden entrance to the Dwarven Complex.",
+        "scene": {
+          "participants": [
+            {"participantKey":"player:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"human"},
+            {"participantKey":"npc:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
+            {"participantKey":"npc:1","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
+            {"participantKey":"npc:2","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
+            {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"persistence":"encounter","controller":"actor_agent"}
+          ],
+          "relations": [{"subjectKey":"monster:0","objectKey":"player:0","disposition":"hostile"}],
+          "objectives": [{"ownerKeys":["monster:0"],"kind":"drive_off","targetKeys":["player:0"],"status":"active"}],
+          "disclosureGrants": []
+        }
       }
     }
   ]

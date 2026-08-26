@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 import os
 import re
+import uuid
 
 from core.combat import (
     apply_resolution,
@@ -31,6 +32,9 @@ from core.managers.combat_state import (
     recovery_action,
     stage_turn_events,
     valid_pending_delivery,
+    combat_provenance,
+    combatant_by_id,
+    resolve_creature_controller,
 )
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
@@ -177,6 +181,113 @@ def _character_fingerprints(
     return fingerprints
 
 
+def _character_value_preconditions(
+    character_paths,
+    character_preconditions,
+    character_postconditions,
+):
+    """Record only represented changed values for the typed combat route."""
+    before = character_preconditions or {}
+    after = character_postconditions or {}
+    records = []
+    mutation_index = 0
+    for name in sorted((character_paths or {})):
+        if not isinstance(before.get(name), dict) or not isinstance(after.get(name), dict):
+            raise CombatTransactionError(
+                "Combat value preconditions do not cover the canonical roster"
+            )
+        for field in sorted(set(before[name]).union(after[name])):
+            before_exists = field in before[name]
+            after_exists = field in after[name]
+            before_value = deepcopy(before[name].get(field)) if before_exists else None
+            after_value = deepcopy(after[name].get(field)) if after_exists else None
+            if before_exists == after_exists and before_value == after_value:
+                continue
+            records.append(
+                {
+                    "mutationIndex": mutation_index,
+                    "recordRef": str(character_paths[name]),
+                    "ownerName": name,
+                    "fieldPath": field,
+                    "beforeExists": before_exists,
+                    "beforeValue": before_value,
+                    "afterExists": after_exists,
+                    "afterValue": after_value,
+                }
+            )
+            mutation_index += 1
+    return records
+
+
+def _value_at_record(character, record):
+    exists = record["fieldPath"] in character
+    value = deepcopy(character.get(record["fieldPath"])) if exists else None
+    return exists, value
+
+
+def _value_precondition_conflicts(records, characters):
+    conflicts = []
+    applied = []
+    for record in records or []:
+        character = characters.get(record.get("ownerName"))
+        if not isinstance(character, dict):
+            raise CombatTransactionError("Typed combat value owner is unavailable")
+        current_exists, current_value = _value_at_record(character, record)
+        before = (record.get("beforeExists"), record.get("beforeValue"))
+        after = (record.get("afterExists"), record.get("afterValue"))
+        current = (current_exists, current_value)
+        if current == after:
+            applied.append(record["mutationIndex"])
+        elif current != before:
+            conflicts.append(
+                {
+                    "recordRef": record["recordRef"],
+                    "fieldPath": record["fieldPath"],
+                    "beforeValue": deepcopy(record.get("beforeValue")),
+                    "afterValue": deepcopy(record.get("afterValue")),
+                    "currentValue": current_value,
+                }
+            )
+    return conflicts, applied
+
+
+def enter_recovery_conflict(encounter, pending, conflicts, applied_subset):
+    """Persist the deterministic neither-before-nor-after recovery route."""
+    state = ensure_combat_state(encounter)
+    atom_id = "combat-atom:%s:0" % pending.get("turnId")
+    state["recoveryConflict"] = {
+        "conflictId": "combat-conflict:%s" % pending.get("turnId"),
+        "parentTurnId": str(pending.get("turnId")),
+        "atomId": atom_id,
+        "appliedMutationIndexes": sorted(set(applied_subset)),
+        "conflicts": deepcopy(conflicts),
+        "status": "pending",
+        "playerMessage": "Combat recovery needs attention -- Load or Reset",
+    }
+    pending["stage"] = "recovery_conflict"
+    atoms = pending.get("atoms")
+    if not isinstance(atoms, list) or not atoms:
+        atoms = [{
+            "atomId": atom_id,
+            "parentTurnId": str(pending.get("turnId")),
+            "sequence": 0,
+            "kind": "mechanical_resolution",
+            "actorId": (pending.get("actorIds") or ["combat-clock"])[0],
+            "status": "recovery_conflict",
+            "rollIds": [],
+            "eventIds": [str(event.get("eventId")) for event in pending.get("events", [])],
+            "appliedMutationIndexes": sorted(set(applied_subset)),
+            "receiptCommitted": False,
+            "mutations": [],
+        }]
+        pending["atoms"] = atoms
+    atoms[0]["status"] = "recovery_conflict"
+    atoms[0]["appliedMutationIndexes"] = sorted(set(applied_subset))
+    state["phase"] = "recovery_required"
+    state["pauseReason"] = "combat_value_conflict"
+    return state["recoveryConflict"]
+
+
 def _validate_character_fingerprints(pending, characters, character_paths):
     fingerprints = pending.get("characterPreconditions")
     if fingerprints is None:
@@ -293,6 +404,23 @@ def _write_object(path, value, label):
         raise CombatTransactionError("Could not persist %s to %s" % (label, path))
 
 
+@contextmanager
+def _invocation_commit_authority(invocation_claim):
+    """Fence one mutation against concurrent Load/Reset supersession."""
+    if invocation_claim is None:
+        yield
+        return
+    from core.combat.invocation import invocation_is_current
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    with _party_module_transition_lock():
+        if not invocation_is_current(invocation_claim):
+            raise CombatPreconditionChanged(
+                "The combat invocation was superseded before mutation"
+            )
+        yield
+
+
 def _project_character_effect_stats(encounter, name, character):
     """Refresh the encounter's character cache from an effective sheet."""
     rendered = effective_sheet(character)
@@ -313,8 +441,239 @@ def _project_character_effect_stats(encounter, name, character):
                 creature[encounter_field] = int(value)
 
 
+def _initial_intent_dependencies(encounter, actor_ids):
+    state = ensure_combat_state(encounter)
+    dependencies = []
+    for actor_id in actor_ids or []:
+        dependencies.append({
+            "recordRef": "encounter:%s" % encounter.get("encounterId"),
+            "fieldPath": "combatState.controllers.%s" % actor_id,
+            "value": deepcopy((state.get("controllers") or {}).get(actor_id)),
+        })
+    return dependencies
+
+
+def _freeze_typed_resolution(encounter, pending, events, value_preconditions):
+    """Persist the accepted intent/roll/dependency/atom image exactly once."""
+    event = events[0] if events else {}
+    intent = event.get("intent") or {}
+    outcome = event.get("outcome") or {}
+    actor_id = str(event.get("actorId") or (pending.get("actorIds") or [""])[0])
+    state = ensure_combat_state(encounter)
+    scene_revision = int((encounter.get("sceneFacts") or {}).get("revision", 0))
+    target_ids = []
+    if intent.get("targetId"):
+        target_ids.append(str(intent["targetId"]))
+    for target in outcome.get("targets") or []:
+        target_id = target.get("combatantId") if isinstance(target, dict) else None
+        if target_id and str(target_id) not in target_ids:
+            target_ids.append(str(target_id))
+    dependencies = list(pending.get("intentDependencies") or [])
+    if outcome.get("targetAC") is not None and target_ids:
+        dependencies.append({
+            "recordRef": "encounter:%s" % encounter.get("encounterId"),
+            "fieldPath": "creatures.%s.armorClass" % target_ids[0],
+            "value": outcome.get("targetAC"),
+        })
+    for record in value_preconditions or []:
+        dependencies.append({
+            "recordRef": str(record.get("recordRef")),
+            "fieldPath": str(record.get("fieldPath")),
+            "value": deepcopy(record.get("beforeValue")),
+        })
+    roll_topology = []
+    for index, roll in enumerate(event.get("rolls") or []):
+        if not isinstance(roll, dict):
+            continue
+        purpose = str(roll.get("purpose") or "other")
+        kind = purpose if purpose in {"attack", "damage", "check", "save", "initiative"} else "other"
+        roll_topology.append({
+            "rollId": "roll:%s:%s" % (event.get("eventId"), index),
+            "kind": kind,
+            "purpose": purpose,
+            "actorId": actor_id,
+            "controllerId": str(resolve_creature_controller(
+                combatant_by_id(encounter, actor_id), state
+            )),
+            "die": str(roll.get("die") or ""),
+            "modifierSourcePath": None,
+            "dcSourcePath": None,
+            "status": "persisted",
+            "result": roll.get("value") if isinstance(roll.get("value"), int) else None,
+        })
+    pending["acceptedResolution"] = {
+        "resolutionId": "resolution:%s" % pending.get("turnId"),
+        "actorId": actor_id,
+        "controllerRevision": int(
+            ((state.get("controllers") or {}).get(actor_id) or {}).get("revision", 0)
+        ),
+        "actionKind": str(intent.get("action") or outcome.get("kind") or "other"),
+        "capabilityRef": str(intent.get("ability")) if intent.get("ability") else None,
+        "mode": str(intent.get("mode")) if intent.get("mode") else None,
+        "targetIds": target_ids,
+        "semanticPurpose": str(intent.get("description") or intent.get("action") or "resolve combat action"),
+        "rulingKind": (
+            str(intent.get("rulingKind"))
+            if intent.get("rulingKind") in {"supported", "primitive", "improvised"}
+            else "supported"
+        ),
+        "difficultyBand": str(intent.get("difficultyBand")) if intent.get("difficultyBand") else None,
+        "successMeaning": str(intent.get("successMeaning") or "apply the accepted event outcome"),
+        "failureMeaning": str(intent.get("failureMeaning") or "apply the accepted event outcome"),
+        "continuationKind": "commit_atoms_then_deliver",
+        "continuationAtomIndex": 0,
+        "frozenAtCombatRevision": int(state.get("revision", 0)),
+        "frozenAtSceneRevision": scene_revision,
+        "rollTopology": roll_topology,
+        "dependencyValues": dependencies,
+    }
+    mutations = [
+        {
+            "mutationIndex": int(record["mutationIndex"]),
+            "recordRef": str(record["recordRef"]),
+            "fieldPath": str(record["fieldPath"]),
+            "beforeValue": deepcopy(record.get("beforeValue")),
+            "afterValue": deepcopy(record.get("afterValue")),
+            "applyOrder": int(record["mutationIndex"]),
+        }
+        for record in value_preconditions or []
+    ]
+    pending["atoms"] = []
+    for sequence, staged_event in enumerate(events or []):
+        pending["atoms"].append({
+            "atomId": "combat-atom:%s:%s" % (pending.get("turnId"), sequence),
+            "parentTurnId": str(pending.get("turnId")),
+            "sequence": sequence,
+            "kind": str((staged_event.get("outcome") or {}).get("kind") or "mechanical_resolution"),
+            "actorId": str(staged_event.get("actorId") or "combat-clock"),
+            "status": "staged",
+            "rollIds": [item["rollId"] for item in roll_topology] if sequence == 0 else [],
+            "eventIds": [str(staged_event.get("eventId"))],
+            "appliedMutationIndexes": [],
+            "receiptCommitted": False,
+            "mutations": mutations if sequence == 0 else [],
+        })
+    pending["atomCursor"] = 0
+    invocation = pending.get("invocation")
+    if isinstance(invocation, dict):
+        invocation["status"] = "accepted"
+
+
+def _typed_dependency_conflicts(encounter, characters, pending, events):
+    """Compare represented mechanics inputs without relying on revision bumps."""
+    from core.combat.resolver import _combatant_ac, _resource_snapshot
+
+    state = ensure_combat_state(encounter)
+    conflicts = []
+    for dependency in pending.get("intentDependencies") or []:
+        field_path = str(dependency.get("fieldPath") or "")
+        prefix = "combatState.controllers."
+        if field_path.startswith(prefix):
+            actor_id = field_path[len(prefix):]
+            current = deepcopy((state.get("controllers") or {}).get(actor_id))
+            if current != dependency.get("value"):
+                conflicts.append({
+                    "recordRef": dependency.get("recordRef"),
+                    "fieldPath": field_path,
+                    "beforeValue": deepcopy(dependency.get("value")),
+                    "currentValue": current,
+                })
+    for event in events or []:
+        outcome = event.get("outcome") or {}
+        intent = event.get("intent") or {}
+        target_id = intent.get("targetId")
+        if target_id and outcome.get("targetAC") is not None:
+            target = combatant_by_id(encounter, target_id)
+            current_ac = _combatant_ac(encounter, characters, target)
+            if current_ac != outcome.get("targetAC"):
+                conflicts.append({
+                    "recordRef": "encounter:%s" % encounter.get("encounterId"),
+                    "fieldPath": "creatures.%s.armorClass" % target_id,
+                    "beforeValue": outcome.get("targetAC"),
+                    "currentValue": current_ac,
+                })
+        for resource in event.get("resources") or []:
+            if not isinstance(resource, dict):
+                continue
+            sheet = characters.get(resource.get("owner"))
+            snapshot = _resource_snapshot(
+                sheet,
+                resource.get("kind"),
+                resource.get("name"),
+            ) if isinstance(sheet, dict) else None
+            current_value = snapshot[0] if snapshot is not None else None
+            if current_value != resource.get("before"):
+                conflicts.append({
+                    "recordRef": "character:%s" % resource.get("owner"),
+                    "fieldPath": "resource.%s.%s" % (
+                        resource.get("kind"), resource.get("name")
+                    ),
+                    "beforeValue": resource.get("before"),
+                    "currentValue": current_value,
+                })
+    return conflicts
+
+
 def _bounded_player_text(value, limit=12000):
     return str(value or "").strip()[:limit]
+
+
+def _require_active_typed_encounter(encounter, state):
+    if combat_provenance(encounter) != "typed":
+        return
+    activation = state.get("activation")
+    if (
+        not isinstance(activation, dict)
+        or activation.get("status") != "active"
+        or not activation.get("trackerActivated")
+    ):
+        raise CombatPreconditionChanged(
+            "Typed combat activation changed before mutation"
+        )
+
+
+def mark_encounter_awaiting_actor(
+    encounter_path,
+    timeout_seconds=None,
+    invocation_claim=None,
+):
+    """Publish the ready phase from the latest authoritative encounter image."""
+    with _invocation_commit_authority(invocation_claim), path_transaction_lock(
+        encounter_path,
+        suffix=".combat.lock",
+        timeout_seconds=timeout_seconds,
+    ) as acquired:
+        if acquired is None:
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
+        encounter = _load_object(encounter_path, "encounter")
+        state = ensure_combat_state(encounter)
+        _require_active_typed_encounter(encounter, state)
+        if state.get("phase") == "initializing":
+            state["phase"] = "awaiting_actor"
+            _write_object(encounter_path, encounter, "combat ready phase")
+        return deepcopy(encounter)
+
+
+def store_agentic_preroll_cache(
+    encounter_path,
+    preroll_cache,
+    timeout_seconds=None,
+    invocation_claim=None,
+):
+    """Persist only the typed preroll cache against the latest encounter image."""
+    with _invocation_commit_authority(invocation_claim), path_transaction_lock(
+        encounter_path,
+        suffix=".combat.lock",
+        timeout_seconds=timeout_seconds,
+    ) as acquired:
+        if acquired is None:
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
+        encounter = _load_object(encounter_path, "encounter")
+        state = ensure_combat_state(encounter)
+        _require_active_typed_encounter(encounter, state)
+        encounter["preroll_cache"] = deepcopy(preroll_cache)
+        _write_object(encounter_path, encounter, "agentic preroll cache")
+        return deepcopy(encounter)
 
 
 def claim_turn(
@@ -323,9 +682,10 @@ def claim_turn(
     turn_id=None,
     player_input=None,
     timeout_seconds=5.0,
+    invocation_claim=None,
 ):
     """Persist a turn claim before requesting or resolving any intent."""
-    with path_transaction_lock(
+    with _invocation_commit_authority(invocation_claim), path_transaction_lock(
         encounter_path,
         suffix=".combat.lock",
         timeout_seconds=timeout_seconds,
@@ -340,6 +700,33 @@ def claim_turn(
             turn_id=turn_id,
             expected_revision=state["revision"],
         )
+        if combat_provenance(encounter) == "typed":
+            claim = invocation_claim
+            pending["invocation"] = {
+                "logicalInvocationId": str(
+                    getattr(claim, "logical_invocation_id", None)
+                    or "combat-invocation:%s" % uuid.uuid4().hex
+                ),
+                "attemptId": str(
+                    getattr(claim, "attempt_id", None)
+                    or "combat-attempt:%s" % uuid.uuid4().hex
+                ),
+                "generation": int(getattr(claim, "generation", 0) or 0),
+                "callsite": "T096",
+                "encounterId": str(encounter.get("encounterId")),
+                "turnId": str(pending.get("turnId")),
+                "windowId": "combat-window:%s" % pending.get("turnId"),
+                "expectedCombatRevision": int(state.get("revision", 0)),
+                "expectedSceneRevision": int(
+                    (encounter.get("sceneFacts") or {}).get("revision", 0)
+                ),
+                "authorizedTransition": "intent_to_resolution",
+                "status": "running",
+                "supersededReason": None,
+            }
+            pending["intentDependencies"] = _initial_intent_dependencies(
+                encounter, actor_ids
+            )
         initial_input = _bounded_player_text(player_input)
         if initial_input:
             pending["playerExchanges"] = [{"playerInput": initial_input}]
@@ -426,6 +813,7 @@ def stage_events(
     character_preconditions=None,
     character_postconditions=None,
     timeout_seconds=5.0,
+    invocation_claim=None,
 ):
     """Persist fully resolved events before applying any of their effects."""
     lease = (
@@ -437,26 +825,64 @@ def stage_events(
             timeout_seconds=timeout_seconds,
         )
     )
-    with lease as acquired:
+    with _invocation_commit_authority(invocation_claim), lease as acquired:
         if character_paths is None and acquired is None:
             raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
         encounter = _load_object(encounter_path, "encounter")
         fingerprints = None
+        value_preconditions = None
         if character_paths is not None:
-            fingerprints = _character_fingerprints(
-                character_paths,
-                character_preconditions,
-                character_postconditions,
-            )
+            if combat_provenance(encounter) == "typed":
+                value_preconditions = _character_value_preconditions(
+                    character_paths,
+                    character_preconditions,
+                    character_postconditions,
+                )
+            else:
+                fingerprints = _character_fingerprints(
+                    character_paths,
+                    character_preconditions,
+                    character_postconditions,
+                )
             authoritative = {
                 name: _load_object(path, "character %s" % name)
                 for name, path in character_paths.items()
             }
-            if any(
-                _json_fingerprint(authoritative[name])
-                != fingerprints[name]["before"]
-                for name in fingerprints
-            ):
+            if value_preconditions is not None:
+                dependency_conflicts = _typed_dependency_conflicts(
+                    encounter,
+                    authoritative,
+                    ensure_combat_state(encounter).get("pendingTurn") or {},
+                    events,
+                )
+                if dependency_conflicts:
+                    pending = ensure_combat_state(encounter).get("pendingTurn")
+                    if isinstance(pending, dict) and pending.get("turnId") == turn_id:
+                        pending["stage"] = "intent_pending"
+                        pending["retryReason"] = "mechanics_dependency_changed"
+                        pending["dependencyConflicts"] = dependency_conflicts
+                        _write_object(
+                            encounter_path,
+                            encounter,
+                            "mechanics dependency reconsideration",
+                        )
+                    raise CombatPreconditionChanged(
+                        "Combat mechanics changed while intent was resolving"
+                    )
+            stale_values = False
+            if value_preconditions is not None:
+                conflicts, applied = _value_precondition_conflicts(
+                    value_preconditions,
+                    authoritative,
+                )
+                stale_values = bool(conflicts or applied)
+            else:
+                stale_values = any(
+                    _json_fingerprint(authoritative[name])
+                    != fingerprints[name]["before"]
+                    for name in fingerprints
+                )
+            if stale_values:
                 state = ensure_combat_state(encounter)
                 pending = state.get("pendingTurn")
                 if isinstance(pending, dict) and pending.get("turnId") == turn_id:
@@ -475,6 +901,17 @@ def stage_events(
         if fingerprints is not None:
             pending["characterPreconditions"] = fingerprints
             pending.pop("retryReason", None)
+        if value_preconditions is not None:
+            pending["valuePreconditions"] = value_preconditions
+            pending.pop("characterPreconditions", None)
+            pending.pop("retryReason", None)
+            pending.pop("dependencyConflicts", None)
+            _freeze_typed_resolution(
+                encounter,
+                pending,
+                events,
+                value_preconditions,
+            )
         context = delivery_context if isinstance(delivery_context, dict) else {}
         pending["deliveryContext"] = {
             "historyInput": str(context.get("historyInput") or "")[:24000],
@@ -494,6 +931,7 @@ def record_delivery_narration(
     narration,
     used_fallback,
     timeout_seconds=5.0,
+    invocation_claim=None,
 ):
     """Persist generated prose for a committed turn before history delivery.
 
@@ -502,7 +940,7 @@ def record_delivery_narration(
     provider call. The receipt remains pending until conversation history has
     durably recorded its delivery marker.
     """
-    with path_transaction_lock(
+    with _invocation_commit_authority(invocation_claim), path_transaction_lock(
         encounter_path,
         suffix=".combat.lock",
         timeout_seconds=timeout_seconds,
@@ -543,6 +981,7 @@ def record_narration_attempt(
     violations=None,
     warnings=None,
     timeout_seconds=5.0,
+    invocation_claim=None,
 ):
     """Persist one rejected/error T097 attempt outside the display field.
 
@@ -564,7 +1003,7 @@ def record_narration_attempt(
         for code in (warnings or [])
         if isinstance(code, str)
     ][:24]
-    with path_transaction_lock(
+    with _invocation_commit_authority(invocation_claim), path_transaction_lock(
         encounter_path,
         suffix=".combat.lock",
         timeout_seconds=timeout_seconds,
@@ -611,9 +1050,10 @@ def acknowledge_delivery(
     encounter_path,
     delivery_id,
     timeout_seconds=5.0,
+    invocation_claim=None,
 ):
     """Clear a narration receipt only after durable history contains it."""
-    with path_transaction_lock(
+    with _invocation_commit_authority(invocation_claim), path_transaction_lock(
         encounter_path,
         suffix=".combat.lock",
         timeout_seconds=timeout_seconds,
@@ -722,6 +1162,7 @@ def apply_staged_turn(
     character_paths,
     turn_id=None,
     timeout_seconds=5.0,
+    invocation_claim=None,
 ):
     """Replay staged events, write state, and advance the turn exactly once.
 
@@ -730,7 +1171,7 @@ def apply_staged_turn(
     duplicate monster display names are distinguished only by combatantId in
     the encounter.
     """
-    with _combat_leases(
+    with _invocation_commit_authority(invocation_claim), _combat_leases(
         encounter_path,
         character_paths,
         timeout_seconds,
@@ -752,7 +1193,24 @@ def apply_staged_turn(
         for name, path in (character_paths or {}).items():
             characters[name] = _load_object(path, "character %s" % name)
 
-        if not _validate_character_fingerprints(
+        value_preconditions = pending.get("valuePreconditions")
+        if isinstance(value_preconditions, list):
+            conflicts, applied_subset = _value_precondition_conflicts(
+                value_preconditions,
+                characters,
+            )
+            if conflicts:
+                enter_recovery_conflict(
+                    encounter,
+                    pending,
+                    conflicts,
+                    applied_subset,
+                )
+                _write_object(encounter_path, encounter, "combat recovery conflict")
+                raise CombatPreconditionChanged(
+                    "Combat recovery needs attention -- Load or Reset"
+                )
+        elif not _validate_character_fingerprints(
             pending,
             characters,
             character_paths,

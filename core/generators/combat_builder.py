@@ -7,6 +7,7 @@ import json
 import random
 import sys
 import os
+import uuid
 
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -23,24 +24,6 @@ from utils.file_operations import safe_write_json
 set_script_name("combat_builder")
 
 logging.basicConfig(filename='modules/logs/combat_builder.log', level=logging.DEBUG)
-
-def clear_json_file(file_path):
-    try:
-        with open(file_path, "w") as f:
-            json.dump([], f)
-        print(colored(f"Cleared contents of {file_path}", "green"))
-    except Exception as e:
-        print(colored(f"Error clearing {file_path}: {str(e)}", "red"))
-
-def clear_combat_history_files():
-    files_to_clear = [
-        "modules/conversation_history/combat_conversation_history.json",
-        "modules/conversation_history/second_model_history.json",
-        "modules/conversation_history/third_model_history.json"
-    ]
-    
-    for file in files_to_clear:
-        clear_json_file(file)
 
 def format_type_name(name):
     from updates.update_character_info import normalize_character_name
@@ -202,16 +185,6 @@ def get_next_encounter_number(location):
         return next_number
     else:
         return 1
-
-def update_party_tracker(encounter_id):
-    party_tracker = load_json("party_tracker.json")
-    if not party_tracker:
-        return False
-    
-    party_tracker["worldConditions"]["activeCombatEncounter"] = encounter_id
-    if save_json("party_tracker.json", party_tracker):
-        return encounter_id
-    return False
 
 def _get_party_level():
     """Compute the average party level from party_tracker.json + character
@@ -440,7 +413,7 @@ def load_or_create_npc(npc_name):
             return None
     else:
         print(f"[COMBAT_BUILDER] NPC loaded from file: {npc_name}")
-    return npc_data
+    return npc_data, npc_file
 
 def generate_encounter(encounter_data):
     print(f"[COMBAT_BUILDER] Starting encounter generation with data: player={encounter_data.get('player')}, npcs={encounter_data.get('npcs', [])}, monsters={encounter_data.get('monsters', [])}")
@@ -455,6 +428,7 @@ def generate_encounter(encounter_data):
         "encounterId": encounter_id,
         "creatures": []
     }
+    scene_sources = []
 
     if "encounterSummary" in encounter_data:
         encounter["encounterSummary"] = encounter_data["encounterSummary"]
@@ -500,10 +474,19 @@ def generate_encounter(encounter_data):
         "armorClass": player_data["armorClass"]
     }
     encounter["creatures"].append(player)
+    scene_sources.append(
+        {
+            "participantKey": "player:0",
+            "creature": player,
+            "sourceKind": "character",
+            "sourceRef": str(player_file),
+            "displayName": player_data["name"],
+        }
+    )
 
     # Add monsters
     monster_counts = {}
-    for monster_type in encounter_data["monsters"]:
+    for monster_index, monster_type in enumerate(encounter_data["monsters"]):
         formatted_monster_type = format_type_name(monster_type)
         print(f"[COMBAT_BUILDER] Loading/creating monster: {monster_type} -> {formatted_monster_type}")
         monster_data = load_or_create_monster(monster_type)
@@ -526,17 +509,32 @@ def generate_encounter(encounter_data):
             "conditions": [],
             "actions": {"actionType": "", "target": ""},
             "currentHitPoints": monster_data["hitPoints"],
-            "maxHitPoints": monster_data["hitPoints"]
+            "maxHitPoints": monster_data["hitPoints"],
+            # Typed combat reloads represented mechanics immediately before
+            # accepting a provider result. Keep the encounter-instance AC
+            # beside HP so that reload uses the same authoritative value as
+            # intent resolution instead of the resolver's legacy default.
+            "armorClass": monster_data.get("armorClass", 10),
         }
         encounter["creatures"].append(monster)
+        scene_sources.append(
+            {
+                "participantKey": f"monster:{monster_index}",
+                "creature": monster,
+                "sourceKind": "monster",
+                "sourceRef": str(path_manager.get_monster_path(formatted_monster_type)),
+                "displayName": monster_data["name"],
+            }
+        )
 
     # Add NPCs
     npc_counts = {}
-    for npc_name in encounter_data.get("npcs", []):
+    for npc_index, npc_name in enumerate(encounter_data.get("npcs", [])):
         formatted_npc_type = format_type_name(npc_name)
-        npc_data = load_or_create_npc(npc_name)
-        if not npc_data:
+        loaded_npc = load_or_create_npc(npc_name)
+        if not loaded_npc:
             return None
+        npc_data, canonical_npc_file = loaded_npc
 
         npc_counts[formatted_npc_type] = npc_counts.get(formatted_npc_type, 0) + 1
         
@@ -559,36 +557,59 @@ def generate_encounter(encounter_data):
         }
         # Add the NPC to the encounter's creatures array
         encounter["creatures"].append(npc)
-
-    # Persist the pipeline choice at creation time. Runtime history is not a
-    # reliable new-vs-existing marker: an old active encounter can outlive or
-    # lose its transcript. Stamping here lets those old unstamped encounters
-    # remain on the legacy reader while every genuinely new encounter keeps
-    # the configured, immutable mode across disconnects and restores.
-    from core.managers.combat_state import ensure_combat_state
-    try:
-        import config
-
-        agentic_enabled = bool(
-            getattr(config, "COMBAT_AGENTIC_PIPELINE", False)
-            or os.environ.get("NEQ_COMBAT_AGENTIC_PIPELINE", "")
-            .strip()
-            .lower()
-            in {"1", "true", "yes", "on"}
+        scene_sources.append(
+            {
+                "participantKey": f"npc:{npc_index}",
+                "creature": npc,
+                "sourceKind": "character",
+                "sourceRef": str(canonical_npc_file),
+                "displayName": npc_data["name"],
+            }
         )
-    except Exception:
-        agentic_enabled = False
+
+    # Every genuinely new encounter is typed-agentic. Persisted provenance,
+    # never a hidden runtime selector, keeps old encounters on their existing
+    # compatibility route.
+    from core.combat.scene import reconcile_scene_manifest
+    from core.managers.combat_state import ensure_combatant_ids, ensure_combat_state
+
+    ensure_combatant_ids(encounter)
+    canonical_snapshot = [
+        {
+            "participantKey": item["participantKey"],
+            "combatantId": item["creature"]["combatantId"],
+            "sourceKind": item["sourceKind"],
+            "sourceRef": item["sourceRef"],
+            "displayName": item["displayName"],
+        }
+        for item in scene_sources
+    ]
+    reconciled = reconcile_scene_manifest(encounter_data, canonical_snapshot)
+    encounter["sceneFacts"] = reconciled["sceneFacts"]
     ensure_combat_state(
         encounter,
         new_encounter=True,
-        pipeline_mode="agentic" if agentic_enabled else "legacy",
+        pipeline_mode="agentic",
     )
+    encounter["combatState"]["controllers"] = reconciled["controllers"]
+    tracker_snapshot = load_json("party_tracker.json") or {}
+    expected_active = (
+        tracker_snapshot.get("worldConditions", {}).get("activeCombatEncounter") or None
+    )
+    encounter["combatState"]["activation"] = {
+        "activationId": "combat-activation:%s:%s"
+        % (encounter["encounterId"], uuid.uuid4().hex),
+        "encounterId": encounter["encounterId"],
+        "expectedTrackerEncounterId": expected_active,
+        "status": "preparing",
+        "historyMarkerEncounterId": None,
+        "trackerActivated": False,
+    }
 
     return encounter
 
 def main():
     logging.debug("Starting combat encounter creation")
-    clear_combat_history_files()
     
     # Read input from stdin
     storyteller_input = sys.stdin.read()
@@ -626,16 +647,10 @@ def main():
             logging.info(f"Encounter successfully built and saved to {encounter_file}")
             print(colored(f"Encounter successfully built and saved to {encounter_file}", "green"))
             
-            print(f"[COMBAT_BUILDER] Updating party tracker with encounter ID: {encounter['encounterId']}")
-            updated_encounter_id = update_party_tracker(encounter['encounterId'])
-            if updated_encounter_id:
-                print(f"[COMBAT_BUILDER] Party tracker update successful")
-                logging.info(f"Party tracker updated with new combat encounter ID: {updated_encounter_id}")
-                print(colored(f"Party tracker updated with new combat encounter ID: {updated_encounter_id}", "green"))
-            else:
-                print(f"[COMBAT_BUILDER] Party tracker update failed")
-                logging.error("Failed to update party tracker.")
-                print(colored("Failed to update party tracker.", "red"))
+            print(
+                "[COMBAT_BUILDER] Encounter is durably prepared; "
+                "activation waits for the full combat history marker"
+            )
         else:
             logging.error(f"Failed to save encounter to {encounter_file}")
             print(colored(f"Error: Failed to save encounter to {encounter_file}", "red"))

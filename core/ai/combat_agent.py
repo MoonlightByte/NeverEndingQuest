@@ -25,6 +25,7 @@ from core.ai.srd_reference import (
     load_srd_reference_index,
     normalize_rule_name,
 )
+from core.managers.combat_state import combatant_by_id, resolve_creature_controller
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.character_sheet_contract import extract_json_object
 
@@ -472,8 +473,24 @@ def request_intent_batch(
 T097_SCENE_CONTRACT_SENTENCE = (
     "Use the supplied scene dossier and final authoritative facts as the complete "
     "truth for this pass; narrate only listed combatants, actions, equipment, "
-    "spells, results, and numbers, and never introduce or imply a conflicting "
-    "entity or mechanic."
+    "spells, and results, and never introduce or imply a conflicting entity or "
+    "mechanic. Narration contains no mechanical bookkeeping: no attack or damage "
+    "rolls, damage amounts, HP totals or transitions, AC values, ammunition or "
+    "resource counts, spell-slot levels, or dice expressions. Convey every outcome "
+    "through fiction only; the authoritative event ledger remains silent backend "
+    "state. PlayerInput and authoritative facts contain silent mechanics for grounding "
+    "only. Never repeat or explain their numbers, rules, action economy, or mechanical "
+    "effects. BAD: You deal 7 damage and spend your Action. BAD: Dodge gives attacks "
+    "disadvantage and gives you advantage on Dexterity saves. GOOD: Your mace caves "
+    "the creature into the floor. GOOD: You settle behind your shield and track every "
+    "movement. The narrationContext controllers map is authoritative for perspective: "
+    "refer to the sole human-controlled combatant in second person (you/your) in "
+    "every narration reference except another character's in-world direct address; "
+    "an actor_agent-controlled combatant remains in third person regardless of its "
+    "creature type. When event.actorId maps to human, narrate that actor as you/your. "
+    "Narrate a target as you/your only when that target's exact combatant ID maps to human. "
+    "GOOD: You spring at Eirik's shield and bite him. BAD: The Snow Rat springs toward "
+    "your shield and bites you."
 )
 
 
@@ -491,9 +508,25 @@ def request_narration_candidate(
     model = str(call_config.get("model") or "unknown")
     dossier = dict(scene_dossier or {})
     authoritative_facts = dossier.pop("authoritativeFacts", {})
+    combat_state = encounter.get("combatState") or {}
+    controllers = {}
+    for row in dossier.get("combatants", []) or []:
+        if not isinstance(row, dict):
+            continue
+        combatant_id = row.get("combatantId")
+        creature = combatant_by_id(encounter, combatant_id)
+        if creature is None:
+            continue
+        controllers[combatant_id] = resolve_creature_controller(
+            creature, combat_state
+        )
+
     payload = {
         "playerInput": player_input,
         "sceneDossier": dossier,
+        "narrationContext": {
+            "controllers": controllers,
+        },
     }
     if correction:
         payload["correction"] = correction
@@ -510,7 +543,8 @@ def request_narration_candidate(
                 "coveredEventIds must contain every authoritative eventId exactly once "
                 "in that same order and is never shown to the player. Do not change, "
                 "invent, or recalculate mechanics; do not announce actions beyond these "
-                "events. Keep the prose vivid, clear, and concise. "
+                "events. Do not quote bookkeeping from the event data. Keep the prose "
+                "vivid, clear, and concise. "
                 + T097_SCENE_CONTRACT_SENTENCE
             ),
         },

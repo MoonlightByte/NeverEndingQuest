@@ -554,6 +554,36 @@ class WebOutputCapture:
             self.dm_buffer = []
             self.dm_section_is_startup = False
     
+    def _mark_ready_from_player_prompt(self, clean_line):
+        """Publish web readiness when the engine reaches its input prompt.
+
+        ``input(prompt)`` writes the prompt without a trailing newline.  The
+        legacy page waits for ``game_started``, so checking only completed
+        lines can leave it stuck on ``Starting...`` even though the engine is
+        already blocked for the player's command.
+        """
+        global startup_handoff_active, startup_ready_emitted
+        if not (
+            clean_line.startswith('[')
+            and ('HP:' in clean_line or 'XP:' in clean_line)
+        ):
+            return False
+        if not startup_ready_emitted:
+            startup_handoff_active = False
+            startup_ready_emitted = True
+            debug_output_queue.put({
+                'type': 'debug',
+                'content': '[STARTUP_FALLBACK] game_started emitted via prompt detection - primary marker path may have failed',
+                'timestamp': datetime.now().isoformat()
+            })
+            socketio.emit(
+                "startup_status", {"status": "ready", "phase": "prompt_detected"}
+            )
+            socketio.emit(
+                'game_started', {'message': 'Game started successfully'}
+            )
+        return True
+
     def write(self, text):
         global startup_handoff_active, startup_ready_emitted
         # Write to original stream for console visibility (with error handling)
@@ -631,18 +661,7 @@ class WebOutputCapture:
                         continue
                 
                 # Check if this is a player status/prompt line
-                if clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line):
-                    # Fallback: if primary marker path failed, emit on prompt detection
-                    if not startup_ready_emitted:
-                        startup_handoff_active = False
-                        startup_ready_emitted = True
-                        debug_output_queue.put({
-                            'type': 'debug',
-                            'content': '[STARTUP_FALLBACK] game_started emitted via prompt detection - primary marker path may have failed',
-                            'timestamp': datetime.now().isoformat()
-                        })
-                        socketio.emit("startup_status", {"status": "ready", "phase": "prompt_detected"})
-                        socketio.emit('game_started', {'message': 'Game started successfully'})
+                if self._mark_ready_from_player_prompt(clean_line):
                     # This is a player prompt - send to debug
                     debug_output_queue.put({
                         'type': 'debug',
@@ -781,6 +800,11 @@ class WebOutputCapture:
             # Keep the incomplete line in buffer
             self.buffer = lines[-1]
     
+        # ``input(prompt)`` does not append a newline. Inspect the buffered
+        # fragment as well so both web clients become playable at the exact
+        # point where the engine begins accepting input.
+        self._mark_ready_from_player_prompt(self.strip_ansi_codes(self.buffer))
+
     def strip_ansi_codes(self, text):
         """Remove ANSI escape codes from text"""
         import re
@@ -3642,23 +3666,32 @@ def handle_initiative_data_request(data=None):
             emit('initiative_data_response', _ui_response(data, {'active': False, 'combatants': []}))
             return
 
-        # Filter for living combatants only
-        living_combatants = [
-            c for c in encounter_data["creatures"] 
-            if c.get("status", "unknown").lower() == "alive"
-        ]
-        
-        if not living_combatants:
+        from core.managers.combat_state import initiative_ui_projection
+
+        # Typed encounters project membership/order/current input ownership from
+        # the committed combat ledger. Legacy encounters preserve the existing
+        # living-roster/raw-initiative response behavior.
+        sorted_combatants = initiative_ui_projection(encounter_data)
+        combat_state = encounter_data.get("combatState") or {}
+        recovery_conflict = combat_state.get("recoveryConflict")
+        recovery = None
+        if (
+            isinstance(recovery_conflict, dict)
+            and recovery_conflict.get("status") == "pending"
+        ):
+            recovery = {
+                "required": True,
+                "message": str(
+                    recovery_conflict.get("playerMessage")
+                    or "Combat recovery needs attention -- Load or Reset"
+                ),
+                "actions": ["load", "reset"],
+            }
+
+        if not sorted_combatants:
             # Combat is over if no one is alive
             emit('initiative_data_response', _ui_response(data, {'active': False, 'combatants': []}))
             return
-
-        # Sort by initiative (highest first)
-        sorted_combatants = sorted(
-            living_combatants, 
-            key=lambda x: x.get("initiative", 0), 
-            reverse=True
-        )
 
         # Prepare clean data for frontend with full character data for tooltips
         from utils.module_path_manager import ModulePathManager
@@ -3679,6 +3712,9 @@ def handle_initiative_data_request(data=None):
                 "monsterType": c.get("monsterType"),  # For enemy type lookup
                 "class": c.get("class")  # For NPC class lookup
             }
+            for projected_field in ("combatantId", "controller", "isCurrent"):
+                if projected_field in c:
+                    combatant_data[projected_field] = c[projected_field]
 
             # Load full character data for players and NPCs to enable tooltips
             if path_manager and c.get("type") in ['player', 'npc']:
@@ -3782,9 +3818,10 @@ def handle_initiative_data_request(data=None):
 
         # Send the data to the browser
         emit('initiative_data_response', _ui_response(data, {
-            'active': True, 
+            'active': True,
             'combatants': combatant_list,
-            'round': encounter_data.get('combat_round', 1)
+            'round': encounter_data.get('combat_round', 1),
+            'recovery': recovery,
         }))
 
     except Exception as e:

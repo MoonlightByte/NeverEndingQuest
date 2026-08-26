@@ -321,9 +321,12 @@
     }
   },
   dont: {
-    rules_speak: "No explicit dice math in narration",
+    rules_speak: "Narration states NO numbers: no damage amounts, no HP totals or 'HP X to Y' or 'reduced to N hit points', no ammo/arrow/inventory counts or 'expends an arrow' or 'arrows 70 to 69', no spell-slot counts, no AC, no dice results. Convey the OUTCOME in fiction only -- a telling wound, a kill, a clean miss.",
     id_terms: "No underscores or numeric suffixes in narration"
-  }
+  },
+  ledger_split: "ALL mechanical bookkeeping -- damage, HP, ammo, spell slots, status -- lives ONLY in actions[].changes and is applied SILENTLY. The player reads story; the ledger updates off-screen. Never narrate the bookkeeping.",
+  example_good: "Kira draws and looses; the arrow buries itself deep in the ghoul's chest and brackish blood sprays the wall. She lets slip a grim, satisfied smile. (Her spent arrow and the ghoul's wound are recorded ONLY in actions[].changes, never in the prose.)",
+  example_bad: "Kira shoots an arrow for 6 piercing damage, reducing the ghoul to 2 HP; her arrows drop from 70 to 69."
 }
 
 @CONDITIONS={
@@ -350,7 +353,7 @@
 @VALIDATORS={
   v_json: "Output matches @RESPONSE_SCHEMA exactly",
   v_round: "combat_round increments only at boundary",
-  v_sync: "Narrated changes match actions[]",
+  v_sync: "Narrated OUTCOMES are consistent with actions[] (a narrated kill has a status change logged; a narrated hit has an HP change logged) -- the numbers themselves appear ONLY in actions[], never restated in narration",
   v_type: "Invalid if any PC/NPC HP/conditions logged via updateEncounter OR any enemy HP/conditions logged via updateCharacterInfo",
   v_parameter_keys: "updateCharacterInfo MUST use 'characterName' (not 'character') as parameter",
   v_exit: "Exit REQUIRED when all enemies dead/unconscious/defeated (fled creatures with status='defeated' count as resolved)",

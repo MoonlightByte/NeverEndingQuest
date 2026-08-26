@@ -1873,6 +1873,7 @@ def pre_validate_transition(
     path_manager,
     *,
     return_plan=False,
+    invocation_claim=None,
 ):
     """
     Pre-validate a transitionLocation action using the transition intelligence agent.
@@ -1897,6 +1898,7 @@ def pre_validate_transition(
         find_path_in_snapshot,
     )
     from core.ai.transition_validator import validate_transition_request
+    from core.combat.invocation import InvocationSupersededError
     from utils.file_operations import safe_read_json
 
     def finish(
@@ -2028,7 +2030,8 @@ def pre_validate_transition(
             path_analysis=path_analysis,
             transition_atlas=transition_atlas,
             plot_data=plot_data,
-            party_level=party_level
+            party_level=party_level,
+            invocation_claim=invocation_claim,
         )
 
         # Log agent decision
@@ -2117,6 +2120,8 @@ def pre_validate_transition(
             facts={"destination_location_id": str(new_location_id)},
         )
 
+    except InvocationSupersededError:
+        raise
     except Exception as e:
         debug(f"Transition pre-validation error: {e}", category="location_transitions")
         return finish(
@@ -2598,11 +2603,21 @@ def _apply_party_npc_lifecycle(
         return False
 
 
-def run_combat_simulation(encounter_id, party_tracker_data, location_data):
+def run_combat_simulation(
+    encounter_id,
+    party_tracker_data,
+    location_data,
+    invocation_claim=None,
+):
     """Run the combat simulation"""
     # Import here to avoid circular imports
     from core.managers.combat_manager import run_combat_simulation as run_combat
-    return run_combat(encounter_id, party_tracker_data, location_data)
+    return run_combat(
+        encounter_id,
+        party_tracker_data,
+        location_data,
+        invocation_claim=invocation_claim,
+    )
 
 
 def _cache_module_starting_location(
@@ -2949,6 +2964,7 @@ def process_action(
     *,
     approved_transition_plan=None,
     transition_deferred_actions=None,
+    invocation_claim=None,
 ):
     """Process an action based on its type
     
@@ -3093,9 +3109,29 @@ def process_action(
                         print(f"[DEBUG ACTION_HANDLER] SUCCESS! Encounter created with ID: {encounter_id}")
                         break
 
-                party_tracker_data["worldConditions"]["activeCombatEncounter"] = encounter_id
-                safe_json_dump(party_tracker_data, "party_tracker.json")
-                debug(f"STATE_CHANGE: Updated party tracker with combat encounter ID: {encounter_id}", category="combat_processing")
+                # The builder persists an inactive typed candidate. Combat
+                # setup writes the complete history marker and conditionally
+                # activates it immediately before provider-backed play. If a
+                # competing encounter already won, resume that authority.
+                authoritative_party = safe_json_load("party_tracker.json")
+                activated_id = (
+                    (authoritative_party or {})
+                    .get("worldConditions", {})
+                    .get("activeCombatEncounter", "")
+                )
+                if activated_id and activated_id != encounter_id:
+                    warning(
+                        "Prepared encounter %s lost activation to %s; resuming it"
+                        % (encounter_id, activated_id),
+                        category="combat_processing",
+                    )
+                    encounter_id = activated_id
+                party_tracker_data.clear()
+                party_tracker_data.update(authoritative_party or {})
+                debug(
+                    f"STATE_CHANGE: Preparing combat encounter ID: {encounter_id}",
+                    category="combat_processing",
+                )
 
                 # Reload location data here
                 current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
@@ -3119,7 +3155,12 @@ def process_action(
                 except Exception as e:
                     error(f"FAILURE: Could not update status for combat start", exception=e, category="combat_processing")
                 
-                dialogue_summary, updated_player_info = run_combat_simulation(encounter_id, party_tracker_data, reloaded_location_data)
+                dialogue_summary, updated_player_info = run_combat_simulation(
+                    encounter_id,
+                    party_tracker_data,
+                    reloaded_location_data,
+                    invocation_claim=invocation_claim,
+                )
 
                 authoritative_party = safe_json_load("party_tracker.json")
                 active_after_combat = (
@@ -3127,6 +3168,8 @@ def process_action(
                     .get("worldConditions", {})
                     .get("activeCombatEncounter", "")
                 )
+                if active_after_combat:
+                    encounter_id = active_after_combat
                 active_after_data = (
                     safe_json_load(
                         os.path.join(

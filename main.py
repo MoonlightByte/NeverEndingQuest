@@ -214,9 +214,15 @@ def _active_combat_recovery(party_tracker):
         return None
     if not state.get("pauseReason"):
         return None
+    conflict = state.get("recoveryConflict")
     return {
         "encounter_id": encounter_id,
         "reason": state.get("pauseReason", "combat_recovery_required"),
+        "message": (
+            conflict.get("playerMessage")
+            if isinstance(conflict, dict)
+            else None
+        ),
     }
 _conversation_history_dirty = False
 _dirty_conversation_history = None
@@ -1166,6 +1172,9 @@ def recover_startup_handoff():
 
 # Add this new function near the top of the file
 def exit_game():
+    from core.combat.invocation import supersede_invocations
+
+    supersede_invocations("exit")
     print("Fond farewell until we meet again!")
     exit()
 
@@ -2982,7 +2991,13 @@ def validate_ai_response(
     srd_context=None,
     npc_voice_batch=None,
     transition_facts=None,
+    invocation_claim=None,
 ):
+    from core.combat.invocation import (
+        InvocationSupersededError,
+        require_current_invocation,
+    )
+
     print("DEBUG: NPC validation running...")
     status_validating()
     
@@ -3013,6 +3028,16 @@ def validate_ai_response(
     if npc_normalized_response != response_to_validate:
         print(f"INFO: Auto-corrected NPC names - {npc_normalization_message}")
         response_to_validate = npc_normalized_response
+
+    # Typed encounter structure is a code-owned pre-write invariant. Do not
+    # delegate it solely to T065: semantic validation can approve an old action
+    # shape, while the stateful builder must never see an incomplete scene.
+    try:
+        from core.combat.scene import validate_typed_encounter_actions
+
+        validate_typed_encounter_actions(json.loads(response_to_validate))
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        return (False, f"Typed combat scene error: {exc}")
 
     # Keep only player-authored text from prior enhanced turns. The current
     # enhanced DM note is excluded and reintroduced below as exact raw input.
@@ -3325,13 +3350,27 @@ def validate_ai_response(
     attempt = 0
     while True:
         attempt += 1
-        validation_result = capture_and_fanout("T065", api_client.create_completion,
-            _request_provider=_val_provider,
-            _live_selected=True,
-            messages=validation_messages_to_send,
-            model=validation_config["model"],
-            temperature=0.1,
-            **{k: v for k, v in validation_config.items() if k != "model"})
+        try:
+            if invocation_claim is not None:
+                require_current_invocation(invocation_claim)
+            validation_result = capture_and_fanout("T065", api_client.create_completion,
+                _request_provider=_val_provider,
+                _live_selected=True,
+                messages=validation_messages_to_send,
+                model=validation_config["model"],
+                temperature=0.1,
+                **{k: v for k, v in validation_config.items() if k != "model"})
+            if invocation_claim is not None:
+                require_current_invocation(invocation_claim)
+        except InvocationSupersededError:
+            raise
+        except Exception as provider_error:
+            warning(
+                f"VALIDATION: T065 provider attempt {attempt} failed: "
+                f"{provider_error}",
+                category="ai_validation",
+            )
+            continue
 
         # Log API call to master log
         try:
@@ -4672,6 +4711,7 @@ def process_ai_response(
     conversation_history,
     *,
     approved_transition_plan=None,
+    invocation_claim=None,
 ):
     global needs_conversation_history_update
     from contextlib import ExitStack
@@ -4699,6 +4739,10 @@ def process_ai_response(
     response_fences = ExitStack()
 
     try:
+        from core.combat.invocation import (
+            InvocationSupersededError,
+            require_current_invocation,
+        )
         from core.managers.campaign_manager import (
             _party_module_transition_lock,
         )
@@ -4708,6 +4752,31 @@ def process_ai_response(
         # mutation lock before T091/T016/T015/T013/T063/T064 provider work.
         if not is_travel_workflow:
             response_fences.enter_context(_party_module_transition_lock())
+
+        if invocation_claim is not None:
+            from core.combat.invocation import invocation_is_current
+
+            if not invocation_is_current(invocation_claim):
+                return {
+                    "status": "superseded_invocation",
+                    "retryable": False,
+                }
+
+        def run_outside_response_fence(callback, *args, **kwargs):
+            """Run provider/action work without the outer party filesystem lock.
+
+            Travel workflows never hold that lock in the first place (their
+            checkpoint-v2 transaction owns mutation safety), so the fence is
+            re-entered only for the ordinary-response path that held it.
+            """
+            response_fences.close()
+            try:
+                return callback(*args, **kwargs)
+            finally:
+                if not is_travel_workflow:
+                    response_fences.enter_context(_party_module_transition_lock())
+                if invocation_claim is not None:
+                    require_current_invocation(invocation_claim)
         caller_projection = _party_transition_projection(party_tracker_data)
         if (
             caller_projection is not None
@@ -4874,12 +4943,19 @@ def process_ai_response(
                 if action.get("action") == "levelUp":
                     # Directly call the action handler for just this action
                     try:
-                        result = action_handler.process_action(
+                        result = run_outside_response_fence(
+                            action_handler.process_action,
                             action,
                             party_tracker_data,
                             location_data,
                             conversation_history,
+                            invocation_claim=invocation_claim,
                         )
+                    except InvocationSupersededError:
+                        return {
+                            "status": "superseded_invocation",
+                            "retryable": False,
+                        }
                     except Exception as action_error:
                         error(
                             "FAILURE: Level-up action handler raised unexpectedly",
@@ -4955,7 +5031,8 @@ def process_ai_response(
                         "content": response,
                     }
                     conversation_history.append(pre_transition_message)
-                result = action_handler.process_action(
+                result = run_outside_response_fence(
+                    action_handler.process_action,
                     action,
                     party_tracker_data,
                     location_data,
@@ -4970,6 +5047,7 @@ def process_ai_response(
                         if action.get("action") == "transitionLocation"
                         else None
                     ),
+                    invocation_claim=invocation_claim,
                 )
                 actions_processed = True
                 if isinstance(result, dict):
@@ -5077,14 +5155,22 @@ def process_ai_response(
                         location_data = get_location_data_from_party_tracker(
                             party_tracker_data
                         )
-                        ai_response = get_ai_response(followup_history)
+                        if result_status == "needs_response":
+                            followup_history = _prepare_rebuilt_history_for_t067(
+                                followup_history
+                            )
+                        ai_response = run_outside_response_fence(
+                            get_ai_response, followup_history
+                        )
                         if result_status == "needs_post_combat_narration":
                             process_ai_response._just_finished_combat = True
+                        response_fences.close()
                         return process_ai_response(
                             ai_response,
                             party_tracker_data,
                             location_data,
                             followup_history,
+                            invocation_claim=invocation_claim,
                         )
                     # Check if we need to generate a DM response (e.g., after module creation)
                     if result.get("needs_dm_response"):
@@ -5105,12 +5191,16 @@ def process_ai_response(
                         location_data = get_location_data_from_party_tracker(
                             party_tracker_data
                         )
-                        ai_response = get_ai_response(followup_history)
+                        ai_response = run_outside_response_fence(
+                            get_ai_response, followup_history
+                        )
+                        response_fences.close()
                         return process_ai_response(
                             ai_response,
                             party_tracker_data,
                             location_data,
                             followup_history,
+                            invocation_claim=invocation_claim,
                         )
                 elif isinstance(result, bool) and result:
                     needs_conversation_history_update = True
@@ -5659,11 +5749,13 @@ def process_ai_response(
                             )
                         )
                         continue
-                result = action_handler.process_action(
+                result = run_outside_response_fence(
+                    action_handler.process_action,
                     action,
                     party_tracker_data,
                     deferred_location_data,
                     fresh_conversation_history,
+                    invocation_claim=invocation_claim,
                 )
                 if isinstance(result, dict):
                     if result.get("needs_update"):
@@ -5779,15 +5871,26 @@ def process_ai_response(
                                 party_tracker_data
                             )
                         )
-                        ai_response = get_ai_response(followup_history)
+                        if result_status in {
+                            "needs_post_combat_narration",
+                            "needs_response",
+                        }:
+                            followup_history = _prepare_rebuilt_history_for_t067(
+                                followup_history
+                            )
+                        ai_response = run_outside_response_fence(
+                            get_ai_response, followup_history
+                        )
                         if result_status == "needs_post_combat_narration":
                             process_ai_response._just_finished_combat = True
                         finish_location_transition_checkpoint()
+                        response_fences.close()
                         return process_ai_response(
                             ai_response,
                             party_tracker_data,
                             deferred_location_data,
                             followup_history,
+                            invocation_claim=invocation_claim,
                         )
                 elif isinstance(result, str) and result in {"exit", "restart"}:
                     finish_location_transition_checkpoint()
@@ -5851,12 +5954,16 @@ def process_ai_response(
                 deferred_location_data = get_location_data_from_party_tracker(
                     party_tracker_data
                 )
-                ai_response = get_ai_response(followup_history)
+                ai_response = run_outside_response_fence(
+                    get_ai_response, followup_history
+                )
+                response_fences.close()
                 return process_ai_response(
                     ai_response,
                     party_tracker_data,
                     deferred_location_data,
                     followup_history,
+                    invocation_claim=invocation_claim,
                 )
 
             return {"role": "assistant", "content": json.dumps({"narration": full_narration, "actions": []})}
@@ -5871,11 +5978,9 @@ def process_ai_response(
         actions_processed = False
         
         # Debug: Log what actions we received
-        debug(f"STATE_CHANGE: Received {len(actions)} total actions", category="character_updates")
-        print(f"DEBUG: STATE_CHANGE: Received {len(actions)} total actions")
+        debug(f"DEBUG: STATE_CHANGE: Received {len(actions)} total actions", category="character_updates")
         for i, action in enumerate(actions):
-            debug(f"  Action {i+1}: {action.get('action', 'unknown')}", category="character_updates")
-            print(f"DEBUG:   Action {i+1}: {action.get('action', 'unknown')}")
+            debug(f"DEBUG:   Action {i+1}: {action.get('action', 'unknown')}", category="character_updates")
         
         # Separate updateCharacterInfo actions from the other action families.
         char_update_actions = [action for action in actions if action.get("action") == "updateCharacterInfo"]
@@ -5939,12 +6044,19 @@ def process_ai_response(
             )
             for action in char_update_actions:
                 try:
-                    result = action_handler.process_action(
+                    result = run_outside_response_fence(
+                        action_handler.process_action,
                         action,
                         party_tracker_data,
                         location_data,
                         conversation_history,
+                        invocation_claim=invocation_claim,
                     )
+                except InvocationSupersededError:
+                    return {
+                        "status": "superseded_invocation",
+                        "retryable": False,
+                    }
                 except Exception as action_error:
                     error(
                         "FAILURE: Character update handler raised unexpectedly",
@@ -5979,12 +6091,19 @@ def process_ai_response(
             # local templates emit an immediate empty end-of-turn).
             pre_action_len = len(conversation_history)
             try:
-                result = action_handler.process_action(
+                result = run_outside_response_fence(
+                    action_handler.process_action,
                     action,
                     party_tracker_data,
                     location_data,
                     conversation_history,
+                    invocation_claim=invocation_claim,
                 )
+            except InvocationSupersededError:
+                return {
+                    "status": "superseded_invocation",
+                    "retryable": False,
+                }
             except Exception as action_error:
                 error(
                     "FAILURE: Action handler raised unexpectedly",
@@ -6085,7 +6204,12 @@ def process_ai_response(
                 # We must reload the history from disk to ensure we have the combat summary.
                 # This is necessary because the action_handler modified and saved the history independently.
                 post_combat_history = load_json_file(json_file) or conversation_history
-                ai_response_after_combat = get_ai_response(post_combat_history)
+                post_combat_history = _prepare_rebuilt_history_for_t067(
+                    post_combat_history
+                )
+                ai_response_after_combat = run_outside_response_fence(
+                    get_ai_response, post_combat_history
+                )
                 
                 # Set flag to indicate we just finished combat (for XP display fix)
                 process_ai_response._just_finished_combat = True
@@ -6093,7 +6217,14 @@ def process_ai_response(
                 # Process the AI's post-combat response by calling this function again (recursively).
                 # This ensures the post-combat narration is handled just like any other turn,
                 # maintaining consistency in how we process AI responses.
-                return process_ai_response(ai_response_after_combat, party_tracker_data, location_data, post_combat_history)
+                response_fences.close()
+                return process_ai_response(
+                    ai_response_after_combat,
+                    party_tracker_data,
+                    location_data,
+                    post_combat_history,
+                    invocation_claim=invocation_claim,
+                )
             # --- END SIGNAL-BASED SUB-SYSTEM CONTROL ---
             
             if isinstance(result, dict):
@@ -6119,8 +6250,17 @@ def process_ai_response(
 
                     # Now reload and get the new AI response
                     conversation_history = load_json_file("modules/conversation_history/conversation_history.json") or []
-                    ai_response = get_ai_response(conversation_history)
-                    return process_ai_response(ai_response, party_tracker_data, location_data, conversation_history)
+                    ai_response = run_outside_response_fence(
+                        get_ai_response, conversation_history
+                    )
+                    response_fences.close()
+                    return process_ai_response(
+                        ai_response,
+                        party_tracker_data,
+                        location_data,
+                        conversation_history,
+                        invocation_claim=invocation_claim,
+                    )
                 if result.get("needs_update"): needs_conversation_history_update = True
             elif result == "exit": return "exit"
             elif isinstance(result, bool) and result: needs_conversation_history_update = True
@@ -6137,8 +6277,17 @@ def process_ai_response(
                 
                 action_handler.process_action.level_up_summaries = []
                 
-                ai_response = get_ai_response(conversation_history)
-                return process_ai_response(ai_response, party_tracker_data, location_data, conversation_history)
+                ai_response = run_outside_response_fence(
+                    get_ai_response, conversation_history
+                )
+                response_fences.close()
+                return process_ai_response(
+                    ai_response,
+                    party_tracker_data,
+                    location_data,
+                    conversation_history,
+                    invocation_claim=invocation_claim,
+                )
 
         # STANDARD TURN COMPLETION: For a normal turn (no special signals or sub-systems),
         # we append the AI's response to history here in process_ai_response.
@@ -6179,6 +6328,11 @@ def process_ai_response(
         
         return assistant_message
 
+    except InvocationSupersededError:
+        return {
+            "status": "superseded_invocation",
+            "retryable": False,
+        }
     except json.JSONDecodeError as e:
         print(f"Error: Unable to parse AI response as JSON: {e}")
         print(f"Problematic response: {response}")
@@ -6576,6 +6730,25 @@ def _get_ai_response_impl(
     return content
 
 
+def _finalize_main_response_validation(
+    conversation_history,
+    validation_prefix_length,
+    candidate_response,
+    candidate_valid,
+):
+    """Remove retry-only messages and block rejected T067 state actions."""
+    cleaned_history = conversation_history[:validation_prefix_length]
+    if candidate_valid and candidate_response:
+        return cleaned_history, candidate_response
+
+    fallback_message = (
+        "I could not safely resolve that action after several attempts. "
+        "No game state was changed; please rephrase or try a simpler action."
+    )
+    cleaned_history.append({"role": "assistant", "content": fallback_message})
+    return cleaned_history, None
+
+
 def get_ai_response(
     conversation_history,
     validation_retry_count=0,
@@ -6662,6 +6835,22 @@ def order_conversation_messages(conversation_history, main_system_prompt_text):
     ordered_history.extend(non_system_messages)
     
     return ordered_history
+
+
+def _prepare_rebuilt_history_for_t067(
+    conversation_history, main_system_prompt_text=None
+):
+    """Return a detached rebuilt history with one canonical prompt first."""
+    if main_system_prompt_text is None:
+        with open("prompts/system_prompt.txt", "r", encoding="utf-8") as file:
+            main_system_prompt_text = file.read()
+    detached_history = [dict(message) for message in conversation_history]
+    ensured_history = ensure_main_system_prompt(
+        detached_history, main_system_prompt_text
+    )
+    return order_conversation_messages(
+        ensured_history, main_system_prompt_text
+    )
 
 def check_all_modules_plot_completion():
     """
@@ -7138,11 +7327,30 @@ def main_game_loop():
             recovery = _active_combat_recovery(party_tracker_data)
             if recovery:
                 display_dm_narration(
-                    "Combat remains paused. Load or restore a save before "
-                    "resuming encounter %s; no post-combat narration was "
-                    "requested." % active_encounter_id,
+                    recovery.get("message")
+                    or (
+                        "Combat remains paused. Load or restore a save before "
+                        "resuming encounter %s; no post-combat narration was "
+                        "requested." % active_encounter_id
+                    ),
                     channel="combat",
                     color="yellow",
+                )
+                # A recovered combat bypasses the ordinary startup-kickoff
+                # path.  Reuse its established already-done marker so web
+                # clients enter the playable state and keep Load/Reset
+                # operable while the encounter remains safely paused.
+                startup_state = load_startup_state() or {}
+                emit_startup_marker(
+                    "startup_kickoff_skipped",
+                    source="combat_recovery",
+                    result="already_done",
+                    startup_attempt_id=startup_state.get(
+                        "startup_attempt_id"
+                    ),
+                    state_version=startup_state.get("state_version"),
+                    lease_owner=startup_state.get("lease_owner"),
+                    attempt_count=startup_state.get("attempt_count"),
                 )
             else:
                 display_dm_narration(
@@ -7176,6 +7384,10 @@ def main_game_loop():
 
         # ** CRITICAL FIX: Get a new AI response for post-combat narration **
         # This makes the resumed flow behave exactly like the normal flow.
+        if not combat_still_active:
+            conversation_history = _prepare_rebuilt_history_for_t067(
+                conversation_history, main_system_prompt_text
+            )
         ai_response_after_combat = (
             None
             if combat_still_active
@@ -8068,26 +8280,61 @@ def main_game_loop():
             )
             continue
         pre_turn_accepted_history = copy.deepcopy(conversation_history)
-        conversation_history.append({"role": "user", "content": user_input_with_note})
-        save_conversation_history(conversation_history)
 
+        from core.combat.invocation import (
+            InvocationSupersededError,
+            begin_invocation,
+            complete_invocation,
+            invocation_is_current,
+        )
+        from core.managers.campaign_manager import _party_module_transition_lock
+
+        t067_claim = begin_invocation(
+            "T067",
+            wait_observer=lambda _claim: print(
+                "[SYSTEM] The current game operation is still finishing; waiting safely."
+            ),
+        )
+
+        def persist_t067_history_if_current(history):
+            with _party_module_transition_lock():
+                if not invocation_is_current(t067_claim):
+                    return False
+                save_conversation_history(history)
+                return True
+
+        # The player's durable turn input belongs to the same serialized
+        # logical operation as T067. Claim before the first history write so
+        # a concurrent Load/Reset cannot be overwritten by an unclaimed turn.
+        conversation_history.append({"role": "user", "content": user_input_with_note})
+        initial_history_persisted = persist_t067_history_if_current(
+            conversation_history
+        )
         validation_prefix_length = len(conversation_history)
+
         retry_count = 0
         valid_response_received = False
+        invocation_superseded = not initial_history_persisted
         ai_response_content = None
         approved_transition_plan = None
         rejected_candidate = None
         retry_correction = None
         planner_projection = None
+        previous_semantic_rejection = None
+        consecutive_semantic_rejections = 0
         # [travel-clean #209] NPC voice advisory is deferred until the voice line
         # lands; keep the parameter inert so the turn threads None, not a NameError.
         npc_voice_batch = None
 
-        while not valid_response_received:
+        while not valid_response_received and not invocation_superseded:
             if live_turn_scope.is_superseded():
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
+            with _party_module_transition_lock():
+                if not invocation_is_current(t067_claim):
+                    invocation_superseded = True
+                    break
             # Authorization belongs only to this candidate response. A retry
             # must obtain a new plan from the current atlas/evidence snapshot.
             approved_transition_plan = None
@@ -8127,10 +8374,38 @@ def main_game_loop():
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
+            except Exception as response_error:
+                error(
+                    f"FAILURE: T067 provider call failed on attempt "
+                    f"{retry_count + 1}",
+                    exception=response_error,
+                    category="ai_validation",
+                )
+                status_manager.update_status(
+                    f"Continuing the same response (attempt {retry_count + 1})...",
+                    True,
+                )
+                conversation_history.append({
+                    "role": "user",
+                    "content": (
+                        "Error Note: The previous response attempt was unavailable. "
+                        "Please generate the requested response again."
+                    ),
+                })
+                if not persist_t067_history_if_current(conversation_history):
+                    invocation_superseded = True
+                    break
+                retry_count += 1
+                continue
             if live_turn_scope.is_superseded():
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
+
+            with _party_module_transition_lock():
+                if not invocation_is_current(t067_claim):
+                    invocation_superseded = True
+                    break
 
             # PRE-PROCESSING: Fix incorrect updatePartyTracker usage for within-module travel
             # This must happen BEFORE any validation to prevent wrong action from being checked
@@ -8353,6 +8628,9 @@ def main_game_loop():
             except json.JSONDecodeError as e:
                 # Structural validation below owns malformed provider JSON.
                 debug(f"Could not parse response for transition planning: {e}", category="location_transitions")
+            except InvocationSupersededError:
+                invocation_superseded = True
+                transition_check_passed = False
             except Exception as e:
                 error(
                     "FAILURE: Transition structural check raised unexpectedly",
@@ -8374,6 +8652,10 @@ def main_game_loop():
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
+            with _party_module_transition_lock():
+                if not invocation_is_current(t067_claim):
+                    invocation_superseded = True
+                    break
 
             try:
                 validation_result = validate_ai_response(
@@ -8385,11 +8667,20 @@ def main_game_loop():
                     srd_context=turn_srd_context,
                     npc_voice_batch=npc_voice_batch,
                     transition_facts=planner_projection,
+                    invocation_claim=t067_claim,
                 )
             except LiveProviderSuperseded:
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
+            except InvocationSupersededError:
+                invocation_superseded = True
+                break
+
+            with _party_module_transition_lock():
+                if not invocation_is_current(t067_claim):
+                    invocation_superseded = True
+                    break
 
             # Unpack the validation result tuple
             is_valid = False
@@ -8472,6 +8763,7 @@ def main_game_loop():
                             location_graph,
                             path_manager,
                             return_plan=True,
+                            invocation_claim=t067_claim,
                         )
                     except LiveProviderSuperseded:
                         conversation_history[:] = pre_turn_accepted_history
@@ -8543,10 +8835,18 @@ def main_game_loop():
                 # Failed candidates and validator feedback are retry context,
                 # not durable game history. Only the accepted candidate may
                 # cross into process_ai_response and its state handlers.
-                conversation_history = conversation_history[
-                    :validation_prefix_length
-                ]
-                save_conversation_history(conversation_history)
+                conversation_history, ai_response_content = (
+                    _finalize_main_response_validation(
+                        conversation_history,
+                        validation_prefix_length,
+                        ai_response_content,
+                        candidate_valid=True,
+                    )
+                )
+                if not persist_t067_history_if_current(conversation_history):
+                    invocation_superseded = True
+                    valid_response_received = False
+                    break
             
                 # SIMPLIFIED ARCHITECTURE: process_ai_response now handles ALL complexity internally.
                 # This includes:
@@ -8556,13 +8856,17 @@ def main_game_loop():
                 # - Level-up sessions (returned as enter_levelup_mode signal)
                 # - All conversation history updates
                 # The main loop is now just a thin orchestration layer.
-                final_result = process_ai_response(
-                    ai_response_content,
-                    party_tracker_data,
-                    location_data,
-                    conversation_history,
-                    approved_transition_plan=approved_transition_plan,
-                )
+                try:
+                    final_result = process_ai_response(
+                        ai_response_content,
+                        party_tracker_data,
+                        location_data,
+                        conversation_history,
+                        approved_transition_plan=approved_transition_plan,
+                        invocation_claim=t067_claim,
+                    )
+                finally:
+                    complete_invocation(t067_claim)
                 (
                     final_result,
                     party_tracker_data,
@@ -8724,6 +9028,21 @@ def main_game_loop():
                 # Validation failed with a reason
                 debug(f"VALIDATION: Validation failed. Reason: {validation_reason}", category="ai_validation")
                 status_retrying(retry_count + 1)
+                # Combat-line telemetry: flag a repeated identical semantic
+                # rejection inside the same visible logical operation. Retry
+                # material itself stays on the DETACHED request view (travel
+                # doctrine: durable history holds accepted content only).
+                if validation_reason == previous_semantic_rejection:
+                    consecutive_semantic_rejections += 1
+                else:
+                    previous_semantic_rejection = validation_reason
+                    consecutive_semantic_rejections = 1
+                if consecutive_semantic_rejections >= 2:
+                    warning(
+                        "VALIDATION: Repeated semantic rejection remains in the "
+                        "same visible logical operation.",
+                        category="ai_validation",
+                    )
                 correction_context = (
                     "\n\n%s" % turn_srd_context if turn_srd_context else ""
                 )
@@ -8743,10 +9062,19 @@ def main_game_loop():
                 )
                 retry_count += 1
 
+        if invocation_superseded:
+            complete_invocation(t067_claim)
+            conversation_history = load_json_file(json_file) or []
+            print(
+                "[SYSTEM] That in-flight response was superseded by Load, Reset, "
+                "or exit; restored state remains authoritative."
+            )
+
         if not valid_response_received:
             from utils.capture.live_provider_call import finish_live_turn_scope
 
             finish_live_turn_scope(live_turn_scope)
+            status_ready()
             return
 
         # This block now only runs if a response was NOT held

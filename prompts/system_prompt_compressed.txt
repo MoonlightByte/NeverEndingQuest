@@ -205,7 +205,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   establishHub:        {"hubName": string, "hubType": string, "description": string, "services": array, "ownership": string}
   exitGame:            {"farewell": string}
   transitionLocation:  {"newLocation": string}          // EXACTLY this one key - MUST be location ID (D03, C01) NEVER location name
-  createEncounter:     {"encounterSummary": string, "player": string, "npcs": array, "monsters": array} // all arrays contain individual strings
+  createEncounter:     {"encounterSummary": string, "player": string, "npcs": array, "monsters": array, "scene": {"participants": array, "relations": array, "objectives": array, "disclosureGrants": array}}
   storageInteraction:  {"description": string, "characterName": string}
   updateEncounter:     {"encounterId": string, "changes": object}
   updatePartyTracker:  {"module": string, "currentAreaId": string, "currentArea": string, "currentLocationId": string, "currentLocation": string}
@@ -223,6 +223,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 @NOTES={
   updatePartyNPCs.operation: allowed values are exactly "add" or "remove" only.
   createEncounter.monsters: MUST be an array of strings. For multiple monsters of the same type, list them as separate strings (e.g., ["Bandit", "Bandit", "Bandit"]).
+  createEncounter.scene: participants EXACTLY match player:0, npc:N, monster:N positional keys; each has participation, initiativeEligible:boolean, persistence, controller. Relations/objectives/disclosure use only those exact keys. Presence, relation, controller, initiative eligibility are independent. Never disclose private facts.
 }
 
 @EXAMPLES={
@@ -237,16 +238,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
     {"action":"updatePlot","parameters":{"plotPointId":"PP001","newStatus":"in progress","plotImpact":"Party took a short rest at Black Lantern Hearth, bonds deepened."}}
   ],
   combatTrigger:[
-    {"action":"createEncounter","parameters":{"encounterSummary":"Bandits ambush the party on the road.","player":"eirik_hearthwise","npcs":["Scout Kira","Scout Elen","Ranger Thane"],"monsters":["Bandit Captain","Bandit","Bandit","Bandit","Bandit"]}}
-  ],
-  alertingAttack:[
-    {"action":"createEncounter","parameters":{"encounterSummary":"Ambush triggered: Eirik looses an arrow at the sentry; shouts ring out.","player":"eirik_hearthwise","npcs":["Scout Kira","Scout Elen","Ranger Thane"],"monsters":["Sentry","Cultist","Cultist","Cultist"]}}
-  ],
-  hostileAwareness:[
-    {"action":"createEncounter","parameters":{"encounterSummary":"Guard patrol spots the party and charges with weapons drawn.","player":"eirik_hearthwise","npcs":["Scout Kira","Scout Elen","Ranger Thane"],"monsters":["Guard","Guard","Guard","Guard","Guard Sergeant"]}}
-  ],
-  alarmRings:[
-    {"action":"createEncounter","parameters":{"encounterSummary":"Bell alarm tolls; tomb guardians converge on the nave.","player":"eirik_hearthwise","npcs":["Scout Kira","Scout Elen","Ranger Thane"],"monsters":["Skeleton","Skeleton","Skeleton","Skeleton","Skeleton","Skeleton","Wight"]}}
+    {"action":"createEncounter","parameters":{"encounterSummary":"A sentry attacks the party.","player":"eirik_hearthwise","npcs":["Scout Kira"],"monsters":["Sentry"],"scene":{"participants":[{"participantKey":"player:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"human"},{"participantKey":"npc:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},{"participantKey":"monster:0","participation":"active","initiativeEligible":true,"persistence":"encounter","controller":"actor_agent"}],"relations":[{"subjectKey":"monster:0","objectKey":"player:0","disposition":"hostile"}],"objectives":[{"ownerKeys":["monster:0"],"kind":"drive_off","targetKeys":["player:0"],"status":"active"}],"disclosureGrants":[]}}}
   ],
   locationTransition:[
     {"action":"transitionLocation","parameters":{"newLocation":"V07"}}
