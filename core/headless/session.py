@@ -524,8 +524,16 @@ class HeadlessSession:
                         command_id, scope=welcome_scope,
                     )
                     if queued is None:
-                        welcome_scope.quiescent.wait()
-                        complete_welcome_save(execute_welcome_save())
+                        # The welcome sealed before the enqueue: no welcome
+                        # remains. Re-resolve authoritative state - queue
+                        # against a now-live player turn, else the plain
+                        # idle-path write (same contract as no-welcome Save).
+                        followup = queue_live_save(
+                            execute_welcome_save, complete_welcome_save,
+                            command_id,
+                        )
+                        if followup is None:
+                            complete_welcome_save(execute_welcome_save())
                     return
                 ok, message = manager.create_save_game(
                     description=args.get("description", ""),
@@ -582,12 +590,26 @@ class HeadlessSession:
                         queue_live_save,
                     )
 
-                    welcome_scope.request_supersession("restore")
+                    operation = welcome_scope.request_supersession("restore")
+                    if operation.get("kind") == "turn_complete":
+                        result(False, error="the welcome-back narration just "
+                                            "completed; retry restore")
+                        return
+                    if not operation.get("accepted"):
+                        result(
+                            False,
+                            error=(
+                                "another lifecycle operation is already "
+                                "pending: " + str(operation.get("kind"))
+                            ),
+                        )
+                        return
                     self.writer.emit(
                         "operation",
                         id=command_id,
                         name="restore",
                         status="accepted_deferred",
+                        operation_id=operation.get("operation_id"),
                     )
 
                     def execute_welcome_restore():
@@ -605,11 +627,15 @@ class HeadlessSession:
 
                     queued = queue_live_save(
                         execute_welcome_restore, complete_welcome_restore,
-                        str(command_id), scope=welcome_scope,
+                        str(operation.get("operation_id") or command_id),
+                        scope=welcome_scope,
                     )
                     if queued is None:
-                        welcome_scope.quiescent.wait()
-                        complete_welcome_restore(execute_welcome_restore())
+                        # Sealed between claim and enqueue: the welcome
+                        # terminal already ran. Honest retry - never mutate
+                        # from this control thread.
+                        result(False, error="the welcome-back narration just "
+                                            "completed; retry restore")
                     return
                 ok, message = manager.restore_save_game(folder)
                 if not ok:

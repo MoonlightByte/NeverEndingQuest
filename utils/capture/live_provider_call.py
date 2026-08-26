@@ -233,7 +233,13 @@ def drain_live_saves(scope, *, seal=False):
             outcome = record["execute"]()
         except BaseException as exc:
             outcome = (False, "%s: %s" % (type(exc).__name__, exc))
-        record["complete"](outcome)
+        try:
+            record["complete"](outcome)
+        except Exception:
+            # Completion notification is presentational (a disconnected web
+            # client makes socketio.emit raise); it must never stop the
+            # drain or block the terminal's quiescence guarantee.
+            pass
 
 
 def finish_live_turn_scope(scope):

@@ -2723,8 +2723,16 @@ def handle_action(data):
                     scope=welcome_scope,
                 )
                 if queued_id is None:
-                    welcome_scope.quiescent.wait()
-                    complete_welcome_save(execute_welcome_save())
+                    # The welcome sealed before the enqueue: no welcome
+                    # remains. Re-resolve authoritative state - queue against
+                    # a now-live player turn, else the plain idle-path write
+                    # (identical contract to Save with no welcome at all).
+                    followup = queue_live_save(
+                        execute_welcome_save, complete_welcome_save,
+                        "save:%s:%s:%s" % (session_id, description, save_mode),
+                    )
+                    if followup is None:
+                        complete_welcome_save(execute_welcome_save())
                 return
             success, message = manager.create_save_game(description, save_mode)
             if success:
@@ -2766,10 +2774,27 @@ def handle_action(data):
                 # authoritative; no post-quiescence scheduling gap.
                 from utils.capture.live_provider_call import queue_live_save
 
-                welcome_scope.request_supersession("restore")
+                operation = welcome_scope.request_supersession("restore")
+                if operation['kind'] == 'turn_complete':
+                    emit('error', {
+                        'message': (
+                            'The welcome-back narration just completed. '
+                            'Please retry the load.'
+                        )
+                    })
+                    return
+                if not operation['accepted']:
+                    emit('error', {
+                        'message': (
+                            'Another lifecycle operation is already pending: '
+                            + operation['kind']
+                        )
+                    })
+                    return
                 session_id = getattr(request, 'sid', None) or 'unknown-session'
                 emit('system_message', {
                     'content': 'Load accepted. The welcome-back narration is stopping safely first.',
+                    'operation_id': operation['operation_id'],
                 })
 
                 def execute_welcome_restore():
@@ -2786,12 +2811,19 @@ def handle_action(data):
                         socketio.emit('error', {'message': f"Restore failed: {message}"}, to=session_id)
 
                 queued_id = queue_live_save(
-                    execute_welcome_restore, complete_welcome_restore, None,
-                    scope=welcome_scope,
+                    execute_welcome_restore, complete_welcome_restore,
+                    operation['operation_id'], scope=welcome_scope,
                 )
                 if queued_id is None:
-                    welcome_scope.quiescent.wait()
-                    complete_welcome_restore(execute_welcome_restore())
+                    # Sealed between claim and enqueue: the welcome terminal
+                    # already ran. Honest retry - never mutate from this
+                    # control thread.
+                    emit('error', {
+                        'message': (
+                            'The welcome-back narration just completed. '
+                            'Please retry the load.'
+                        )
+                    })
                 return
             success, message = manager.restore_save_game(save_folder)
             if success:
@@ -2844,10 +2876,27 @@ def handle_action(data):
                 # terminal, before player input is released.
                 from utils.capture.live_provider_call import queue_live_save
 
-                welcome_scope.request_supersession("reset")
+                operation = welcome_scope.request_supersession("reset")
+                if operation['kind'] == 'turn_complete':
+                    emit('error', {
+                        'message': (
+                            'The welcome-back narration just completed. '
+                            'Please retry the reset.'
+                        )
+                    })
+                    return
+                if not operation['accepted']:
+                    emit('error', {
+                        'message': (
+                            'Another lifecycle operation is already pending: '
+                            + operation['kind']
+                        )
+                    })
+                    return
                 session_id = getattr(request, 'sid', None) or 'unknown-session'
                 emit('system_message', {
                     'content': 'Reset accepted. The welcome-back narration is stopping safely first.',
+                    'operation_id': operation['operation_id'],
                 })
 
                 def execute_welcome_reset():
@@ -2867,12 +2916,16 @@ def handle_action(data):
                         socketio.emit('error', {'message': f'Campaign reset failed: {message}'}, to=session_id)
 
                 queued_id = queue_live_save(
-                    execute_welcome_reset, complete_welcome_reset, None,
-                    scope=welcome_scope,
+                    execute_welcome_reset, complete_welcome_reset,
+                    operation['operation_id'], scope=welcome_scope,
                 )
                 if queued_id is None:
-                    welcome_scope.quiescent.wait()
-                    complete_welcome_reset(execute_welcome_reset())
+                    emit('error', {
+                        'message': (
+                            'The welcome-back narration just completed. '
+                            'Please retry the reset.'
+                        )
+                    })
                 return
             reset_campaign.perform_reset_logic()
             # Clear the message cache on campaign reset

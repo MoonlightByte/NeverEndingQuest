@@ -395,8 +395,12 @@ def _finish_welcome(lifecycle, disposition):
         lifecycle.phase = "QUIESCENT"
     # Queued Save/Load/Reset records execute HERE on the game thread, before
     # quiescence releases the loop back to player input - the control thread
-    # never mutates in the post-quiescence scheduling gap (F8/F9).
-    drain_live_saves(lifecycle.scope, seal=True)
+    # never mutates in the post-quiescence scheduling gap (F8/F9). A drain
+    # failure must never block the every-terminal quiescence guarantee.
+    try:
+        drain_live_saves(lifecycle.scope, seal=True)
+    except Exception:
+        pass
     clear_welcome_scope(lifecycle.scope)
     with lifecycle.scope.lock:
         lifecycle.scope.controls_open = False
