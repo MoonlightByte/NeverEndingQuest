@@ -420,7 +420,7 @@ def _apply_welcome(lifecycle):
         mark_kickoff_done,
         mark_kickoff_failed,
         try_consume_forced_recovery,
-        load_startup_state,
+        load_state as load_startup_state,
     )
     # Completion-boundary reconcile: the GAME THREAD is the acceptance
     # authority, not worker exception timing. A supersession that landed
@@ -778,7 +778,39 @@ def service_welcome_lifecycle():
                 lifecycle.phase = "APPLY_PENDING"
             elif lifecycle.phase != "APPLY_PENDING":
                 return
-        _apply_welcome(lifecycle)
+        try:
+            _apply_welcome(lifecycle)
+        except BaseException as exc:
+            # A handback fault must never wedge the lifecycle invisibly (the
+            # input-poll pump swallows exceptions, so a repeating fault here
+            # is an infinite silent loop and a crash on player input). Reach
+            # the FAILED terminal: every disposition reaches QUIESCENT.
+            warning(
+                "INITIALIZATION: Startup welcome handback fault: %s: %s"
+                % (type(exc).__name__, exc),
+                category="startup",
+            )
+            with lifecycle.lock:
+                lifecycle.error = "%s: %s" % (type(exc).__name__, exc)
+            try:
+                from utils.startup_handoff_state import mark_kickoff_failed
+                mark_kickoff_failed(
+                    lifecycle.startup_attempt_id, lifecycle.lease_owner,
+                    lifecycle.error,
+                )
+            except Exception:
+                pass
+            history = (
+                lifecycle.live_history
+                if lifecycle.live_history is not None
+                else lifecycle.frozen_history
+            )
+            _remove_welcome_note(lifecycle, history)
+            try:
+                save_conversation_history(history)
+            except Exception:
+                pass
+            _finish_welcome(lifecycle, "FAILED")
 
 
 def finalize_welcome_before_player_turn():
