@@ -391,6 +391,12 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
                                       messages=messages, model=..., temperature=0.7)
     """
     live_selected = kwargs.pop("_live_selected", None)
+    # Detached execution context (issue #214): an off-thread caller (the
+    # startup welcome) passes its own cancellable scope + status sink so its
+    # provider work never binds the global player-turn scope or the global
+    # input-locking status channel. Absent = byte-identical legacy behavior.
+    detached_scope = kwargs.pop("_detached_scope", None)
+    detached_status = kwargs.pop("_detached_status", None)
     if live_selected is None:
         from utils.capture.live_provider_call import live_provider_policy
 
@@ -454,7 +460,14 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         from utils.capture.live_provider_call import call_live_provider
 
         start = time.time()
-        response = call_live_provider(task_id, messages, kwargs, policy=live_policy)
+        response = call_live_provider(
+            task_id,
+            messages,
+            kwargs,
+            policy=live_policy,
+            scope=detached_scope,
+            status_emit=detached_status,
+        )
         primary_latency = round(time.time() - start, 3)
         _track_module_primary(
             response, task_id, request_provider, requested_model

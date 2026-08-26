@@ -166,6 +166,35 @@ def request_live_turn_supersession(kind, operation_id=None):
     return scope.request_supersession(kind, operation_id)
 
 
+# --- Detached startup-welcome scope (issue #214) ---------------------------
+# The off-thread startup welcome owns its OWN LiveTurnScope, deliberately NOT
+# registered as _active_scope (the player-turn singleton would collide with
+# open_live_turn_scope). This registry only makes that scope visible to the
+# web action gate and the restore/reset handlers so Save/Load/Reset are never
+# wrongly refused during a background welcome and can supersede + quiesce it.
+_welcome_scope = None
+
+
+def register_welcome_scope(scope):
+    global _welcome_scope
+    with _scope_guard:
+        _welcome_scope = scope
+        return scope
+
+
+def get_active_welcome_scope():
+    with _scope_guard:
+        return _welcome_scope
+
+
+def clear_welcome_scope(scope):
+    """Clear only the exact registered welcome scope."""
+    global _welcome_scope
+    with _scope_guard:
+        if _welcome_scope is scope:
+            _welcome_scope = None
+
+
 def queue_live_save(execute, complete, operation_id=None):
     """Queue one already-acknowledged Save for the game-thread boundary."""
     scope = get_live_turn_scope()
@@ -347,7 +376,8 @@ def _terminate_process(process):
     return output
 
 
-def _interruptible_wait(seconds, scope, message):
+def _interruptible_wait(seconds, scope, message, emit=None):
+    emit = emit if emit is not None else _emit_working
     deadline = time.monotonic() + max(0.0, float(seconds))
     while True:
         if scope is not None and scope.is_superseded():
@@ -355,7 +385,7 @@ def _interruptible_wait(seconds, scope, message):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return
-        _emit_working(message)
+        emit(message)
         time.sleep(min(_HEARTBEAT_SECONDS, remaining))
 
 
@@ -386,8 +416,24 @@ def _reconstruct_response(envelope):
     )
 
 
-def call_live_provider(task_id, messages, request_kwargs, *, policy="required"):
-    """Run one frozen selected request under its required/advisory policy."""
+def call_live_provider(
+    task_id,
+    messages,
+    request_kwargs,
+    *,
+    policy="required",
+    scope=None,
+    status_emit=None,
+):
+    """Run one frozen selected request under its required/advisory policy.
+
+    ``scope`` lets a detached caller (the off-thread startup welcome) supply
+    its own cancellable LiveTurnScope instead of the global player-turn
+    singleton; existing callers pass nothing and behave byte-identically.
+    ``status_emit`` routes liveness/heartbeat messages to a caller-owned sink
+    (the non-input-locking welcome status channel) instead of the global
+    input-locking status manager.
+    """
     if task_id not in _LIVE_TASK_IDS:
         raise ValueError("task is outside the reviewed live provider allowlist")
     if policy not in {"required", "advisory"}:
@@ -397,7 +443,8 @@ def call_live_provider(task_id, messages, request_kwargs, *, policy="required"):
         raise ValueError(
             "%s is classified %s, not %s" % (task_id, expected_policy, policy)
         )
-    scope = get_live_turn_scope()
+    scope = scope if scope is not None else get_live_turn_scope()
+    emit = status_emit if status_emit is not None else _emit_working
     operation_id = scope.operation_id if scope is not None else str(uuid4())
     frozen_messages = copy.deepcopy(messages)
     frozen_kwargs = copy.deepcopy(request_kwargs)
@@ -445,6 +492,7 @@ def call_live_provider(task_id, messages, request_kwargs, *, policy="required"):
                 _delay_for_error({}, failure_count),
                 scope,
                 "Still working; preparing a fresh provider connection...",
+                emit,
             )
             continue
 
@@ -467,7 +515,7 @@ def call_live_provider(task_id, messages, request_kwargs, *, policy="required"):
             except subprocess.TimeoutExpired:
                 first_communicate = False
             if time.monotonic() >= next_heartbeat:
-                _emit_working("Still working on your adventure...")
+                emit("Still working on your adventure...")
                 next_heartbeat = time.monotonic() + _HEARTBEAT_SECONDS
 
         if process.poll() is None:
@@ -510,7 +558,7 @@ def call_live_provider(task_id, messages, request_kwargs, *, policy="required"):
             )
         except Exception:
             pass
-        _emit_working(
+        emit(
             "The provider connection needs another attempt; your turn is safe "
             "and still in progress."
         )
@@ -518,6 +566,7 @@ def call_live_provider(task_id, messages, request_kwargs, *, policy="required"):
             _delay_for_error(envelope, failure_count),
             scope,
             "Still retrying the provider connection (%s)..." % error_class,
+            emit,
         )
 
 
