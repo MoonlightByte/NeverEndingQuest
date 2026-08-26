@@ -118,6 +118,9 @@ socket.on('connect', () => {
 })
 socket.on('disconnect', () => {
   useSession.getState().setConnected(false)
+  // #214 F10: a welcome clear emitted while disconnected is lost; drop the
+  // placeholder now - a still-active welcome's next heartbeat restores it.
+  useSession.getState().setWelcome('')
   useLog.getState().append({ type: 'system', content: 'Disconnected from the game server. Reconnecting...', message_id: `disconnect-${hydration.currentEpoch()}` })
 })
 

@@ -5541,6 +5541,9 @@
         socket.on('disconnect', () => {
             connected = false;
             gameStarted = false;
+            // #214 F10: clear any welcome placeholder; if the welcome is
+            // still generating, its next heartbeat restores it on reconnect.
+            document.getElementById('user-input').placeholder = 'Enter your command...';
             document.getElementById('status-text').textContent = 'Disconnected';
             document.getElementById('status-indicator').classList.remove('connected');
             document.getElementById('user-input').disabled = true;
