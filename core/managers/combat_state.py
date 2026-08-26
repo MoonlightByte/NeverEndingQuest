@@ -311,6 +311,26 @@ def combatant_by_id(encounter, combatant_id):
     )
 
 
+def combatant_presentation_name(encounter, combatant_id, fallback="A combatant"):
+    """Return the typed scene label for one exact combatant identity."""
+    creature = combatant_by_id(encounter, combatant_id)
+    mechanical_name = creature.get("name") if isinstance(creature, dict) else None
+    if not isinstance(mechanical_name, str) or not mechanical_name.strip():
+        mechanical_name = fallback
+    if combat_provenance(encounter) != "typed":
+        return mechanical_name
+    for participant in (encounter.get("sceneFacts") or {}).get("participants", []):
+        if not isinstance(participant, dict):
+            continue
+        if participant.get("combatantId") != combatant_id:
+            continue
+        display_name = participant.get("displayName")
+        if isinstance(display_name, str) and display_name.strip():
+            return display_name
+        break
+    return mechanical_name
+
+
 def canonical_initiative_order(encounter):
     ensure_combatant_ids(encounter)
     eligible_ids = initiative_eligible_ids(encounter)

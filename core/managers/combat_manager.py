@@ -155,6 +155,7 @@ from core.managers.combat_state import (
     all_hostiles_resolved,
     combat_provenance,
     combatant_by_id,
+    combatant_presentation_name,
     ensure_combat_state,
     expected_automatic_actor_ids,
     expected_player_window_ids,
@@ -1238,7 +1239,11 @@ def get_initiative_order(encounter_data):
     
     order_parts = []
     for creature in sorted_creatures:
-        name = creature.get("name", "Unknown")
+        name = combatant_presentation_name(
+            encounter_data,
+            creature.get("combatantId"),
+            creature.get("name", "Unknown"),
+        )
         initiative = creature.get("initiative", 0)
         status = creature.get("status", "unknown")
         order_parts.append(f"{name} ({initiative}, {status})")
@@ -1400,6 +1405,78 @@ def _agentic_actor_window(encounter_data):
         )
     )
     return actor_ids, automatic
+
+
+def _opening_preroll_context(encounter_data, preroll_text):
+    """Keep cached dice mechanical, but omit them from typed no-action T044."""
+    return "" if combat_provenance(encounter_data) == "typed" else preroll_text
+
+
+def _build_initial_combat_prompt(
+    encounter_data,
+    dynamic_state,
+    initiative_order,
+    preroll_text,
+    initial_prompt_text,
+):
+    """Build the exact T044 opening request from prepared prompt surfaces."""
+    opening_preroll_text = _opening_preroll_context(
+        encounter_data, preroll_text
+    )
+    return f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so please describe the scene and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.
+
+Important Character Field Definitions:
+- 'status' field: Overall life/death state - ONLY use 'alive', 'dead', 'unconscious', or 'defeated' (lowercase)
+- 'condition' field: 5e status conditions - use 'none' when no conditions, or valid 5e conditions like 'blinded', 'charmed', 'poisoned', etc.
+- NEVER set condition to 'alive' - that goes in the status field
+- NEVER set status to 'none' - use 'alive' for conscious characters
+
+Combat Round Tracking:
+- MANDATORY: Include "combat_round": 1 in your response (this is round 1)
+- Track rounds throughout combat and increment when all creatures have acted
+
+Current dynamic state for all creatures:
+{dynamic_state}
+
+Initiative Order: {initiative_order}
+
+{opening_preroll_text}
+
+Player: {initial_prompt_text}"""
+
+
+def _automatic_turn_continuation_text(
+    actor_names, player_name, skipped_notice=None
+):
+    """Render one continuation message from already-resolved actor labels."""
+    required_actors = ", ".join(actor_names)
+    skipped_context = f" {skipped_notice}" if skipped_notice else ""
+    return (
+        "System combat continuation: resolve these living non-player "
+        "turns in strict initiative order before asking for the "
+        f"player's action: {required_actors}. Stop at "
+        f"{player_name} and request player input. This is not "
+        f"a submitted player action.{skipped_context}"
+    )
+
+
+def _delivery_history_input(automatic_presentation, final_user_input):
+    """Keep enriched human input unless an automatic display projection exists."""
+    return (
+        automatic_presentation
+        if automatic_presentation is not None
+        else final_user_input
+    )
+
+
+def _agentic_turn_request_context(
+    provider_input, presentation_history_input, presentation_prefix
+):
+    """Keep T096 mechanics separate from the existing delivery presentation."""
+    return provider_input, {
+        "historyInput": presentation_history_input,
+        "displayPrefix": presentation_prefix or "",
+    }
 
 
 def _combat_delivery_marker(message):
@@ -2699,8 +2776,14 @@ def filter_encounter_for_system_prompt(encounter_data):
     # Process each creature to keep only essential fields
     for creature in encounter_data.get("creatures", []):
         minimal_creature = {
-            "name": creature.get("name")
+            "name": combatant_presentation_name(
+                encounter_data,
+                creature.get("combatantId"),
+                creature.get("name"),
+            )
         }
+        if combat_provenance(encounter_data) == "typed":
+            minimal_creature["combatantId"] = creature.get("combatantId")
         
         # Add type information
         if creature.get("type"):
@@ -3461,6 +3544,9 @@ def run_combat_simulation(
    for creature in encounter_data["creatures"]:
        if creature["type"] != "player":
            creature_name = creature.get("name", "Unknown Creature")
+           creature_display_name = combatant_presentation_name(
+               encounter_data, creature.get("combatantId"), creature_name
+           )
            creature_hp = creature.get("currentHitPoints", "Unknown")
            creature_status = creature.get("status", "alive")
            creature_condition = creature.get("condition", "none")
@@ -3479,7 +3565,7 @@ def run_combat_simulation(
                creature_max_hp = creature.get("maxHitPoints", "Unknown")
            
            # Build compact creature state line
-           creature_line = f"{creature_name}: HP {creature_hp}/{creature_max_hp}, {creature_status}"
+           creature_line = f"{creature_display_name}: HP {creature_hp}/{creature_max_hp}, {creature_status}"
            if creature_condition != "none":
                creature_line += f", {creature_condition}"
            dynamic_state_parts.append(creature_line)
@@ -3712,26 +3798,13 @@ This is narration only. Do not advance the round or apply any combat action."""
        
        initial_prompt_text = f"""The setup scene for the combat has already been given and described to the party. Now, describe the combat situation and the enemies the party faces."""
 
-       initial_prompt = f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so please describe the scene and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.
-
-Important Character Field Definitions:
-- 'status' field: Overall life/death state - ONLY use 'alive', 'dead', 'unconscious', or 'defeated' (lowercase)
-- 'condition' field: 5e status conditions - use 'none' when no conditions, or valid 5e conditions like 'blinded', 'charmed', 'poisoned', etc.
-- NEVER set condition to 'alive' - that goes in the status field
-- NEVER set status to 'none' - use 'alive' for conscious characters
-
-Combat Round Tracking:
-- MANDATORY: Include "combat_round": 1 in your response (this is round 1)
-- Track rounds throughout combat and increment when all creatures have acted
-
-Current dynamic state for all creatures:
-{all_dynamic_state}
-
-Initiative Order: {initiative_order}
-
-{preroll_text}
-
-Player: {initial_prompt_text}"""
+       initial_prompt = _build_initial_combat_prompt(
+           encounter_data,
+           all_dynamic_state,
+           initiative_order,
+           preroll_text,
+           initial_prompt_text,
+       )
 
        conversation_history.append({"role": "user", "content": initial_prompt})
        _save_combat_history_under_invocation(
@@ -4010,6 +4083,8 @@ Player: {initial_prompt_text}"""
        debug("COMBAT_LOOP: Requesting player input", category="combat_events")
        agentic_actor_ids = []
        skipped_player_notice = None
+       presentation_history_input = None
+       presentation_skipped_player_notice = None
        if agentic_mode:
            agentic_recovery = recovery_action(encounter_data)
            agentic_actor_ids, automatic_initiative_step = _agentic_actor_window(
@@ -4031,6 +4106,16 @@ Player: {initial_prompt_text}"""
            automatic_turn_window = [
                (combatant_by_id(encounter_data, actor_id) or {}).get(
                    "name", "Unknown"
+               )
+               for actor_id in agentic_actor_ids
+           ]
+           presentation_turn_window = [
+               combatant_presentation_name(
+                   encounter_data,
+                   actor_id,
+                   (combatant_by_id(encounter_data, actor_id) or {}).get(
+                       "name", "Unknown"
+                   ),
                )
                for actor_id in agentic_actor_ids
            ]
@@ -4058,19 +4143,29 @@ Player: {initial_prompt_text}"""
                None,
            )
            if automatic_initiative_step and skipped_player is not None:
+               skipped_player_display_name = combatant_presentation_name(
+                   encounter_data,
+                   skipped_player.get("combatantId"),
+                   skipped_player.get("name", "The player character"),
+               )
                skipped_player_notice = (
                    f"{skipped_player.get('name', 'The player character')} is "
+                   "temporarily incapacitated and cannot act this turn. "
+                   "Combat and effect durations continue."
+               )
+               presentation_skipped_player_notice = (
+                   f"{skipped_player_display_name} is "
                    "temporarily incapacitated and cannot act this turn. "
                    "Combat and effect durations continue."
                )
        else:
            automatic_initiative_step = bool(pending_initial_npc_turns)
            automatic_turn_window = list(pending_initial_npc_turns)
+           presentation_turn_window = list(automatic_turn_window)
+       if presentation_skipped_player_notice is None:
+           presentation_skipped_player_notice = skipped_player_notice
        if automatic_initiative_step:
            required_actors = ", ".join(automatic_turn_window)
-           skipped_context = (
-               f" {skipped_player_notice}" if skipped_player_notice else ""
-           )
            if agentic_mode and agentic_recovery["action"] == "apply_staged_events":
                user_input_text = (
                    "System combat recovery: apply and narrate the already-staged "
@@ -4102,12 +4197,15 @@ Player: {initial_prompt_text}"""
                    "effect clock; do not request or resolve a new action."
                )
            else:
-               user_input_text = (
-                   "System combat continuation: resolve these living non-player "
-                   "turns in strict initiative order before asking for the "
-                   f"player's action: {required_actors}. Stop at "
-                   f"{player_name_display} and request player input. This is not "
-                   f"a submitted player action.{skipped_context}"
+               user_input_text = _automatic_turn_continuation_text(
+                   automatic_turn_window,
+                   player_name_display,
+                   skipped_player_notice,
+               )
+               presentation_history_input = _automatic_turn_continuation_text(
+                   presentation_turn_window,
+                   player_name_display,
+                   presentation_skipped_player_notice,
                )
            if not agentic_mode:
                pending_initial_npc_turns = []
@@ -4166,6 +4264,9 @@ Player: {initial_prompt_text}"""
        except Exception as e:
            debug(f"COMBAT_LOOP: Failed to enhance player context: {e}", category="combat_events")
            # Continue with unenhanced input if enhancement fails
+       presentation_history_input = _delivery_history_input(
+           presentation_history_input, user_input_text
+       )
        
        # Prepare dynamic state info for all creatures - compact format
        dynamic_state_parts = []
@@ -4232,6 +4333,9 @@ Player: {initial_prompt_text}"""
        for creature in encounter_data["creatures"]:
            if creature["type"] != "player":
                creature_name = creature.get("name", "Unknown Creature")
+               creature_display_name = combatant_presentation_name(
+                   encounter_data, creature.get("combatantId"), creature_name
+               )
                creature_hp = creature.get("currentHitPoints", "Unknown")
                creature_status = creature.get("status", "alive")
                creature_condition = creature.get("condition", "none")
@@ -4251,7 +4355,7 @@ Player: {initial_prompt_text}"""
                    creature_max_hp = creature.get("maxHitPoints", "Unknown")
                
                # Build compact creature state line
-               creature_line = f"{creature_name}: HP {creature_hp}/{creature_max_hp}, {creature_status}"
+               creature_line = f"{creature_display_name}: HP {creature_hp}/{creature_max_hp}, {creature_status}"
                
                # Add class features for NPCs (party members might have important abilities)
                if creature["type"] == "npc" and npc_data:
@@ -4386,17 +4490,21 @@ Player: {initial_prompt_text}"""
                    )
                except Exception:
                    pass
+               provider_player_input, delivery_context = (
+                   _agentic_turn_request_context(
+                       user_input_text,
+                       presentation_history_input,
+                       presentation_skipped_player_notice,
+                   )
+               )
                outcome = execute_agentic_turn(
                    json_file_path,
                    agentic_actor_ids,
                    character_paths,
                    context_sheets,
-                   user_input_text,
+                   provider_player_input,
                    spell_references=spell_references,
-                    delivery_context={
-                       "historyInput": user_input_text,
-                        "displayPrefix": skipped_player_notice or "",
-                    },
+                   delivery_context=delivery_context,
                     invocation_claim=invocation_claim,
                 )
            except (CombatTurnPaused, CombatTransactionError) as exc:
@@ -4409,7 +4517,7 @@ Player: {initial_prompt_text}"""
                    "the action again, or save and resume the game."
                )
                conversation_history.append(
-                   {"role": "user", "content": user_input_text}
+                   {"role": "user", "content": presentation_history_input}
                )
                conversation_history.append(
                    {
@@ -4473,11 +4581,13 @@ Player: {initial_prompt_text}"""
 
            encounter_data = outcome["encounter"]
            narration = outcome["narration"]
-           history_input = outcome.get("historyInput") or user_input_text
+           history_input = (
+               outcome.get("historyInput") or presentation_history_input
+           )
            display_prefix = (
                outcome.get("displayPrefix")
                if "displayPrefix" in outcome
-               else skipped_player_notice
+               else presentation_skipped_player_notice
            )
            if display_prefix:
                narration = f"{display_prefix}\n\n{narration}"

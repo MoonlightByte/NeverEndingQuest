@@ -490,9 +490,7 @@ T097_SCENE_CONTRACT_SENTENCE = (
     "creature type. When event.actorId maps to human, narrate that actor as you/your. "
     "Narrate a target as you/your only when that target's exact combatant ID maps to human. "
     "GOOD: You spring at Eirik's shield and bite him. BAD: The Snow Rat springs toward "
-    "your shield and bites you. The narrationContext runtime instance labels are internal identity "
-    "labels, not player-facing names. For each entry, preserve which exact combatant "
-    "acted and use playerFacingName naturally in the prose. Never print runtimeLabel."
+    "your shield and bites you."
 )
 
 
@@ -523,46 +521,11 @@ def request_narration_candidate(
             creature, combat_state
         )
 
-    participants = (encounter.get("sceneFacts") or {}).get("participants") or []
-    source_anchors = {}
-    source_occurrences = {}
-    runtime_instance_labels = {}
-    for participant in participants:
-        if not isinstance(participant, dict):
-            continue
-        combatant_id = participant.get("combatantId")
-        creature = combatant_by_id(encounter, combatant_id)
-        source_kind = participant.get("sourceKind")
-        source_ref = participant.get("sourceRef")
-        if (
-            creature is None
-            or creature.get("type") == "player"
-            or source_kind not in ("monster", "character")
-            or not isinstance(source_ref, str)
-            or not source_ref.strip()
-        ):
-            continue
-        display_name = participant.get("displayName")
-        if not isinstance(display_name, str) or not display_name.strip():
-            continue
-        occurrence = source_occurrences.get(source_ref, 0) + 1
-        source_occurrences[source_ref] = occurrence
-        anchor = source_anchors.setdefault(source_ref, display_name)
-        if (
-            occurrence > 1
-            and display_name == "%s_%d" % (anchor, occurrence)
-        ):
-            runtime_instance_labels[combatant_id] = {
-                "runtimeLabel": display_name,
-                "playerFacingName": anchor,
-            }
-
     payload = {
         "playerInput": player_input,
         "sceneDossier": dossier,
         "narrationContext": {
             "controllers": controllers,
-            "runtimeInstanceLabels": runtime_instance_labels,
         },
     }
     if correction:

@@ -480,6 +480,7 @@ def generate_encounter(encounter_data):
             "creature": player,
             "sourceKind": "character",
             "sourceRef": str(player_file),
+            "displayName": player_data["name"],
         }
     )
 
@@ -522,6 +523,7 @@ def generate_encounter(encounter_data):
                 "creature": monster,
                 "sourceKind": "monster",
                 "sourceRef": str(path_manager.get_monster_path(formatted_monster_type)),
+                "displayName": monster_data["name"],
             }
         )
 
@@ -561,6 +563,7 @@ def generate_encounter(encounter_data):
                 "creature": npc,
                 "sourceKind": "character",
                 "sourceRef": str(canonical_npc_file),
+                "displayName": npc_data["name"],
             }
         )
 
@@ -577,7 +580,7 @@ def generate_encounter(encounter_data):
             "combatantId": item["creature"]["combatantId"],
             "sourceKind": item["sourceKind"],
             "sourceRef": item["sourceRef"],
-            "displayName": item["creature"]["name"],
+            "displayName": item["displayName"],
         }
         for item in scene_sources
     ]
