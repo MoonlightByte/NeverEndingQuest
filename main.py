@@ -8328,6 +8328,10 @@ def main_game_loop():
 
         while not valid_response_received and not invocation_superseded:
             if live_turn_scope.is_superseded():
+                # Release the T067 invocation claim through the superseded
+                # terminal (merge review: a scope-superseded exit must not
+                # leak the claim and starve the next begin_invocation).
+                invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
@@ -8371,6 +8375,10 @@ def main_game_loop():
                     validation_retry_count=retry_count,
                 )
             except LiveProviderSuperseded:
+                # Release the T067 invocation claim through the superseded
+                # terminal (merge review: a scope-superseded exit must not
+                # leak the claim and starve the next begin_invocation).
+                invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
@@ -8398,6 +8406,10 @@ def main_game_loop():
                 retry_count += 1
                 continue
             if live_turn_scope.is_superseded():
+                # Release the T067 invocation claim through the superseded
+                # terminal (merge review: a scope-superseded exit must not
+                # leak the claim and starve the next begin_invocation).
+                invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
@@ -8649,6 +8661,10 @@ def main_game_loop():
                 continue  # Skip to next retry iteration
 
             if live_turn_scope.is_superseded():
+                # Release the T067 invocation claim through the superseded
+                # terminal (merge review: a scope-superseded exit must not
+                # leak the claim and starve the next begin_invocation).
+                invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
@@ -8670,6 +8686,10 @@ def main_game_loop():
                     invocation_claim=t067_claim,
                 )
             except LiveProviderSuperseded:
+                # Release the T067 invocation claim through the superseded
+                # terminal (merge review: a scope-superseded exit must not
+                # leak the claim and starve the next begin_invocation).
+                invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
@@ -8698,6 +8718,10 @@ def main_game_loop():
                 validation_reason = validation_result if isinstance(validation_result, str) else ""
 
             if live_turn_scope.is_superseded():
+                # Release the T067 invocation claim through the superseded
+                # terminal (merge review: a scope-superseded exit must not
+                # leak the claim and starve the next begin_invocation).
+                invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
                 save_conversation_history(conversation_history)
                 break
@@ -8766,6 +8790,10 @@ def main_game_loop():
                             invocation_claim=t067_claim,
                         )
                     except LiveProviderSuperseded:
+                        # Release the T067 invocation claim through the superseded
+                        # terminal (merge review: a scope-superseded exit must not
+                        # leak the claim and starve the next begin_invocation).
+                        invocation_superseded = True
                         conversation_history[:] = pre_turn_accepted_history
                         save_conversation_history(conversation_history)
                         break
@@ -8824,6 +8852,10 @@ def main_game_loop():
                     approved_transition_plan = route_outcome.plan
 
                 if live_turn_scope.is_superseded():
+                    # Release the T067 invocation claim through the superseded
+                    # terminal (merge review: a scope-superseded exit must not
+                    # leak the claim and starve the next begin_invocation).
+                    invocation_superseded = True
                     conversation_history[:] = pre_turn_accepted_history
                     save_conversation_history(conversation_history)
                     break
