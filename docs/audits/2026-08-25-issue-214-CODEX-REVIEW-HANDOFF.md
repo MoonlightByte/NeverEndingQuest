@@ -1,5 +1,23 @@
 # #214 — CODEX INDEPENDENT REVIEW HANDOFF (pre-implementation)
 
+## ADDENDUM 2026-08-25 — r5 revision after your B verdict; RE-REVIEW REQUESTED
+Your round-1 verdict was **B — do not implement**, with 10 blocking findings. **All 10 accepted.** The plan is revised to **r5** (commit `49dece46`): read the section **"r5 — POST-CODEX-REVIEW COMPLETE REVISION (AUTHORITATIVE)"** in `docs/audits/2026-08-25-issue-214-startup-kickoff-timeout-removal-plan.md` — it supersedes the r1-r4 task sections. Owner also ruled on your #7: **web + headless-serve both off-thread; raw terminal synchronous (limited-mode)**. r5 adopts your recommended lifecycle `CLAIMED->GENERATING->PROVIDER_COMPLETE->APPLY_PENDING->APPLYING->QUIESCENT (+SUPERSEDED/FAILED/STALE_DISCARDED)` and resolves each finding:
+- #1 -> worker calls the EXISTING `_get_live_ai_response` (full T067 pipeline via capture_and_fanout), NOT raw `call_live_provider`; the one shared-file race (`main_conversation_messages_to_api.json` overwrite, main.py:5822) made scope-unique/suppressed; `prepare_conversation_for_ai_request` on the game thread + frozen deepcopy to the worker.
+- #1/#3 -> explicit `scope=` threaded through `_get_ai_response_impl` -> `capture_and_fanout` -> `call_live_provider` (welcome can overlap the first player turn; single-global-scope constraint).
+- #2 -> `WELCOME_READY` control sentinel on the pollable 0.5s `readline` loops (web web_interface.py:807 + headless streams.py:111; headless extends its EOF_SENTINEL precedent); game loop applies via handback then re-prompts, no fake input.
+- #3 -> separate `provider_complete` (worker) vs `quiescent` (game thread sets after apply/discard); Load/Reset wait on `quiescent`.
+- #4 -> Save queues scope-explicit, executes after apply/discard; Load/Reset supersede+reap+wait-quiescent then mutate.
+- #5 -> AP-7-safe VALUE fence: `is_kickoff_claim_still_active(attempt_id,lease_owner)` + `len(history)` + last-message-is-resume-note + optional currentLocationId/state_version; NO hash.
+- #6 -> one contract: game-thread lifecycle pump renews the lease while worker is current owner (crash->recovery; live worker never expires; reclaimed owner fenced); terminal dispositions enumerated.
+- #7 -> web+headless same lifecycle; terminal synchronous (owner-approved).
+- #8 -> scope-owned status sink threaded through `_emit_working` (non-input-locking welcome; foreground still locks).
+- #9 -> game-thread consume-the-resume-note-exactly-once (remove on discard so it can't contaminate the next T067 or re-fire); `mark_kickoff_done` terminal.
+- #10 -> acceptance reframed to a REAL 600s provider disconnect/reconnect (not "slower model"); killed-request cost reported UNKNOWN.
+
+**Re-review ask:** independently verify r5 closes all 10 (concrete failing input for any residual, R13); confirm the scope-threading and pump contracts against the code; LGTM is legal (R14). No production code exists (branch changes only planning/handoff docs). Per #193, review authorizes neither execution nor merge — the owner approves after convergence. Everything below is the round-1 handoff, retained.
+
+---
+
 **Ask:** independent review of the CONVERGED #214 plan BEFORE any code is written. This is the dual-agent discipline (#193 Part 4): Claude authored the plan; Codex reviews independently. No production code exists yet — review the DESIGN/SPEC, not a diff. After your review converges with the owner, Claude implements, and Codex owns the authoritative native-Windows + Gemma acceptance.
 
 ## Dynamic pins (verify before reviewing; STOP on mismatch)
