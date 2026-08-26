@@ -490,17 +490,43 @@ class HeadlessSession:
                         complete_save(execute_save())
                     return
                 if welcome_scope is not None:
-                    # #214: Save never cancels a healthy background welcome -
-                    # it waits for the game-thread handback (apply or
-                    # discard) to reach quiescence, then executes; never
-                    # concurrent with welcome persistence.
+                    # #214 F8: Save never cancels a healthy background
+                    # welcome - it QUEUES against the welcome scope and
+                    # executes on the game thread inside the welcome
+                    # terminal, before quiescence releases player input.
+                    from utils.capture.live_provider_call import (
+                        queue_live_save,
+                    )
+
                     self.writer.emit(
                         "operation",
                         id=command_id,
                         name="save",
                         status="accepted_deferred",
                     )
-                    welcome_scope.quiescent.wait()
+
+                    def execute_welcome_save():
+                        return manager.create_save_game(
+                            description=args.get("description", ""),
+                            save_mode=args.get("save_mode", "essential"),
+                        )
+
+                    def complete_welcome_save(outcome):
+                        ok2, message2 = outcome
+                        result(
+                            bool(ok2),
+                            data={"message": message2} if ok2 else None,
+                            error=None if ok2 else message2,
+                        )
+
+                    queued = queue_live_save(
+                        execute_welcome_save, complete_welcome_save,
+                        command_id, scope=welcome_scope,
+                    )
+                    if queued is None:
+                        welcome_scope.quiescent.wait()
+                        complete_welcome_save(execute_welcome_save())
+                    return
                 ok, message = manager.create_save_game(
                     description=args.get("description", ""),
                     save_mode=args.get("save_mode", "essential"))
@@ -547,11 +573,15 @@ class HeadlessSession:
                     )
                     live_scope.quiescent.wait()
                 if welcome_scope is not None:
-                    # #214: Load supersedes a pending background welcome,
-                    # then waits for the game-thread discard handback (child
-                    # reaped, note removed, quiescence set) BEFORE mutating
-                    # state - no torn write, no orphaned worker applying
-                    # against the restored campaign.
+                    # #214 F9: Load supersedes the background welcome and
+                    # QUEUES the restore to execute ON THE GAME THREAD inside
+                    # the welcome terminal (after discard handback, before
+                    # quiescence releases player input) - the destructive op
+                    # stays authoritative; no post-quiescence gap.
+                    from utils.capture.live_provider_call import (
+                        queue_live_save,
+                    )
+
                     welcome_scope.request_supersession("restore")
                     self.writer.emit(
                         "operation",
@@ -559,7 +589,28 @@ class HeadlessSession:
                         name="restore",
                         status="accepted_deferred",
                     )
-                    welcome_scope.quiescent.wait()
+
+                    def execute_welcome_restore():
+                        return manager.restore_save_game(folder)
+
+                    def complete_welcome_restore(outcome):
+                        ok2, message2 = outcome
+                        if not ok2:
+                            result(False, error=message2)
+                            return
+                        result(True, data={"message": message2})
+                        self.emit_exit(
+                            "restart",
+                            "state restored; relaunch the session")
+
+                    queued = queue_live_save(
+                        execute_welcome_restore, complete_welcome_restore,
+                        str(command_id), scope=welcome_scope,
+                    )
+                    if queued is None:
+                        welcome_scope.quiescent.wait()
+                        complete_welcome_restore(execute_welcome_restore())
+                    return
                 ok, message = manager.restore_save_game(folder)
                 if not ok:
                     result(False, error=message)

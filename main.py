@@ -385,11 +385,18 @@ def _remove_welcome_note(lifecycle, history):
 
 def _finish_welcome(lifecycle, disposition):
     """Game-thread terminal: set disposition, quiescence, clear registry."""
-    from utils.capture.live_provider_call import clear_welcome_scope
+    from utils.capture.live_provider_call import (
+        clear_welcome_scope,
+        drain_live_saves,
+    )
     _welcome_status("")  # clear the presentational channel on every terminal
     with lifecycle.lock:
         lifecycle.disposition = disposition
         lifecycle.phase = "QUIESCENT"
+    # Queued Save/Load/Reset records execute HERE on the game thread, before
+    # quiescence releases the loop back to player input - the control thread
+    # never mutates in the post-quiescence scheduling gap (F8/F9).
+    drain_live_saves(lifecycle.scope, seal=True)
     clear_welcome_scope(lifecycle.scope)
     with lifecycle.scope.lock:
         lifecycle.scope.controls_open = False
@@ -793,6 +800,18 @@ def shutdown_welcome_lifecycle(reason="engine_stop"):
                 if lifecycle.phase == "PROVIDER_COMPLETE":
                     lifecycle.phase = "APPLY_PENDING"
             _apply_welcome(lifecycle)
+        if not lifecycle.is_terminal():
+            # F7 teardown sibling: a receipt CAS parked on transient lock
+            # contention must not leave the welcome registered past
+            # shutdown. The startup-state receipt stays recoverable for the
+            # next boot's reconciler; force lifecycle QUIESCENT now with the
+            # honest disposition. Never re-runs the apply.
+            with lifecycle.lock:
+                pending = lifecycle.pending_receipt or {}
+                disposition = lifecycle.disposition or (
+                    "APPLIED" if pending.get("call") == "done" else "FAILED"
+                )
+            _finish_welcome(lifecycle, disposition)
         worker = lifecycle.worker
         if worker is not None and worker.is_alive():
             worker.join()

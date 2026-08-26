@@ -2693,21 +2693,38 @@ def handle_action(data):
                     complete_save(execute_save())
                 return
             if welcome_scope is not None:
-                # #214: Save never cancels a healthy background welcome - it
-                # queues and executes at the game-thread safe boundary after
-                # the welcome applies or is discarded (never concurrent).
+                # #214 F8: Save never cancels a healthy background welcome -
+                # it QUEUES against the welcome scope and executes on the
+                # game thread inside the welcome terminal, before quiescence
+                # releases the loop back to player input (never concurrent).
+                from utils.capture.live_provider_call import queue_live_save
+
+                session_id = getattr(request, 'sid', None) or 'unknown-session'
                 emit('system_message', {
                     'content': (
                         'Save accepted and queued until the welcome-back '
                         'narration reaches a safe boundary.'
                     )
                 })
-                welcome_scope.quiescent.wait()
-                success, message = manager.create_save_game(description, save_mode)
-                if success:
-                    emit('system_message', {'content': f"Game saved: {message}"})
-                else:
-                    emit('error', {'message': f"Save failed: {message}"})
+
+                def execute_welcome_save():
+                    return manager.create_save_game(description, save_mode)
+
+                def complete_welcome_save(outcome):
+                    success, message = outcome
+                    if success:
+                        socketio.emit('system_message', {'content': f"Game saved: {message}"}, to=session_id)
+                    else:
+                        socketio.emit('error', {'message': f"Save failed: {message}"}, to=session_id)
+
+                queued_id = queue_live_save(
+                    execute_welcome_save, complete_welcome_save,
+                    "save:%s:%s:%s" % (session_id, description, save_mode),
+                    scope=welcome_scope,
+                )
+                if queued_id is None:
+                    welcome_scope.quiescent.wait()
+                    complete_welcome_save(execute_welcome_save())
                 return
             success, message = manager.create_save_game(description, save_mode)
             if success:
@@ -2742,15 +2759,40 @@ def handle_action(data):
                 })
                 live_scope.quiescent.wait()
             if welcome_scope is not None:
-                # #214: Load supersedes a pending background welcome, then
-                # waits for the game thread to finish the discard handback
-                # (child reaped, note removed, quiescence set) BEFORE any
-                # mutation/os._exit - no torn write, no orphaned child.
+                # #214 F9: Load supersedes the background welcome and QUEUES
+                # the restore to execute ON THE GAME THREAD inside the
+                # welcome terminal (after discard handback, before quiescence
+                # releases player input) - the destructive op stays
+                # authoritative; no post-quiescence scheduling gap.
+                from utils.capture.live_provider_call import queue_live_save
+
                 welcome_scope.request_supersession("restore")
+                session_id = getattr(request, 'sid', None) or 'unknown-session'
                 emit('system_message', {
                     'content': 'Load accepted. The welcome-back narration is stopping safely first.',
                 })
-                welcome_scope.quiescent.wait()
+
+                def execute_welcome_restore():
+                    return manager.restore_save_game(save_folder)
+
+                def complete_welcome_restore(outcome):
+                    success, message = outcome
+                    if success:
+                        socketio.emit('restore_complete', {'message': 'Game restored successfully. Server restarting...'}, to=session_id)
+                        socketio.sleep(1)
+                        print("INFO: Game restore successful. Server is shutting down for restart.")
+                        os._exit(0)
+                    else:
+                        socketio.emit('error', {'message': f"Restore failed: {message}"}, to=session_id)
+
+                queued_id = queue_live_save(
+                    execute_welcome_restore, complete_welcome_restore, None,
+                    scope=welcome_scope,
+                )
+                if queued_id is None:
+                    welcome_scope.quiescent.wait()
+                    complete_welcome_restore(execute_welcome_restore())
+                return
             success, message = manager.restore_save_game(save_folder)
             if success:
                 emit('restore_complete', {'message': 'Game restored successfully. Server restarting...'})
@@ -2797,13 +2839,41 @@ def handle_action(data):
                 })
                 live_scope.quiescent.wait()
             if welcome_scope is not None:
-                # #214: same discipline as Load - supersede, then wait for the
-                # game-thread handback to reach quiescence before mutating.
+                # #214 F9: same discipline as Load - supersede and QUEUE the
+                # reset to execute on the game thread inside the welcome
+                # terminal, before player input is released.
+                from utils.capture.live_provider_call import queue_live_save
+
                 welcome_scope.request_supersession("reset")
+                session_id = getattr(request, 'sid', None) or 'unknown-session'
                 emit('system_message', {
                     'content': 'Reset accepted. The welcome-back narration is stopping safely first.',
                 })
-                welcome_scope.quiescent.wait()
+
+                def execute_welcome_reset():
+                    reset_campaign.perform_reset_logic()
+                    message_cache.clear()
+                    save_message_cache()
+                    return (True, 'reset')
+
+                def complete_welcome_reset(outcome):
+                    success, message = outcome
+                    if success:
+                        socketio.emit('reset_complete', {'message': 'Campaign has been reset. Reloading...'}, to=session_id)
+                        socketio.sleep(1)
+                        print("INFO: Campaign reset complete. Server is shutting down for restart.")
+                        os._exit(0)
+                    else:
+                        socketio.emit('error', {'message': f'Campaign reset failed: {message}'}, to=session_id)
+
+                queued_id = queue_live_save(
+                    execute_welcome_reset, complete_welcome_reset, None,
+                    scope=welcome_scope,
+                )
+                if queued_id is None:
+                    welcome_scope.quiescent.wait()
+                    complete_welcome_reset(execute_welcome_reset())
+                return
             reset_campaign.perform_reset_logic()
             # Clear the message cache on campaign reset
             global message_cache

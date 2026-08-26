@@ -195,9 +195,13 @@ def clear_welcome_scope(scope):
             _welcome_scope = None
 
 
-def queue_live_save(execute, complete, operation_id=None):
-    """Queue one already-acknowledged Save for the game-thread boundary."""
-    scope = get_live_turn_scope()
+def queue_live_save(execute, complete, operation_id=None, scope=None):
+    """Queue one already-acknowledged Save for the game-thread boundary.
+
+    Default scope stays the live player-turn singleton; #214 passes the
+    detached welcome scope explicitly so welcome-boundary operations drain
+    on the game thread before welcome quiescence."""
+    scope = scope if scope is not None else get_live_turn_scope()
     if scope is None:
         return None
     requested_id = operation_id or str(uuid4())
