@@ -3632,6 +3632,10 @@ def process_ai_response(
                         location_data = get_location_data_from_party_tracker(
                             party_tracker_data
                         )
+                        if result_status == "needs_response":
+                            followup_history = _prepare_rebuilt_history_for_t067(
+                                followup_history
+                            )
                         ai_response = run_outside_response_fence(
                             get_ai_response, followup_history
                         )
@@ -3981,6 +3985,13 @@ def process_ai_response(
                                 party_tracker_data
                             )
                         )
+                        if result_status in {
+                            "needs_post_combat_narration",
+                            "needs_response",
+                        }:
+                            followup_history = _prepare_rebuilt_history_for_t067(
+                                followup_history
+                            )
                         ai_response = run_outside_response_fence(
                             get_ai_response, followup_history
                         )
@@ -4053,11 +4064,9 @@ def process_ai_response(
         actions_processed = False
         
         # Debug: Log what actions we received
-        debug(f"STATE_CHANGE: Received {len(actions)} total actions", category="character_updates")
-        print(f"DEBUG: STATE_CHANGE: Received {len(actions)} total actions")
+        debug(f"DEBUG: STATE_CHANGE: Received {len(actions)} total actions", category="character_updates")
         for i, action in enumerate(actions):
-            debug(f"  Action {i+1}: {action.get('action', 'unknown')}", category="character_updates")
-            print(f"DEBUG:   Action {i+1}: {action.get('action', 'unknown')}")
+            debug(f"DEBUG:   Action {i+1}: {action.get('action', 'unknown')}", category="character_updates")
         
         # Separate updateCharacterInfo actions from the other action families.
         char_update_actions = [action for action in actions if action.get("action") == "updateCharacterInfo"]
@@ -4281,6 +4290,9 @@ def process_ai_response(
                 # We must reload the history from disk to ensure we have the combat summary.
                 # This is necessary because the action_handler modified and saved the history independently.
                 post_combat_history = load_json_file(json_file) or conversation_history
+                post_combat_history = _prepare_rebuilt_history_for_t067(
+                    post_combat_history
+                )
                 ai_response_after_combat = run_outside_response_fence(
                     get_ai_response, post_combat_history
                 )
@@ -4829,6 +4841,22 @@ def order_conversation_messages(conversation_history, main_system_prompt_text):
     
     return ordered_history
 
+
+def _prepare_rebuilt_history_for_t067(
+    conversation_history, main_system_prompt_text=None
+):
+    """Return a detached rebuilt history with one canonical prompt first."""
+    if main_system_prompt_text is None:
+        with open("prompts/system_prompt.txt", "r", encoding="utf-8") as file:
+            main_system_prompt_text = file.read()
+    detached_history = [dict(message) for message in conversation_history]
+    ensured_history = ensure_main_system_prompt(
+        detached_history, main_system_prompt_text
+    )
+    return order_conversation_messages(
+        ensured_history, main_system_prompt_text
+    )
+
 def check_all_modules_plot_completion():
     """
     Check plot completion status for ALL available modules, not just the current one.
@@ -5328,6 +5356,10 @@ def main_game_loop():
 
         # ** CRITICAL FIX: Get a new AI response for post-combat narration **
         # This makes the resumed flow behave exactly like the normal flow.
+        if not combat_still_active:
+            conversation_history = _prepare_rebuilt_history_for_t067(
+                conversation_history, main_system_prompt_text
+            )
         ai_response_after_combat = (
             None
             if combat_still_active
