@@ -5682,15 +5682,27 @@ def _get_ai_response_impl(
     npc_voice_batch=None,
     prepare_history=True,
     live_selected=False,
+    detached_context=None,
 ):
     global should_inject_creation_prompt
     # This is the centralized terminal/web provider boundary. A transition
     # published by another worker between turns must finish (in durable order)
     # before model selection or request construction. If the drain changed
     # campaign state, rebuild the already-assembled system context in place.
+    #
+    # detached_context (issue #214): {scope, status} for the off-thread
+    # startup welcome. The worker NEVER prepares history (the game thread owns
+    # the authoritative drain), skips T082 (no player action to classify),
+    # routes all liveness through the non-input-locking status sink, and its
+    # provider calls run under the caller-owned cancellable scope.
     if prepare_history:
         prepare_conversation_for_ai_request(conversation_history)
-    status_processing_ai()
+    if detached_context:
+        detached_status = detached_context.get("status")
+        if detached_status is not None:
+            detached_status("The DM is recalling your journey...")
+    else:
+        status_processing_ai()
     
     # Import action predictor and config
     from utils.action_predictor import predict_actions_required, extract_actual_actions, log_prediction_accuracy
@@ -5708,7 +5720,14 @@ def _get_ai_response_impl(
     has_module_creation_prompt = "You are a master storyteller, cartographer of myth" in user_input
     
     # Predict if actions will be required (unless we're in a validation retry or module creation prompt)
-    if validation_retry_count == 0 and not has_module_creation_prompt:
+    if detached_context:
+        # #214: the detached startup welcome has no player action to classify.
+        # Skip the synchronous, non-cancellable T082 call entirely and FORCE
+        # the full T067 route (use_mini stays False). A legitimate updatePlot
+        # from the welcome remains possible (D-214-3) - this is a routing
+        # skip, not a semantic restriction.
+        prediction = {"requires_actions": True, "reason": "skipped-welcome"}
+    elif validation_retry_count == 0 and not has_module_creation_prompt:
         prediction = predict_actions_required(user_input)
     elif has_module_creation_prompt:
         # Force full model when module creation prompt is present
@@ -5724,7 +5743,10 @@ def _get_ai_response_impl(
     # compare below would silently always pick the full model and defeat
     # intelligent routing (a large cost regression on Gemini/GPT-5.x).
     use_mini = False
-    if config.ENABLE_INTELLIGENT_ROUTING and validation_retry_count == 0 and not has_module_creation_prompt:
+    if detached_context:
+        # #214: forced full route for the detached welcome (never mini).
+        print("DEBUG: MODEL ROUTING - Detached welcome: T082 skipped, using FULL MODEL")
+    elif config.ENABLE_INTELLIGENT_ROUTING and validation_retry_count == 0 and not has_module_creation_prompt:
         # Use prediction to determine model (Phase 2 of token optimization)
         use_mini = not prediction["requires_actions"]
 
@@ -5766,11 +5788,12 @@ def _get_ai_response_impl(
             "intelligent_routing_enabled": config.ENABLE_INTELLIGENT_ROUTING
         }
         
-        # Append to model selection log
-        model_log_path = "debug/quality_control/model_selection.jsonl"
-        with open(model_log_path, "a", encoding="utf-8") as f:
-            json.dump(model_selection_record, f, ensure_ascii=False)
-            f.write("\n")
+        # Append to model selection log (locked single-line write, #214)
+        from utils.api_logger import append_jsonl_record
+        append_jsonl_record(
+            "debug/quality_control/model_selection.jsonl",
+            model_selection_record,
+        )
     except Exception as e:
         print(f"ERROR: Failed to log model selection: {e}")
         debug(f"Failed to log model selection: {e}", category="ai_routing")
@@ -5800,7 +5823,10 @@ def _get_ai_response_impl(
             
             # Compress using our working compressor with settings from config
             # Pass the module creation flag to the compressor (now a global variable)
-            compressor = ParallelConversationCompressor(inject_module_creation=should_inject_creation_prompt)
+            compressor = ParallelConversationCompressor(
+                inject_module_creation=should_inject_creation_prompt,
+                detached_context=detached_context,
+            )
             messages_to_send = compressor.process_conversation_history(str(temp_file))
             
             print(f"DEBUG: Parallel compression applied successfully")
@@ -5818,10 +5844,13 @@ def _get_ai_response_impl(
             except OSError as cleanup_error:
                 print(f"WARNING: Could not remove compression input: {cleanup_error}")
     
-    # Export main conversation messages for debugging
-    with open("main_conversation_messages_to_api.json", "w", encoding="utf-8") as f:
-        json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-    print(f"DEBUG: [MAIN CONVERSATION] Exported conversation messages to main_conversation_messages_to_api.json")
+    # Export main conversation messages for debugging. Suppressed for the
+    # detached welcome (#214): this is a fixed-path overwrite that would race
+    # a concurrent player turn; the api master log still captures the request.
+    if not detached_context:
+        with open("main_conversation_messages_to_api.json", "w", encoding="utf-8") as f:
+            json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
+        print(f"DEBUG: [MAIN CONVERSATION] Exported conversation messages to main_conversation_messages_to_api.json")
     
     # Generate response with selected model (unified path -- provider-agnostic).
     # NOTE: the actual model is selected_config["model"] below, chosen by the use_mini
@@ -5852,12 +5881,25 @@ def _get_ai_response_impl(
         selected_config = full_config
 
     print(f"DEBUG: [MAIN.PY] Using model: {selected_config['model']} (provider: {MODEL_PROVIDER})")
+    detached_t067_kwargs = {}
+    if detached_context:
+        # #214 stale-result fence (early-out, correctly NOT cancellation):
+        # skip the final call when the welcome was already superseded.
+        _welcome_scope = detached_context.get("scope")
+        if _welcome_scope is not None and _welcome_scope.is_superseded():
+            from utils.capture.live_provider_call import LiveProviderSuperseded
+            raise LiveProviderSuperseded("startup welcome superseded")
+        detached_t067_kwargs = {
+            "_detached_scope": detached_context.get("scope"),
+            "_detached_status": detached_context.get("status"),
+        }
     response = capture_and_fanout("T067", api_client.create_completion,
         _request_provider=MODEL_PROVIDER,
         _live_selected=live_selected,
         messages=messages_to_send,
         model=selected_config["model"],
         temperature=TEMPERATURE,
+        **detached_t067_kwargs,
         **{k: v for k, v in selected_config.items() if k != "model"})
 
     # Log API call to master log
@@ -5897,11 +5939,12 @@ def _get_ai_response_impl(
                 "response_length": len(content)
             }
             
-            # Append to model results log
-            results_log_path = "debug/quality_control/model_results.jsonl"
-            with open(results_log_path, "a", encoding="utf-8") as f:
-                json.dump(model_result_record, f, ensure_ascii=False)
-                f.write("\n")
+            # Append to model results log (locked single-line write, #214)
+            from utils.api_logger import append_jsonl_record
+            append_jsonl_record(
+                "debug/quality_control/model_results.jsonl",
+                model_result_record,
+            )
         except Exception as e:
             debug(f"Failed to log model result: {e}", category="ai_routing")
     
