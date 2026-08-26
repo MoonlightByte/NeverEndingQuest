@@ -2780,28 +2780,10 @@ def handle_action(data):
                 # welcome terminal (after discard handback, before quiescence
                 # releases player input) - the destructive op stays
                 # authoritative; no post-quiescence scheduling gap.
-                from utils.capture.live_provider_call import queue_live_save
+                from utils.capture.live_provider_call import (
+                    claim_destructive_operation,
+                )
 
-                operation = welcome_scope.request_supersession("restore")
-                if operation['kind'] == 'turn_complete':
-                    emit('error', {
-                        'message': (
-                            'The welcome-back narration just completed. '
-                            'Please retry the load.'
-                        )
-                    })
-                    return
-                if not operation['accepted']:
-                    # player_acted promotes to the first destructive claim
-                    # inside request_supersession; a rejection here is a
-                    # genuine restore/reset conflict.
-                    emit('error', {
-                        'message': (
-                            'Another lifecycle operation is already pending: '
-                            + operation['kind']
-                        )
-                    })
-                    return
                 session_id = getattr(request, 'sid', None) or 'unknown-session'
 
                 def execute_welcome_restore():
@@ -2817,14 +2799,14 @@ def handle_action(data):
                     else:
                         socketio.emit('error', {'message': f"Restore failed: {message}"}, to=session_id)
 
-                queued_id = queue_live_save(
+                # Claim/promotion AND record insertion are ONE scope-lock
+                # transaction: an accepted destructive claim always has its
+                # executable record queued (seal can never split them).
+                claim = claim_destructive_operation(
+                    welcome_scope, "restore",
                     execute_welcome_restore, complete_welcome_restore,
-                    operation['operation_id'], scope=welcome_scope,
                 )
-                if queued_id is None:
-                    # Sealed between claim and enqueue: the welcome terminal
-                    # already ran. Honest retry - never mutate from this
-                    # control thread, never accepted-then-retry.
+                if claim['status'] == 'closed':
                     emit('error', {
                         'message': (
                             'The welcome-back narration just completed. '
@@ -2832,9 +2814,17 @@ def handle_action(data):
                         )
                     })
                     return
+                if claim['status'] == 'conflict':
+                    emit('error', {
+                        'message': (
+                            'Another lifecycle operation is already pending: '
+                            + str(claim['kind'])
+                        )
+                    })
+                    return
                 emit('system_message', {
                     'content': 'Load accepted. The welcome-back narration is stopping safely first.',
-                    'operation_id': operation['operation_id'],
+                    'operation_id': claim['operation_id'],
                 })
                 return
             success, message = manager.restore_save_game(save_folder)
@@ -2886,27 +2876,10 @@ def handle_action(data):
                 # #214 F9: same discipline as Load - supersede and QUEUE the
                 # reset to execute on the game thread inside the welcome
                 # terminal, before player input is released.
-                from utils.capture.live_provider_call import queue_live_save
+                from utils.capture.live_provider_call import (
+                    claim_destructive_operation,
+                )
 
-                operation = welcome_scope.request_supersession("reset")
-                if operation['kind'] == 'turn_complete':
-                    emit('error', {
-                        'message': (
-                            'The welcome-back narration just completed. '
-                            'Please retry the reset.'
-                        )
-                    })
-                    return
-                if not operation['accepted']:
-                    # player_acted promotes inside request_supersession; a
-                    # rejection here is a genuine restore/reset conflict.
-                    emit('error', {
-                        'message': (
-                            'Another lifecycle operation is already pending: '
-                            + operation['kind']
-                        )
-                    })
-                    return
                 session_id = getattr(request, 'sid', None) or 'unknown-session'
 
                 def execute_welcome_reset():
@@ -2925,11 +2898,12 @@ def handle_action(data):
                     else:
                         socketio.emit('error', {'message': f'Campaign reset failed: {message}'}, to=session_id)
 
-                queued_id = queue_live_save(
+                # One atomic claim+record transaction (same as Load).
+                claim = claim_destructive_operation(
+                    welcome_scope, "reset",
                     execute_welcome_reset, complete_welcome_reset,
-                    operation['operation_id'], scope=welcome_scope,
                 )
-                if queued_id is None:
+                if claim['status'] == 'closed':
                     emit('error', {
                         'message': (
                             'The welcome-back narration just completed. '
@@ -2937,9 +2911,17 @@ def handle_action(data):
                         )
                     })
                     return
+                if claim['status'] == 'conflict':
+                    emit('error', {
+                        'message': (
+                            'Another lifecycle operation is already pending: '
+                            + str(claim['kind'])
+                        )
+                    })
+                    return
                 emit('system_message', {
                     'content': 'Reset accepted. The welcome-back narration is stopping safely first.',
-                    'operation_id': operation['operation_id'],
+                    'operation_id': claim['operation_id'],
                 })
                 return
             reset_campaign.perform_reset_logic()

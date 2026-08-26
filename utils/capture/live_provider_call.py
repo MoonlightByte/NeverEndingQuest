@@ -109,20 +109,6 @@ class LiveTurnScope:
                     "kind": str(kind),
                     "operation_id": operation_id or str(uuid4()),
                 }
-            elif (
-                self.supersession.get("kind") == "player_acted"
-                and str(kind) in ("restore", "reset")
-            ):
-                # #214: player_acted only cancels the welcome - it is not a
-                # committed destructive claim. The FIRST destructive request
-                # atomically promotes the claim here, so a concurrent second
-                # destructive request sees the promoted kind and gets the
-                # normal conflict result (exactly one authority).
-                self.supersession = {
-                    "kind": str(kind),
-                    "operation_id": operation_id or str(uuid4()),
-                }
-                accepted = True
             result = dict(self.supersession)
             result["accepted"] = accepted
             return result
@@ -232,6 +218,45 @@ def queue_live_save(execute, complete, operation_id=None, scope=None):
                 return requested_id
         scope.pending_saves.append(record)
     return record["operation_id"]
+
+
+def claim_destructive_operation(scope, kind, execute, complete,
+                                operation_id=None):
+    """Atomically claim (or promote from player_acted) a destructive
+    supersession AND append its executable record in ONE scope-lock
+    transaction (#214: the seal can never split an accepted claim from its
+    record; an accepted destructive operation always has a queued record).
+
+    Returns {"status": "queued"|"conflict"|"closed", "kind", "operation_id"}.
+    """
+    with scope.lock:
+        if not scope.controls_open:
+            return {
+                "status": "closed",
+                "kind": "turn_complete",
+                "operation_id": scope.operation_id,
+            }
+        existing = scope.supersession
+        if existing is not None and not (
+            existing.get("kind") == "player_acted"
+            and str(kind) in ("restore", "reset")
+        ):
+            # player_acted only cancels the welcome - the first destructive
+            # request promotes past it; anything else is a real conflict.
+            return {
+                "status": "conflict",
+                "kind": existing.get("kind"),
+                "operation_id": existing.get("operation_id"),
+            }
+        record_id = operation_id or str(uuid4())
+        scope.supersession = {"kind": str(kind), "operation_id": record_id}
+        scope.pending_saves.append({
+            "operation_id": record_id,
+            "execute": execute,
+            "complete": complete,
+        })
+        return {"status": "queued", "kind": str(kind),
+                "operation_id": record_id}
 
 
 def drain_live_saves(scope, *, seal=False):

@@ -589,26 +589,8 @@ class HeadlessSession:
                     # quiescence releases player input) - the destructive op
                     # stays authoritative; no post-quiescence gap.
                     from utils.capture.live_provider_call import (
-                        queue_live_save,
+                        claim_destructive_operation,
                     )
-
-                    operation = welcome_scope.request_supersession("restore")
-                    if operation.get("kind") == "turn_complete":
-                        result(False, error="the welcome-back narration just "
-                                            "completed; retry restore")
-                        return
-                    if not operation.get("accepted"):
-                        # player_acted promotes to the first destructive
-                        # claim inside request_supersession; a rejection
-                        # here is a genuine restore/reset conflict.
-                        result(
-                            False,
-                            error=(
-                                "another lifecycle operation is already "
-                                "pending: " + str(operation.get("kind"))
-                            ),
-                        )
-                        return
 
                     def execute_welcome_restore():
                         return manager.restore_save_game(folder)
@@ -623,25 +605,34 @@ class HeadlessSession:
                             "restart",
                             "state restored; relaunch the session")
 
-                    queued = queue_live_save(
+                    # Claim/promotion AND record insertion are ONE scope-
+                    # lock transaction: an accepted destructive claim always
+                    # has its executable record queued (seal cannot split
+                    # them; never mutate from this control thread).
+                    claim = claim_destructive_operation(
+                        welcome_scope, "restore",
                         execute_welcome_restore, complete_welcome_restore,
-                        str(operation.get("operation_id") or command_id),
-                        scope=welcome_scope,
+                        operation_id=str(command_id),
                     )
-                    if queued is None:
-                        # Sealed between claim and enqueue: the welcome
-                        # terminal already ran. Honest retry - never mutate
-                        # from this control thread, never accepted-then-
-                        # retry.
+                    if claim["status"] == "closed":
                         result(False, error="the welcome-back narration just "
                                             "completed; retry restore")
+                        return
+                    if claim["status"] == "conflict":
+                        result(
+                            False,
+                            error=(
+                                "another lifecycle operation is already "
+                                "pending: " + str(claim["kind"])
+                            ),
+                        )
                         return
                     self.writer.emit(
                         "operation",
                         id=command_id,
                         name="restore",
                         status="accepted_deferred",
-                        operation_id=operation.get("operation_id"),
+                        operation_id=claim["operation_id"],
                     )
                     return
                 ok, message = manager.restore_save_game(folder)
