@@ -303,7 +303,6 @@ class _WelcomeLifecycle:
     def __init__(self, scope, frozen_history, note_message,
                  party_tracker_data, location_data,
                  startup_attempt_id, lease_owner, location_id):
-        from utils.capture.live_provider_call import LiveTurnScope  # noqa: F401
         self.lock = threading.RLock()
         self.phase = "CLAIMED"
         self.disposition = None
@@ -7122,7 +7121,7 @@ def main_game_loop():
             set_input_poll_hook(service_welcome_lifecycle)
             _spawn_welcome_worker(
                 conversation_history,
-                resume_note_message if not combat_was_resumed else None,
+                resume_note_message,
                 party_tracker_data,
                 location_data,
             )
