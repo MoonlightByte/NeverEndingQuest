@@ -2700,12 +2700,6 @@ def handle_action(data):
                 from utils.capture.live_provider_call import queue_live_save
 
                 session_id = getattr(request, 'sid', None) or 'unknown-session'
-                emit('system_message', {
-                    'content': (
-                        'Save accepted and queued until the welcome-back '
-                        'narration reaches a safe boundary.'
-                    )
-                })
 
                 def execute_welcome_save():
                     return manager.create_save_game(description, save_mode)
@@ -2725,21 +2719,28 @@ def handle_action(data):
                 if queued_id is None:
                     # The welcome sealed before the enqueue: no welcome
                     # remains. Re-resolve authoritative state - queue against
-                    # a now-live player turn, else the plain idle-path write
-                    # (identical contract to Save with no welcome at all).
-                    followup = queue_live_save(
+                    # a now-live player turn, else honest retry (the retry
+                    # lands on the plain no-welcome path).
+                    queued_id = queue_live_save(
                         execute_welcome_save, complete_welcome_save,
                         "save:%s:%s:%s" % (session_id, description, save_mode),
                     )
-                    if followup is None:
-                        # No authoritative queue accepted it: honest retry -
-                        # the retry lands on the plain no-welcome path.
-                        emit('error', {
-                            'message': (
-                                'The welcome-back narration just completed. '
-                                'Please retry the save.'
-                            )
-                        })
+                if queued_id is None:
+                    emit('error', {
+                        'message': (
+                            'The welcome-back narration just completed. '
+                            'Please retry the save.'
+                        )
+                    })
+                    return
+                # Acceptance is emitted only once a queue holds the record -
+                # never an accepted-then-retry contradiction.
+                emit('system_message', {
+                    'content': (
+                        'Save accepted and queued until the welcome-back '
+                        'narration reaches a safe boundary.'
+                    )
+                })
                 return
             success, message = manager.create_save_game(description, save_mode)
             if success:
@@ -2790,11 +2791,10 @@ def handle_action(data):
                         )
                     })
                     return
-                if not operation['accepted'] and operation['kind'] != 'player_acted':
-                    # player_acted only cancels the welcome - it is NOT a
-                    # committed destructive claim; Load stays reachable
-                    # (#193: Load is never refused). Real destructive
-                    # conflicts (restore/reset) still arbitrate first-wins.
+                if not operation['accepted']:
+                    # player_acted promotes to the first destructive claim
+                    # inside request_supersession; a rejection here is a
+                    # genuine restore/reset conflict.
                     emit('error', {
                         'message': (
                             'Another lifecycle operation is already pending: '
@@ -2803,10 +2803,6 @@ def handle_action(data):
                     })
                     return
                 session_id = getattr(request, 'sid', None) or 'unknown-session'
-                emit('system_message', {
-                    'content': 'Load accepted. The welcome-back narration is stopping safely first.',
-                    'operation_id': operation['operation_id'],
-                })
 
                 def execute_welcome_restore():
                     return manager.restore_save_game(save_folder)
@@ -2828,13 +2824,18 @@ def handle_action(data):
                 if queued_id is None:
                     # Sealed between claim and enqueue: the welcome terminal
                     # already ran. Honest retry - never mutate from this
-                    # control thread.
+                    # control thread, never accepted-then-retry.
                     emit('error', {
                         'message': (
                             'The welcome-back narration just completed. '
                             'Please retry the load.'
                         )
                     })
+                    return
+                emit('system_message', {
+                    'content': 'Load accepted. The welcome-back narration is stopping safely first.',
+                    'operation_id': operation['operation_id'],
+                })
                 return
             success, message = manager.restore_save_game(save_folder)
             if success:
@@ -2896,8 +2897,9 @@ def handle_action(data):
                         )
                     })
                     return
-                if not operation['accepted'] and operation['kind'] != 'player_acted':
-                    # Same rule as Load: player_acted is welcome-cancel only.
+                if not operation['accepted']:
+                    # player_acted promotes inside request_supersession; a
+                    # rejection here is a genuine restore/reset conflict.
                     emit('error', {
                         'message': (
                             'Another lifecycle operation is already pending: '
@@ -2906,10 +2908,6 @@ def handle_action(data):
                     })
                     return
                 session_id = getattr(request, 'sid', None) or 'unknown-session'
-                emit('system_message', {
-                    'content': 'Reset accepted. The welcome-back narration is stopping safely first.',
-                    'operation_id': operation['operation_id'],
-                })
 
                 def execute_welcome_reset():
                     reset_campaign.perform_reset_logic()
@@ -2938,6 +2936,11 @@ def handle_action(data):
                             'Please retry the reset.'
                         )
                     })
+                    return
+                emit('system_message', {
+                    'content': 'Reset accepted. The welcome-back narration is stopping safely first.',
+                    'operation_id': operation['operation_id'],
+                })
                 return
             reset_campaign.perform_reset_logic()
             # Clear the message cache on campaign reset

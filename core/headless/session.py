@@ -498,13 +498,6 @@ class HeadlessSession:
                         queue_live_save,
                     )
 
-                    self.writer.emit(
-                        "operation",
-                        id=command_id,
-                        name="save",
-                        status="accepted_deferred",
-                    )
-
                     def execute_welcome_save():
                         return manager.create_save_game(
                             description=args.get("description", ""),
@@ -526,17 +519,23 @@ class HeadlessSession:
                     if queued is None:
                         # The welcome sealed before the enqueue: no welcome
                         # remains. Re-resolve authoritative state - queue
-                        # against a now-live player turn, else the plain
-                        # idle-path write (same contract as no-welcome Save).
-                        followup = queue_live_save(
+                        # against a now-live player turn, else honest retry
+                        # (lands on the plain no-welcome path).
+                        queued = queue_live_save(
                             execute_welcome_save, complete_welcome_save,
                             command_id,
                         )
-                        if followup is None:
-                            # No authoritative queue accepted it: honest
-                            # retry (lands on the plain no-welcome path).
-                            result(False, error="the welcome-back narration "
-                                                "just completed; retry save")
+                    if queued is None:
+                        result(False, error="the welcome-back narration "
+                                            "just completed; retry save")
+                        return
+                    # Acceptance only once a queue holds the record.
+                    self.writer.emit(
+                        "operation",
+                        id=command_id,
+                        name="save",
+                        status="accepted_deferred",
+                    )
                     return
                 ok, message = manager.create_save_game(
                     description=args.get("description", ""),
@@ -598,13 +597,10 @@ class HeadlessSession:
                         result(False, error="the welcome-back narration just "
                                             "completed; retry restore")
                         return
-                    if (
-                        not operation.get("accepted")
-                        and operation.get("kind") != "player_acted"
-                    ):
-                        # player_acted only cancels the welcome - it is NOT
-                        # a committed destructive claim; restore stays
-                        # reachable (#193: Load is never refused).
+                    if not operation.get("accepted"):
+                        # player_acted promotes to the first destructive
+                        # claim inside request_supersession; a rejection
+                        # here is a genuine restore/reset conflict.
                         result(
                             False,
                             error=(
@@ -613,13 +609,6 @@ class HeadlessSession:
                             ),
                         )
                         return
-                    self.writer.emit(
-                        "operation",
-                        id=command_id,
-                        name="restore",
-                        status="accepted_deferred",
-                        operation_id=operation.get("operation_id"),
-                    )
 
                     def execute_welcome_restore():
                         return manager.restore_save_game(folder)
@@ -642,9 +631,18 @@ class HeadlessSession:
                     if queued is None:
                         # Sealed between claim and enqueue: the welcome
                         # terminal already ran. Honest retry - never mutate
-                        # from this control thread.
+                        # from this control thread, never accepted-then-
+                        # retry.
                         result(False, error="the welcome-back narration just "
                                             "completed; retry restore")
+                        return
+                    self.writer.emit(
+                        "operation",
+                        id=command_id,
+                        name="restore",
+                        status="accepted_deferred",
+                        operation_id=operation.get("operation_id"),
+                    )
                     return
                 ok, message = manager.restore_save_game(folder)
                 if not ok:

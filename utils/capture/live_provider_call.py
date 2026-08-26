@@ -109,6 +109,20 @@ class LiveTurnScope:
                     "kind": str(kind),
                     "operation_id": operation_id or str(uuid4()),
                 }
+            elif (
+                self.supersession.get("kind") == "player_acted"
+                and str(kind) in ("restore", "reset")
+            ):
+                # #214: player_acted only cancels the welcome - it is not a
+                # committed destructive claim. The FIRST destructive request
+                # atomically promotes the claim here, so a concurrent second
+                # destructive request sees the promoted kind and gets the
+                # normal conflict result (exactly one authority).
+                self.supersession = {
+                    "kind": str(kind),
+                    "operation_id": operation_id or str(uuid4()),
+                }
+                accepted = True
             result = dict(self.supersession)
             result["accepted"] = accepted
             return result
