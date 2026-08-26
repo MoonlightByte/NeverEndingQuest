@@ -526,9 +526,12 @@ class HeadlessSession:
                             command_id,
                         )
                     if queued is None:
-                        # Authoritative state says the welcome is gone:
-                        # route the SAME command through the existing
-                        # no-welcome contract by re-dispatch.
+                        # Sealed scope: wait for ITS quiescent (set only
+                        # AFTER the registry is cleared), then re-dispatch
+                        # the SAME command against freshly read scopes -
+                        # terminates structurally, no tight recursion, and
+                        # exactly one result is emitted (by the re-dispatch).
+                        welcome_scope.quiescent.wait()
                         self.handle_command(command)
                         return
                     # Acceptance only once a queue holds the record.
@@ -617,10 +620,13 @@ class HeadlessSession:
                         operation_id=str(command_id),
                     )
                     if claim["status"] == "closed":
-                        # Closed before the claim: no welcome remains.
-                        # restore is NEVER refused (#193) - re-dispatch the
-                        # SAME command through the existing foreground/idle
-                        # contract; never mutate against the stale scope.
+                        # Closed before the claim: restore is NEVER refused
+                        # (#193). Wait for the CAPTURED scope's quiescent
+                        # (set only AFTER the registry is cleared), then
+                        # re-dispatch the SAME command against freshly read
+                        # scopes - never the stale scope, no tight
+                        # recursion, exactly one result (the re-dispatch's).
+                        welcome_scope.quiescent.wait()
                         self.handle_command(command)
                         return
                     if claim["status"] == "conflict":

@@ -2726,9 +2726,12 @@ def handle_action(data):
                         "save:%s:%s:%s" % (session_id, description, save_mode),
                     )
                 if queued_id is None:
-                    # Authoritative state says the welcome is gone: route
-                    # the SAME request through the existing no-welcome
-                    # contract (re-dispatch re-evaluates every scope).
+                    # Sealed scope: wait for ITS quiescent (set only AFTER
+                    # the registry is cleared), then re-dispatch the SAME
+                    # request against freshly read scopes - the next capture
+                    # can only be a genuinely different scope, so this
+                    # terminates structurally (no tight recursion).
+                    welcome_scope.quiescent.wait()
                     return handle_action(data)
                 # Acceptance is emitted only once a queue holds the record -
                 # never an accepted-then-retry contradiction.
@@ -2804,11 +2807,13 @@ def handle_action(data):
                     execute_welcome_restore, complete_welcome_restore,
                 )
                 if claim['status'] == 'closed':
-                    # Closed before the claim: no welcome remains. Load is
-                    # NEVER refused (#193) - route the SAME request through
-                    # the existing foreground/idle contract by re-dispatch;
-                    # never execute against the stale scope, never ask the
-                    # player to resubmit.
+                    # Closed before the claim: Load is NEVER refused (#193).
+                    # Wait for the CAPTURED scope's quiescent (set only
+                    # AFTER the registry is cleared), then re-dispatch the
+                    # SAME request against freshly read scopes - never the
+                    # stale scope, never a player resubmit, and never tight
+                    # recursion on the seal-before-clear window.
+                    welcome_scope.quiescent.wait()
                     return handle_action(data)
                 if claim['status'] == 'conflict':
                     emit('error', {
@@ -2900,8 +2905,9 @@ def handle_action(data):
                     execute_welcome_reset, complete_welcome_reset,
                 )
                 if claim['status'] == 'closed':
-                    # Same rule as Load: re-dispatch through the existing
-                    # no-welcome contract.
+                    # Same rule as Load: wait for the captured scope's
+                    # quiescent, then re-dispatch.
+                    welcome_scope.quiescent.wait()
                     return handle_action(data)
                 if claim['status'] == 'conflict':
                     emit('error', {
