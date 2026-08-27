@@ -719,22 +719,23 @@ def call_live_provider(
             }:
                 raise LiveProviderCompletedError(task_id, envelope)
         error_class = envelope.get("error_class", "transport_unavailable")
-        try:
-            from utils.enhanced_logger import warning
+        if not wizard_task:
+            try:
+                from utils.enhanced_logger import warning
 
-            warning(
-                "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s "
-                "remote_execution=unknown usage=unknown cost=unknown"
-                % (task_id, error_class, envelope.get("http_status")),
-                category="ai_routing",
+                warning(
+                    "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s "
+                    "remote_execution=unknown usage=unknown cost=unknown"
+                    % (task_id, error_class, envelope.get("http_status")),
+                    category="ai_routing",
+                )
+            except Exception:
+                pass
+            _safe_emit(
+                emit,
+                "The provider connection needs another attempt; your turn is safe "
+                "and still in progress.",
             )
-        except Exception:
-            pass
-        _safe_emit(
-            emit,
-            "The provider connection needs another attempt; your turn is safe "
-            "and still in progress.",
-        )
         _interruptible_wait(
             _delay_for_error(envelope, failure_count),
             scope,
