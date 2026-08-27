@@ -6840,16 +6840,38 @@ def order_conversation_messages(conversation_history, main_system_prompt_text):
 def _prepare_rebuilt_history_for_t067(
     conversation_history, main_system_prompt_text=None
 ):
-    """Return a detached rebuilt history with one canonical prompt first."""
+    """Return a DETACHED, TOTAL-COMPLETE rebuilt history for a T067 request.
+
+    Runs the SAME assembly pass the normal end-of-turn build runs, so a
+    rebuilt post-combat / transition-failure / resume T067 request sees the
+    identical complete context a normal player turn would - never a partial
+    (system-prompt + ordering only) view. The prior version skipped the fresh
+    plot + character injection, leaving the rebuilt request under-contextualized
+    (owner directive 2026-08-26: the rebuild must follow the full assembly pass
+    and be total-complete). Party/plot/module are reloaded from disk exactly as
+    the normal path does before it rebuilds context; these refreshers are the
+    same ones the turn loop runs every turn (idempotent on an assembled history).
+    """
     if main_system_prompt_text is None:
         with open("prompts/system_prompt.txt", "r", encoding="utf-8") as file:
             main_system_prompt_text = file.read()
+    party_tracker_data = load_json_file("party_tracker.json") or {}
+    module_name = (party_tracker_data.get("module", "") or "").replace(" ", "_")
+    path_manager = ModulePathManager(module_name)
+    plot_data = load_json_file(path_manager.get_plot_path())
+    module_data = load_json_file(path_manager.get_module_file_path())
     detached_history = [dict(message) for message in conversation_history]
-    ensured_history = ensure_main_system_prompt(
+    detached_history = update_conversation_history(
+        detached_history, party_tracker_data, plot_data, module_data
+    )
+    detached_history = update_character_data(
+        detached_history, party_tracker_data
+    )
+    detached_history = ensure_main_system_prompt(
         detached_history, main_system_prompt_text
     )
     return order_conversation_messages(
-        ensured_history, main_system_prompt_text
+        detached_history, main_system_prompt_text
     )
 
 def check_all_modules_plot_completion():
