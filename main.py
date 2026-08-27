@@ -9158,6 +9158,13 @@ def main_game_loop():
         from utils.capture.live_provider_call import finish_live_turn_scope
 
         finish_live_turn_scope(live_turn_scope)
+        # Post-combat integration defect (three-surface redo finding): the
+        # combat manager's early is_processing=False is correctly REJECTED by
+        # the status guard while this turn's scope is still open, so the
+        # ready signal must be re-sent AFTER the scope closes or the legacy
+        # UI stays locked on 'Resolving combat intents...' until a reconnect.
+        # Mirrors the superseded-exit path, which already does this.
+        status_ready()
 
 def main():
     """Main entry point with startup wizard integration"""
