@@ -26,6 +26,7 @@ from utils.enhanced_logger import debug, warning
 
 _AREA_FILE_RE = re.compile(r"^[A-Za-z]+\d+\.json$")
 _LOCATION_ID_RE = re.compile(r"^[A-Za-z]+\d+$")
+_COMPOSITE_CONNECTION_RE = re.compile(r"^([A-Za-z]+\d+)-([A-Za-z]+\d+)$")
 _BACKUP_SUFFIXES = ("_BU.json", "_backup.json")
 
 
@@ -173,6 +174,7 @@ def build_active_module_snapshot(
     edges: Dict[str, List[str]] = {}
     issues: List[Dict[str, Any]] = []
     invalid_location_ids: set[str] = set()
+    duplicate_area_ids: set[str] = set()
     canonical_sources: List[Dict[str, Any]] = []
 
     files = _area_files(module_dir)
@@ -224,6 +226,10 @@ def build_active_module_snapshot(
             )
             continue
         if area_id in areas:
+            # The first-loaded definition silently wins node registration, so
+            # the blemish taints that winner's OWN nodes as invalid (below)
+            # instead of failing the whole module or trusting load order.
+            duplicate_area_ids.add(area_id)
             issues.append(
                 _issue(
                     "duplicate_area_id",
@@ -372,6 +378,14 @@ def build_active_module_snapshot(
             }
             edges[location_id] = list(dict.fromkeys(internal_connections))
 
+    # A duplicated area ID means the registered (first-loaded) nodes for that
+    # area cannot be trusted as the module's intent. Taint those winner nodes
+    # so routes through them fail scoped, not the entire module.
+    if duplicate_area_ids:
+        for location_id, node in nodes.items():
+            if node["area_id"] in duplicate_area_ids:
+                invalid_location_ids.add(location_id)
+
     location_name_to_id = _unique_mapping(
         (node.get("location_name"), location_id) for location_id, node in nodes.items()
     )
@@ -407,6 +421,8 @@ def build_active_module_snapshot(
     # - schema area IDs/names paired through a unique reciprocal endpoint
     # - generated parallel pairs: areaConnectivity[N] names the area containing
     #   the exact gateway location in areaConnectivityId[N]
+    # - generated composite IDs: "AREA-LOC" in areaConnectivityId, resolved
+    #   iff LOC exists in AREA (area cross-checked)
     for source_id, node in nodes.items():
         external_targets: List[str] = []
         unresolved: List[str] = []
@@ -433,7 +449,24 @@ def build_active_module_snapshot(
                 else:
                     unresolved.append(reference)
             else:
-                unresolved.append(reference)
+                # Generated composite reference: "AREA-LOC" names the exact
+                # gateway location LOC inside area AREA. Bare location IDs
+                # never contain hyphens, so the form is unambiguous. It
+                # resolves iff LOC exists AND actually lives in AREA; any
+                # mismatch stays unresolved rather than masking a dangle.
+                composite = _COMPOSITE_CONNECTION_RE.fullmatch(reference)
+                if (
+                    composite
+                    and composite.group(2) in nodes
+                    and nodes[composite.group(2)]["area_id"] == composite.group(1)
+                ):
+                    if index < len(area_names):
+                        # The paired name is metadata for this same edge, not
+                        # a second independent connection to resolve.
+                        consumed_name_indexes.add(index)
+                    external_targets.append(composite.group(2))
+                else:
+                    unresolved.append(reference)
         for index, reference in enumerate(area_names):
             if index in consumed_name_indexes:
                 continue
@@ -529,9 +562,14 @@ def find_path_in_snapshot(
     The result is JSON-serializable and carries the snapshot identity, making
     it suitable for a durable transition checkpoint. Invalid or ambiguous
     nodes are never traversed.
+
+    Rejection is route-scoped: unrelated atlas blemishes elsewhere in the
+    module never fail a route that touches zero invalid nodes. A route that
+    REQUIRES an invalid node fails with a reason naming that specific node.
     """
     nodes = snapshot.get("nodes", {})
     invalid_ids = set(snapshot.get("invalid_location_ids", []))
+    edges = snapshot.get("edges", {})
     result = {
         "success": False,
         "path": [],
@@ -539,9 +577,6 @@ def find_path_in_snapshot(
         "snapshot_hash": snapshot.get("snapshot_hash", ""),
         "snapshot_identity": snapshot.get("snapshot_hash", ""),
     }
-    if snapshot.get("is_valid") is not True:
-        result["reason"] = "Active-module atlas validation failed"
-        return result
     if origin_id not in nodes:
         result["reason"] = (
             f"Origin {origin_id} is absent from the active-module snapshot"
@@ -552,31 +587,58 @@ def find_path_in_snapshot(
             f"Destination {destination_id} is absent from the active-module snapshot"
         )
         return result
-    if origin_id in invalid_ids or destination_id in invalid_ids:
-        result["reason"] = "Origin or destination has invalid or ambiguous atlas data"
+    if origin_id in invalid_ids:
+        result["reason"] = (
+            f"Origin {origin_id} has invalid or ambiguous atlas data"
+        )
+        return result
+    if destination_id in invalid_ids:
+        result["reason"] = (
+            f"Destination {destination_id} has invalid or ambiguous atlas data"
+        )
         return result
     if origin_id == destination_id:
         result.update(success=True, path=[origin_id])
         return result
 
-    queue = deque([(origin_id, [origin_id])])
-    visited = {origin_id}
-    edges = snapshot.get("edges", {})
-    while queue:
-        location_id, path = queue.popleft()
-        for neighbor_id in edges.get(location_id, []):
-            if (
-                neighbor_id in visited
-                or neighbor_id in invalid_ids
-                or neighbor_id not in nodes
-            ):
-                continue
-            candidate = path + [neighbor_id]
-            if neighbor_id == destination_id:
-                result.update(success=True, path=candidate)
-                return result
-            visited.add(neighbor_id)
-            queue.append((neighbor_id, candidate))
+    def _bfs(skip_invalid: bool) -> Optional[List[str]]:
+        queue = deque([(origin_id, [origin_id])])
+        visited = {origin_id}
+        while queue:
+            location_id, path = queue.popleft()
+            for neighbor_id in edges.get(location_id, []):
+                if (
+                    neighbor_id in visited
+                    or (skip_invalid and neighbor_id in invalid_ids)
+                    or neighbor_id not in nodes
+                ):
+                    continue
+                candidate = path + [neighbor_id]
+                if neighbor_id == destination_id:
+                    return candidate
+                visited.add(neighbor_id)
+                queue.append((neighbor_id, candidate))
+        return None
+
+    valid_path = _bfs(skip_invalid=True)
+    if valid_path:
+        result.update(success=True, path=valid_path)
+        return result
+
+    # Honest, scoped failure: if a route exists only through invalid nodes,
+    # name the specific node that blocks it instead of a generic refusal.
+    tainted_path = _bfs(skip_invalid=False)
+    if tainted_path:
+        blocking_id = next(
+            (step for step in tainted_path if step in invalid_ids), None
+        )
+        if blocking_id:
+            result["reason"] = (
+                f"No fully valid route from {origin_id} to {destination_id} "
+                f"exists. One candidate route crosses location {blocking_id}, "
+                "which has invalid or ambiguous atlas data"
+            )
+            return result
 
     result["reason"] = f"No valid route from {origin_id} to {destination_id}"
     return result

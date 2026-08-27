@@ -121,6 +121,155 @@ def _apply_plot_delta(
 
     raise ValueError(f"Plot target disappeared while applying update: {target_id}")
 
+
+def _target_owned_values(plot_info, target_id):
+    """Return the two fields owned by one updatePlot action."""
+    parent_id, is_side_quest = _find_plot_update_target(plot_info, target_id)
+    if parent_id is None:
+        raise ValueError(f"Unknown plot or side-quest ID: {target_id}")
+    for plot_point in plot_info.get("plotPoints", []):
+        if plot_point.get("id") != parent_id:
+            continue
+        target = plot_point
+        if is_side_quest:
+            target = next(
+                item
+                for item in plot_point.get("sideQuests", [])
+                if item.get("id") == target_id
+            )
+        return {
+            "status": target.get("status"),
+            "plotImpact": target.get("plotImpact"),
+        }
+    raise ValueError(f"Plot target disappeared: {target_id}")
+
+
+def prepare_plot_update(plot_point_id, new_status, plot_impact):
+    """Freeze T077's proposal without mutating plot or quest files."""
+    from model_config import MODEL_PROVIDER
+    from utils.quest_player_formatter import _capture_plot_source
+
+    if MODEL_PROVIDER == "openai":
+        plot_config = config.PLOT_UPD_GPT52_NONE
+    elif MODEL_PROVIDER == "gemini":
+        plot_config = config.PLOT_UPD_GEMINI_FLASH_LOW
+    elif MODEL_PROVIDER == "lmstudio":
+        plot_config = config.PLOT_UPD_LMSTUDIO
+    else:
+        plot_config = config.PLOT_UPD_LEGACY
+
+    while True:
+        party_tracker = safe_read_json("party_tracker.json")
+        current_module = (
+            party_tracker.get("module", "").replace(" ", "_")
+            if isinstance(party_tracker, dict)
+            else ""
+        )
+        if not current_module:
+            raise RuntimeError("Could not resolve current module for updatePlot")
+        path_manager = ModulePathManager(current_module)
+        source = _capture_plot_source(
+            path_manager.module_dir, path_manager.get_plot_path()
+        )
+        before_plot = source["payload"]
+        before_owned = _target_owned_values(before_plot, plot_point_id)
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Update exactly the requested RPG plot target. Return one JSON "
+                    "object keyed by its parent plot-point ID. A main target contains "
+                    "only status and plotImpact. A side quest contains only sideQuests "
+                    "with one object containing id, status, and plotImpact. Echo the "
+                    "requested values exactly and change nothing else."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Current plot info: {json.dumps(before_plot)}\n\n"
+                    f"Plot point to update: {plot_point_id}\n"
+                    f"New status: {new_status}\n"
+                    f"Plot impact: {plot_impact}"
+                ),
+            },
+        ]
+        try:
+            response = capture_and_fanout(
+                "T077",
+                api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=messages,
+                model=plot_config["model"],
+                temperature=TEMPERATURE,
+                **{k: v for k, v in plot_config.items() if k != "model"},
+            )
+            updated_sections = json.loads(
+                response.choices[0].message.content.strip()
+                .removeprefix("```json")
+                .removesuffix("```")
+                .strip()
+            )
+            candidate = _apply_plot_delta(
+                before_plot,
+                updated_sections,
+                plot_point_id,
+                new_status,
+                plot_impact,
+            )
+            validate(instance=candidate, schema=load_schema())
+        except (json.JSONDecodeError, ValidationError, ValueError, TypeError, KeyError):
+            warning(
+                "VALIDATION: T077 proposal was structurally invalid; reissuing",
+                category="plot_updates",
+            )
+            continue
+        return {
+            "kind": "updatePlot",
+            "module": current_module,
+            "plot_path": path_manager.get_plot_path(),
+            "target_id": plot_point_id,
+            "before": before_owned,
+            "after": _target_owned_values(candidate, plot_point_id),
+            "provider_response_id": getattr(response, "id", None),
+        }
+
+
+def apply_staged_plot_update(receipt):
+    """Apply or recognize one exact two-field T077 proposal."""
+    plot_path = receipt["plot_path"]
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            raise RuntimeError("module refresh is busy during updatePlot commit")
+        current = safe_read_json(plot_path)
+        if not isinstance(current, dict):
+            raise RuntimeError("plot file is unavailable during updatePlot commit")
+        owned = _target_owned_values(current, receipt["target_id"])
+        if owned == receipt["after"]:
+            return "already_committed"
+        if owned != receipt["before"]:
+            return "blocked_conflict"
+        candidate = copy.deepcopy(current)
+        parent_id, is_side_quest = _find_plot_update_target(
+            candidate, receipt["target_id"]
+        )
+        for plot_point in candidate.get("plotPoints", []):
+            if plot_point.get("id") != parent_id:
+                continue
+            target = plot_point
+            if is_side_quest:
+                target = next(
+                    item
+                    for item in plot_point.get("sideQuests", [])
+                    if item.get("id") == receipt["target_id"]
+                )
+            target.update(copy.deepcopy(receipt["after"]))
+            break
+        validate(instance=candidate, schema=load_schema())
+        if not safe_write_json(plot_path, candidate):
+            raise RuntimeError("plot write failed")
+    return "committed"
+
 def update_party_tracker(plot_point_id, new_status, plot_impact, plot_filename):
     # DEPRECATED: activeQuests tracking has been deprecated in favor of using module_plot.json as the single source of truth
     # The code below is commented out but preserved for reference and backward compatibility

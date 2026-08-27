@@ -48,6 +48,26 @@ python -c "from core.generators.module_builder import ModuleBuilder; ModuleBuild
 
 ### Core Design Patterns
 
+#### Player-turn and travel narration authority
+
+**One model response resolves one immediate player turn.** Travel commits the
+requested movement and travel-owned bookkeeping, narrates the committed
+arrival, asks what the player does next, and stops. A later clause such as
+“then buy,” “then establish a hub,” “then manage a save,” or “then exit” is
+deferred player intent and must not execute inside the travel transaction.
+T067 interprets that semantic boundary, T065 validates it, and code reconciles
+structured actions; never classify player/model prose with keywords or regexes.
+
+Do not simplify travel narration to one call. The production chain is T013
+(transition/departure layer from committed, updated location context), T063
+(arrival layer from the committed target and roster), then T064 (seamless
+stitch). These are three internal agent calls inside one player turn, not three
+gameplay turns. The destination projection includes its player-disclosed
+`adventureSummary` for continuity, but excludes DM-only encounter, trap,
+instruction, and undisclosed-actor records. T064 ends by returning the choice
+of the next immediate action to the player. See
+`docs/plans/2026-08-23-single-turn-travel-amendment.md`.
+
 #### 1. Module-Centric Architecture
 The system uses modules as self-contained adventures with hub-and-spoke conversation management:
 - Each module is completely isolated (no cross-module dependencies)

@@ -211,6 +211,7 @@ def compress_with_ai(
     *,
     provider_snapshot: str = None,
     provider_config: Dict[str, Any] = None,
+    detached_context: Dict[str, Any] = None,
 ) -> Dict[str, Any]:
     """
     Compress narrative text using GPT-4.1-mini with agentic approach
@@ -264,11 +265,23 @@ def compress_with_ai(
                     "instruction": "Re-emit fixing the format issue. Ensure exactly one EVT block."
                 })})
             
+            # Detached welcome context (issue #214): route through the
+            # cancellable advisory transport under the caller's own scope so
+            # an off-thread welcome's compression is genuinely cancellable and
+            # never binds the global player-turn scope or input-locking status.
+            detached_kwargs = {}
+            if detached_context:
+                detached_kwargs = {
+                    "_live_selected": "advisory",
+                    "_detached_scope": detached_context.get("scope"),
+                    "_detached_status": detached_context.get("status"),
+                }
             response = capture_and_fanout("T084", api_client.create_completion,
                 _request_provider=provider_snapshot,
                 messages=messages,
                 model=compress_config["model"],
                 temperature=runtime["temperature"],
+                **detached_kwargs,
                 **{k: v for k, v in compress_config.items() if k != "model"})
             
             # Track token usage

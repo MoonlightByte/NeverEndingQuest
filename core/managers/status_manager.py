@@ -94,11 +94,21 @@ class StatusManager:
             message: The status message to display
             is_processing: Whether the system is currently processing (disables input)
         """
+        if not is_processing:
+            try:
+                from utils.capture.live_provider_call import get_live_turn_scope
+
+                scope = get_live_turn_scope()
+                if scope is not None and scope.phase != "QUIESCENT":
+                    return False
+            except ImportError:
+                pass
         with self._lock:
             self._status = message
             self._is_processing = is_processing
             if self._status_callback:
                 self._status_callback(message, is_processing)
+        return True
                 
     def get_status(self) -> tuple[str, bool]:
         """Get the current status and processing state
@@ -139,8 +149,50 @@ class StatusManager:
         with self._lock:
             return self._is_processing
 
+    # --- Background startup-welcome channel (issue #214, D-214-4=A) -------
+    # A SEPARATE presentational status for the off-thread startup welcome,
+    # mirroring the compression-progress channel. It shows honest motion
+    # ("The DM is recalling your journey...") WITHOUT driving the global
+    # input-locking is_processing flag a foreground turn uses.
+
+    def set_welcome_callback(self, callback: Callable[[str], None]):
+        self._welcome_callback = callback
+
+    def emit_welcome_event(self, message: str):
+        callback = getattr(self, "_welcome_callback", None)
+        if callback:
+            try:
+                callback(message)
+            except Exception:
+                pass  # presentational only; never affects gameplay
+
 # Global status manager instance
 status_manager = StatusManager()
+
+# --- Input-poll lifecycle pump hook (issue #214) ---------------------------
+# The blocking input adapters (WebInput.readline / HeadlessInput.readline)
+# poll their queue every 0.5s ON THE GAME THREAD. Registering a pump here
+# lets the game thread service the off-thread welcome lifecycle (lease
+# renewal, handback apply/discard, quiescence) between polls without fake
+# player input. Absent hook = zero behavior change.
+_input_poll_hook = None
+
+
+def set_input_poll_hook(hook):
+    global _input_poll_hook
+    _input_poll_hook = hook
+
+
+def run_input_poll_hook():
+    hook = _input_poll_hook
+    if hook is None:
+        return
+    try:
+        hook()
+    except Exception:
+        # The pump must never break the input loop; failures surface through
+        # the lifecycle's own terminal handling, not the adapter.
+        pass
 
 # Convenience functions for common status updates
 def status_processing_ai():
@@ -151,9 +203,13 @@ def status_validating():
     """Set status for response validation"""
     status_manager.update_status("Validating response format...", True)
 
-def status_retrying(attempt: int, max_attempts: int = 3):
+def status_retrying(attempt: int, max_attempts: int = None):
     """Set status for retry attempts"""
-    status_manager.update_status(f"Retrying response (attempt {attempt}/{max_attempts})...", True)
+    if max_attempts is None:
+        message = f"Retrying response (attempt {attempt})..."
+    else:
+        message = f"Retrying response (attempt {attempt}/{max_attempts})..."
+    status_manager.update_status(message, True)
 
 def status_transitioning_location():
     """Set status for location transition"""

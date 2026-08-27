@@ -8,6 +8,8 @@ from copy import deepcopy
 import random
 import re
 
+from core.managers.combat_state import resolve_creature_controller
+
 
 _GENERIC_PAIR = re.compile(r"\b(d(?:4|6|8|10|12|20|100)):\s*\[([^]]*)\]", re.I)
 _ATTACK = re.compile(r"Attack\[(\d+)\]", re.I)
@@ -208,7 +210,11 @@ def ensure_agentic_roll_reserve(encounter, actor_ids):
         "attacks": {
             creature["combatantId"]: [random.randint(1, 20) for _ in range(8)]
             for creature in creatures
-            if creature.get("type") != "player"
+            if resolve_creature_controller(
+                creature,
+                encounter.get("combatState"),
+            )
+            == "actor_agent"
         },
         "saves": {
             creature["combatantId"]: {

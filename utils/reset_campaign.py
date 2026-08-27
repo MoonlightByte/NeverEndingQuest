@@ -394,6 +394,10 @@ def clear_all_files():
 
 def perform_reset_logic():
     """Run the full reset under the shared campaign lifecycle boundary."""
+    from core.combat.invocation import (
+        begin_invocation_supersession,
+        end_invocation_supersession,
+    )
     from core.managers.campaign_manager import (
         _assert_no_active_campaign_completion,
         _campaign_transaction_lock,
@@ -401,13 +405,17 @@ def perform_reset_logic():
     )
     from utils.module_refresh_lock import module_refresh_lock
 
-    with _party_module_transition_lock():
-        with module_refresh_lock() as refresh_acquired:
-            if not refresh_acquired:
-                raise TimeoutError("Module refresh is active; retry reset")
-            with _campaign_transaction_lock("modules/campaign.json"):
-                _assert_no_active_campaign_completion("modules/campaign.json")
-                return _perform_reset_logic_locked()
+    invocation_barrier = begin_invocation_supersession("reset")
+    try:
+        with _party_module_transition_lock():
+            with module_refresh_lock() as refresh_acquired:
+                if not refresh_acquired:
+                    raise TimeoutError("Module refresh is active; retry reset")
+                with _campaign_transaction_lock("modules/campaign.json"):
+                    _assert_no_active_campaign_completion("modules/campaign.json")
+                    return _perform_reset_logic_locked()
+    finally:
+        end_invocation_supersession(invocation_barrier)
 
 
 def _perform_reset_logic_locked():

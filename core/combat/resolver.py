@@ -165,6 +165,15 @@ def _living_target_ids(encounter):
             if is_combatant_targetable(c)]
 
 
+def _living_opponent_ids(encounter, actor):
+    return [
+        target_id
+        for target_id in _living_target_ids(encounter)
+        if (combatant_by_id(encounter, target_id) or {}).get("faction")
+        != actor.get("faction")
+    ]
+
+
 def validate_intent(encounter, characters, intent, strict=None):
     """Return (True, None) or (False, Rejection).
 
@@ -221,18 +230,16 @@ def validate_intent(encounter, characters, intent, strict=None):
         if target_id is not None and combatant_by_id(encounter, target_id) is None:
             return False, Rejection(
                 reason="unknown targetId: %r" % target_id,
-                legalTargets=_living_target_ids(encounter), retryable=True)
+                legalTargets=_living_opponent_ids(encounter, actor), retryable=True)
         target = combatant_by_id(encounter, target_id) if target_id else None
         if target is not None and not is_combatant_targetable(target):
             return False, Rejection(
                 reason="target %s is already down" % target_id,
-                legalTargets=_living_target_ids(encounter), retryable=True)
+                legalTargets=_living_opponent_ids(encounter, actor), retryable=True)
         if strict and target is not None and target.get("faction") == actor.get("faction"):
             return False, Rejection(
                 reason="%s cannot attack ally %s" % (actor_id, target_id),
-                legalTargets=[t for t in _living_target_ids(encounter)
-                              if (combatant_by_id(encounter, t) or {}).get("faction")
-                              != actor.get("faction")],
+                legalTargets=_living_opponent_ids(encounter, actor),
                 retryable=True)
         if strict:
             entry = _find_action(sheet, intent.get("ability"))

@@ -462,7 +462,13 @@ class SaveGameManager:
         
         return metadata
     
-    def create_save_game(self, description: str = "", save_mode: str = "essential") -> Tuple[bool, str]:
+    def create_save_game(
+        self,
+        description: str = "",
+        save_mode: str = "essential",
+        *,
+        save_folder: Optional[str] = None,
+    ) -> Tuple[bool, str]:
         """Drain committed transition intents, then snapshot under campaign lock."""
         try:
             from core.managers.campaign_manager import (
@@ -509,6 +515,7 @@ class SaveGameManager:
                             return self._create_save_game_locked(
                                 description,
                                 save_mode,
+                                save_folder=save_folder,
                             )
         except Exception as exc:
             error(
@@ -518,7 +525,13 @@ class SaveGameManager:
             )
             return False, f"Failed to create save game: {exc}"
 
-    def _create_save_game_locked(self, description: str = "", save_mode: str = "essential") -> Tuple[bool, str]:
+    def _create_save_game_locked(
+        self,
+        description: str = "",
+        save_mode: str = "essential",
+        *,
+        save_folder: Optional[str] = None,
+    ) -> Tuple[bool, str]:
         """
         Create a save game with the specified mode.
         
@@ -531,9 +544,28 @@ class SaveGameManager:
         """
         try:
             # Generate timestamp for save directory
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             save_dir = self.get_save_directory()
-            save_path = f"{save_dir}/save_{timestamp}"
+            if save_folder is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                save_folder = f"save_{timestamp}"
+            if (
+                not isinstance(save_folder, str)
+                or not save_folder.startswith("save_")
+                or os.path.basename(save_folder) != save_folder
+                or any(separator in save_folder for separator in ("/", "\\"))
+            ):
+                return False, "Invalid staged save folder"
+            save_path = os.path.join(save_dir, save_folder)
+            metadata_path = f"{save_path}/save_metadata.json"
+            if os.path.isdir(save_path):
+                existing = safe_read_json(metadata_path)
+                if (
+                    isinstance(existing, dict)
+                    and isinstance(existing.get("file_statistics"), dict)
+                    and isinstance(existing.get("state_manifest"), dict)
+                ):
+                    return True, f"Save game already exists: {save_path}"
+                shutil.rmtree(save_path)
             
             # Create save directory
             os.makedirs(save_path, exist_ok=True)
@@ -542,7 +574,9 @@ class SaveGameManager:
             # Generate and save metadata
             metadata = self.generate_save_metadata(description, save_mode)
             metadata_path = f"{save_path}/save_metadata.json"
-            if not safe_write_json(metadata_path, metadata):
+            if not safe_write_json(
+                metadata_path, metadata, create_backup=False
+            ):
                 return False, "Failed to write save metadata"
             
             # Copy files based on save mode
@@ -648,6 +682,12 @@ class SaveGameManager:
     
     def restore_save_game(self, save_folder: str) -> Tuple[bool, str]:
         """Replace one save timeline under the shared campaign boundary."""
+        from core.combat.invocation import (
+            begin_invocation_supersession,
+            end_invocation_supersession,
+        )
+
+        invocation_barrier = begin_invocation_supersession("load")
         try:
             from core.managers.campaign_manager import (
                 _assert_no_active_campaign_completion,
@@ -690,6 +730,8 @@ class SaveGameManager:
                 category="save_game",
             )
             return False, f"Failed to restore save game: {exc}"
+        finally:
+            end_invocation_supersession(invocation_barrier)
 
     def _restore_save_game_locked(self, save_folder: str) -> Tuple[bool, str]:
         """
@@ -916,6 +958,47 @@ class SaveGameManager:
             error_msg = f"Failed to delete save game: {str(e)}"
             error(f"FAILURE: {error_msg}", category="save_game")
             return False, error_msg
+
+    def prepare_staged_delete(
+        self, save_folder: str, operation_id: str
+    ) -> Dict[str, Any]:
+        """Freeze one validated save target for a v2 deferred delete."""
+        if (
+            not isinstance(save_folder, str)
+            or os.path.basename(save_folder) != save_folder
+            or any(separator in save_folder for separator in ("/", "\\"))
+        ):
+            raise ValueError("Invalid save folder")
+        save_dir = os.path.abspath(self.get_save_directory())
+        target = os.path.abspath(os.path.join(save_dir, save_folder))
+        if os.path.commonpath([save_dir, target]) != save_dir or not os.path.isdir(target):
+            raise ValueError("The referenced save does not exist")
+        quarantine = os.path.join(
+            save_dir, ".delete-%s-%s" % (operation_id, save_folder)
+        )
+        if os.path.exists(quarantine):
+            raise ValueError("A delete quarantine already exists for this operation")
+        return {
+            "kind": "deleteSave",
+            "save_folder": save_folder,
+            "target": target,
+            "quarantine": quarantine,
+        }
+
+    def apply_staged_delete(self, receipt: Dict[str, Any]) -> str:
+        """Rename then remove only the exact pre-staged save directory."""
+        target = receipt["target"]
+        quarantine = receipt["quarantine"]
+        target_exists = os.path.isdir(target)
+        quarantine_exists = os.path.isdir(quarantine)
+        if target_exists and quarantine_exists:
+            return "blocked_conflict"
+        if target_exists:
+            os.replace(target, quarantine)
+            quarantine_exists = True
+        if quarantine_exists:
+            shutil.rmtree(quarantine)
+        return "committed"
 
 # Example usage and testing
 if __name__ == "__main__":

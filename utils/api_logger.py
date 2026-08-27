@@ -12,11 +12,57 @@ Usage:
 
 import json
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 
 # Master log file - JSONL format (one JSON object per line)
 MASTER_LOG_FILE = "debug/api_captures/api_calls_master.jsonl"
+
+# Process-level per-file lock registry for JSONL appends (issue #214). One
+# Python write() on independently opened buffered streams is not a portable
+# native-Windows atomicity guarantee; concurrent welcome/player threads could
+# interleave a large record. Telemetry stays observational: a logging failure
+# is swallowed and counted, never surfaced to gameplay.
+_APPEND_LOCKS_GUARD = threading.Lock()
+_APPEND_LOCKS = {}
+_APPEND_FAILURES = {"count": 0}
+
+
+def _lock_for_path(path):
+    key = os.path.abspath(path)
+    with _APPEND_LOCKS_GUARD:
+        lock = _APPEND_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _APPEND_LOCKS[key] = lock
+        return lock
+
+
+def append_jsonl_record(path, record):
+    """Append one JSON record to ``path`` as a single locked line.
+
+    The complete line is serialized BEFORE the lock is acquired; the
+    open-append/write/close happens entirely under the per-file lock, so
+    concurrent in-process writers can never interleave partial records.
+    Returns True on success; failures are swallowed and counted (diagnostics
+    must never affect gameplay).
+    """
+    try:
+        line = json.dumps(record, ensure_ascii=False) + "\n"
+    except (TypeError, ValueError):
+        _APPEND_FAILURES["count"] += 1
+        return False
+    lock = _lock_for_path(path)
+    try:
+        with lock:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line)
+                f.flush()
+        return True
+    except Exception:
+        _APPEND_FAILURES["count"] += 1
+        return False
 
 def log_api_call(endpoint_name, messages, response, metadata=None):
     """
@@ -70,16 +116,11 @@ def log_api_call(endpoint_name, messages, response, metadata=None):
     if metadata:
         log_entry["metadata"] = metadata
 
-    # Append to master log (JSONL format - one JSON per line)
-    try:
-        with open(MASTER_LOG_FILE, "a", encoding="utf-8") as f:
-            json.dump(log_entry, f, ensure_ascii=False)
-            f.write("\n")
-
+    # Append to master log (JSONL format - one locked single-line write)
+    if append_jsonl_record(MASTER_LOG_FILE, log_entry):
         print(f"[API_LOG] Logged {endpoint_name} call: {total_tokens} tokens to {MASTER_LOG_FILE}")
-
-    except Exception as e:
-        print(f"[API_LOG] ERROR: Failed to log API call: {e}")
+    else:
+        print("[API_LOG] ERROR: Failed to log API call (append_jsonl_record)")
 
 def get_recent_api_calls(endpoint=None, limit=10):
     """

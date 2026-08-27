@@ -185,6 +185,158 @@ def create_area_backup(area_file_path):
         error(f"Failed to create area backup for {area_file_path}", exception=e, category="file_operations")
         return None
 
+def _reconciliation_target(area_id, location_id):
+    party_tracker = safe_read_json("party_tracker.json")
+    if not isinstance(party_tracker, dict):
+        raise ValueError("party_tracker.json did not contain a JSON object")
+    current_module = party_tracker.get("module", "").replace(" ", "_")
+    area_file_path = ModulePathManager(current_module).get_area_path(area_id)
+    with module_refresh_lock() as refresh_acquired:
+        if not refresh_acquired:
+            raise RuntimeError("module refresh is busy")
+        with _get_area_transaction_lock(area_file_path):
+            area_data = safe_read_json(area_file_path)
+            if not isinstance(area_data, dict):
+                raise ValueError("area document is unavailable")
+            location = next(
+                (
+                    item
+                    for item in area_data.get("locations", [])
+                    if isinstance(item, dict)
+                    and item.get("locationId") == location_id
+                ),
+                None,
+            )
+            if location is None:
+                raise ValueError("canonical origin location is absent")
+            monsters = copy.deepcopy(location.get("monsters", []))
+            if not isinstance(monsters, list):
+                raise TypeError("origin monsters field is not a list")
+    return area_file_path, monsters
+
+
+def prepare_reconciliation(area_id, location_id, conversation_history_segment):
+    """Return one untrusted, exact removal-only proposal without writing."""
+    area_file_path, original_monsters = _reconciliation_target(
+        area_id, location_id
+    )
+    if not original_monsters:
+        return {
+            "status": "accepted",
+            "area_path": area_file_path,
+            "location_id": location_id,
+            "monsters_before": [],
+            "monsters_after": [],
+        }
+
+    history_lines = []
+    for message in conversation_history_segment:
+        if not isinstance(message, dict) or not isinstance(
+            message.get("content", ""), str
+        ):
+            raise TypeError("conversation history is malformed")
+        role = "Player" if message.get("role") == "user" else "DM"
+        history_lines.append("%s: %s" % (role, message.get("content", "")))
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Reconcile the final active hostile monsters from the supplied "
+                "scene. Return only a JSON array. Keep exact original entries; "
+                "you may remove an entry only when the scene establishes it is "
+                "dead, defeated, surrendered, fled, banished, or no longer a "
+                "threat. Never add, reorder, or edit an entry."
+            ),
+        },
+        {
+            "role": "user",
+            "content": "Original monster list:\n%s\n\nScene:\n%s"
+            % (
+                json.dumps(original_monsters, ensure_ascii=False, indent=2),
+                "\n\n".join(history_lines),
+            ),
+        },
+    ]
+    from model_config import MODEL_PROVIDER
+
+    if MODEL_PROVIDER == "openai":
+        npc_config = config.NPC_INFO_GPT54MINI_NONE
+    elif MODEL_PROVIDER == "gemini":
+        npc_config = config.NPC_INFO_GEMINI_FLASH_LOW
+    elif MODEL_PROVIDER == "lmstudio":
+        npc_config = config.NPC_INFO_LMSTUDIO
+    else:
+        npc_config = config.NPC_INFO_LEGACY
+    response = capture_and_fanout(
+        "T091",
+        api_client.create_completion,
+        _request_provider=MODEL_PROVIDER,
+        messages=messages,
+        model=npc_config["model"],
+        temperature=0.2,
+        response_format=None,
+        **{key: value for key, value in npc_config.items() if key != "model"},
+    )
+    content = response.choices[0].message.content
+    if not isinstance(content, str):
+        raise TypeError("T091 response content is not text")
+    proposed = _validate_removal_only_subset(
+        original_monsters,
+        _parse_strict_json_response(content.strip()),
+    )
+    return {
+        "status": "accepted",
+        "area_path": area_file_path,
+        "location_id": location_id,
+        "monsters_before": original_monsters,
+        "monsters_after": proposed,
+    }
+
+
+def apply_reconciliation(proposal):
+    """Patch only the canonical location's monster list by exact values."""
+    area_file_path = proposal["area_path"]
+    location_id = proposal["location_id"]
+    before = proposal["monsters_before"]
+    after = proposal["monsters_after"]
+    with module_refresh_lock() as refresh_acquired:
+        if not refresh_acquired:
+            raise RuntimeError("module refresh is busy")
+        with _get_area_transaction_lock(area_file_path):
+            area_data = safe_read_json(area_file_path)
+            if not isinstance(area_data, dict):
+                raise ValueError("area document is unavailable")
+            location = next(
+                (
+                    item
+                    for item in area_data.get("locations", [])
+                    if isinstance(item, dict)
+                    and item.get("locationId") == location_id
+                ),
+                None,
+            )
+            if location is None:
+                raise ValueError("canonical reconciliation target is absent")
+            current = location.get("monsters", [])
+            if current == after:
+                return "already_committed"
+            if current != before:
+                return "blocked_conflict"
+            location["monsters"] = copy.deepcopy(after)
+            if not safe_write_json(area_file_path, area_data):
+                raise IOError("could not persist reconciled monster list")
+            verified = safe_read_json(area_file_path)
+            verified_location = next(
+                item
+                for item in verified.get("locations", [])
+                if item.get("locationId") == location_id
+            )
+            if verified_location.get("monsters", []) != after:
+                raise IOError("reconciled monster list verification failed")
+            return "committed"
+
+
 def run(area_id, location_id, conversation_history_segment):
     """
     Analyzes conversation history for a location and updates the monster list
@@ -193,55 +345,20 @@ def run(area_id, location_id, conversation_history_segment):
     info(f"RECONCILER: Starting reconciliation for location '{location_id}' in area '{area_id}'.")
     debug(f"[RECONCILER] Starting monster reconciliation for {location_id}", category="reconciliation")
 
-    # Get the correct module path.
     try:
-        party_tracker = safe_read_json("party_tracker.json")
-        if not isinstance(party_tracker, dict):
-            raise ValueError("party_tracker.json did not contain a JSON object")
-        current_module = party_tracker.get("module", "").replace(" ", "_")
-        path_manager = ModulePathManager(current_module)
-        area_file_path = path_manager.get_area_path(area_id)
+        proposal = prepare_reconciliation(
+            area_id, location_id, conversation_history_segment
+        )
+        return apply_reconciliation(proposal) in {
+            "committed", "already_committed"
+        }
     except Exception as path_error:
         error(
-            "RECONCILER: Could not resolve the area file. Aborting.",
+            "RECONCILER: Reconciliation was unavailable; state was preserved.",
             exception=path_error,
             category="reconciliation",
         )
         return False
-
-    if not os.path.exists(area_file_path):
-        error(f"RECONCILER: Area file not found at {area_file_path}. Aborting.", category="reconciliation")
-        debug(f"[RECONCILER] FAILED - Could not find area file for {location_id}", category="reconciliation")
-        return False
-
-    # T088 snapshots this same area tree under module refresh. Keep refresh
-    # outside the per-area transaction lock so every participant follows the
-    # global refresh -> target order and T088 can never commit from a source
-    # that this read/model/write transaction is still changing.
-    with module_refresh_lock() as refresh_acquired:
-        if not refresh_acquired:
-            warning(
-                "RECONCILER: Module refresh is busy; no location state was "
-                "changed.",
-                category="reconciliation",
-            )
-            return False
-
-        area_transaction_lock = _get_area_transaction_lock(area_file_path)
-        with area_transaction_lock:
-            try:
-                return _run_area_transaction(
-                    area_file_path,
-                    location_id,
-                    conversation_history_segment,
-                )
-            except Exception as transaction_error:
-                error(
-                    f"RECONCILER: Area transaction failed for '{location_id}'.",
-                    exception=transaction_error,
-                    category="reconciliation",
-                )
-                return False
 
 
 def _run_area_transaction(

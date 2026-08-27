@@ -96,8 +96,16 @@ def _process_key_lock(path: str, cache_key: str) -> threading.Lock:
         return _PROCESS_KEY_LOCKS.setdefault(identity, threading.Lock())
 
 class ParallelConversationCompressor:
-    def __init__(self, cache_file: str = "modules/conversation_history/compression_cache.json", max_workers: int = None, inject_module_creation: bool = False):
-        """Initialize with a cache file for storing compressed sections"""
+    def __init__(self, cache_file: str = "modules/conversation_history/compression_cache.json", max_workers: int = None, inject_module_creation: bool = False, detached_context=None):
+        """Initialize with a cache file for storing compressed sections.
+
+        detached_context: optional {scope, status} carried explicitly into
+        every pooled T084/T085 call (issue #214). ThreadPoolExecutor does not
+        propagate contextvars and the live scope is a process-global
+        singleton, so a detached (off-thread startup welcome) caller must
+        pass its own cancellable scope + non-locking status sink here.
+        """
+        self.detached_context = detached_context
         self.cache_file = os.path.abspath(os.fspath(cache_file))
         self.cache_lock = threading.RLock()
         self._request_lock = threading.Lock()
@@ -386,7 +394,9 @@ class ParallelConversationCompressor:
             )
             try:
                 if section_type == "location":
-                    compressed_text = compress_location(narrative)
+                    compressed_text = compress_location(
+                        narrative, detached_context=self.detached_context
+                    )
                     result = (
                         {"blocks": [{"text": compressed_text}]}
                         if compressed_text
@@ -404,6 +414,7 @@ class ParallelConversationCompressor:
                         mode="agentic",
                         provider_snapshot=runtime["provider"],
                         provider_config=dict(runtime["config"]),
+                        detached_context=self.detached_context,
                     )
                     runtime_still_matches = True
 

@@ -390,6 +390,26 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         response = capture_and_fanout("T013", client.chat.completions.create,
                                       messages=messages, model=..., temperature=0.7)
     """
+    live_selected = kwargs.pop("_live_selected", None)
+    # Detached execution context (issue #214): an off-thread caller (the
+    # startup welcome) passes its own cancellable scope + status sink so its
+    # provider work never binds the global player-turn scope or the global
+    # input-locking status channel. Absent = byte-identical legacy behavior.
+    detached_scope = kwargs.pop("_detached_scope", None)
+    detached_status = kwargs.pop("_detached_status", None)
+    if live_selected is None:
+        from utils.capture.live_provider_call import live_provider_policy
+
+        live_selected = live_provider_policy(task_id)
+    if live_selected is True:
+        live_policy = "required"
+    elif live_selected in {"required", "advisory"}:
+        live_policy = live_selected
+    elif live_selected is False or live_selected is None:
+        live_policy = None
+    else:
+        raise ValueError("_live_selected must be required, advisory, or false")
+
     # Keep the provider used for config selection attached to this request. A UI
     # provider switch while the request is in flight must not redirect it.
     request_provider = (
@@ -434,24 +454,44 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
 
     requested_model = capture_kwargs.get("model", "unknown")
 
+    if live_policy:
+        if primary_fn is not _api_client.create_completion:
+            raise ValueError("live-selected calls require api_client.create_completion")
+        from utils.capture.live_provider_call import call_live_provider
+
+        start = time.time()
+        response = call_live_provider(
+            task_id,
+            messages,
+            kwargs,
+            policy=live_policy,
+            scope=detached_scope,
+            status_emit=detached_status,
+        )
+        primary_latency = round(time.time() - start, 3)
+        _track_module_primary(
+            response, task_id, request_provider, requested_model
+        )
+
     # Local/Custom is a production runtime, not a capture-test source. Usage is
     # still player-visible production accounting and must happen before this
     # capture-specific early return.
-    if request_provider == "lmstudio":
+    elif request_provider == "lmstudio":
         response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id)
         _track_module_primary(
             response, task_id, request_provider, requested_model
         )
         return response
 
-    # Always fire primary call synchronously
-    start = time.time()
-    response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id)
-    primary_latency = round(time.time() - start, 3)
+    else:
+        # Always fire the legacy primary call synchronously.
+        start = time.time()
+        response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id)
+        primary_latency = round(time.time() - start, 3)
 
-    # Account before either capture-disabled return below. Diagnostic capture
-    # settings must not control production usage totals.
-    _track_module_primary(response, task_id, request_provider, requested_model)
+        # Account before either capture-disabled return below. Diagnostic capture
+        # settings must not control production usage totals.
+        _track_module_primary(response, task_id, request_provider, requested_model)
 
     # If capture disabled, return immediately - zero overhead
     if not _capture_enabled():
@@ -522,7 +562,7 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         primary_cost = _calculate_cost(model, primary_token_usage, cfg)
 
         # Get variants (check task_overrides first, then per-callsite configs)
-        variants = cfg.get("task_overrides", {}).get(task_id)
+        variants = [] if live_policy else cfg.get("task_overrides", {}).get(task_id)
 
         # Then try per-callsite config dicts from model_config.py
         if variants is None:

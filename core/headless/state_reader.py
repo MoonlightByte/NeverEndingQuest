@@ -126,6 +126,17 @@ def build_snapshot():
                 if key in encounter:
                     combat["round"] = encounter.get(key)
                     break
+            combat_state = encounter.get("combatState") or {}
+            conflict = combat_state.get("recoveryConflict")
+            if isinstance(conflict, dict) and conflict.get("status") == "pending":
+                combat["recovery"] = {
+                    "required": True,
+                    "message": str(
+                        conflict.get("playerMessage")
+                        or "Combat recovery needs attention -- Load or Reset"
+                    ),
+                    "actions": ["load", "reset"],
+                }
         snapshot["combat"] = combat
 
     return snapshot

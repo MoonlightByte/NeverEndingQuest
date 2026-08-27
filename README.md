@@ -153,6 +153,23 @@ For Local / Custom Server, the default endpoint is
 servers; remote services may require both. Save the endpoint and select **Test
 Connection** before starting a game.
 
+> ⚙️ **Turn "thinking" / reasoning OFF for local models (recommended).** If you
+> run **LM Studio** (or another local server) with a model that has a "thinking"
+> or reasoning mode, **disable it on the loaded model** before starting a game.
+> NeverEndingQuest's call sites are already highly structured (compression,
+> validation, summaries, combat bookkeeping), so chain-of-thought adds little and
+> costs a lot: a mechanical history-compression call that returns in a few seconds
+> with thinking off can take 10x longer with it on, and on a long game the startup
+> compression pass can run so long it trips the transport liveness boundary and
+> retries — leaving you stuck before the first prompt. Disabling thinking makes
+> the same call return in seconds with no loss of gameplay quality. In LM Studio,
+> switch the loaded model's reasoning/thinking setting to off (some models expose
+> it as a per-model toggle; others via the model's parameters).
+>
+> The same preference **often applies to the OpenAI providers**: the default
+> matrix already binds most call sites to the lowest reasoning tier that passed
+> each site's tests. Higher reasoning is retained only where it measurably won.
+
 The selected provider and non-secret endpoint settings persist in
 `user_settings.json`. Keys entered through Settings use the operating system's
 credential store when one is available. On a headless system without a usable

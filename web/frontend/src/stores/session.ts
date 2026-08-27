@@ -19,6 +19,8 @@ export interface SessionState {
   startupInputReady: boolean
   /** Status ticker text (status_update.message). */
   statusMessage: string
+  /** #214: background startup-welcome liveness (presentational; never locks input). */
+  welcomeMessage: string
   /** Startup lifecycle (startup_status). */
   startupStatus: StartupStatus
   startupPhase: string
@@ -37,6 +39,7 @@ export interface SessionState {
   gameStarted: (message: string) => void
   gameResumed: (isProcessing: boolean) => void
   setStatus: (status: { message: string; is_processing: boolean }) => void
+  setWelcome: (message: string) => void
   setStartup: (status: 'in_progress' | 'ready' | 'failed', phase: string, startupAttemptId?: string) => void
   setRecovery: (recovery: ServerEvents['startup_recovery_response']) => void
   setVersion: (version: ServerEvents['version_status']) => void
@@ -50,6 +53,7 @@ export const useSession = create<SessionState>((set) => ({
   inputAuthorized: false,
   startupInputReady: false,
   statusMessage: '',
+  welcomeMessage: '',
   startupStatus: 'idle',
   startupPhase: '',
   startupAttemptId: '',
@@ -65,6 +69,7 @@ export const useSession = create<SessionState>((set) => ({
   startRequested: () => set({ mode: 'starting', inputAuthorized: false, startupInputReady: false }),
   gameStarted: (message) => set({ mode: 'play', statusMessage: message, inputAuthorized: true, startupInputReady: false }),
   gameResumed: (isProcessing) => set({ mode: 'play', isProcessing, inputAuthorized: true, startupInputReady: false }),
+  setWelcome: (message) => set({ welcomeMessage: message }),
   setStatus: (status) =>
     set((s) => ({
       statusMessage: status.message,

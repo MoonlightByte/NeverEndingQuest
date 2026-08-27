@@ -1363,6 +1363,8 @@ def _update_character_info_unlocked(
     changes,
     character_role=None,
     managed_effect_operation=None,
+    prepare_only=False,
+    structural_reissue=False,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -1418,6 +1420,7 @@ def _update_character_info_unlocked(
             error(f"FAILURE: Loaded data type: {type(character_data)}, value: {character_data}", category="file_operations")
             return False
         
+        persisted_character_data = copy.deepcopy(character_data)
         # Repair common schema issues before processing
         character_data = repair_character_data(character_data)
             
@@ -1426,12 +1429,13 @@ def _update_character_info_unlocked(
         return False
     
     # Create file backup before any changes
-    backup_path = create_character_backup(character_path, "update")
-    if backup_path is None:
-        warning("FILE_OP: Could not create backup, but proceeding with update", category="file_operations")
-    else:
-        # Clean up old backups to prevent accumulation
-        cleanup_old_backups(character_path)
+    if not prepare_only:
+        backup_path = create_character_backup(character_path, "update")
+        if backup_path is None:
+            warning("FILE_OP: Could not create backup, but proceeding with update", category="file_operations")
+        else:
+            # Clean up old backups to prevent accumulation
+            cleanup_old_backups(character_path)
     
     # Create in-memory backup
     original_data = copy.deepcopy(character_data)
@@ -1818,7 +1822,7 @@ Character Role: {character_role}
             "updates. Restore the schema file or set MODEL_PROVIDER off gemini."
         )
 
-    while attempt <= max_attempts:
+    while structural_reissue or attempt <= max_attempts:
         try:
             debug(f"STATE_CHANGE: Attempt {attempt} of {max_attempts}", category="character_updates")
 
@@ -1903,12 +1907,14 @@ Character Role: {character_role}
             # print(f"AI Response: {raw_response[:500]}{'...' if len(raw_response) > 500 else ''}")
             # print(f"Full response saved to: {debug_filename}\n")
             
-            # Clean and parse JSON response
-            json_match = re.search(r'\{.*\}', raw_response, re.DOTALL)
-            if not json_match:
-                raise ValueError("No JSON object found in response")
-            
-            clean_response = json_match.group()
+            # Parse the typed response directly; never mine brace-shaped prose
+            # for gameplay state.
+            clean_response = raw_response.strip()
+            if clean_response.startswith("```json"):
+                clean_response = clean_response[len("```json") :]
+            if clean_response.endswith("```"):
+                clean_response = clean_response[: -len("```")]
+            clean_response = clean_response.strip()
             updates = json.loads(clean_response)
             if not _is_meaningful_character_delta(updates, schema) and not (
                 declarative_effects and managed_effect_operation
@@ -1957,7 +1963,7 @@ Character Role: {character_role}
                     "requested_fields_complete": False,
                     "missing_requested_fields": missing_fields,
                 }
-                if attempt == max_attempts:
+                if attempt == max_attempts and not structural_reissue:
                     error(
                         "FAILURE: Max attempts reached with an incomplete character delta.",
                         category="character_updates",
@@ -2117,7 +2123,7 @@ Please provide the CORRECT currency values:
                 safe_write_json("debug/debug_critical_field_loss.json", debug_info)
                 debug("FILE_OP: Debug info saved to debug/debug_critical_field_loss.json", category="file_operations")
                 
-                if attempt == max_attempts:
+                if attempt == max_attempts and not structural_reissue:
                     error("FAILURE: Max attempts reached. Update failed to preserve critical data.", category="character_validation")
                     return False
                 attempt += 1
@@ -2147,7 +2153,7 @@ Please provide the CORRECT currency values:
             
             if not is_valid:
                 error(f"VALIDATION: Validation failed: {error_msg}", category="character_validation")
-                if attempt == max_attempts:
+                if attempt == max_attempts and not structural_reissue:
                     error("FAILURE: Max attempts reached. Reverting changes.", category="character_updates")
                     return False
                 
@@ -2171,6 +2177,17 @@ Please provide the CORRECT currency values:
             # Final repair pass before saving to ensure schema compliance
             updated_data = repair_character_data(updated_data)
             
+            if prepare_only:
+                return {
+                    "kind": "updateCharacterInfo",
+                    "owner": character_name,
+                    "role": character_role,
+                    "path": character_path,
+                    "before": persisted_character_data,
+                    "after": updated_data,
+                    "changes": changes,
+                }
+
             # Save updated character data
             # print(f"[DEBUG] Validation passed! About to save character data to: {character_path}")
             
@@ -2386,7 +2403,7 @@ Please provide the CORRECT currency values:
             #     print(f"AI response received: {raw_response[:500]}...")
             # print(f"Stack trace will be in logs\n")
         
-        if attempt < max_attempts:
+        if structural_reissue or attempt < max_attempts:
             attempt += 1
             time.sleep(1)
         else:

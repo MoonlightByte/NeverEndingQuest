@@ -182,6 +182,26 @@ Example input: "The party arrives at Marrow's Rest Village (MRV001), shrouded in
 Example output: {"description": "You find yourself in the mist-shrouded village of Marrow's Rest, where an unsettling quiet hangs in the air."}"""
 
 
+def _quest_source_projection(plot_data):
+    """Return the normalized plot fields which can affect T090 output."""
+    projection = []
+    for plot_point in plot_data.get("plotPoints", []):
+        item = {
+            key: sanitize_text(plot_point.get(key, ""))
+            for key in ("id", "title", "description", "status", "plotImpact")
+        }
+        item["sideQuests"] = [
+            {
+                key: sanitize_text(side_quest.get(key, ""))
+                for key in ("id", "title", "description", "status", "plotImpact")
+            }
+            for side_quest in plot_point.get("sideQuests", [])
+            if isinstance(side_quest, dict)
+        ]
+        projection.append(item)
+    return projection
+
+
 def format_quest_batch(quests_to_format):
     """
     Send a batch of quests to AI for reformatting
@@ -391,7 +411,7 @@ def _format_quests_for_player_unlocked(
         return False
 
 
-def _build_player_quests(module_name, plot_data, source_digest):
+def _build_player_quests(module_name, plot_data, source_digest, *, max_attempts=MAX_RETRIES):
     """Build a complete derived candidate without performing filesystem writes."""
     try:
         info(f"STATE_CHANGE: Starting quest formatting for module {module_name}", category="quest_formatting")
@@ -434,15 +454,15 @@ def _build_player_quests(module_name, plot_data, source_digest):
             batch_ids = quest_ids[i:i + batch_size]
             batch_quests = {qid: quests_to_format[qid] for qid in batch_ids}
             
-            for attempt in range(MAX_RETRIES):
+            for attempt in range(max_attempts):
                 reformatted = format_quest_batch(batch_quests)
                 if reformatted:
                     all_reformatted.update(reformatted)
                     break
-                elif attempt < MAX_RETRIES - 1:
+                elif attempt < max_attempts - 1:
                     warning(f"RETRY: Attempt {attempt + 1} failed, retrying...", category="quest_formatting")
             else:
-                error(f"FAILURE: Could not reformat batch after {MAX_RETRIES} attempts", category="quest_formatting")
+                error(f"FAILURE: Could not reformat batch after {max_attempts} attempts", category="quest_formatting")
                 # Use original descriptions as fallback
                 for qid in batch_ids:
                     all_reformatted[qid] = quests_to_format[qid].get('description', '')
@@ -480,6 +500,80 @@ def _build_player_quests(module_name, plot_data, source_digest):
     except Exception as e:
         error("FAILURE: Unexpected error building player quests", exception=e, category="quest_formatting")
         return None
+
+
+def prepare_player_quests(module_name):
+    """Build one advisory T090 candidate and freeze its exact file values."""
+    path_manager = ModulePathManager(module_name)
+    plot_path = path_manager.get_plot_path()
+    player_quests_path = os.path.join(
+        path_manager.module_dir,
+        f"player_quests_{module_name}.json",
+    )
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            raise RuntimeError("module refresh is busy during T090 snapshot")
+        source = _capture_plot_source(path_manager.module_dir, plot_path)
+        before = safe_read_json(player_quests_path)
+        before_exists = os.path.exists(player_quests_path)
+    candidate = _build_player_quests(
+        module_name,
+        source["payload"],
+        source["digest"],
+        max_attempts=1,
+    )
+    if candidate is None:
+        return {
+            "status": "attempted_unavailable",
+            "module": module_name,
+            "plot_path": plot_path,
+            "source_plot": _quest_source_projection(source["payload"]),
+            "target_path": player_quests_path,
+        }
+    return {
+        "status": "staged",
+        "module": module_name,
+        "plot_path": plot_path,
+        "source_plot": _quest_source_projection(source["payload"]),
+        "target_path": player_quests_path,
+        "before_exists": before_exists,
+        "before": before if before_exists else None,
+        "after": candidate,
+    }
+
+
+def apply_staged_player_quests(receipt):
+    """Apply or recognize one exact derived quest-journal candidate."""
+    if receipt.get("status") == "attempted_unavailable":
+        return "attempted_unavailable"
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            raise RuntimeError("module refresh is busy during T090 commit")
+        with _quest_file_lock(receipt["target_path"]):
+            plot = safe_read_json(receipt["plot_path"])
+            if _quest_source_projection(plot or {}) != receipt["source_plot"]:
+                return "blocked_conflict"
+            exists = os.path.exists(receipt["target_path"])
+            current = safe_read_json(receipt["target_path"]) if exists else None
+            if exists and current == receipt["after"]:
+                return "already_committed"
+            if exists != bool(receipt["before_exists"]) or current != receipt["before"]:
+                return "blocked_conflict"
+            if not safe_write_json(receipt["target_path"], receipt["after"]):
+                raise RuntimeError("player quest write failed")
+    return "committed"
+
+
+def refresh_staged_player_quest_source(receipt):
+    """Align the legacy freshness field after an encoding-only source rewrite."""
+    path_manager = ModulePathManager(receipt["module"])
+    source = _capture_plot_source(
+        path_manager.module_dir, receipt["plot_path"]
+    )
+    if _quest_source_projection(source["payload"]) != receipt["source_plot"]:
+        return "blocked_conflict"
+    receipt["after"]["sourceDigest"] = source["digest"]
+    return "refreshed"
 
 
 def load_current_player_quests(module_name):
