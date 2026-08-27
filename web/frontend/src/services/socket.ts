@@ -25,11 +25,15 @@ import { cancelPendingRestart, reloadIfRestartPending } from './restart'
 export const socket: Socket = io()
 
 let requestSequence = 0
-const baseDocumentTitle = document.title
+// Guard DOM globals so this module can be imported under a non-DOM test
+// environment (vitest's default 'node' env). The tab-title "ready" hint is
+// browser-only; in a DOM-less context every reference below no-ops.
+const hasDom = typeof document !== 'undefined'
+const baseDocumentTitle = hasDom ? document.title : ''
 let readyTitleMarked = false
 
 function clearReadyTitle(): void {
-  if (!readyTitleMarked) return
+  if (!readyTitleMarked || !hasDom) return
   document.title = baseDocumentTitle
   readyTitleMarked = false
 }
@@ -37,16 +41,18 @@ function clearReadyTitle(): void {
 function applyProcessingTransition(nextProcessing: boolean, apply: () => void): void {
   const wasProcessing = useSession.getState().isProcessing
   apply()
-  if (wasProcessing && !nextProcessing && document.hidden) {
+  if (hasDom && wasProcessing && !nextProcessing && document.hidden) {
     document.title = `Adventure ready — ${baseDocumentTitle}`
     readyTitleMarked = true
   }
 }
 
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) clearReadyTitle()
-})
-window.addEventListener('focus', clearReadyTitle)
+if (hasDom) {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) clearReadyTitle()
+  })
+  window.addEventListener('focus', clearReadyTitle)
+}
 
 const hydration = new HydrationCoordinator((event, payload, arity) => {
   // socket.io-client queues emits made while disconnected and replays every
