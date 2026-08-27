@@ -117,7 +117,9 @@ class HeadlessInput:
             return ""
         try:
             from core.managers.status_manager import status_ready
-            status_ready()
+            # Game thread parking for input = authoritative open-input
+            # boundary, even mid-scope (combat sub-loop turns).
+            status_ready(at_input_boundary=True)
         except Exception:
             pass
         if self.on_prompt is not None:

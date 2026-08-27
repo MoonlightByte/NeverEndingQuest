@@ -87,14 +87,22 @@ class StatusManager:
         """
         self._status_callback = callback
         
-    def update_status(self, message: str, is_processing: bool = True):
+    def update_status(self, message: str, is_processing: bool = True,
+                      at_input_boundary: bool = False):
         """Update the current status message
-        
+
         Args:
             message: The status message to display
             is_processing: Whether the system is currently processing (disables input)
+            at_input_boundary: True ONLY when the GAME THREAD itself is parking
+                for player input (the readline implementations). That moment is
+                authoritatively an open-input boundary even while the outer
+                turn scope is still non-QUIESCENT - combat and other sub-loops
+                legitimately await player input mid-scope. Async callers (e.g.
+                the combat manager's early completion signal) must NOT pass it;
+                their premature un-processing stays rejected by the scope guard.
         """
-        if not is_processing:
+        if not is_processing and not at_input_boundary:
             try:
                 from utils.capture.live_provider_call import get_live_turn_scope
 
@@ -119,9 +127,10 @@ class StatusManager:
         with self._lock:
             return self._status, self._is_processing
             
-    def set_ready(self):
+    def set_ready(self, at_input_boundary: bool = False):
         """Set status to ready for input"""
-        self.update_status("Enter your command:", False)
+        self.update_status("Enter your command:", False,
+                           at_input_boundary=at_input_boundary)
     
     def set_compression_callback(self, callback: Callable[[str, dict], None]):
         """Set a callback for compression progress events
@@ -267,9 +276,9 @@ def status_loading():
     """Set status for loading data"""
     status_manager.update_status("Loading module data...", True)
 
-def status_ready():
+def status_ready(at_input_boundary: bool = False):
     """Set status to ready"""
-    status_manager.set_ready()
+    status_manager.set_ready(at_input_boundary=at_input_boundary)
 
 def status_busy():
     """Set generic busy status"""

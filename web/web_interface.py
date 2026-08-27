@@ -848,7 +848,9 @@ class WebInput:
         # Signal that we're ready for input (with error handling)
         try:
             from core.managers.status_manager import status_ready
-            status_ready()
+            # Game thread parking for input = authoritative open-input
+            # boundary, even mid-scope (combat sub-loop turns).
+            status_ready(at_input_boundary=True)
         except Exception:
             # If status_ready fails, continue without it
             pass
