@@ -31,6 +31,8 @@ _REQUIRED_TASK_IDS = frozenset(
         "T077",
         "T078",
         "T079",
+        "T092",
+        "T093",
     }
 )
 _ADVISORY_TASK_IDS = frozenset(
@@ -60,6 +62,9 @@ _ADVISORY_TASK_IDS = frozenset(
 _LIVE_TASK_IDS = _REQUIRED_TASK_IDS | _ADVISORY_TASK_IDS
 _HEARTBEAT_SECONDS = 10.0
 _WATCHDOG_SECONDS = 600.0
+_WIZARD_READ_INACTIVITY_SECONDS = 40.0
+_WIZARD_BACKSTOP_SECONDS = 180.0
+_WIZARD_TASK_IDS = frozenset({"T092", "T093"})
 _MAX_BACKOFF_SECONDS = 8.0
 _PERMANENT_ERROR_SECONDS = 60.0
 
@@ -75,6 +80,17 @@ class LiveProviderUnavailable(RuntimeError):
         self.task_id = str(task_id)
         self.envelope = dict(envelope or {})
         super().__init__("%s advisory provider attempt was unavailable" % self.task_id)
+
+
+class LiveProviderCompletedError(RuntimeError):
+    """A completed deterministic wizard error owned by its existing caller."""
+
+    def __init__(self, task_id, envelope=None):
+        self.task_id = str(task_id)
+        self.envelope = dict(envelope or {})
+        super().__init__(
+            "%s provider request completed with a deterministic error" % self.task_id
+        )
 
 
 @dataclass
@@ -287,10 +303,13 @@ def finish_live_turn_scope(scope):
     close_live_turn_scope(scope)
 
 
-def abort_live_turn_scope(message="the game loop stopped before a safe save boundary"):
+def abort_live_turn_scope(
+    message="the game loop stopped before a safe save boundary",
+    scope=None,
+):
     """Close a failed engine scope without snapshotting a partial turn."""
-    scope = get_live_turn_scope()
-    if scope is None:
+    scope = scope if scope is not None else get_live_turn_scope()
+    if scope is None or get_live_turn_scope() is not scope:
         return
     with scope.lock:
         scope.controls_open = False
@@ -328,6 +347,29 @@ def _success_envelope(response, request_kwargs):
     }
 
 
+def _error_disposition(exc, original, status):
+    """Classify from exception types/status only; provider prose is never authority."""
+    if type(exc).__name__ == "ProviderEmptyResponse":
+        return "empty"
+    if status in {408, 409, 429} or (
+        isinstance(status, int) and 500 <= status < 600
+    ):
+        return "retryable_http"
+    cause = original if original is not None else exc
+    cause_types = {base.__name__ for base in type(cause).__mro__}
+    if cause_types.intersection(
+        {
+            "APITimeoutError",
+            "APIConnectionError",
+            "TimeoutException",
+            "TransportError",
+            "NetworkError",
+        }
+    ):
+        return "retryable_transport"
+    return "deterministic"
+
+
 def _primitive_error(exc, request_kwargs):
     original = getattr(exc, "original_error", None)
     status = getattr(original, "status_code", None)
@@ -348,6 +390,8 @@ def _primitive_error(exc, request_kwargs):
     return {
         "kind": "error",
         "error_class": type(exc).__name__,
+        "cause_class": type(original).__name__ if original is not None else None,
+        "disposition": _error_disposition(exc, original, status),
         "provider": str(getattr(exc, "provider", "") or request_kwargs.get("_request_provider", "")),
         "model": str(getattr(exc, "model", "") or request_kwargs.get("model", "")),
         "task_id": getattr(exc, "task_id", None) or request_kwargs.get("task_id"),
@@ -411,18 +455,44 @@ def _close_process_streams(process):
 
 def _terminate_process(process):
     """Terminate, hard-kill if needed, wait, and close every local handle."""
-    if process.poll() is None:
-        process.terminate()
     try:
-        output, _ = process.communicate(timeout=5.0)
-    except subprocess.TimeoutExpired:
         if process.poll() is None:
-            process.kill()
-        output, _ = process.communicate(timeout=5.0)
-    if process.poll() is None:
-        raise RuntimeError("live provider child could not be reaped")
-    _close_process_streams(process)
-    return output
+            try:
+                process.terminate()
+            except OSError:
+                pass
+        soft_deadline = time.monotonic() + 5.0
+        while process.poll() is None and time.monotonic() < soft_deadline:
+            try:
+                output, _ = process.communicate(timeout=0.25)
+                return output
+            except subprocess.TimeoutExpired:
+                pass
+
+        while process.poll() is None:
+            try:
+                process.kill()
+            except OSError:
+                if process.poll() is None:
+                    time.sleep(0.05)
+            try:
+                output, _ = process.communicate(timeout=0.25)
+                return output
+            except subprocess.TimeoutExpired:
+                pass
+
+        output, _ = process.communicate()
+        return output
+    finally:
+        _close_process_streams(process)
+
+
+def _safe_emit(emit, message):
+    """Presentational status failure must not interrupt provider ownership."""
+    try:
+        emit(message)
+    except Exception:
+        pass
 
 
 def _interruptible_wait(seconds, scope, message, emit=None):
@@ -434,7 +504,8 @@ def _interruptible_wait(seconds, scope, message, emit=None):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return
-        emit(message)
+        rendered = message() if callable(message) else message
+        _safe_emit(emit, rendered)
         time.sleep(min(_HEARTBEAT_SECONDS, remaining))
 
 
@@ -497,13 +568,27 @@ def call_live_provider(
     operation_id = scope.operation_id if scope is not None else str(uuid4())
     frozen_messages = copy.deepcopy(messages)
     frozen_kwargs = copy.deepcopy(request_kwargs)
-    if frozen_kwargs.get("_request_provider") in {
+    wizard_task = task_id in _WIZARD_TASK_IDS
+    if wizard_task and frozen_kwargs.get("_request_provider") == "openai":
+        import httpx
+
+        frozen_kwargs["timeout"] = httpx.Timeout(
+            _WATCHDOG_SECONDS,
+            read=_WIZARD_READ_INACTIVITY_SECONDS,
+        )
+    elif frozen_kwargs.get("_request_provider") in {
         "openai",
         "legacy",
         "lmstudio",
     }:
         frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
     failure_count = 0
+    empty_count = 0
+    logical_started = time.monotonic()
+
+    def wizard_heartbeat():
+        elapsed = max(1, int(time.monotonic() - logical_started))
+        return "Still working on character setup (%d seconds elapsed)..." % elapsed
 
     while True:
         if scope is not None and scope.is_superseded():
@@ -540,39 +625,53 @@ def call_live_provider(
             _interruptible_wait(
                 _delay_for_error({}, failure_count),
                 scope,
-                "Still working; preparing a fresh provider connection...",
+                wizard_heartbeat if wizard_task else (
+                    "Still working; preparing a fresh provider connection..."
+                ),
                 emit,
             )
             continue
 
         started = time.monotonic()
+        generation_limit = (
+            _WIZARD_BACKSTOP_SECONDS if wizard_task else _WATCHDOG_SECONDS
+        )
         next_heartbeat = started + _HEARTBEAT_SECONDS
         envelope = None
         superseded = False
         output = None
         first_communicate = True
-        while time.monotonic() - started < _WATCHDOG_SECONDS:
-            if scope is not None and scope.is_superseded():
-                superseded = True
-                break
-            try:
-                output, _ = process.communicate(
-                    input=request_payload if first_communicate else None,
-                    timeout=0.25,
-                )
-                break
-            except subprocess.TimeoutExpired:
-                first_communicate = False
-            if time.monotonic() >= next_heartbeat:
-                emit("Still working on your adventure...")
-                next_heartbeat = time.monotonic() + _HEARTBEAT_SECONDS
-
-        if process.poll() is None:
-            terminated_output = _terminate_process(process)
-            if output is None:
-                output = terminated_output
-        else:
-            _close_process_streams(process)
+        backstop_exhausted = False
+        try:
+            while time.monotonic() - started < generation_limit:
+                if scope is not None and scope.is_superseded():
+                    superseded = True
+                    break
+                try:
+                    output, _ = process.communicate(
+                        input=request_payload if first_communicate else None,
+                        timeout=0.25,
+                    )
+                    break
+                except subprocess.TimeoutExpired:
+                    first_communicate = False
+                if time.monotonic() >= next_heartbeat:
+                    _safe_emit(
+                        emit,
+                        wizard_heartbeat() if wizard_task else (
+                            "Still working on your adventure..."
+                        ),
+                    )
+                    next_heartbeat = time.monotonic() + _HEARTBEAT_SECONDS
+            else:
+                backstop_exhausted = True
+        finally:
+            if process.poll() is None:
+                terminated_output = _terminate_process(process)
+                if output is None:
+                    output = terminated_output
+            else:
+                _close_process_streams(process)
         if superseded:
             raise LiveProviderSuperseded("live player turn superseded")
         if output:
@@ -580,6 +679,19 @@ def call_live_provider(
                 envelope = pickle.loads(output)
             except (EOFError, pickle.PickleError, ValueError, TypeError):
                 envelope = None
+        if wizard_task and not isinstance(envelope, dict):
+            envelope = {
+                "kind": "error",
+                "error_class": (
+                    "WizardGenerationBackstop"
+                    if backstop_exhausted
+                    else "ProviderChildUnavailable"
+                ),
+                "cause_class": None,
+                "disposition": "retryable_transport",
+                "http_status": None,
+                "retry_after": None,
+            }
         expected_correlation = {
             "operation_id": operation_id,
             "generation": generation,
@@ -595,6 +707,17 @@ def call_live_provider(
         envelope = envelope if isinstance(envelope, dict) else {}
         if policy == "advisory":
             raise LiveProviderUnavailable(task_id, envelope)
+        if wizard_task:
+            disposition = envelope.get("disposition")
+            if disposition == "empty":
+                empty_count += 1
+                if task_id == "T093" and empty_count >= 3:
+                    raise LiveProviderCompletedError(task_id, envelope)
+            elif disposition not in {
+                "retryable_http",
+                "retryable_transport",
+            }:
+                raise LiveProviderCompletedError(task_id, envelope)
         error_class = envelope.get("error_class", "transport_unavailable")
         try:
             from utils.enhanced_logger import warning
@@ -607,14 +730,17 @@ def call_live_provider(
             )
         except Exception:
             pass
-        emit(
+        _safe_emit(
+            emit,
             "The provider connection needs another attempt; your turn is safe "
-            "and still in progress."
+            "and still in progress.",
         )
         _interruptible_wait(
             _delay_for_error(envelope, failure_count),
             scope,
-            "Still retrying the provider connection (%s)..." % error_class,
+            wizard_heartbeat if wizard_task else (
+                "Still retrying the provider connection (%s)..." % error_class
+            ),
             emit,
         )
 

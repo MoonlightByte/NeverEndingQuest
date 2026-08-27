@@ -171,6 +171,8 @@ def initialize_game_files_from_bu():
 
 def run_startup_sequence():
     """Main entry point for startup wizard"""
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+
     print("\nDungeon Master: Welcome to your 5th Edition Adventure!")
     print("Dungeon Master: Let's set up your character and choose your adventure...\n")
     
@@ -206,6 +208,8 @@ def run_startup_sequence():
         
         return True
         
+    except LiveProviderSuperseded:
+        raise
     except Exception as e:
         print(f"Error: Error during setup: {e}")
         cleanup_startup_conversation()
@@ -1512,6 +1516,14 @@ def save_character_to_module(character_data, module_name):
 
 def update_party_tracker(module_name, character_name):
     """Update party_tracker.json with module and character selections"""
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded,
+        abort_live_turn_scope,
+        finish_live_turn_scope,
+        open_live_turn_scope,
+    )
+
+    live_scope = None
     try:
         # Load existing party tracker or create new one
         party_data = safe_json_load("party_tracker.json") or {}
@@ -1527,8 +1539,16 @@ def update_party_tracker(module_name, character_name):
             party_data["partyNPCs"] = []
         
         if "worldConditions" not in party_data:
+            from model_config import MODEL_PROVIDER
+
+            request_provider = MODEL_PROVIDER
+            if request_provider == "openai":
+                live_scope = open_live_turn_scope()
             # Get AI-determined starting location for the selected module
-            starting_location = get_ai_starting_location({'moduleName': module_name})
+            starting_location = get_ai_starting_location(
+                {'moduleName': module_name},
+                request_provider=request_provider,
+            )
             starting_location = (
                 _validate_starting_location(starting_location)
                 or get_fallback_starting_location()
@@ -1558,12 +1578,32 @@ def update_party_tracker(module_name, character_name):
         #     party_data["activeQuests"] = []
         
         # Save updated party tracker
-        success = safe_write_json("party_tracker.json", party_data)
+        if live_scope is not None:
+            with live_scope.lock:
+                if live_scope.is_superseded():
+                    raise LiveProviderSuperseded("startup location turn superseded")
+                success = safe_write_json("party_tracker.json", party_data)
+        else:
+            success = safe_write_json("party_tracker.json", party_data)
+        if live_scope is not None and success:
+            finish_live_turn_scope(live_scope)
+            live_scope = None
         return success
-        
+
+    except LiveProviderSuperseded:
+        if live_scope is not None:
+            finish_live_turn_scope(live_scope)
+            live_scope = None
+        raise
     except Exception as e:
         print(f"Error: Error updating party tracker: {e}")
         return False
+    finally:
+        if live_scope is not None:
+            abort_live_turn_scope(
+                "startup wizard stopped before party state was durable",
+                scope=live_scope,
+            )
 
 # ===== CONVERSATION MANAGEMENT =====
 
@@ -1644,6 +1684,14 @@ def get_ai_response(conversation, response_format=None):
     message snapshot, and the live conversation is mutated only after a usable
     response has been received.
     """
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded,
+        abort_live_turn_scope,
+        finish_live_turn_scope,
+        open_live_turn_scope,
+    )
+
+    live_scope = None
     status_processing_ai()
     try:
         from model_config import MODEL_PROVIDER
@@ -1655,6 +1703,8 @@ def get_ai_response(conversation, response_format=None):
             main_cfg = config.DM_MAIN_LMSTUDIO
         else:  # legacy
             main_cfg = config.DM_MAIN_LEGACY
+        if MODEL_PROVIDER == "openai":
+            live_scope = open_live_turn_scope()
 
         request_messages = copy.deepcopy(conversation)
         last_error = None
@@ -1663,6 +1713,9 @@ def get_ai_response(conversation, response_format=None):
             try:
                 response = capture_and_fanout("T092", api_client.create_completion,
                     _request_provider=MODEL_PROVIDER,
+                    _live_selected=(
+                        "required" if MODEL_PROVIDER == "openai" else False
+                    ),
                     messages=copy.deepcopy(request_messages),
                     model=main_cfg["model"],
                     temperature=0.7,
@@ -1674,6 +1727,8 @@ def get_ai_response(conversation, response_format=None):
                     raise ValueError("provider returned no usable text")
                 content = raw_content.strip()
                 break
+            except LiveProviderSuperseded:
+                raise
             except Exception as exc:
                 last_error = exc
                 warning(
@@ -1701,16 +1756,27 @@ def get_ai_response(conversation, response_format=None):
                 f"{STARTUP_AI_MAX_ATTEMPTS} attempts"
             ) from last_error
 
-        conversation.append({"role": "assistant", "content": content})
+        def persist_accepted_content():
+            conversation.append({"role": "assistant", "content": content})
+            status_saving()
+            history_error = None
+            try:
+                history_saved = safe_write_json(
+                    STARTUP_CONVERSATION_FILE,
+                    conversation,
+                )
+            except Exception as exc:
+                history_saved = False
+                history_error = exc
+            return history_saved, history_error
 
-        # Save conversation
-        status_saving()
-        history_error = None
-        try:
-            history_saved = safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
-        except Exception as exc:
-            history_saved = False
-            history_error = exc
+        if live_scope is not None:
+            with live_scope.lock:
+                if live_scope.is_superseded():
+                    raise LiveProviderSuperseded("startup wizard turn superseded")
+                history_saved, history_error = persist_accepted_content()
+        else:
+            history_saved, history_error = persist_accepted_content()
         if not history_saved:
             detail = f": {history_error}" if history_error is not None else ""
             warning(
@@ -1719,8 +1785,22 @@ def get_ai_response(conversation, response_format=None):
                 category="startup",
             )
 
+        if live_scope is not None and history_saved:
+            finish_live_turn_scope(live_scope)
+            live_scope = None
+
         return content
+    except LiveProviderSuperseded:
+        if live_scope is not None:
+            finish_live_turn_scope(live_scope)
+            live_scope = None
+        raise
     finally:
+        if live_scope is not None:
+            abort_live_turn_scope(
+                "startup wizard stopped before its history was durable",
+                scope=live_scope,
+            )
         status_ready()
 
 def save_startup_conversation(conversation):
@@ -1758,8 +1838,10 @@ def _validate_starting_location(candidate):
     return validated
 
 
-def get_ai_starting_location(module):
+def get_ai_starting_location(module, request_provider=None):
     """Use AI to determine the best starting location for a module"""
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+
     try:
         # Load module data
         module_data = load_module_for_ai_analysis(module['moduleName'])
@@ -1791,17 +1873,19 @@ Respond with ONLY a JSON object in this exact format:
 }}"""
 
         from model_config import MODEL_PROVIDER
-        if MODEL_PROVIDER == "openai":
+        provider = request_provider or MODEL_PROVIDER
+        if provider == "openai":
             mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
-        elif MODEL_PROVIDER == "gemini":
+        elif provider == "gemini":
             mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
-        elif MODEL_PROVIDER == "lmstudio":
+        elif provider == "lmstudio":
             mini_cfg = config.MINI_UTIL_LMSTUDIO
         else:  # legacy
             mini_cfg = config.MINI_UTIL_LEGACY
 
         response = capture_and_fanout("T093", api_client.create_completion,
-            _request_provider=MODEL_PROVIDER,
+            _request_provider=provider,
+            _live_selected=("required" if provider == "openai" else False),
             messages=[{"role": "user", "content": prompt}],
             model=mini_cfg["model"],
             temperature=0.7,
@@ -1821,7 +1905,9 @@ Respond with ONLY a JSON object in this exact format:
         debug(f"JSON_PROCESSING: Parsed object: {starting_location}", category="startup_wizard")
         print(f"AI selected starting location: {starting_location['areaName']} - {starting_location['locationName']}")
         return starting_location
-            
+
+    except LiveProviderSuperseded:
+        raise
     except Exception as e:
         print(f"Warning: AI starting location failed ({e}), using fallback")
         return get_fallback_starting_location()
