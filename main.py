@@ -7058,6 +7058,7 @@ def main_game_loop():
 
     # Check if first-time setup is needed
     try:
+        from utils.capture.live_provider_call import LiveProviderSuperseded
         from utils.startup_wizard import startup_required, run_startup_sequence
 
         if startup_required():
@@ -7125,6 +7126,8 @@ def main_game_loop():
                 lease_owner=synced_state.get("lease_owner"),
                 attempt_count=synced_state.get("attempt_count"),
             )
+    except LiveProviderSuperseded:
+        return
     except Exception as e:
         error(f"FAILURE: Startup wizard failed", exception=e, category="startup")
         return
