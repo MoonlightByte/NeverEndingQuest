@@ -255,7 +255,7 @@ def load_or_create_monster(monster_type):
         result = subprocess.run(
             [sys.executable, monster_builder_path, monster_type,
              "--party-level", str(party_level)],
-            capture_output=True, text=True)
+            stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if result.returncode == 0:
             print(f"[COMBAT_BUILDER] Monster creation successful: {monster_type}")
             info(f"SUCCESS: Monster builder ({monster_type}) - PASS", category="combat_builder")
@@ -394,7 +394,7 @@ def load_or_create_npc(npc_name):
         result = subprocess.run(
             [sys.executable, npc_builder_path, formatted_npc_name,
              "--party-level", str(party_level)],
-            capture_output=True, text=True)
+            stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if result.returncode == 0:
             print(f"[COMBAT_BUILDER] NPC creation successful: {npc_name}")
             info(f"SUCCESS: NPC builder ({npc_name}) - PASS", category="combat_builder")

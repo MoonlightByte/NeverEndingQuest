@@ -2314,7 +2314,7 @@ def update_party_npcs(party_tracker_data, operation, npc):
                     npc.get('class', ''),
                     npc_level,
                     npc.get('background', '')
-                ], check=True)
+                ], check=True, stdin=subprocess.DEVNULL)
                 info(f"SUCCESS: NPC profile created for {npc['name']}", category="character_updates")
             except subprocess.CalledProcessError as e:
                 error(f"FAILURE: Failed to create NPC profile for {npc['name']}: {e}", category="character_updates")
