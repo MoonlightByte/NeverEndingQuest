@@ -962,12 +962,15 @@ def resolve_current_transition_departure(operation_id, transition_context):
         _write_location_transition_checkpoint(checkpoint)
 
     area_data = safe_json_load(commit_record["area_path"])
+    journal_exists = os.path.exists("journal.json")
     journal_data = safe_json_load("journal.json")
+    if not journal_exists and journal_data is None:
+        journal_data = {"entries": []}
     if not isinstance(area_data, dict) or not isinstance(
         area_data.get("locations"), list
     ):
         raise RuntimeError("departure area is unavailable during commit")
-    if not isinstance(journal_data, dict) or not isinstance(
+    elif not isinstance(journal_data, dict) or not isinstance(
         journal_data.get("entries"), list
     ):
         raise RuntimeError("journal is unavailable during departure commit")
