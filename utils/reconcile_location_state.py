@@ -59,8 +59,9 @@ def _validate_removal_only_subset(original_monsters, proposed_monsters):
 
     A valid proposal is an ordered subsequence of the original list.  Exact
     canonical JSON equality prevents the model from changing field values or
-    JSON value types.  Duplicate proposed elements are rejected even if they
-    happen to resemble an original entry.
+    JSON value types. Exact repeated values are legal only when separate
+    occurrences exist in the original list; the ordered walk consumes each
+    occurrence once.
     """
     if not isinstance(original_monsters, list):
         raise TypeError("Original monsters field is not a list.")
@@ -69,9 +70,6 @@ def _validate_removal_only_subset(original_monsters, proposed_monsters):
 
     original_fingerprints = [_json_fingerprint(item) for item in original_monsters]
     proposed_fingerprints = [_json_fingerprint(item) for item in proposed_monsters]
-
-    if len(proposed_fingerprints) != len(set(proposed_fingerprints)):
-        raise ValueError("AI response contains duplicate monster entries.")
 
     original_index = 0
     validated_original_elements = []
