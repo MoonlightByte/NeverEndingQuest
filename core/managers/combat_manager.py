@@ -4484,8 +4484,15 @@ This is narration only. Do not advance the round or apply any combat action."""
            try:
                try:
                    from core.managers.status_manager import status_manager
+                   pending_delivery = (
+                       encounter_data.get("combatState") or {}
+                   ).get("pendingDelivery")
                    status_manager.update_status(
-                       "Resolving combat intents...",
+                       (
+                           "Delivering committed combat results..."
+                           if isinstance(pending_delivery, dict)
+                           else "Resolving combat intents..."
+                       ),
                        is_processing=True,
                    )
                except Exception:

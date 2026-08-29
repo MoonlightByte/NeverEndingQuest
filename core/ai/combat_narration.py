@@ -52,11 +52,6 @@ _SHEET_FIELDS = (
     "senses",
 )
 
-_TITLE_RE = re.compile(
-    r"\b(?:Sir|Lady|Lord|Captain|Commander|General|King|Queen|Prince|Princess|"
-    r"Baron|Baroness|Duke|Duchess)\s+[A-Z][A-Za-z'-]+"
-    r"(?:\s+[A-Z][A-Za-z'-]+)?\b"
-)
 _INTERNAL_RE = re.compile(
     r"(?:\bcmb-[a-z0-9-]+\b|\b[A-Za-z0-9_-]+-R\d+-[a-f0-9]{8,}-A\d+\b|"
     r"\b(?:eventId|stateVersion|pendingDelivery|turnCursor|actorId|combatState)\b)",
@@ -581,17 +576,8 @@ def lint_combat_narration(narration, dossier):
     warnings = []
     if not text:
         return {"reject": ["empty_narration"], "warnings": []}
-    allowed_names = {
-        str(name).casefold()
-        for name in (dossier or {}).get("permittedNamedEntities", [])
-        if isinstance(name, str) and name.strip()
-    }
     if _INTERNAL_RE.search(text):
         rejects.append("internal_identifier_leak")
-    for match in _TITLE_RE.finditer(text):
-        if match.group(0).casefold() not in allowed_names:
-            rejects.append("unknown_titled_entity")
-            break
     mechanical_checks = (
         _DAMAGE_RE,
         _HEAL_RE,

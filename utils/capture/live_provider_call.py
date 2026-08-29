@@ -179,7 +179,17 @@ def request_live_turn_supersession(kind, operation_id=None):
     scope = get_live_turn_scope()
     if scope is None:
         return None
-    return scope.request_supersession(kind, operation_id)
+    result = scope.request_supersession(kind, operation_id)
+    if result.get("accepted"):
+        from core.combat.invocation import supersede_invocations
+        from core.managers.campaign_manager import _party_module_transition_lock
+
+        # Serialize the fence with combat's mutation authority. A write that
+        # already owns the transition lock completes before acceptance is
+        # returned; every later write observes the superseded invocation.
+        with _party_module_transition_lock():
+            supersede_invocations(kind)
+    return result
 
 
 # --- Detached startup-welcome scope (issue #214) ---------------------------
