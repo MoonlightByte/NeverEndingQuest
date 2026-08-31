@@ -146,7 +146,7 @@ def valid_pending_delivery(delivery):
         if attempt.get("status") not in NARRATION_ATTEMPT_STATUSES:
             return False
         candidate = attempt.get("candidate")
-        if not isinstance(candidate, str) or len(candidate) > 12000:
+        if not isinstance(candidate, str):
             return False
         for field in ("violations", "warnings"):
             codes = attempt.get(field)
@@ -952,8 +952,8 @@ def commit_turn(encounter, turn_id, applied_event_ids):
         "roundBefore": pending.get("round"),
         "roundAfter": state["round"],
         "events": deepcopy(pending.get("events") or []),
-        "historyInput": str(delivery_context.get("historyInput") or "")[:24000],
-        "displayPrefix": str(delivery_context.get("displayPrefix") or "")[:4000],
+        "historyInput": str(delivery_context.get("historyInput") or ""),
+        "displayPrefix": str(delivery_context.get("displayPrefix") or ""),
         "narration": None,
         "narrationFallback": None,
         "narrationAttempts": [],

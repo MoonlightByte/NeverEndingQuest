@@ -619,8 +619,8 @@ def _typed_dependency_conflicts(encounter, characters, pending, events):
     return conflicts
 
 
-def _bounded_player_text(value, limit=12000):
-    return str(value or "").strip()[:limit]
+def _player_text(value):
+    return str(value or "").strip()
 
 
 def _require_active_typed_encounter(encounter, state):
@@ -732,7 +732,7 @@ def claim_turn(
             pending["intentDependencies"] = _initial_intent_dependencies(
                 encounter, actor_ids
             )
-        initial_input = _bounded_player_text(player_input)
+        initial_input = _player_text(player_input)
         if initial_input:
             pending["playerExchanges"] = [{"playerInput": initial_input}]
         state.pop("pauseReason", None)
@@ -749,7 +749,7 @@ def append_pending_player_input(
     timeout_seconds=5.0,
 ):
     """Durably add one clarification/roll to an unresolved player turn."""
-    rendered = _bounded_player_text(player_input)
+    rendered = _player_text(player_input)
     if not rendered:
         return
     with path_transaction_lock(
@@ -783,8 +783,8 @@ def record_pending_player_request(
     requested_die=None,
     timeout_seconds=5.0,
 ):
-    """Persist the DM's bounded question beside the action it clarifies."""
-    rendered = _bounded_player_text(player_message, limit=4000)
+    """Persist the DM's complete question beside the action it clarifies."""
+    rendered = _player_text(player_message)
     with path_transaction_lock(
         encounter_path,
         suffix=".combat.lock",
@@ -920,8 +920,8 @@ def stage_events(
             )
         context = delivery_context if isinstance(delivery_context, dict) else {}
         pending["deliveryContext"] = {
-            "historyInput": str(context.get("historyInput") or "")[:24000],
-            "displayPrefix": str(context.get("displayPrefix") or "")[:4000],
+            "historyInput": str(context.get("historyInput") or ""),
+            "displayPrefix": str(context.get("displayPrefix") or ""),
         }
         voice_envelope = normalize_npc_voice_intents(npc_voice_intents)
         if voice_envelope is not None:
@@ -1049,7 +1049,7 @@ def record_narration_attempt(
             {
                 "attempt": attempt,
                 "status": status,
-                "candidate": str(candidate or "")[:12000],
+                "candidate": str(candidate or ""),
                 "violations": violation_codes,
                 "warnings": warning_codes,
             }

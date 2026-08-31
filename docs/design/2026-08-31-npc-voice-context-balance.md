@@ -112,6 +112,9 @@ typed dossier and authoritative committed events.
 | T097 dossier string/list truncation | private-key filtering plus the typed dossier fields and committed-event authority |
 | T097 retry-candidate truncation | the existing completed-invalid attempt count and full violation-code records |
 | `900 + 650 * events` prose rejection | event coverage/order, mechanics-invention, hidden-information, perspective, and exact event-ID checks |
+| player action, clarification, and DM-request character slices | the existing last-eight complete exchange retention and exact pending-turn ownership |
+| `historyInput` and `displayPrefix` character slices | stable delivery IDs, committed-event receipts, durable history acknowledgement, and replay identity |
+| persisted narration-candidate character slices | the existing at-most-twelve complete attempt receipts and typed violation/warning codes |
 
 This train does not alter the compression, episodic-storage, or web-TTS caps owned by
 #262.

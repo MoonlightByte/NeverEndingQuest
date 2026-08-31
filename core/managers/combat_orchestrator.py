@@ -385,7 +385,7 @@ def _authoritative_requested_die(request):
 
 
 def _composed_player_input(pending, fallback):
-    """Render a bounded durable action/clarification chain for T096."""
+    """Render the complete retained action/clarification chain for T096."""
     exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
     if not isinstance(exchanges, list) or not exchanges:
         return str(fallback or "")
@@ -397,10 +397,10 @@ def _composed_player_input(pending, fallback):
         request_text = str(exchange.get("dmRequest") or "").strip()
         if player_text:
             label = "Original player action" if not lines else "Player follow-up"
-            lines.append("%s: %s" % (label, player_text[:12000]))
+            lines.append("%s: %s" % (label, player_text))
         if request_text:
-            lines.append("DM requested: %s" % request_text[:4000])
-    return "\n".join(lines)[:24000] or str(fallback or "")
+            lines.append("DM requested: %s" % request_text)
+    return "\n".join(lines) or str(fallback or "")
 
 
 def _pending_actor_names(encounter, pending):
@@ -834,7 +834,7 @@ def _deliver_committed_turn(
                 except InvocationSupersededError:
                     raise
                 except Exception as exc:
-                    candidate = str(getattr(exc, "candidate", "") or "")[:12000]
+                    candidate = str(getattr(exc, "candidate", "") or "")
                     failure_class = str(
                         getattr(exc, "failure_class", "unexpected_internal_error")
                     )
