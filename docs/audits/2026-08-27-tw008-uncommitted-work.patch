@@ -1,0 +1,120 @@
+diff --git a/core/ai/cumulative_summary.py b/core/ai/cumulative_summary.py
+index 14f39d9a..4484d189 100644
+--- a/core/ai/cumulative_summary.py
++++ b/core/ai/cumulative_summary.py
+@@ -483,6 +483,66 @@ def compress_conversation_history_on_transition(conversation_history, leaving_lo
+         return conversation_history
+ 
+ 
++def _destination_refreshed_departure_source(
++    source_entries,
++    *,
++    origin_location_id,
++    destination_location_id,
++    destination_location,
++):
++    """Return one exact startup-refreshed source, or None if unprovable."""
++    if not isinstance(source_entries, list) or not isinstance(
++        destination_location, dict
++    ):
++        return None
++    if str(destination_location.get("locationId", "")) != str(
++        destination_location_id
++    ):
++        return None
++
++    prefix = "Current Location:\n"
++    matches = []
++    for index, message in enumerate(source_entries):
++        if not isinstance(message, dict) or message.get("role") != "system":
++            continue
++        content = message.get("content")
++        if not (
++            isinstance(content, str)
++            and content.startswith(prefix)
++            and content.endswith("\n")
++        ):
++            continue
++        try:
++            projected = json.loads(content[len(prefix) : -1])
++        except (TypeError, ValueError):
++            continue
++        if not isinstance(projected, dict):
++            continue
++        if content != prefix + json.dumps(
++            projected, separators=(",", ":")
++        ) + "\n":
++            continue
++        if str(projected.get("locationId", "")) == str(origin_location_id):
++            matches.append(index)
++
++    if len(matches) != 1:
++        return None
++
++    destination_projection = {
++        key: value
++        for key, value in destination_location.items()
++        if key != "adventureSummary"
++    }
++    refreshed = copy.deepcopy(source_entries)
++    refreshed[matches[0]] = {
++        "role": "system",
++        "content": prefix
++        + json.dumps(destination_projection, separators=(",", ":"))
++        + "\n",
++    }
++    return refreshed
++
++
+ def compact_with_accepted_departure_summary(
+     conversation_history,
+     *,
+@@ -491,6 +551,9 @@ def compact_with_accepted_departure_summary(
+     leaving_location_name,
+     summary,
+     summary_message_id,
++    origin_location_id=None,
++    destination_location_id=None,
++    destination_location=None,
+ ):
+     """Replace one exact raw segment using the already accepted T016 text."""
+     if not isinstance(source_index, int) or source_index < 0:
+@@ -520,10 +583,21 @@ def compact_with_accepted_departure_summary(
+     # Loading an existing game applies the long-standing DM-note compaction
+     # before travel recovery runs.  That formatting-only normalization can
+     # therefore be the exact on-disk value after a restart even though the
+-    # transition staged the unabridged value before movement.  Accept only
+-    # those two exact representations; every other change remains a conflict.
++    # transition staged the unabridged value before movement.  A committed
++    # resume may also supply the canonical destination projection that startup
++    # rebuilt; every other change remains a conflict.
+     normalized_source = normalize_legacy_dm_notes(source_entries_before)
+-    if current_slice not in (source_entries_before, normalized_source):
++    accepted_sources = [source_entries_before, normalized_source]
++    for source in (source_entries_before, normalized_source):
++        refreshed_source = _destination_refreshed_departure_source(
++            source,
++            origin_location_id=origin_location_id,
++            destination_location_id=destination_location_id,
++            destination_location=destination_location,
++        )
++        if refreshed_source is not None:
++            accepted_sources.append(refreshed_source)
++    if current_slice not in accepted_sources:
+         raise ValueError("departure conversation segment changed before compaction")
+     result = list(conversation_history)
+     result[
+diff --git a/main.py b/main.py
+index d1e01da3..3f40a590 100644
+--- a/main.py
++++ b/main.py
+@@ -1983,6 +1983,9 @@ def _resume_v2_location_transition(operation_id, *, publish=True):
+             leaving_location_name=checkpoint["origin_location_name"],
+             summary=checkpoint["departure_summary"]["text"],
+             summary_message_id=summary_message_id,
++            origin_location_id=checkpoint["origin_location_id"],
++            destination_location_id=checkpoint["destination_location_id"],
++            destination_location=get_location_data_from_party_tracker(party),
+         )
+         marker = {
+             "role": "user",
