@@ -8,27 +8,22 @@ from typing import Any, Dict, List, Mapping, Optional
 from core.npc.voice_contracts import (
     PACKET_VERSION,
     TASK_ID,
-    ThoughtContractError,
-    canonical_json,
     validate_packet,
 )
 
 
-MAX_PACKET_CHARS = 4800
-
-
-def _text(value: Any, limit: int) -> str:
+def _text(value: Any, _limit: int = 0) -> str:
     if not isinstance(value, str):
         return ""
-    return value.strip()[:limit]
+    return value.strip()
 
 
-def _text_list(values: Any, count: int, limit: int) -> List[str]:
+def _text_list(values: Any, count: int, _limit: int = 0) -> List[str]:
     if not isinstance(values, list):
         return []
     result = []
     for value in values:
-        item = _text(value, limit)
+        item = _text(value)
         if item and item not in result:
             result.append(item)
         if len(result) >= count:
@@ -117,47 +112,6 @@ def _normalize_common(packet: Dict[str, Any]) -> None:
     working["moodTags"] = _text_list(working.get("moodTags"), 4, 60)
 
 
-def _shrink_longest(packet: Dict[str, Any]) -> bool:
-    candidates = [
-        (packet["npc"]["profile"], "background", 80),
-        (packet["npc"]["profile"], "personality", 80),
-        (packet["context"], "socialContext", 80),
-        (packet["npc"]["profile"], "ideals", 40),
-        (packet["npc"]["profile"], "bonds", 40),
-        (packet["npc"]["profile"], "flaws", 40),
-    ]
-    available = [entry for entry in candidates if len(entry[0].get(entry[1], "")) > entry[2]]
-    if not available:
-        return False
-    container, key, minimum = max(
-        available,
-        key=lambda entry: (len(entry[0][entry[1]]), entry[1]),
-    )
-    value = container[key]
-    new_length = max(minimum, len(value) - max(32, len(value) // 4))
-    container[key] = value[:new_length].rstrip()
-    return True
-
-
-def _fit_packet(packet: Dict[str, Any], max_chars: int) -> Dict[str, Any]:
-    if max_chars <= 0:
-        raise ThoughtContractError("packet character budget must be positive")
-    while len(canonical_json(packet)) > max_chars:
-        if packet["scene"]["recentEvents"]:
-            packet["scene"]["recentEvents"].pop(0)
-        elif packet["relationship"]["recentEvents"]:
-            packet["relationship"]["recentEvents"].pop()
-        elif packet["mode"] == "OUT_OF_COMBAT" and packet["context"]["items"]:
-            packet["context"]["items"].pop()
-        elif packet["mode"] == "OUT_OF_COMBAT" and packet["context"]["utilities"]:
-            packet["context"]["utilities"].pop()
-        elif packet["mode"] == "COMBAT" and packet["context"]["lastRoundEvents"]:
-            packet["context"]["lastRoundEvents"].pop(0)
-        elif not _shrink_longest(packet):
-            raise ThoughtContractError("packet exceeds the T105 input budget")
-    return validate_packet(packet)
-
-
 def _base_packet(
     mode: str,
     beat: Mapping[str, Any],
@@ -214,8 +168,7 @@ def compose_out_of_combat_packet(
     packet["context"]["currentGoals"] = _text_list(
         packet["context"].get("currentGoals"), 5, 300
     )
-    budget = MAX_PACKET_CHARS if max_chars is None else max_chars
-    return _fit_packet(packet, budget)
+    return validate_packet(packet)
 
 
 def compose_combat_packet(
@@ -262,5 +215,4 @@ def compose_combat_packet(
             }
         )
     packet["context"]["threats"] = threats_result
-    budget = MAX_PACKET_CHARS if max_chars is None else max_chars
-    return _fit_packet(packet, budget)
+    return validate_packet(packet)

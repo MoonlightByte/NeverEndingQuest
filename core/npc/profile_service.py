@@ -20,6 +20,7 @@ from core.npc.voice_contracts import (
     STRUCTURED_PROFILE_SCHEMA,
     canonical_json,
     profile_gemini_response_schema,
+    profile_response_schema,
 )
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 
@@ -31,7 +32,6 @@ SCHEMA_VERSION = "npc-profile-seed-response/v1"
 TEMPERATURE = 0.4
 MAX_OUTPUT_TOKENS = 500
 MAX_ATTEMPTS = 2
-MAX_SOURCE_CHARS = 9000
 
 register_callsite("T107", "core/npc/profile_service.py", 292)
 
@@ -87,7 +87,7 @@ def validate_profile(raw: Any) -> Dict[str, Any]:
         candidate = json.loads(_strip_json_fence(raw)) if isinstance(raw, str) else raw
     except json.JSONDecodeError as exc:
         raise ProfileContractError("profile response is not JSON") from exc
-    error = next(Draft202012Validator(STRUCTURED_PROFILE_SCHEMA).iter_errors(candidate), None)
+    error = next(Draft202012Validator(profile_response_schema()).iter_errors(candidate), None)
     if error is not None:
         path = ".".join(str(part) for part in error.path) or "response"
         raise ProfileContractError(
@@ -106,11 +106,25 @@ def validate_profile(raw: Any) -> Dict[str, Any]:
         if any(not item for item in stripped) or len(set(stripped)) != len(stripped):
             raise ProfileContractError("profile strings must be nonempty and unique")
         container[key] = stripped
+    retention_counts = {
+        "taboos": 3,
+        "goals": 3,
+        "fears": 3,
+        "values": 5,
+        "preferences": 5,
+        "boundaries": 5,
+        "protectionPriorities": 3,
+        "retreatRules": 3,
+        "arcSeeds": 2,
+    }
+    for key, count in retention_counts.items():
+        container = result["voice"] if key == "taboos" else result
+        container[key] = container[key][:count]
     return result
 
 
-def _text(value: Any, limit: int) -> str:
-    return value.strip()[:limit] if isinstance(value, str) else ""
+def _text(value: Any, _limit: int = 0) -> str:
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _unique(values: Any, count: int, limit: int) -> list[str]:
@@ -199,17 +213,6 @@ def build_profile_source(
     }
     if not source["npcId"] or not source["npcName"]:
         raise ProfileContractError("profile source identity is required")
-    encoded = json.dumps(source, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
-    if len(encoded) > MAX_SOURCE_CHARS:
-        for key in ("classFeatures", "features", "proficiencies", "skills"):
-            source["sheet"].pop(key, None)
-            encoded = json.dumps(
-                source, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-            )
-            if len(encoded) <= MAX_SOURCE_CHARS:
-                break
-    if len(encoded) > MAX_SOURCE_CHARS:
-        raise ProfileContractError("profile source exceeds T107 input budget")
     return source
 
 

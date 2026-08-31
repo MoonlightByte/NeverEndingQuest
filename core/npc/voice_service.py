@@ -35,10 +35,7 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 register_callsite("T105", "core/npc/voice_service.py", 552)
 
 TEMPERATURE = 0.6
-MAX_OUTPUT_TOKENS = 180
 MAX_ATTEMPTS = 2
-MAX_LOGICAL_NPCS = 4
-MAX_PHYSICAL_REQUESTS = 8
 
 _LOGGER = logging.getLogger(__name__)
 _EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="npc-voice")
@@ -195,18 +192,14 @@ def _configured_cost(model: str, usage: Usage, provider: str) -> Optional[float]
 
 
 class _RequestCounter:
-    """Per-batch cap on PHYSICAL provider calls (attempt arithmetic only —
-    no time component; time limits on gameplay calls are banned, B2)."""
+    """Thread-safe telemetry count for physical provider calls."""
 
-    def __init__(self, limit: int = MAX_PHYSICAL_REQUESTS) -> None:
-        self._limit = limit
+    def __init__(self) -> None:
         self._count = 0
         self._lock = threading.Lock()
 
     def claim(self) -> bool:
         with self._lock:
-            if self._count >= self._limit:
-                return False
             self._count += 1
             return True
 
@@ -823,7 +816,7 @@ class NpcVoiceService:
         self,
         packets: Iterable[Mapping[str, Any]],
     ) -> "VoiceBatchHandle":
-        """Dispatch up to four logical NPC calls WITHOUT waiting (B2-iii).
+        """Dispatch every supplied logical NPC call without waiting.
 
         Returns a handle whose collect() is a non-blocking poll intended to
         run at inject time (after the main DM call has overlapped the voice
@@ -833,7 +826,7 @@ class NpcVoiceService:
         Cache hits and prior-beat LATE results are folded in at dispatch.
         """
         batch_started = time.perf_counter()
-        candidates = list(packets)[:MAX_LOGICAL_NPCS]
+        candidates = list(packets)
         counter = _RequestCounter()
         provider = ""
         batch_id = ""

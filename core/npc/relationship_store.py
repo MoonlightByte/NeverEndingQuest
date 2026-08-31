@@ -74,8 +74,8 @@ def _canonical_json(value: Any) -> str:
     )
 
 
-def _text(value: Any, limit: int) -> str:
-    return value.strip()[:limit] if isinstance(value, str) else ""
+def _text(value: Any, _limit: int = 0) -> str:
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _text_list(value: Any, count: int, limit: int) -> list[str]:
@@ -330,38 +330,7 @@ class RelationshipStore:
         candidate = migrated if migrated is not None else value
         if self._validate(candidate):
             return candidate
-        return self._repair_bounded_working_text(candidate)
-
-    def _repair_bounded_working_text(
-        self, document: Mapping[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """Recover only historical working-text overflows, never unknown damage."""
-        bounds = {
-            "currentPrivateIntent": 300,
-            "sourceTurn": 120,
-            "currentGoalReference": 300,
-            "openQuestion": 240,
-            "sceneId": 240,
-        }
-        errors = list(self._validator.iter_errors(document))
-        if not errors:
-            return copy.deepcopy(dict(document))
-        candidate = copy.deepcopy(dict(document))
-        for validation_error in errors:
-            path = list(validation_error.absolute_path)
-            if (
-                validation_error.validator != "maxLength"
-                or len(path) != 3
-                or path[0] != "working"
-                or path[2] not in bounds
-            ):
-                return None
-            row = candidate.get("working", {}).get(path[1])
-            value = row.get(path[2]) if isinstance(row, dict) else None
-            if not isinstance(value, str):
-                return None
-            row[path[2]] = value[: bounds[path[2]]]
-        return candidate if self._validate(candidate) else None
+        return None
 
     def snapshot(self) -> Dict[str, Any]:
         value = self._read_existing() if self.path.exists() else None
@@ -722,11 +691,7 @@ class RelationshipStore:
 
     @staticmethod
     def _sanitize_advisory(value: Any) -> Optional[Dict[str, Any]]:
-        """Bound one accepted say/do/want advisory beat (M7 persistence).
-
-        Caps mirror the T105 contract (say 240 / do 200 / want 200); thought
-        shares the 300-char working-intent bound. Returns None when the beat
-        carries no substance."""
+        """Normalize one accepted say/do/want advisory beat without data loss."""
         if not isinstance(value, Mapping):
             return None
         beat = {
@@ -1168,11 +1133,7 @@ class RelationshipStore:
                 imported_count += 1
             self._prune_evidence(edge)
             behavior = legacy.get("behavioral_model")
-            behavior_hint = (
-                _canonical_json(behavior)[:500]
-                if isinstance(behavior, dict)
-                else ""
-            )
+            behavior_hint = _canonical_json(behavior) if isinstance(behavior, dict) else ""
             try:
                 relative_source = source_path.relative_to(Path.cwd()).as_posix()
             except ValueError:
@@ -1180,7 +1141,7 @@ class RelationshipStore:
             document["migrations"][migration_key] = {
                 "version": MIGRATION_VERSION,
                 "npcId": npc_id,
-                "sourcePath": relative_source[:500],
+                "sourcePath": relative_source,
                 # sourceCanonical replaces the retired sourceHash digest as the
                 # migration-record identity (full-value comparison).
                 "sourceCanonical": source_canonical,

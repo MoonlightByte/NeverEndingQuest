@@ -14,13 +14,6 @@ TASK_ID = "T105"
 PACKET_VERSION = "npc-voice-packet/v1"
 PROMPT_VERSION = "npc-voice-prompt/v3"
 RESPONSE_SCHEMA_VERSION = "npc-voice-response/v2"
-MAX_THOUGHT_WORDS = 80
-# Character caps for the enriched advisory fields (say/do/want). These are DM-facing
-# PROPOSALS the Dungeon Master edits/inlines/overrides; they are not final output.
-MAX_SAY_CHARS = 240
-MAX_DO_CHARS = 200
-MAX_WANT_CHARS = 200
-
 AFFINITY_EVENT_TYPES = (
     "abandon",
     "betray",
@@ -62,8 +55,8 @@ def strict_object(
 
 AFFINITY_EVENT_SCHEMA = strict_object(
     {
-        "actor": {"type": "string", "minLength": 1, "maxLength": 100},
-        "target": {"type": "string", "minLength": 1, "maxLength": 100},
+        "actor": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1},
         "eventType": {"type": "string", "enum": list(AFFINITY_EVENT_TYPES)},
         "magnitude": {"type": "integer", "enum": [-3, -2, -1, 1, 2, 3]},
         "witnessed": {"type": "boolean"},
@@ -71,12 +64,12 @@ AFFINITY_EVENT_SCHEMA = strict_object(
     ("actor", "target", "eventType", "magnitude", "witnessed"),
 )
 
-def _nullable_string(max_len: int) -> Dict[str, Any]:
-    """A required key whose value is either null or a bounded non-empty string."""
+def _nullable_string() -> Dict[str, Any]:
+    """A required key whose value is either null or a non-empty string."""
     return {
         "anyOf": [
             {"type": "null"},
-            {"type": "string", "minLength": 1, "maxLength": max_len},
+            {"type": "string", "minLength": 1},
         ]
     }
 
@@ -89,10 +82,10 @@ def _nullable_string(max_len: int) -> Dict[str, Any]:
 # scene. say/do/want are nullable so an NPC with nothing to add returns null.
 THOUGHT_RESPONSE_SCHEMA = strict_object(
     {
-        "say": _nullable_string(MAX_SAY_CHARS),
-        "do": _nullable_string(MAX_DO_CHARS),
-        "want": _nullable_string(MAX_WANT_CHARS),
-        "thought": {"type": "string", "minLength": 1, "maxLength": 640},
+        "say": _nullable_string(),
+        "do": _nullable_string(),
+        "want": _nullable_string(),
+        "thought": {"type": "string", "minLength": 1},
         "affinityEvent": {
             "anyOf": [
                 {"type": "null"},
@@ -112,11 +105,11 @@ VOICE_RESPONSE_SCHEMA = THOUGHT_RESPONSE_SCHEMA
 
 PROFILE_SCHEMA = strict_object(
     {
-        "background": {"type": "string", "maxLength": 800},
-        "personality": {"type": "string", "maxLength": 800},
-        "ideals": {"type": "string", "maxLength": 400},
-        "bonds": {"type": "string", "maxLength": 400},
-        "flaws": {"type": "string", "maxLength": 400},
+        "background": {"type": "string"},
+        "personality": {"type": "string"},
+        "ideals": {"type": "string"},
+        "bonds": {"type": "string"},
+        "flaws": {"type": "string"},
     },
     ("background", "personality", "ideals", "bonds", "flaws"),
 )
@@ -125,38 +118,38 @@ STRUCTURED_PROFILE_SCHEMA = strict_object(
     {
         "voice": strict_object(
             {
-                "cadence": {"type": "string", "maxLength": 120},
-                "diction": {"type": "string", "maxLength": 120},
+                "cadence": {"type": "string"},
+                "diction": {"type": "string"},
                 "taboos": {
                     "type": "array",
                     "maxItems": 3,
                     "uniqueItems": True,
-                    "items": {"type": "string", "minLength": 1, "maxLength": 80},
+                    "items": {"type": "string", "minLength": 1},
                 },
             },
             ("cadence", "diction", "taboos"),
         ),
         "goals": {
             "type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": True,
-            "items": {"type": "string", "minLength": 1, "maxLength": 180},
+            "items": {"type": "string", "minLength": 1},
         },
         "fears": {
             "type": "array", "maxItems": 3, "uniqueItems": True,
-            "items": {"type": "string", "minLength": 1, "maxLength": 180},
+            "items": {"type": "string", "minLength": 1},
         },
         "values": {
             "type": "array", "minItems": 1, "maxItems": 5, "uniqueItems": True,
-            "items": {"type": "string", "minLength": 1, "maxLength": 120},
+            "items": {"type": "string", "minLength": 1},
         },
         "preferences": {
             "type": "array", "maxItems": 5, "uniqueItems": True,
-            "items": {"type": "string", "minLength": 1, "maxLength": 120},
+            "items": {"type": "string", "minLength": 1},
         },
         "boundaries": {
             "type": "array", "maxItems": 5, "uniqueItems": True,
-            "items": {"type": "string", "minLength": 1, "maxLength": 160},
+            "items": {"type": "string", "minLength": 1},
         },
-        "conflictStyle": {"type": "string", "maxLength": 160},
+        "conflictStyle": {"type": "string"},
         "initiativeTendency": {
             "type": "string",
             "enum": ["reserved", "balanced", "proactive"]
@@ -166,15 +159,15 @@ STRUCTURED_PROFILE_SCHEMA = strict_object(
         },
         "protectionPriorities": {
             "type": "array", "maxItems": 3, "uniqueItems": True,
-            "items": {"type": "string", "minLength": 1, "maxLength": 120},
+            "items": {"type": "string", "minLength": 1},
         },
         "retreatRules": {
             "type": "array", "maxItems": 3, "uniqueItems": True,
-            "items": {"type": "string", "minLength": 1, "maxLength": 160},
+            "items": {"type": "string", "minLength": 1},
         },
         "arcSeeds": {
             "type": "array", "maxItems": 2, "uniqueItems": True,
-            "items": {"type": "string", "minLength": 1, "maxLength": 180},
+            "items": {"type": "string", "minLength": 1},
         },
     },
     (
@@ -204,23 +197,23 @@ RELATIONSHIP_STATE_SCHEMA = strict_object(
 
 RECENT_EVENT_SCHEMA = strict_object(
     {
-        "actor": {"type": "string", "minLength": 1, "maxLength": 100},
-        "target": {"type": "string", "minLength": 1, "maxLength": 100},
+        "actor": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1},
         "eventType": {"type": "string", "enum": list(AFFINITY_EVENT_TYPES)},
         "magnitude": {"type": "integer", "enum": [-3, -2, -1, 1, 2, 3]},
         "witnessed": {"type": "boolean"},
-        "summary": {"type": "string", "minLength": 1, "maxLength": 240},
+        "summary": {"type": "string", "minLength": 1},
     },
     ("actor", "target", "eventType", "magnitude", "witnessed", "summary"),
 )
 
 RELATIONSHIP_EVIDENCE_SCHEMA = strict_object(
     {
-        "actorId": {"type": "string", "minLength": 1, "maxLength": 240},
-        "actor": {"type": "string", "minLength": 1, "maxLength": 100},
-        "targetId": {"type": "string", "minLength": 1, "maxLength": 240},
-        "target": {"type": "string", "minLength": 1, "maxLength": 100},
-        "summary": {"type": "string", "minLength": 1, "maxLength": 240},
+        "actorId": {"type": "string", "minLength": 1},
+        "actor": {"type": "string", "minLength": 1},
+        "targetId": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1},
+        "summary": {"type": "string", "minLength": 1},
         "witnessed": {"type": "boolean"},
     },
     ("actorId", "actor", "targetId", "target", "summary", "witnessed"),
@@ -232,8 +225,8 @@ COMMON_PACKET_PROPERTIES: Dict[str, Any] = {
     "mode": {"enum": ["COMBAT", "OUT_OF_COMBAT"]},
     "beat": strict_object(
         {
-            "id": {"type": "string", "minLength": 1, "maxLength": 120},
-            "summary": {"type": "string", "minLength": 1, "maxLength": 800},
+            "id": {"type": "string", "minLength": 1},
+            "summary": {"type": "string", "minLength": 1},
             "relationshipEvidence": {
                 "anyOf": [
                     {"type": "null"},
@@ -245,9 +238,9 @@ COMMON_PACKET_PROPERTIES: Dict[str, Any] = {
     ),
     "npc": strict_object(
         {
-            "id": {"type": "string", "minLength": 1, "maxLength": 240},
-            "name": {"type": "string", "minLength": 1, "maxLength": 100},
-            "role": {"type": "string", "minLength": 1, "maxLength": 160},
+            "id": {"type": "string", "minLength": 1},
+            "name": {"type": "string", "minLength": 1},
+            "role": {"type": "string", "minLength": 1},
             "profile": PROFILE_SCHEMA,
         },
         ("id", "name", "role", "profile"),
@@ -257,12 +250,10 @@ COMMON_PACKET_PROPERTIES: Dict[str, Any] = {
             "counterpartyId": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 240,
             },
             "counterpartyName": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 100,
             },
             "state": RELATIONSHIP_STATE_SCHEMA,
             "recentEvents": {
@@ -275,35 +266,35 @@ COMMON_PACKET_PROPERTIES: Dict[str, Any] = {
     ),
     "scene": strict_object(
         {
-            "module": {"type": "string", "minLength": 1, "maxLength": 160},
-            "locationId": {"type": "string", "minLength": 1, "maxLength": 120},
-            "location": {"type": "string", "minLength": 1, "maxLength": 240},
+            "module": {"type": "string", "minLength": 1},
+            "locationId": {"type": "string", "minLength": 1},
+            "location": {"type": "string", "minLength": 1},
             "presentActors": {
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 12,
                 "uniqueItems": True,
-                "items": {"type": "string", "minLength": 1, "maxLength": 100},
+                "items": {"type": "string", "minLength": 1},
             },
-            "stakes": {"type": "string", "minLength": 1, "maxLength": 500},
+            "stakes": {"type": "string", "minLength": 1},
             "recentEvents": {
                 "type": "array",
                 "maxItems": 6,
-                "items": {"type": "string", "minLength": 1, "maxLength": 400},
+                "items": {"type": "string", "minLength": 1},
             },
         },
         ("module", "locationId", "location", "presentActors", "stakes", "recentEvents"),
     ),
     "working": strict_object(
         {
-            "currentGoal": {"type": "string", "maxLength": 300},
-            "priorPrivateIntent": {"type": "string", "maxLength": 300},
-            "openQuestion": {"type": "string", "maxLength": 240},
+            "currentGoal": {"type": "string"},
+            "priorPrivateIntent": {"type": "string"},
+            "openQuestion": {"type": "string"},
             "moodTags": {
                 "type": "array",
                 "maxItems": 4,
                 "uniqueItems": True,
-                "items": {"type": "string", "minLength": 1, "maxLength": 60},
+                "items": {"type": "string", "minLength": 1},
             },
             "expiresAfterTurn": {
                 "anyOf": [
@@ -338,30 +329,30 @@ COMBAT_CONTEXT_SCHEMA = strict_object(
                     "type": "array",
                     "maxItems": 8,
                     "uniqueItems": True,
-                    "items": {"type": "string", "minLength": 1, "maxLength": 80},
+                    "items": {"type": "string", "minLength": 1},
                 },
-                "position": {"type": "string", "minLength": 1, "maxLength": 240},
+                "position": {"type": "string", "minLength": 1},
             },
             ("hitPoints", "armorClass", "conditions", "position"),
         ),
         "capabilities": {
             "type": "array",
             "maxItems": 8,
-            "items": {"type": "string", "minLength": 1, "maxLength": 240},
+            "items": {"type": "string", "minLength": 1},
         },
         "allies": {
             "type": "array",
             "maxItems": 8,
-            "items": {"type": "string", "minLength": 1, "maxLength": 240},
+            "items": {"type": "string", "minLength": 1},
         },
         "threats": {
             "type": "array",
             "maxItems": 8,
             "items": strict_object(
                 {
-                    "name": {"type": "string", "minLength": 1, "maxLength": 100},
-                    "position": {"type": "string", "minLength": 1, "maxLength": 160},
-                    "intent": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "name": {"type": "string", "minLength": 1},
+                    "position": {"type": "string", "minLength": 1},
+                    "intent": {"type": "string", "minLength": 1},
                 },
                 ("name", "position", "intent"),
             ),
@@ -369,7 +360,7 @@ COMBAT_CONTEXT_SCHEMA = strict_object(
         "lastRoundEvents": {
             "type": "array",
             "maxItems": 8,
-            "items": {"type": "string", "minLength": 1, "maxLength": 320},
+            "items": {"type": "string", "minLength": 1},
         },
     },
     ("status", "capabilities", "allies", "threats", "lastRoundEvents"),
@@ -380,19 +371,19 @@ OUT_OF_COMBAT_CONTEXT_SCHEMA = strict_object(
         "utilities": {
             "type": "array",
             "maxItems": 8,
-            "items": {"type": "string", "minLength": 1, "maxLength": 240},
+            "items": {"type": "string", "minLength": 1},
         },
         "items": {
             "type": "array",
             "maxItems": 8,
-            "items": {"type": "string", "minLength": 1, "maxLength": 240},
+            "items": {"type": "string", "minLength": 1},
         },
-        "socialContext": {"type": "string", "minLength": 1, "maxLength": 800},
+        "socialContext": {"type": "string", "minLength": 1},
         "currentGoals": {
             "type": "array",
             "minItems": 1,
             "maxItems": 5,
-            "items": {"type": "string", "minLength": 1, "maxLength": 300},
+            "items": {"type": "string", "minLength": 1},
         },
     },
     ("utilities", "items", "socialContext", "currentGoals"),
@@ -431,17 +422,12 @@ def gemini_response_schema() -> Dict[str, Any]:
         AFFINITY_EVENT_SCHEMA
     )
     # say/do/want are anyOf[null,string]; Gemini takes a single typed schema, so
-    # flatten each to a plain bounded string and mark it nullable after conversion.
-    _nullable_field_caps = {
-        "say": MAX_SAY_CHARS,
-        "do": MAX_DO_CHARS,
-        "want": MAX_WANT_CHARS,
-    }
-    for field_name, cap in _nullable_field_caps.items():
+    # flatten each to a plain string and mark it nullable after conversion.
+    nullable_fields = ("say", "do", "want")
+    for field_name in nullable_fields:
         non_nullable["properties"][field_name] = {
             "type": "string",
             "minLength": 1,
-            "maxLength": cap,
         }
     converted = convert_to_gemini_schema(
         non_nullable,
@@ -449,18 +435,20 @@ def gemini_response_schema() -> Dict[str, Any]:
         preserve_constraints=True,
     )
     converted["properties"]["affinityEvent"]["nullable"] = True
-    for field_name in _nullable_field_caps:
+    for field_name in nullable_fields:
         converted["properties"][field_name]["nullable"] = True
     return converted
 
 
 def profile_openai_response_format() -> Dict[str, Any]:
+    response_schema = copy.deepcopy(STRUCTURED_PROFILE_SCHEMA)
+    _remove_array_limits(response_schema)
     return {
         "type": "json_schema",
         "json_schema": {
             "name": "npc_profile_seed_t107",
             "strict": True,
-            "schema": copy.deepcopy(STRUCTURED_PROFILE_SCHEMA),
+            "schema": response_schema,
         },
     }
 
@@ -468,11 +456,30 @@ def profile_openai_response_format() -> Dict[str, Any]:
 def profile_gemini_response_schema() -> Dict[str, Any]:
     from model_config import convert_to_gemini_schema
 
+    response_schema = copy.deepcopy(STRUCTURED_PROFILE_SCHEMA)
+    _remove_array_limits(response_schema)
     return convert_to_gemini_schema(
-        STRUCTURED_PROFILE_SCHEMA,
+        response_schema,
         preserve_required=True,
         preserve_constraints=True,
     )
+
+
+def _remove_array_limits(value: Any) -> None:
+    """Relax model-output cardinality while preserving all other constraints."""
+    if isinstance(value, dict):
+        value.pop("maxItems", None)
+        for child in value.values():
+            _remove_array_limits(child)
+    elif isinstance(value, list):
+        for child in value:
+            _remove_array_limits(child)
+
+
+def profile_response_schema() -> Dict[str, Any]:
+    schema = copy.deepcopy(STRUCTURED_PROFILE_SCHEMA)
+    _remove_array_limits(schema)
+    return schema
 
 
 def _first_error(schema: Mapping[str, Any], value: Any):
@@ -555,27 +562,18 @@ def validate_thought_response(raw: Any, packet: Mapping[str, Any]) -> Dict[str, 
     thought = candidate["thought"].strip()
     if not thought:
         raise ThoughtContractError("thought must contain useful text")
-    if len(thought.split()) > MAX_THOUGHT_WORDS:
-        raise ThoughtContractError(
-            "thought exceeds %d words" % MAX_THOUGHT_WORDS
-        )
     candidate["thought"] = thought
 
     # Normalize the enriched advisory fields: strip whitespace, collapse empty to
-    # null, enforce the character caps. These are STRUCTURAL checks only -- we never
+    # null. These are STRUCTURAL checks only -- we never
     # parse the prose for meaning (no verb/keyword gating); legality/mechanics are
     # the Dungeon Master's job downstream.
-    _field_caps = {"say": MAX_SAY_CHARS, "do": MAX_DO_CHARS, "want": MAX_WANT_CHARS}
-    for field_name, cap in _field_caps.items():
+    for field_name in ("say", "do", "want"):
         value = candidate.get(field_name)
         if isinstance(value, str):
             trimmed = value.strip()
             if not trimmed:
                 candidate[field_name] = None
-            elif len(trimmed) > cap:
-                raise ThoughtContractError(
-                    "%s exceeds %d characters" % (field_name, cap)
-                )
             else:
                 candidate[field_name] = trimmed
 

@@ -100,7 +100,7 @@ def derive_pov_episodes(episode: Mapping[str, Any]) -> Dict[str, List[Dict[str, 
                 "povTag": KIND_TO_POVTAG.get(dom_kind, "amused"),
                 "salienceScore": salience,
                 "pinned": bool(pinned),
-                "personalLine": str(dominant.get("oneLine", ""))[:160],
+                "personalLine": str(dominant.get("oneLine", "")).strip(),
                 "linkedEvidenceIds": [],
             }
         ]

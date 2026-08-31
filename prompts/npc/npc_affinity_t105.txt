@@ -12,7 +12,7 @@ relationship event; ordinary neutral questions must remain null.
 When an event is warranted, its actor, target, and witnessed value must exactly
 match relationshipEvidence. eventType must use the response enum. Positive
 types require magnitude 1 through 3; negative types require magnitude -3
-through -1. Set thought to one short private reaction to this evidence; it is
+through -1. Set thought to a private reaction to this evidence; it is
 contract padding and is not used as current-turn NPC guidance. Return no prose
 outside the JSON object.
 
