@@ -30,7 +30,6 @@ PROFILE_VERSION = 1
 PROMPT_VERSION = "npc-profile-seed-prompt/v1"
 SCHEMA_VERSION = "npc-profile-seed-response/v1"
 TEMPERATURE = 0.4
-MAX_OUTPUT_TOKENS = 500
 MAX_ATTEMPTS = 2
 
 register_callsite("T107", "core/npc/profile_service.py", 292)
@@ -123,16 +122,16 @@ def validate_profile(raw: Any) -> Dict[str, Any]:
     return result
 
 
-def _text(value: Any, _limit: int = 0) -> str:
+def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _unique(values: Any, count: int, limit: int) -> list[str]:
+def _unique(values: Any, count: int) -> list[str]:
     if not isinstance(values, (list, tuple)):
         values = [values]
     result = []
     for value in values:
-        item = _text(value, limit)
+        item = _text(value)
         if item and item not in result:
             result.append(item)
         if len(result) >= count:
@@ -157,16 +156,14 @@ def deterministic_fallback_profile(
 ) -> Dict[str, Any]:
     """Derive a schema-valid profile without inventing campaign facts."""
     context = lifecycle if isinstance(lifecycle, Mapping) else {}
-    personality = _text(
-        sheet.get("personality_traits") or sheet.get("personality"), 120
-    )
-    bonds = _text(sheet.get("bonds"), 180)
-    ideals = _text(sheet.get("ideals"), 120)
-    role = _text(sheet.get("role") or sheet.get("class"), 120)
-    objective = _text(context.get("personalObjective"), 180)
-    goals = _unique([objective, bonds, role, ideals, "unknown"], 3, 180)
-    values = _unique([ideals, _text(sheet.get("alignment"), 120), "unknown"], 5, 120)
-    red_lines = _unique(context.get("redLines", []), 5, 160)
+    personality = _text(sheet.get("personality_traits") or sheet.get("personality"))
+    bonds = _text(sheet.get("bonds"))
+    ideals = _text(sheet.get("ideals"))
+    role = _text(sheet.get("role") or sheet.get("class"))
+    objective = _text(context.get("personalObjective"))
+    goals = _unique([objective, bonds, role, ideals, "unknown"], 3)
+    values = _unique([ideals, _text(sheet.get("alignment")), "unknown"], 5)
+    red_lines = _unique(context.get("redLines", []), 5)
     return {
         "voice": {"cadence": personality, "diction": "", "taboos": []},
         "goals": goals,
@@ -206,8 +203,8 @@ def build_profile_source(
         if key in sheet
     }
     source = {
-        "npcId": _text(npc_id, 240),
-        "npcName": _text(npc_name, 100),
+        "npcId": _text(npc_id),
+        "npcName": _text(npc_name),
         "sheet": compact_sheet,
         "lifecycle": lifecycle_value,
     }

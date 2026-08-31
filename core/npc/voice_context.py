@@ -63,10 +63,8 @@ class CombatVoiceHandle:
                     replace(
                         result,
                         relationship_evidence_id=(
-                            (
-                                "cev|%s"
-                                % packets_by_npc_id[result.npc_id]["beat"]["id"]
-                            )[:120]
+                            "cev|%s"
+                            % packets_by_npc_id[result.npc_id]["beat"]["id"]
                             if packets_by_npc_id.get(result.npc_id, {})
                             .get("beat", {})
                             .get("relationshipEvidence")
@@ -279,10 +277,9 @@ def _string(value: Any) -> str:
 
 def _batch_id(conversation_prefix: Iterable[Any], raw_input: str) -> str:
     # Value-tuple identity, not a digest: the turn's position in the
-    # conversation plus the player input itself. Bounded to the packet
-    # beat.id contract (120 chars).
+    # conversation plus the complete player input itself.
     head = "beat|%d|" % len(list(conversation_prefix))
-    return (head + raw_input)[:120]
+    return head + raw_input
 
 
 def _raw_player_text(content: Any) -> str:
@@ -353,7 +350,7 @@ def _accepted_evidence_summary(
                 continue
             summary = "Player: %s Result: %s" % (player_text, narration)
             return (
-                summary[:240].rstrip(),
+                summary,
                 _source_turn_witnessed(user_content, npc_name),
                 player_text,
             )
@@ -671,7 +668,7 @@ def _combat_capabilities(sheet: Mapping[str, Any]) -> list[str]:
             else:
                 rendered = _string(entry)
             if rendered and rendered not in result:
-                result.append(rendered[:240])
+                result.append(rendered)
             if len(result) >= 8:
                 return result
     return result
@@ -683,8 +680,8 @@ def _combat_fact_text(
     action = _string(fact.get("action")) or "an action"
     event_id = _string(fact.get("eventId"))
     # Display-only reference inside prompt text (never compared/gated): show
-    # the event id VALUE itself, truncated for prompt budget.
-    event_tag = event_id[:40] if event_id else ""
+    # the complete event ID value itself.
+    event_tag = event_id
     details = []
     for target in fact.get("targets", []) if isinstance(fact.get("targets"), list) else []:
         if not isinstance(target, Mapping):
@@ -776,7 +773,7 @@ def _committed_player_evidence(
                     _string(player.get("name")),
                     _combat_fact_text(fact, names_by_id),
                 )
-            )[:240],
+            ),
             "witnessed": True,
         }
     return None
@@ -1253,7 +1250,7 @@ def build_combat_packets_for_window(
         )
         packet = compose_combat_packet(
             beat={
-                "id": beat_id[:120],
+                "id": beat_id,
                 "summary": stakes,
                 "relationshipEvidence": evidence,
             },
@@ -1390,7 +1387,7 @@ def dispatch_combat_voice_stage(
 
 
 def run_combat_voice_stage(**kwargs) -> CombatVoiceStage:
-    """Compatibility seam: dispatch and poll once without blocking gameplay."""
+    """Compatibility seam over the one canonical combat dispatcher."""
     return dispatch_combat_voice_stage(**kwargs).collect()
 
 

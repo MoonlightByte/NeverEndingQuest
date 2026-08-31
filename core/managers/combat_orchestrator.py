@@ -101,7 +101,25 @@ def _immutable_voice_intents(npc_voice_intents):
     """Copy once at the coordinator boundary, then reuse unchanged on retries."""
     normalized = normalize_npc_voice_intents(npc_voice_intents)
     if normalized is None:
-        return MappingProxyType({})
+        # Preserve the pre-envelope public call shape for custom callers and
+        # tests. It may advise T096, but without a versioned source beat it is
+        # deliberately ineligible for transaction persistence or T097 replay.
+        try:
+            legacy_rows = dict(npc_voice_intents or {})
+        except (TypeError, ValueError):
+            legacy_rows = {}
+        actors = {}
+        for actor_id, row in legacy_rows.items():
+            if not isinstance(actor_id, str) or not isinstance(row, dict):
+                continue
+            if not isinstance(row.get("npcName"), str):
+                continue
+            if not isinstance(row.get("thought"), str):
+                continue
+            actors[actor_id] = MappingProxyType(dict(row))
+        return MappingProxyType(
+            {"actors": MappingProxyType(actors)} if actors else {}
+        )
     actors = {
         actor_id: MappingProxyType(dict(row))
         for actor_id, row in normalized["actors"].items()

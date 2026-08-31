@@ -8,8 +8,7 @@
         },
         {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 240
+          "minLength": 1
         }
       ]
     },
@@ -20,8 +19,7 @@
         },
         {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 200
+          "minLength": 1
         }
       ]
     },
@@ -32,15 +30,13 @@
         },
         {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 200
+          "minLength": 1
         }
       ]
     },
     "thought": {
       "type": "string",
-      "minLength": 1,
-      "maxLength": 640
+      "minLength": 1
     },
     "affinityEvent": {
       "anyOf": [
@@ -52,13 +48,11 @@
           "properties": {
             "actor": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 100
+              "minLength": 1
             },
             "target": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 100
+              "minLength": 1
             },
             "eventType": {
               "type": "string",
