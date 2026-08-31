@@ -202,7 +202,7 @@ episode_ledger.json  &#8592; {"actor":"Kira","episode":...}</pre>
 
   <!-- ============ IN COMBAT ============ -->
   <div class="panel">
-    <div class="ptitle"><h2>In combat &mdash; one companion turn (agentic pipeline)</h2><span class="verdict v-bad">#259: voice dropped at step 4</span></div>
+    <div class="ptitle"><h2>In combat &mdash; one companion turn (agentic pipeline)</h2><span class="verdict v-ok">one persisted typed voice map</span></div>
     <div class="lanehead"><span class="l">Engine code</span><span></span><span class="r">Agentic (model call)</span></div>
     <div class="flow">
 
@@ -236,9 +236,9 @@ episode_ledger.json  &#8592; {"actor":"Kira","episode":...}</pre>
       </div>
 
       <div class="noderow">
-        <div class="node bad"><span class="who">CODE &middot; npc_voice_intents &#8594; T096 request</span>
-          <span class="lbl">Hand advisory to tactics agent <span class="warnchip">#259 DEFECT</span></span>
-          <div class="det">today only <b>npcName + thought</b> are forwarded &mdash; accepted <b>say / do / want</b> are dropped here, so her voice is lost in translation</div>
+        <div class="node code"><span class="who">CODE &middot; npcVoiceIntents &#8594; T096 request</span>
+          <span class="lbl">Hand the complete advisory to the tactics agent</span>
+          <div class="det"><b>npcName + say + do + want + thought</b>, keyed by exact actor ID; do is primary and mechanics remain authoritative</div>
         </div>
         <div class="spine"><span class="n">4</span></div>
         <div class="node empty"></div>
@@ -266,16 +266,16 @@ episode_ledger.json  &#8592; {"actor":"Kira","episode":...}</pre>
       <div class="noderow">
         <div class="node empty"></div>
         <div class="spine"><span class="n">7</span></div>
-        <div class="node dm"><span class="who">COMBAT NARRATOR (+ T045 validates on legacy path)</span>
-          <span class="lbl">Narrates the round</span>
-          <div class="det">should carry her line &mdash; blocked by #259; legacy saves inject before T045 instead</div>
+        <div class="node dm"><span class="who">T097 COMBAT NARRATOR</span>
+          <span class="lbl">Narrates committed facts with distinct companion voice</span>
+          <div class="det">reads the exact map from pendingDelivery; action first, then compatible say/do/want, with thought rendered only as first-hand subtext</div>
         </div>
       </div>
 
       <div class="noderow">
         <div class="node store"><span class="who">STORAGE</span>
-          <span class="lbl">Typed events commit once</span>
-          <div class="det">encounter JSON + sidecar episode on acceptance only</div>
+          <span class="lbl">Typed events and voice map commit once</span>
+          <div class="det">pendingTurn &#8594; pendingDelivery preserves npc-voice-intents/v1 for crash replay; sidecar evidence writes only after acceptance</div>
         </div>
         <div class="spine"><span class="n">8</span></div>
         <div class="node empty"></div>

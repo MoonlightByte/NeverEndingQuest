@@ -120,6 +120,31 @@
         "mutations"
       ],
       "additionalProperties": false
+    },
+    "npcVoiceIntents": {
+      "type": "object",
+      "properties": {
+        "contractVersion": {"const": "npc-voice-intents/v1"},
+        "sourceBeatId": {"type": "string", "minLength": 1},
+        "actors": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "npcName": {"type": "string", "minLength": 1},
+              "say": {"type": "string", "minLength": 1},
+              "do": {"type": "string", "minLength": 1},
+              "want": {"type": "string", "minLength": 1},
+              "thought": {"type": "string", "minLength": 1}
+            },
+            "required": ["npcName", "thought"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["contractVersion", "sourceBeatId", "actors"],
+      "additionalProperties": false
     }
   },
   "type": "object",
@@ -474,7 +499,19 @@
                 "invocation": {"$ref": "#/definitions/combatInvocation"},
                 "acceptedResolution": {"$ref": "#/definitions/combatAcceptedResolution"},
                 "atoms": {"type": "array", "items": {"$ref": "#/definitions/combatAtom"}},
-                "atomCursor": {"type": "integer", "minimum": 0}
+                "atomCursor": {"type": "integer", "minimum": 0},
+                "npcVoiceIntents": {"$ref": "#/definitions/npcVoiceIntents"}
+              }
+            }
+          ]
+        },
+        "pendingDelivery": {
+          "anyOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "properties": {
+                "npcVoiceIntents": {"$ref": "#/definitions/npcVoiceIntents"}
               }
             }
           ]

@@ -40,6 +40,77 @@ class CombatVoiceStage:
     intents: Mapping[str, Mapping[str, str]]
 
 
+class CombatVoiceHandle:
+    """One early-dispatched combat batch, collected once at the T096 seam."""
+
+    def __init__(self, packet_rows=(), handle=None):
+        self._packet_rows = tuple(packet_rows)
+        self._handle = handle
+
+    def collect(self) -> CombatVoiceStage:
+        if self._handle is None:
+            return _empty_combat_stage()
+        try:
+            batch = self._handle.collect()
+            self._handle.seal_and_cancel_pending()
+            packets_by_npc_id = {
+                packet["npc"]["id"]: packet
+                for _actor_id, packet in self._packet_rows
+            }
+            batch = replace(
+                batch,
+                results=tuple(
+                    replace(
+                        result,
+                        relationship_evidence_id=(
+                            (
+                                "cev|%s"
+                                % packets_by_npc_id[result.npc_id]["beat"]["id"]
+                            )[:120]
+                            if packets_by_npc_id.get(result.npc_id, {})
+                            .get("beat", {})
+                            .get("relationshipEvidence")
+                            is not None
+                            else ""
+                        ),
+                    )
+                    for result in batch.results
+                ),
+            )
+            actor_by_npc_id = {
+                packet["npc"]["id"]: actor_id
+                for actor_id, packet in self._packet_rows
+            }
+            intents = {}
+            for result in batch.results:
+                actor_id = actor_by_npc_id.get(result.npc_id)
+                if not actor_id:
+                    continue
+                entry = {"npcName": result.npc_name}
+                if result.say:
+                    entry["say"] = result.say
+                if result.do:
+                    entry["do"] = result.do
+                if result.want:
+                    entry["want"] = result.want
+                entry["thought"] = result.thought
+                intents[actor_id] = entry
+            return CombatVoiceStage(
+                batch=batch,
+                intents=MappingProxyType(intents),
+            )
+        except Exception as exc:
+            _LOGGER.warning(
+                "T105 combat advisory degraded for this beat: %s",
+                type(exc).__name__,
+            )
+            try:
+                self._handle.seal_and_cancel_pending()
+            except Exception:
+                pass
+            return _empty_combat_stage()
+
+
 class PreparedOocVoiceHandle:
     """Request-local T112 -> T105 advisory chain with exact turn authority."""
 
@@ -1275,7 +1346,7 @@ def _empty_combat_stage() -> CombatVoiceStage:
     )
 
 
-def run_combat_voice_stage(
+def dispatch_combat_voice_stage(
     *,
     recovery_action_name: str,
     encounter_data: Mapping[str, Any],
@@ -1288,10 +1359,10 @@ def run_combat_voice_stage(
     legacy_conversation_prefix: Optional[Iterable[Any]] = None,
     service: Optional[NpcVoiceService] = None,
     relationship_store: Optional[RelationshipStore] = None,
-) -> CombatVoiceStage:
-    """Run T105 for a fresh/regenerated T096 window and contain all failure."""
+) -> CombatVoiceHandle:
+    """Dispatch T105 before T096 preparation without waiting on the beat."""
     if recovery_action_name not in {"continue", "regenerate_intent"}:
-        return _empty_combat_stage()
+        return CombatVoiceHandle()
     try:
         packet_rows = build_combat_packets_for_window(
             encounter_data=encounter_data,
@@ -1305,58 +1376,22 @@ def run_combat_voice_stage(
             relationship_store=relationship_store,
         )
         if not packet_rows:
-            return _empty_combat_stage()
+            return CombatVoiceHandle()
         from utils.capture.live_provider_call import get_live_turn_scope
 
         handle = (service or _default_service()).dispatch_batch(
             [packet for _actor_id, packet in packet_rows],
             parent_scope=get_live_turn_scope(),
         )
-        batch = handle.collect()
-        handle.seal_and_cancel_pending()
-        packets_by_npc_id = {
-            packet["npc"]["id"]: packet for _actor_id, packet in packet_rows
-        }
-        batch = replace(
-            batch,
-            results=tuple(
-                replace(
-                    result,
-                    # Value-tuple identity, not a digest: the combat beat id is
-                    # already a value tuple (encounter, round, revision, actor
-                    # window), which identifies this evidence application on
-                    # the subject's edge. Bounded to the sourceTurnId contract.
-                    relationship_evidence_id=(
-                        ("cev|%s" % packets_by_npc_id[result.npc_id]["beat"]["id"])[:120]
-                        if packets_by_npc_id.get(result.npc_id, {}).get("beat", {}).get(
-                            "relationshipEvidence"
-                        ) is not None
-                        else ""
-                    ),
-                )
-                for result in batch.results
-            ),
-        )
-        actor_by_npc_id = {
-            packet["npc"]["id"]: actor_id for actor_id, packet in packet_rows
-        }
-        intents = {}
-        for result in batch.results:
-            actor_id = actor_by_npc_id.get(result.npc_id)
-            if actor_id:
-                entry = {"npcName": result.npc_name}
-                if result.say:
-                    entry["say"] = result.say
-                if result.do:
-                    entry["do"] = result.do
-                if result.want:
-                    entry["want"] = result.want
-                entry["thought"] = result.thought
-                intents[actor_id] = entry
-        return CombatVoiceStage(batch=batch, intents=MappingProxyType(intents))
+        return CombatVoiceHandle(packet_rows, handle)
     except Exception as exc:
-        _LOGGER.debug("T105 combat stage skipped: %s", type(exc).__name__)
-        return _empty_combat_stage()
+        _LOGGER.warning("T105 combat dispatch degraded: %s", type(exc).__name__)
+        return CombatVoiceHandle()
+
+
+def run_combat_voice_stage(**kwargs) -> CombatVoiceStage:
+    """Compatibility seam: dispatch and poll once without blocking gameplay."""
+    return dispatch_combat_voice_stage(**kwargs).collect()
 
 
 def run_legacy_combat_voice_stage(

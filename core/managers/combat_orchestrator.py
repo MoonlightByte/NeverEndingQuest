@@ -5,6 +5,7 @@
 """Agentic combat turn orchestration with deterministic commit boundaries."""
 
 from copy import deepcopy
+import logging
 import re
 import time
 from types import MappingProxyType
@@ -20,6 +21,7 @@ from core.combat import (
 from core.managers.combat_state import (
     combatant_by_id,
     ensure_combat_state,
+    normalize_npc_voice_intents,
     resolve_creature_controller,
     valid_pending_delivery,
 )
@@ -36,6 +38,9 @@ from core.managers.combat_transaction import (
     stage_events,
 )
 from utils.encoding_utils import safe_json_load
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CombatTurnPaused(RuntimeError):
@@ -94,22 +99,20 @@ def _is_human_controlled(encounter, actor):
 
 def _immutable_voice_intents(npc_voice_intents):
     """Copy once at the coordinator boundary, then reuse unchanged on retries."""
-    if not isinstance(npc_voice_intents, dict):
-        try:
-            npc_voice_intents = dict(npc_voice_intents or {})
-        except (TypeError, ValueError):
-            npc_voice_intents = {}
-    frozen = {}
-    for actor_id, row in npc_voice_intents.items():
-        if not isinstance(actor_id, str):
-            continue
-        if not isinstance(row, dict):
-            try:
-                row = dict(row)
-            except (TypeError, ValueError):
-                continue
-        frozen[actor_id] = MappingProxyType(dict(row))
-    return MappingProxyType(frozen)
+    normalized = normalize_npc_voice_intents(npc_voice_intents)
+    if normalized is None:
+        return MappingProxyType({})
+    actors = {
+        actor_id: MappingProxyType(dict(row))
+        for actor_id, row in normalized["actors"].items()
+    }
+    return MappingProxyType(
+        {
+            "contractVersion": normalized["contractVersion"],
+            "sourceBeatId": normalized["sourceBeatId"],
+            "actors": MappingProxyType(actors),
+        }
+    )
 
 
 def _diagnostic_context_counts(spell_references):
@@ -697,6 +700,25 @@ def _deliver_committed_turn(
     used_fallback = delivery.get("narrationFallback")
     if not isinstance(narration, str) or not narration.strip():
         dossier = build_scene_dossier(encounter, events, characters)
+        voice_envelope = normalize_npc_voice_intents(
+            delivery.get("npcVoiceIntents")
+        )
+        if voice_envelope is not None:
+            dossier["npcVoiceIntents"] = voice_envelope["actors"]
+        elif delivery.get("npcVoiceIntents") is not None:
+            _LOGGER.warning(
+                "Committed combat voice advisory was invalid and was omitted"
+            )
+            record_combat_diagnostic(
+                record_type="window_outcome",
+                callsite="T097",
+                outcome="voice_advisory_invalid",
+                encounter_id=encounter.get("encounterId"),
+                turn_id=delivery.get("turnId"),
+                revision=state.get("revision"),
+                round_number=state.get("round"),
+                actor_count=len(events or []),
+            )
         attempts = list(delivery.get("narrationAttempts") or [])
         max_attempts = max(3, min(int(max_narration_attempts or 3), 12))
         if deterministic_narration:
@@ -1297,8 +1319,9 @@ def execute_agentic_turn(
             }
             # T105: pass the immutable NPC-voice advisory map (built once at the
             # coordinator boundary) unchanged on every intent attempt/correction.
-            if immutable_voice_intents:
-                intent_kwargs["npc_voice_intents"] = immutable_voice_intents
+            voice_actors = immutable_voice_intents.get("actors", {})
+            if voice_actors:
+                intent_kwargs["npc_voice_intents"] = voice_actors
             batch = intent_provider(
                 encounter,
                 provider_characters,
@@ -1536,6 +1559,7 @@ def execute_agentic_turn(
         character_paths=character_paths,
         character_preconditions=characters,
         character_postconditions=_preview_characters,
+        npc_voice_intents=immutable_voice_intents,
         invocation_claim=invocation_claim,
     )
     committed, committed_characters = apply_staged_turn(

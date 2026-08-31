@@ -286,12 +286,7 @@ The player need not name mechanics. Do not invent an unavailable capability.
 For multi-step actions, preserve the player's goal, resolve only the steps that
 are currently possible, and request a roll or choice when required.
 
-npcVoiceIntents, when present, is private advisory characterization for only
-the exact actor IDs keyed in that object. It may suggest loyalty, protection,
-retreat, targets, or tactics, but it is never rules or action authority.
-requiredActorIds, encounter facts, sheets, capability candidates, and rule
-references remain authoritative. Ignore or legally reconcile impossible voice
-advice and always return a mechanically legal intent.
+npcVoiceIntents, when present, is private advisory characterization for only the exact actor IDs keyed in that object. For an advised companion, treat 'do' as the primary characterization when selecting a mechanically legal action, target, posture, and tactical purpose. Use 'say' and 'want' to preserve the companion's voice and motive in that legal choice. 'thought' is secondary subtext: it may refine a compatible choice but must not displace a legal, scene-compatible do. The encounter, requiredActorIds, sheets, capabilities, resources, and rule references remain authoritative. Ignore or reconcile impossible advice without inventing mechanics. For every advised companion intent, include a description that preserves the chosen action intent and any scene-compatible line or motive needed by downstream narration; never quote or reveal private thought.
 
 Return one JSON object with stateVersion and intents. Return EXACTLY one intent
 for every actorId in requiredActorIds, in that exact order. Do not add or omit
@@ -416,7 +411,7 @@ def request_intent_batch(
     }
     pending_ids = list(pending_turn.get("actorIds", []))
     if isinstance(npc_voice_intents, Mapping):
-        bounded_voice = {}
+        selected_voice = {}
         for actor_id in pending_ids:
             row = npc_voice_intents.get(actor_id)
             if not isinstance(row, Mapping):
@@ -427,12 +422,17 @@ def request_intent_batch(
                 continue
             if not isinstance(thought, str) or not thought.strip():
                 continue
-            bounded_voice[actor_id] = {
-                "npcName": npc_name.strip()[:100],
-                "thought": thought.strip()[:640],
+            entry = {
+                "npcName": npc_name,
+                "thought": thought,
             }
-        if bounded_voice:
-            payload["npcVoiceIntents"] = bounded_voice
+            for field in ("say", "do", "want"):
+                value = row.get(field)
+                if isinstance(value, str) and value.strip():
+                    entry[field] = value
+            selected_voice[actor_id] = entry
+        if selected_voice:
+            payload["npcVoiceIntents"] = selected_voice
     if contextual_payload:
         payload["ruleReferences"] = contextual_payload.get("ruleReferences", [])
         payload["spellActionIndex"] = contextual_payload.get("spellActionIndex", [])
@@ -543,6 +543,7 @@ def request_narration_candidate(
     model = str(call_config.get("model") or "unknown")
     dossier = dict(scene_dossier or {})
     authoritative_facts = dossier.pop("authoritativeFacts", {})
+    npc_voice_intents = dossier.pop("npcVoiceIntents", None)
     combat_state = encounter.get("combatState") or {}
     controllers = {}
     for row in dossier.get("combatants", []) or []:
@@ -565,6 +566,8 @@ def request_narration_candidate(
     }
     if correction:
         payload["correction"] = correction
+    if isinstance(npc_voice_intents, Mapping) and npc_voice_intents:
+        payload["npcVoiceIntents"] = dict(npc_voice_intents)
     # This must remain last even when correction context exists.
     payload["authoritativeFacts"] = authoritative_facts
     messages = [
@@ -579,7 +582,16 @@ def request_narration_candidate(
                 "in that same order and is never shown to the player. Do not change, "
                 "invent, or recalculate mechanics; do not announce actions beyond these "
                 "events. Do not quote bookkeeping from the event data. Keep the prose "
-                "vivid, clear, and concise. "
+                "vivid, clear, and concise. npcVoiceIntents is private companion "
+                "characterization keyed by exact actor ID. It never changes the "
+                "authoritative event facts. When an advised companion has a committed "
+                "event, narrate the committed action first, then naturally weave "
+                "scene-compatible say, do, and want into the companion's distinct "
+                "behavior and voice. Render thought only first-hand through observable "
+                "demeanor, hesitation, focus, or subtext; never quote it, label it as "
+                "thought, expose the private block, or state private knowledge as fact. "
+                "If advice conflicts with the committed event, preserve the event and "
+                "omit the conflict. "
                 + T097_SCENE_CONTRACT_SENTENCE
             ),
         },

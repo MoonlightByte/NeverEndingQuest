@@ -4539,15 +4539,16 @@ This is narration only. Do not advance the round or apply any combat action."""
            # T105: build the per-turn NPC-voice advisory batch (fail-open)
            # and hand the accepted intents to the agentic intent model as
            # advisory-only input. Voice never breaks the combat turn.
-           npc_voice_intents = {}
+           npc_voice_intents = None
+           voice_stage = None
+           voice_handle = None
            if agentic_recovery["action"] in {"continue", "regenerate_intent"}:
                try:
                    from core.npc.voice_context import (
-                       commit_accepted_combat_voice_batch,
-                       run_combat_voice_stage,
+                       dispatch_combat_voice_stage,
                    )
 
-                   voice_stage = run_combat_voice_stage(
+                   voice_handle = dispatch_combat_voice_stage(
                        recovery_action_name=agentic_recovery["action"],
                        encounter_data=encounter_data,
                        actor_ids=agentic_actor_ids,
@@ -4557,17 +4558,9 @@ This is narration only. Do not advance the round or apply any combat action."""
                        location_info=location_info,
                        player_input=raw_combat_input_text,
                    )
-                   npc_voice_intents = voice_stage.intents
-                   # T104 can classify only the prior committed fact carried
-                   # by its packet, so this idempotent write cannot depend on
-                   # or make claims about the unresolved T096 action.
-                   commit_accepted_combat_voice_batch(
-                       voice_stage.batch,
-                       party_tracker_data,
-                   )
                except Exception as exc:
                    debug(
-                       "T105 combat stage skipped: %s" % type(exc).__name__,
+                       "T105 combat dispatch skipped: %s" % type(exc).__name__,
                        category="combat_events",
                    )
            try:
@@ -4593,6 +4586,18 @@ This is narration only. Do not advance the round or apply any combat action."""
                    category="combat_events",
                )
                spell_references = {}
+
+           if voice_handle is not None:
+               voice_stage = voice_handle.collect()
+               if voice_stage.intents:
+                   npc_voice_intents = {
+                       "contractVersion": "npc-voice-intents/v1",
+                       "sourceBeatId": voice_stage.batch.batch_id,
+                       "actors": {
+                           actor_id: dict(row)
+                           for actor_id, row in voice_stage.intents.items()
+                       },
+                   }
 
            try:
                try:
@@ -4628,6 +4633,22 @@ This is narration only. Do not advance the round or apply any combat action."""
                    npc_voice_intents=npc_voice_intents,
                    invocation_claim=invocation_claim,
                )
+               if voice_stage is not None:
+                   try:
+                       from core.npc.voice_context import (
+                           commit_accepted_combat_voice_batch,
+                       )
+
+                       commit_accepted_combat_voice_batch(
+                           voice_stage.batch,
+                           party_tracker_data,
+                       )
+                   except Exception as exc:
+                       debug(
+                           "T105 accepted combat event skipped: %s"
+                           % type(exc).__name__,
+                           category="combat_events",
+                       )
            except (CombatTurnPaused, CombatTransactionError) as exc:
                # Technical exception text may contain internal state terms,
                # paths, or provider details. Only explicitly approved player

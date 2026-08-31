@@ -12,6 +12,7 @@ encounter receipt and cursor are committed last.
 
 from contextlib import contextmanager
 from copy import deepcopy
+import logging
 import os
 import re
 import uuid
@@ -29,6 +30,7 @@ from core.managers.combat_state import (
     begin_turn,
     commit_turn,
     ensure_combat_state,
+    normalize_npc_voice_intents,
     recovery_action,
     stage_turn_events,
     valid_pending_delivery,
@@ -45,6 +47,9 @@ from utils.state_transaction import (
     StateTransactionCoordinator,
     TransactionBusyError,
 )
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CombatTransactionError(RuntimeError):
@@ -812,6 +817,7 @@ def stage_events(
     character_paths=None,
     character_preconditions=None,
     character_postconditions=None,
+    npc_voice_intents=None,
     timeout_seconds=5.0,
     invocation_claim=None,
 ):
@@ -917,6 +923,15 @@ def stage_events(
             "historyInput": str(context.get("historyInput") or "")[:24000],
             "displayPrefix": str(context.get("displayPrefix") or "")[:4000],
         }
+        voice_envelope = normalize_npc_voice_intents(npc_voice_intents)
+        if voice_envelope is not None:
+            pending["npcVoiceIntents"] = voice_envelope
+        else:
+            pending.pop("npcVoiceIntents", None)
+            if npc_voice_intents:
+                _LOGGER.warning(
+                    "T105 combat advisory was invalid and was omitted before staging"
+                )
         if isinstance(roll_consumption, dict):
             encounter.setdefault("preroll_cache", {})["consumed"] = deepcopy(
                 roll_consumption

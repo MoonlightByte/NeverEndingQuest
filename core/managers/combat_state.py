@@ -11,6 +11,8 @@ the durable boundary around an in-progress turn.
 
 import re
 import uuid
+import logging
+from collections.abc import Mapping
 from copy import deepcopy
 
 
@@ -24,6 +26,53 @@ NARRATION_ATTEMPT_STATUSES = frozenset(
     {"rejected", "provider_error", "parse_error", "contract_error"}
 )
 _NARRATION_CODE_RE = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+NPC_VOICE_INTENTS_VERSION = "npc-voice-intents/v1"
+_LOGGER = logging.getLogger(__name__)
+
+
+def normalize_npc_voice_intents(value):
+    """Return one complete versioned advisory envelope or None.
+
+    The envelope is optional and never mechanics authority. A malformed
+    advisory degrades loudly at its caller without invalidating committed
+    mechanics or their delivery receipt.
+    """
+    if not isinstance(value, Mapping):
+        return None
+    if value.get("contractVersion") != NPC_VOICE_INTENTS_VERSION:
+        return None
+    source_beat_id = value.get("sourceBeatId")
+    actors = value.get("actors")
+    if not isinstance(source_beat_id, str) or not source_beat_id:
+        return None
+    if not isinstance(actors, Mapping) or not actors:
+        return None
+    normalized = {}
+    for actor_id, row in actors.items():
+        if not isinstance(actor_id, str) or not actor_id:
+            return None
+        if not isinstance(row, Mapping):
+            return None
+        npc_name = row.get("npcName")
+        thought = row.get("thought")
+        if not isinstance(npc_name, str) or not npc_name.strip():
+            return None
+        if not isinstance(thought, str) or not thought.strip():
+            return None
+        entry = {"npcName": npc_name, "thought": thought}
+        for field in ("say", "do", "want"):
+            text = row.get(field)
+            if text is None:
+                continue
+            if not isinstance(text, str) or not text.strip():
+                return None
+            entry[field] = text
+        normalized[actor_id] = entry
+    return {
+        "contractVersion": NPC_VOICE_INTENTS_VERSION,
+        "sourceBeatId": source_beat_id,
+        "actors": normalized,
+    }
 
 
 def valid_pending_delivery(delivery):
@@ -909,6 +958,15 @@ def commit_turn(encounter, turn_id, applied_event_ids):
         "narrationFallback": None,
         "narrationAttempts": [],
     }
+    voice_envelope = normalize_npc_voice_intents(
+        pending.get("npcVoiceIntents")
+    )
+    if voice_envelope is not None:
+        state["pendingDelivery"]["npcVoiceIntents"] = voice_envelope
+    elif pending.get("npcVoiceIntents") is not None:
+        _LOGGER.warning(
+            "Staged combat voice advisory was invalid and was omitted at commit"
+        )
     state["pendingTurn"] = None
     state["revision"] += 1
     if all_hostiles_resolved(encounter):
