@@ -58,3 +58,19 @@ gets the voices). Requires the E1-E4 balance to land first and its own #193 loop
 No char/token caps anywhere (No-Limits Sentinel); one live path (Single-Path Sentinel);
 agentic-first; probes are development aids - acceptance stays real headless play judged
 on DM narration fidelity of the fed voice data.
+
+## 8. Fork rulings (owner, 2026-08-31 - after the first panel round hard-stop)
+- FORK 1 = (a): RETIRE the legacy (T045) combat pipeline as a runtime. Typed/agentic
+  combat is the ONLY combat runtime; old saves/legacy-provenance encounters adapt
+  FORWARD via data migration on the live path. Now a #193 Part 5 ratified ruling
+  (v1.9). Retirement is its own #193-planned change; the voice wave must not build
+  new behavior on the legacy path.
+- FORK 2: persist the immutable combat voice map inside the EXISTING combat
+  transaction record so crash recovery replays the same advice (no new store).
+- FORK 3: voice-call failure policy - never block the game; a failed T105/T112 call
+  degrades AT MOST that one beat, is logged loudly + surfaced in telemetry, and the
+  next beat retries fresh. Silent permanent degradation is a defect. Now a #193
+  Part 5 ratified ruling (v1.9).
+- FORK 4: this wave stays scoped to the voice path + directly-touched combat files.
+  The additional caps found (episodic storage, combat compression/prompts, web TTS)
+  are tracked on issue #262 for a separate systematic retirement.
