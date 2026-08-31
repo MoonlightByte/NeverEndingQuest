@@ -1279,9 +1279,13 @@ def infer_requested_character_update_fields(changes):
     if potion_consumption:
         required.add("equipment")
 
+    # Only families that this codebase consistently stores in the top-level
+    # ammunition array. Darts are an SRD thrown weapon and blowgun needles are
+    # routinely carried as equipment rows, so demanding a top-level ammunition
+    # key for them forces an unsatisfiable delta and burns all three retries.
     ammunition_spend = re.search(
         r"\b(?:fire[ds]?|shot|shoots?|spen[dt]|use[ds]?|expends?)\s+\d+\s+"
-        r"(?:arrows?|bolts?|bullets?|darts?|needles?)\b",
+        r"(?:arrows?|bolts?|bullets?)\b",
         text,
     )
     if ammunition_spend:
@@ -2493,8 +2497,35 @@ Please provide the CORRECT currency values:
             
             # Role-specific normalization
             updated_data = normalize_status_and_condition(updated_data, character_role)
-            validate_resource_bounds(updated_data)
-            
+            # The resource matrix is a hard gate. Its failure has to reach the
+            # model the same way a schema failure does, otherwise every retry
+            # replays an identical prompt and cannot possibly succeed.
+            try:
+                validate_resource_bounds(updated_data)
+            except InventoryIntegrityError as bounds_error:
+                error(
+                    f"VALIDATION: Resource bounds rejected: {bounds_error}",
+                    category="character_validation",
+                )
+                debug_data["validation_results"] = {
+                    "resource_bounds_valid": False,
+                    "resource_bounds_error": str(bounds_error),
+                }
+                if attempt == max_attempts:
+                    error(
+                        "FAILURE: Max attempts reached. Reverting changes.",
+                        category="character_updates",
+                    )
+                    return False
+                messages[-1]["content"] += (
+                    "\n\nPREVIOUS ATTEMPT FAILED RESOURCE VALIDATION: "
+                    f"{bounds_error}. Return a corrected minimal delta in which "
+                    "every quantity, charge count, and feature usage stays a "
+                    "nonnegative integer within its own maximum."
+                )
+                attempt += 1
+                continue
+
             # Purge invalid fields before validation
             # print(f"[DEBUG] About to purge invalid fields")
             updated_data, removed_fields = purge_invalid_fields(updated_data, schema, character_name)
@@ -2577,7 +2608,25 @@ Please provide the CORRECT currency values:
                 advisories.append("effects_validator_unavailable")
 
             updated_data = repair_character_data(updated_data)
-            validate_resource_bounds(updated_data)
+            try:
+                validate_resource_bounds(updated_data)
+            except InventoryIntegrityError as final_bounds_error:
+                error(
+                    "VALIDATION: Final prepared character failed resource "
+                    f"bounds: {final_bounds_error}",
+                    category="character_validation",
+                )
+                if attempt == max_attempts:
+                    return False
+                messages[-1]["content"] += (
+                    "\n\nPREVIOUS ATTEMPT FAILED RESOURCE VALIDATION AFTER "
+                    f"CORRECTION: {final_bounds_error}. Return a corrected "
+                    "minimal delta in which every quantity, charge count, and "
+                    "feature usage stays a nonnegative integer within its own "
+                    "maximum."
+                )
+                attempt += 1
+                continue
             final_critical_warnings = validate_critical_fields_preserved(
                 character_data,
                 updated_data,

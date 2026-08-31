@@ -212,6 +212,76 @@ raw_images/                # Original PNGs (gitignored, root level)
     └── [module_name]/   # Original monster PNGs
 ```
 
+## CANONICAL WORKFLOW: How natural language becomes game state
+
+This is the ONLY permitted flow. Owner-ratified 2026-08-13.
+
+1. **AGENTS MAP THE SCENE INTO SLICES.** A model reads the natural language against the REAL
+   current state (character sheets, party roster and presence, containers with contents and
+   locations) and emits SLICES: atomic, fully-structured movements with NO prose inside them.
+   Each slice carries canonical identities taken from state, the character who physically acts,
+   an explicit source AND destination, family, the quantity from state, and separately the
+   quantity the prose asserted. Anything unresolvable comes back as an explicit unresolved
+   entry with a reason - never a guess, never invented content.
+2. **CODE PROCESSES THE SLICES.** Code never sees the command text. It consumes slices only:
+   ledger, ordering, arithmetic, staging.
+3. **AGENTS VALIDATE THE SLICES.** A model pass checks the slices against the scene for
+   completeness (no missing counterpart half) and faithfulness (nothing invented).
+4. **CODE SELF-VALIDATES.** Deterministic checks over the slice set and over any slices code
+   itself derived: conservation to zero per exact identity, equal magnitude at both endpoints,
+   no underflow, endpoints exist in state, dependencies satisfied before use. Code-derived
+   slices pass the IDENTICAL gate - there is no privileged path.
+5. **COMMIT ATOMICALLY, OR REFUSE AS NARRATION.** All-or-nothing. Refusal only when something
+   genuinely does not exist or is not owned, and it reaches the player as story, never as a
+   system error.
+
+Prose crosses into the system exactly once, through a model, and comes out as slices. After
+that, code touches only structured data.
+
+## PROHIBITION: No prose matching as gameplay authority
+
+**NEVER use verb lists, keyword matching, substring tests, or regexes over prose to make a
+gameplay decision** - not over player input, and not over model-authored `changes` /
+`description` / `reason` text. You cannot enumerate every phrasing, so every such gate fails
+open silently. Measured here: the acquisition verb list
+(`added|received|gained|acquired|collected|earned|obtained`) matched **3 of 17** ordinary
+phrasings of "5 gold changed hands" - it ignored purchased, paid, pocketed, picked up, looted,
+awarded, took, handed, recovered, claimed, found, traded away, spent, won. Worse, an audit
+proved that when the resolution model answers CORRECTLY the surviving regex still lifted a
+phrased "99" into the enforced delta: a regex sitting beside an agent is worse than either
+alone.
+
+Each miss spawns another patch - `_NON_QUANTITY_UNIT_WORDS` (feet/days/gallons) existed only to
+stop the first regex misreading "50 feet of rope" as 50 ropes. **That is where large amounts of
+dead code come from.**
+
+Corollaries:
+- A shape heuristic answering a semantic question is the same violation. "Currency-only decrease
+  adjacent to a storage action" cannot separate a genuine service fee from a mis-mirrored
+  duplicate; when tried it silently double-charged the player (100gp -> 55gp, success=true).
+- Quantities and charges come from STATE, never phrasing. "My wand of 99 magic missiles"
+  resolves to the one owned wand with its real charges and records the conflict.
+- Guards must never depend on an OPTIONAL model answer. Every degraded path - provider outage,
+  budget exhaustion, invalid contract, uncertainty, unreadable sheet - FAILS CLOSED.
+
+## PROHIBITION: No regex/prose tests, no monkeypatching, no synthetic acceptance
+
+- **Delete tests that assert regex/keyword/verb-matching behaviour.** They pin the very
+  brittleness we are removing and make the cruft look load-bearing. A test whose subject is
+  "this phrasing matches that pattern" is itself cruft: remove it with its code.
+- **No monkeypatching.** Seven tests once stubbed out `_post_process_operation` - the exact
+  function whose actor stomp defeated the T106 feature - leaving CI green over something that
+  could not work in production. Stubbing the thing under test proves only that the stub works.
+- **No synthetic test may be cited as proof a seam works.** Acceptance is REAL HEADLESS PLAY
+  issuing real player commands through the unmodified `core/headless/client.py`, judged by
+  reading the game's own files afterward. Narration is never evidence - a truthfulness defect
+  looks perfect in narration. Harness:
+  `validation_evidence/headless_acceptance/run_acceptance.py`.
+- Pure-function checks (no I/O, no model calls, no patching) are development aids only.
+
+Resolution seam in this repo: T109 (`core/ai/inventory_resolver.py`,
+`utils/inventory_resolution.py`, model `gpt-5.6-terra`, measured 30/30 stable).
+
 ## Critical Requirements
 
 ### Unicode Characters - NEVER USE

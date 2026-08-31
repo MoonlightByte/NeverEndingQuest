@@ -154,21 +154,130 @@ def _storage_operation_actor_facts(operation: Dict[str, Any]):
 
 
 def _storage_actor_review_needed(
-    description: str,
-    operation: Dict[str, Any],
-    party_identities,
+    resolved_actor: Optional[str],
+    proposed_actor_facts,
 ) -> bool:
-    """Use exact names only to route a possible wrong-actor shape to T106."""
-    text = str(description or "").casefold()
-    mentioned = {
-        identity
-        for identity in party_identities
-        if identity.casefold() in text
-    }
+    """Route a wrong-actor shape to T106 using the RESOLVED actor only.
+
+    The former gate asked whether a party name appeared as a substring of the
+    description, so a companion merely mentioned in passing ("while Scout Kira
+    keeps watch") manufactured a wrong-actor review and a refusal. Identity now
+    comes from T109's state-backed actor resolution.
+
+    ``proposed_actor_facts`` MUST be projected from the extractor's raw
+    operation, BEFORE post-processing writes the resolved actor into it.
+    Reading them afterwards compared the resolved actor with itself, so this
+    gate could never fire and the hard refusal behind it was unreachable.
+    """
+    if not resolved_actor:
+        return False
     candidate_actors = {
-        fact[4] for fact in _storage_operation_actor_facts(operation) if fact[4]
+        normalize_inventory_name(fact[4])
+        for fact in proposed_actor_facts or ()
+        if fact[4]
     }
-    return bool(mentioned - candidate_actors)
+    if not candidate_actors:
+        # Nothing in the operation moves a resource, so no actor is claimed.
+        return False
+    return normalize_inventory_name(resolved_actor) not in candidate_actors
+
+
+def _storage_resolution_incomplete(resolution_facts, delta_signature) -> bool:
+    """True when a SLICE with a container endpoint never reached the operation.
+
+    A container slice is an exact state identity moving between a sheet and a
+    real container, so one the extracted operation does not move is a concrete
+    omission -- the shape T106 completeness exists to catch. This replaces the
+    old trigger, which fired whenever a party name happened to appear as a
+    substring of the description.
+    """
+    from utils.inventory_resolution import container_slices, normalize_identifier
+
+    identities = {
+        (entry["family"], normalize_identifier(entry["canonical_name"]))
+        for entry in container_slices(resolution_facts)
+    }
+    if not identities:
+        return False
+    covered = set(delta_signature or {})
+    return any(identity not in covered for identity in identities)
+
+
+def _canonical_party_identity(candidate, party_identities) -> Optional[str]:
+    """Return the exact roster spelling of one name, or None if unknown."""
+    key = normalize_inventory_name(candidate)
+    if not key:
+        return None
+    for identity in party_identities:
+        if normalize_inventory_name(identity) == key:
+            return identity
+    return None
+
+
+def _aggregate_movement_observation(deltas):
+    """Sum ONE source's own deltas per canonical resource identity.
+
+    Duplicates inside a single source are legitimate (two party members each
+    stowing a torch) and must stay summed. This is why the two sources are
+    aggregated separately and only then compared.
+    """
+    totals = {}
+    for entry in deltas or ():
+        if not isinstance(entry, (tuple, list)) or len(entry) != 3:
+            continue
+        family, name, quantity = entry
+        if family not in {"equipment", "ammunition", "currency"}:
+            continue
+        if isinstance(quantity, bool) or type(quantity) is not int or not quantity:
+            continue
+        normalized = normalize_inventory_name(name)
+        if not normalized:
+            continue
+        display, total = totals.get((family, normalized), (name, 0))
+        totals[(family, normalized)] = (display, total + quantity)
+    return {
+        key: value for key, value in totals.items() if value[1]
+    }
+
+
+def _merge_movement_observations(paired_deltas, verified_deltas):
+    """Reconcile two observations of ONE movement without summing them.
+
+    The caller's paired character delta and the T106 completeness resource list
+    describe the same physical movement from two vantage points. Concatenating
+    them and letting the coverage check sum the stream doubled every shared
+    row. Aggregating per source and comparing per canonical identity keeps
+    within-source duplicates intact, passes on agreement, and fails closed on
+    disagreement instead of inventing a third number.
+    """
+    paired = _aggregate_movement_observation(paired_deltas)
+    verified = _aggregate_movement_observation(verified_deltas)
+    merged = dict(paired)
+    conflicts = []
+    for key, (display, quantity) in sorted(verified.items()):
+        if key in merged and merged[key][1] != quantity:
+            conflicts.append((key, merged[key][1], quantity))
+            continue
+        merged[key] = (display, quantity)
+    if conflicts:
+        facts = "; ".join(
+            f"{family} {name} paired delta {paired_quantity:+d} vs verified "
+            f"delta {verified_quantity:+d}"
+            for (family, name), paired_quantity, verified_quantity in conflicts
+        )
+        return (), (
+            "two observations of one storage movement disagree: "
+            f"{facts}. The game will not sum them into a third quantity"
+        )
+    return (
+        tuple(
+            (family, display, quantity)
+            for (family, _name), (display, quantity) in sorted(
+                merged.items(), key=lambda entry: entry[0]
+            )
+        ),
+        None,
+    )
 
 
 def _storage_actor_coverage_error(operation, required_resources):
@@ -706,7 +815,12 @@ For "What's in our storage here?":
         except Exception as e:
             return False, f"Validation error: {str(e)}"
             
-    def _post_process_operation(self, operation: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_process_operation(
+        self,
+        operation: Dict[str, Any],
+        context: Dict[str, Any],
+        resolved_actor: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Post-process operation to add missing information"""
 
         if isinstance(operation.get("operations"), list):
@@ -720,7 +834,9 @@ For "What's in our storage here?":
                     raise ValueError(
                         "view_storage cannot be mixed with storage mutations"
                     )
-                processed.append(self._post_process_operation(item, context))
+                processed.append(
+                    self._post_process_operation(item, context, resolved_actor)
+                )
             storage_ids = {
                 item.get("storage_id")
                 for item in processed
@@ -732,9 +848,31 @@ For "What's in our storage here?":
                 )
             return {"operations": processed}
 
-        # The call-site character is authoritative; the model cannot redirect
-        # a storage mutation to a different sheet.
-        authoritative_character = context.get("character", {}).get("name")
+        # Cross-actor storage is legitimate and MUST keep working: "Kira, take
+        # the insignia out of the locker" has to land on Kira's sheet. What is
+        # not legitimate is letting an unverified name select a file. The
+        # resolved actor is accepted ONLY when it is an exact identity on the
+        # current roster -- a deterministic check over structured data, not a
+        # name substring. A resolved actor who is not a current party member is
+        # a state contradiction and the request is refused rather than written
+        # to some other sheet or invented one.
+        party_identities = _known_party_identities(context)
+        authoritative_character = None
+        if resolved_actor:
+            authoritative_character = _canonical_party_identity(
+                resolved_actor, party_identities
+            )
+            if not authoritative_character:
+                raise ValueError(
+                    "the resolved actor is not a current party member"
+                )
+        if not authoritative_character:
+            authoritative_character = _canonical_party_identity(
+                operation.get("character"),
+                party_identities,
+            )
+        if not authoritative_character:
+            authoritative_character = context.get("character", {}).get("name")
         if not authoritative_character:
             raise ValueError("the requested character inventory is unavailable")
         operation["character"] = authoritative_character
@@ -814,16 +952,67 @@ For "What's in our storage here?":
         description: str,
         character_name: str,
         required_deltas=(),
+        resolution=None,
     ) -> Dict[str, Any]:
-        """Process natural language storage description into validated operation with retry logic"""
-        
+        """Process natural language storage description into validated operation with retry logic
+
+        ``resolution`` is the turn's T109 provider. When it resolves an actor
+        for this description, that actor owns the operation and the game
+        context is rebuilt for their sheet, so a request aimed at another
+        present party member succeeds instead of being refused.
+        """
+
         max_attempts = 3
         original_description = description
         completeness_required = ()
         completeness_actor_requirements = ()
         completeness_checked = False
         nonlocal_storage_conflict = None
-        
+
+        from utils.inventory_resolution import (
+            facts_for,
+            resolved_actor,
+            slice_faults,
+            slice_character_endpoints,
+        )
+
+        resolution_facts = facts_for(resolution, original_description)
+        actor_name = resolved_actor(resolution_facts)
+        # Deterministic verification of the resolved actor against state,
+        # BEFORE that name is allowed to select a character file. The slices
+        # already carry only endpoints and rows that exist in the real
+        # snapshot, so what remains to check here is that the actor this
+        # request will be written for is one of the character endpoints those
+        # slices name. Cross-actor stays fully supported; a contradiction is
+        # refused.
+        if actor_name:
+            endpoints = slice_character_endpoints(resolution_facts)
+            if endpoints and not any(
+                normalize_inventory_name(name) == normalize_inventory_name(actor_name)
+                for name in endpoints
+            ):
+                return {
+                    "success": False,
+                    "error": (
+                        "The resolved actor is not an endpoint of the movement "
+                        "this request describes, so no character sheet was "
+                        "selected."
+                    ),
+                    "failure_code": "storage_actor_state_conflict",
+                }
+        context_character = character_name
+        if actor_name and normalize_inventory_name(actor_name) != (
+            normalize_inventory_name(character_name)
+        ):
+            # Cross-actor: read the inventory, currency, and ammunition of the
+            # character who actually performs the action.
+            context_character = actor_name
+            info(
+                "STORAGE: resolved actor differs from the call-site character; "
+                "operating on the resolved actor's sheet",
+                category="storage_operations",
+            )
+
         for attempt in range(max_attempts):
             try:
                 is_nonlocal_correction_attempt = (
@@ -832,7 +1021,7 @@ For "What's in our storage here?":
                 debug(f"AI_CALL: Storage processing attempt {attempt + 1} of {max_attempts}", category="storage_operations")
                 
                 # Get game context
-                context = self._get_game_context(character_name)
+                context = self._get_game_context(context_character)
                 if context.get("storage_context_error"):
                     return {
                         "success": False,
@@ -910,9 +1099,19 @@ For "What's in our storage here?":
                         }
                     continue  # Retry on JSON parse error
                     
+                # F2: project the actor the EXTRACTOR chose before
+                # post-processing overwrites it with the resolved actor.
+                # Comparing the resolved actor against a field it just wrote
+                # is a comparison with itself and can never disagree.
+                proposed_actor_facts = _storage_operation_actor_facts(operation)
+
                 # Post-process operation
                 try:
-                    operation = self._post_process_operation(operation, context)
+                    operation = self._post_process_operation(
+                        operation,
+                        context,
+                        actor_name,
+                    )
                 except ValueError as post_process_error:
                     if nonlocal_storage_conflict is not None:
                         return {
@@ -972,9 +1171,18 @@ For "What's in our storage here?":
                 
                 # Validate operation
                 is_valid, validation_error = self._validate_operation(operation)
-                combined_required_deltas = tuple(required_deltas) + tuple(
-                    completeness_required
+                combined_required_deltas, delta_conflict = (
+                    _merge_movement_observations(
+                        required_deltas,
+                        completeness_required,
+                    )
                 )
+                if delta_conflict:
+                    return {
+                        "success": False,
+                        "error": delta_conflict,
+                        "failure_code": "storage_delta_conflict",
+                    }
                 if is_valid and combined_required_deltas:
                     from core.managers.storage_transaction import (
                         _storage_operation_coverage_error,
@@ -1005,18 +1213,59 @@ For "What's in our storage here?":
                         if isinstance(operation_set, list)
                         else [operation]
                     )
+                    delta_signature = _storage_operation_delta_signature(operation)
+                    # FAIL CLOSED: this request is about to move real
+                    # resources between a sheet and a container. Committing
+                    # that on an absent or unusable claim is exactly the
+                    # one-sided storage commit these guards exist to stop.
+                    # A view-only or create-only request moves nothing and
+                    # needs no claim.
+                    if delta_signature:
+                        if resolution_facts is None:
+                            return {
+                                "success": False,
+                                "error": (
+                                    "This storage request moves belongings, but "
+                                    "what it moves could not be checked against "
+                                    "the party's actual inventories and "
+                                    "containers, so nothing was stored or "
+                                    "retrieved."
+                                ),
+                                "failure_code": "storage_resolution_unavailable",
+                            }
+                        faults = slice_faults(resolution_facts)
+                        if faults:
+                            return {
+                                "success": False,
+                                "error": (
+                                    "This storage request names a movement that "
+                                    "does not match the party's actual "
+                                    "inventories and containers, so nothing was "
+                                    "stored or retrieved (unverified: "
+                                    + "; ".join(faults)
+                                    + ")."
+                                ),
+                                "failure_code": "storage_resolution_unverified",
+                            }
                     create_only_shape = any(
                         isinstance(item, dict)
                         and item.get("action") == "create_storage"
                         for item in operation_set
-                    ) and not _storage_operation_delta_signature(operation)
+                    ) and not delta_signature
                     party_identities = _known_party_identities(context)
                     actor_review_needed = _storage_actor_review_needed(
-                        original_description,
-                        operation,
-                        party_identities,
+                        actor_name,
+                        proposed_actor_facts,
                     )
-                    if create_only_shape or actor_review_needed:
+                    resolution_incomplete = _storage_resolution_incomplete(
+                        resolution_facts,
+                        delta_signature,
+                    )
+                    if (
+                        create_only_shape
+                        or actor_review_needed
+                        or resolution_incomplete
+                    ):
                         from core.ai.storage_completeness_verifier import (
                             classify_storage_completeness,
                         )
@@ -1060,9 +1309,24 @@ For "What's in our storage here?":
                                 _storage_operation_coverage_error,
                             )
 
+                            # One movement, two observations. Reconcile them
+                            # per canonical identity; never sum them.
+                            (
+                                combined_required_deltas,
+                                delta_conflict,
+                            ) = _merge_movement_observations(
+                                required_deltas,
+                                completeness_required,
+                            )
+                            if delta_conflict:
+                                return {
+                                    "success": False,
+                                    "error": delta_conflict,
+                                    "failure_code": "storage_delta_conflict",
+                                }
                             validation_error = _storage_operation_coverage_error(
                                 operation,
-                                completeness_required,
+                                combined_required_deltas,
                                 storage_available=(
                                     _storage_available_resource_quantities(context)
                                 ),
@@ -1214,6 +1478,7 @@ def process_storage_request(
     description: str,
     character_name: str,
     required_deltas=(),
+    resolution=None,
 ) -> Dict[str, Any]:
     """Process a storage request from natural language description"""
     processor = StorageProcessor()
@@ -1221,6 +1486,7 @@ def process_storage_request(
         description,
         character_name,
         required_deltas=required_deltas,
+        resolution=resolution,
     )
 
 def get_storage_suggestions(character_name: str) -> List[str]:

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import copy
 import json
-import re
 from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -294,29 +293,6 @@ def _batch_transfer_shape_mismatch(
     return None
 
 
-_RESOURCE_TOKEN_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "from",
-    "in",
-    "into",
-    "of",
-    "the",
-    "to",
-}
-
-_PARTY_NAME_ROLE_TOKENS = {
-    "captain",
-    "commander",
-    "merchant",
-    "messenger",
-    "quartermaster",
-    "ranger",
-    "scout",
-}
-
-
 @dataclass(frozen=True)
 class _PartyAttributedRequirement:
     claimant_index: int
@@ -339,55 +315,6 @@ def _party_character_names(party: Mapping[str, Any]) -> Tuple[str, ...]:
     return tuple(dict.fromkeys(names))
 
 
-def _party_name_aliases(party: Mapping[str, Any]) -> Dict[str, Tuple[str, ...]]:
-    """Return full names plus unambiguous non-role name tokens."""
-    names = _party_character_names(party)
-    token_owners: Dict[str, set] = {}
-    name_tokens = {}
-    for name in names:
-        tokens = tuple(re.findall(r"[a-z0-9]+", name.casefold()))
-        name_tokens[name] = tokens
-        for token in tokens:
-            if len(token) < 3 or token in _PARTY_NAME_ROLE_TOKENS:
-                continue
-            token_owners.setdefault(token, set()).add(name)
-    result = {}
-    for name in names:
-        aliases = {" ".join(name_tokens[name])}
-        aliases.update(
-            token
-            for token in name_tokens[name]
-            if len(token) >= 3
-            and token not in _PARTY_NAME_ROLE_TOKENS
-            and token_owners.get(token) == {name}
-        )
-        result[name] = tuple(sorted(aliases, key=lambda value: (-len(value), value)))
-    return result
-
-
-def _attributed_party_names(
-    changes: str,
-    marker: str,
-    actor_name: str,
-    party: Mapping[str, Any],
-) -> Tuple[str, ...]:
-    text = changes.casefold()
-    actor_key = _normalized_name(actor_name)
-    matches = []
-    for name, aliases in _party_name_aliases(party).items():
-        if _normalized_name(name) == actor_key:
-            continue
-        if any(
-            re.search(
-                rf"\b{re.escape(marker)}\s+(?:the\s+)?{re.escape(alias)}\b",
-                text,
-            )
-            for alias in aliases
-        ):
-            matches.append(name)
-    return tuple(dict.fromkeys(matches))
-
-
 def _denomination_deltas(item: PreparedCharacterAction) -> Dict[str, int]:
     before = item.plan.pre_image.get("currency") or {}
     after = item.plan.post_image.get("currency") or {}
@@ -402,18 +329,88 @@ def _denomination_deltas(item: PreparedCharacterAction) -> Dict[str, int]:
     }
 
 
+def _item_moves_resources(item: PreparedCharacterAction) -> bool:
+    """True when this prepared action actually changes a tracked resource.
+
+    This is a structural test over the prepared before/after images, not a
+    reading of the sentence. It exists so a turn with nothing at stake is not
+    refused merely because the resolution seam was unavailable.
+    """
+    if any(delta.quantity for delta in concrete_asset_deltas(item.plan)):
+        return True
+    return any(quantity for quantity in _denomination_deltas(item).values())
+
+
+def _resolved_transfer_pairs(
+    item: PreparedCharacterAction,
+    party: Mapping[str, Any],
+    resolution,
+) -> Tuple[Dict[str, Any], ...]:
+    """Return this action's party-to-party movement SLICES as endpoint pairs.
+
+    A slice carries an explicit source AND destination by construction, so the
+    counterpart half exists even when the giver is the speaker and the actor.
+    Nothing here depends on a preposition, a name token, or a word appearing
+    somewhere in the sentence.
+    """
+    from utils.inventory_resolution import facts_for, party_transfer_slices
+
+    roster = {
+        _normalized_name(name): name for name in _party_character_names(party)
+    }
+    resolved = []
+    for entry in party_transfer_slices(facts_for(resolution, item.changes)):
+        source = roster.get(_normalized_name((entry.get("source") or {}).get("id")))
+        recipient = roster.get(
+            _normalized_name((entry.get("destination") or {}).get("id"))
+        )
+        if not source or not recipient or source == recipient:
+            continue
+        resolved.append(
+            {
+                "source": source,
+                "recipient": recipient,
+                "family": entry["family"],
+                "name": _normalized_name(entry["canonical_name"]),
+            }
+        )
+    return tuple(resolved)
+
+
 def _party_attributed_requirements(
     prepared: Sequence[PreparedCharacterAction],
     party: Mapping[str, Any],
+    resolution=None,
 ) -> Tuple[_PartyAttributedRequirement, ...]:
+    """Derive counterpart requirements from the movement SLICES.
+
+    These requirements used to be manufactured from a "to"/"from" preposition
+    followed by a name token anywhere in the changes text, combined with a
+    loose token overlap between the text and a row name. Both halves are now
+    structural: the row is an exact state row and BOTH endpoints come from the
+    slice, so "I give the trap to Kira" -- where the giver is also the actor
+    -- still owes its receiving half.
+
+    FAILS CLOSED. An action that actually moves a resource with no
+    state-backed claim behind it is refused here rather than committed as a
+    one-sided loss.
+    """
+    from utils.inventory_resolution import (
+        movement_claim_fault,
+        unverified_movement_refusal,
+    )
+
     requirements = []
     for item in prepared:
-        incoming_names = _attributed_party_names(
-            item.changes, "from", item.plan.character_name, party
-        )
-        outgoing_names = _attributed_party_names(
-            item.changes, "to", item.plan.character_name, party
-        )
+        moves_resources = _item_moves_resources(item)
+        if moves_resources:
+            fault = movement_claim_fault(resolution, item.changes)
+            if fault:
+                raise CharacterTransferError(unverified_movement_refusal(fault))
+        pairs = _resolved_transfer_pairs(item, party, resolution)
+        if not pairs:
+            continue
+        actor_key = _normalized_name(item.plan.character_name)
         resource_deltas = list(concrete_asset_deltas(item.plan))
         resource_deltas.extend(
             AssetDelta("currency", denomination, quantity, "currency")
@@ -423,27 +420,31 @@ def _party_attributed_requirements(
         for delta in resource_deltas:
             if delta.family == "currency" and delta.name == "currency":
                 continue
-            if not _changes_mention_resource(
-                item.changes, delta.family, delta.name
-            ):
-                continue
-            if delta.quantity > 0:
-                for source_name in incoming_names:
+            for pair in pairs:
+                if pair["family"] != delta.family or pair["name"] != delta.name:
+                    continue
+                if delta.quantity > 0 and actor_key == _normalized_name(
+                    pair["recipient"]
+                ):
+                    # This sheet gained the row; its state holder must lose it.
                     requirements.append(
                         _PartyAttributedRequirement(
                             item.index,
-                            source_name,
+                            pair["source"],
                             delta.family,
                             delta.name,
                             -delta.quantity,
                         )
                     )
-            elif delta.quantity < 0:
-                for recipient_name in outgoing_names:
+                elif delta.quantity < 0 and actor_key == _normalized_name(
+                    pair["source"]
+                ):
+                    # This sheet is the state holder and gave the row up; the
+                    # resolved actor must receive exactly that much.
                     requirements.append(
                         _PartyAttributedRequirement(
                             item.index,
-                            recipient_name,
+                            pair["recipient"],
                             delta.family,
                             delta.name,
                             -delta.quantity,
@@ -481,10 +482,13 @@ def _actor_resource_delta(
 def _missing_party_attributed_requirements(
     prepared: Sequence[PreparedCharacterAction],
     party: Mapping[str, Any],
+    resolution=None,
 ) -> Tuple[_PartyAttributedRequirement, ...]:
     return tuple(
         requirement
-        for requirement in _party_attributed_requirements(prepared, party)
+        for requirement in _party_attributed_requirements(
+            prepared, party, resolution
+        )
         if _actor_resource_delta(
             prepared,
             requirement.target_name,
@@ -789,8 +793,9 @@ def _overlay_negative_party_counterparts(
 def _repair_party_attributed_requirements(
     prepared: Sequence[PreparedCharacterAction],
     party: Mapping[str, Any],
+    resolution=None,
 ) -> Tuple[PreparedCharacterAction, ...]:
-    missing = _missing_party_attributed_requirements(prepared, party)
+    missing = _missing_party_attributed_requirements(prepared, party, resolution)
     if not missing:
         return tuple(prepared)
 
@@ -811,12 +816,19 @@ def _repair_party_attributed_requirements(
             == _normalized_name(target_name)
         ]
         if candidates:
+            from utils.inventory_resolution import (
+                facts_for,
+                slice_mentions_identity,
+            )
+
             resource_matched = [
                 item
                 for item in candidates
                 if any(
-                    _changes_mention_resource(
-                        item.changes, requirement.family, requirement.name
+                    slice_mentions_identity(
+                        facts_for(resolution, item.changes),
+                        requirement.family,
+                        requirement.name,
                     )
                     for requirement in requirements
                 )
@@ -944,26 +956,23 @@ def _with_party_currency_aggregate_advisory(
     return tuple(changed)
 
 
-def _resource_tokens(value: Any) -> set:
-    tokens = set()
-    for token in re.findall(r"[a-z0-9]+", str(value).casefold()):
-        if len(token) < 3 or token in _RESOURCE_TOKEN_STOPWORDS:
-            continue
-        tokens.add(token)
-        if len(token) > 3 and token.endswith("s"):
-            tokens.add(token[:-1])
-    return tokens
-
-
-def _changes_mention_resource(
+def _slice_names_resource(
+    resolution,
     changes: str,
     family: str,
     name: str,
 ) -> bool:
-    text = changes.casefold()
-    if family == "currency":
-        return name.casefold() in text
-    return bool(_resource_tokens(name) & _resource_tokens(text))
+    """True when this action's SLICES move one exact state identity.
+
+    This replaced a token-overlap test between the sentence and the row name
+    (plus a bare substring test for coin names). Token overlap answered a
+    semantic question with a shape heuristic: it matched "leather" in "leather
+    boots" against "leather armor", and missed every synonym. Identity now
+    comes from the slice, so there is nothing to miss and nothing to confuse.
+    """
+    from utils.inventory_resolution import facts_for, slice_mentions_identity
+
+    return slice_mentions_identity(facts_for(resolution, changes), family, name)
 
 
 def _exact_delta_row(
@@ -1017,8 +1026,13 @@ def _row_quantity_for_name(
 
 def _participant_scoped_corrections(
     prepared: Sequence[PreparedCharacterAction],
+    resolution=None,
 ) -> Dict[int, str]:
-    """Build actor-local correction facts without broadcasting other finals."""
+    """Build actor-local correction facts without broadcasting other finals.
+
+    Which resource each action is about comes from its SLICES, never from
+    words shared between the sentence and a row name.
+    """
     prepared = tuple(prepared)
     relevant_deltas = {}
     for item in prepared:
@@ -1026,7 +1040,8 @@ def _participant_scoped_corrections(
             delta
             for delta in concrete_asset_deltas(item.plan)
             if delta.family != "currency"
-            and _changes_mention_resource(
+            and _slice_names_resource(
+                resolution,
                 item.changes,
                 delta.family,
                 delta.name,
@@ -1047,7 +1062,8 @@ def _participant_scoped_corrections(
                     receiver.plan.canonical_path == source.plan.canonical_path
                 ):
                     continue
-                if not _changes_mention_resource(
+                if not _slice_names_resource(
+                    resolution,
                     receiver.changes,
                     source_delta.family,
                     source_delta.name,
@@ -1056,7 +1072,8 @@ def _participant_scoped_corrections(
                 if any(
                     delta.quantity > 0
                     and delta.family == source_delta.family
-                    and _changes_mention_resource(
+                    and _slice_names_resource(
+                        resolution,
                         receiver.changes,
                         delta.family,
                         delta.name,
@@ -1086,7 +1103,8 @@ def _participant_scoped_corrections(
                 f"currency.{denomination}",
             )
             delta = after - before
-            if not delta or not _changes_mention_resource(
+            if not delta or not _slice_names_resource(
+                resolution,
                 item.changes,
                 "currency",
                 denomination,
@@ -1111,7 +1129,8 @@ def _participant_scoped_corrections(
                         if (
                             other_delta.family == delta.family
                             and other_delta.quantity == -delta.quantity
-                            and _changes_mention_resource(
+                            and _slice_names_resource(
+                                resolution,
                                 item.changes,
                                 other_delta.family,
                                 other_delta.name,
@@ -1171,197 +1190,115 @@ def _participant_scoped_corrections(
     return corrections
 
 
+def _signed_resource_delta(
+    item: PreparedCharacterAction,
+    family: str,
+    name: str,
+) -> int:
+    """Return this sheet's concrete signed change for one exact identity."""
+    if family == "currency":
+        return _denomination_deltas(item).get(name, 0)
+    return sum(
+        delta.quantity
+        for delta in concrete_asset_deltas(item.plan)
+        if delta.family == family and delta.name == name
+    )
+
+
 def _explicit_removal_contract_mismatch(
     prepared: Sequence[PreparedCharacterAction],
+    resolution=None,
 ) -> Optional[str]:
-    """Check only explicit numbered currency/ammunition removal statements."""
-    currency_pattern = re.compile(
-        r"\b(?:removed|used|expended)\s+(\d+)\s+"
-        r"(gold|silver|copper)(?:\s+(?:coin|coins|piece|pieces))?\b",
-        re.IGNORECASE,
-    )
-    for item in prepared:
-        text = item.changes
-        stated_currency: Dict[str, int] = {}
-        for amount, denomination in currency_pattern.findall(text):
-            key = denomination.casefold()
-            stated_currency[key] = stated_currency.get(key, 0) + int(amount)
-        before_currency = item.plan.pre_image.get("currency") or {}
-        after_currency = item.plan.post_image.get("currency") or {}
-        for denomination, stated in sorted(stated_currency.items()):
-            before = _strict_nonnegative_int(
-                before_currency.get(denomination, 0),
-                f"currency.{denomination}",
-            )
-            after = _strict_nonnegative_int(
-                after_currency.get(denomination, 0),
-                f"currency.{denomination}",
-            )
-            actual = before - after
-            if actual != stated:
-                return (
-                    f"stated removal of {stated} {denomination} produced "
-                    f"a concrete removal of {actual} {denomination}"
-                )
+    """Compare each sheet's stated OUTGOING slice amounts to its real deltas.
 
-        before_ammo = _rows_by_name(item.plan.pre_image, "ammunition", "name")
-        after_ammo = _rows_by_name(item.plan.post_image, "ammunition", "name")
-        for name, before_row in sorted(before_ammo.items()):
-            variants = {name}
-            if name.endswith("s") and len(name) > 1:
-                variants.add(name[:-1])
-            ammo_pattern = re.compile(
-                r"\b(?:removed|used|expended)\s+(\d+)\s+(?:"
-                + "|".join(
-                    re.escape(value) for value in sorted(variants, key=len, reverse=True)
-                )
-                + r")\b",
-                re.IGNORECASE,
-            )
-            stated_amounts = [int(value) for value in ammo_pattern.findall(text)]
-            if not stated_amounts:
-                continue
-            stated = sum(stated_amounts)
-            before = _strict_nonnegative_int(
-                before_row.get("quantity", 1),
-                f"ammunition.{name}.quantity",
-            )
-            after_row = after_ammo.get(name)
-            after = (
-                _strict_nonnegative_int(
-                    after_row.get("quantity", 1),
-                    f"ammunition.{name}.quantity",
-                )
-                if after_row
-                else 0
-            )
-            actual = before - after
+    The stated amount is ``stated_quantity`` on a slice -- what the mapper
+    reports the prose asserted. It is not lifted out of the sentence by a
+    pattern here: the verb list and its unit-word patches could not enumerate
+    the ways a removal is phrased, and a regex sitting beside the resolution
+    pass is worse than either alone because it re-imports a phrased number the
+    resolution already rejected.
+
+    ITEM-PERMUTATION / UNDERFLOW GUARD: an identity whose phrased amount
+    exceeds what state holds contributes no stated number at all (it is
+    dropped inside ``stated_slice_quantities``), so a phrased quantity can
+    never become a required concrete delta.
+    """
+    from utils.inventory_resolution import facts_for, stated_slice_quantities
+
+    for item in prepared:
+        facts = facts_for(resolution, item.changes)
+        removals, _acquisitions = stated_slice_quantities(
+            facts,
+            item.plan.character_name,
+        )
+        for (family, name), stated in sorted(removals.items()):
+            actual = -_signed_resource_delta(item, family, name)
             if actual != stated:
                 return (
-                    f"stated removal of {stated} {name} produced a concrete "
-                    f"removal of {actual} {name}"
+                    f"stated removal of {stated} {name} produced "
+                    f"a concrete removal of {actual} {name}"
                 )
     return None
 
 
-_ACQUISITION_VERBS = r"(?:added|received|gained|acquired|collected|earned|obtained)"
-_NON_QUANTITY_UNIT_WORDS = frozenset(
-    {
-        "centimeter",
-        "centimeters",
-        "day",
-        "days",
-        "feet",
-        "foot",
-        "ft",
-        "gallon",
-        "gallons",
-        "hour",
-        "hours",
-        "inch",
-        "inches",
-        "lb",
-        "lbs",
-        "liter",
-        "liters",
-        "meter",
-        "meters",
-        "mile",
-        "miles",
-        "minute",
-        "minutes",
-        "ounce",
-        "ounces",
-        "pound",
-        "pounds",
-        "yard",
-        "yards",
-    }
-)
-_COMMERCE_DISPOSAL_VERBS = r"(?:removed|sold|gave|handed|traded|transferred)"
-_COMMERCE_GENERIC_TOKENS = {
-    "armor",
-    "charge",
-    "charges",
-    "equipment",
-    "experience",
-    "gear",
-    "hp",
-    "inventory",
-    "item",
-    "items",
-    "level",
-    "levels",
-    "new",
-    "points",
-    "slot",
-    "slots",
-    "use",
-    "uses",
-    "weapon",
-    "xp",
-}
-_AMMUNITION_TOKENS = {
-    "arrow",
-    "arrows",
-    "bolt",
-    "bolts",
-    "bullet",
-    "bullets",
-    "shot",
-}
+def _resolved_traded_goods(facts) -> tuple:
+    """Return the non-currency things a resolved trade names.
 
+    A purchase legitimately names goods the sheet does not hold yet, so an
+    unresolved reference still counts as a good; only currency is excluded.
+    Names come from state whenever state has the row.
+    """
+    from utils.inventory_resolution import resource_facts
 
-def _commerce_item_statements(text: str):
-    verbs = rf"(?P<verb>{_ACQUISITION_VERBS}|{_COMMERCE_DISPOSAL_VERBS})"
-    other_statement = (
-        rf"\s+and\s+(?:{_ACQUISITION_VERBS}|{_COMMERCE_DISPOSAL_VERBS})"
-        r"\s+\d+\s+(?:gold|silver|copper)\b"
-    )
-    pattern = re.compile(
-        rf"\b{verbs}\s+(?P<quantity>\d+)\s+(?P<descriptor>.+?)"
-        rf"(?={other_statement}|[.;\n]|$)",
-        re.IGNORECASE,
-    )
-    statements = []
-    for match in pattern.finditer(text):
-        descriptor = match.group("descriptor").strip(" ,")
-        descriptor = re.sub(
-            r"\s+(?:to|from|into)\s+(?:the\s+)?inventory$",
-            "",
-            descriptor,
-            flags=re.IGNORECASE,
-        ).strip(" ,")
-        tokens = _resource_tokens(descriptor) - _COMMERCE_GENERIC_TOKENS
-        if not descriptor or not tokens or tokens <= {
-            "gold",
-            "silver",
-            "copper",
-            "coin",
-            "piece",
-        }:
+    goods = []
+    for fact in resource_facts(facts):
+        if fact.get("family") == "currency":
             continue
-        verb = match.group("verb").casefold()
-        direction = "in" if re.fullmatch(
-            _ACQUISITION_VERBS,
-            verb,
-            re.IGNORECASE,
-        ) else "out"
-        statements.append((direction, int(match.group("quantity")), descriptor))
-    return tuple(statements)
-
-
-def _commerce_name_matches(descriptor: str, row_name: str) -> bool:
-    stated = _resource_tokens(descriptor) - _COMMERCE_GENERIC_TOKENS
-    concrete = _resource_tokens(row_name) - _COMMERCE_GENERIC_TOKENS
-    return bool(stated & concrete)
+        name = fact.get("resolved_name") or fact.get("claimed_name") or fact.get(
+            "reference"
+        )
+        if not isinstance(name, str) or not name.strip():
+            continue
+        goods.append(
+            {
+                "family": fact.get("family"),
+                "name": name,
+                "found": bool(fact.get("found")),
+                # Quantity ALWAYS comes from state; the phrased number is
+                # never adopted here or anywhere downstream.
+                "available_quantity": fact.get("available_quantity"),
+            }
+        )
+    return tuple(goods)
 
 
 def _commerce_row_contract_mismatch(
     prepared: Sequence[PreparedCharacterAction],
     effective: Mapping[Tuple[str, str, str], int],
+    resolution=None,
 ) -> Optional[str]:
-    """Require a concrete row on paid acquisitions and compensated disposals."""
+    """Require a concrete row on a resolved purchase or sale.
+
+    The old gate only fired when the changes text used one of seven
+    acquisition verbs, so "purchased", "bought", and "paid" walked straight
+    past it and the currency left the sheet with nothing arriving. The trade
+    is now classified by T109 intent, which covers every phrasing, and the
+    goods are the resolved references rather than a token soup of the
+    sentence. No stated number is used: only the direction of the movement is
+    contractual, because a quantity taken from phrasing is exactly the
+    permutation this system refuses to commit.
+
+    FAILS CLOSED. Coin leaving or arriving on a sheet with no state-backed
+    claim behind it is refused; it is never waved through because the
+    classification happened to be unavailable.
+    """
+    from utils.inventory_resolution import (
+        facts_for,
+        movement_claim_fault,
+        resolved_intent,
+        unverified_movement_refusal,
+    )
+
     by_path: Dict[str, List[PreparedCharacterAction]] = {}
     for item in prepared:
         by_path.setdefault(item.plan.canonical_path, []).append(item)
@@ -1373,66 +1310,70 @@ def _commerce_row_contract_mismatch(
         )
         if not currency_delta:
             continue
-        statements = tuple(
-            statement
-            for item in items
-            for statement in _commerce_item_statements(item.changes)
-        )
-        for direction, quantity, descriptor in statements:
-            expected_sign = 1 if direction == "in" else -1
-            if (direction == "in" and currency_delta >= 0) or (
-                direction == "out" and currency_delta <= 0
-            ):
+        for item in items:
+            fault = movement_claim_fault(resolution, item.changes)
+            if fault:
+                return unverified_movement_refusal(fault)
+            facts = facts_for(resolution, item.changes)
+            intent = resolved_intent(facts)
+            if intent == "purchase" and currency_delta < 0:
+                expected_sign = 1
+                label = "acquisition"
+            elif intent == "sell" and currency_delta > 0:
+                expected_sign = -1
+                label = "disposal"
+            else:
                 continue
-            matching = [
+            goods = _resolved_traded_goods(facts)
+            if not goods:
+                continue
+            moved = [
                 (family, name, delta)
                 for (delta_path, family, name), delta in effective.items()
                 if delta_path == path
                 and family in {"equipment", "ammunition"}
                 and delta * expected_sign > 0
-                and _commerce_name_matches(descriptor, name)
             ]
-            if matching and sum(abs(delta) for _family, _name, delta in matching) >= quantity:
+            named = {
+                (good["family"], _normalized_name(good["name"]))
+                for good in goods
+                if good["found"] and good["family"] in {"equipment", "ammunition"}
+            }
+            if named:
+                # State knows this row, so the concrete movement must be that
+                # exact row and not some other one.
+                if any((family, name) in named for family, name, _delta in moved):
+                    continue
+            elif moved:
+                # A newly purchased row has no state identity to match yet;
+                # any concrete non-currency movement in the right direction
+                # satisfies the contract.
                 continue
 
-            family = (
-                "ammunition"
-                if _resource_tokens(descriptor) & _AMMUNITION_TOKENS
-                else "equipment"
+            good = next(
+                (
+                    value
+                    for value in goods
+                    if value["family"] in {"equipment", "ammunition"}
+                ),
+                goods[0],
             )
-            canonical_name = descriptor
-            current = 0
-            before = items[0].plan.pre_image
-            field, name_field = (
-                ("equipment", "item_name")
-                if family == "equipment"
-                else ("ammunition", "name")
-            )
-            existing = [
-                row
-                for row in before.get(field) or []
-                if isinstance(row, dict)
-                and _commerce_name_matches(
-                    descriptor,
-                    str(row.get(name_field) or ""),
-                )
-            ]
-            if len(existing) == 1:
-                canonical_name = str(existing[0].get(name_field))
-                current = _strict_nonnegative_int(
-                    existing[0].get("quantity", 1),
-                    f"{field}.{_normalized_name(canonical_name)}.quantity",
-                )
-            signed_delta = quantity * expected_sign
+            family = good["family"] or "equipment"
+            name_field = "item_name" if family == "equipment" else "name"
+            canonical_name = good["name"]
+            current = good["available_quantity"]
+            if not isinstance(current, int):
+                current = 0
+            signed_delta = expected_sign
             return (
-                f"commerce {('acquisition' if direction == 'in' else 'disposal')} "
-                f"of stated item {json.dumps(descriptor, ensure_ascii=False)} "
-                "has no matching concrete resource row; required family "
+                f"commerce {label} of resolved item "
+                f"{json.dumps(canonical_name, ensure_ascii=False)} has no "
+                "matching concrete resource row; required family "
                 f"{family}, canonical {name_field}="
                 f"{json.dumps(canonical_name, ensure_ascii=False)}, required "
-                f"signed row delta {signed_delta:+d}, current {current}, "
-                f"required final {current + signed_delta}. Description-only "
-                "edits do not count as resource movement"
+                f"signed row delta {signed_delta:+d} or more, state quantity "
+                f"{current}. Description-only edits do not count as resource "
+                "movement"
             )
     return None
 
@@ -1531,92 +1472,52 @@ def _explicit_acquisition_contract_mismatch(
     prepared: Sequence[PreparedCharacterAction],
     *,
     check_asset_rows: bool = True,
+    resolution=None,
 ) -> Optional[str]:
-    """Compare explicit positive action facts to the batch's merged finals."""
+    """Compare explicit positive action facts to the batch's merged finals.
+
+    ITEM-PERMUTATION GUARD: identities the resolution flagged as contradicting
+    state contribute no stated number, so a phrased quantity can never become
+    the required concrete delta.
+    """
+    from utils.inventory_resolution import facts_for, stated_slice_quantities
+
     try:
         effective = _effective_same_character_asset_deltas(prepared)
     except CharacterTransferError as exc:
         return str(exc)
 
-    commerce_mismatch = _commerce_row_contract_mismatch(prepared, effective)
+    commerce_mismatch = _commerce_row_contract_mismatch(
+        prepared,
+        effective,
+        resolution,
+    )
     if commerce_mismatch:
         return commerce_mismatch
 
+    # Stated INCOMING amounts come from the slices, keyed by the exact state
+    # identity the slice names and the sheet it arrives on. No verb list, no
+    # plural guessing, and no unit-word patch list is involved.
     stated: Dict[Tuple[str, str, str], int] = {}
-    currency_pattern = re.compile(
-        rf"\b{_ACQUISITION_VERBS}\s+(\d+)\s+"
-        r"(gold|silver|copper)(?:\s+(?:coin|coins|piece|pieces))?\b",
-        re.IGNORECASE,
-    )
-    by_path: Dict[str, List[PreparedCharacterAction]] = {}
     for item in prepared:
-        by_path.setdefault(item.plan.canonical_path, []).append(item)
-        for amount, denomination in currency_pattern.findall(item.changes):
-            key = (item.plan.canonical_path, "currency", denomination.casefold())
-            stated[key] = stated.get(key, 0) + int(amount)
-
-    for path, items in by_path.items():
-        positive_rows = {
-            key: quantity
-            for key, quantity in effective.items()
-            if check_asset_rows
-            and key[0] == path
-            and key[1] != "currency"
-            and quantity > 0
-        }
-        for item in items:
-            exact_matched = set()
-            for key in positive_rows:
-                name = key[2]
-                variants = {name}
-                if name.endswith("s") and len(name) > 1:
-                    variants.add(name[:-1])
-                pattern = re.compile(
-                    rf"\b{_ACQUISITION_VERBS}\s+(\d+)\s+(?:"
-                    + "|".join(
-                        re.escape(value)
-                        for value in sorted(variants, key=len, reverse=True)
-                    )
-                    + r")(?=\s|[.,;]|$)",
-                    re.IGNORECASE,
-                )
-                amounts = [int(value) for value in pattern.findall(item.changes)]
-                if amounts:
-                    stated[key] = stated.get(key, 0) + sum(amounts)
-                    exact_matched.add(key)
-
-            # If there is exactly one positive non-currency result, an explicit
-            # numbered acquisition sentence can identify it without fuzzy-name
-            # matching. Sentences that also state currency stay unclassified;
-            # the bounded planner owns those multi-asset shapes in Section D.
-            unmatched = [key for key in positive_rows if key not in exact_matched]
-            if len(positive_rows) == 1 and len(unmatched) == 1:
-                generic = re.compile(
-                    rf"\b{_ACQUISITION_VERBS}\s+(\d+)\s+([^.;\n]+)",
-                    re.IGNORECASE,
-                )
-                generic_matches = generic.findall(item.changes)
-                if len(generic_matches) == 1 and not currency_pattern.search(
-                    item.changes
-                ):
-                    descriptor = generic_matches[0][1].strip().casefold()
-                    first_word = re.match(r"[a-z]+", descriptor)
-                    if not first_word or first_word.group(0) not in (
-                        _NON_QUANTITY_UNIT_WORDS
-                    ):
-                        key = unmatched[0]
-                        stated[key] = stated.get(key, 0) + int(
-                            generic_matches[0][0]
-                        )
+        facts = facts_for(resolution, item.changes)
+        _removals, acquisitions = stated_slice_quantities(
+            facts,
+            item.plan.character_name,
+        )
+        for (family, name), quantity in acquisitions.items():
+            if family != "currency" and not check_asset_rows:
+                continue
+            key = (item.plan.canonical_path, family, name)
+            stated[key] = stated.get(key, 0) + quantity
 
     for key, expected in sorted(stated.items()):
         actual = effective.get(key, 0)
         if actual != expected:
             _path, family, name = key
-            label = name if family != "equipment" else f"{name}"
             return (
-                f"stated acquisition of {expected} {label} produced a "
-                f"concrete acquisition of {actual} {label}"
+                f"stated acquisition of {expected} {name} produced a "
+                f"concrete acquisition of {actual} {name}"
             )
     return None
 
@@ -1963,6 +1864,7 @@ def commit_prepared_character_actions(
     enable_resource_planning: bool = False,
     resource_intent: str = "",
     resource_planner_call_budget=None,
+    resolution=None,
 ) -> Dict[str, Any]:
     """Validate a prepared subset and optionally commit it.
 
@@ -2002,13 +1904,18 @@ def commit_prepared_character_actions(
             prepared = _repair_party_attributed_requirements(
                 prepared,
                 party_tracker_data,
+                resolution,
             )
         failed_stage = "explicit_stated_value_contract"
-        stated_value_mismatch = _explicit_removal_contract_mismatch(prepared)
+        stated_value_mismatch = _explicit_removal_contract_mismatch(
+            prepared,
+            resolution,
+        )
         if not stated_value_mismatch:
             stated_value_mismatch = _explicit_acquisition_contract_mismatch(
                 prepared,
                 check_asset_rows=check_asset_stated_values,
+                resolution=resolution,
             )
         if stated_value_mismatch:
             correction = (
@@ -2017,10 +1924,14 @@ def commit_prepared_character_actions(
                 "duplicate, clamp, floor, partially apply, or substitute "
                 "another resource"
             )
+            from utils.inventory_resolution import facts_for, resolved_intent
+
+            # Commerce ownership is the resolved intent, not a verb list.
             commerce_indices = {
                 item.index
                 for item in prepared
-                if _commerce_item_statements(item.changes)
+                if resolved_intent(facts_for(resolution, item.changes))
+                in {"purchase", "sell"}
             }
             if stated_value_mismatch.startswith("commerce "):
                 corrected = _reprepare_selected_actions(
@@ -2036,13 +1947,15 @@ def commit_prepared_character_actions(
                     correction=correction,
                 )
             remaining_stated_value_mismatch = _explicit_removal_contract_mismatch(
-                corrected
+                corrected,
+                resolution,
             )
             if not remaining_stated_value_mismatch:
                 remaining_stated_value_mismatch = (
                     _explicit_acquisition_contract_mismatch(
                         corrected,
                         check_asset_rows=check_asset_stated_values,
+                        resolution=resolution,
                     )
                 )
             if remaining_stated_value_mismatch:
@@ -2059,7 +1972,7 @@ def commit_prepared_character_actions(
                 raise CharacterTransferError(
                     f"transfer correction failed safely: {shape_mismatch}"
                 )
-            correction = _participant_scoped_corrections(prepared)
+            correction = _participant_scoped_corrections(prepared, resolution)
             corrected = _prepare_actions(
                 tuple((item.index, item.action) for item in prepared),
                 party_tracker_data,
@@ -2131,7 +2044,7 @@ def commit_prepared_character_actions(
                 if set(indices).issubset(shape_corrected_indices):
                     corrected = component
                 else:
-                    correction = _participant_scoped_corrections(component)
+                    correction = _participant_scoped_corrections(component, resolution)
                     corrected = _prepare_actions(
                         tuple((item.index, item.action) for item in component),
                         party_tracker_data,
@@ -2234,7 +2147,7 @@ def commit_prepared_character_actions(
                             raise CharacterTransferError(
                                 "stale transfer still violates conservation"
                             )
-                        correction = _participant_scoped_corrections(refreshed)
+                        correction = _participant_scoped_corrections(refreshed, resolution)
                         refreshed = _prepare_actions(
                             tuple((item.index, item.action) for item in unit),
                             party_tracker_data,
@@ -2284,6 +2197,7 @@ def prepare_character_response_actions(
     *,
     resource_intent: str = "",
     resource_planner_call_budget=None,
+    resolution=None,
 ) -> Dict[str, Any]:
     """Return transfer-validated response images without changing files."""
     return commit_prepared_character_actions(
@@ -2294,6 +2208,7 @@ def prepare_character_response_actions(
         enable_resource_planning=True,
         resource_intent=resource_intent,
         resource_planner_call_budget=resource_planner_call_budget,
+        resolution=resolution,
     )
 
 

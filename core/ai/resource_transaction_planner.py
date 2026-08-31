@@ -49,8 +49,8 @@ Use confidence high only when the classification follows directly from the
 supplied facts; otherwise use uncertain so the transaction fails safely."""
 
 
-def _provider_config() -> Dict[str, Any]:
-    provider = model_config.get_provider()
+def _provider_config(provider: str) -> Dict[str, Any]:
+    """Select the config dict for one already-pinned provider snapshot."""
     if provider == "openai":
         return config.RESOURCE_PLAN_T105_GPT54MINI_LOW
     if provider == "gemini":
@@ -69,7 +69,10 @@ def request_transaction_plan(
     payload = {"transaction": packet}
     if correction:
         payload["previous_validation_error"] = str(correction)[:1000]
-    provider_config = _provider_config()
+    # Snapshot the provider ONCE: the config dict and the transport must
+    # describe the same provider even if the UI switches mid-turn.
+    provider = model_config.get_provider()
+    provider_config = _provider_config(provider)
     request_options = {
         key: value for key, value in provider_config.items() if key != "model"
     }
@@ -77,7 +80,7 @@ def request_transaction_plan(
         request_options["temperature"] = 0.1
     response = capture_and_fanout(
         "T105", api_client.create_completion,
-        _request_provider=model_config.get_provider(),
+        _request_provider=provider,
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {

@@ -1071,6 +1071,138 @@ RESOURCE_PLAN_T105_COMPLEXITY_THRESHOLDS = {
     "lmstudio": 1,
 }
 
+# --- T109: Inventory reference resolution against real state (full tier) ---
+# Resolves natural-language people/item/container references in an accepted DM
+# response against the supplied roster, resource rows, and containers. The model
+# resolves references and classifies intent only; code owns every quantity,
+# identity, and write (see utils/inventory_resolution.py).
+# Owner-decided, measured: gpt-5.6-terra scored 30/30 on a 10-case resolution
+# benchmark across 3 repetitions, p50 1.79s. No temperature is set at this
+# callsite -- the benchmarked configuration is the bare model.
+_T109_MOVEMENT_ENDPOINT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": ["character", "container", "external"],
+        },
+        "id": {"type": ["string", "null"]},
+    },
+    "required": ["kind", "id"],
+}
+_T109_INVENTORY_RESOLUTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "actor": {
+            "type": "object",
+            "properties": {
+                "resolved": {"type": ["string", "null"]},
+                "confidence": {"type": "string", "enum": ["high", "low"]},
+            },
+            "required": ["resolved", "confidence"],
+        },
+        "resources": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "reference": {"type": "string"},
+                    "resolved_name": {"type": ["string", "null"]},
+                    "family": {
+                        "type": ["string", "null"],
+                        "enum": ["equipment", "ammunition", "currency", None],
+                    },
+                    "owner": {"type": ["string", "null"]},
+                    "available_quantity": {"type": ["integer", "null"]},
+                    "found": {"type": "boolean"},
+                    "discrepancy": {"type": ["string", "null"]},
+                },
+                "required": [
+                    "reference",
+                    "resolved_name",
+                    "family",
+                    "owner",
+                    "available_quantity",
+                    "found",
+                    "discrepancy",
+                ],
+            },
+        },
+        # SLICE half of the contract: atomic movements with BOTH endpoints.
+        # A movement with only one end is what commits a one-sided loss, so
+        # source and destination are both required here and again in code.
+        "movements": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "reference": {"type": "string"},
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "give",
+                            "store",
+                            "retrieve",
+                            "purchase",
+                            "sell",
+                            "consume",
+                            "discard",
+                        ],
+                    },
+                    "source": _T109_MOVEMENT_ENDPOINT_SCHEMA,
+                    "destination": _T109_MOVEMENT_ENDPOINT_SCHEMA,
+                    "family": {
+                        "type": "string",
+                        "enum": ["equipment", "ammunition", "currency"],
+                    },
+                    "resolved_name": {"type": "string"},
+                    "stated_quantity": {"type": ["integer", "null"]},
+                },
+                "required": [
+                    "reference",
+                    "kind",
+                    "source",
+                    "destination",
+                    "family",
+                    "resolved_name",
+                    "stated_quantity",
+                ],
+            },
+        },
+        "intent": {
+            "type": "string",
+            "enum": [
+                "store",
+                "retrieve",
+                "give",
+                "consume",
+                "purchase",
+                "sell",
+                "view",
+                "attack",
+                "other",
+            ],
+        },
+        "blocking_problem": {"type": ["string", "null"]},
+    },
+    "required": ["actor", "resources", "movements", "intent", "blocking_problem"],
+}
+INVENTORY_RESOLVE_T109_TERRA = {"model": "gpt-5.6-terra"}
+INVENTORY_RESOLVE_T109_GEMINI_PRO_LOW = {
+    "model": "gemini-3.1-pro-preview",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(_T109_INVENTORY_RESOLUTION_SCHEMA),
+}
+# Legacy provider intentionally uses the measured winner: this contract is new,
+# has no gpt-4.1 baseline to preserve, and mis-resolution corrupts inventory.
+INVENTORY_RESOLVE_T109_LEGACY = {"model": "gpt-5.6-terra"}
+INVENTORY_RESOLVE_T109_LMSTUDIO = {
+    "model": "local-model",
+    "response_format": None,
+}
+
 # --- T015/T016/T018/T019: Adventure Summaries (location updates, chronicles, journals) ---
 # 12/12 synthetic tests passed (4 scenarios x 3 models). Mini-tier (ADVENTURE_SUMMARY_MODEL).
 # T015: location JSON update (temp=0.8). T016: adventure chronicle (temp=0.8, plain text).
@@ -1616,6 +1748,7 @@ TASK_CAPTURE_CONFIGS = {
     "T105": ("RESOURCE_PLAN_T105_GPT54MINI_LOW", "RESOURCE_PLAN_T105_GEMINI_FLASH_LOW"),
     "T106": ("STORAGE_COMPLETENESS_T106_GPT54MINI_NONE", "STORAGE_COMPLETENESS_T106_GEMINI_FLASHLITE_LOW"),
     "T108": ("RESOURCE_COMMERCE_T108_GPT54MINI_LOW", "RESOURCE_COMMERCE_T108_GEMINI_FLASH_LOW"),
+    "T109": ("INVENTORY_RESOLVE_T109_TERRA", "INVENTORY_RESOLVE_T109_GEMINI_PRO_LOW"),
 
     # Adventure summaries (T015, T016, T018, T019)
     "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),

@@ -2930,8 +2930,22 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 
             debug(f"AI_CALL: Processing storage request for {character_name}: '{storage_description}'", category="storage_operations")
             
-            # Process natural language description into operation
-            processor_result = process_storage_request(storage_description, character_name)
+            # Process natural language description into operation.
+            # T109 resolves who acts and which real rows and container the
+            # description names, so a request aimed at another present party
+            # member lands on that member's sheet instead of being refused.
+            from core.managers.inventory_resolution_service import (
+                InventoryResolutionService,
+            )
+
+            processor_result = process_storage_request(
+                storage_description,
+                character_name,
+                resolution=InventoryResolutionService(
+                    party_tracker_data,
+                    speaker=character_name,
+                ),
+            )
             
             if not processor_result.get("success"):
                 print(f"ERROR: Storage processor failed: {processor_result.get('error')}")

@@ -882,6 +882,31 @@ class StateTransactionCoordinator:
             raise
         except BaseException as exc:
             if not isinstance(exc, Exception):
+                # KeyboardInterrupt / SystemExit are not Exception, but they
+                # can land between the durable PREPARED record and the
+                # resolved move.  Re-raising without recovery would leave a
+                # half-applied commit plus an active journal that blocks every
+                # later transaction on these participants.  Roll back (or
+                # complete, when the journal already says COMMITTED) under the
+                # participant leases still held by the finally block, then let
+                # the interrupt continue unchanged.
+                if (
+                    journal is not None
+                    and phase is not None
+                    and os.path.isfile(active_path)
+                ):
+                    try:
+                        self._recover_loaded_locked(
+                            journal,
+                            plan.participants,
+                            active_path,
+                            recovered_after_crash=False,
+                        )
+                    except Exception:
+                        # Best effort only: the durable journal survives for
+                        # startup recovery to drain.  The interrupt must not
+                        # be replaced by a recovery failure.
+                        pass
                 raise
             if journal is None or phase is None:
                 raise TransactionError("transaction failed before preparation") from exc

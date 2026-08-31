@@ -4505,9 +4505,18 @@ def process_ai_response(
                 from core.managers.storage_transaction import (
                     process_adjacent_storage_fee_groups,
                 )
+                from core.managers.inventory_resolution_service import (
+                    InventoryResolutionService,
+                )
                 from utils.state_transaction import TransactionStalePlanError
 
                 resource_planner_call_budget = ResourcePlannerCallBudget()
+                # T109: one turn-scoped resolution of what this accepted
+                # response refers to. Every seam below asks it instead of
+                # reading words out of the response.
+                turn_resolution = InventoryResolutionService(
+                    party_tracker_data,
+                )
                 for resource_attempt in range(2):
                     resource_failed_stage = "character_prepare"
                     prepared_characters = prepare_character_actions(
@@ -4520,6 +4529,7 @@ def process_ai_response(
                         indexed_storage,
                         party_tracker_data,
                         purchase_offer_review=currency_offer_review,
+                        resolution=turn_resolution,
                     )
                     if not fee_result.get("success"):
                         result = {
@@ -4549,6 +4559,7 @@ def process_ai_response(
                         resource_planner_call_budget=(
                             resource_planner_call_budget
                         ),
+                        resolution=turn_resolution,
                     )
                     if not character_result.get("success"):
                         result = character_result
@@ -5550,8 +5561,62 @@ def check_all_modules_plot_completion():
     
     return all_modules_data
 
+# Startup recovery for interrupted multi-file state transactions.  A commit
+# that was killed between the durable PREPARED journal and the resolved move
+# leaves an active journal that blocks every later transaction touching those
+# participants.  Draining it once per process, before the first turn, is the
+# only in-product remedy.  Recovery is deterministic file mechanics only - it
+# never calls a model and is never surfaced to the player.
+STATE_TRANSACTION_RESOLVED_RETENTION = 256
+_state_transaction_recovery_done = False
+
+
+def recover_interrupted_state_transactions():
+    """Drain interrupted transaction journals once per process.
+
+    Runs before any turn is processed.  Failures are logged and swallowed:
+    a recovery problem must never keep the game from starting.
+    """
+    global _state_transaction_recovery_done
+    if _state_transaction_recovery_done:
+        return
+    _state_transaction_recovery_done = True
+    try:
+        from utils.state_transaction import StateTransactionCoordinator
+
+        coordinator = StateTransactionCoordinator(workspace_root=".")
+        results = coordinator.recover_all()
+        for result in results:
+            debug(
+                "STARTUP_RECOVERY: transaction %s resolved as %s (%s)"
+                % (
+                    result.transaction_id,
+                    getattr(result.phase, "value", result.phase),
+                    result.failure_code or "no_failure_code",
+                ),
+                category="startup",
+            )
+        if results:
+            info(
+                "STARTUP_RECOVERY: drained %d interrupted state transaction(s)"
+                % len(results),
+                category="startup",
+            )
+        coordinator.prune_resolved(STATE_TRANSACTION_RESOLVED_RETENTION)
+    except Exception as e:
+        warning(
+            "STARTUP_RECOVERY: could not drain interrupted state transactions: %s" % e,
+            category="startup",
+        )
+
+
 def main_game_loop():
     global needs_conversation_history_update, should_inject_creation_prompt
+
+    # Drain any transaction journal left by an interrupted commit BEFORE any
+    # startup repair or turn touches those files.  Web and headless modes call
+    # main_game_loop() directly, so this is the one shared entry point.
+    recover_interrupted_state_transactions()
 
     # Ensure debug directories and files exist
     import os
@@ -7003,11 +7068,26 @@ def main_game_loop():
                         validate_required_storage_sibling,
                     )
 
+                    from core.managers.inventory_resolution_service import (
+                        InventoryResolutionService,
+                    )
+
+                    # T109 decides whether this response describes a storage
+                    # movement; the action predictor's free-text reason is no
+                    # longer searched for the letters "storag". The budget is
+                    # the full per-turn ceiling on purpose: this gate now FAILS
+                    # CLOSED on an unresolved change statement, so a budget too
+                    # small to cover every character action in the response
+                    # would refuse legitimate turns instead of silently
+                    # degrading. Both failure modes are unacceptable; sizing
+                    # the budget for the whole turn avoids them.
                     storage_contract_valid, storage_contract_error = (
                         validate_required_storage_sibling(
                             response_data,
-                            turn_action_prediction,
                             party_tracker_data,
+                            resolution=InventoryResolutionService(
+                                party_tracker_data,
+                            ),
                         )
                     )
                 except Exception as storage_contract_exception:
@@ -7383,6 +7463,11 @@ def main():
     #     except Exception as e:
     #         print(f"[WARNING] Could not create party_tracker.json in root: {e}")
     
+    # Drain interrupted transaction journals before the wizard or any repair
+    # pass writes to character/storage files.  Guarded to run once per process
+    # (main_game_loop() calls it too, for web and headless entry points).
+    recover_interrupted_state_transactions()
+
     # Always initialize game files from BU templates if needed
     from utils.startup_wizard import initialize_game_files_from_bu
     initialize_game_files_from_bu()

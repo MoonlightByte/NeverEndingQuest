@@ -13,6 +13,7 @@ final in-memory images consumed by the atomic response transaction.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import re
 import time
@@ -83,12 +84,14 @@ class ResourceFact:
     canonical_edge: bool = False
     fact_kind: str = "net_final"
     requires_fact_ids: Tuple[str, ...] = ()
+    display_name: str = ""
 
     def packet(self) -> Dict[str, Any]:
         value = {
             "fact_id": self.fact_id,
             "source_action_index": self.action_index,
             "participant": self.participant_id,
+            "participant_name": self.display_name or self.participant_id,
             "family": self.family,
             "name": self.name,
             "direction": self.direction,
@@ -166,6 +169,10 @@ class PlannedResourceTransaction:
 
 _DENOMINATIONS = ("gold", "silver", "copper")
 _RESOURCE_FIELDS = ("equipment", "ammunition", "currency")
+_ROW_FAMILY_FIELDS = (
+    ("equipment", "equipment", "item_name"),
+    ("ammunition", "ammunition", "name"),
+)
 _LEDGER_PARTICIPANT_KINDS = {
     "persistent_character",
     "persistent_storage",
@@ -182,6 +189,30 @@ def _strict_quantity(value: Any, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ResourceTransactionPlanningError(f"{label} is not nonnegative")
     return value
+
+
+def _character_participant_id(path: Any) -> str:
+    """Key one character participant on its canonical file, never on a name.
+
+    The commit layer leases the canonical path, so planning must group facts
+    the same way.  Two model-written spellings that resolve to one file are one
+    participant; the readable name travels beside the identity as metadata.
+    The handle is a digest so no local path reaches a provider packet.
+    """
+    value = str(path or "").strip()
+    if not value:
+        raise ResourceTransactionPlanningError(
+            "character participant has no canonical path"
+        )
+    digest = hashlib.sha256(("character\0%s" % value).encode("utf-8")).hexdigest()
+    return "character:%s" % digest[:20]
+
+
+def _actor_label(fact: "ResourceFact") -> str:
+    """Name one actor for an actor-scoped correction without leaking a path."""
+    if fact.display_name:
+        return "%s (%s)" % (fact.display_name, fact.participant_id)
+    return fact.participant_id
 
 
 def _rows(sheet: Mapping[str, Any], field: str, name_field: str):
@@ -206,7 +237,8 @@ def _character_facts(
     for position, item in enumerate(prepared):
         before = item.plan.pre_image
         after = item.plan.post_image
-        participant = f"character:{item.plan.character_name}"
+        participant = _character_participant_id(item.plan.canonical_path)
+        display_name = str(item.plan.character_name or "")
         before_currency = before.get("currency") or {}
         after_currency = after.get("currency") or {}
         if not isinstance(before_currency, dict) or not isinstance(
@@ -236,6 +268,7 @@ def _character_facts(
                         "in" if delta > 0 else "out",
                         old,
                         item.changes,
+                        display_name=display_name,
                     )
                 )
         for family, field, name_field in (
@@ -278,12 +311,24 @@ def _character_facts(
                         old,
                         item.changes,
                         copy.deepcopy(row),
+                        display_name=display_name,
                     )
                 )
     collapsed = []
     by_resource = {}
     for fact in facts:
-        key = (fact.path, fact.participant_id, fact.family, fact.name)
+        # Echo suppression is scoped to ONE accepted leg.  Every leg is
+        # prepared against the same on-disk snapshot, so two legs that both
+        # spend 5 gold are indistinguishable here; collapsing across legs would
+        # silently drop a real debit.  Cross-leg echoes are adjudicated by the
+        # planner's ``duplicates`` classification, which code then validates.
+        key = (
+            fact.action_index,
+            fact.path,
+            fact.participant_id,
+            fact.family,
+            fact.name,
+        )
         existing = by_resource.get(key)
         if existing is None:
             by_resource[key] = fact
@@ -394,6 +439,7 @@ def _storage_facts(storage_plans: Sequence[StorageMutationPlan]):
                     action,
                     row,
                     fact_kind="operation",
+                    display_name=str(operation.get("storage_id") or "storage"),
                 )
             )
     return tuple(facts)
@@ -410,7 +456,8 @@ def _storage_character_facts(storage_plans: Sequence[StorageMutationPlan]):
             continue
         before = plan.character_before
         after = plan.character_after
-        participant = "character:%s" % (
+        participant = _character_participant_id(plan.character_path)
+        display_name = str(
             plan.operation.get("character") or before.get("name") or "unknown"
         )
         before_currency = before.get("currency") or {}
@@ -442,6 +489,7 @@ def _storage_character_facts(storage_plans: Sequence[StorageMutationPlan]):
                         old,
                         str(plan.operation.get("action") or "storage_mutation"),
                         fact_kind="operation",
+                        display_name=display_name,
                     )
                 )
         for family, field, name_field in (
@@ -484,6 +532,7 @@ def _storage_character_facts(storage_plans: Sequence[StorageMutationPlan]):
                         str(plan.operation.get("action") or "storage_mutation"),
                         copy.deepcopy(row),
                         fact_kind="operation",
+                        display_name=display_name,
                     )
                 )
     return tuple(facts)
@@ -563,6 +612,7 @@ def _add_transient_storage_custody_facts(facts, storage_character_facts):
                 copy.deepcopy(incoming.row),
                 fact_kind="operation",
                 requires_fact_ids=(incoming.fact_id,),
+                display_name=incoming.display_name,
             )
         )
     return tuple(result)
@@ -608,6 +658,7 @@ def _add_transient_store_custody_facts(facts):
                 copy.deepcopy(incoming[0].row),
                 fact_kind="operation",
                 requires_fact_ids=(incoming[0].fact_id,),
+                display_name=incoming[0].display_name,
             )
         )
     return tuple(result)
@@ -706,6 +757,7 @@ def _commerce_packet(
             {
                 "fact_id": fact.fact_id,
                 "participant_id": fact.participant_id,
+                "participant_name": fact.display_name or fact.participant_id,
                 "family": fact.family,
                 "name": fact.name,
                 "signed_quantity": fact.quantity,
@@ -836,6 +888,7 @@ def _validate_and_add_external_contract(
                 "external_commerce_contract",
                 row,
                 fact_kind="operation",
+                display_name=actor.strip(),
             )
         )
         normalized_transfers.append(
@@ -993,6 +1046,12 @@ def storage_overlap_has_complete_planning_packet(
     seam.  It performs no provider call and cannot relax an incomplete packet:
     every exact resource identity must balance across the supplied character
     and storage facts before the overlap may reach the bounded planner.
+
+    Cross-leg echoes are no longer collapsed by code (D-07), so the packet may
+    contain identical same-participant facts that T105 has not classified yet.
+    This routing gate therefore asks whether SOME legal classification balances;
+    it decides routing only, and the planner's actual classification is still
+    validated and still fails closed.
     """
     try:
         _packet, facts = build_resource_transaction_packet(prepared, storage_plans)
@@ -1009,6 +1068,11 @@ def storage_overlap_has_complete_planning_packet(
         if not totals:
             return False
         conserved = not any(quantity != 0 for quantity in totals.values())
+        if not conserved:
+            conserved = not any(
+                quantity != 0
+                for quantity in _duplicate_collapsed_totals(facts).values()
+            )
         external_commerce = _external_commerce_candidate(facts, storage_plans)
         if not conserved and not external_commerce:
             return False
@@ -1019,6 +1083,21 @@ def storage_overlap_has_complete_planning_packet(
         ).requires_planning
     except ResourceTransactionPlanningError:
         return False
+
+
+def _duplicate_collapsed_totals(facts: Sequence[ResourceFact]):
+    """Totals under the most permissive duplicate classification T105 may make.
+
+    Code does not decide here whether two identical same-participant facts are
+    one echo; it only asks whether any legal classification balances, because
+    the caller is a router, not an authority over state.
+    """
+    kept: list = []
+    for fact in facts:
+        if any(_duplicate_equivalent(fact, other) for other in kept):
+            continue
+        kept.append(fact)
+    return _resource_totals(kept)
 
 
 def _duplicate_equivalent(left: ResourceFact, right: ResourceFact) -> bool:
@@ -1260,6 +1339,28 @@ def _validate_plan(value: Any, facts: Sequence[ResourceFact]):
         ):
             raise ResourceTransactionPlanningError(
                 "planner edge directions are invalid"
+            )
+        # Both endpoints are code-verified observations.  ``authority`` may
+        # select which side names the asset, never how much moved: honoring one
+        # model-chosen side would silently rewrite the other participant's
+        # verified delta.  Unequal magnitudes are a real disagreement, so fail
+        # closed with an actor-scoped and action-scoped correction.
+        if abs(source.quantity) != abs(destination.quantity):
+            raise ResourceTransactionPlanningError(
+                "planner edge %s is not conserved: source fact %s for %s moves "
+                "%d %s %s while destination fact %s for %s moves %d; one edge "
+                "moves one identical quantity"
+                % (
+                    edge_id,
+                    source_id,
+                    _actor_label(source),
+                    abs(source.quantity),
+                    source.family,
+                    source.name,
+                    destination_id,
+                    _actor_label(destination),
+                    abs(destination.quantity),
+                )
             )
         edge_members.update((source_id, destination_id))
         edges[edge_id] = (source_id, destination_id, edge["authority"])
@@ -1695,6 +1796,216 @@ def rehearse_resource_operation_ledger(
     )
 
 
+def _row_overrides(pre_row, post_row):
+    """Return one accepted leg's non-quantity edits to one inventory row."""
+    overrides = {}
+    if pre_row is None:
+        for key, value in post_row.items():
+            if key != "quantity":
+                overrides[key] = ("set", copy.deepcopy(value))
+        return overrides
+    for key in set(pre_row) | set(post_row):
+        if key == "quantity":
+            continue
+        if key not in post_row:
+            overrides[key] = ("del", None)
+        elif pre_row.get(key) != post_row[key]:
+            overrides[key] = ("set", copy.deepcopy(post_row[key]))
+    return overrides
+
+
+def _apply_row_overrides(row: Dict[str, Any], overrides) -> None:
+    for key in sorted(overrides):
+        operation, value = overrides[key]
+        if operation == "del":
+            row.pop(key, None)
+        else:
+            row[key] = copy.deepcopy(value)
+
+
+def _accepted_row_overlay(pre_image, accepted_images):
+    """Merge every accepted leg's non-quantity row edits for one participant.
+
+    Code owns quantities and row membership.  Everything else in an accepted
+    row (equipped, charges, notes) was agreed by the response and must survive
+    staging, or the sheet would keep a change's consequences while reverting
+    the change.  Two legs that edit one field differently fail closed instead
+    of letting the last writer win.
+    """
+    overlay = {}
+    for family, field, name_field in _ROW_FAMILY_FIELDS:
+        pre_rows = _rows(pre_image, field, name_field)
+        merged = {}
+        for image in accepted_images:
+            for name, row in _rows(image, field, name_field).items():
+                target = merged.setdefault(name, {})
+                for key, value in _row_overrides(pre_rows.get(name), row).items():
+                    existing = target.get(key)
+                    if existing is not None and existing != value:
+                        raise ResourceTransactionPlanningError(
+                            "accepted %s %s rows disagree on %s" % (family, name, key)
+                        )
+                    target[key] = value
+        overlay[family] = merged
+    return overlay
+
+
+def _seed_accepted_resource_image(pre_image, accepted_images, ledger_owned):
+    """Seed pre-image quantities that carry accepted row content forward."""
+    seed = copy.deepcopy(dict(pre_image))
+    overlay = _accepted_row_overlay(pre_image, accepted_images)
+    introduced = set()
+    for family, field, name_field in _ROW_FAMILY_FIELDS:
+        pre_rows = _rows(pre_image, field, name_field)
+        rows = []
+        for row in seed.get(field) or []:
+            name = normalize_inventory_name(row.get(name_field))
+            if (family, name) not in ledger_owned:
+                _apply_row_overrides(row, overlay[family].get(name, {}))
+            rows.append(row)
+        for name in sorted(overlay[family]):
+            if name in pre_rows or (family, name) in ledger_owned:
+                continue
+            row: Dict[str, Any] = {}
+            _apply_row_overrides(row, overlay[family][name])
+            row["quantity"] = 0
+            rows.append(row)
+            introduced.add((family, name))
+        if rows or isinstance(seed.get(field), list):
+            seed[field] = rows
+    return seed, introduced
+
+
+def _drop_unfilled_accepted_rows(image: Dict[str, Any], introduced) -> None:
+    """Remove seeded rows the ledger never filled, so no empty row persists."""
+    if not introduced:
+        return
+    for family, field, name_field in _ROW_FAMILY_FIELDS:
+        values = image.get(field)
+        if not isinstance(values, list):
+            continue
+        image[field] = [
+            row
+            for row in values
+            if (family, normalize_inventory_name(row.get(name_field)))
+            not in introduced
+            or _strict_quantity(row.get("quantity", 1), f"{field}.quantity") > 0
+        ]
+
+
+def _image_resource_deltas(before, after):
+    """Signed code-owned quantity deltas between two whole character images."""
+    deltas = {}
+    before_currency = before.get("currency") or {}
+    after_currency = after.get("currency") or {}
+    if not isinstance(before_currency, Mapping) or not isinstance(
+        after_currency, Mapping
+    ):
+        raise ResourceTransactionPlanningError("currency is malformed")
+    for denomination in _DENOMINATIONS:
+        old = _strict_quantity(
+            before_currency.get(denomination, 0), f"currency.{denomination}"
+        )
+        new = _strict_quantity(
+            after_currency.get(denomination, 0), f"currency.{denomination}"
+        )
+        if new != old:
+            deltas[("currency", denomination)] = new - old
+    for family, field, name_field in _ROW_FAMILY_FIELDS:
+        old_rows = _rows(before, field, name_field)
+        new_rows = _rows(after, field, name_field)
+        for name in sorted(set(old_rows) | set(new_rows)):
+            old = (
+                _strict_quantity(
+                    old_rows[name].get("quantity", 1), f"{field}.{name}.quantity"
+                )
+                if name in old_rows
+                else 0
+            )
+            new = (
+                _strict_quantity(
+                    new_rows[name].get("quantity", 1), f"{field}.{name}.quantity"
+                )
+                if name in new_rows
+                else 0
+            )
+            if new != old:
+                deltas[(family, name)] = new - old
+    return deltas
+
+
+def _accepted_participant_images(
+    prepared: Sequence[PreparedCharacterAction],
+    storage_plans: Sequence[StorageMutationPlan],
+):
+    """Collect one pre-image and every accepted post-image per character path."""
+    pre_images: Dict[str, Any] = {}
+    accepted: Dict[str, list] = {}
+
+    def _record(path, before, after):
+        if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+            raise ResourceTransactionPlanningError(
+                "staged storage character pre-image is unavailable"
+            )
+        existing = pre_images.get(path)
+        if existing is None:
+            pre_images[path] = copy.deepcopy(before)
+        elif existing != before:
+            raise ResourceTransactionPlanningError(
+                "staged participant pre-images do not match"
+            )
+        accepted.setdefault(path, []).append(after)
+
+    for item in prepared:
+        _record(item.plan.canonical_path, item.plan.pre_image, item.plan.post_image)
+    for plan in storage_plans:
+        if not plan.character_path:
+            continue
+        _record(plan.character_path, plan.character_before, plan.character_after)
+    return pre_images, accepted
+
+
+def _edge_quantities(fact_map, edges):
+    """Project one identical, code-owned magnitude onto both edge endpoints."""
+    quantities = {}
+    for edge_id, (source_id, destination_id, _authority) in edges.items():
+        source = fact_map[source_id]
+        destination = fact_map[destination_id]
+        if abs(source.quantity) != abs(destination.quantity):
+            raise ResourceTransactionPlanningError(
+                "planned transfer edge %s is not conserved: %s moves %d %s %s "
+                "while %s moves %d"
+                % (
+                    edge_id,
+                    _actor_label(source),
+                    abs(source.quantity),
+                    source.family,
+                    source.name,
+                    _actor_label(destination),
+                    abs(destination.quantity),
+                )
+            )
+        amount = abs(source.quantity)
+        quantities[source_id] = -amount
+        quantities[destination_id] = amount
+    return quantities
+
+
+def _ledger_owned_rows(fact_map, staged: Sequence[str], pre_images):
+    """Rows whose whole identity the ledger owns: canonical edge receivers."""
+    owned: Dict[str, set] = {}
+    for fact_id in staged:
+        fact = fact_map[fact_id]
+        if (
+            fact.canonical_edge
+            and fact.quantity > 0
+            and fact.family in {"equipment", "ammunition"}
+            and fact.path in pre_images
+        ):
+            owned.setdefault(fact.path, set()).add((fact.family, fact.name))
+    return owned
+
+
 def _stage_character_images(
     prepared: Sequence[PreparedCharacterAction],
     storage_plans: Sequence[StorageMutationPlan],
@@ -1704,38 +2015,18 @@ def _stage_character_images(
 ):
     fact_map = _effective_edge_fact_map(facts, edges)
     original_fact_map = {fact.fact_id: fact for fact in facts}
-    edge_quantities = {}
-    for source_id, destination_id, authority in edges.values():
-        source, destination = fact_map[source_id], fact_map[destination_id]
-        amount = (
-            abs(source.quantity) if authority == "source" else abs(destination.quantity)
-        )
-        edge_quantities[source_id] = -amount
-        edge_quantities[destination_id] = amount
+    edge_quantities = _edge_quantities(fact_map, edges)
 
+    pre_images, accepted_images = _accepted_participant_images(prepared, storage_plans)
+    ledger_owned = _ledger_owned_rows(fact_map, staged, pre_images)
     by_path = {}
-    for item in prepared:
-        existing = by_path.get(item.plan.canonical_path)
-        if existing is None:
-            by_path[item.plan.canonical_path] = copy.deepcopy(item.plan.pre_image)
-        elif existing != item.plan.pre_image:
-            raise ResourceTransactionPlanningError(
-                "staged participant pre-images do not match"
-            )
-    for plan in storage_plans:
-        if not plan.character_path:
-            continue
-        if not isinstance(plan.character_before, Mapping):
-            raise ResourceTransactionPlanningError(
-                "staged storage character pre-image is unavailable"
-            )
-        existing = by_path.get(plan.character_path)
-        if existing is None:
-            by_path[plan.character_path] = copy.deepcopy(plan.character_before)
-        elif existing != plan.character_before:
-            raise ResourceTransactionPlanningError(
-                "staged participant pre-images do not match"
-            )
+    introduced_rows = {}
+    for path, pre_image in pre_images.items():
+        by_path[path], introduced_rows[path] = _seed_accepted_resource_image(
+            pre_image,
+            accepted_images.get(path, ()),
+            ledger_owned.get(path, set()),
+        )
     canonical_advisories = {}
     for fact_id in staged:
         fact = fact_map[fact_id]
@@ -1750,6 +2041,8 @@ def _stage_character_images(
             canonical_advisories.setdefault(fact.path, set()).add(
                 f"transfer_metadata_canonicalized:{fact.name}"
             )
+    for path, image in by_path.items():
+        _drop_unfilled_accepted_rows(image, introduced_rows[path])
 
     result = []
     for item in prepared:
@@ -1841,6 +2134,50 @@ def routed_character_validation_actions(
     return tuple(validation_view)
 
 
+def _assert_staged_rows_match_accepted(
+    staged_by_path,
+    pre_images,
+    accepted_images,
+    ledger_owned,
+) -> None:
+    """Prove staging changed only what the ledger owns on every surviving row.
+
+    The ledger owns quantities, row membership, and the canonical identity of a
+    transfer receiver.  Every other accepted field must survive byte-identical,
+    so a silently reverted ``equipped`` flag or restored charge cannot reach the
+    commit layer while its recomputed consequences do.
+    """
+    for path, image in staged_by_path.items():
+        pre_image = pre_images[path]
+        overlay = _accepted_row_overlay(pre_image, accepted_images.get(path, ()))
+        owned = ledger_owned.get(path, set())
+        for family, field, name_field in _ROW_FAMILY_FIELDS:
+            pre_rows = _rows(pre_image, field, name_field)
+            for name, row in _rows(image, field, name_field).items():
+                if (family, name) in owned:
+                    continue
+                overrides = overlay[family].get(name)
+                if name in pre_rows:
+                    accepted_row = copy.deepcopy(dict(pre_rows[name]))
+                elif overrides is None:
+                    raise ResourceTransactionPlanningError(
+                        "staged %s %s is absent from every accepted image"
+                        % (family, name)
+                    )
+                else:
+                    accepted_row = {}
+                _apply_row_overrides(accepted_row, overrides or {})
+                accepted_row.pop("quantity", None)
+                staged_row = {
+                    key: value for key, value in row.items() if key != "quantity"
+                }
+                if staged_row != accepted_row:
+                    raise ResourceTransactionPlanningError(
+                        "staged %s %s does not match the accepted row"
+                        % (family, name)
+                    )
+
+
 def _reconcile_staged_images(
     prepared: Sequence[PreparedCharacterAction],
     staged_images: Sequence[PreparedCharacterAction],
@@ -1848,23 +2185,13 @@ def _reconcile_staged_images(
     staged: Sequence[str],
     edges,
     non_character_deltas=(),
+    storage_plans: Sequence[StorageMutationPlan] = (),
+    staged_storage_plans: Sequence[StorageMutationPlan] = (),
 ):
     """Prove staged finals exactly equal code-owned ledger arithmetic."""
     fact_map = _effective_edge_fact_map(facts, edges)
     effective_facts = tuple(fact_map[fact.fact_id] for fact in facts)
-    edge_quantities = {}
-    for source_id, destination_id, authority in edges.values():
-        source = fact_map[source_id]
-        destination = fact_map[destination_id]
-        amount = (
-            abs(source.quantity) if authority == "source" else abs(destination.quantity)
-        )
-        edge_quantities[source_id] = -amount
-        edge_quantities[destination_id] = amount
-        if edge_quantities[source_id] + edge_quantities[destination_id] != 0:
-            raise ResourceTransactionPlanningError(
-                "planned transfer edge is not conserved"
-            )
+    edge_quantities = _edge_quantities(fact_map, edges)
 
     expected = {}
     for fact_id in staged:
@@ -1890,16 +2217,50 @@ def _reconcile_staged_images(
                     )
             continue
         one_per_path[item.plan.canonical_path] = item
+
+    # Both sides of the proof must describe the SAME view.  A character image
+    # can reach this response through a prepared action or through a storage
+    # plan; ``expected`` counts both, so ``actual`` must observe both or a
+    # conserved, correct response would fail closed and burn its call budget.
+    staged_by_path = {
+        path: item.plan.post_image for path, item in one_per_path.items()
+    }
+    for plan in staged_storage_plans:
+        if not plan.character_path or plan.character_path in staged_by_path:
+            continue
+        if not isinstance(plan.character_after, Mapping):
+            raise ResourceTransactionPlanningError(
+                "staged storage character image is unavailable"
+            )
+        staged_by_path[plan.character_path] = plan.character_after
+
+    pre_images, accepted_images = _accepted_participant_images(
+        prepared, storage_plans
+    )
     actual = {}
-    for item in one_per_path.values():
-        for fact in _character_facts((item,)):
-            key = (fact.path, fact.family, fact.name)
-            actual[key] = actual.get(key, 0) + fact.quantity
+    for path, image in staged_by_path.items():
+        pre_image = pre_images.get(path)
+        if pre_image is None:
+            raise ResourceTransactionPlanningError(
+                "staged resource participants changed during planning"
+            )
+        for (family, name), delta in _image_resource_deltas(
+            pre_image, image
+        ).items():
+            key = (path, family, name)
+            actual[key] = actual.get(key, 0) + delta
     actual = {key: value for key, value in actual.items() if value}
     if actual != expected:
         raise ResourceTransactionPlanningError(
             "staged resource finals do not match code-owned ledger arithmetic"
         )
+
+    _assert_staged_rows_match_accepted(
+        staged_by_path,
+        pre_images,
+        accepted_images,
+        _ledger_owned_rows(fact_map, staged, pre_images),
+    )
 
     original_paths = {item.plan.canonical_path for item in prepared}
     if set(one_per_path) != original_paths:
@@ -1996,6 +2357,10 @@ def _validate_noncharacter_currency_edge_completeness(facts, edges) -> None:
     T105 connects that denomination to a non-character participant, however,
     both observed endpoints are authoritative.  Unequal quantities would leave
     a hidden remainder on the character side and cannot be committed safely.
+
+    ``_validate_plan`` now enforces equal endpoint magnitudes on EVERY edge
+    (D-02), which subsumes this narrower rule; it is kept as a standing
+    invariant assertion for any future caller that builds edges another way.
     """
     fact_map = {fact.fact_id: fact for fact in facts}
     for source_id, destination_id, _authority in edges.values():
@@ -2173,6 +2538,8 @@ def plan_and_stage_resource_transaction(
                 staged,
                 edges,
                 non_character_deltas,
+                storage_plans=storage_plans,
+                staged_storage_plans=planned_storage,
             )
             characters, planned_storage = _attach_planning_advisories(
                 characters,

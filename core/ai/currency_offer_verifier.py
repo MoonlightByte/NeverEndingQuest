@@ -12,6 +12,7 @@ from typing import Any, Dict, Mapping
 import config
 import model_config
 from core.ai import api_client
+from utils.character_sheet_contract import extract_json_object
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.enhanced_logger import warning
 
@@ -49,8 +50,8 @@ Use uncertain for genuine ambiguity. Balances are context only; report the
 player's stated amount even when it exceeds the balance."""
 
 
-def _provider_config() -> Dict[str, Any]:
-    provider = model_config.MODEL_PROVIDER
+def _provider_config(provider: str) -> Dict[str, Any]:
+    """Select the config dict for one already-pinned provider snapshot."""
     if provider == "openai":
         return config.CURRENCY_OFFER_T104_GPT54MINI_NONE
     if provider == "gemini":
@@ -126,11 +127,14 @@ def classify_currency_offer(
         },
     ]
     try:
-        provider_config = _provider_config()
+        # Snapshot the provider ONCE: the config dict and the transport must
+        # describe the same provider even if the UI switches mid-turn.
+        provider = model_config.MODEL_PROVIDER
+        provider_config = _provider_config(provider)
         response = capture_and_fanout(
             "T104",
             api_client.create_completion,
-            _request_provider=model_config.MODEL_PROVIDER,
+            _request_provider=provider,
             messages=messages,
             model=provider_config["model"],
             temperature=0.1,
@@ -143,7 +147,13 @@ def classify_currency_offer(
         content = response.choices[0].message.content
         if not isinstance(content, str) or not content.strip():
             return _uncertain("empty classifier response")
-        return _normalize_contract(json.loads(content))
+        # Local/Custom providers force response_format off (api_client.py), so
+        # the reply can arrive fenced or prose-wrapped. Extract before parsing;
+        # the strict normalizer below remains the only authority gate.
+        json_blob = extract_json_object(content)
+        if json_blob is None:
+            return _uncertain("classifier response contained no JSON object")
+        return _normalize_contract(json.loads(json_blob))
     except Exception as exc:
         warning(
             f"T104 currency-offer verification failed closed: {exc}",

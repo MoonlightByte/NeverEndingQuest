@@ -19,6 +19,9 @@ DEFAULT_QUARANTINE_ROOT = os.path.join(
 )
 DEFAULT_QUARANTINE_LIMIT = 64
 _OWNERSHIP_LOCAL_FIELDS = {"equipped"}
+# Free-text narration. It is authored prose, never mechanical identity, so it
+# must not decide whether two rows are the same item.
+_NARRATIVE_ONLY_FIELDS = {"description"}
 _NONSTACKABLE_FIELDS = {
     "charges",
     "effects",
@@ -83,6 +86,78 @@ def is_stackable_equipment(row: Mapping[str, Any]) -> bool:
     )
 
 
+def mechanical_row_identity(row: Mapping[str, Any]) -> str:
+    """Canonical identity with narrated prose removed.
+
+    Two rows sharing this identity are the same item in every way the rules
+    engine can act on. Only the authored description text may differ.
+    """
+    value = {
+        key: item
+        for key, item in dict(row).items()
+        if key not in _NARRATIVE_ONLY_FIELDS
+    }
+    return inventory_metadata(value, omit_ownership_local=False)
+
+
+def collapse_duplicate_equipment_names(
+    rows: Sequence[Mapping[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Tuple[str, ...]]:
+    """Sum quantities for duplicate rows that differ only in narrated text.
+
+    Released builds keyed equipment merges on the exact case-sensitive display
+    string, so any case drift appended a second row for the same item (for
+    example "Trail rations" and "Trail Rations" on a live save). Those rows are
+    the same item mechanically; only the authored description differs. Summing
+    their quantities is conservation arithmetic, not a guess -- no mechanical
+    field is chosen, invented, or overwritten, and the first row's spelling and
+    description survive untouched so nothing is fabricated.
+
+    Rows carrying per-instance state (charges, instance_id, effects, ...) are
+    never collapsed, and neither are rows whose mechanical fields genuinely
+    differ. Those groups are returned intact so callers keep rejecting them.
+    """
+    if not isinstance(rows, list):
+        raise InventoryIntegrityError("equipment must be an array")
+
+    groups: Dict[str, List[int]] = {}
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise InventoryIntegrityError(f"equipment[{index}] must be an object")
+        name = normalize_inventory_name(row.get("item_name"))
+        groups.setdefault(name, []).append(index)
+
+    collapsed_indexes = set()
+    summed_quantities: Dict[int, int] = {}
+    advisories = set()
+    for name, indexes in groups.items():
+        if not name or len(indexes) < 2:
+            continue
+        members = [rows[index] for index in indexes]
+        if any(field in row for row in members for field in _NONSTACKABLE_FIELDS):
+            continue
+        if len({mechanical_row_identity(row) for row in members}) != 1:
+            continue
+        total = 0
+        for index in indexes:
+            total += strict_nonnegative_int(
+                rows[index].get("quantity", 1), f"equipment.{name}.quantity"
+            )
+        summed_quantities[indexes[0]] = total
+        collapsed_indexes.update(indexes[1:])
+        advisories.add(f"equipment_duplicate_collapsed:{name}")
+
+    result: List[Dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        if index in collapsed_indexes:
+            continue
+        value = copy.deepcopy(dict(row))
+        if index in summed_quantities:
+            value["quantity"] = summed_quantities[index]
+        result.append(value)
+    return result, tuple(sorted(advisories))
+
+
 def consolidate_equipment_rows(
     rows: Sequence[Mapping[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], Tuple[str, ...]]:
@@ -132,6 +207,15 @@ def consolidate_equipment_rows(
         seen_names.add(name)
         if is_stackable_equipment(row):
             candidates[key] = len(result) - 1
+    # Legacy case-drift duplicates are the same item with different narration.
+    # Collapsing them by summation is the only conservation-safe outcome; every
+    # other kind of ambiguity above is still returned untouched.
+    result, collapse_advisories = collapse_duplicate_equipment_names(result)
+    for advisory in collapse_advisories:
+        advisories.add(advisory)
+        advisories.discard(
+            "equipment_identity_ambiguous:" + advisory.split(":", 1)[1]
+        )
     return result, tuple(sorted(advisories))
 
 

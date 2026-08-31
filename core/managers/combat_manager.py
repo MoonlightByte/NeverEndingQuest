@@ -155,6 +155,10 @@ from updates.update_character_info import (
     update_character_info,
 )
 from utils.inventory_integrity import normalize_inventory_name
+from core.validation.character_validator import (
+    _AMMUNITION_NAMES,
+    _canonical_ammunition_name,
+)
 import updates.update_encounter as update_encounter
 import updates.update_party_tracker as update_party_tracker
 # Import the preroll generator
@@ -3047,6 +3051,122 @@ def _ammo_rows_by_name(sheet):
     return result
 
 
+def _canonical_ammo_identity(value):
+    """Shared ammunition identity so row names and narration words agree.
+
+    Reuses the validator's vocabulary, which already resolves
+    'crossbow bolt' -> 'crossbow bolts' and 'sling bullet' -> 'sling bullets'.
+    """
+    return _canonical_ammunition_name(value) or normalize_inventory_name(value)
+
+
+def _mentions_phrase(text, phrase):
+    """Whole-word containment test for an already casefolded phrase."""
+    if not phrase:
+        return False
+    return re.search(r"(?<!\w)%s(?!\w)" % re.escape(phrase), text) is not None
+
+
+def _text_names_ammunition(text, row_name):
+    """True when the narration names this ammunition row.
+
+    The row name and the narration are mapped through the shared canonical
+    vocabulary, so the prompt-mandated 'Expended 1 bolt' resolves to the
+    prompt-mandated row name 'Crossbow bolts'. A generic family word only
+    counts when it is the tail of the row's canonical identity, so 'bolt'
+    never authorizes spending 'blowgun needles'.
+    """
+    identity = _canonical_ammo_identity(row_name)
+    if not identity:
+        return False
+    if _mentions_phrase(text, identity):
+        return True
+    singular = identity[:-1] if identity.endswith("s") else identity
+    if _mentions_phrase(text, singular):
+        return True
+    identity_words = identity.split()
+    for canonical, aliases in _AMMUNITION_NAMES:
+        canonical_words = canonical.split()
+        if identity_words[-len(canonical_words):] != canonical_words:
+            continue
+        if any(_mentions_phrase(text, alias) for alias in aliases):
+            return True
+    return False
+
+
+def _sheet_ranged_attack_names(sheet):
+    """Ranged attack names from the actor's own sheet (see resolver.py)."""
+    entries = sheet.get("attacksAndSpellcasting")
+    if not isinstance(entries, list):
+        entries = sheet.get("actions")
+    if not isinstance(entries, list):
+        return ()
+    names = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("type") or "").strip().casefold() != "ranged":
+            continue
+        name = normalize_inventory_name(entry.get("name"))
+        if name and name not in names:
+            names.append(name)
+    return tuple(names)
+
+
+def _first_stocked_ammunition(sheet):
+    """The row resolver.py spends for a ranged swing: first stocked row."""
+    for row in sheet.get("ammunition") or []:
+        if not isinstance(row, dict):
+            continue
+        quantity = row.get("quantity")
+        if isinstance(quantity, bool) or not isinstance(quantity, int):
+            continue
+        if quantity > 0:
+            return normalize_inventory_name(row.get("name"))
+    return ""
+
+
+def _ranged_weapon_supports_ammunition(sheet, text, row_name):
+    """True when a ranged attack on THIS sheet accounts for the decrement.
+
+    The association is derived from the actor's own sheet the way
+    core/combat/resolver.py derives it, not from a hardcoded weapon list.
+    """
+    weapon_words = set()
+    for weapon in _sheet_ranged_attack_names(sheet):
+        if _mentions_phrase(text, weapon):
+            weapon_words |= set(weapon.split())
+    if not weapon_words:
+        return False
+    if set(_canonical_ammo_identity(row_name).split()) & weapon_words:
+        return True
+    # Another carried row shares a word with the named weapon, so that row is
+    # the one the weapon spends; this row is not covered by it.
+    for row in sheet.get("ammunition") or []:
+        if not isinstance(row, dict):
+            continue
+        if set(_canonical_ammo_identity(row.get("name")).split()) & weapon_words:
+            return False
+    # No name overlap anywhere: fall back to the resolver's own association.
+    return normalize_inventory_name(row_name) == _first_stocked_ammunition(sheet)
+
+
+def _legacy_weapon_vocabulary_match(name, text):
+    """Retained superset guard from the original hardcoded matcher.
+
+    Kept only so this change can never flag something the previous guard
+    accepted (for example narration naming a bow the sheet does not list).
+    """
+    return bool(
+        ("arrow" in name and re.search(r"\b(shortbow|longbow|bow)\b", text))
+        or ("bolt" in name and "crossbow" in text)
+        or (
+            any(word in name for word in ("bullet", "shot"))
+            and any(word in text for word in ("firearm", "pistol", "musket"))
+        )
+    )
+
+
 def _unsupported_combat_ammo_decrements(plan, accepted_event_text):
     before = _ammo_rows_by_name(plan.pre_image)
     after = _ammo_rows_by_name(plan.post_image)
@@ -3057,17 +3177,12 @@ def _unsupported_combat_ammo_decrements(plan, accepted_event_text):
         after_quantity = (after.get(name) or {}).get("quantity", 0)
         if after_quantity >= before_quantity:
             continue
-        singular = name[:-1] if name.endswith("s") else name
-        explicitly_named = name in text or singular in text
-        weapon_match = (
-            ("arrow" in name and re.search(r"\b(shortbow|longbow|bow)\b", text))
-            or ("bolt" in name and "crossbow" in text)
-            or (
-                any(word in name for word in ("bullet", "shot"))
-                and any(word in text for word in ("firearm", "pistol", "musket"))
-            )
+        supported = (
+            _text_names_ammunition(text, name)
+            or _ranged_weapon_supports_ammunition(plan.pre_image, text, name)
+            or _legacy_weapon_vocabulary_match(name, text)
         )
-        if not explicitly_named and not weapon_match:
+        if not supported:
             unsupported.append(name)
     return tuple(sorted(unsupported))
 
@@ -3122,6 +3237,61 @@ def _restore_unmatched_ammunition(plan, names):
         field_facts=tuple(_field_change_facts(plan.pre_image, post_image)),
         advisories=advisories,
     )
+
+
+def _legacy_encounter_path(encounter_id):
+    return f"modules/encounters/encounter_{encounter_id}.json"
+
+
+def _record_legacy_combat_rewards(encounter_id, xp_awarded):
+    """Persist the one-time XP receipt for a legacy-pipeline encounter.
+
+    Mirrors the agentic pipeline's combatState.completion.rewardsApplied flag
+    (core/managers/combat_transaction.py apply_combat_rewards) so a resumed or
+    retried combat exit cannot pay the same experience a second time.
+    """
+    try:
+        with completion_lease(_legacy_encounter_path(encounter_id)) as encounter:
+            completion = encounter["combatState"]["completion"]
+            if not completion.get("rewardsApplied"):
+                completion["rewardsApplied"] = True
+                completion["legacyXpAwarded"] = int(xp_awarded)
+        return True
+    except Exception as exc:
+        error(
+            f"FAILURE: Could not record combat XP receipt for {encounter_id}",
+            exception=exc,
+            category="xp_tracking",
+        )
+        return False
+
+
+def _legacy_exit_xp_award(encounter_id):
+    """Return (narrative, xp_per_character) once per encounter, else None.
+
+    Returns None when the encounter already holds a reward receipt, and also
+    when the receipt cannot be read at all. Failing closed is deliberate: a
+    duplicate award can push a character across a level threshold, which is
+    irreversible, while a skipped award is not.
+    """
+    path = _legacy_encounter_path(encounter_id)
+    try:
+        encounter = safe_json_load(path)
+        if not isinstance(encounter, dict):
+            raise ValueError(f"Encounter data could not be loaded from {path}")
+        state = ensure_combat_state(encounter)
+        already_awarded = bool(state["completion"].get("rewardsApplied"))
+    except Exception as exc:
+        error(
+            f"FAILURE: Could not read combat XP receipt for {encounter_id}; "
+            "suppressing the award to avoid a duplicate payout",
+            exception=exc,
+            category="xp_tracking",
+        )
+        return None
+    if already_awarded:
+        return None
+    return calculate_xp()
 
 
 def _apply_combat_character_update(character_name, accepted_event_text):
@@ -5051,6 +5221,9 @@ Rules:
        # e.g., {'eirik_hearthwise': ['used a crossbow bolt', 'took 5 damage'], ...}
        final_character_updates = {}
 
+       # XP amount queued this turn that still needs its one-time receipt.
+       pending_xp_receipt = None
+
        # Check if combat is ending in this turn.
        is_combat_ending = any(a.get("action", "").lower() == "exit" for a in actions)
 
@@ -5102,28 +5275,38 @@ Rules:
            elif action_type == "exit" and is_combat_ending:
                # If combat is ending, add the authoritative HP and XP to our dictionary.
                info("CONSOLIDATING: 'exit' action detected. Calculating final HP and XP.", category="combat_events")
-               xp_narrative, xp_awarded = calculate_xp()
-               info(f"XP_AWARD: Calculated {xp_awarded} XP per participant.", category="xp_tracking")
-               conversation_history.append({"role": "user", "content": f"XP Awarded: {xp_narrative}"})
-               save_json_file(conversation_history_file, conversation_history)
+               # A resumed encounter must never pay its XP twice; the receipt
+               # below is the same rewardsApplied flag the agentic path uses.
+               xp_award = _legacy_exit_xp_award(encounter_id)
+               if xp_award is None:
+                   info(
+                       f"XP_AWARD: Encounter {encounter_id} already holds an XP receipt; skipping re-award.",
+                       category="xp_tracking",
+                   )
+               else:
+                   xp_narrative, xp_awarded = xp_award
+                   pending_xp_receipt = xp_awarded
+                   info(f"XP_AWARD: Calculated {xp_awarded} XP per participant.", category="xp_tracking")
+                   conversation_history.append({"role": "user", "content": f"XP Awarded: {xp_narrative}"})
+                   save_json_file(conversation_history_file, conversation_history)
 
-               for creature in encounter_data.get("creatures", []):
-                   if creature.get("type") in ["player", "npc"]:
-                       character_name = creature.get("name")
-                       if character_name:
-                           if character_name not in final_character_updates:
-                               final_character_updates[character_name] = []
+                   for creature in encounter_data.get("creatures", []):
+                       if creature.get("type") in ["player", "npc"]:
+                           character_name = creature.get("name")
+                           if character_name:
+                               if character_name not in final_character_updates:
+                                   final_character_updates[character_name] = []
 
-                           # CRITICAL FIX: Don't set HP from encounter file - character file is source of truth
-                           # The encounter file may have stale HP values that would overwrite healing done during combat
-                           # Only award XP when combat ends
+                               # CRITICAL FIX: Don't set HP from encounter file - character file is source of truth
+                               # The encounter file may have stale HP values that would overwrite healing done during combat
+                               # Only award XP when combat ends
 
-                           # COMMENTED OUT: This line was setting HP from the encounter file, which can be stale
-                           # final_hp = creature.get("currentHitPoints")
-                           # final_character_updates[character_name].append(f"set hitPoints to {final_hp}")
+                               # COMMENTED OUT: This line was setting HP from the encounter file, which can be stale
+                               # final_hp = creature.get("currentHitPoints")
+                               # final_character_updates[character_name].append(f"set hitPoints to {final_hp}")
 
-                           if xp_awarded > 0:
-                               final_character_updates[character_name].append(f"awarded {xp_awarded} experience points")
+                               if xp_awarded > 0:
+                                   final_character_updates[character_name].append(f"awarded {xp_awarded} experience points")
 
        # STEP 2: EXECUTE the consolidated updates. This is the only place character files are saved.
        if final_character_updates:
@@ -5158,6 +5341,18 @@ Rules:
                    # AMMUNITION DEBUG
                    if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
                        debug(f"AMMO_DEBUG: Exception during ammunition update: {str(e)}", category="ammunition")
+
+       # STEP 2b: Receipt the XP payout. _finalize_combat_exit deliberately
+       # preserves activeCombatEncounter when the transcript archive fails, and
+       # that retry re-enters this loop; without this receipt the retry would
+       # award the same XP again and could force an irreversible level-up.
+       if pending_xp_receipt is not None:
+           if not _record_legacy_combat_rewards(encounter_id, pending_xp_receipt):
+               error(
+                   f"FAILURE: Combat XP receipt could not be stored for {encounter_id}; "
+                   "a resume of this encounter could re-award experience.",
+                   category="xp_tracking",
+               )
 
        # STEP 3: If combat ended, perform final cleanup and exit the simulation.
        if is_combat_ending:

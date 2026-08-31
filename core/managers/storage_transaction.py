@@ -75,6 +75,13 @@ def _strict_quantity(value: Any, label: str) -> int:
     return value
 
 
+def _ledger_quantity(value: Any, label: str) -> int:
+    """A countable quantity for conservation ledgers: zero is a real count."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise StorageTransactionError(f"{label} must be a non-negative integer")
+    return value
+
+
 def _metadata(row: Mapping[str, Any]) -> str:
     # ``stackable`` records proven split-stack provenance.  It controls whether
     # identical rows may merge, but it is not part of the item's mechanical
@@ -192,7 +199,13 @@ def _currency(owner: Dict[str, Any], label: str) -> Dict[str, int]:
         raw = {}
     if not isinstance(raw, dict):
         raise StorageTransactionError(f"{label} currency is malformed")
-    normalized = {}
+    # Storage moves only the denominations it knows how to conserve.  Any other
+    # denomination on the sheet or in the container (platinum, electrum, house
+    # coinage) is carried through untouched; rebuilding a three-key dict here
+    # silently destroyed wealth the conservation check could not see.
+    normalized = {
+        key: value for key, value in raw.items() if key not in _DENOMINATIONS
+    }
     for denomination in _DENOMINATIONS:
         value = raw.get(denomination, 0)
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -202,7 +215,20 @@ def _currency(owner: Dict[str, Any], label: str) -> Dict[str, int]:
     return normalized
 
 
-def _ammunition(owner: Dict[str, Any], label: str) -> list:
+def _ammunition(
+    owner: Dict[str, Any],
+    label: str,
+    requested_name: Optional[str] = None,
+) -> list:
+    """Validate ammunition rows, strictly only for the requested row.
+
+    ``requested_name`` is an already normalized name.  The row this operation
+    actually moves must satisfy the full contract (usable name, positive
+    quantity, real description).  Every other row only needs a usable identity
+    and a non-negative count: ordinary play leaves spent zero-quantity rows
+    behind and the player has no in-game way to clear them, so one unrelated
+    legacy row must never block ammunition storage for the whole sheet.
+    """
     raw = owner.get("ammunition")
     if raw is None:
         raw = []
@@ -211,15 +237,17 @@ def _ammunition(owner: Dict[str, Any], label: str) -> list:
     for row in raw:
         name = row.get("name")
         quantity = row.get("quantity")
-        description = row.get("description")
         if (
             not isinstance(name, str)
             or not name.strip()
             or isinstance(quantity, bool)
             or not isinstance(quantity, int)
-            or quantity < 1
-            or not isinstance(description, str)
+            or quantity < 0
         ):
+            raise StorageTransactionError(f"{label} ammunition is malformed")
+        if requested_name is None or _normalized_name(name) != requested_name:
+            continue
+        if quantity < 1 or not isinstance(row.get("description"), str):
             raise StorageTransactionError(f"{label} ammunition is malformed")
     owner["ammunition"] = raw
     return raw
@@ -536,7 +564,11 @@ def _resource_quantity_ledger(character: Mapping[str, Any]):
         if not isinstance(row, dict):
             raise StorageTransactionError("character ammunition is malformed")
         name = _normalized_name(row.get("name")) or f"__unnamed_{index}"
-        ammunition[name] = ammunition.get(name, 0) + _strict_quantity(
+        # This ledger only proves the validator changed no quantity.  Spent
+        # zero-quantity ammunition rows are produced by ordinary play, so
+        # counting them as zero is correct; rejecting them here would block
+        # every unrelated storage operation on the same sheet.
+        ammunition[name] = ammunition.get(name, 0) + _ledger_quantity(
             row.get("quantity"),
             f"ammunition.{name}.quantity",
         )
@@ -723,9 +755,9 @@ def _apply_storage_operation(
         if not isinstance(name, str) or not name.strip():
             raise StorageTransactionError("ammunition request has no useful name")
         quantity = _strict_quantity(operation.get("quantity"), "ammunition quantity")
-        character_ammunition = _ammunition(character, "character")
-        storage_ammunition = _ammunition(container, "storage")
         conserved_name = _normalized_name(name)
+        character_ammunition = _ammunition(character, "character", conserved_name)
+        storage_ammunition = _ammunition(container, "storage", conserved_name)
         ammunition_before = {}
         for counts in (
             _ammunition_counts(character_before, "character", conserved_name),
@@ -1603,13 +1635,28 @@ def _prepare_missing_purchase_acquisition(
     )
 
 
+def _storage_operation_character(operation):
+    """Return the one authoritative character the prepared operation writes."""
+    operations = operation.get("operations")
+    operations = operations if isinstance(operations, list) else [operation]
+    names = {
+        str(item.get("character")).strip()
+        for item in operations
+        if isinstance(item, Mapping) and item.get("character")
+    }
+    if len(names) != 1:
+        return None
+    return next(iter(names))
+
+
 def _prepare_response_storage_action(
     indexed_action,
     party_tracker_data,
     *,
     fallback_character,
     required_deltas=(),
-    character_working_image=None,
+    working_image_for=None,
+    resolution=None,
 ):
     index, action = indexed_action
     parameters = action.get("parameters") or {}
@@ -1627,6 +1674,7 @@ def _prepare_response_storage_action(
         description,
         str(character),
         required_deltas=required_deltas,
+        resolution=resolution,
     )
     if not processed.get("success"):
         raise StorageTransactionError(
@@ -1635,6 +1683,18 @@ def _prepare_response_storage_action(
     operation = processed.get("operation")
     if not isinstance(operation, dict):
         raise StorageTransactionError("storage processor returned no operation")
+    # F3: the staged working image must follow the RESOLVED actor, not the
+    # action's characterName. Cross-actor storage rewrites the operation's
+    # character; selecting the image from the original name then hard-failed
+    # the identity check in prepare_storage_mutation_set and the flagship
+    # cross-actor case could never complete.
+    operation_character = _storage_operation_character(operation) or str(character)
+    character = operation_character
+    character_working_image = (
+        working_image_for(operation_character)
+        if callable(working_image_for)
+        else None
+    )
     coverage_error = _storage_operation_coverage_error(
         operation,
         required_deltas,
@@ -1697,23 +1757,34 @@ def _prepare_response_storage_action(
 
 def validate_required_storage_sibling(
     response_data,
-    action_prediction,
     party_tracker_data,
+    resolution=None,
 ):
     """Reject a storage-classified resource change with no storage action.
 
-    The existing action predictor already runs before the main DM call. This
-    guard consumes that result without adding another classifier call. It
-    prepares concrete character deltas only for the exceptional missing-
-    sibling shape; paired storage responses and non-storage turns do no extra
-    work here.
+    The classification used to be the letters "storag" appearing somewhere in
+    the action predictor's free-text reason, so the guard fired on any reason
+    that happened to use the word and stayed silent on every storage turn
+    phrased another way. It now asks T109 what the response's own character
+    change prose refers to: a store/retrieve intent against a real container
+    is a storage movement and owes its storageInteraction sibling.
+
+    FAILS CLOSED. This guard exists to stop a one-sided storage commit, so an
+    absent or unusable claim is a refusal, not a pass. "No claim" is what a
+    provider outage, an exhausted budget, an unreadable sheet, or two failed
+    contract attempts look like from here; waving those through is exactly the
+    commit the guard was written to prevent. A response whose character
+    changes name no movement at all has nothing at stake and passes.
     """
-    if not isinstance(response_data, dict) or not isinstance(
-        action_prediction, dict
-    ):
-        return True, ""
-    reason = str(action_prediction.get("reason") or "").casefold()
-    if not action_prediction.get("requires_actions") or "storag" not in reason:
+    from utils.inventory_resolution import (
+        container_slices,
+        facts_for,
+        movement_claim_fault,
+        slices_of,
+        unverified_movement_refusal,
+    )
+
+    if not isinstance(response_data, dict):
         return True, ""
     actions = response_data.get("actions")
     if not isinstance(actions, list):
@@ -1731,6 +1802,24 @@ def validate_required_storage_sibling(
         and action.get("action") == "updateCharacterInfo"
     )
     if not character_actions:
+        return True, ""
+    storage_classified = False
+    for _index, action in character_actions:
+        changes = (action.get("parameters") or {}).get("changes")
+        text = changes if isinstance(changes, str) else ""
+        if not text.strip():
+            # An empty change statement asserts nothing and moves nothing.
+            continue
+        fault = movement_claim_fault(resolution, text)
+        if fault:
+            return False, unverified_movement_refusal(fault)
+        facts = facts_for(resolution, text)
+        if not slices_of(facts):
+            # Resolved, and it moves nothing. Nothing is at stake here.
+            continue
+        if container_slices(facts):
+            storage_classified = True
+    if not storage_classified:
         return True, ""
 
     from core.managers.character_transfer import (
@@ -1762,12 +1851,37 @@ def validate_required_storage_sibling(
     )
 
 
+def _is_resolved_independent_payment(item, resolution) -> bool:
+    """True when resolution says this currency change is its own payment.
+
+    D-13: a currency-only decrease next to a storage action is shape-identical
+    whether it is a genuine service fee or a mis-mirrored duplicate of the
+    storage movement itself. Shape cannot tell them apart -- the earlier
+    attempt to try silently double-charged the botched-mirror case. The
+    difference is semantic and only the resolution pass can state it: a fee is
+    a purchase or sale, while a mirror leg is the same store/retrieve movement
+    the storage plan already owns. No resolution means no claim, and the
+    sibling correction runs exactly as before.
+    """
+    from utils.inventory_resolution import facts_for, resolved_intent
+
+    facts = facts_for(resolution, item.changes)
+    if resolved_intent(facts) not in {"purchase", "sell"}:
+        return False
+    # A payment touches currency only on the character side; anything wider is
+    # not a fee and stays with the sibling correction.
+    return _changed_top_level(item.plan.pre_image, item.plan.post_image) <= {
+        "currency"
+    }
+
+
 def process_adjacent_storage_fee_groups(
     prepared_character_actions,
     indexed_storage_actions,
     party_tracker_data,
     *,
     purchase_offer_review=None,
+    resolution=None,
 ):
     """Prepare storage-owned deltas and fees for the response transaction.
 
@@ -1802,10 +1916,46 @@ def process_adjacent_storage_fee_groups(
     next_synthetic_index = max(action_indices, default=-1) + 1
     failed_stage = "storage_pairing"
 
+    def storage_actor_for(storage_action, fallback_character=None):
+        """Return the character this storage action will actually write.
+
+        Cross-actor storage lands on the RESOLVED actor's sheet, so every
+        selection keyed to the actor -- required deltas and the staged working
+        image -- has to use the same name the storage operation will carry.
+        This reads the turn's cached resolution for the same description
+        string the processor resolves, so both agree by construction.
+        """
+        from core.managers.character_transfer import _normalized_name
+        from utils.inventory_resolution import facts_for, resolved_actor
+
+        parameters = storage_action.get("parameters") or {}
+        description = parameters.get("description")
+        actor = resolved_actor(
+            facts_for(resolution, description if isinstance(description, str) else "")
+        )
+        if actor:
+            for item in prepared_character_actions:
+                if _normalized_name(item.plan.character_name) == _normalized_name(
+                    actor
+                ):
+                    return item.plan.character_name
+            return actor
+        return parameters.get("characterName") or fallback_character
+
+    def working_image_for(character_name):
+        from core.managers.character_transfer import _normalized_name
+
+        candidates = [
+            item
+            for item in prepared_character_actions
+            if _normalized_name(item.plan.character_name)
+            == _normalized_name(character_name)
+        ]
+        return candidates[0].plan.post_image if len(candidates) == 1 else None
+
     def required_deltas_for(indexed_storage):
         storage_index, storage_action = indexed_storage
-        parameters = storage_action.get("parameters") or {}
-        character_name = parameters.get("characterName")
+        character_name = storage_actor_for(storage_action)
         if not character_name:
             character_name = next(
                 iter(party_tracker_data.get("partyMembers") or []),
@@ -1837,15 +1987,11 @@ def process_adjacent_storage_fee_groups(
         nonlocal next_synthetic_index
         storage_index = indexed_storage[0]
         if storage_index not in prepared_storage:
-            parameters = indexed_storage[1].get("parameters") or {}
-            character_name = parameters.get("characterName") or fallback_character
-            candidates = [
-                item
-                for item in prepared_character_actions
-                if item.plan.character_name == character_name
-            ]
-            working_image = (
-                candidates[0].plan.post_image if len(candidates) == 1 else None
+            from core.managers.character_transfer import _normalized_name
+
+            character_name = storage_actor_for(
+                indexed_storage[1],
+                fallback_character,
             )
             try:
                 prepared_storage[storage_index] = (
@@ -1854,7 +2000,8 @@ def process_adjacent_storage_fee_groups(
                         party_tracker_data,
                         fallback_character=fallback_character,
                         required_deltas=required_deltas_for(indexed_storage),
-                        character_working_image=working_image,
+                        working_image_for=working_image_for,
+                        resolution=resolution,
                     )
                 )
             except _StorageSourceUnavailable as unavailable:
@@ -1862,6 +2009,16 @@ def process_adjacent_storage_fee_groups(
                     purchase_offer_review
                 ):
                     raise
+                # The repair lane stages onto the sheet the prepared operation
+                # actually writes, which for cross-actor storage is the
+                # resolved actor rather than the action's characterName.
+                character_name = unavailable.character or character_name
+                candidates = [
+                    item
+                    for item in prepared_character_actions
+                    if _normalized_name(item.plan.character_name)
+                    == _normalized_name(character_name)
+                ]
                 working_image = _merged_character_working_image(candidates)
                 try:
                     plan = _prepare_extracted_storage_operation(
@@ -2005,6 +2162,14 @@ def process_adjacent_storage_fee_groups(
                         "storage and character actions use different currency denominations",
                     }:
                         raise
+                    # D-13: a genuine independent payment is not a botched
+                    # mirror of this storage movement, so it must not be
+                    # rewritten to match the storage plan.  The resolution
+                    # pass -- not a shape test -- decides which one this is.
+                    # Leaving it unhandled hands it to the fee lane below,
+                    # which owns and conserves an adjacent fee.
+                    if _is_resolved_independent_payment(item, resolution):
+                        continue
                     item = correct_storage_sibling(item, storage_plan)
                     try:
                         combined = _combine_storage_owned_character_delta(

@@ -12,6 +12,7 @@ from typing import Any, Dict
 import config
 import model_config
 from core.ai import api_client
+from utils.character_sheet_contract import extract_json_object
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.enhanced_logger import warning
 
@@ -48,8 +49,8 @@ Never derive a quantity from a measurement embedded in an item name or
 description (for example, 50 feet of rope is one rope item)."""
 
 
-def _provider_config() -> Dict[str, Any]:
-    provider = model_config.MODEL_PROVIDER
+def _provider_config(provider: str) -> Dict[str, Any]:
+    """Select the config dict for one already-pinned provider snapshot."""
     if provider == "openai":
         return config.STORAGE_COMPLETENESS_T106_GPT54MINI_NONE
     if provider == "gemini":
@@ -137,7 +138,10 @@ def classify_storage_completeness(
         },
     ]
     try:
-        provider_config = _provider_config()
+        # Snapshot the provider ONCE: the config dict and the transport must
+        # describe the same provider even if the UI switches mid-turn.
+        provider = model_config.MODEL_PROVIDER
+        provider_config = _provider_config(provider)
         kwargs = {
             key: value
             for key, value in provider_config.items()
@@ -151,7 +155,7 @@ def classify_storage_completeness(
         response = capture_and_fanout(
             "T106",
             api_client.create_completion,
-            _request_provider=model_config.MODEL_PROVIDER,
+            _request_provider=provider,
             messages=messages,
             model=provider_config["model"],
             **kwargs,
@@ -159,7 +163,13 @@ def classify_storage_completeness(
         content = response.choices[0].message.content
         if not isinstance(content, str) or not content.strip():
             return _uncertain("empty classifier response")
-        return _normalize_contract(json.loads(content), set(party_identities))
+        # Local/Custom providers force response_format off (api_client.py), so
+        # the reply can arrive fenced or prose-wrapped. Extract before parsing;
+        # the strict normalizer below remains the only authority gate.
+        json_blob = extract_json_object(content)
+        if json_blob is None:
+            return _uncertain("classifier response contained no JSON object")
+        return _normalize_contract(json.loads(json_blob), set(party_identities))
     except Exception as exc:
         warning(
             f"T106 storage completeness check failed closed: {exc}",
