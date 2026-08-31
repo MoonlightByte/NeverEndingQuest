@@ -64,6 +64,7 @@ class HeadlessSession:
         self._quitting = False
         self._exit_lock = threading.Lock()
         self._exit_emitted = False
+        self._restart_in_progress = threading.Event()
         self._engine_thread = None
         self._stdout_shim = None
         self._raw_log = None
@@ -73,6 +74,7 @@ class HeadlessSession:
         self._seed_character_file = None
         self._seed_module = None
         self._last_startup_marker = None
+        self._last_status = None
 
     # -- bootstrap ---------------------------------------------------------
 
@@ -127,9 +129,10 @@ class HeadlessSession:
         # Callbacks are transport-agnostic seams; register before the engine
         # import so nothing races them.
         from core.managers.status_manager import (
-            set_status_callback, set_compression_callback)
+            set_status_callback, set_compression_callback, status_manager)
         set_status_callback(self._on_status)
         set_compression_callback(self._on_compression)
+        status_manager.set_welcome_callback(self._on_welcome)
         from web.shared_state import set_player_output_sink
         set_player_output_sink(self._on_player_output)
 
@@ -168,6 +171,10 @@ class HeadlessSession:
         # load-bearing for the status callback).
         set_status_callback(self._on_status)
         set_player_output_sink(self._on_player_output)
+        # web.web_interface (pulled in by the main import chain) claims the
+        # welcome callback at import time too; reclaim it or #214 welcome
+        # liveness would flow to Socket.IO instead of this NDJSON stream.
+        status_manager.set_welcome_callback(self._on_welcome)
         self._dm_main = dm_main
 
         self.writer.emit(
@@ -205,10 +212,27 @@ class HeadlessSession:
                 reason = "player_exit"
         finally:
             try:
+                shutdown = getattr(
+                    self._dm_main, "shutdown_welcome_lifecycle", None)
+                if shutdown is not None:
+                    shutdown("engine_stop")
+            except Exception:
+                pass
+            try:
+                from utils.capture.live_provider_call import abort_live_turn_scope
+
+                abort_live_turn_scope()
+            except Exception:
+                pass
+            try:
                 self._stdout_shim.flush()
             except Exception:
                 pass
-            self.emit_exit(reason, detail)
+            # Restore/Reset own the terminal restart event.  Suppress the
+            # engine thread's ordinary player_exit while one of those
+            # lifecycle operations is deliberately unwinding the prompt.
+            if not self._restart_in_progress.is_set():
+                self.emit_exit(reason, detail)
 
     def _pump_module_progress(self):
         from web.shared_state import module_progress_queue
@@ -251,6 +275,10 @@ class HeadlessSession:
         # Raw text already went to the mirror log regardless.
 
     def _on_status(self, message, is_processing):
+        status_key = (str(message), bool(is_processing))
+        if status_key == self._last_status:
+            return
+        self._last_status = status_key
         self.writer.emit("status", message=message,
                          is_processing=bool(is_processing))
 
@@ -260,6 +288,12 @@ class HeadlessSession:
         except Exception:
             payload = {"data": str(data)}
         self.writer.emit("compression", event=event_type, **payload)
+
+    def _on_welcome(self, message):
+        # #214 D-214-4=A: background startup-welcome liveness. A separate
+        # additive NDJSON event type - deliberately NOT a "status" event, so
+        # harnesses never read it as input-locking processing state.
+        self.writer.emit("welcome_progress", message=str(message))
 
     def _on_player_output(self, payload):
         # Structured sink messages (all DM narration since P2, plus module
@@ -343,8 +377,44 @@ class HeadlessSession:
         self.input_queue.put(content)
 
     def request_quit(self):
+        from utils.capture.live_provider_call import (
+            get_active_welcome_scope,
+            get_live_turn_scope,
+            request_live_turn_supersession,
+        )
+
+        # #214: a background startup welcome must quiesce BEFORE the quit
+        # intent is latched. The game thread is parked at the prompt, and its
+        # readline pump is the only path that services the welcome discard
+        # handback -- but that pump stops the moment self._quitting is set,
+        # so waiting after latching would deadlock. The supersession lets the
+        # child exit instead of burning provider work past a player quit.
+        welcome_scope = get_active_welcome_scope()
+        if welcome_scope is not None:
+            welcome_scope.request_supersession("quit")
+            self.writer.emit(
+                "operation",
+                name="quit",
+                status="accepted_deferred",
+            )
+            welcome_scope.quiescent.wait()
+
+        # Preserve the historical terminal reason even when a live turn must
+        # quiesce first. The engine thread may finish its superseded turn while
+        # this control thread is waiting; setting the intent afterward races
+        # that completion and misreports a player quit as ``engine_stop``.
         self._quitting = True
         self.prompt_pending.clear()
+        scope = get_live_turn_scope()
+        if scope is not None:
+            operation = request_live_turn_supersession("quit")
+            self.writer.emit(
+                "operation",
+                name="quit",
+                status="accepted_deferred",
+                operation_id=operation["operation_id"],
+            )
+            scope.quiescent.wait()
         self.input_queue.put(EOF_SENTINEL)
 
     def handle_command(self, command):
@@ -367,9 +437,52 @@ class HeadlessSession:
             result(True)
             self.request_quit()
             return
+        if name == "reset":
+            if args.get("confirmed") is not True:
+                result(False, error="reset requires args.confirmed=true")
+                return
+            self._restart_in_progress.set()
+            try:
+                # The synchronous combat loop can retain module/campaign
+                # authority while it waits at a player prompt.  End and join
+                # that exact engine before Reset attempts to acquire the same
+                # authority; no filesystem lock is held during this wait.
+                self.request_quit()
+                if self._engine_thread is not None:
+                    self._engine_thread.join()
+                from utils.reset_campaign import perform_reset_logic
 
-        if name in ("save", "restore", "delete_save") and not \
-                self.prompt_pending.is_set():
+                backup_dir = perform_reset_logic()
+                result(
+                    True,
+                    data={
+                        "message": "Campaign reset complete",
+                        "backup_dir": backup_dir,
+                    },
+                )
+                self.emit_exit("restart", "campaign reset; relaunch the session")
+            except Exception as exc:
+                result(False, error="%s: %s" % (type(exc).__name__, exc))
+                self.emit_exit("error", "campaign reset failed")
+            return
+
+        from utils.capture.live_provider_call import (
+            get_active_welcome_scope,
+            get_live_turn_scope,
+        )
+
+        live_scope = get_live_turn_scope()
+        # #214: the detached startup welcome is deliberately NOT the live
+        # turn scope; persistence commands must still coordinate with its
+        # game-thread handback (the readline pump) instead of overlapping it.
+        # (Reset needs no welcome branch: it quits+joins the engine first,
+        # and request_quit already supersedes/quiesces a pending welcome.)
+        welcome_scope = get_active_welcome_scope()
+        busy_persistence = (
+            name == "delete_save"
+            or (name in ("save", "restore") and live_scope is None)
+        )
+        if busy_persistence and not self.prompt_pending.is_set():
             result(False, error="engine is busy; wait for the next prompt "
                                 "event before %s" % name)
             return
@@ -380,6 +493,90 @@ class HeadlessSession:
             if name == "list_saves":
                 result(True, data=manager.list_save_games())
             elif name == "save":
+                if live_scope is not None:
+                    from utils.capture.live_provider_call import queue_live_save
+
+                    self.writer.emit(
+                        "operation",
+                        id=command_id,
+                        name="save",
+                        status="accepted_deferred",
+                    )
+
+                    def execute_save():
+                        return manager.create_save_game(
+                            description=args.get("description", ""),
+                            save_mode=args.get("save_mode", "essential"),
+                        )
+
+                    def complete_save(outcome):
+                        ok, message = outcome
+                        result(
+                            bool(ok),
+                            data={"message": message} if ok else None,
+                            error=None if ok else message,
+                        )
+
+                    queued_id = queue_live_save(
+                        execute_save, complete_save, command_id
+                    )
+                    if queued_id is None:
+                        live_scope.quiescent.wait()
+                        complete_save(execute_save())
+                    return
+                if welcome_scope is not None:
+                    # #214 F8: Save never cancels a healthy background
+                    # welcome - it QUEUES against the welcome scope and
+                    # executes on the game thread inside the welcome
+                    # terminal, before quiescence releases player input.
+                    from utils.capture.live_provider_call import (
+                        queue_live_save,
+                    )
+
+                    def execute_welcome_save():
+                        return manager.create_save_game(
+                            description=args.get("description", ""),
+                            save_mode=args.get("save_mode", "essential"),
+                        )
+
+                    def complete_welcome_save(outcome):
+                        ok2, message2 = outcome
+                        result(
+                            bool(ok2),
+                            data={"message": message2} if ok2 else None,
+                            error=None if ok2 else message2,
+                        )
+
+                    queued = queue_live_save(
+                        execute_welcome_save, complete_welcome_save,
+                        command_id, scope=welcome_scope,
+                    )
+                    if queued is None:
+                        # The welcome sealed before the enqueue: no welcome
+                        # remains. Re-resolve authoritative state - queue
+                        # against a now-live player turn, else honest retry
+                        # (lands on the plain no-welcome path).
+                        queued = queue_live_save(
+                            execute_welcome_save, complete_welcome_save,
+                            command_id,
+                        )
+                    if queued is None:
+                        # Sealed scope: wait for ITS quiescent (set only
+                        # AFTER the registry is cleared), then re-dispatch
+                        # the SAME command against freshly read scopes -
+                        # terminates structurally, no tight recursion, and
+                        # exactly one result is emitted (by the re-dispatch).
+                        welcome_scope.quiescent.wait()
+                        self.handle_command(command)
+                        return
+                    # Acceptance only once a queue holds the record.
+                    self.writer.emit(
+                        "operation",
+                        id=command_id,
+                        name="save",
+                        status="accepted_deferred",
+                    )
+                    return
                 ok, message = manager.create_save_game(
                     description=args.get("description", ""),
                     save_mode=args.get("save_mode", "essential"))
@@ -397,6 +594,92 @@ class HeadlessSession:
                 folder = args.get("save_folder")
                 if not folder:
                     result(False, error="restore requires args.save_folder")
+                    return
+                if live_scope is not None:
+                    from utils.capture.live_provider_call import (
+                        request_live_turn_supersession,
+                    )
+
+                    operation = request_live_turn_supersession(
+                        "restore", str(command_id)
+                    )
+                    if operation["kind"] == "turn_complete":
+                        live_scope.quiescent.wait()
+                    elif not operation["accepted"]:
+                        result(
+                            False,
+                            error=(
+                                "another lifecycle operation is already pending: "
+                                + operation["kind"]
+                            ),
+                        )
+                        return
+                    self.writer.emit(
+                        "operation",
+                        id=command_id,
+                        name="restore",
+                        status="accepted_deferred",
+                        operation_id=operation["operation_id"],
+                    )
+                    live_scope.quiescent.wait()
+                if welcome_scope is not None:
+                    # #214 F9: Load supersedes the background welcome and
+                    # QUEUES the restore to execute ON THE GAME THREAD inside
+                    # the welcome terminal (after discard handback, before
+                    # quiescence releases player input) - the destructive op
+                    # stays authoritative; no post-quiescence gap.
+                    from utils.capture.live_provider_call import (
+                        claim_destructive_operation,
+                    )
+
+                    def execute_welcome_restore():
+                        return manager.restore_save_game(folder)
+
+                    def complete_welcome_restore(outcome):
+                        ok2, message2 = outcome
+                        if not ok2:
+                            result(False, error=message2)
+                            return
+                        result(True, data={"message": message2})
+                        self.emit_exit(
+                            "restart",
+                            "state restored; relaunch the session")
+
+                    # Claim/promotion AND record insertion are ONE scope-
+                    # lock transaction: an accepted destructive claim always
+                    # has its executable record queued (seal cannot split
+                    # them; never mutate from this control thread).
+                    claim = claim_destructive_operation(
+                        welcome_scope, "restore",
+                        execute_welcome_restore, complete_welcome_restore,
+                        operation_id=str(command_id),
+                    )
+                    if claim["status"] == "closed":
+                        # Closed before the claim: restore is NEVER refused
+                        # (#193). Wait for the CAPTURED scope's quiescent
+                        # (set only AFTER the registry is cleared), then
+                        # re-dispatch the SAME command against freshly read
+                        # scopes - never the stale scope, no tight
+                        # recursion, exactly one result (the re-dispatch's).
+                        welcome_scope.quiescent.wait()
+                        self.handle_command(command)
+                        return
+                    if claim["status"] == "conflict":
+                        result(
+                            False,
+                            error=(
+                                "another lifecycle operation is already "
+                                "pending: " + str(claim["kind"])
+                            ),
+                        )
+                        return
+                    self.writer.emit(
+                        "operation",
+                        id=command_id,
+                        name="restore",
+                        status="accepted_deferred",
+                        operation_id=claim["operation_id"],
+                    )
                     return
                 ok, message = manager.restore_save_game(folder)
                 if not ok:

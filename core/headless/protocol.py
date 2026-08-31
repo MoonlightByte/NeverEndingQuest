@@ -27,6 +27,7 @@ VALID_COMMAND_NAMES = {
     "save",
     "list_saves",
     "restore",
+    "reset",
     "delete_save",
     "quit",
 }
@@ -44,19 +45,41 @@ class ProtocolWriter:
     def emit(self, event_type, **fields):
         payload = {"type": event_type}
         payload.update(fields)
+        payload.pop("seq", None)
+        payload.pop("ts", None)
         delivered = True
-        with self._lock:
-            self._seq += 1
-            payload["seq"] = self._seq
-            payload["ts"] = round(time.time(), 3)
-            try:
-                self._stream.write(json.dumps(payload, ensure_ascii=True) + "\n")
-                self._stream.flush()
-            except (BrokenPipeError, OSError, ValueError):
-                # Callers that own a durable delivery receipt need to know the
-                # agent went away so they do not acknowledge output it never
-                # received. Existing fire-and-forget callers may ignore this.
+        try:
+            encoded_payload = json.dumps(payload, ensure_ascii=True)
+        except BaseException as exc:
+            with self._lock:
+                self._seq += 1
+                payload["seq"] = self._seq
+                payload["ts"] = round(time.time(), 3)
+            if isinstance(exc, ValueError):
                 delivered = False
+            else:
+                raise
+        else:
+            with self._lock:
+                self._seq += 1
+                payload["seq"] = self._seq
+                payload["ts"] = round(time.time(), 3)
+                encoded_payload = (
+                    encoded_payload[:-1]
+                    + ', "seq": '
+                    + str(payload["seq"])
+                    + ', "ts": '
+                    + str(payload["ts"])
+                    + "}"
+                )
+                try:
+                    self._stream.write(encoded_payload + "\n")
+                    self._stream.flush()
+                except (BrokenPipeError, OSError, ValueError):
+                    # Callers that own a durable delivery receipt need to know the
+                    # agent went away so they do not acknowledge output it never
+                    # received. Existing fire-and-forget callers may ignore this.
+                    delivered = False
         if self._observer is not None:
             try:
                 self._observer(payload)

@@ -37,7 +37,7 @@
 }
 
 @MAJOR_ISSUES={
-  hp_tracking: "Damage must be applied immediately and consistently; track until death",
+  hp_tracking: "Damage must be applied immediately and consistently in actions[].changes (the ledger) and tracked until death. Verify the math from actions[]/plan, NOT from the narration prose.",
   death_detection: "HP <= 0 -> creature is dead; it cannot act further",
   initiative_order: "Must act in stated initiative sequence; no skips. Tied initiative: DM picks order; any choice is valid.",
   player_actions: "AI DM only prompts player on player's turn (except saves/reactions)",
@@ -54,7 +54,7 @@
 @FLOW_RULES={
   golden_rule: "Process ALL non-player turns in order before stopping; only stop at player's turn or for saves",
   empty_actions_override: "If actions=[] (empty array), then NO turns were processed in this response. The Golden Rule, player_stop_check, and turn ordering checks DO NOT APPLY because there is nothing to validate. An empty-actions response is valid as long as JSON shape and required fields are correct.",
-  turn_processing: "Immediately reflect results after each damaging action in narration",
+  turn_processing: "After each damaging action, actions[].changes MUST carry the exact damage/HP/ammo (the ledger). The narration MUST convey the OUTCOME in fiction (a telling wound, a kill, a clean miss) but MUST NOT recite damage numbers, HP totals ('HP X to Y', 'reduced to N'), or ammo/inventory counts ('arrows 70 to 69', 'expends an arrow'). Do NOT flag a narration as invalid for OMITTING numbers -- numbers belong in actions[], not prose.",
   dead_skip: "Dead creatures are not targeted and do not act",
   exit_when: "If no enemy remains with status='alive' -> MUST call exit action immediately (includes defeated/fled)",
   player_turn_pause: "When it becomes player's turn, stop and await input",

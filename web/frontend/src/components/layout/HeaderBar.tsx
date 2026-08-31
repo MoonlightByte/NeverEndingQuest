@@ -32,7 +32,6 @@ export function HeaderBar() {
   const { mode } = useUiMode()
   const connected = useSession((s) => s.connected)
   const sessionMode = useSession((s) => s.mode)
-  const isProcessing = useSession((s) => s.isProcessing)
   const version = useSession((s) => s.version)
   const location = useWorld((s) => s.location)
   const locationError = useWorld((s) => s.locationError)
@@ -96,15 +95,15 @@ export function HeaderBar() {
           style={{ backgroundColor: isStarting ? '#1976d2' : '#2196f3', borderRadius: '3px', color: 'white', fontWeight: 700 }}>
           {gameReady ? 'Game Running' : isStarting ? 'Starting...' : startLabel}
         </button>
-        <button type="button" className={buttonClass} onClick={handleSave} disabled={resetPending || isProcessing || !connected || !gameReady}
+        <button type="button" className={buttonClass} onClick={handleSave} disabled={resetPending || !connected || !gameReady}
           style={{ backgroundColor: gameReady ? '#ff9800' : '#555', color: 'white' }}>
           Save
         </button>
-        <button type="button" className={buttonClass} onClick={handleLoad} disabled={resetPending || isProcessing || !connected || !gameReady}
+        <button type="button" className={buttonClass} onClick={handleLoad} disabled={resetPending || !connected || !gameReady}
           style={{ backgroundColor: gameReady ? '#9c27b0' : '#555', color: 'white' }}>
           Load
         </button>
-        <button type="button" className={buttonClass} onClick={handleReset} disabled={resetPending || isProcessing || !connected || !gameReady}
+        <button type="button" className={buttonClass} onClick={handleReset} disabled={resetPending || !connected || !gameReady}
           style={{ backgroundColor: gameReady ? '#f44336' : '#555', color: 'white' }}>
           Reset
         </button>

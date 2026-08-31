@@ -87,18 +87,36 @@ class StatusManager:
         """
         self._status_callback = callback
         
-    def update_status(self, message: str, is_processing: bool = True):
+    def update_status(self, message: str, is_processing: bool = True,
+                      at_input_boundary: bool = False):
         """Update the current status message
-        
+
         Args:
             message: The status message to display
             is_processing: Whether the system is currently processing (disables input)
+            at_input_boundary: True ONLY when the GAME THREAD itself is parking
+                for player input (the readline implementations). That moment is
+                authoritatively an open-input boundary even while the outer
+                turn scope is still non-QUIESCENT - combat and other sub-loops
+                legitimately await player input mid-scope. Async callers (e.g.
+                the combat manager's early completion signal) must NOT pass it;
+                their premature un-processing stays rejected by the scope guard.
         """
+        if not is_processing and not at_input_boundary:
+            try:
+                from utils.capture.live_provider_call import get_live_turn_scope
+
+                scope = get_live_turn_scope()
+                if scope is not None and scope.phase != "QUIESCENT":
+                    return False
+            except ImportError:
+                pass
         with self._lock:
             self._status = message
             self._is_processing = is_processing
             if self._status_callback:
                 self._status_callback(message, is_processing)
+        return True
                 
     def get_status(self) -> tuple[str, bool]:
         """Get the current status and processing state
@@ -109,9 +127,10 @@ class StatusManager:
         with self._lock:
             return self._status, self._is_processing
             
-    def set_ready(self):
+    def set_ready(self, at_input_boundary: bool = False):
         """Set status to ready for input"""
-        self.update_status("Enter your command:", False)
+        self.update_status("Enter your command:", False,
+                           at_input_boundary=at_input_boundary)
     
     def set_compression_callback(self, callback: Callable[[str, dict], None]):
         """Set a callback for compression progress events
@@ -139,8 +158,50 @@ class StatusManager:
         with self._lock:
             return self._is_processing
 
+    # --- Background startup-welcome channel (issue #214, D-214-4=A) -------
+    # A SEPARATE presentational status for the off-thread startup welcome,
+    # mirroring the compression-progress channel. It shows honest motion
+    # ("The DM is recalling your journey...") WITHOUT driving the global
+    # input-locking is_processing flag a foreground turn uses.
+
+    def set_welcome_callback(self, callback: Callable[[str], None]):
+        self._welcome_callback = callback
+
+    def emit_welcome_event(self, message: str):
+        callback = getattr(self, "_welcome_callback", None)
+        if callback:
+            try:
+                callback(message)
+            except Exception:
+                pass  # presentational only; never affects gameplay
+
 # Global status manager instance
 status_manager = StatusManager()
+
+# --- Input-poll lifecycle pump hook (issue #214) ---------------------------
+# The blocking input adapters (WebInput.readline / HeadlessInput.readline)
+# poll their queue every 0.5s ON THE GAME THREAD. Registering a pump here
+# lets the game thread service the off-thread welcome lifecycle (lease
+# renewal, handback apply/discard, quiescence) between polls without fake
+# player input. Absent hook = zero behavior change.
+_input_poll_hook = None
+
+
+def set_input_poll_hook(hook):
+    global _input_poll_hook
+    _input_poll_hook = hook
+
+
+def run_input_poll_hook():
+    hook = _input_poll_hook
+    if hook is None:
+        return
+    try:
+        hook()
+    except Exception:
+        # The pump must never break the input loop; failures surface through
+        # the lifecycle's own terminal handling, not the adapter.
+        pass
 
 # Convenience functions for common status updates
 def status_processing_ai():
@@ -151,9 +212,13 @@ def status_validating():
     """Set status for response validation"""
     status_manager.update_status("Validating response format...", True)
 
-def status_retrying(attempt: int, max_attempts: int = 3):
+def status_retrying(attempt: int, max_attempts: int = None):
     """Set status for retry attempts"""
-    status_manager.update_status(f"Retrying response (attempt {attempt}/{max_attempts})...", True)
+    if max_attempts is None:
+        message = f"Retrying response (attempt {attempt})..."
+    else:
+        message = f"Retrying response (attempt {attempt}/{max_attempts})..."
+    status_manager.update_status(message, True)
 
 def status_transitioning_location():
     """Set status for location transition"""
@@ -211,9 +276,9 @@ def status_loading():
     """Set status for loading data"""
     status_manager.update_status("Loading module data...", True)
 
-def status_ready():
+def status_ready(at_input_boundary: bool = False):
     """Set status to ready"""
-    status_manager.set_ready()
+    status_manager.set_ready(at_input_boundary=at_input_boundary)
 
 def status_busy():
     """Set generic busy status"""

@@ -17,7 +17,9 @@ CRITICAL VALIDATION PRIORITIES:
 6. LOCATION PATH VALIDATION: When validating transitionLocation actions, check the "Path Validation" section in the context. ONLY allow movement along valid, connected paths. Reject any transitions that show "WARNING" or "No valid path" messages.
 7. SAME-LOCATION TRANSITION VALIDATION: NEVER allow transitionLocation from a location to itself (e.g., "Town Square (X01) to Town Square (X01)"). This is ALWAYS invalid. If a player immediately leaves after arriving, the DM should roleplay the scene without transitioning, or clarify where the player actually wants to go.
 8. COMBAT INITIATION VALIDATION: Review each turn for the Combat Commitment Point. If a hostile action occurred that alerted enemies, was createEncounter called IMMEDIATELY? If any combat actions were resolved narratively after enemies became aware, mark as INVALID. EXCEPTION: Messages marked with [COMBAT CONCLUDED - HISTORICAL RECORD] are exempt from this rule as they represent already-resolved combat.
-9. TRANSITION ACTION ORDER: If transitionLocation is present, it MUST appear exactly once and MUST be the first action. Any updateTime, updatePlot, saveGame, or other state action belongs after it. Reject the whole response if another action precedes transitionLocation.
+9. TRANSITION ACTION ORDER: If transitionLocation is present, it MUST appear exactly once and MUST be the first action. Only travel-owned updateTime and an immediate travel-result updatePlot may follow it. Reject the whole response if another action precedes transitionLocation or if an unrelated post-arrival action follows it.
+10. ONE-TURN TRAVEL BOUNDARY: A travel response resolves only movement, elapsed time, and an immediate travel-result plot update, then narrates arrival and returns agency. Reject character, roster, storage, hub, save-management, exit, module-handoff, or other downstream actions after transitionLocation even when the player's sentence says "then." Treat those clauses as deferred player intent and require the corrected narration to invite the player's next action. Direct cross-module travel is exactly updatePartyTracker followed by updateTime.
+11. TYPED COMBAT SCENE: Every createEncounter requires a complete `scene` object. Its participants must exactly and uniquely match positional keys `player:0`, `npc:N`, and `monster:N` from the action arrays. Each participant requires participation, boolean initiativeEligible, persistence, and controller. Relations, objectives, and disclosure grants may reference only those exact keys. Reject missing, duplicate, or unowned references before mutation.
 
 ANTI-HALLUCINATION ENFORCEMENT:
 - NPCs that exist in the complete character database from ALL modules may be referenced in dialogue, memories, or stories
@@ -190,6 +192,10 @@ Here's the strict list of specific actions that the model should take when the s
 "transitionLocation": Used to transition the party to a new location when the party and/or DM explicitly requests or states the party is moving to a new location.
 "levelUp": Only after the player explicitly agrees to level up or when an NPC levels up. If the player is asked whether they want to level up but has not confirmed yet, no action is required.
 "establishHub": Used when the party gains ownership or control of a location that could serve as a base of operations. Requires "hubName" parameter (string), optional parameters: "hubType" (settlement/tavern/stronghold/keep), "description" (string), "services" (array), "ownership" (party/shared/arrangement).
+"saveGame": Save the coherent current timeline. Requires "description" (string) and "saveMode" ("essential" or "full").
+"restoreGame": Restore a timeline by its exact listed "saveFolder". It is a standalone lifecycle action and never a post-travel sibling.
+"listSaves": List the current save folders. Parameters must be empty.
+"deleteSave": Delete the exact listed "saveFolder" only after the player's explicit request.
 "createNewModule": Create new adventure module. This action should ONLY be used when:
 - Player explicitly agrees to investigate a SPECIFIC adventure hook ("Yes, let's investigate the haunted barrow", "We'll help those villagers", "Let's go to the Frostward Marches")
 - Player shows clear commitment to a particular quest or location
@@ -345,6 +351,8 @@ When characters request travel across multiple areas or distant locations:
 ### Valid Multi-Area Travel Patterns:
 - VALID: "Return to town/village/surface" requests with narrative journey description
 - VALID: Single transitionLocation to final destination with full journey narrated
+- VALID EXCEPTION: When supplied accepted Travel Agent facts authorize an intermediate stop, narration may retain the original goal but the single first transitionLocation must target only that stop.
+- VALID UNAVAILABLE OUTCOME: When supplied accepted Travel Agent facts establish no valid route, the response uses no transitionLocation, invents no alternate destination, explains the obstruction in fiction, and returns the next choice to the player.
 - VALID: Appropriate travel time for entire multi-area journey (updateTime)
 - VALID: Plot updates reflecting major location change or adventure completion
 
@@ -369,7 +377,7 @@ Critical: The model may only take the above actions! If any other action is take
 Important clarifications:
    1. It's okay for the actions array to be empty if no action is required, especially when waiting for player input or consent.
    2. The player character should never be asked to roll the dice for an NPC so don't invalidate an assistants response for not asking the player to roll for an NPC.
-   3. If the player states they want to transition to a new location area then the model must take the action "transitionLocation" to transition to a new location and be clear in the narration that the player has transitioned.
+   3. If the player actually chooses to transition, the response must use transitionLocation and narrate only the destination authorized by any supplied accepted Travel Agent facts. Discussion, questions, plans, quotations, and negated movement do not require it. Accepted no-valid-route facts instead require an honest no-transition continuation.
    4. The action updateCharacterInfo (or legacy updatePlayerInfo/updateNPCInfo) is not used when the model is only checking a character's inventory.
    5. If any character loses, drops, or an action otherwise removes an item from their inventory, "updateCharacterInfo" should be taken with the appropriate characterName to update their inventory.
    6. Ignore user messages with "Location transition:" as they are notes to the DM on an action already taken and not actual player interactions.
@@ -778,6 +786,8 @@ When you see storage operations with fees, validate:
    - Currency payment (updateCharacterInfo) MUST come before storage (storageInteraction)
    - Both actions must reference the same character
    - Currency changes must show clear conversion math
+   - storageInteraction itself owns removal/addition of the stored items
+   - REJECT a redundant updateCharacterInfo that adds or removes the same items handled by storageInteraction; updateCharacterInfo is permitted here only for a distinct fee or unrelated character change
 
 3. ITEM VALIDATION:
    - Verify character actually possesses the items being stored

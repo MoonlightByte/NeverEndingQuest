@@ -69,9 +69,15 @@ export function InitiativeTracker() {
     const variant: ChipVariant =
       kind === 'player' ? 'init-player' : kind === 'npc' ? 'init-npc' : 'init-enemy'
 
-    // Legacy parity: input being unlocked signals the player's turn.
-    const active =
-      !isProcessing && kind === 'player' && playerName !== null && playerName === name
+    const projectedController = asString(combatant['controller'])
+    const hasTypedOwnership =
+      typeof combatant['isCurrent'] === 'boolean' &&
+      (projectedController === 'human' || projectedController === 'actor_agent')
+    // Typed combat uses the server projection of the committed turn/controller.
+    // Absence preserves the legacy input-unlocked/player-name behavior.
+    const active = hasTypedOwnership
+      ? !isProcessing && combatant['isCurrent'] === true && projectedController === 'human'
+      : !isProcessing && kind === 'player' && playerName !== null && playerName === name
 
     return (
       <CharacterChip
@@ -90,6 +96,11 @@ export function InitiativeTracker() {
   }
 
   return <>
+    {initiative.recovery?.required ? (
+      <div role="alert" aria-live="assertive" className="combat-recovery-notice">
+        {initiative.recovery.message}
+      </div>
+    ) : null}
     <HorizontalChipRail label="Initiative order" itemCount={initiative.combatants.length}>
       {initiative.combatants.map((combatant, index) => renderCombatant(combatant, index))}
     </HorizontalChipRail>

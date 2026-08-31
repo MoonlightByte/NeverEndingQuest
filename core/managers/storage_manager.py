@@ -46,7 +46,9 @@ See LICENSE file for full terms.
 
 import json
 import os
+import copy
 import shutil
+import threading
 import uuid
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
@@ -61,10 +63,12 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 # Set script name for logging
 set_script_name(__name__)
 
+_STAGED_STORAGE_LOCK = threading.RLock()
+
 class StorageManager:
     """Manages player storage with atomic file protection"""
     
-    def __init__(self):
+    def __init__(self, *, ensure_storage: bool = True):
         """Initialize storage manager"""
         debug("INITIALIZATION: Starting StorageManager", category="storage_operations")
         self.storage_file = "player_storage.json"
@@ -79,7 +83,16 @@ class StorageManager:
             warning(f"INITIALIZATION: Could not load party tracker, using default", category="storage_operations")
             self.path_manager = ModulePathManager()  # Fallback to reading from file
         self.character_validator = AICharacterValidator()
-        self._ensure_storage_file_exists()
+        if ensure_storage:
+            self._ensure_storage_file_exists()
+
+    @staticmethod
+    def _initial_storage_data(timestamp: str) -> Dict[str, Any]:
+        return {
+            "version": "1.0.0",
+            "lastUpdated": timestamp,
+            "playerStorage": [],
+        }
         
     def _ensure_storage_file_exists(self):
         """Ensure player storage file exists with proper structure"""
@@ -596,6 +609,262 @@ class StorageManager:
             
             error(f"FAILURE: Failed to retrieve item - {str(e)}", category="storage_operations")
             return {"success": False, "error": f"Failed to retrieve item: {str(e)}"}
+
+    def prepare_staged_operation(
+        self,
+        operation: Dict[str, Any],
+        operation_id: str,
+    ) -> Dict[str, Any]:
+        """Freeze one travel-owned storage mutation before its first write."""
+        if not self._validate_storage_operation(operation):
+            raise ValueError("invalid storage operation")
+        action = operation.get("action")
+        if action not in {"create_storage", "store_item", "retrieve_item", "view_storage"}:
+            raise ValueError("unsupported storage operation")
+
+        timestamp = datetime.now().isoformat()
+        storage_exists = os.path.exists(self.storage_file)
+        storage_before = safe_read_json(self.storage_file) if storage_exists else None
+        if storage_exists and not isinstance(storage_before, dict):
+            raise RuntimeError("player storage is unreadable")
+        storage_working = copy.deepcopy(
+            storage_before
+            if storage_exists
+            else self._initial_storage_data(timestamp)
+        )
+        storage_working.setdefault("playerStorage", [])
+        character_path = None
+        character_before = None
+        character_after = None
+
+        if action == "view_storage":
+            location_id = operation.get("location_id")
+            visible = [
+                item
+                for item in storage_working.get("playerStorage", [])
+                if not location_id or item.get("locationId") == location_id
+            ]
+            return {
+                "kind": "storageInteraction",
+                "operation_id": operation_id,
+                "operation": copy.deepcopy(operation),
+                "status": "staged",
+                "storage": None,
+                "character": None,
+                "message": "Storage contains: %s"
+                % json.dumps(visible, ensure_ascii=False),
+                "validation": {"status": "not_applicable"},
+            }
+
+        def new_container():
+            location_id, location_name, area_id, area_name = self._get_location_info(
+                operation.get("location_description", "")
+            )
+            storage_id = operation.get("storage_id") or "storage_%s" % operation_id.split("-")[0]
+            return {
+                "id": storage_id,
+                "deviceType": operation.get("storage_type", "chest"),
+                "deviceName": operation.get("storage_name")
+                or "%s at %s"
+                % (operation.get("storage_type", "chest").title(), location_name),
+                "locationId": location_id,
+                "locationName": location_name,
+                "areaId": area_id,
+                "areaName": area_name,
+                "contents": [],
+                "createdBy": operation.get("character"),
+                "createdDate": timestamp,
+                "accessibility": "party",
+                "lastAccessed": timestamp,
+                "accessLog": [
+                    {
+                        "character": operation.get("character"),
+                        "action": "create",
+                        "timestamp": timestamp,
+                    }
+                ],
+            }
+
+        if action == "create_storage":
+            container = new_container()
+            if any(
+                item.get("id") == container["id"]
+                for item in storage_working["playerStorage"]
+            ):
+                raise RuntimeError("staged storage identity already exists")
+            storage_working["playerStorage"].append(container)
+            message = "Created %s at %s" % (
+                container["deviceType"],
+                container["locationName"],
+            )
+        else:
+            character_path = self.path_manager.get_character_path(operation["character"])
+            character_before = safe_read_json(character_path)
+            if not isinstance(character_before, dict):
+                raise RuntimeError("storage character is unavailable")
+            character_after = copy.deepcopy(character_before)
+            storage_id = operation.get("storage_id")
+            container = next(
+                (
+                    item
+                    for item in storage_working["playerStorage"]
+                    if item.get("id") == storage_id
+                ),
+                None,
+            )
+            if action == "store_item" and container is None and not storage_id:
+                container = new_container()
+                storage_working["playerStorage"].append(container)
+            if container is None:
+                raise ValueError("referenced storage container does not exist")
+
+            requested = operation.get("items")
+            if not isinstance(requested, list):
+                requested = [
+                    {
+                        "item_name": operation.get("item_name"),
+                        "quantity": operation.get("quantity"),
+                    }
+                ]
+            moved_names = []
+            for item_request in requested:
+                item_name = item_request.get("item_name")
+                quantity = item_request.get("quantity")
+                if not isinstance(item_name, str) or not isinstance(quantity, int) or quantity <= 0:
+                    raise ValueError("storage item and quantity must be exact")
+                if action == "store_item":
+                    has_item, available, item_data = self._find_item_in_character(
+                        character_after, item_name, quantity
+                    )
+                    if not has_item or available < quantity:
+                        raise ValueError("character does not own the requested storage quantity")
+                    if not self._remove_item_from_character(character_after, item_name, quantity):
+                        raise RuntimeError("could not stage character inventory removal")
+                    stored = next(
+                        (
+                            item
+                            for item in container["contents"]
+                            if item.get("item_name") == item_name
+                        ),
+                        None,
+                    )
+                    if stored is None:
+                        stored = copy.deepcopy(item_data)
+                        stored["quantity"] = quantity
+                        stored["equipped"] = False
+                        container["contents"].append(stored)
+                    else:
+                        stored["quantity"] = stored.get("quantity", 1) + quantity
+                else:
+                    stored = next(
+                        (
+                            item
+                            for item in container["contents"]
+                            if item.get("item_name") == item_name
+                        ),
+                        None,
+                    )
+                    if stored is None or stored.get("quantity", 1) < quantity:
+                        raise ValueError("storage does not own the requested quantity")
+                    if stored.get("quantity", 1) == quantity:
+                        container["contents"].remove(stored)
+                    else:
+                        stored["quantity"] = stored.get("quantity", 1) - quantity
+                    self._add_item_to_character(character_after, stored, quantity)
+                moved_names.append("%s %s" % (quantity, item_name))
+
+            event_action = "store_items" if action == "store_item" else "retrieve_items"
+            container["lastAccessed"] = timestamp
+            container.setdefault("accessLog", []).append(
+                {
+                    "character": operation["character"],
+                    "action": event_action,
+                    "items": copy.deepcopy(requested),
+                    "timestamp": timestamp,
+                }
+            )
+            verb = "Stored" if action == "store_item" else "Retrieved"
+            preposition = "in" if action == "store_item" else "from"
+            message = "%s %s %s %s" % (
+                verb,
+                ", ".join(moved_names),
+                preposition,
+                container["deviceName"],
+            )
+
+            validator = AICharacterValidator()
+            validation = validator.validate_and_correct_character_with_result(
+                character_after,
+                max_attempts=1,
+            )
+            character_after = validation.data
+            validation_record = {
+                "status": "accepted" if validation.success else "attempted_unavailable",
+                "fallback": not validation.success,
+            }
+
+        storage_working["lastUpdated"] = timestamp
+        return {
+            "kind": "storageInteraction",
+            "operation_id": operation_id,
+            "operation": copy.deepcopy(operation),
+            "status": "staged",
+            "storage": {
+                "path": self.storage_file,
+                "before_exists": storage_exists,
+                "before": copy.deepcopy(storage_before),
+                "after": storage_working,
+            },
+            "character": (
+                {
+                    "path": character_path,
+                    "before": character_before,
+                    "after": character_after,
+                }
+                if character_path
+                else None
+            ),
+            "message": message,
+            "validation": (
+                validation_record
+                if character_path
+                else {"status": "not_applicable"}
+            ),
+        }
+
+    @staticmethod
+    def apply_staged_operation(receipt: Dict[str, Any]) -> str:
+        """Converge the exact staged character/storage values without replay."""
+        storage_target = receipt.get("storage")
+        character_target = receipt.get("character")
+        if storage_target is None and character_target is None:
+            return "committed"
+        with _STAGED_STORAGE_LOCK:
+            targets = [
+                target
+                for target in (character_target, storage_target)
+                if isinstance(target, dict)
+            ]
+            states = []
+            for target in targets:
+                exists = os.path.exists(target["path"])
+                current = safe_read_json(target["path"]) if exists else None
+                before_exists = target.get("before_exists", True)
+                if current == target["after"] and exists:
+                    states.append("after")
+                elif current == target.get("before") and exists == before_exists:
+                    states.append("before")
+                else:
+                    return "blocked_conflict"
+            for target, state in zip(targets, states):
+                if state == "before" and not safe_write_json(
+                    target["path"], copy.deepcopy(target["after"])
+                ):
+                    raise RuntimeError("staged storage target write failed")
+            for target in targets:
+                if safe_read_json(target["path"]) != target["after"]:
+                    raise RuntimeError("staged storage target verification failed")
+        return "committed"
             
     def view_storage(self, location_id: str = None) -> Dict[str, Any]:
         """View storage containers at a location"""

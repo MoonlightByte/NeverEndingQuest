@@ -17,6 +17,8 @@ export function InputBar() {
   const startupInputReady = useSession((s) => s.startupInputReady)
   const startupStatus = useSession((s) => s.startupStatus)
   const statusMessage = useSession((s) => s.statusMessage)
+  // #214: background welcome liveness - presentational, never locks input.
+  const welcomeMessage = useSession((s) => s.welcomeMessage)
   const destructiveAction = useDialogs((s) => s.actionResult?.kind)
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -57,7 +59,9 @@ export function InputBar() {
             if (e.key === 'Enter') send()
           }}
           disabled={locked}
-          placeholder={isProcessing ? (statusMessage || 'The DM is thinking...') : 'Enter your command...'}
+          placeholder={isProcessing
+            ? (statusMessage || 'The DM is thinking...')
+            : (welcomeMessage ? `${welcomeMessage} (you can act anytime)` : 'Enter your command...')}
           aria-label="Player input"
           className="neq-input-field min-w-0 flex-1 rounded border border-card bg-page px-3 py-2 font-log text-sm text-primary"
         />

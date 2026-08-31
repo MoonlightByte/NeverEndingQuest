@@ -32,6 +32,7 @@ import json
 import codecs
 import os
 import threading
+import time
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -232,7 +233,22 @@ def safe_json_dump(data: Any, filepath: str, **kwargs) -> None:
             json.dump(clean_data, f, **default_kwargs)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(temporary_path, filepath)
+        # Windows can transiently refuse the rename (WinError 5/32)
+        # while an antivirus scan, indexer, or reader briefly holds
+        # the destination. One blip must not fail the write (a live
+        # acceptance run lost a combat to this class in the sibling
+        # writer). Retry patiently; persistent locks still raise.
+        _replace_attempt = 0
+        while True:
+            try:
+                os.replace(temporary_path, filepath)
+                break
+            except (PermissionError, OSError) as replace_error:
+                winerror = getattr(replace_error, 'winerror', None)
+                if winerror not in (5, 32) or _replace_attempt >= 100:
+                    raise
+                _replace_attempt += 1
+                time.sleep(0.1)
 
         # Persist the directory entry where the platform supports fsync on a
         # directory. Windows does not expose an equivalent through os.open.

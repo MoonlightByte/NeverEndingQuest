@@ -194,7 +194,29 @@ class AtomicFileWriter:
             # Replace the target in one filesystem operation. In particular,
             # never unlink first on Windows: a crash in that gap loses the
             # only committed copy of the JSON document.
-            os.replace(temp_path, filepath)
+            # Windows can transiently refuse the rename (WinError 5/32) while
+            # an antivirus scan, indexer, or reader briefly holds the
+            # destination. One such blip must not fail the write - a live
+            # acceptance run lost an entire combat to a single WinError 5
+            # here. Retry patiently; genuine persistent locks still fail
+            # through the existing error path below.
+            _replace_attempt = 0
+            while True:
+                try:
+                    os.replace(temp_path, filepath)
+                    break
+                except (PermissionError, OSError) as replace_error:
+                    winerror = getattr(replace_error, "winerror", None)
+                    if winerror not in (5, 32) or _replace_attempt >= 100:
+                        raise
+                    _replace_attempt += 1
+                    if _replace_attempt % 20 == 0:
+                        logger.warning(
+                            f"Transient Windows rename contention on "
+                            f"{filepath} (WinError {winerror}), attempt "
+                            f"{_replace_attempt}; still retrying"
+                        )
+                    time.sleep(0.1)
             # Suppress success messages - only log errors
             # logger.info(f"Successfully wrote {filepath}")
             

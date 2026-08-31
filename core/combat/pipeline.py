@@ -23,8 +23,10 @@ from core.combat.resolver import (
 )
 from core.managers.combat_state import (
     combatant_by_id,
+    combat_provenance,
     is_combatant_targetable,
     is_turn_eligible,
+    resolve_creature_controller,
 )
 
 
@@ -74,6 +76,8 @@ def _recover_stale_known_target(original_encounter, current_encounter, actor, in
     the conservative no-call fallback. Pre-existing bad targets and player
     actions still reject normally.
     """
+    if combat_provenance(original_encounter) == "typed":
+        return intent, None
     if (
         actor.get("type") == "player"
         or intent.get("mode", "known") != "known"
@@ -308,12 +312,16 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
         )
         intent["stateVersion"] = revision
         mode = intent.get("mode", "known")
-        if actor.get("type") == "player" and mode != "adjudicated":
+        controller = resolve_creature_controller(
+            actor,
+            next_encounter.get("combatState"),
+        )
+        if controller == "human" and mode != "adjudicated":
             raise CombatIntentError(
                 "Player actions must be adjudicated from the submitted action and player-provided rolls",
                 actor_id,
             )
-        if actor.get("type") == "player" and intent.get("requiresPlayerInput"):
+        if controller == "human" and intent.get("requiresPlayerInput"):
             raise CombatPlayerInputRequired(
                 "The player's turn needs additional input",
                 actor_id,

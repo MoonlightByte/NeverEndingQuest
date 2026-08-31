@@ -14,6 +14,8 @@ from __future__ import annotations
 import re
 from copy import deepcopy
 
+from core.managers.combat_state import combatant_presentation_name
+
 
 _SHEET_FIELDS = (
     "name",
@@ -50,11 +52,6 @@ _SHEET_FIELDS = (
     "senses",
 )
 
-_TITLE_RE = re.compile(
-    r"\b(?:Sir|Lady|Lord|Captain|Commander|General|King|Queen|Prince|Princess|"
-    r"Baron|Baroness|Duke|Duchess)\s+[A-Z][A-Za-z'-]+"
-    r"(?:\s+[A-Z][A-Za-z'-]+)?\b"
-)
 _INTERNAL_RE = re.compile(
     r"(?:\bcmb-[a-z0-9-]+\b|\b[A-Za-z0-9_-]+-R\d+-[a-f0-9]{8,}-A\d+\b|"
     r"\b(?:eventId|stateVersion|pendingDelivery|turnCursor|actorId|combatState)\b)",
@@ -77,6 +74,11 @@ _ATTACK_ROLL_RE = re.compile(
 )
 _SLOT_RE = re.compile(
     r"\b(?:level\s*)?(\d+)(?:st|nd|rd|th)?[- ]level\s+spell\s+slot\b",
+    re.IGNORECASE,
+)
+_AMMUNITION_RE = re.compile(
+    r"\b(?:uses?|used|expends?|expended|spends?|spent|leaving|left(?:\s+with)?)"
+    r"\D{0,24}(\d+)\s+(?:arrows?|bolts?|ammunition|ammo)\b",
     re.IGNORECASE,
 )
 
@@ -134,7 +136,13 @@ def _creature_map(encounter):
     }
 
 
-def _display_name(creatures, combatant_id, fallback="A combatant"):
+def _display_name(
+    creatures, combatant_id, fallback="A combatant", presentation=None
+):
+    if isinstance(presentation, dict):
+        name = presentation.get(combatant_id)
+        if isinstance(name, str) and name.strip():
+            return name
     creature = creatures.get(combatant_id) or {}
     name = creature.get("name")
     return name if isinstance(name, str) and name.strip() else fallback
@@ -149,7 +157,7 @@ def _action_name(event):
     return "combat action"
 
 
-def _fact_event(event, creatures):
+def _fact_event(event, creatures, presentation=None):
     outcome = event.get("outcome") or {}
     intent = event.get("intent") or {}
     declared_deltas = {
@@ -170,7 +178,7 @@ def _fact_event(event, creatures):
         row = {
             "targetId": target.get("combatantId"),
             "targetName": _display_name(
-                creatures, target.get("combatantId"), "the target"
+                creatures, target.get("combatantId"), "the target", presentation
             ),
             "hpBefore": before,
             "hpAfter": after,
@@ -182,7 +190,7 @@ def _fact_event(event, creatures):
     fact = {
         "eventId": event.get("eventId"),
         "actorId": actor_id,
-        "actorName": _display_name(creatures, actor_id),
+        "actorName": _display_name(creatures, actor_id, presentation=presentation),
         "actionName": _action_name(event),
         "kind": outcome.get("kind"),
         "targets": targets,
@@ -241,12 +249,21 @@ def build_scene_dossier(encounter, events, characters=None):
     characters = characters if isinstance(characters, dict) else {}
     state = encounter.get("combatState") or {}
     creatures = _creature_map(encounter)
+    presentation = {
+        combatant_id: combatant_presentation_name(encounter, combatant_id)
+        for combatant_id in creatures
+    }
     combatants = []
     for creature in encounter.get("creatures", []) or []:
         if not isinstance(creature, dict):
             continue
-        name = creature.get("name")
-        sheet = characters.get(name) if isinstance(name, str) else None
+        mechanical_name = creature.get("name")
+        name = presentation.get(creature.get("combatantId"), mechanical_name)
+        sheet = (
+            characters.get(mechanical_name)
+            if isinstance(mechanical_name, str)
+            else None
+        )
         effective = _effective_scene_sheet(creature, sheet)
         sheet_is_state_authority = (
             creature.get("type") in ("player", "npc") and isinstance(sheet, dict)
@@ -289,13 +306,15 @@ def build_scene_dossier(encounter, events, characters=None):
         order.append(
             {
                 "combatantId": actor_id,
-                "name": _display_name(creatures, actor_id),
+                "name": _display_name(
+                    creatures, actor_id, presentation=presentation
+                ),
                 "initiative": creature.get("initiative"),
                 "status": creature.get("status"),
                 "actedThisRound": actor_id in (state.get("actedThisRound") or []),
             }
         )
-    facts = [_fact_event(event, creatures) for event in events]
+    facts = [_fact_event(event, creatures, presentation) for event in events]
     delivery = state.get("pendingDelivery") or {}
     permitted = sorted(
         {
@@ -325,7 +344,10 @@ def build_scene_dossier(encounter, events, characters=None):
             "roundAfter": delivery.get("roundAfter"),
             "actorIds": [event.get("actorId") for event in events],
             "actorNames": [
-                _display_name(creatures, event.get("actorId")) for event in events
+                _display_name(
+                    creatures, event.get("actorId"), presentation=presentation
+                )
+                for event in events
             ],
         },
         "encounterActivity": _bounded_copy(state.get("narrationActivity") or {}),
@@ -554,35 +576,21 @@ def lint_combat_narration(narration, dossier):
     warnings = []
     if not text:
         return {"reject": ["empty_narration"], "warnings": []}
-    allowed_names = {
-        str(name).casefold()
-        for name in (dossier or {}).get("permittedNamedEntities", [])
-        if isinstance(name, str) and name.strip()
-    }
     if _INTERNAL_RE.search(text):
         rejects.append("internal_identifier_leak")
-    for match in _TITLE_RE.finditer(text):
-        if match.group(0).casefold() not in allowed_names:
-            rejects.append("unknown_titled_entity")
-            break
-    values = _allowed_values(dossier)
     mechanical_checks = (
-        (_DAMAGE_RE, "damage"),
-        (_HEAL_RE, "healing"),
-        (_HP_RE, "hp"),
-        (_AC_RE, "ac"),
-        (_ROUND_RE, "round"),
-        (_ATTACK_ROLL_RE, "attackRoll"),
-        (_SLOT_RE, "slotLevel"),
+        _DAMAGE_RE,
+        _HEAL_RE,
+        _HP_RE,
+        _AC_RE,
+        _ROUND_RE,
+        _ATTACK_ROLL_RE,
+        _SLOT_RE,
+        _AMMUNITION_RE,
     )
-    for pattern, bucket in mechanical_checks:
-        allowed = values[bucket]
-        for match in pattern.finditer(text):
-            claimed = int(match.group(1))
-            if allowed and claimed not in allowed:
-                rejects.append("mechanical_number_mismatch")
-                break
-        if "mechanical_number_mismatch" in rejects:
+    for pattern in mechanical_checks:
+        if pattern.search(text):
+            rejects.append("mechanical_bookkeeping_leak")
             break
     facts = ((dossier or {}).get("authoritativeFacts") or {}).get("events") or []
     combatants = [
@@ -765,7 +773,7 @@ def progressive_narration_feedback(previous_attempt, dossier):
         ),
         "You Must Fix This": (
             "Correct every listed violation; do not repeat or introduce an entity, "
-            "action, or number outside the final authoritative facts."
+            "action, or mechanical bookkeeping detail."
         ),
         "Corrective Action Required": (
             "Return one corrected JSON narration object grounded only in the supplied "

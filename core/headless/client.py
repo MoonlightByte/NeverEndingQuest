@@ -124,7 +124,11 @@ class HeadlessClient:
         return self._collect_until_prompt(timeout)
 
     def command(self, name, args=None, timeout=60.0):
-        """Send an out-of-band command; return its `result` event."""
+        """Send an out-of-band command; wait structurally for its result.
+
+        ``timeout`` is retained as the progress-observation interval. It never
+        abandons a live server-side operation.
+        """
         command_id = self._next_id()
         self._send({"type": "command", "id": command_id, "name": name,
                     "args": args or {}})
@@ -180,9 +184,18 @@ class HeadlessClient:
             event = self._events.get(
                 timeout=timeout if timeout is not None else self.turn_timeout)
         except queue.Empty:
-            raise HeadlessProtocolError(
-                "no engine event within %ss"
-                % (timeout if timeout is not None else self.turn_timeout))
+            if self._process is None or self._process.poll() is not None:
+                raise HeadlessProtocolError(
+                    "serve process exited while waiting for its next event"
+                )
+            interval = timeout if timeout is not None else self.turn_timeout
+            return {
+                "type": "status",
+                "content": "The headless operation is still running.",
+                "is_processing": True,
+                "waiting_seconds": interval,
+                "source": "headless_client_wait",
+            }
         if event is None:
             raise HeadlessProtocolError("serve process closed its stream")
         return event

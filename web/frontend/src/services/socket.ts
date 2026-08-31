@@ -25,6 +25,28 @@ import { cancelPendingRestart, reloadIfRestartPending } from './restart'
 export const socket: Socket = io()
 
 let requestSequence = 0
+const baseDocumentTitle = document.title
+let readyTitleMarked = false
+
+function clearReadyTitle(): void {
+  if (!readyTitleMarked) return
+  document.title = baseDocumentTitle
+  readyTitleMarked = false
+}
+
+function applyProcessingTransition(nextProcessing: boolean, apply: () => void): void {
+  const wasProcessing = useSession.getState().isProcessing
+  apply()
+  if (wasProcessing && !nextProcessing && document.hidden) {
+    document.title = `Adventure ready — ${baseDocumentTitle}`
+    readyTitleMarked = true
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) clearReadyTitle()
+})
+window.addEventListener('focus', clearReadyTitle)
 
 const hydration = new HydrationCoordinator((event, payload, arity) => {
   // socket.io-client queues emits made while disconnected and replays every
@@ -96,6 +118,9 @@ socket.on('connect', () => {
 })
 socket.on('disconnect', () => {
   useSession.getState().setConnected(false)
+  // #214 F10: a welcome clear emitted while disconnected is lost; drop the
+  // placeholder now - a still-active welcome's next heartbeat restores it.
+  useSession.getState().setWelcome('')
   useLog.getState().append({ type: 'system', content: 'Disconnected from the game server. Reconnecting...', message_id: `disconnect-${hydration.currentEpoch()}` })
 })
 
@@ -109,17 +134,20 @@ on('connected', (payload) => {
 on('version_status', (v) => useSession.getState().setVersion(v))
 on('status_update', (s) => {
   const wasProcessing = useSession.getState().isProcessing
-  useSession.getState().setStatus(s)
+  applyProcessingTransition(s.is_processing, () => useSession.getState().setStatus(s))
   if (wasProcessing && !s.is_processing) refreshAuthoritativeState()
 })
 on('startup_status', (s) => useSession.getState().setStartup(s.status, s.phase, s.startupAttemptId))
+// #214 D-214-4=A: background welcome liveness - presentational only, never
+// touches isProcessing, so it can never lock the input.
+on('welcome_progress', (p) => useSession.getState().setWelcome((p && p.message) || ''))
 on('game_started', (p) => {
   localStorage.setItem('neq_hasPlayed', 'true')
   useSession.getState().gameStarted(p.message)
   refreshAuthoritativeState()
 })
 on('game_resumed', (p) => {
-  useSession.getState().gameResumed(p.is_processing)
+  applyProcessingTransition(p.is_processing, () => useSession.getState().gameResumed(p.is_processing))
   useLog.getState().append({ type: 'system', content: p.message })
   refreshAuthoritativeState()
 })
@@ -131,7 +159,10 @@ on('ui_state_snapshot', (p) => {
   // belongs to another server instance, its operation portion must not be
   // allowed to roll a terminal dialog back to an older running state.
   if (!shouldAcceptSnapshot(session, p)) return
-  session.applySnapshot(p)
+  applyProcessingTransition(
+    p.is_processing,
+    () => session.applySnapshot(p),
+  )
   if (p.operations) {
     useDialogs.getState().applyOperationSnapshot(p.operations)
     const module = p.operations.module

@@ -11,6 +11,10 @@ from typing import Any, Dict, List, Optional
 import config
 import model_config
 from core.ai import api_client
+from core.combat.invocation import (
+    InvocationSupersededError,
+    require_current_invocation,
+)
 from model_config import TRANSITION_VALIDATOR_TEMPERATURE
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.enhanced_logger import debug, error, info, warning
@@ -223,6 +227,7 @@ def _normalize_reviews(
 def review_ambiguous_segments(
     ambiguous_segments: List[Dict[str, Any]],
     travel_context: Optional[Dict[str, Any]] = None,
+    invocation_claim=None,
 ) -> List[Dict[str, Any]]:
     """Use T021 to classify only the supplied ambiguous route segments.
 
@@ -248,7 +253,9 @@ def review_ambiguous_segments(
         "Return JSON only.\n\n" + json.dumps(packet, ensure_ascii=False, sort_keys=True)
     )
 
-    try:
+    while True:
+        if invocation_claim is not None:
+            require_current_invocation(invocation_claim)
         transition_config = _transition_config()
         response = capture_and_fanout(
             "T021",
@@ -258,17 +265,16 @@ def review_ambiguous_segments(
                 {"role": "user", "content": user_message},
             ],
             _request_provider=model_config.MODEL_PROVIDER,
+            _live_selected=True,
             model=transition_config["model"],
             temperature=TRANSITION_VALIDATOR_TEMPERATURE,
             **{
                 key: value for key, value in transition_config.items() if key != "model"
             },
         )
+        if invocation_claim is not None:
+            require_current_invocation(invocation_claim)
         response_text = response.choices[0].message.content
-        if not isinstance(response_text, str) or not response_text.strip():
-            return _uncertain_reviews(
-                segments, "Transition reviewer returned no content"
-            )
 
         try:
             from utils.api_logger import log_api_call
@@ -291,23 +297,28 @@ def review_ambiguous_segments(
                 category="transition_validation",
             )
 
-        normalized = _normalize_reviews(json.loads(response_text), segments)
-        if normalized is None:
-            return _uncertain_reviews(
-                segments, "Transition reviewer returned an invalid contract"
+        try:
+            decoded = json.loads(response_text)
+        except json.JSONDecodeError:
+            warning(
+                "Transition reviewer returned malformed JSON; reissuing the "
+                "same evidence packet",
+                category="transition_validation",
             )
+            continue
+        normalized = _normalize_reviews(decoded, segments)
+        if normalized is None:
+            warning(
+                "Transition reviewer returned an invalid contract; reissuing "
+                "the same evidence packet",
+                category="transition_validation",
+            )
+            continue
         info(
             f"Transition reviewer classified {len(normalized)} ambiguous segment(s)",
             category="transition_validation",
         )
         return normalized
-    except json.JSONDecodeError:
-        return _uncertain_reviews(
-            segments, "Transition reviewer returned malformed JSON"
-        )
-    except Exception as exc:
-        error(f"Transition reviewer failed: {exc}", category="transition_validation")
-        return _uncertain_reviews(segments, "Transition reviewer provider failure")
 
 
 def _legacy_blocked_result(segment: Dict[str, Any], reason: str) -> Dict[str, Any]:
@@ -351,6 +362,7 @@ def validate_transition_request(
     transition_atlas: str,
     plot_data: Dict,
     party_level: int = 1,
+    invocation_claim=None,
 ) -> Dict[str, Any]:
     """Backward-compatible bridge for the existing action-handler callsite.
 
@@ -412,6 +424,7 @@ def validate_transition_request(
                 "plot_data": plot_data,
                 "party_level": party_level,
             },
+            invocation_claim=invocation_claim,
         )
         reviews_by_id = {review["location_id"]: review for review in reviews}
 

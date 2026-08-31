@@ -26,6 +26,7 @@ from core.ai.srd_reference import (
     load_srd_reference_index,
     normalize_rule_name,
 )
+from core.managers.combat_state import combatant_by_id, resolve_creature_controller
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.character_sheet_contract import extract_json_object
 
@@ -500,8 +501,26 @@ def request_intent_batch(
 T097_SCENE_CONTRACT_SENTENCE = (
     "Use the supplied scene dossier and final authoritative facts as the complete "
     "truth for this pass; narrate only listed combatants, actions, equipment, "
-    "spells, results, and numbers, and never introduce or imply a conflicting "
-    "entity or mechanic."
+    "spells, and results, and never introduce or imply a conflicting entity or "
+    "mechanic. Narration contains no mechanical bookkeeping: no attack or damage "
+    "rolls, damage amounts, HP totals or transitions, AC values, ammunition or "
+    "resource counts, spell-slot levels, or dice expressions. Convey every outcome "
+    "through fiction only; the authoritative event ledger remains silent backend "
+    "state. PlayerInput and authoritative facts contain silent mechanics for grounding "
+    "only. Never repeat or explain their numbers, rules, action economy, or mechanical "
+    "effects. BAD: You deal 7 damage and spend your Action. BAD: Dodge gives attacks "
+    "disadvantage and gives you advantage on Dexterity saves. GOOD: Your mace caves "
+    "the creature into the floor. GOOD: You settle behind your shield and track every "
+    "movement. The narrationContext controllers map is authoritative for perspective: "
+    "refer to the sole human-controlled combatant in second person (you/your) in "
+    "every narration reference except another character's in-world direct address; "
+    "an actor_agent-controlled combatant remains in third person regardless of its "
+    "creature type. When event.actorId maps to human, narrate that actor as you/your. "
+    "Narrate a target as you/your only when that target's exact combatant ID maps to human. "
+    "GOOD: You spring at Eirik's shield and bite him. BAD: The Snow Rat springs toward "
+    "your shield and bites you. Narrate only this committed combat beat. Never ask what "
+    "the player does next, request a roll or choice, or announce whose turn follows; "
+    "initiative and player handoff are owned by the game after narration is delivered."
 )
 
 
@@ -515,13 +534,34 @@ def request_narration_candidate(
     diagnostics=None,
 ):
     """Make one T097 call and return lintable prose without fallback selection."""
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded,
+        LiveProviderUnavailable,
+    )
+
     provider, call_config = _provider_config("narration", attempt=attempt)
     model = str(call_config.get("model") or "unknown")
     dossier = dict(scene_dossier or {})
     authoritative_facts = dossier.pop("authoritativeFacts", {})
+    combat_state = encounter.get("combatState") or {}
+    controllers = {}
+    for row in dossier.get("combatants", []) or []:
+        if not isinstance(row, dict):
+            continue
+        combatant_id = row.get("combatantId")
+        creature = combatant_by_id(encounter, combatant_id)
+        if creature is None:
+            continue
+        controllers[combatant_id] = resolve_creature_controller(
+            creature, combat_state
+        )
+
     payload = {
         "playerInput": player_input,
         "sceneDossier": dossier,
+        "narrationContext": {
+            "controllers": controllers,
+        },
     }
     if correction:
         payload["correction"] = correction
@@ -538,7 +578,8 @@ def request_narration_candidate(
                 "coveredEventIds must contain every authoritative eventId exactly once "
                 "in that same order and is never shown to the player. Do not change, "
                 "invent, or recalculate mechanics; do not announce actions beyond these "
-                "events. Keep the prose vivid, clear, and concise. "
+                "events. Do not quote bookkeeping from the event data. Keep the prose "
+                "vivid, clear, and concise. "
                 + T097_SCENE_CONTRACT_SENTENCE
             ),
         },
@@ -560,8 +601,7 @@ def request_narration_candidate(
             temperature=0.5,
             **call_config,
         )
-        raw = str(response.choices[0].message.content or "")
-    except Exception as exc:
+    except (api_client.ProviderCallError, LiveProviderUnavailable) as exc:
         if isinstance(diagnostics, dict):
             diagnostics.update(
                 {
@@ -577,43 +617,65 @@ def request_narration_candidate(
             "T097 provider call failed",
             failure_class="provider_error",
         ) from exc
+    except LiveProviderSuperseded as exc:
+        from core.combat.invocation import InvocationSupersededError
+
+        raise InvocationSupersededError(
+            "Combat narration provider call was superseded"
+        ) from exc
+
+    # Envelope access is deliberately outside the provider-error boundary.
+    # A malformed normalized response is an internal integration fault, not
+    # evidence that the provider was unavailable.
+    raw = str(response.choices[0].message.content or "")
     try:
         result = _parse_object(raw, "T097")
-        narration = result.get("narration")
-        if not isinstance(narration, str) or not narration.strip():
-            raise CombatAgentContractError("T097 narration is empty")
-        from core.ai.combat_narration import narration_coverage_violations
-
-        coverage_violations = narration_coverage_violations(
-            result.get("coveredEventIds"), scene_dossier
-        )
-        if coverage_violations:
-            raise CombatAgentContractError(
-                "T097 coveredEventIds failed: %s"
-                % ", ".join(coverage_violations)
-            )
+    except CombatAgentContractError as exc:
         if isinstance(diagnostics, dict):
             diagnostics.update(
                 {
                     "provider": provider,
                     "model": model,
-                    "outcome": "narration_candidate",
+                    "outcome": "narration_contract_error",
                     "elapsed_ms": (time.monotonic() - started) * 1000,
-                    "failure_class": None,
-                    "error_code": None,
+                    "failure_class": "response_parse_error",
+                    "error_code": exc.__class__.__name__,
                 }
             )
-        return narration.strip()
-    except Exception as exc:
-        message = str(exc).lower()
-        failure_class = (
-            "response_parse_error"
-            if "json" in message or "object" in message
-            else "narration_coverage_error"
-            if "coveredeventids" in message
-            else "response_contract_error"
-            if isinstance(exc, CombatAgentContractError)
-            else "provider_error"
+        raise CombatNarrationAttemptError(
+            str(exc),
+            candidate=raw,
+            failure_class="response_parse_error",
+        ) from exc
+
+    narration = result.get("narration")
+    if not isinstance(narration, str) or not narration.strip():
+        exc = CombatAgentContractError("T097 narration is empty")
+        if isinstance(diagnostics, dict):
+            diagnostics.update(
+                {
+                    "provider": provider,
+                    "model": model,
+                    "outcome": "narration_contract_error",
+                    "elapsed_ms": (time.monotonic() - started) * 1000,
+                    "failure_class": "response_contract_error",
+                    "error_code": exc.__class__.__name__,
+                }
+            )
+        raise CombatNarrationAttemptError(
+            str(exc),
+            candidate=raw,
+            failure_class="response_contract_error",
+        ) from exc
+
+    from core.ai.combat_narration import narration_coverage_violations
+
+    coverage_violations = narration_coverage_violations(
+        result.get("coveredEventIds"), scene_dossier
+    )
+    if coverage_violations:
+        exc = CombatAgentContractError(
+            "T097 coveredEventIds failed: %s" % ", ".join(coverage_violations)
         )
         if isinstance(diagnostics, dict):
             diagnostics.update(
@@ -622,15 +684,28 @@ def request_narration_candidate(
                     "model": model,
                     "outcome": "narration_contract_error",
                     "elapsed_ms": (time.monotonic() - started) * 1000,
-                    "failure_class": failure_class,
+                    "failure_class": "narration_coverage_error",
                     "error_code": exc.__class__.__name__,
                 }
             )
         raise CombatNarrationAttemptError(
             str(exc),
             candidate=raw,
-            failure_class=failure_class,
+            failure_class="narration_coverage_error",
         ) from exc
+
+    if isinstance(diagnostics, dict):
+        diagnostics.update(
+            {
+                "provider": provider,
+                "model": model,
+                "outcome": "narration_candidate",
+                "elapsed_ms": (time.monotonic() - started) * 1000,
+                "failure_class": None,
+                "error_code": None,
+            }
+        )
+    return narration.strip()
 
 
 def narrate_committed_events(

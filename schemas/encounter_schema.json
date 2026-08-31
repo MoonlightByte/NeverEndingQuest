@@ -1,5 +1,127 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "combatInvocation": {
+      "type": "object",
+      "properties": {
+        "logicalInvocationId": {"type": "string", "minLength": 1},
+        "attemptId": {"type": "string", "minLength": 1},
+        "generation": {"type": "integer", "minimum": 0},
+        "callsite": {"type": "string", "minLength": 1},
+        "encounterId": {"type": "string", "minLength": 1},
+        "turnId": {"type": "string", "minLength": 1},
+        "windowId": {"type": "string", "minLength": 1},
+        "expectedCombatRevision": {"type": "integer", "minimum": 0},
+        "expectedSceneRevision": {"type": "integer", "minimum": 0},
+        "authorizedTransition": {"type": "string", "minLength": 1},
+        "status": {"enum": ["authorized", "running", "retry_scheduled", "superseded", "accepted"]},
+        "supersededReason": {"type": ["string", "null"]}
+      },
+      "required": [
+        "logicalInvocationId", "attemptId", "generation", "callsite",
+        "encounterId", "turnId", "windowId", "expectedCombatRevision",
+        "expectedSceneRevision", "authorizedTransition", "status",
+        "supersededReason"
+      ],
+      "additionalProperties": false
+    },
+    "combatRollTopology": {
+      "type": "object",
+      "properties": {
+        "rollId": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["attack", "damage", "check", "save", "initiative", "other"]},
+        "purpose": {"type": "string", "minLength": 1},
+        "actorId": {"type": "string", "minLength": 1},
+        "controllerId": {"type": "string", "minLength": 1},
+        "die": {"type": "string"},
+        "modifierSourcePath": {"type": ["string", "null"]},
+        "dcSourcePath": {"type": ["string", "null"]},
+        "status": {"enum": ["required", "persisted", "consumed"]},
+        "result": {"type": ["integer", "null"]}
+      },
+      "required": [
+        "rollId", "kind", "purpose", "actorId", "controllerId", "die",
+        "modifierSourcePath", "dcSourcePath", "status", "result"
+      ],
+      "additionalProperties": false
+    },
+    "combatDependencyValue": {
+      "type": "object",
+      "properties": {
+        "recordRef": {"type": "string", "minLength": 1},
+        "fieldPath": {"type": "string", "minLength": 1},
+        "value": {}
+      },
+      "required": ["recordRef", "fieldPath", "value"],
+      "additionalProperties": false
+    },
+    "combatAcceptedResolution": {
+      "type": "object",
+      "properties": {
+        "resolutionId": {"type": "string", "minLength": 1},
+        "actorId": {"type": "string", "minLength": 1},
+        "controllerRevision": {"type": "integer", "minimum": 0},
+        "actionKind": {"type": "string", "minLength": 1},
+        "capabilityRef": {"type": ["string", "null"]},
+        "mode": {"type": ["string", "null"]},
+        "targetIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "semanticPurpose": {"type": "string", "minLength": 1},
+        "rulingKind": {"enum": ["supported", "primitive", "improvised"]},
+        "difficultyBand": {"type": ["string", "null"]},
+        "successMeaning": {"type": "string", "minLength": 1},
+        "failureMeaning": {"type": "string", "minLength": 1},
+        "continuationKind": {"type": "string", "minLength": 1},
+        "continuationAtomIndex": {"type": "integer", "minimum": 0},
+        "frozenAtCombatRevision": {"type": "integer", "minimum": 0},
+        "frozenAtSceneRevision": {"type": "integer", "minimum": 0},
+        "rollTopology": {"type": "array", "items": {"$ref": "#/definitions/combatRollTopology"}},
+        "dependencyValues": {"type": "array", "items": {"$ref": "#/definitions/combatDependencyValue"}}
+      },
+      "required": [
+        "resolutionId", "actorId", "controllerRevision", "actionKind",
+        "capabilityRef", "mode", "targetIds", "semanticPurpose", "rulingKind",
+        "difficultyBand", "successMeaning", "failureMeaning", "continuationKind",
+        "continuationAtomIndex", "frozenAtCombatRevision", "frozenAtSceneRevision",
+        "rollTopology", "dependencyValues"
+      ],
+      "additionalProperties": false
+    },
+    "combatAtomMutation": {
+      "type": "object",
+      "properties": {
+        "mutationIndex": {"type": "integer", "minimum": 0},
+        "recordRef": {"type": "string", "minLength": 1},
+        "fieldPath": {"type": "string", "minLength": 1},
+        "beforeValue": {},
+        "afterValue": {},
+        "applyOrder": {"type": "integer", "minimum": 0}
+      },
+      "required": ["mutationIndex", "recordRef", "fieldPath", "beforeValue", "afterValue", "applyOrder"],
+      "additionalProperties": false
+    },
+    "combatAtom": {
+      "type": "object",
+      "properties": {
+        "atomId": {"type": "string", "minLength": 1},
+        "parentTurnId": {"type": "string", "minLength": 1},
+        "sequence": {"type": "integer", "minimum": 0},
+        "kind": {"type": "string", "minLength": 1},
+        "actorId": {"type": "string", "minLength": 1},
+        "status": {"enum": ["frozen", "staged", "partially_applied", "applied", "superseded", "recovery_conflict"]},
+        "rollIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "eventIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "appliedMutationIndexes": {"type": "array", "items": {"type": "integer", "minimum": 0}, "uniqueItems": true},
+        "receiptCommitted": {"type": "boolean"},
+        "mutations": {"type": "array", "items": {"$ref": "#/definitions/combatAtomMutation"}}
+      },
+      "required": [
+        "atomId", "parentTurnId", "sequence", "kind", "actorId", "status",
+        "rollIds", "eventIds", "appliedMutationIndexes", "receiptCommitted",
+        "mutations"
+      ],
+      "additionalProperties": false
+    }
+  },
   "type": "object",
   "properties": {
     "encounterId": {
@@ -214,6 +336,78 @@
         }
       }
     },
+    "sceneFacts": {
+      "type": "object",
+      "properties": {
+        "contractVersion": {"const": "typed-agentic-v1"},
+        "revision": {"type": "integer", "minimum": 0},
+        "participants": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "combatantId": {"type": "string", "minLength": 1},
+              "sourceKind": {"type": "string", "minLength": 1},
+              "sourceRef": {"type": "string", "minLength": 1},
+              "displayName": {"type": "string", "minLength": 1},
+              "participation": {"enum": ["active", "observer", "hidden", "unaware", "departed"]},
+              "initiativeEligible": {"type": "boolean"},
+              "persistence": {"enum": ["encounter", "canonical_character", "owner_gated_companion"]}
+            },
+            "required": ["combatantId", "sourceKind", "sourceRef", "displayName", "participation", "initiativeEligible", "persistence"],
+            "additionalProperties": false
+          }
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "relationId": {"type": "string", "minLength": 1},
+              "subjectId": {"type": "string", "minLength": 1},
+              "objectId": {"type": "string", "minLength": 1},
+              "disposition": {"type": "string", "minLength": 1},
+              "revision": {"type": "integer", "minimum": 0}
+            },
+            "required": ["relationId", "subjectId", "objectId", "disposition", "revision"],
+            "additionalProperties": false
+          }
+        },
+        "objectives": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "objectiveId": {"type": "string", "minLength": 1},
+              "ownerIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+              "kind": {"type": "string", "minLength": 1},
+              "targetIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+              "status": {"enum": ["active", "satisfied", "failed", "abandoned"]}
+            },
+            "required": ["objectiveId", "ownerIds", "kind", "targetIds", "status"],
+            "additionalProperties": false
+          }
+        },
+        "disclosureGrants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "grantId": {"type": "string", "minLength": 1},
+              "observerId": {"type": "string", "minLength": 1},
+              "factPaths": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+              "sceneRevision": {"type": "integer", "minimum": 0},
+              "status": {"enum": ["active", "invalidated"]}
+            },
+            "required": ["grantId", "observerId", "factPaths", "sceneRevision", "status"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["contractVersion", "revision", "participants", "relations", "objectives", "disclosureGrants"],
+      "additionalProperties": false
+    },
     "combatState": {
       "type": "object",
       "properties": {
@@ -237,8 +431,89 @@
           "items": {"type": "string"},
           "uniqueItems": true
         },
+        "controllers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "controller": {"enum": ["human", "actor_agent"]},
+              "revision": {"type": "integer", "minimum": 0},
+              "cause": {"type": "string", "minLength": 1},
+              "scope": {"enum": ["encounter", "turn", "temporary", "persistent"]},
+              "expiresAtRevision": {"type": ["integer", "null"], "minimum": 0},
+              "consentEventId": {"type": ["string", "null"]}
+            },
+            "required": ["controller", "revision", "cause", "scope", "expiresAtRevision", "consentEventId"],
+            "additionalProperties": false
+          }
+        },
+        "activation": {
+          "type": "object",
+          "properties": {
+            "activationId": {"type": "string", "minLength": 1},
+            "encounterId": {"type": "string", "minLength": 1},
+            "expectedTrackerEncounterId": {"type": ["string", "null"]},
+            "status": {
+              "enum": ["preparing", "active", "superseded", "recovery_pending"]
+            },
+            "historyMarkerEncounterId": {"type": ["string", "null"]},
+            "trackerActivated": {"type": "boolean"}
+          },
+          "required": [
+            "activationId", "encounterId", "expectedTrackerEncounterId", "status",
+            "historyMarkerEncounterId", "trackerActivated"
+          ],
+          "additionalProperties": false
+        },
         "pendingTurn": {
-          "type": ["object", "null"]
+          "anyOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "properties": {
+                "invocation": {"$ref": "#/definitions/combatInvocation"},
+                "acceptedResolution": {"$ref": "#/definitions/combatAcceptedResolution"},
+                "atoms": {"type": "array", "items": {"$ref": "#/definitions/combatAtom"}},
+                "atomCursor": {"type": "integer", "minimum": 0}
+              }
+            }
+          ]
+        },
+        "recoveryConflict": {
+          "type": ["object", "null"],
+          "properties": {
+            "conflictId": {"type": "string", "minLength": 1},
+            "parentTurnId": {"type": "string", "minLength": 1},
+            "atomId": {"type": "string", "minLength": 1},
+            "appliedMutationIndexes": {
+              "type": "array",
+              "items": {"type": "integer", "minimum": 0},
+              "uniqueItems": true
+            },
+            "conflicts": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "recordRef": {"type": "string", "minLength": 1},
+                  "fieldPath": {"type": "string", "minLength": 1},
+                  "beforeValue": {},
+                  "afterValue": {},
+                  "currentValue": {}
+                },
+                "required": ["recordRef", "fieldPath", "beforeValue", "afterValue", "currentValue"],
+                "additionalProperties": false
+              }
+            },
+            "status": {"enum": ["pending", "superseded", "reconciled"]},
+            "playerMessage": {"type": "string", "minLength": 1}
+          },
+          "required": [
+            "conflictId", "parentTurnId", "atomId", "appliedMutationIndexes",
+            "conflicts", "status", "playerMessage"
+          ],
+          "additionalProperties": false
         },
         "appliedTurnIds": {
           "type": "array",
@@ -275,5 +550,19 @@
       ]
     }
   },
-  "required": ["encounterId", "encounterSummary", "creatures"]
+  "required": ["encounterId", "encounterSummary", "creatures"],
+  "allOf": [
+    {
+      "if": {"required": ["sceneFacts"]},
+      "then": {
+        "required": ["combatState"],
+        "properties": {
+          "combatState": {
+            "required": ["controllers", "activation", "recoveryConflict"],
+            "properties": {"pipelineMode": {"const": "agentic"}}
+          }
+        }
+      }
+    }
+  ]
 }

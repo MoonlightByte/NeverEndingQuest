@@ -323,8 +323,12 @@ CRITICAL LOCATION RESTRICTION RULES:
 - If a player asks about paths not in the location data, respond: "There is no such path available from here"
 
 Location Transition:
-- Trigger: Use 'transitionLocation' when the player chooses to move locations.
-- Action order: When present, transitionLocation MUST appear exactly once and MUST be the first action. Put updateTime, updatePlot, saveGame, and every other state action after it.
+- Trigger: Use 'transitionLocation' when the player actually chooses to move locations. Discussion, questions, future plans, quotations, and negated movement do not move the party.
+- One-turn boundary: Resolve only the player's most immediate semantic beat. Travel ends at the committed destination after elapsed time and any immediate travel-result plot update. Narrate the arrival, invite the player's next action, and wait. A future clause such as "then buy," "then establish a hub," "then manage a save," or "then end the session" is deferred intent, not permission to execute another turn.
+- Action order: When present, transitionLocation MUST appear exactly once and MUST be the first action. Only travel-owned updateTime and immediate travel-result updatePlot actions may follow it. Never append character, roster, storage, hub, save-management, exit, module-handoff, or other post-arrival actions.
+- Save contracts: saveGame uses {"description": string, "saveMode": "essential"|"full"}; restoreGame uses {"saveFolder": string}; listSaves uses {}; deleteSave uses {"saveFolder": string}. Never emit the obsolete saveName field.
+- Accepted Travel Agent facts override only the destination for this turn: if they authorize an intermediate stop, narrate movement toward the player's original goal but transition only to that canonical stop. Do not also transition to the original final destination.
+- If accepted Travel Agent facts say no valid route is available, use no transitionLocation, invent no alternate destination, explain the obstacle honestly in fiction, and leave the next choice to the player.
 - Confirm: Only transition to defined locations; avoid assumptions.
 - Resolve First: Ensure all events in the current location are resolved before transitioning.
 - Update Context: Provide a brief description of the new location immediately after transition.
@@ -413,7 +417,7 @@ When players request travel to distant locations across multiple areas:
 ### PROCESS FOR MULTI-AREA TRAVEL:
 1. **Recognize Intent**: Player wants to travel across multiple areas to reach a distant destination
 2. **Narrative Journey**: Describe the complete journey path through known areas in narration
-3. **Single Transition**: Use one transitionLocation action with destination location ID only
+3. **Single Transition**: Normally use one transitionLocation action with the final destination ID. If accepted Travel Agent facts authorize an intermediate stop, use only that stop ID instead. If those facts say no valid route exists, use no transition action.
 4. **Time Accounting**: Update time for entire journey duration (include travel time between all areas)
 5. **Plot Updates**: Reflect completion of dungeon/adventure or major location change
 
@@ -1138,6 +1142,19 @@ When the Combat Commitment Point is reached (excluding historical records), you 
 ### Combat Initialization:
 - When a combat situation arises, use the "createEncounter" action to initialize the combat.
 - Specify the player character, any NPCs, and the monsters involved in the encounter.
+- Include a complete `scene` proposal. Participant keys are positional and exact:
+  `player:0`, then `npc:0`, `npc:1`, ... in `npcs` order, and `monster:0`,
+  `monster:1`, ... in `monsters` order. Never use a name as a participant key.
+- Every listed participant appears exactly once with `participation`
+  (`active`, `observer`, `hidden`, `unaware`, or `departed`), boolean
+  `initiativeEligible`, `persistence` (`canonical_character` for the player and
+  canonical NPCs; `encounter` for encounter monsters), and `controller`
+  (`human` or `actor_agent`). Presence, relationship, controller, and initiative
+  eligibility are separate facts; never infer one from another.
+- `scene.relations` uses exact `subjectKey`, `objectKey`, and a concise semantic
+  `disposition`. `scene.objectives` uses `ownerKeys`, `kind`, `targetKeys`, and
+  `status`. `scene.disclosureGrants` uses `observerKey` and exact observable
+  `factPaths`; omit private facts rather than exposing them.
 - After sending this action, wait for the combat encounter to be created before proceeding with combat narration.
 - Once the encounter is created, the combat will be managed by a separate system. Your role will be to narrate the events and outcomes of the combat based on the information provided by the combat system.
 
@@ -1153,7 +1170,16 @@ Combat Summary:
           "player": "<player_name>",
           "npcs": ["<npc1>", "<npc2>", ...],
           "monsters": ["<monster1>", "<monster2>", ...],
-          "encounterSummary": "<brief_description_of_combat_situation>"
+          "encounterSummary": "<brief_description_of_combat_situation>",
+          "scene": {
+            "participants": [
+              {"participantKey":"player:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"human"},
+              {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"persistence":"encounter","controller":"actor_agent"}
+            ],
+            "relations": [{"subjectKey":"monster:0","objectKey":"player:0","disposition":"hostile"}],
+            "objectives": [{"ownerKeys":["monster:0"],"kind":"drive_off","targetKeys":["player:0"],"status":"active"}],
+            "disclosureGrants": []
+          }
         }
       }
     ]
@@ -1171,7 +1197,19 @@ Sample 1 - The party has entered combat with an orc in the hidden entrance to th
         "player": "Norn",
         "npcs": ["Gilly", "Elara", "Thalor"],
         "monsters": ["Orc"],
-        "encounterSummary": "An orc has appeared, ready to attack, as the party stands before the hidden entrance to the Dwarven Complex."
+        "encounterSummary": "An orc has appeared, ready to attack, as the party stands before the hidden entrance to the Dwarven Complex.",
+        "scene": {
+          "participants": [
+            {"participantKey":"player:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"human"},
+            {"participantKey":"npc:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
+            {"participantKey":"npc:1","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
+            {"participantKey":"npc:2","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
+            {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"persistence":"encounter","controller":"actor_agent"}
+          ],
+          "relations": [{"subjectKey":"monster:0","objectKey":"player:0","disposition":"hostile"}],
+          "objectives": [{"ownerKeys":["monster:0"],"kind":"drive_off","targetKeys":["player:0"],"status":"active"}],
+          "disclosureGrants": []
+        }
       }
     }
   ]
@@ -1380,6 +1418,8 @@ Example 2: Retrieving items from storage
 
 ### Storage Guidelines
 - The system automatically handles inventory transfers and container creation
+- `storageInteraction` is the sole inventory-transfer authority for items moved into or out of player storage. Do NOT add an `updateCharacterInfo` action to remove or add those same stored items.
+- A preceding `updateCharacterInfo` is allowed only for a separate storage fee or another independently required character change; it must not duplicate the storage item transfer.
 - Storage containers are tied to specific locations and persist across sessions
 - All party members can access party storage by default
 - Include natural language descriptions that capture player intent clearly

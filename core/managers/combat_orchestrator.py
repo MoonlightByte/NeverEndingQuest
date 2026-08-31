@@ -20,9 +20,11 @@ from core.combat import (
 from core.managers.combat_state import (
     combatant_by_id,
     ensure_combat_state,
+    resolve_creature_controller,
     valid_pending_delivery,
 )
 from core.managers.combat_transaction import (
+    CombatPreconditionChanged,
     append_pending_player_input,
     apply_staged_turn,
     claim_turn,
@@ -61,14 +63,33 @@ def _fresh_rolls(encounter):
 
 def _all_non_player(encounter, actor_ids):
     actors = [combatant_by_id(encounter, actor_id) for actor_id in actor_ids]
-    return bool(actors) and all(actor and actor.get("type") != "player" for actor in actors)
+    state = encounter.get("combatState") or {}
+    return bool(actors) and all(
+        actor and resolve_creature_controller(actor, state) == "actor_agent"
+        for actor in actors
+    )
 
 
 def _window_kind(encounter, actor_ids):
     actors = [combatant_by_id(encounter, actor_id) for actor_id in (actor_ids or [])]
     if not actors:
         return "clock"
-    return "player" if any(actor and actor.get("type") == "player" for actor in actors) else "npc"
+    state = encounter.get("combatState") or {}
+    return (
+        "player"
+        if any(
+            actor and resolve_creature_controller(actor, state) == "human"
+            for actor in actors
+        )
+        else "npc"
+    )
+
+
+def _is_human_controlled(encounter, actor):
+    return bool(actor) and resolve_creature_controller(
+        actor,
+        (encounter or {}).get("combatState") or {},
+    ) == "human"
 
 
 def _immutable_voice_intents(npc_voice_intents):
@@ -154,6 +175,24 @@ def _intent_correction(exc, batch=None):
             "choice. Ask only for the earliest unresolved roll and use one "
             "exact spellName; a later pass may request the next roll."
         )
+    legal_targets = feedback.get("legalTargets")
+    if isinstance(legal_targets, list):
+        rendered_targets = [
+            str(target).strip()
+            for target in legal_targets
+            if isinstance(target, str) and target.strip()
+        ]
+        if rendered_targets:
+            instruction += (
+                " For the rejected actor, targetId must be exactly one of "
+                "legalTargets (%s), or choose a non-attack action."
+                % ", ".join(rendered_targets)
+            )
+        else:
+            instruction += (
+                " No legalTargets remain; the rejected actor must choose a "
+                "non-attack action."
+            )
     correction = {
         "error": str(exc),
         "actorId": getattr(exc, "actor_id", None),
@@ -287,6 +326,14 @@ def _set_combat_retry_status():
         pass
 
 
+def _require_current_invocation(invocation_claim):
+    if invocation_claim is None:
+        return
+    from core.combat.invocation import require_current_invocation
+
+    require_current_invocation(invocation_claim)
+
+
 def _player_request_message(request):
     if not isinstance(request, dict):
         return "I need one more detail before resolving that action. What do you do?"
@@ -375,7 +422,7 @@ def _audit_batch_spell_roll_requests(batch, encounter, characters):
         ):
             continue
         actor = combatant_by_id(encounter, intent.get("actorId"))
-        if not isinstance(actor, dict) or actor.get("type") != "player":
+        if not isinstance(actor, dict) or not _is_human_controlled(encounter, actor):
             continue
         audit = audit_spell_roll_request(
             intent,
@@ -409,7 +456,7 @@ def _validate_player_input_request_ownership(batch, encounter):
     creatures = [
         creature
         for creature in (encounter or {}).get("creatures", []) or []
-        if isinstance(creature, dict) and creature.get("type") != "player"
+        if isinstance(creature, dict) and not _is_human_controlled(encounter, creature)
     ]
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict):
@@ -418,7 +465,7 @@ def _validate_player_input_request_ownership(batch, encounter):
         request = intent.get("requiresPlayerInput")
         if (
             not isinstance(actor, dict)
-            or actor.get("type") != "player"
+            or not _is_human_controlled(encounter, actor)
             or not isinstance(request, dict)
             or request.get("kind") != "roll"
         ):
@@ -468,7 +515,7 @@ def _validate_single_player_input_request(batch, encounter, spell_references=Non
         request = intent.get("requiresPlayerInput")
         if (
             not isinstance(actor, dict)
-            or actor.get("type") != "player"
+            or not _is_human_controlled(encounter, actor)
             or not isinstance(request, dict)
             or request.get("kind") != "roll"
         ):
@@ -629,13 +676,14 @@ def _deliver_committed_turn(
     narration_diagnostics=None,
     characters=None,
     max_narration_attempts=3,
+    invocation_claim=None,
 ):
     """Generate, validate, persist, and return a pending narration receipt."""
+    from core.combat.invocation import InvocationSupersededError
     from core.ai.combat_narration import (
         build_scene_dossier,
         lint_combat_narration,
         progressive_narration_feedback,
-        render_committed_events,
     )
 
     state = ensure_combat_state(encounter)
@@ -655,99 +703,190 @@ def _deliver_committed_turn(
             narration = deterministic_narration
             used_fallback = True
         else:
-            for attempt_number in range(len(attempts) + 1, max_attempts + 1):
-                if attempt_number > 1:
+            def _is_completed_invalid_attempt(attempt):
+                if not isinstance(attempt, dict):
+                    return False
+                status = attempt.get("status")
+                violations = set(attempt.get("violations") or [])
+                if status == "rejected":
+                    return True
+                if status == "parse_error":
+                    return "response_parse_error" in violations
+                if status == "contract_error":
+                    return bool(
+                        violations.intersection(
+                            {
+                                "response_contract_error",
+                                "narration_coverage_error",
+                            }
+                        )
+                    )
+                return False
+
+            completed_attempts = [
+                attempt
+                for attempt in attempts
+                if _is_completed_invalid_attempt(attempt)
+            ]
+            request_number = 0
+            while (
+                (not isinstance(narration, str) or not narration.strip())
+                and len(completed_attempts) < max_attempts
+            ):
+                request_number += 1
+                model_attempt = len(completed_attempts) + 1
+                record_attempt = len(attempts) + 1
+                if request_number > 1 or model_attempt > 1:
                     _set_combat_retry_status()
                 correction = (
-                    progressive_narration_feedback(attempts[-1], dossier)
-                    if attempts
+                    progressive_narration_feedback(completed_attempts[-1], dossier)
+                    if completed_attempts
                     else None
                 )
                 if isinstance(narration_diagnostics, dict):
                     narration_diagnostics.clear()
+                disposition = "completed_invalid"
                 try:
+                    _require_current_invocation(invocation_claim)
                     narrated = narrator(
                         encounter,
                         events,
                         history_input,
                         scene_dossier=dossier,
                         correction=correction,
-                        attempt=attempt_number,
+                        attempt=model_attempt,
                     )
+                    _require_current_invocation(invocation_claim)
                     if isinstance(narrated, tuple):
                         candidate, narrator_fallback = narrated
                     else:
                         candidate, narrator_fallback = narrated, False
                     candidate = str(candidate or "").strip()
                     if narrator_fallback or not candidate:
-                        raise ValueError("Combat narrator returned no lintable text")
-                    lint = lint_combat_narration(candidate, dossier)
-                    if lint["reject"]:
-                        attempt_status = "rejected"
-                        failure_class = "narration_lint_reject"
-                        error_code = "NarrationIntegrityReject"
+                        attempt_status = "contract_error"
+                        failure_class = "response_contract_error"
+                        error_code = "EmptyNarrationCandidate"
+                        lint = {
+                            "reject": [failure_class],
+                            "warnings": [],
+                        }
                     else:
-                        narration = candidate
-                        used_fallback = False
-                        record_combat_diagnostic(
-                            record_type="call_attempt",
-                            callsite="T097",
-                            outcome=(
-                                "narration_success"
-                                if attempt_number == 1
-                                else "narration_corrected"
-                            ),
-                            provider=(narration_diagnostics or {}).get("provider"),
-                            model=(narration_diagnostics or {}).get("model"),
-                            encounter_id=encounter.get("encounterId"),
-                            turn_id=delivery.get("turnId"),
-                            revision=(encounter.get("combatState") or {}).get("revision"),
-                            round_number=(encounter.get("combatState") or {}).get("round"),
-                            window_kind=_window_kind(
-                                encounter,
-                                [
-                                    event.get("actorId")
-                                    for event in events
-                                    if isinstance(event, dict)
-                                ],
-                            ),
-                            actor_count=len(events or []),
-                            attempt=attempt_number,
-                            correction=attempt_number > 1,
-                            elapsed_ms=(narration_diagnostics or {}).get("elapsed_ms"),
-                            committed_events=len(events or []),
-                            warning_codes=lint["warnings"],
-                        )
-                        break
+                        lint = lint_combat_narration(candidate, dossier)
+                        if lint["reject"]:
+                            attempt_status = "rejected"
+                            failure_class = "narration_lint_reject"
+                            error_code = "NarrationIntegrityReject"
+                        else:
+                            narration = candidate
+                            used_fallback = False
+                            record_combat_diagnostic(
+                                record_type="call_attempt",
+                                callsite="T097",
+                                outcome=(
+                                    "narration_success"
+                                    if model_attempt == 1
+                                    else "narration_corrected"
+                                ),
+                                provider=(narration_diagnostics or {}).get("provider"),
+                                model=(narration_diagnostics or {}).get("model"),
+                                encounter_id=encounter.get("encounterId"),
+                                turn_id=delivery.get("turnId"),
+                                revision=(encounter.get("combatState") or {}).get("revision"),
+                                round_number=(encounter.get("combatState") or {}).get("round"),
+                                window_kind=_window_kind(
+                                    encounter,
+                                    [
+                                        event.get("actorId")
+                                        for event in events
+                                        if isinstance(event, dict)
+                                    ],
+                                ),
+                                actor_count=len(events or []),
+                                attempt=model_attempt,
+                                correction=model_attempt > 1,
+                                elapsed_ms=(narration_diagnostics or {}).get("elapsed_ms"),
+                                committed_events=len(events or []),
+                                warning_codes=lint["warnings"],
+                            )
+                            break
+                except InvocationSupersededError:
+                    raise
                 except Exception as exc:
                     candidate = str(getattr(exc, "candidate", "") or "")[:12000]
                     failure_class = str(
                         getattr(exc, "failure_class", "unexpected_internal_error")
                     )
                     if failure_class == "provider_error":
-                        attempt_status = "provider_error"
+                        disposition = "provider_retry"
                     elif failure_class == "response_parse_error":
                         attempt_status = "parse_error"
-                    else:
+                    elif failure_class in {
+                        "response_contract_error",
+                        "narration_coverage_error",
+                    }:
                         attempt_status = "contract_error"
+                    else:
+                        disposition = "internal_retry"
                     error_code = exc.__class__.__name__
                     lint = {
                         "reject": [failure_class],
                         "warnings": [],
                     }
-                encounter = record_narration_attempt(
-                    encounter_path,
-                    delivery["deliveryId"],
-                    attempt_number,
-                    attempt_status,
-                    candidate=candidate,
-                    violations=lint["reject"],
-                    warnings=lint["warnings"],
-                )
+                if disposition != "completed_invalid":
+                    record_combat_diagnostic(
+                        record_type="call_attempt",
+                        callsite="T097",
+                        outcome=failure_class,
+                        provider=(narration_diagnostics or {}).get("provider"),
+                        model=(narration_diagnostics or {}).get("model"),
+                        encounter_id=encounter.get("encounterId"),
+                        turn_id=delivery.get("turnId"),
+                        revision=(encounter.get("combatState") or {}).get("revision"),
+                        round_number=(encounter.get("combatState") or {}).get("round"),
+                        window_kind=_window_kind(
+                            encounter,
+                            [
+                                event.get("actorId")
+                                for event in events
+                                if isinstance(event, dict)
+                            ],
+                        ),
+                        actor_count=len(events or []),
+                        attempt=model_attempt,
+                        correction=model_attempt > 1,
+                        elapsed_ms=(narration_diagnostics or {}).get("elapsed_ms"),
+                        failure_class=failure_class,
+                        error_code=error_code,
+                        committed_events=len(events or []),
+                        violation_codes=lint["reject"],
+                    )
+                    continue
+                _require_current_invocation(invocation_claim)
+                try:
+                    encounter = record_narration_attempt(
+                        encounter_path,
+                        delivery["deliveryId"],
+                        record_attempt,
+                        attempt_status,
+                        candidate=candidate,
+                        violations=lint["reject"],
+                        warnings=lint["warnings"],
+                        invocation_claim=invocation_claim,
+                    )
+                except CombatPreconditionChanged:
+                    # Preserve the invocation-owner terminal when a destructive
+                    # request wins the race into the transaction authority.
+                    _require_current_invocation(invocation_claim)
+                    raise
                 delivery = (encounter.get("combatState") or {}).get(
                     "pendingDelivery"
                 ) or delivery
                 attempts = list(delivery.get("narrationAttempts") or [])
+                completed_attempts = [
+                    attempt
+                    for attempt in attempts
+                    if _is_completed_invalid_attempt(attempt)
+                ]
                 record_combat_diagnostic(
                     record_type="call_attempt",
                     callsite="T097",
@@ -771,8 +910,8 @@ def _deliver_committed_turn(
                         ],
                     ),
                     actor_count=len(events or []),
-                    attempt=attempt_number,
-                    correction=attempt_number > 1,
+                    attempt=model_attempt,
+                    correction=model_attempt > 1,
                     elapsed_ms=(narration_diagnostics or {}).get("elapsed_ms"),
                     failure_class=failure_class,
                     error_code=error_code,
@@ -780,7 +919,7 @@ def _deliver_committed_turn(
                     violation_codes=lint["reject"],
                 )
             if not isinstance(narration, str) or not narration.strip():
-                narration = render_committed_events(encounter, events)
+                narration = "The committed combat result is safely recorded."
                 used_fallback = True
                 record_combat_diagnostic(
                     record_type="window_outcome",
@@ -802,12 +941,20 @@ def _deliver_committed_turn(
                     committed_events=len(events or []),
                     deterministic_fallback=True,
                 )
-        encounter = record_delivery_narration(
-            encounter_path,
-            delivery["deliveryId"],
-            narration,
-            used_fallback,
-        )
+        _require_current_invocation(invocation_claim)
+        try:
+            encounter = record_delivery_narration(
+                encounter_path,
+                delivery["deliveryId"],
+                narration,
+                used_fallback,
+                invocation_claim=invocation_claim,
+            )
+        except CombatPreconditionChanged:
+            # A true transaction conflict remains a transaction fault. A
+            # superseded claim must reach the invocation owner unchanged.
+            _require_current_invocation(invocation_claim)
+            raise
         delivery = (encounter.get("combatState") or {}).get("pendingDelivery") or delivery
     return {
         "encounter": encounter,
@@ -833,15 +980,17 @@ def execute_agentic_turn(
     intent_provider=None,
     narrator=None,
     npc_voice_intents=None,
+    invocation_claim=None,
 ):
     """Choose, resolve, commit, then narrate one persisted actor window.
 
     The call is restart-safe. A staged turn is replayed without any provider;
     an un-staged claim regenerates intents against the same revision. Provider
-    exhaustion during a player window pauses without consuming the player's
-    turn. NPC-only windows fall back to deterministic defend events.
+    rejected/provider-failed results visibly continue the same logical turn;
+    they never consume the player's turn or invent an NPC fallback action.
     """
     immutable_voice_intents = _immutable_voice_intents(npc_voice_intents)
+    from core.combat.invocation import InvocationSupersededError
     narrator_is_default = narrator is None
     narration_diagnostics = {} if narrator_is_default else None
     intent_provider_name = "custom"
@@ -938,6 +1087,13 @@ def execute_agentic_turn(
             "incapacitated and no timed effect can advance. Restore or load "
             "a save before continuing."
         )
+    if recovery["action"] == "pause_recovery_conflict":
+        raise CombatTurnPaused(
+            str(
+                (recovery.get("recoveryConflict") or {}).get("playerMessage")
+                or "Combat recovery needs attention -- Load or Reset"
+            )
+        )
     if recovery["action"] == "deliver_committed_events":
         delivery = recovery["pendingDelivery"]
         events = deepcopy(delivery.get("events") or [])
@@ -951,6 +1107,7 @@ def execute_agentic_turn(
             narration_diagnostics=narration_diagnostics,
             characters=recovered_characters,
             max_narration_attempts=max_narration_attempts,
+            invocation_claim=invocation_claim,
         )
         delivered.update(
             {
@@ -967,6 +1124,7 @@ def execute_agentic_turn(
             encounter_path,
             character_paths,
             pending.get("turnId"),
+            invocation_claim=invocation_claim,
         )
         delivered = _deliver_committed_turn(
             encounter_path,
@@ -977,6 +1135,7 @@ def execute_agentic_turn(
             narration_diagnostics=narration_diagnostics,
             characters=characters,
             max_narration_attempts=max_narration_attempts,
+            invocation_claim=invocation_claim,
         )
         delivered.update({
             "characters": characters,
@@ -1008,6 +1167,7 @@ def execute_agentic_turn(
             encounter_path,
             actor_ids,
             player_input=initial_player_input,
+            invocation_claim=invocation_claim,
         )
 
     characters = _load_characters(character_paths, context_sheets)
@@ -1030,11 +1190,13 @@ def execute_agentic_turn(
             character_paths=character_paths,
             character_preconditions=characters,
             character_postconditions=_preview_characters,
+            invocation_claim=invocation_claim,
         )
         committed, committed_characters = apply_staged_turn(
             encounter_path,
             character_paths,
             pending["turnId"],
+            invocation_claim=invocation_claim,
         )
         delivered = _deliver_committed_turn(
             encounter_path,
@@ -1049,6 +1211,7 @@ def execute_agentic_turn(
             narration_diagnostics=narration_diagnostics,
             characters=committed_characters,
             max_narration_attempts=max_narration_attempts,
+            invocation_claim=invocation_claim,
         )
         delivered.update({
             "characters": committed_characters,
@@ -1119,13 +1282,15 @@ def execute_agentic_turn(
     rules_drift_seen = False
     window_kind = _window_kind(encounter, pending.get("actorIds", []))
     capability_count, rule_count = _diagnostic_context_counts(spell_references)
-    for _attempt in range(max(1, int(max_intent_attempts))):
-        attempt_number = _attempt + 1
+    attempt_number = 0
+    while events is None:
+        attempt_number += 1
         if attempt_number > 1:
             _set_combat_retry_status()
         started = time.monotonic()
         batch = None
         try:
+            _require_current_invocation(invocation_claim)
             intent_kwargs = {
                 "spell_references": spell_references,
                 "correction": correction,
@@ -1141,16 +1306,24 @@ def execute_agentic_turn(
                 provider_player_input,
                 **intent_kwargs,
             )
+            _require_current_invocation(invocation_claim)
             batch = _apply_trusted_spell_durations(
                 batch,
                 spell_references,
                 now_scalar=combat_now_scalar,
             )
+        except InvocationSupersededError as exc:
+            raise CombatTurnPaused(
+                "Combat invocation was superseded",
+                player_message=(
+                    "That combat response was superseded by Load or Reset. "
+                    "The restored game state remains authoritative."
+                ),
+            ) from exc
         except Exception as exc:
-            # A provider/network failure must leave the persisted claim
-            # recoverable instead of escaping the combat thread. The existing
-            # bounded attempts still apply; NPC-only exhaustion falls back to
-            # Defend while a player turn pauses without mutation.
+            # Keep the same persisted logical operation alive. Provider/network
+            # failure is correction input, never authority to invent an NPC
+            # action or refuse the player's action after an arbitrary count.
             correction = {
                 "error": "Combat intent provider was unavailable: %s" % exc,
                 "instruction": "Retry the same full ordered intent batch.",
@@ -1354,59 +1527,6 @@ def execute_agentic_turn(
                 # never replace the existing safe correction/retry behavior.
                 pass
 
-    if events is None:
-        if not _all_non_player(encounter, pending.get("actorIds", [])):
-            record_combat_diagnostic(
-                record_type="window_outcome",
-                callsite="T096",
-                outcome="player_action_exhausted",
-                provider=intent_provider_name,
-                model=intent_model_name,
-                encounter_id=encounter.get("encounterId"),
-                turn_id=pending.get("turnId"),
-                revision=(encounter.get("combatState") or {}).get("revision"),
-                round_number=(encounter.get("combatState") or {}).get("round"),
-                window_kind=window_kind,
-                actor_count=len(pending.get("actorIds") or []),
-                capability_candidates=capability_count,
-                rule_references=rule_count,
-            )
-            player_message = (
-                "I couldn't safely resolve that action. Nothing changed. "
-                "Try the same action again, describe it another way, or "
-                "choose a different action."
-            )
-            raise CombatTurnPaused(
-                "Player combat action exhausted all resolution attempts",
-                player_message=player_message,
-            )
-        fallback_batch = _defend_batch(encounter, pending)
-        rolls = _fresh_rolls(encounter)
-        events, _preview_encounter, _preview_characters = resolve_claimed_window(
-            encounter,
-            characters,
-            pending,
-            fallback_batch,
-            rolls,
-        )
-        roll_consumption = rolls.consumption()
-        record_combat_diagnostic(
-            record_type="window_outcome",
-            callsite="T096",
-            outcome="npc_defend_fallback",
-            provider=intent_provider_name,
-            model=intent_model_name,
-            encounter_id=encounter.get("encounterId"),
-            turn_id=pending.get("turnId"),
-            revision=(encounter.get("combatState") or {}).get("revision"),
-            round_number=(encounter.get("combatState") or {}).get("round"),
-            window_kind=window_kind,
-            actor_count=len(pending.get("actorIds") or []),
-            capability_candidates=capability_count,
-            rule_references=rule_count,
-            deterministic_fallback=True,
-        )
-
     stage_events(
         encounter_path,
         pending["turnId"],
@@ -1416,11 +1536,13 @@ def execute_agentic_turn(
         character_paths=character_paths,
         character_preconditions=characters,
         character_postconditions=_preview_characters,
+        invocation_claim=invocation_claim,
     )
     committed, committed_characters = apply_staged_turn(
         encounter_path,
         character_paths,
         pending["turnId"],
+        invocation_claim=invocation_claim,
     )
     delivered = _deliver_committed_turn(
         encounter_path,
@@ -1431,6 +1553,7 @@ def execute_agentic_turn(
         narration_diagnostics=narration_diagnostics,
         characters=committed_characters,
         max_narration_attempts=max_narration_attempts,
+        invocation_claim=invocation_claim,
     )
     delivered.update({
         "characters": committed_characters,

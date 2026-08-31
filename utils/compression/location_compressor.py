@@ -253,14 +253,17 @@ def validate_location_compression_output(
 
     return text
 
-def compress_location(location_json_str: str, max_retries: int = 2) -> Optional[str]:
+def compress_location(location_json_str: str, max_retries: int = 2, detached_context=None) -> Optional[str]:
     """
     Compress location JSON using GPT model with validation and retries
-    
+
     Args:
         location_json_str: JSON string of location data
         max_retries: Maximum number of retry attempts
-    
+        detached_context: optional {scope, status} for a detached (off-thread
+            startup welcome) caller; routes T085 through the cancellable
+            advisory transport under that scope (issue #214)
+
     Returns:
         Compressed location string or None if failed
     """
@@ -294,6 +297,13 @@ Remove ALL role prefixes: "Kira" not "Scout_Kira", "Dorun" not "Elder_Dorun", "T
             else:  # legacy
                 compress_config = config.LOC_COMPRESS_LEGACY
 
+            detached_kwargs = {}
+            if detached_context:
+                detached_kwargs = {
+                    "_live_selected": "advisory",
+                    "_detached_scope": detached_context.get("scope"),
+                    "_detached_status": detached_context.get("status"),
+                }
             response = capture_and_fanout("T085", api_client.create_completion, messages=[
                     {"role": "system", "content": LOCATION_SYSTEM_PROMPT},
                     {"role": "user", "content": user_message}
@@ -301,6 +311,7 @@ Remove ALL role prefixes: "Kira" not "Scout_Kira", "Dorun" not "Elder_Dorun", "T
                 _request_provider=MODEL_PROVIDER,
                 model=compress_config["model"],
                 temperature=0.1,
+                **detached_kwargs,
                 **{k: v for k, v in compress_config.items() if k != "model"})
             
             # Track token usage
