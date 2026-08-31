@@ -2,11 +2,10 @@
 # SPDX-License-Identifier: Fair-Source-1.0
 # License: See LICENSE file in the repository root
 
-"""Bounded player capability context and conservative narrative matching."""
+"""Selected player capability context and conservative narrative matching."""
 
 from __future__ import annotations
 
-import json
 from difflib import SequenceMatcher
 
 from core.ai.srd_reference import (
@@ -75,9 +74,8 @@ def _tokens(value):
     return tokenize_rule_text(value)
 
 
-def _bounded_text(value, limit=240):
-    text = " ".join(str(value or "").split())
-    return text[:limit]
+def _normalized_text(value):
+    return " ".join(str(value or "").split())
 
 
 def _named_entries(value, limit=24):
@@ -95,12 +93,12 @@ def _named_entries(value, limit=24):
             description = ""
         elif isinstance(item, dict):
             name = str(item.get("name") or item.get("title") or "").strip()
-            description = _bounded_text(item.get("description"))
+            description = _normalized_text(item.get("description"))
         else:
             continue
         if not name:
             continue
-        entry = {"name": name[:120]}
+        entry = {"name": name}
         if description:
             entry["description"] = description
         result.append(entry)
@@ -129,7 +127,7 @@ def _skill_context(sheet):
             if not isinstance(name, str) or type(modifier) is not int:
                 continue
             item = {
-                "name": name[:80],
+                "name": name,
                 "modifier": modifier,
                 "proficient": None,
             }
@@ -146,7 +144,7 @@ def _skill_context(sheet):
                 continue
             name = raw_name.strip()
             item = {
-                "name": name[:80],
+                "name": name,
                 "proficient": True,
             }
             has_expertise = name.lower() in expertise
@@ -172,22 +170,22 @@ def _proficiency_context(sheet):
                 names = [names]
             if not isinstance(names, list):
                 continue
-            clean = [str(name)[:100] for name in names if isinstance(name, str) and name.strip()]
+            clean = [str(name) for name in names if isinstance(name, str) and name.strip()]
             if clean:
-                result.append({"category": str(category)[:60], "names": clean[:24]})
+                result.append({"category": str(category), "names": clean[:24]})
     elif isinstance(value, list):
-        clean = [str(name)[:100] for name in value if isinstance(name, str) and name.strip()]
+        clean = [str(name) for name in value if isinstance(name, str) and name.strip()]
         if clean:
             result.append({"category": "general", "names": clean[:24]})
     return result[:12]
 
 
-def build_player_capability_context(sheet, actor_name=None, max_characters=6000):
+def build_player_capability_context(sheet, actor_name=None):
     """Return facts absent from the existing compact T096 sheet contract."""
     if not isinstance(sheet, dict):
         return {}
     context = {
-        "actor": str(actor_name or sheet.get("name") or "")[:120],
+        "actor": str(actor_name or sheet.get("name") or ""),
         "skills": _skill_context(sheet),
         "feats": _named_entries(sheet.get("feats")),
         "speciesTraits": _named_entries(
@@ -195,19 +193,6 @@ def build_player_capability_context(sheet, actor_name=None, max_characters=6000)
         ),
         "proficiencies": _proficiency_context(sheet),
     }
-    while len(json.dumps(context, ensure_ascii=False)) > max_characters:
-        shrinkable = [
-            key
-            for key in ("speciesTraits", "feats", "proficiencies", "skills")
-            if context.get(key)
-        ]
-        if not shrinkable:
-            break
-        largest = max(
-            shrinkable,
-            key=lambda key: len(json.dumps(context[key], ensure_ascii=False)),
-        )
-        context[largest].pop()
     return context
 
 
@@ -225,7 +210,7 @@ def _candidate_rows(sheet, context):
         rows.append(
             {
                 "kind": kind,
-                "name": name.strip()[:120],
+                "name": name.strip(),
                 "aliases": tuple(
                     alias for alias in aliases if isinstance(alias, str) and alias.strip()
                 )[:12],
@@ -311,7 +296,7 @@ def match_owned_capabilities(sheet, text, actor_name=None, max_candidates=8):
             "score": score,
         }
         if phrase:
-            value["matchedText"] = phrase[:120]
+            value["matchedText"] = phrase
         current = selected.get(marker)
         if current is None or score > current["score"]:
             selected[marker] = value

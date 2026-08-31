@@ -320,7 +320,6 @@ class SRDContextMatcher:
         index=None,
         rule_index=_DEFAULT_RULE_INDEX,
         max_references=3,
-        max_context_characters=4800,
     ):
         self.index = index or load_srd_reference_index()
         if rule_index is _DEFAULT_RULE_INDEX:
@@ -332,7 +331,6 @@ class SRDContextMatcher:
                 rule_index = None
         self.rule_index = rule_index
         self.max_references = max(1, int(max_references))
-        self.max_context_characters = max(1000, int(max_context_characters))
         indexes = [self.index]
         if self.rule_index is not None:
             indexes.append(self.rule_index)
@@ -495,7 +493,7 @@ class SRDContextMatcher:
         return ranked
 
     def render(self, matches):
-        """Render whole references under a strict aggregate character budget."""
+        """Render every selected whole reference."""
         if not matches:
             return ""
         header = "[SRD CONTEXT — SRD 5.2.1 guidance for this turn]"
@@ -504,7 +502,6 @@ class SRDContextMatcher:
             "Do not invent actor availability or resource names."
         )
         blocks = []
-        size = len(header) + len(footer) + 4
         for match in matches[: self.max_references]:
             entry = match["entry"]
             lines = [
@@ -542,16 +539,7 @@ class SRDContextMatcher:
                     )
             lines.append("Guidance: %s" % entry["compactGuidance"])
             block = "\n".join(lines)
-            addition = len(block) + 2
-            if blocks and size + addition > self.max_context_characters:
-                continue
-            if not blocks and size + addition > self.max_context_characters:
-                # Every compact entry is validated below this minimum in the
-                # production registry; retain the first whole entry rather than
-                # teaching a model a truncated rule.
-                continue
             blocks.append(block)
-            size += addition
         if not blocks:
             return ""
         return "%s\n%s\n%s" % (header, "\n\n".join(blocks), footer)
@@ -560,9 +548,8 @@ class SRDContextMatcher:
         matches = self.select(text, actor_sheet, structured_names)
         return {"matches": matches, "context": self.render(matches)}
 
-    def legal_spell_index(self, actors, max_characters=4800):
-        """Return a bounded metadata-only index for automatic actor choices."""
-        limit = max(1000, int(max_characters))
+    def legal_spell_index(self, actors):
+        """Return the complete metadata-only index for automatic actor choices."""
         result = []
         seen = set()
         actor_rows = [
@@ -593,7 +580,7 @@ class SRDContextMatcher:
                     "range": entry["range"],
                     "duration": entry["duration"],
                     "concentration": entry["concentration"],
-                    # Automatic actors need the bounded mechanics, not just a
+                    # Automatic actors need the represented mechanics, not just a
                     # list of spell names. Otherwise a weak model still has to
                     # guess saves, damage, targeting, and restrictions.
                     "guidance": entry["compactGuidance"],
@@ -601,12 +588,6 @@ class SRDContextMatcher:
                         _spell_slot_hints(sheet, int(entry.get("level", 0) or 0))
                     ),
                 }
-                # Measure with the same JSON formatting used by T096. Compact
-                # separators made the old check undercount the real request by
-                # roughly 8 percent in a six-caster stress case.
-                candidate = result + [item]
-                if len(json.dumps(candidate, ensure_ascii=False)) > limit:
-                    continue
                 result.append(item)
         return result
 

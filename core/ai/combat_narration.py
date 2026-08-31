@@ -83,18 +83,18 @@ _AMMUNITION_RE = re.compile(
 )
 
 
-def _bounded_copy(value, max_list=80):
-    """Copy JSON-like combat data while bounding pathological legacy arrays."""
+def _public_copy(value):
+    """Copy complete JSON-like combat data while omitting private keys."""
     if isinstance(value, dict):
         return {
-            str(key): _bounded_copy(child, max_list=max_list)
+            str(key): _public_copy(child)
             for key, child in value.items()
             if not str(key).startswith("_")
         }
     if isinstance(value, list):
-        return [_bounded_copy(child, max_list=max_list) for child in value[:max_list]]
+        return [_public_copy(child) for child in value]
     if isinstance(value, str):
-        return value[:4000]
+        return value
     return deepcopy(value)
 
 
@@ -102,7 +102,7 @@ def _combat_sheet(sheet):
     if not isinstance(sheet, dict):
         return {}
     return {
-        key: _bounded_copy(sheet[key])
+        key: _public_copy(sheet[key])
         for key in _SHEET_FIELDS
         if key in sheet
     }
@@ -200,8 +200,8 @@ def _fact_event(event, creatures, presentation=None):
         "attackRoll": outcome.get("attackRoll"),
         "totalAttack": outcome.get("totalAttack"),
         "targetAC": outcome.get("targetAC"),
-        "resources": _bounded_copy(event.get("resources") or []),
-        "effects": _bounded_copy(event.get("effects") or []),
+        "resources": _public_copy(event.get("resources") or []),
+        "effects": _public_copy(event.get("effects") or []),
     }
     return {key: value for key, value in fact.items() if value is not None}
 
@@ -296,7 +296,7 @@ def build_scene_dossier(encounter, events, characters=None):
                     if sheet_is_state_authority
                     else creature.get("condition")
                 ),
-                "activeEffects": _bounded_copy(creature.get("activeEffects") or []),
+                "activeEffects": _public_copy(creature.get("activeEffects") or []),
                 "sheet": _combat_sheet(effective),
             }
         )
@@ -350,7 +350,7 @@ def build_scene_dossier(encounter, events, characters=None):
                 for event in events
             ],
         },
-        "encounterActivity": _bounded_copy(state.get("narrationActivity") or {}),
+        "encounterActivity": _public_copy(state.get("narrationActivity") or {}),
         "ruleReferences": _spell_references(facts),
         "permittedNamedEntities": permitted,
         # This must remain the final payload item. Provider adapters serialize
@@ -382,7 +382,7 @@ def narration_coverage_violations(covered_event_ids, dossier):
 
 
 def update_narration_activity(activity, events):
-    """Accumulate a bounded per-combatant summary from committed typed facts."""
+    """Accumulate a per-combatant summary from committed typed facts."""
     result = deepcopy(activity) if isinstance(activity, dict) else {}
 
     def row_for(combatant_id):
@@ -697,9 +697,6 @@ def lint_combat_narration(narration, dossier):
                 ) and re.search(r"\b%s\b" % re.escape(action), sentence, re.IGNORECASE):
                     warnings.append("actor_attribution_mismatch")
                     break
-    event_count = max(1, len(facts))
-    if len(text) > 900 + (650 * event_count):
-        rejects.append("excessive_length")
     return {
         "reject": list(dict.fromkeys(rejects)),
         "warnings": list(dict.fromkeys(warnings)),
@@ -765,7 +762,7 @@ def progressive_narration_feedback(previous_attempt, dossier):
         if isinstance(code, str)
     ]
     return {
-        "previousCandidate": str(previous_attempt.get("candidate") or "")[:12000],
+        "previousCandidate": str(previous_attempt.get("candidate") or ""),
         "violationCodes": violations,
         "warningCodes": warnings,
         "Keep This": (

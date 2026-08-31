@@ -44,7 +44,7 @@ class CombatNarrationAttemptError(CombatAgentContractError):
 
     def __init__(self, message, candidate="", failure_class="response_contract_error"):
         super().__init__(message)
-        self.candidate = str(candidate or "")[:12000]
+        self.candidate = str(candidate or "")
         self.failure_class = str(failure_class or "response_contract_error")
 
 
@@ -163,14 +163,12 @@ def build_contextual_spell_payload(
     encounter_context=None,
     index=None,
     max_references=3,
-    max_context_characters=4800,
 ):
-    """Build bounded T096 spell guidance for only the current actor window."""
+    """Build complete selected T096 guidance for the current actor window."""
     index = index or load_srd_reference_index()
     matcher = SRDContextMatcher(
         index=index,
         max_references=max_references,
-        max_context_characters=max_context_characters,
     )
     names = list(actor_names or ())
     if not names:
@@ -260,15 +258,8 @@ def build_contextual_spell_payload(
         "_contextVersion": 1,
         "spellReferences": spell_references,
         "ruleReferences": rule_references,
-        "encounterContext": (
-            encounter_context[:2000]
-            if isinstance(encounter_context, str)
-            else ""
-        ),
-        "spellActionIndex": matcher.legal_spell_index(
-            actor_rows,
-            max_characters=max_context_characters,
-        ),
+        "encounterContext": encounter_context if isinstance(encounter_context, str) else "",
+        "spellActionIndex": matcher.legal_spell_index(actor_rows),
         "capabilityContexts": capability_contexts,
         "capabilityCandidates": capability_candidates,
     }
@@ -276,7 +267,7 @@ def build_contextual_spell_payload(
 
 def _intent_system_prompt():
     return """You are the tactical-intent role in a turn-based fantasy combat engine.
-You choose actions and bounded rulings; code owns initiative, dice consumption,
+You choose actions and structured rulings; code owns initiative, dice consumption,
 arithmetic, state mutation, and recovery.
 
 Treat playerInput as natural narrative intent. Use capabilityContext together
@@ -304,7 +295,7 @@ keys. If no suitable listed spell remains, choose a listed weapon/action or a
 defensive action instead of guessing spell mechanics. encounterContext and
 ruleReferences are authoritative scene/rule guidance when present.
 An adjudicated intent may contain:
-- description: concise mechanical ruling
+- description: mechanical ruling
 - save: {type, dc, halfOnSave} when targets roll a save
 - targets: [{combatantId, hpDelta}], negative damage / positive healing
 - resources: [{owner, kind, name, delta}], using exact sheet names; kind is
@@ -582,7 +573,7 @@ def request_narration_candidate(
                 "in that same order and is never shown to the player. Do not change, "
                 "invent, or recalculate mechanics; do not announce actions beyond these "
                 "events. Do not quote bookkeeping from the event data. Keep the prose "
-                "vivid, clear, and concise. npcVoiceIntents is private companion "
+                "vivid and clear. npcVoiceIntents is private companion "
                 "characterization keyed by exact actor ID. It never changes the "
                 "authoritative event facts. When an advised companion has a committed "
                 "event, narrate the committed action first, then naturally weave "

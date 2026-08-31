@@ -97,3 +97,21 @@ the DM. T105/T112 provider lifetimes are individually registered beneath the exa
 live-turn operation and beat, are sealed at the semantic consumer boundary, and are
 reaped by their task-owned monitors. Late results are rejected rather than carried
 into another beat.
+
+## 11. Direct combat no-limits train (GL-1)
+
+The combat request and narration context now preserve every selected record and its
+complete strings. This retires character budgets; it does not remove semantic
+selection. T096 still selects exact actor-window facts, owned capability records, and
+at most the established number of whole SRD references. Narration still receives the
+typed dossier and authoritative committed events.
+
+| Retired guard | Preserved protection |
+|---|---|
+| T096 candidate, encounter, capability, and spell-index character budgets | exact actor ownership, complete-record selection, canonical capability matching, and the existing SRD reference-count selection |
+| T097 dossier string/list truncation | private-key filtering plus the typed dossier fields and committed-event authority |
+| T097 retry-candidate truncation | the existing completed-invalid attempt count and full violation-code records |
+| `900 + 650 * events` prose rejection | event coverage/order, mechanics-invention, hidden-information, perspective, and exact event-ID checks |
+
+This train does not alter the compression, episodic-storage, or web-TTS caps owned by
+#262.
