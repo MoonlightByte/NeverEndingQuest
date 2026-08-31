@@ -1,0 +1,304 @@
+<title>NPC Voice Flow Map</title>
+<style>
+  :root{
+    --ink:#131720; --panel:#1b212d; --panel2:#161c26; --line:#2b3444;
+    --txt:#e8e4d8; --dim:#9aa3b2;
+    --agent:#4ec6b4; --dm:#a78bfa; --code:#8595ac; --player:#e3ae4e;
+    --store:#8fb573; --bad:#e1604f; --ok:#6fbf85;
+    --mono:ui-monospace,'Cascadia Code',Consolas,'SF Mono',Menlo,monospace;
+    --sans:'Avenir Next','Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--ink);color:var(--txt);font-family:var(--sans);margin:0;padding:28px 20px 60px;line-height:1.35}
+  .wrap{max-width:1060px;margin:0 auto}
+  h1{font-size:21px;font-weight:600;letter-spacing:.01em;margin:0 0 2px}
+  .sub{color:var(--dim);font-size:12.5px;margin:0 0 18px}
+  .sub code{font-family:var(--mono);font-size:11.5px;color:var(--txt)}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:11.5px;color:var(--dim);
+    border:1px solid var(--line);border-radius:6px;padding:9px 14px;margin-bottom:22px;background:var(--panel2)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+  /* C4 context strip */
+  .ctx{display:grid;grid-template-columns:1fr 26px 1fr 26px 1.4fr 26px 1fr;align-items:stretch;gap:0;margin-bottom:30px}
+  .cbox{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:9px 11px;text-align:center}
+  .cbox b{display:block;font-size:12.5px;font-weight:600}
+  .cbox i{display:block;font-style:normal;font-size:10.5px;color:var(--dim);margin-top:2px}
+  .cbox.hl{border-color:var(--agent)}
+  .harrow{align-self:center;text-align:center;color:var(--dim);font-size:13px}
+
+  /* panels */
+  .panel{border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:18px 18px 8px;margin-bottom:30px}
+  .ptitle{display:flex;align-items:baseline;gap:10px;margin:0 0 4px}
+  .ptitle h2{font-size:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin:0}
+  .verdict{font-size:10.5px;font-family:var(--mono);padding:2px 7px;border-radius:3px}
+  .v-ok{color:var(--ok);border:1px solid var(--ok)}
+  .v-bad{color:var(--bad);border:1px solid var(--bad)}
+  .lanehead{display:grid;grid-template-columns:1fr 90px 1fr;font-size:10.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim);text-align:center;margin:10px 0 6px}
+  .lanehead .l{color:var(--code)} .lanehead .r{color:var(--agent)}
+
+  /* flow rows: [code node | spine | agent node] */
+  .flow{display:grid;grid-template-columns:1fr 90px 1fr;row-gap:0}
+  .noderow{display:contents}
+  .node{border-radius:6px;padding:8px 11px;margin:5px 0;position:relative;font-size:12.5px;background:var(--panel);border:1px solid var(--line)}
+  .node.code{border-left:3px solid var(--code)}
+  .node.agent{border-left:3px solid var(--agent)}
+  .node.dm{border-left:3px solid var(--dm)}
+  .node.player{border-left:3px solid var(--player)}
+  .node.store{border-left:3px solid var(--store)}
+  .node.bad{border:1px solid var(--bad);border-left:3px solid var(--bad)}
+  .node .who{font-size:9.5px;font-family:var(--mono);letter-spacing:.08em;display:block;margin-bottom:2px}
+  .code .who{color:var(--code)} .agent .who,.agentc .who{color:var(--agent)}
+  .dm .who{color:var(--dm)} .player .who{color:var(--player)} .store .who{color:var(--store)}
+  .bad .who{color:var(--bad)}
+  .node .lbl{font-weight:600}
+  .node .det{color:var(--dim);font-size:11px}
+  pre.j{font-family:var(--mono);font-size:10.5px;line-height:1.45;background:#10141c;border:1px solid var(--line);
+    border-radius:4px;padding:6px 8px;margin:6px 0 1px;overflow-x:auto;color:#c9d4e3}
+  pre.j .k{color:var(--player)} pre.j .s{color:var(--agent)} pre.j .p{color:var(--dm)} pre.j .x{color:var(--bad)}
+  .spine{position:relative}
+  .spine:before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line)}
+  .spine .n{position:absolute;left:50%;transform:translate(-50%,-50%);top:50%;
+    background:var(--ink);border:1px solid var(--line);color:var(--dim);
+    font-family:var(--mono);font-size:10px;width:22px;height:22px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center}
+  .empty{visibility:hidden}
+  .warnchip{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--bad);border:1px solid var(--bad);
+    border-radius:3px;padding:1px 6px;margin-left:6px}
+  .okchip{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--ok);border:1px solid var(--ok);
+    border-radius:3px;padding:1px 6px;margin-left:6px}
+  .note{font-size:11px;color:var(--dim);margin:10px 2px 10px}
+  .note b{color:var(--txt);font-weight:600}
+
+  /* travel mini-chain */
+  .chain{display:grid;grid-template-columns:repeat(9,auto);align-items:center;gap:6px;overflow-x:auto;padding:8px 2px 14px}
+  .cnode{border:1px solid var(--line);border-left:3px solid var(--dm);border-radius:6px;background:var(--panel);
+    padding:7px 10px;font-size:11.5px;min-width:96px}
+  .cnode .who{font-size:9px;font-family:var(--mono);color:var(--dm);display:block}
+  .cnode.codec{border-left-color:var(--code)} .cnode.codec .who{color:var(--code)}
+  .carr{color:var(--dim);font-size:13px}
+  @media (max-width:760px){
+    .flow,.lanehead{grid-template-columns:1fr 44px 1fr}
+    .ctx{grid-template-columns:1fr;gap:6px}.harrow{display:none}
+  }
+</style>
+
+<div class="wrap">
+  <h1>NPC Voices &mdash; how a companion speaks, in and out of combat</h1>
+  <p class="sub">Branch <code>integration/npc-voice-episodic @ 8e78cf12</code> &middot; left lane = deterministic engine code &middot; right lane = paid model call (the agentic steps)</p>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--player)"></span>Player / harness</span>
+    <span><span class="dot" style="background:var(--code)"></span>Engine code (deterministic)</span>
+    <span><span class="dot" style="background:var(--agent)"></span>Voice micro-agent T105 (luna)</span>
+    <span><span class="dot" style="background:var(--dm)"></span>Narrator DM &amp; validators (T067 / T021 / T096 / T045)</span>
+    <span><span class="dot" style="background:var(--store)"></span>Durable storage</span>
+    <span><span class="dot" style="background:var(--bad)"></span>Open defect</span>
+  </div>
+
+  <!-- C4 context -->
+  <div class="ctx">
+    <div class="cbox"><b>Player</b><i>web / headless NDJSON</i></div>
+    <div class="harrow">&#8594;</div>
+    <div class="cbox"><b>Game engine</b><i>main.py &middot; one thread</i></div>
+    <div class="harrow">&#8646;</div>
+    <div class="cbox hl"><b>Model calls</b><i>T067 narrator &middot; T105 voice &times;N &middot; T096 tactics &middot; T013/63/64 travel</i></div>
+    <div class="harrow">&#8646;</div>
+    <div class="cbox"><b>Storage</b><i>character &middot; encounter &middot; history &middot; companion sidecars</i></div>
+  </div>
+
+  <!-- ============ OUT OF COMBAT ============ -->
+  <div class="panel">
+    <div class="ptitle"><h2>Out of combat &mdash; one player turn</h2><span class="verdict v-ok">P1/P3 seam proven live</span></div>
+    <div class="lanehead"><span class="l">Engine code</span><span></span><span class="r">Agentic (model call)</span></div>
+    <div class="flow">
+
+      <div class="noderow">
+        <div class="node player"><span class="who">PLAYER &#8594; BACKEND</span>
+          <span class="lbl">Input arrives</span>
+          <pre class="j">{"<span class="k">type</span>":"input","<span class="k">text</span>":"Kira, do you trust my plan?"}</pre>
+        </div>
+        <div class="spine"><span class="n">1</span></div>
+        <div class="node empty"></div>
+      </div>
+
+      <div class="noderow">
+        <div class="node code"><span class="who">CODE</span>
+          <span class="lbl">Build one packet per companion</span>
+          <div class="det">canonical sheet + attributed memory + visible scene &middot; size-fitted</div>
+        </div>
+        <div class="spine"><span class="n">2</span></div>
+        <div class="node empty"></div>
+      </div>
+
+      <div class="noderow">
+        <div class="node empty"></div>
+        <div class="spine"><span class="n">3</span></div>
+        <div class="node agent"><span class="who" style="color:var(--agent)">T105 &times;N &middot; PARALLEL, overlaps DM call</span>
+          <span class="lbl">Each NPC answers as themselves</span>
+          <pre class="j">{"<span class="k">npcName</span>":"Kira",
+ "<span class="s">say</span>":"Your plan leaves the west flank open.",
+ "<span class="s">do</span>":"map signs of disturbance",
+ "<span class="s">want</span>":"scout ahead before dusk",
+ "<span class="s">thought</span>":"<span class="x">private &mdash; never shown</span>"}</pre>
+        </div>
+      </div>
+
+      <div class="noderow">
+        <div class="node code"><span class="who">CODE</span>
+          <span class="lbl">Inject as PROPOSED advisory</span>
+          <div class="det">after compression, into the T067 request &middot; &ldquo;edit or inline &mdash; never paste verbatim&rdquo;</div>
+        </div>
+        <div class="spine"><span class="n">4</span></div>
+        <div class="node empty"></div>
+      </div>
+
+      <div class="noderow">
+        <div class="node empty"></div>
+        <div class="spine"><span class="n">5</span></div>
+        <div class="node dm"><span class="who">T067 NARRATOR DM</span>
+          <span class="lbl">Weaves voices + rules the turn</span>
+          <pre class="j">{"<span class="p">narration</span>":"Kira shakes her head. 'The west flank...'",
+ "<span class="p">actions</span>":[
+   {"<span class="k">action</span>":"updateCharacterInfo",
+    "<span class="k">parameters</span>":{"characterName":"Kira", ...}}]}</pre>
+        </div>
+      </div>
+
+      <div class="noderow">
+        <div class="node empty"></div>
+        <div class="spine"><span class="n">6</span></div>
+        <div class="node dm"><span class="who">T021 VALIDATOR</span>
+          <span class="lbl">Accept / correct</span>
+          <div class="det">sees the same voice batch &middot; corrections re-use it (immutable)</div>
+        </div>
+      </div>
+
+      <div class="noderow">
+        <div class="node code"><span class="who">CODE &middot; process_action</span>
+          <span class="lbl">Execute actions &middot; write history</span>
+          <div class="det">raw advisory REDACTED from durable history &amp; logs</div>
+        </div>
+        <div class="spine"><span class="n">7</span></div>
+        <div class="node empty"></div>
+      </div>
+
+      <div class="noderow">
+        <div class="node store"><span class="who">STORAGE &middot; exactly once, only if accepted</span>
+          <span class="lbl">Companion memory commits</span>
+          <pre class="j">data/companion_memories/npc_agent_state.json
+episode_ledger.json  &#8592; {"actor":"Kira","episode":...}</pre>
+        </div>
+        <div class="spine"><span class="n">8</span></div>
+        <div class="node empty"></div>
+      </div>
+
+    </div>
+    <p class="note"><b>Boundary:</b> voices are advice only &mdash; mechanics, dice, HP and world truth flow through the DM&rsquo;s <b>actions[]</b> and engine code, never from T105.</p>
+  </div>
+
+  <!-- ============ IN COMBAT ============ -->
+  <div class="panel">
+    <div class="ptitle"><h2>In combat &mdash; one companion turn (agentic pipeline)</h2><span class="verdict v-bad">#259: voice dropped at step 4</span></div>
+    <div class="lanehead"><span class="l">Engine code</span><span></span><span class="r">Agentic (model call)</span></div>
+    <div class="flow">
+
+      <div class="noderow">
+        <div class="node code"><span class="who">CODE &middot; combat_orchestrator</span>
+          <span class="lbl">Turn window opens for NPC actor</span>
+          <div class="det">encounter JSON: initiative cursor &#8594; scout_kira &middot; controller = engine</div>
+        </div>
+        <div class="spine"><span class="n">1</span></div>
+        <div class="node empty"></div>
+      </div>
+
+      <div class="noderow">
+        <div class="node code"><span class="who">CODE</span>
+          <span class="lbl">Actor-scoped combat packet</span>
+          <div class="det">her sheet + threats + allies + objectives (combat lens)</div>
+        </div>
+        <div class="spine"><span class="n">2</span></div>
+        <div class="node empty"></div>
+      </div>
+
+      <div class="noderow">
+        <div class="node empty"></div>
+        <div class="spine"><span class="n">3</span></div>
+        <div class="node agent"><span class="who" style="color:var(--agent)">T105 COMBAT LENS</span>
+          <span class="lbl">Kira decides as Kira</span>
+          <pre class="j">{"<span class="k">npcName</span>":"Kira","<span class="s">say</span>":"Covering the archer!",
+ "<span class="s">do</span>":"loose at Gorvek from the ridge",
+ "<span class="s">want</span>":"keep Mara out of reach","<span class="s">thought</span>":"..."}</pre>
+        </div>
+      </div>
+
+      <div class="noderow">
+        <div class="node bad"><span class="who">CODE &middot; npc_voice_intents &#8594; T096 request</span>
+          <span class="lbl">Hand advisory to tactics agent <span class="warnchip">#259 DEFECT</span></span>
+          <div class="det">today only <b>npcName + thought</b> are forwarded &mdash; accepted <b>say / do / want</b> are dropped here, so her voice is lost in translation</div>
+        </div>
+        <div class="spine"><span class="n">4</span></div>
+        <div class="node empty"></div>
+      </div>
+
+      <div class="noderow">
+        <div class="node empty"></div>
+        <div class="spine"><span class="n">5</span></div>
+        <div class="node dm"><span class="who">T096 ACTOR TACTICS</span>
+          <span class="lbl">Chooses the typed action</span>
+          <pre class="j">{"<span class="k">actorId</span>":"scout_kira","<span class="k">action</span>":"attack",
+ "<span class="k">target</span>":"Gorvek","<span class="k">weapon</span>":"Shortbow"}</pre>
+        </div>
+      </div>
+
+      <div class="noderow">
+        <div class="node code"><span class="who">CODE &middot; resolver</span>
+          <span class="lbl">Dice, HP, resources &mdash; code-owned <span class="okchip">proven: 45&#8594;38, arrow 20&#8594;19</span></span>
+          <div class="det">voice can never change initiative, targets, dice or HP</div>
+        </div>
+        <div class="spine"><span class="n">6</span></div>
+        <div class="node empty"></div>
+      </div>
+
+      <div class="noderow">
+        <div class="node empty"></div>
+        <div class="spine"><span class="n">7</span></div>
+        <div class="node dm"><span class="who">COMBAT NARRATOR (+ T045 validates on legacy path)</span>
+          <span class="lbl">Narrates the round</span>
+          <div class="det">should carry her line &mdash; blocked by #259; legacy saves inject before T045 instead</div>
+        </div>
+      </div>
+
+      <div class="noderow">
+        <div class="node store"><span class="who">STORAGE</span>
+          <span class="lbl">Typed events commit once</span>
+          <div class="det">encounter JSON + sidecar episode on acceptance only</div>
+        </div>
+        <div class="spine"><span class="n">8</span></div>
+        <div class="node empty"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ TRAVEL ============ -->
+  <div class="panel">
+    <div class="ptitle"><h2>Travel &mdash; voices at the module boundary</h2><span class="verdict v-ok">P5 PASS both polarities</span></div>
+    <div class="chain">
+      <div class="cnode" style="border-left-color:var(--agent)"><span class="who" style="color:var(--agent)">T105&#8594;T067</span>initiating turn only</div>
+      <span class="carr">&#8594;</span>
+      <div class="cnode codec"><span class="who">CODE</span>destination commits to disk first</div>
+      <span class="carr">&#8594;</span>
+      <div class="cnode"><span class="who">T013</span>departure layer</div>
+      <span class="carr">&#8594;</span>
+      <div class="cnode"><span class="who">T063</span>arrival layer</div>
+      <span class="carr">&#8594;</span>
+      <div class="cnode"><span class="who">T064</span>one seamless narration &#8594; your next choice</div>
+    </div>
+    <p class="note"><b>Privacy proven:</b> the raw T105 packet is forbidden in all three travel prompts; the companion sidecar logs the crossing exactly once; a &ldquo;travel then buy&rdquo; command travels only &mdash; the purchase waits for you.</p>
+  </div>
+
+</div>
