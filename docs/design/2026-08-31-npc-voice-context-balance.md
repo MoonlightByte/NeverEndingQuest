@@ -74,3 +74,16 @@ on DM narration fidelity of the fed voice data.
 - FORK 4: this wave stays scoped to the voice path + directly-touched combat files.
   The additional caps found (episodic storage, combat compression/prompts, web TTS)
   are tracked on issue #262 for a separate systematic retirement.
+
+## 9. Second-panel rulings (owner, 2026-08-31: "b / yes / bless")
+- D-VR-13 = (b): NO legacy freeze fiction. Phase A upgrades the ONE shared T105 stack
+  and legacy T045 legally INHERITS the improvements through its existing seams until
+  retirement (Phase B). Pinning/copying an old voice stack for legacy stays banned.
+  Recorded as amendment D-VR-13b on the #193 v2.0 legacy-retirement ruling.
+- D-VR-14 = YES, in-wave: minimal structural worker-lifecycle fix - causal fencing
+  (every voice/recall result stamped with its beat/Load authority id; stale rejected -
+  closes the voice half of #256) + reap-and-reissue so a stuck provider call can never
+  permanently occupy a worker (B2-iii structural liveness; no deadlines, no new store).
+- D-VR-15 = BLESSED: T097 completed-invalid bounded-retry-then-generic-fallback is now
+  a ratified B2-iv class in #193 v2.0 Part 5 (post-commit narration only; mechanics
+  already committed; failure surfaces via Fork-3 telemetry).
