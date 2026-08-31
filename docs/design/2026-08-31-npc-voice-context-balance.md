@@ -87,3 +87,13 @@ on DM narration fidelity of the fed voice data.
 - D-VR-15 = BLESSED: T097 completed-invalid bounded-retry-then-generic-fallback is now
   a ratified B2-iv class in #193 v2.0 Part 5 (post-commit narration only; mechanics
   already committed; failure surfaces via Fork-3 telemetry).
+
+## 10. Phase-A implementation boundary
+
+E3 is the first request-local reuse seam for the future memory-offload direction:
+one attributed T112 selection may feed both the focal T105 packet and the later DM
+context rebuild. It adds no model call and does not yet remove canonical memory from
+the DM. T105/T112 provider lifetimes are individually registered beneath the exact
+live-turn operation and beat, are sealed at the semantic consumer boundary, and are
+reaped by their task-owned monitors. Late results are rejected rather than carried
+into another beat.

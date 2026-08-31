@@ -57,6 +57,8 @@ _ADVISORY_TASK_IDS = frozenset(
         "T091",
         "T107",
         "T108",
+        "T105",
+        "T112",
     }
 )
 _LIVE_TASK_IDS = _REQUIRED_TASK_IDS | _ADVISORY_TASK_IDS
@@ -65,6 +67,7 @@ _WATCHDOG_SECONDS = 600.0
 _WIZARD_READ_INACTIVITY_SECONDS = 40.0
 _WIZARD_BACKSTOP_SECONDS = 180.0
 _WIZARD_TASK_IDS = frozenset({"T092", "T093"})
+_NO_WATCHDOG_ADVISORY_TASK_IDS = frozenset({"T105", "T112"})
 _MAX_BACKOFF_SECONDS = 8.0
 _PERMANENT_ERROR_SECONDS = 60.0
 
@@ -105,6 +108,7 @@ class LiveTurnScope:
     quiescent: threading.Event = field(default_factory=threading.Event)
     lock: threading.RLock = field(default_factory=threading.RLock)
     controls_open: bool = True
+    advisory_scopes: list = field(default_factory=list)
 
     def next_generation(self):
         with self.lock:
@@ -127,11 +131,79 @@ class LiveTurnScope:
                 }
             result = dict(self.supersession)
             result["accepted"] = accepted
-            return result
+            advisory_scopes = tuple(self.advisory_scopes)
+        for advisory_scope in advisory_scopes:
+            advisory_scope.seal()
+        return result
 
     def is_superseded(self):
         with self.lock:
             return self.supersession is not None
+
+    def register_advisory_scopes(self, advisory_scopes):
+        with self.lock:
+            if not self.controls_open or self.supersession is not None:
+                return False
+            self.advisory_scopes.extend(advisory_scopes)
+            return True
+
+    def seal_advisory_scopes(self):
+        with self.lock:
+            scopes = tuple(self.advisory_scopes)
+        for advisory_scope in scopes:
+            advisory_scope.seal()
+        return scopes
+
+
+@dataclass
+class AdvisoryProviderScope:
+    """One task-owned, beat-fenced advisory provider lifetime."""
+
+    parent: LiveTurnScope
+    beat_id: str
+    generation: int = 0
+    sealed: threading.Event = field(default_factory=threading.Event)
+    quiescent: threading.Event = field(default_factory=threading.Event)
+    lock: threading.RLock = field(default_factory=threading.RLock)
+
+    @property
+    def operation_id(self):
+        return self.parent.operation_id
+
+    def next_generation(self):
+        with self.lock:
+            self.generation += 1
+            return self.generation
+
+    def is_superseded(self):
+        return self.sealed.is_set() or self.parent.is_superseded()
+
+    def seal(self):
+        self.sealed.set()
+
+    def finish(self):
+        self.quiescent.set()
+
+
+def open_advisory_scope(parent, beat_id):
+    """Register one exact beat child before its monitor may start."""
+    if parent is None or parent is not get_live_turn_scope():
+        return None
+    scopes = open_advisory_scopes(parent, beat_id, 1)
+    return scopes[0] if scopes else None
+
+
+def open_advisory_scopes(parent, beat_id, count):
+    """Atomically register the complete intended advisory child set."""
+    if parent is None or parent is not get_live_turn_scope() or count <= 0:
+        return ()
+    scopes = tuple(
+        AdvisoryProviderScope(parent=parent, beat_id=str(beat_id))
+        for _index in range(count)
+    )
+    if not parent.register_advisory_scopes(scopes):
+        return ()
+    return scopes
 
 _scope_guard = threading.RLock()
 _active_scope = None
@@ -167,12 +239,25 @@ def close_live_turn_scope(scope):
     """Close only the exact active scope supplied by its game thread."""
     global _active_scope
     with _scope_guard:
-        if _active_scope is scope:
-            with scope.lock:
-                scope.controls_open = False
-            scope.phase = "QUIESCENT"
-            scope.quiescent.set()
-            _active_scope = None
+        if _active_scope is not scope:
+            return
+        with scope.lock:
+            scope.controls_open = False
+        advisory_scopes = scope.seal_advisory_scopes()
+        _active_scope = None
+    def publish_quiescence():
+        for advisory_scope in advisory_scopes:
+            advisory_scope.quiescent.wait()
+        scope.phase = "QUIESCENT"
+        scope.quiescent.set()
+    if all(item.quiescent.is_set() for item in advisory_scopes):
+        publish_quiescence()
+    else:
+        threading.Thread(
+            target=publish_quiescence,
+            name="live-turn-advisory-reap",
+            daemon=True,
+        ).start()
 
 
 def request_live_turn_supersession(kind, operation_id=None):
@@ -309,6 +394,15 @@ def drain_live_saves(scope, *, seal=False):
 
 def finish_live_turn_scope(scope):
     """Drain accepted saves and publish game-thread quiescence."""
+    if scope.is_superseded():
+        scopes = scope.seal_advisory_scopes()
+        started = time.monotonic()
+        while not all(item.quiescent.wait(0.1) for item in scopes):
+            _safe_emit(
+                _emit_working,
+                "Finishing background character work safely (%d seconds elapsed)..."
+                % max(1, int(time.monotonic() - started)),
+            )
     drain_live_saves(scope, seal=True)
     close_live_turn_scope(scope)
 
@@ -586,7 +680,7 @@ def call_live_provider(
             _WATCHDOG_SECONDS,
             read=_WIZARD_READ_INACTIVITY_SECONDS,
         )
-    elif frozen_kwargs.get("_request_provider") in {
+    elif task_id not in _NO_WATCHDOG_ADVISORY_TASK_IDS and frozen_kwargs.get("_request_provider") in {
         "openai",
         "legacy",
         "lmstudio",
@@ -643,7 +737,7 @@ def call_live_provider(
             continue
 
         started = time.monotonic()
-        generation_limit = (
+        generation_limit = None if task_id in _NO_WATCHDOG_ADVISORY_TASK_IDS else (
             _WIZARD_BACKSTOP_SECONDS if wizard_task else _WATCHDOG_SECONDS
         )
         next_heartbeat = started + _HEARTBEAT_SECONDS
@@ -653,7 +747,7 @@ def call_live_provider(
         first_communicate = True
         backstop_exhausted = False
         try:
-            while time.monotonic() - started < generation_limit:
+            while generation_limit is None or time.monotonic() - started < generation_limit:
                 if scope is not None and scope.is_superseded():
                     superseded = True
                     break

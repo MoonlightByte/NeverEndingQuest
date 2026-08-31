@@ -7629,7 +7629,9 @@ def main_game_loop():
             lease_owner=context_state.get("lease_owner"),
             attempt_count=context_state.get("attempt_count"),
         )
-        conversation_history = update_conversation_history(conversation_history, party_tracker_data, plot_data, module_data)
+        conversation_history = update_conversation_history(
+            conversation_history, party_tracker_data, plot_data, module_data
+        )
         debug(f"STATE_CHANGE: After update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
         conversation_history = update_character_data(conversation_history, party_tracker_data)
     
@@ -9247,7 +9249,16 @@ def main_game_loop():
         debug(f"FILE_OP: Updated plot file path: {updated_path_manager.get_plot_path()}", category="module_management")
 
         debug(f"STATE_CHANGE: Before AI response update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
-        conversation_history = update_conversation_history(conversation_history, party_tracker_data, plot_data, module_data)
+        prepared_recall_by_npc = getattr(
+            npc_voice_batch, "recalled_by_npc", None
+        )
+        conversation_history = update_conversation_history(
+            conversation_history,
+            party_tracker_data,
+            plot_data,
+            module_data,
+            prepared_recall_by_npc=prepared_recall_by_npc,
+        )
         debug(f"STATE_CHANGE: After AI response update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
         conversation_history = update_character_data(conversation_history, party_tracker_data)
         conversation_history = ensure_main_system_prompt(conversation_history, main_system_prompt_text)

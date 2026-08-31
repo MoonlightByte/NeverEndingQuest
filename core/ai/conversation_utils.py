@@ -329,7 +329,6 @@ def filter_active_companion_memories(memory_rows, party_tracker_data):
 
 _LEGACY_COMPANION_MEMORY_PREFIX = "=== COMPANION MEMORIES (Compressed) ==="
 _CANONICAL_COMPANION_CONTEXT_PREFIX = "=== ACTIVE COMPANION CANONICAL CONTEXT ==="
-_MAX_CANONICAL_COMPANION_CONTEXT_CHARS = 16000
 
 # Closed-world grounding contract (R9). Governs BOTH the passive `memories` rows and
 # any `recalled` rows below: a companion may state as remembered ONLY what appears
@@ -608,6 +607,7 @@ def _build_canonical_companion_context_message(
     relationship_store,
     path_manager,
     json_loader,
+    prepared_recall_by_npc=None,
 ):
     from core.npc.voice_context import build_ooc_packets_for_turn
 
@@ -645,13 +645,10 @@ def _build_canonical_companion_context_message(
         ) or None
     except Exception:
         current_location_id = None
-    try:
-        recalled_by_npc = _recall_by_npc(
-            _latest_player_input(conversation_history), packets, episode_store,
-            current_location_id=current_location_id,
-        )
-    except Exception:
+    if prepared_recall_by_npc is None:
         recalled_by_npc = {}
+    else:
+        recalled_by_npc = dict(prepared_recall_by_npc)
     rows = []
     for packet in packets:
         candidate_rows = rows + [
@@ -663,19 +660,6 @@ def _build_canonical_companion_context_message(
                 current_location_id=current_location_id,
             )
         ]
-        candidate_json = json.dumps(
-            candidate_rows,
-            ensure_ascii=True,
-            separators=(",", ":"),
-        )
-        candidate_content = (
-            _CANONICAL_COMPANION_CONTEXT_PREFIX
-            + "\n"
-            + candidate_json
-            + "\n==="
-        )
-        if len(candidate_content) > _MAX_CANONICAL_COMPANION_CONTEXT_CHARS:
-            break
         rows = candidate_rows
     if not rows:
         return None
@@ -701,6 +685,7 @@ def build_companion_memory_message(
     legacy_path=os.path.join(
         "data", "companion_memories", "memories_compressed.json"
     ),
+    prepared_recall_by_npc=None,
 ):
     """Select canonical active context, or preserve the exact legacy fallback."""
     try:
@@ -719,6 +704,7 @@ def build_companion_memory_message(
             relationship_store=store,
             path_manager=manager,
             json_loader=json_loader,
+            prepared_recall_by_npc=prepared_recall_by_npc,
         )
     except Exception as exc:
         warning(
@@ -727,7 +713,14 @@ def build_companion_memory_message(
         )
         return None
 
-def update_conversation_history(conversation_history, party_tracker_data, plot_data, module_data):
+def update_conversation_history(
+    conversation_history,
+    party_tracker_data,
+    plot_data,
+    module_data,
+    *,
+    prepared_recall_by_npc=None,
+):
     # Read the actual system prompt to get the proper identifier
     with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "prompts", "system_prompt.txt"), "r", encoding="utf-8") as file:
         main_system_prompt_text = file.read().strip()
@@ -838,6 +831,7 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
         memory_message = build_companion_memory_message(
             party_tracker_data,
             conversation_history,
+            prepared_recall_by_npc=prepared_recall_by_npc,
         )
         if memory_message is not None:
             new_history.append(memory_message)

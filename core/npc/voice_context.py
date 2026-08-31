@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import threading
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional
@@ -16,7 +17,7 @@ from core.npc.relationship_store import (
     game_day_ordinal,
     normalize_identity_seed,
 )
-from core.npc.voice_contracts import NEGATIVE_AFFINITY_EVENT_TYPES
+from core.npc.voice_contracts import NEGATIVE_AFFINITY_EVENT_TYPES, validate_packet
 from core.npc.voice_selection import (
     SelectionFairness,
     rank_ooc_candidates,
@@ -37,6 +38,159 @@ class CombatVoiceStage:
 
     batch: NpcVoiceBatch
     intents: Mapping[str, Mapping[str, str]]
+
+
+class PreparedOocVoiceHandle:
+    """Request-local T112 -> T105 advisory chain with exact turn authority."""
+
+    def __init__(self, packets, service, parent_scope, raw_input, relationship_store):
+        self.batch_id = packets[0]["beat"]["id"] if packets else ""
+        self._lock = threading.RLock()
+        self._sealed = False
+        self._voice_handle = None
+        self._recall_scope = None
+        self.recalled_by_npc: Dict[str, list[Dict[str, Any]]] = {}
+        self.recall_disposition = "not_requested"
+        self._service = service
+        self._parent_scope = parent_scope
+        self._relationship_store = relationship_store
+        candidates = self._recall_candidates(raw_input, packets)
+        if candidates is None:
+            self._voice_handle = service.dispatch_batch(
+                packets, parent_scope=parent_scope
+            )
+            return
+        from utils.capture.live_provider_call import open_advisory_scope
+
+        recall_scope = open_advisory_scope(parent_scope, self.batch_id)
+        if recall_scope is None:
+            self.recall_disposition = "missing_authority"
+            _LOGGER.warning("T112 recall skipped without live authority")
+            return
+        self._recall_scope = recall_scope
+        threading.Thread(
+            target=self._run_recall,
+            args=(raw_input, tuple(packets), candidates, recall_scope),
+            name="npc-recall-%s" % self.batch_id,
+            daemon=True,
+        ).start()
+
+    @staticmethod
+    def _recall_candidates(raw_input, packets):
+        try:
+            from core.npc.episode_recall import _episode_terms, _tokens
+            from core.npc.episode_store import EpisodeStore
+
+            store = EpisodeStore()
+            if store.read_only:
+                return None
+            episodes_by_npc = {
+                packet["npc"]["id"]: store.episodes_for_witness(packet["npc"]["id"])
+                for packet in packets
+            }
+            if not any(episodes_by_npc.values()):
+                return None
+            terms = set()
+            for episodes in episodes_by_npc.values():
+                for episode in episodes:
+                    terms |= _episode_terms(episode)
+            if not (_tokens(raw_input) & terms):
+                return None
+            return episodes_by_npc
+        except Exception:
+            return None
+
+    def _run_recall(self, raw_input, packets, episodes_by_npc, scope):
+        try:
+            from core.npc.episode_recall import parse_anchors, select_episodes, _tokens
+
+            anchors = parse_anchors(raw_input, advisory_scope=scope)
+            if anchors is None:
+                if scope.is_superseded():
+                    self.recall_disposition = "stale_rejected"
+                    self._service.telemetry.record_disposition(
+                        "recall", "stale_rejected", batch_id=self.batch_id
+                    )
+                    return
+                self.recall_disposition = "degraded_this_beat"
+                _LOGGER.warning("T112 recall unavailable for this beat")
+                self._service.telemetry.record_disposition(
+                    "recall", "degraded_this_beat", batch_id=self.batch_id
+                )
+                return
+            selected = {}
+            for npc_id, episodes in episodes_by_npc.items():
+                ignore = set()
+                for episode in episodes:
+                    for fact in episode.get("salientFacts", []) or []:
+                        subject = fact.get("subject") if isinstance(fact, Mapping) else None
+                        if isinstance(subject, Mapping) and subject.get("id") == npc_id:
+                            ignore |= _tokens(subject.get("label"))
+                scored = select_episodes(anchors, episodes, ignore_terms=ignore)
+                if scored:
+                    selected[npc_id] = [row["episode"] for row in scored[:2]]
+            enriched = []
+            for packet in packets:
+                value = copy.deepcopy(packet)
+                episodes = selected.get(value["npc"]["id"], [])
+                if episodes:
+                    value["context"]["recalledEpisodes"] = [
+                        _voice_recall_row(value["npc"]["id"], episode)
+                        for episode in episodes
+                    ]
+                enriched.append(validate_packet(value))
+            with self._lock:
+                if self._sealed or scope.is_superseded():
+                    self.recall_disposition = "stale_rejected"
+                    return
+                self.recalled_by_npc = selected
+                self.recall_disposition = "honest_no_match" if not selected else "available"
+                self._service.telemetry.record_disposition(
+                    "recall", self.recall_disposition, batch_id=self.batch_id
+                )
+                self._voice_handle = self._service.dispatch_batch(
+                    enriched,
+                    parent_scope=self._parent_scope,
+                )
+        except Exception as exc:
+            self.recall_disposition = "degraded_this_beat"
+            _LOGGER.warning("T112 recall stage failed: %s", type(exc).__name__)
+            self._service.telemetry.record_disposition(
+                "recall", "degraded_this_beat", batch_id=self.batch_id
+            )
+        finally:
+            scope.finish()
+
+    def collect(self):
+        with self._lock:
+            handle = self._voice_handle
+        if handle is None:
+            return NpcVoiceBatch(batch_id=self.batch_id, results=())
+        return handle.collect()
+
+    def seal_and_cancel_pending(self):
+        with self._lock:
+            self._sealed = True
+            recall_scope = self._recall_scope
+            handle = self._voice_handle
+        if recall_scope is not None:
+            recall_scope.seal()
+        if handle is not None:
+            handle.seal_and_cancel_pending()
+
+
+def _voice_recall_row(npc_id: str, episode: Mapping[str, Any]) -> Dict[str, Any]:
+    personal_line = ""
+    for fact in episode.get("salientFacts", []) or []:
+        subject = fact.get("subject") if isinstance(fact, Mapping) else None
+        if isinstance(subject, Mapping) and subject.get("id") == npc_id:
+            personal_line = _string(fact.get("oneLine"))
+            break
+    return {
+        "episodeId": _string(episode.get("episodeId")),
+        "headline": _string(episode.get("headline")),
+        "personalLine": personal_line,
+    }
 
 
 def _load_json(path: str) -> Optional[Dict[str, Any]]:
@@ -134,6 +288,132 @@ def _accepted_evidence_summary(
             )
         return "", True, ""
     return "", True, ""
+
+
+def _recent_scene_window(
+    conversation_prefix: Iterable[Any], player_name: str
+) -> list[Dict[str, str]]:
+    """Select the last three complete accepted player/DM messages."""
+    rows = []
+    for message in conversation_prefix:
+        if not isinstance(message, Mapping):
+            continue
+        role = message.get("role")
+        content = message.get("content")
+        if role == "user":
+            text = _raw_player_text(content)
+            if text and not text.startswith("Error Note:"):
+                rows.append({"speaker": player_name, "kind": "player", "text": text})
+        elif role == "assistant" and isinstance(content, str):
+            try:
+                parsed = json.loads(content)
+                text = parsed.get("narration", "") if isinstance(parsed, Mapping) else ""
+            except (TypeError, ValueError):
+                text = content
+            text = _string(text)
+            if text:
+                rows.append(
+                    {"speaker": "Dungeon Master", "kind": "narration", "text": text}
+                )
+    return rows[-3:]
+
+
+def _visible_companion_acts(
+    conversation_prefix: Iterable[Any], actor_names: Mapping[str, str]
+) -> Dict[str, list[str]]:
+    """Select accepted structured acts attributed by exact companion ID."""
+    acts: Dict[str, list[str]] = {actor_id: [] for actor_id in actor_names}
+    for message in reversed(list(conversation_prefix)):
+        if not isinstance(message, Mapping) or message.get("role") != "assistant":
+            continue
+        try:
+            parsed = json.loads(message.get("content", ""))
+        except (TypeError, ValueError):
+            continue
+        for action in reversed(parsed.get("actions", []) if isinstance(parsed, Mapping) else []):
+            if not isinstance(action, Mapping):
+                continue
+            params = action.get("parameters")
+            params = params if isinstance(params, Mapping) else {}
+            actor_id = _string(action.get("actorId") or params.get("actorId"))
+            if actor_id not in acts or len(acts[actor_id]) >= 2:
+                continue
+            text = _string(
+                action.get("description")
+                or params.get("description")
+                or action.get("action")
+            )
+            if text and text not in acts[actor_id]:
+                acts[actor_id].append(text)
+    return {actor_id: list(reversed(values)) for actor_id, values in acts.items() if values}
+
+
+def _enrich_ooc_packets(
+    packets: Iterable[Mapping[str, Any]],
+    *,
+    conversation_prefix: Iterable[Any],
+    player_name: str,
+    relationship_store: RelationshipStore,
+) -> tuple[Dict[str, Any], ...]:
+    """Attach complete E1/E2/E4 records without inventing prose attribution."""
+    packets = [copy.deepcopy(dict(packet)) for packet in packets]
+    actor_names = {
+        packet["npc"]["id"]: packet["npc"]["name"] for packet in packets
+    }
+    scene_window = _recent_scene_window(conversation_prefix, player_name)
+    visible = _visible_companion_acts(conversation_prefix, actor_names)
+    snapshot = relationship_store.snapshot()
+    edges = snapshot.get("relationships", {})
+    result = []
+    for packet in packets:
+        focal_id = packet["npc"]["id"]
+        if scene_window:
+            packet["scene"]["recentSceneWindow"] = copy.deepcopy(scene_window)
+        visible_rows = [
+            {"npcId": actor_id, "npcName": actor_names[actor_id], "acts": acts}
+            for actor_id, acts in visible.items()
+            if actor_id != focal_id
+        ]
+        if visible_rows:
+            packet["context"]["presentCompanionVisibleActs"] = visible_rows
+        relationship_rows = []
+        for other_id, other_name in actor_names.items():
+            if other_id == focal_id:
+                continue
+            edge = edges.get("%s|%s" % (focal_id, other_id))
+            if not isinstance(edge, Mapping):
+                continue
+            evidence = []
+            for row in reversed(edge.get("evidence", [])):
+                if not isinstance(row, Mapping) or row.get("eventType") is None:
+                    continue
+                magnitude = int(row.get("magnitude", 0) or 0)
+                if row.get("eventType") in NEGATIVE_AFFINITY_EVENT_TYPES:
+                    magnitude = -abs(magnitude)
+                evidence.append(
+                    {
+                        "actor": _string(row.get("actor")),
+                        "target": _string(row.get("target")),
+                        "eventType": row.get("eventType"),
+                        "magnitude": magnitude,
+                        "witnessed": bool(row.get("witnessed")),
+                        "summary": _string(row.get("summary")),
+                    }
+                )
+                if len(evidence) >= 2:
+                    break
+            relationship_rows.append(
+                {
+                    "npcId": other_id,
+                    "npcName": other_name,
+                    "state": copy.deepcopy(edge.get("current", {})),
+                    "evidence": list(reversed(evidence)),
+                }
+            )
+        if relationship_rows:
+            packet["context"]["companionRelationships"] = relationship_rows
+        result.append(validate_packet(packet))
+    return tuple(result)
 
 
 def _accepted_legacy_combat_evidence_summary(
@@ -688,7 +968,15 @@ def build_ooc_packets_for_turn(
         fairness=fairness or _OOC_FAIRNESS,
         limit=min(4, max(0, int(limit))),
     )
-    return tuple(packets_by_id[candidate["npcId"]] for candidate in ranked)
+    selected_packets = tuple(
+        packets_by_id[candidate["npcId"]] for candidate in ranked
+    )
+    return _enrich_ooc_packets(
+        selected_packets,
+        conversation_prefix=prefix,
+        player_name=player_name,
+        relationship_store=store,
+    )
 
 
 def build_combat_packets_for_window(
@@ -1018,9 +1306,14 @@ def run_combat_voice_stage(
         )
         if not packet_rows:
             return _empty_combat_stage()
-        batch = (service or _default_service()).dispatch_batch(
-            [packet for _actor_id, packet in packet_rows]
-        ).collect_blocking()
+        from utils.capture.live_provider_call import get_live_turn_scope
+
+        handle = (service or _default_service()).dispatch_batch(
+            [packet for _actor_id, packet in packet_rows],
+            parent_scope=get_live_turn_scope(),
+        )
+        batch = handle.collect()
+        handle.seal_and_cancel_pending()
         packets_by_npc_id = {
             packet["npc"]["id"]: packet for _actor_id, packet in packet_rows
         }
@@ -1142,7 +1435,15 @@ def run_ooc_voice_stage(
             relationship_store=relationship_store,
             fairness=selection,
         )
-        handle = (service or _default_service()).dispatch_batch(packets)
+        from utils.capture.live_provider_call import get_live_turn_scope
+
+        handle = PreparedOocVoiceHandle(
+            packets,
+            service or _default_service(),
+            get_live_turn_scope(),
+            raw_input,
+            relationship_store or RelationshipStore(),
+        )
         # Fairness bookkeeping moves to collection time: record_merged runs in
         # inject (below) against what actually merged, not what was dispatched.
         handle._fairness_selection = selection
@@ -1285,8 +1586,10 @@ def inject_voice_context(messages: list, batch):
     if batch is None:
         return messages
     if hasattr(batch, "collect"):
+        handle = batch
         selection = getattr(batch, "_fairness_selection", None)
         batch = batch.collect()
+        handle.seal_and_cancel_pending()
         if selection is not None:
             try:
                 selection.record_merged(r.npc_id for r in batch.results)
@@ -1296,17 +1599,7 @@ def inject_voice_context(messages: list, batch):
         return messages
     rows = [_voice_row(result) for result in batch.results]
     block = (
-        _PRIVATE_BLOCK_PREFIX + " Each entry is one companion's PROPOSED "
-        "characterization for this beat: 'say' is a line they'd speak, 'do' is an "
-        "action/intent they'd take, 'want' is their current desire, 'thought' is "
-        "their private reasoning. Weave these into your narration in the NPC's "
-        "voice, but you own final narration, mechanics, and actions -- reword, "
-        "trim, or override anything that does not fit the scene or the rules, and "
-        "ignore impossible advice. An entry marked \"stale\":true arrived from the "
-        "PREVIOUS beat -- weave it as a delayed reaction or drop it if the moment "
-        "passed. Do not expose this private guidance, and never "
-        "paste 'say'/'do' verbatim without making it fit. Null fields mean the NPC "
-        "offers nothing there.\n"
+        "Private NPC intentions for the Dungeon Master only. Each entry is advisory characterization for this immediate beat, keyed to one companion: 'say' is a possible line in that companion's voice, 'do' is the action or behavior they are inclined to take, 'want' is the desire guiding the beat, and 'thought' is private interior context. This advice comes from a limited-context NPC micro-call. You have the fuller story, conversation history, and mechanical state: take the advice as input, but override or change it whenever needed to remain consistent with the actual story. You remain the sole player-facing Dungeon Master. Weave scene-compatible say, do, and want into your own first-hand narration; even companion dialogue appears inside that narration, never as a separate model-to-player channel. Render thought only through observable demeanor, hesitation, focus, choice, or subtext. Never quote or label thought, never expose the private block, and never turn private knowledge into a world fact. Rephrase everything naturally rather than pasting it. Authoritative scene facts, player agency, mechanics, and committed actions still control; reconcile or omit advice that cannot legally fit. Use only entries supplied for this exact beat; code excludes stale or superseded work. Missing or null fields contribute nothing.\n"
         + json.dumps(rows, ensure_ascii=True, separators=(",", ":"))
     )
     copied = [dict(message) for message in messages]

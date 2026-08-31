@@ -282,6 +282,18 @@ COMMON_PACKET_PROPERTIES: Dict[str, Any] = {
                 "maxItems": 6,
                 "items": {"type": "string", "minLength": 1},
             },
+            "recentSceneWindow": {
+                "type": "array",
+                "maxItems": 3,
+                "items": strict_object(
+                    {
+                        "speaker": {"type": "string", "minLength": 1},
+                        "kind": {"enum": ["player", "narration"]},
+                        "text": {"type": "string", "minLength": 1},
+                    },
+                    ("speaker", "kind", "text"),
+                ),
+            },
         },
         ("module", "locationId", "location", "presentActors", "stakes", "recentEvents"),
     ),
@@ -384,6 +396,42 @@ OUT_OF_COMBAT_CONTEXT_SCHEMA = strict_object(
             "minItems": 1,
             "maxItems": 5,
             "items": {"type": "string", "minLength": 1},
+        },
+        "presentCompanionVisibleActs": {
+            "type": "array",
+            "items": strict_object(
+                {
+                    "npcId": {"type": "string", "minLength": 1},
+                    "npcName": {"type": "string", "minLength": 1},
+                    "acts": {
+                        "type": "array",
+                        "maxItems": 2,
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                },
+                ("npcId", "npcName", "acts"),
+            ),
+        },
+        "recalledEpisodes": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {"type": "object"},
+        },
+        "companionRelationships": {
+            "type": "array",
+            "items": strict_object(
+                {
+                    "npcId": {"type": "string", "minLength": 1},
+                    "npcName": {"type": "string", "minLength": 1},
+                    "state": RELATIONSHIP_STATE_SCHEMA,
+                    "evidence": {
+                        "type": "array",
+                        "maxItems": 2,
+                        "items": RECENT_EVENT_SCHEMA,
+                    },
+                },
+                ("npcId", "npcName", "state", "evidence"),
+            ),
         },
     },
     ("utilities", "items", "socialContext", "currentGoals"),

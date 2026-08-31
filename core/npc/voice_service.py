@@ -10,7 +10,7 @@ import os
 import threading
 import time
 from collections import OrderedDict, deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,7 +38,6 @@ TEMPERATURE = 0.6
 MAX_ATTEMPTS = 2
 
 _LOGGER = logging.getLogger(__name__)
-_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="npc-voice")
 
 
 @dataclass(frozen=True)
@@ -207,100 +206,6 @@ class _RequestCounter:
     def count(self) -> int:
         with self._lock:
             return self._count
-
-
-class _PendingVoice:
-    """Per-NPC registry of in-flight and late voice results (B2-iii).
-
-    The DM turn NEVER blocks on voice and NEVER aborts it. Dispatch registers
-    one future per NPC; collect() is a non-blocking poll; a result completing
-    after collection is deposited here and delivered STALE on the next beat.
-    A newer dispatch supersedes an UNSTARTED predecessor (the worker checks
-    before its first provider call and returns None — nothing in flight is
-    ever cancelled or abandoned); a newer late deposit overwrites the NPC's
-    previous late slot (newest value wins, logged). Every future's outcome is
-    consumed — at collect(), at blocking-collect (combat), or by its
-    completion callback into the late slot."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._inflight: Dict[str, Dict[str, Any]] = {}
-        self._late: Dict[str, "NpcVoiceResult"] = {}
-
-    def register(self, npc_id: str, ticket) -> None:
-        """Register a dispatch TICKET before the future exists (DEFECT-1 fix:
-        the executor may start the worker before submit() returns, so the
-        supersede check keys on a pre-created ticket, never the future)."""
-        with self._lock:
-            prior = self._inflight.get(npc_id)
-            if prior is not None:
-                prior["superseded"] = True
-            self._inflight[npc_id] = {
-                "ticket": ticket,
-                "future": None,
-                "superseded": False,
-            }
-
-    def attach(self, npc_id: str, ticket, future) -> None:
-        with self._lock:
-            entry = self._inflight.get(npc_id)
-            if entry is not None and entry["ticket"] is ticket:
-                entry["future"] = future
-
-    def is_superseded(self, npc_id: str, ticket) -> bool:
-        with self._lock:
-            entry = self._inflight.get(npc_id)
-            return (
-                entry is None
-                or entry["ticket"] is not ticket
-                or entry["superseded"]
-            )
-
-    def is_current(self, npc_id: str, future) -> bool:
-        with self._lock:
-            entry = self._inflight.get(npc_id)
-            return entry is not None and entry["future"] is future
-
-    def deposit_late(self, npc_id: str, result: "NpcVoiceResult") -> None:
-        with self._lock:
-            if npc_id in self._late:
-                _LOGGER.info(
-                    "T105 late voice for %s superseded by newer result", npc_id
-                )
-            self._late[npc_id] = result
-
-    def take_ready(self, npc_id: str):
-        """Non-blocking. Returns (result_or_None, is_stale, still_pending)."""
-        entry_future = None
-        with self._lock:
-            entry = self._inflight.get(npc_id)
-            if entry is not None and entry["future"] is not None and entry["future"].done():
-                self._inflight.pop(npc_id)
-                entry_future = entry["future"]
-            elif entry is None:
-                late = self._late.pop(npc_id, None)
-                if late is not None:
-                    return late, True, False
-                return None, False, False
-            else:
-                return None, False, True
-        try:
-            result = entry_future.result()
-        except Exception as exc:
-            _LOGGER.warning(
-                "T105 voice call for %s FAILED: %s", npc_id, type(exc).__name__
-            )
-            return None, False, False
-        return result, False, False
-
-    def drop(self, npc_id: str, future) -> None:
-        with self._lock:
-            entry = self._inflight.get(npc_id)
-            if entry is not None and entry["future"] is future:
-                self._inflight.pop(npc_id)
-
-
-_PENDING = _PendingVoice()
 
 
 @dataclass(frozen=True)
@@ -595,6 +500,7 @@ class NpcVoiceService:
         counter: _RequestCounter,
         batch_id: str,
         npc_id: str,
+        advisory_scope=None,
     ) -> tuple[Dict[str, Any], Any, str]:
         last_error: Optional[BaseException] = None
         retry_reason: Optional[str] = None
@@ -635,6 +541,8 @@ class NpcVoiceService:
                     # default (luna) rejects max_tokens with a 400. Output length is
                     # bounded by the client-side contract validation instead.
                     retry_attempt=attempt,
+                    _live_selected="advisory" if advisory_scope is not None else False,
+                    _detached_scope=advisory_scope,
                     **config,
                 )
                 raw = response.choices[0].message.content
@@ -656,14 +564,22 @@ class NpcVoiceService:
                     model=effective_model,
                 )
                 return validated, response, model
-            except ThoughtContractError as exc:
+            except Exception as exc:
+                from utils.capture.live_provider_call import LiveProviderSuperseded
+
+                if isinstance(exc, LiveProviderSuperseded):
+                    raise
                 last_error = exc
-                retry_reason = "invalid_contract"
+                retry_reason = (
+                    "invalid_contract"
+                    if isinstance(exc, ThoughtContractError)
+                    else "provider_failure"
+                )
                 usage = _usage_from_response(response)
                 effective_model = getattr(response, "model", None) or model
                 self._record(
                     kind="physical_call",
-                    disposition="invalid_contract",
+                    disposition=retry_reason,
                     batch_id=batch_id,
                     npc_id=npc_id,
                     request_kind=request_kind,
@@ -674,20 +590,6 @@ class NpcVoiceService:
                     provider=provider,
                     model=effective_model,
                 )
-            except Exception as exc:
-                last_error = exc
-                retry_reason = "provider_failure"
-                self._record(
-                    kind="physical_call",
-                    disposition="provider_failure",
-                    batch_id=batch_id,
-                    npc_id=npc_id,
-                    request_kind=request_kind,
-                    attempt=attempt + 1,
-                    latency_seconds=time.perf_counter() - started,
-                    provider=provider,
-                    model=model,
-                )
         raise NpcVoiceUnavailable("T105 attempts exhausted") from last_error
 
     def _think_with_provider(
@@ -697,6 +599,7 @@ class NpcVoiceService:
         *,
         counter: _RequestCounter,
         cache_result: bool,
+        advisory_scope=None,
     ) -> NpcVoiceResult:
         packet_copy = validate_packet(packet)
         batch_id = packet_copy["beat"]["id"]
@@ -731,6 +634,7 @@ class NpcVoiceService:
             counter=counter,
             batch_id=batch_id,
             npc_id=npc_id,
+            advisory_scope=advisory_scope,
         )
         affinity_event = None
         classification_response = None
@@ -748,6 +652,7 @@ class NpcVoiceService:
                         counter=counter,
                         batch_id=batch_id,
                         npc_id=npc_id,
+                        advisory_scope=advisory_scope,
                     )
                 )
                 affinity_event = classified["affinityEvent"]
@@ -815,24 +720,21 @@ class NpcVoiceService:
     def dispatch_batch(
         self,
         packets: Iterable[Mapping[str, Any]],
+        *,
+        parent_scope=None,
     ) -> "VoiceBatchHandle":
-        """Dispatch every supplied logical NPC call without waiting.
+        """Dispatch every supplied actor in an independently fenced monitor."""
+        from utils.capture.live_provider_call import open_advisory_scopes
 
-        Returns a handle whose collect() is a non-blocking poll intended to
-        run at inject time (after the main DM call has overlapped the voice
-        latency). collect_blocking() waits for this batch's own futures --
-        the combat path, whose stage consumes results immediately; its only
-        time bound is the inherited provider-SDK default (flagged, not added).
-        Cache hits and prior-beat LATE results are folded in at dispatch.
-        """
         batch_started = time.perf_counter()
         candidates = list(packets)
-        counter = _RequestCounter()
         provider = ""
         batch_id = ""
         validated_packets = []
         immediate: list = []
-        futures: Dict[str, Any] = {}
+        futures: Dict[str, Future] = {}
+        scopes: Dict[str, Any] = {}
+        counters: Dict[str, _RequestCounter] = {}
         try:
             provider = model_config.get_provider()
             for packet in candidates:
@@ -856,6 +758,7 @@ class NpcVoiceService:
                         batch_id=batch_id,
                     )
 
+            pending_packets = []
             for packet_copy in validated_packets:
                 npc_id = packet_copy["npc"]["id"]
                 key = self._cache_key(packet_copy, provider)
@@ -879,78 +782,74 @@ class NpcVoiceService:
                         model=cached.model,
                     )
                     continue
+                pending_packets.append(packet_copy)
 
-                # Drain a prior-beat LATE result now (stale-tagged): the DM
-                # weaves it as a delayed reaction; the fresh dispatch below
-                # still runs for the current beat.
-                late, is_stale, _pending = _PENDING.take_ready(npc_id)
-                if late is not None and is_stale:
-                    immediate.append(replace(late, stale=True))
+            reserved_scopes = open_advisory_scopes(
+                parent_scope, batch_id, len(pending_packets)
+            )
+            if len(reserved_scopes) != len(pending_packets):
+                for packet_copy in pending_packets:
+                    npc_id = packet_copy["npc"]["id"]
                     self._record(
                         kind="candidate",
-                        disposition="stale_delivered",
+                        disposition="missing_authority",
                         batch_id=batch_id,
                         npc_id=npc_id,
                     )
-                elif late is not None:
-                    immediate.append(late)
-                    self._record(
-                        kind="candidate",
-                        disposition="prior_dispatch_collected",
-                        batch_id=batch_id,
-                        npc_id=npc_id,
-                    )
+                    _LOGGER.warning("T105 voice call for %s skipped without live authority", npc_id)
+                pending_packets = []
 
-                ticket = object()
-                _PENDING.register(npc_id, ticket)
+            for packet_copy, advisory_scope in zip(pending_packets, reserved_scopes):
+                npc_id = packet_copy["npc"]["id"]
+                future = Future()
+                counter = _RequestCounter()
+                scopes[npc_id] = advisory_scope
+                counters[npc_id] = counter
 
                 def run_worker(
                     selected_packet: Mapping[str, Any] = packet_copy,
                     worker_npc_id: str = npc_id,
-                    worker_ticket=ticket,
+                    worker_scope=advisory_scope,
+                    worker_future=future,
+                    worker_counter=counter,
                 ):
-                    if _PENDING.is_superseded(worker_npc_id, worker_ticket):
-                        self._record(
-                            kind="candidate",
-                            disposition="superseded_unstarted",
-                            batch_id=batch_id,
-                            npc_id=worker_npc_id,
-                        )
-                        return None
-                    return self._think_with_provider(
-                        selected_packet,
-                        provider,
-                        counter=counter,
-                        cache_result=True,
-                    )
-
-                def on_done(
-                    fut,
-                    worker_npc_id: str = npc_id,
-                ):
-                    # A future no longer registered (superseded by a newer
-                    # dispatch) deposits its completed VALUE to the late slot
-                    # -- consumed next beat, never abandoned.
-                    if _PENDING.is_current(worker_npc_id, fut):
-                        return
                     try:
-                        result = fut.result()
+                        if worker_scope.is_superseded():
+                            raise RuntimeError("advisory scope superseded before start")
+                        result = self._think_with_provider(
+                            selected_packet,
+                            provider,
+                            counter=worker_counter,
+                            cache_result=True,
+                            advisory_scope=worker_scope,
+                        )
+                        worker_future.set_result(result)
                     except Exception as exc:
+                        worker_future.set_exception(exc)
                         _LOGGER.warning(
                             "T105 voice call for %s FAILED: %s",
                             worker_npc_id,
                             type(exc).__name__,
                         )
-                        return
-                    if result is not None:
-                        _PENDING.deposit_late(worker_npc_id, result)
+                        self._record(
+                            kind="candidate",
+                            disposition="degraded_this_beat",
+                            batch_id=batch_id,
+                            npc_id=worker_npc_id,
+                        )
+                    finally:
+                        worker_scope.finish()
 
                 try:
-                    future = _EXECUTOR.submit(run_worker)
-                    _PENDING.attach(npc_id, ticket, future)
-                    future.add_done_callback(on_done)
                     futures[npc_id] = future
+                    threading.Thread(
+                        target=run_worker,
+                        name="npc-voice-%s" % _safe_identifier(npc_id),
+                        daemon=True,
+                    ).start()
                 except Exception:
+                    advisory_scope.seal()
+                    advisory_scope.finish()
                     self._record(
                         kind="candidate",
                         disposition="submission_failure",
@@ -965,15 +864,18 @@ class NpcVoiceService:
                 latency_seconds=time.perf_counter() - batch_started,
                 provider=provider,
                 candidate_count=len(validated_packets),
-                physical_request_count=counter.count,
+                physical_request_count=sum(item.count for item in counters.values()),
             )
         return VoiceBatchHandle(
             service=self,
             batch_id=batch_id,
             npc_ids=tuple(futures),
+            futures=futures,
             immediate=tuple(immediate),
             candidate_count=len(validated_packets),
-            counter=counter,
+            counters=counters,
+            scopes=scopes,
+            parent_scope=parent_scope,
             batch_started=batch_started,
             provider=provider,
         )
@@ -984,8 +886,8 @@ class VoiceBatchHandle:
     collect() = non-blocking poll (OOC path: runs at validator-inject time,
     after the main DM call has overlapped the voice latency). Monotonic and
     idempotent: each call folds newly completed results in and returns the
-    union. collect_blocking() waits for this batch's own futures (combat
-    path); its only time bound is the inherited provider-SDK default.
+    union until the consumer seals the exact beat. Pending values are cancelled
+    and reaped by their task-owned monitor rather than delivered on another beat.
     """
 
     def __init__(
@@ -994,9 +896,12 @@ class VoiceBatchHandle:
         service: NpcVoiceService,
         batch_id: str,
         npc_ids: Tuple[str, ...],
+        futures: Mapping[str, Future],
         immediate: Tuple[NpcVoiceResult, ...],
         candidate_count: int,
-        counter: _RequestCounter,
+        counters: Mapping[str, _RequestCounter],
+        scopes: Mapping[str, Any],
+        parent_scope,
         batch_started: float,
         provider: str,
     ) -> None:
@@ -1006,24 +911,49 @@ class VoiceBatchHandle:
         self._collected = list(immediate)
         self._done_ids = {result.npc_id for result in immediate}
         self.candidate_count = candidate_count
-        self._counter = counter
+        self._futures = dict(futures)
+        self._counters = dict(counters)
+        self._scopes = dict(scopes)
+        self._parent_scope = parent_scope
         self._batch_started = batch_started
         self._provider = provider
         self._finalized = False
 
+    def _authority_current(self) -> bool:
+        try:
+            from utils.capture.live_provider_call import get_live_turn_scope
+            return (
+                self._parent_scope is not None
+                and get_live_turn_scope() is self._parent_scope
+                and not self._parent_scope.is_superseded()
+                and all(scope.beat_id == self.batch_id for scope in self._scopes.values())
+            )
+        except Exception:
+            return False
+
     def _absorb(self, npc_id: str) -> bool:
-        result, is_stale, pending = _PENDING.take_ready(npc_id)
-        if result is None:
-            if pending:
+        future = self._futures.get(npc_id)
+        if future is None or not future.done():
+            if future is not None:
                 self._service._record(
                     kind="candidate",
-                    disposition="pending_next_beat",
+                    disposition="pending_at_boundary",
                     batch_id=self.batch_id,
                     npc_id=npc_id,
                 )
-            return not pending
-        if is_stale:
-            result = replace(result, stale=True)
+            return future is None
+        try:
+            result = future.result()
+        except Exception:
+            return True
+        if not self._authority_current():
+            self._service._record(
+                kind="candidate",
+                disposition="stale_rejected",
+                batch_id=self.batch_id,
+                npc_id=npc_id,
+            )
+            return True
         self._collected.append(result)
         self._done_ids.add(npc_id)
         self._service._record(
@@ -1052,14 +982,14 @@ class VoiceBatchHandle:
                 latency_seconds=time.perf_counter() - self._batch_started,
                 provider=self._provider,
                 candidate_count=self.candidate_count,
-                physical_request_count=self._counter.count,
+                physical_request_count=sum(item.count for item in self._counters.values()),
                 merged_count=len(self._collected),
             )
         return NpcVoiceBatch(
             batch_id=self.batch_id,
             results=tuple(self._collected),
             candidate_count=self.candidate_count,
-            physical_request_count=self._counter.count,
+            physical_request_count=sum(item.count for item in self._counters.values()),
             telemetry=self._service.telemetry,
         )
 
@@ -1069,10 +999,7 @@ class VoiceBatchHandle:
                 self._absorb(npc_id)
         return self._finalize()
 
-    def collect_blocking(self) -> NpcVoiceBatch:
-        for npc_id in self._npc_ids:
-            if npc_id in self._done_ids:
-                continue
-            while not self._absorb(npc_id):
-                time.sleep(0.05)
-        return self._finalize()
+    def seal_and_cancel_pending(self) -> None:
+        for npc_id, scope in self._scopes.items():
+            if npc_id not in self._done_ids:
+                scope.seal()

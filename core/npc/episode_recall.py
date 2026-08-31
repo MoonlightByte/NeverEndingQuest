@@ -7,8 +7,9 @@ from the NPC's OWN witnessed set -- the model never sees or chooses an episode, 
 cannot fabricate a shared memory. Returns the matched episodes + a confidence the DM
 uses under a closed-world grounding contract (vivid / partial / absent).
 
-No embeddings in v1 (Phase 7). Fail-open: any failure -> absent (the NPC honestly
-does not recall), never a fabrication.
+No embeddings in v1 (Phase 7). A completed empty parse means no anchors; provider or
+contract failure returns unavailable so callers omit recall for only that beat rather
+than asserting that the NPC remembers nothing.
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ Return ONLY JSON: {"entities":[...], "places":[...], "outcomes":[...]}
 - entities: named foes/people/things ("the wizard", "the wolf collar").
 - places: named locations ("Mountain of Chaos", "the caves").
 - outcomes: what happened ("almost died", "clever move", "betrayed me").
-Lowercase short phrases; omit filler. If the line references nothing concrete, return empty arrays."""
+Lowercase the extracted values; omit filler. If the line references nothing concrete, return empty arrays."""
 
 _STOPWORDS = frozenset({
     "the", "and", "you", "your", "our", "that", "this", "with", "from", "into", "was",
@@ -104,22 +105,28 @@ def parse_anchors(
     provider: Optional[str] = None,
     completion_fn: Callable[..., Any] = api_client.create_completion,
     capture_fn: Callable[..., Any] = None,
+    advisory_scope=None,
 ) -> Optional[Dict[str, List[str]]]:
     prov = provider or model_config.get_provider()
     config = dict(model_config.resolve_callsite_config(TASK_ID, prov))
     model = config.pop("model")
-    capture = capture_fn or (lambda task_id, fn, **kw: fn(**kw))
+    if capture_fn is None:
+        from utils.capture.multi_model_capture import capture_and_fanout
+
+        capture_fn = capture_and_fanout
     try:
-        response = capture(
+        response = capture_fn(
             TASK_ID, completion_fn, _request_provider=prov, model=model,
             messages=[
                 {"role": "system", "content": _SYSTEM},
                 {"role": "user", "content": player_line},
             ],
+            _live_selected="advisory" if advisory_scope is not None else False,
+            _detached_scope=advisory_scope,
             **_completion_kwargs(prov, config),
         )
         payload = json.loads(response.choices[0].message.content or "{}")
-    except Exception as error:  # noqa: BLE001 - fail-open -> caller treats as absent
+    except Exception as error:  # noqa: BLE001 - caller treats None as unavailable
         _LOGGER.debug("recall anchor parse failed: %r", error)
         return None
     if not isinstance(payload, Mapping):
