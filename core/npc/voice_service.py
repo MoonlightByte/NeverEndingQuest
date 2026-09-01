@@ -10,7 +10,7 @@ import os
 import threading
 import time
 from collections import OrderedDict, deque
-from concurrent.futures import Future
+from concurrent.futures import FIRST_COMPLETED, Future, wait
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -722,6 +722,7 @@ class NpcVoiceService:
         packets: Iterable[Mapping[str, Any]],
         *,
         parent_scope=None,
+        completion_required: bool = False,
     ) -> "VoiceBatchHandle":
         """Dispatch every supplied actor in an independently fenced monitor."""
         from utils.capture.live_provider_call import open_advisory_scopes
@@ -785,7 +786,10 @@ class NpcVoiceService:
                 pending_packets.append(packet_copy)
 
             reserved_scopes = open_advisory_scopes(
-                parent_scope, batch_id, len(pending_packets)
+                parent_scope,
+                batch_id,
+                len(pending_packets),
+                completion_required=completion_required,
             )
             if len(reserved_scopes) != len(pending_packets):
                 for packet_copy in pending_packets:
@@ -869,7 +873,9 @@ class NpcVoiceService:
         return VoiceBatchHandle(
             service=self,
             batch_id=batch_id,
-            npc_ids=tuple(futures),
+            npc_ids=tuple(
+                packet_copy["npc"]["id"] for packet_copy in validated_packets
+            ),
             futures=futures,
             immediate=tuple(immediate),
             candidate_count=len(validated_packets),
@@ -878,16 +884,21 @@ class NpcVoiceService:
             parent_scope=parent_scope,
             batch_started=batch_started,
             provider=provider,
+            completion_required=completion_required,
         )
 
 class VoiceBatchHandle:
-    """Non-blocking view of a dispatched voice batch.
+    """Request-local view of one parallel voice batch.
 
-    collect() = non-blocking poll (OOC path: runs at validator-inject time,
+    collect() remains the non-blocking OOC/legacy poll (run at validator-inject time,
     after the main DM call has overlapped the voice latency). Monotonic and
     idempotent: each call folds newly completed results in and returns the
     union until the consumer seals the exact beat. Pending values are cancelled
     and reaped by their task-owned monitor rather than delivered on another beat.
+
+    collect_to_completion() is typed-combat-only. It completion-collects the
+    already-parallel work for the current round; transport liveness remains owned
+    by each provider child and destructive controls supersede the parent authority.
     """
 
     def __init__(
@@ -904,12 +915,14 @@ class VoiceBatchHandle:
         parent_scope,
         batch_started: float,
         provider: str,
+        completion_required: bool,
     ) -> None:
         self._service = service
         self.batch_id = batch_id
         self._npc_ids = npc_ids
         self._collected = list(immediate)
         self._done_ids = {result.npc_id for result in immediate}
+        self._terminal_ids = set(self._done_ids)
         self.candidate_count = candidate_count
         self._futures = dict(futures)
         self._counters = dict(counters)
@@ -917,6 +930,7 @@ class VoiceBatchHandle:
         self._parent_scope = parent_scope
         self._batch_started = batch_started
         self._provider = provider
+        self._completion_required = bool(completion_required)
         self._finalized = False
 
     def _authority_current(self) -> bool:
@@ -933,29 +947,33 @@ class VoiceBatchHandle:
 
     def _absorb(self, npc_id: str) -> bool:
         future = self._futures.get(npc_id)
-        if future is None or not future.done():
-            if future is not None:
-                self._service._record(
-                    kind="candidate",
-                    disposition="pending_at_boundary",
-                    batch_id=self.batch_id,
-                    npc_id=npc_id,
-                )
-            return future is None
-        try:
-            result = future.result()
-        except Exception:
+        if future is None:
+            self._terminal_ids.add(npc_id)
             return True
-        if not self._authority_current():
+        if not future.done():
             self._service._record(
                 kind="candidate",
-                disposition="stale_rejected",
+                disposition="pending_at_boundary",
                 batch_id=self.batch_id,
                 npc_id=npc_id,
             )
+            return False
+        try:
+            result = future.result()
+        except Exception as exc:
+            from utils.capture.live_provider_call import LiveProviderSuperseded
+
+            if isinstance(exc, LiveProviderSuperseded):
+                raise
+            self._terminal_ids.add(npc_id)
             return True
+        if not self._authority_current():
+            from utils.capture.live_provider_call import LiveProviderSuperseded
+
+            raise LiveProviderSuperseded("combat voice batch authority superseded")
         self._collected.append(result)
         self._done_ids.add(npc_id)
+        self._terminal_ids.add(npc_id)
         self._service._record(
             kind="merge",
             disposition="merged",
@@ -999,7 +1017,53 @@ class VoiceBatchHandle:
                 self._absorb(npc_id)
         return self._finalize()
 
+    def collect_to_completion(
+        self,
+        status_emit: Optional[Callable[[str], None]] = None,
+    ) -> NpcVoiceBatch:
+        """Collect every typed-combat call to a terminal result for this round."""
+        if not self._completion_required:
+            return self.collect()
+        selected_count = self.candidate_count
+        started = time.monotonic()
+        last_elapsed = None
+        while len(self._terminal_ids) < len(self._npc_ids):
+            if not self._authority_current():
+                from utils.capture.live_provider_call import LiveProviderSuperseded
+
+                raise LiveProviderSuperseded("combat voice batch authority superseded")
+            for npc_id in self._npc_ids:
+                if npc_id not in self._terminal_ids:
+                    self._absorb(npc_id)
+            if len(self._terminal_ids) >= len(self._npc_ids):
+                break
+            elapsed = max(0, int(time.monotonic() - started))
+            if status_emit is not None and elapsed != last_elapsed:
+                try:
+                    status_emit(
+                        "Listening to companion voices (%d/%d complete, %d seconds elapsed)..."
+                        % (len(self._terminal_ids), selected_count, elapsed)
+                    )
+                except Exception:
+                    pass
+                last_elapsed = elapsed
+            pending = [
+                future
+                for npc_id, future in self._futures.items()
+                if npc_id not in self._terminal_ids
+            ]
+            if pending:
+                wait(pending, timeout=1.0, return_when=FIRST_COMPLETED)
+        if status_emit is not None:
+            try:
+                status_emit(
+                    "Companion voices are ready; resolving this combat round..."
+                )
+            except Exception:
+                pass
+        return self._finalize()
+
     def seal_and_cancel_pending(self) -> None:
         for npc_id, scope in self._scopes.items():
-            if npc_id not in self._done_ids:
+            if npc_id not in self._terminal_ids:
                 scope.seal()

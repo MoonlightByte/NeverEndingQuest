@@ -6,6 +6,7 @@ fully reaps that child before returning or reissuing.
 """
 
 import copy
+import logging
 import os
 import pickle
 import random
@@ -16,6 +17,9 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from uuid import uuid4
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 _REQUIRED_TASK_IDS = frozenset(
@@ -161,6 +165,7 @@ class AdvisoryProviderScope:
 
     parent: LiveTurnScope
     beat_id: str
+    completion_required: bool = False
     generation: int = 0
     sealed: threading.Event = field(default_factory=threading.Event)
     quiescent: threading.Event = field(default_factory=threading.Event)
@@ -193,12 +198,16 @@ def open_advisory_scope(parent, beat_id):
     return scopes[0] if scopes else None
 
 
-def open_advisory_scopes(parent, beat_id, count):
+def open_advisory_scopes(parent, beat_id, count, *, completion_required=False):
     """Atomically register the complete intended advisory child set."""
     if parent is None or parent is not get_live_turn_scope() or count <= 0:
         return ()
     scopes = tuple(
-        AdvisoryProviderScope(parent=parent, beat_id=str(beat_id))
+        AdvisoryProviderScope(
+            parent=parent,
+            beat_id=str(beat_id),
+            completion_required=bool(completion_required),
+        )
         for _index in range(count)
     )
     if not parent.register_advisory_scopes(scopes):
@@ -669,11 +678,26 @@ def call_live_provider(
         )
     scope = scope if scope is not None else get_live_turn_scope()
     emit = status_emit if status_emit is not None else _emit_working
+    completion_required = bool(
+        task_id == "T105"
+        and isinstance(scope, AdvisoryProviderScope)
+        and scope.completion_required
+    )
+    if completion_required:
+        # The request-local batch owns player-facing progress. Per-child transport
+        # details remain developer-only so parallel workers cannot race narration.
+        emit = lambda _message: None
     operation_id = scope.operation_id if scope is not None else str(uuid4())
     frozen_messages = copy.deepcopy(messages)
     frozen_kwargs = copy.deepcopy(request_kwargs)
     wizard_task = task_id in _WIZARD_TASK_IDS
-    if wizard_task and frozen_kwargs.get("_request_provider") == "openai":
+    if completion_required and frozen_kwargs.get("_request_provider") in {
+        "openai",
+        "legacy",
+        "lmstudio",
+    }:
+        frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
+    elif wizard_task and frozen_kwargs.get("_request_provider") == "openai":
         import httpx
 
         frozen_kwargs["timeout"] = httpx.Timeout(
@@ -721,7 +745,7 @@ def call_live_provider(
                 cwd=os.getcwd(),
             )
         except BaseException:
-            if policy == "advisory":
+            if policy == "advisory" and not completion_required:
                 raise LiveProviderUnavailable(
                     task_id, {"error_class": "process_setup_unavailable"}
                 )
@@ -737,8 +761,14 @@ def call_live_provider(
             continue
 
         started = time.monotonic()
-        generation_limit = None if task_id in _NO_WATCHDOG_ADVISORY_TASK_IDS else (
-            _WIZARD_BACKSTOP_SECONDS if wizard_task else _WATCHDOG_SECONDS
+        generation_limit = (
+            _WATCHDOG_SECONDS
+            if completion_required
+            else (
+                None
+                if task_id in _NO_WATCHDOG_ADVISORY_TASK_IDS
+                else (_WIZARD_BACKSTOP_SECONDS if wizard_task else _WATCHDOG_SECONDS)
+            )
         )
         next_heartbeat = started + _HEARTBEAT_SECONDS
         envelope = None
@@ -783,11 +813,11 @@ def call_live_provider(
                 envelope = pickle.loads(output)
             except (EOFError, pickle.PickleError, ValueError, TypeError):
                 envelope = None
-        if wizard_task and not isinstance(envelope, dict):
+        if (wizard_task or completion_required) and not isinstance(envelope, dict):
             envelope = {
                 "kind": "error",
                 "error_class": (
-                    "WizardGenerationBackstop"
+                    "ProviderChildGenerationBackstop"
                     if backstop_exhausted
                     else "ProviderChildUnavailable"
                 ),
@@ -809,6 +839,24 @@ def call_live_provider(
 
         failure_count += 1
         envelope = envelope if isinstance(envelope, dict) else {}
+        if (
+            policy == "advisory"
+            and completion_required
+            and envelope.get("disposition") == "retryable_transport"
+        ):
+            _LOGGER.warning(
+                "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s",
+                task_id,
+                envelope.get("error_class", "transport_unavailable"),
+                envelope.get("http_status"),
+            )
+            _interruptible_wait(
+                _delay_for_error(envelope, failure_count),
+                scope,
+                "",
+                emit,
+            )
+            continue
         if policy == "advisory":
             raise LiveProviderUnavailable(task_id, envelope)
         if wizard_task:

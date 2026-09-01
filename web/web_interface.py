@@ -2615,6 +2615,8 @@ def handle_connect():
 def handle_user_input(data):
     """Handle input from the user"""
     user_input = data.get('input', '')
+    if not isinstance(user_input, str) or not user_input.strip():
+        return
     # #214 CR-1: supersede a pending background welcome AT THE ENQUEUE
     # BOUNDARY, before the game thread can pop this text - the game thread
     # then completes the discard handback before processing the input.

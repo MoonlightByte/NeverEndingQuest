@@ -41,17 +41,25 @@ class CombatVoiceStage:
 
 
 class CombatVoiceHandle:
-    """One early-dispatched combat batch, collected once at the T096 seam."""
+    """One actor-isolated combat batch, collected once at the T096 seam."""
 
-    def __init__(self, packet_rows=(), handle=None):
+    def __init__(self, packet_rows=(), handle=None, *, completion_required=False):
         self._packet_rows = tuple(packet_rows)
         self._handle = handle
+        self._completion_required = bool(completion_required)
 
-    def collect(self) -> CombatVoiceStage:
+    def collect(
+        self,
+        status_emit: Optional[Callable[[str], None]] = None,
+    ) -> CombatVoiceStage:
         if self._handle is None:
             return _empty_combat_stage()
         try:
-            batch = self._handle.collect()
+            batch = (
+                self._handle.collect_to_completion(status_emit=status_emit)
+                if self._completion_required
+                else self._handle.collect()
+            )
             self._handle.seal_and_cancel_pending()
             packets_by_npc_id = {
                 packet["npc"]["id"]: packet
@@ -98,6 +106,10 @@ class CombatVoiceHandle:
                 intents=MappingProxyType(intents),
             )
         except Exception as exc:
+            from utils.capture.live_provider_call import LiveProviderSuperseded
+
+            if isinstance(exc, LiveProviderSuperseded):
+                raise
             _LOGGER.warning(
                 "T105 combat advisory degraded for this beat: %s",
                 type(exc).__name__,
@@ -1356,8 +1368,9 @@ def dispatch_combat_voice_stage(
     legacy_conversation_prefix: Optional[Iterable[Any]] = None,
     service: Optional[NpcVoiceService] = None,
     relationship_store: Optional[RelationshipStore] = None,
+    completion_required: bool = False,
 ) -> CombatVoiceHandle:
-    """Dispatch T105 before T096 preparation without waiting on the beat."""
+    """Dispatch one exact actor-window T105 batch for the current combat beat."""
     if recovery_action_name not in {"continue", "regenerate_intent"}:
         return CombatVoiceHandle()
     try:
@@ -1379,9 +1392,18 @@ def dispatch_combat_voice_stage(
         handle = (service or _default_service()).dispatch_batch(
             [packet for _actor_id, packet in packet_rows],
             parent_scope=get_live_turn_scope(),
+            completion_required=completion_required,
         )
-        return CombatVoiceHandle(packet_rows, handle)
+        return CombatVoiceHandle(
+            packet_rows,
+            handle,
+            completion_required=completion_required,
+        )
     except Exception as exc:
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+
+        if isinstance(exc, LiveProviderSuperseded):
+            raise
         _LOGGER.warning("T105 combat dispatch degraded: %s", type(exc).__name__)
         return CombatVoiceHandle()
 

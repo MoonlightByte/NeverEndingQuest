@@ -4536,13 +4536,17 @@ This is narration only. Do not advance the round or apply any combat action."""
                path_manager,
                monster_templates,
            )
-           # T105: build the per-turn NPC-voice advisory batch (fail-open)
-           # and hand the accepted intents to the agentic intent model as
-           # advisory-only input. Voice never breaks the combat turn.
+           # T105: after one accepted non-empty player input, launch the exact
+           # actor-window voice calls in parallel and completion-collect them as
+           # part of constructing this typed round. Recovery/automatic opening
+           # windows have no fresh player sentence and do not mint a new scope.
            npc_voice_intents = None
            voice_stage = None
            voice_handle = None
-           if agentic_recovery["action"] in {"continue", "regenerate_intent"}:
+           if (
+               agentic_recovery["action"] == "continue"
+               and not automatic_initiative_step
+           ):
                try:
                    from core.npc.voice_context import (
                        dispatch_combat_voice_stage,
@@ -4557,8 +4561,13 @@ This is narration only. Do not advance the round or apply any combat action."""
                        party_tracker_data=party_tracker_data,
                        location_info=location_info,
                        player_input=raw_combat_input_text,
+                       completion_required=True,
                    )
                except Exception as exc:
+                   from utils.capture.live_provider_call import LiveProviderSuperseded
+
+                   if isinstance(exc, LiveProviderSuperseded):
+                       raise
                    debug(
                        "T105 combat dispatch skipped: %s" % type(exc).__name__,
                        category="combat_events",
@@ -4588,7 +4597,17 @@ This is narration only. Do not advance the round or apply any combat action."""
                spell_references = {}
 
            if voice_handle is not None:
-               voice_stage = voice_handle.collect()
+               def emit_voice_batch_status(message):
+                   try:
+                       from core.managers.status_manager import status_manager
+
+                       status_manager.update_status(message, is_processing=True)
+                   except Exception:
+                       pass
+
+               voice_stage = voice_handle.collect(
+                   status_emit=emit_voice_batch_status,
+               )
                if voice_stage.intents:
                    npc_voice_intents = {
                        "contractVersion": "npc-voice-intents/v1",
