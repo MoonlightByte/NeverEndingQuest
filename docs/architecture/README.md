@@ -6,6 +6,7 @@ Slim, code-pinned references for the application's functional systems.
 |---|---|
 | Typed combat pipeline | [combat-typed-pipeline.md](combat-typed-pipeline.md) |
 | Travel and transitions | [travel-transitions.md](travel-transitions.md) |
+| Save, Load, and Reset lifecycle | [save-load-reset-lifecycle.md](save-load-reset-lifecycle.md) |
 
 The NPC voice references are maintained with the voice implementation branch until
 that architecture reaches main. Git history records the revision each document was
