@@ -3,9 +3,7 @@
 Purpose: Serialize player turns and lifecycle controls so snapshots are consistent,
 destructive operations quiesce live work, and session restart follows durable state.
 
-- Revision: `main` at `20f2b0eaf142c33b7f509ce072b55c6a799dfe66`
-- Verified: 2026-09-01
-- Doctrine: [GitHub issue #193 v2.3](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
+Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.
 - Branch delta: voices `8f51bef3` adds exact headless Reset identity/status, advisory
   child-scope reaping, and companion-memory manifest/restore handling.
 
@@ -57,7 +55,9 @@ destructive operations quiesce live work, and session restart follows durable st
    the command ID; the branch-delta correction is not part of this pin.
 2. Web Socket.IO actions are `saveGame`, `restoreGame`, and `nuclearReset`; live Load/Reset fence
    and wait, while welcome Load/Reset queue for handback.
-3. Terminal reserved commands enter the same session/backend lifecycle operations.
+3. Raw terminal has no direct lifecycle-control dispatcher. Model-emitted `saveGame` and
+   `restoreGame` actions call SaveGameManager inside the ordinary turn; Reset remains a
+   web/headless direct control.
 
 ### Save, restore, reset
 
@@ -82,21 +82,19 @@ destructive operations quiesce live work, and session restart follows durable st
 
 ## Load-bearing seams
 
-1. `utils/capture/live_provider_call.py:96-134` - scope identity, phase, generation, supersession.
-2. `utils/capture/live_provider_call.py:140-192` - live registry and combat fence.
-3. `utils/capture/live_provider_call.py:195-246` - welcome registry and Save queue record.
-4. `utils/capture/live_provider_call.py:249-333` - promotion, queue, finish/abort quiescence.
-5. `utils/capture/live_provider_call.py:603-714` - child polling, reaping, correlation gate.
-6. `main.py:298-378` - welcome ownership and worker terminal.
-7. `main.py:392-417` - handback drain-before-clear-before-quiescence.
-8. `main.py:420-530` - attempt/lease receipt and supersession reconcile.
-9. `main.py:753-871` - input pump, discard-before-process, teardown.
-10. `main.py:876-924` - welcome scope registration and worker start.
-11. `main.py:8231-8258` - ordinary live scope opening.
-12. `main.py:8888-8904` - mutation boundary.
-13. `main.py:9122-9163` - superseded and normal turn terminals.
-14. `core/headless/session.py:495-693` - headless lifecycle commands and restart.
-15. `updates/save_game_manager.py:465-519` - Save lock/snapshot sequence.
+1. `utils/capture/live_provider_call.py:96-333` - live/welcome scope authority, promotion, queues, and quiescence.
+2. `utils/capture/live_provider_call.py:603-714` - child polling, reaping, and correlation gate.
+3. `main.py:298-378` - welcome ownership and generation-only worker.
+4. `main.py:392-530` - handback ordering, attempt/lease receipt, and reconciliation.
+5. `main.py:753-924` - input pump, teardown, welcome registration, and worker start.
+6. `main.py:8231-8258` - ordinary live scope opening.
+7. `main.py:8888-8904` - mutation boundary.
+8. `main.py:9122-9163` - superseded and normal turn terminals.
+9. `core/headless/session.py:495-693` - headless lifecycle commands and restart.
+10. `web/web_interface.py:2614-2959` - web input and Save/Load/Reset entrants.
+11. `updates/save_game_manager.py:465-519` - Save lock and snapshot sequence.
+12. `updates/save_game_manager.py:683-934` - restore validation, backup, copy, rollback, and cleanup.
+13. `utils/reset_campaign.py:395-447` - reset backup-before-wipe ordering.
 
 ## Invariants
 
