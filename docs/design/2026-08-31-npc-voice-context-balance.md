@@ -88,33 +88,15 @@ on DM narration fidelity of the fed voice data.
   a ratified B2-iv class in #193 v2.0 Part 5 (post-commit narration only; mechanics
   already committed; failure surfaces via Fork-3 telemetry).
 
-## 10. Phase-A implementation boundary
-
-E3 is the first request-local reuse seam for the future memory-offload direction:
-one attributed T112 selection may feed both the focal T105 packet and the later DM
-context rebuild. It adds no model call and does not yet remove canonical memory from
-the DM. T105/T112 provider lifetimes are individually registered beneath the exact
-live-turn operation and beat, are sealed at the semantic consumer boundary, and are
-reaped by their task-owned monitors. Late results are rejected rather than carried
-into another beat.
-
-## 11. Direct combat no-limits train (GL-1)
-
-The combat request and narration context now preserve every selected record and its
-complete strings. This retires character budgets; it does not remove semantic
-selection. T096 still selects exact actor-window facts, owned capability records, and
-at most the established number of whole SRD references. Narration still receives the
-typed dossier and authoritative committed events.
-
-| Retired guard | Preserved protection |
-|---|---|
-| T096 candidate, encounter, capability, and spell-index character budgets | exact actor ownership, complete-record selection, canonical capability matching, and the existing SRD reference-count selection |
-| T097 dossier string/list truncation | private-key filtering plus the typed dossier fields and committed-event authority |
-| T097 retry-candidate truncation | the existing completed-invalid attempt count and full violation-code records |
-| `900 + 650 * events` prose rejection | event coverage/order, mechanics-invention, hidden-information, perspective, and exact event-ID checks |
-| player action, clarification, and DM-request character slices | the existing last-eight complete exchange retention and exact pending-turn ownership |
-| `historyInput` and `displayPrefix` character slices | stable delivery IDs, committed-event receipts, durable history acknowledgement, and replay identity |
-| persisted narration-candidate character slices | the existing at-most-twelve complete attempt receipts and typed violation/warning codes |
-
-This train does not alter the compression, episodic-storage, or web-TTS caps owned by
-#262.
+## 10. Round-batch combat ruling (owner GO, 2026-09-01)
+Owner corrected the combat architecture and ruled GO on the round-batch design after
+the latency facts (C:\vra-evidence\voice_repair_latency\C6_LATENCY_FACTS_AND_ROUND_
+BATCH_SKETCH.md): combat is ONE round-loop - all NPC voices fire in PARALLEL after
+the accepted player input (so voices SEE the fresh order - the prefetch/responsiveness
+fork is dead), collected completion-bounded under #193 v2.1 B2(vi) (new clause:
+waiting for completion is not a timeout), then ONE T096 round adjudication with
+explicit adjust-if-stale authority, resolve, persist map in the transaction, one T097.
+Measured cost: +3.2-3.5s median (2-4 parallel voices) on a 9.6s median round.
+Side rulings: empty/whitespace submit lock RESTORED at UI+engine source; resumed
+combat may omit voices in its first round; luna|none confirmed (p50 2.9s across all
+29 recorded behavior calls).
