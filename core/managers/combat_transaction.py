@@ -782,6 +782,7 @@ def record_pending_player_request(
     player_message,
     requested_die=None,
     timeout_seconds=5.0,
+    npc_voice_intents=None,
 ):
     """Persist the DM's complete question beside the action it clarifies."""
     rendered = _player_text(player_message)
@@ -805,6 +806,17 @@ def record_pending_player_request(
         if re.fullmatch(r"(?:\d+)?d(?:4|6|8|10|12|20|100)", die):
             exchanges[-1]["requestedDie"] = die
         pending["playerExchanges"] = exchanges[-8:]
+        existing_voice_envelope = normalize_npc_voice_intents(
+            pending.get("npcVoiceIntents")
+        )
+        if existing_voice_envelope is not None:
+            pending["npcVoiceIntents"] = existing_voice_envelope
+        else:
+            supplied_voice_envelope = normalize_npc_voice_intents(
+                npc_voice_intents
+            )
+            if supplied_voice_envelope is not None:
+                pending["npcVoiceIntents"] = supplied_voice_envelope
         _write_object(encounter_path, encounter, "pending player request")
 
 

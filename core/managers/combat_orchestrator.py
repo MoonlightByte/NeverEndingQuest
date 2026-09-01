@@ -38,7 +38,7 @@ from core.managers.combat_transaction import (
     record_pending_player_request,
     stage_events,
 )
-from utils.encoding_utils import safe_json_load
+from utils.encoding_utils import normalize_typography_deep, safe_json_load
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -100,17 +100,20 @@ def _is_human_controlled(encounter, actor):
 
 def _immutable_voice_intents(npc_voice_intents):
     """Copy once at the coordinator boundary, then reuse unchanged on retries."""
-    normalized = normalize_npc_voice_intents(npc_voice_intents)
+    canonical_voice_intents, _replaced, _residual = normalize_typography_deep(
+        npc_voice_intents
+    )
+    normalized = normalize_npc_voice_intents(canonical_voice_intents)
     if normalized is None:
         complete_envelope = (
-            isinstance(npc_voice_intents, Mapping)
+            isinstance(canonical_voice_intents, Mapping)
             and all(
-                key in npc_voice_intents
+                key in canonical_voice_intents
                 for key in ("contractVersion", "sourceBeatId", "actors")
             )
-            and isinstance(npc_voice_intents.get("contractVersion"), str)
-            and isinstance(npc_voice_intents.get("sourceBeatId"), str)
-            and isinstance(npc_voice_intents.get("actors"), Mapping)
+            and isinstance(canonical_voice_intents.get("contractVersion"), str)
+            and isinstance(canonical_voice_intents.get("sourceBeatId"), str)
+            and isinstance(canonical_voice_intents.get("actors"), Mapping)
         )
         if complete_envelope:
             _LOGGER.warning(
@@ -121,7 +124,7 @@ def _immutable_voice_intents(npc_voice_intents):
         # tests. It may advise T096, but without a versioned source beat it is
         # deliberately ineligible for transaction persistence or T097 replay.
         try:
-            legacy_rows = dict(npc_voice_intents or {})
+            legacy_rows = dict(canonical_voice_intents or {})
         except (TypeError, ValueError):
             legacy_rows = {}
         actors = {}
@@ -1215,6 +1218,12 @@ def execute_agentic_turn(
             )
             encounter = safe_json_load(encounter_path)
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
+        persisted_voice_intents = normalize_npc_voice_intents(
+            pending.get("npcVoiceIntents") if isinstance(pending, dict) else None
+        )
+        immutable_voice_intents = _immutable_voice_intents(
+            persisted_voice_intents
+        )
     else:
         initial_player_input = (
             None if _all_non_player(encounter, actor_ids) else player_input
@@ -1302,6 +1311,7 @@ def execute_agentic_turn(
             pending.get("turnId"),
             roll_contract_error,
             requested_die=previous_exchange.get("requestedDie"),
+            npc_voice_intents=immutable_voice_intents,
         )
         record_combat_diagnostic(
             record_type="window_outcome",
@@ -1527,6 +1537,7 @@ def execute_agentic_turn(
                 pending.get("turnId"),
                 player_message,
                 requested_die=_authoritative_requested_die(request),
+                npc_voice_intents=immutable_voice_intents,
             )
             raise CombatTurnPaused(
                 "Combat resolution requires more player input",
