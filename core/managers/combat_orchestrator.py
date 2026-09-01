@@ -4,6 +4,7 @@
 
 """Agentic combat turn orchestration with deterministic commit boundaries."""
 
+from collections.abc import Mapping
 from copy import deepcopy
 import logging
 import re
@@ -101,6 +102,21 @@ def _immutable_voice_intents(npc_voice_intents):
     """Copy once at the coordinator boundary, then reuse unchanged on retries."""
     normalized = normalize_npc_voice_intents(npc_voice_intents)
     if normalized is None:
+        complete_envelope = (
+            isinstance(npc_voice_intents, Mapping)
+            and all(
+                key in npc_voice_intents
+                for key in ("contractVersion", "sourceBeatId", "actors")
+            )
+            and isinstance(npc_voice_intents.get("contractVersion"), str)
+            and isinstance(npc_voice_intents.get("sourceBeatId"), str)
+            and isinstance(npc_voice_intents.get("actors"), Mapping)
+        )
+        if complete_envelope:
+            _LOGGER.warning(
+                "Complete combat voice advisory envelope was invalid and omitted"
+            )
+            return MappingProxyType({})
         # Preserve the pre-envelope public call shape for custom callers and
         # tests. It may advise T096, but without a versioned source beat it is
         # deliberately ineligible for transaction persistence or T097 replay.

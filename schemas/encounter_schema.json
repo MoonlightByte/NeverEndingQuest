@@ -129,14 +129,15 @@
         "actors": {
           "type": "object",
           "minProperties": 1,
+          "propertyNames": {"minLength": 1},
           "additionalProperties": {
             "type": "object",
             "properties": {
-              "npcName": {"type": "string", "minLength": 1},
-              "say": {"type": "string", "minLength": 1},
-              "do": {"type": "string", "minLength": 1},
-              "want": {"type": "string", "minLength": 1},
-              "thought": {"type": "string", "minLength": 1}
+              "npcName": {"type": "string", "minLength": 1, "pattern": "\\S"},
+              "say": {"type": "string", "minLength": 1, "pattern": "\\S"},
+              "do": {"type": "string", "minLength": 1, "pattern": "\\S"},
+              "want": {"type": "string", "minLength": 1, "pattern": "\\S"},
+              "thought": {"type": "string", "minLength": 1, "pattern": "\\S"}
             },
             "required": ["npcName", "thought"],
             "additionalProperties": false

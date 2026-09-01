@@ -39,6 +39,8 @@ def normalize_npc_voice_intents(value):
     """
     if not isinstance(value, Mapping):
         return None
+    if set(value) != {"contractVersion", "sourceBeatId", "actors"}:
+        return None
     if value.get("contractVersion") != NPC_VOICE_INTENTS_VERSION:
         return None
     source_beat_id = value.get("sourceBeatId")
@@ -52,6 +54,8 @@ def normalize_npc_voice_intents(value):
         if not isinstance(actor_id, str) or not actor_id:
             return None
         if not isinstance(row, Mapping):
+            return None
+        if not set(row).issubset({"npcName", "say", "do", "want", "thought"}):
             return None
         npc_name = row.get("npcName")
         thought = row.get("thought")
