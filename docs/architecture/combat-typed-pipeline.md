@@ -3,9 +3,7 @@
 Purpose: Turn one persisted actor window into structured intent, committed mechanics,
 restart-safe delivery, and player-facing narration.
 
-- Revision: `main` at `86074e5c7958c7e51157dee6e02fecff859f14b5`
-- Verified: 2026-09-01
-- Doctrine: [GitHub issue #193 v2.3](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
+Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.
 
 ## Authority table
 
@@ -105,7 +103,7 @@ restart-safe delivery, and player-facing narration.
 - #193 Part 5, D-VR-15; No-Limits; Single-Path; Fork-1a; D-LCR-1..3.
 - #193 Part 5 open decisions D-4, D-5, D-6, and D-8 remain owner-only.
 
-## Legacy residue
+### Legacy residue
 
 This revision still selects typed combat for agentic provenance and otherwise reaches T045.
 That is current code, not the target architecture. #193 Part 5 Fork-1a retires T045 in favor
