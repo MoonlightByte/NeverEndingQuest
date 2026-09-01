@@ -105,7 +105,7 @@
     <div class="harrow">&#8594;</div>
     <div class="cbox"><b>Game engine</b><i>main.py &middot; one thread</i></div>
     <div class="harrow">&#8646;</div>
-    <div class="cbox hl"><b>Model calls</b><i>T067 narrator &middot; T105 voice &times;N &middot; T096 tactics &middot; T013/63/64 travel</i></div>
+    <div class="cbox hl"><b>Model calls</b><i>T067 narrator &middot; T065 validator &middot; T105 voice &times;N &middot; T096 tactics &middot; T013/63/64 travel</i></div>
     <div class="harrow">&#8646;</div>
     <div class="cbox"><b>Storage</b><i>character &middot; encounter &middot; history &middot; companion sidecars</i></div>
   </div>
@@ -137,7 +137,7 @@
       <div class="noderow">
         <div class="node empty"></div>
         <div class="spine"><span class="n">3</span></div>
-        <div class="node agent"><span class="who" style="color:var(--agent)">T105 &times;N &middot; PARALLEL, overlaps DM call</span>
+        <div class="node agent"><span class="who" style="color:var(--agent)">T105 &times;N &middot; PARALLEL, collected before the T067 dispatch</span>
           <span class="lbl">Each NPC answers as themselves</span>
           <pre class="j">{"<span class="k">npcName</span>":"Kira",
  "<span class="s">say</span>":"Your plan leaves the west flank open.",
@@ -171,7 +171,7 @@
       <div class="noderow">
         <div class="node empty"></div>
         <div class="spine"><span class="n">6</span></div>
-        <div class="node dm"><span class="who">T021 VALIDATOR</span>
+        <div class="node dm"><span class="who">T065 VALIDATOR</span>
           <span class="lbl">Accept / correct</span>
           <div class="det">sees the same voice batch &middot; corrections re-use it (immutable)</div>
         </div>
@@ -180,7 +180,7 @@
       <div class="noderow">
         <div class="node code"><span class="who">CODE &middot; process_action</span>
           <span class="lbl">Execute actions &middot; write history</span>
-          <div class="det">raw advisory REDACTED from durable history &amp; logs</div>
+          <div class="det">raw advisory REDACTED from durable history &amp; ordinary diagnostics (forensic capture retains it)</div>
         </div>
         <div class="spine"><span class="n">7</span></div>
         <div class="node empty"></div>
@@ -190,7 +190,8 @@
         <div class="node store"><span class="who">STORAGE &middot; exactly once, only if accepted</span>
           <span class="lbl">Companion memory commits</span>
           <pre class="j">data/companion_memories/npc_agent_state.json
-episode_ledger.json  &#8592; {"actor":"Kira","episode":...}</pre>
+(episode_ledger.json is written by the separate
+ T112/T113 capture path, not this commit)</pre>
         </div>
         <div class="spine"><span class="n">8</span></div>
         <div class="node empty"></div>
