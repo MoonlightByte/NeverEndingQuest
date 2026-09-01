@@ -20,7 +20,7 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 | Player-facing narration and action | T067 | T065 validates the same candidate with the same advice |
 | Accepted persistence | Code after accepted T067 and durable history | Per-NPC sidecar mutation; no model writes files |
 
-## Packet context
+### Packet context
 
 | Layer | Packet field | Source |
 |---|---|---|
