@@ -759,6 +759,67 @@ class NpcVoiceService:
                         batch_id=batch_id,
                     )
 
+            def terminal_completion_handle(npc_ids, terminal_parent):
+                return VoiceBatchHandle(
+                    service=self,
+                    batch_id=batch_id,
+                    npc_ids=tuple(npc_ids),
+                    futures={},
+                    immediate=(),
+                    candidate_count=len(validated_packets),
+                    counters={},
+                    scopes={},
+                    parent_scope=terminal_parent,
+                    batch_started=batch_started,
+                    provider=provider,
+                    completion_required=True,
+                )
+
+            if completion_required:
+                from utils.capture.live_provider_call import get_live_turn_scope
+
+                active_scope = get_live_turn_scope()
+                if parent_scope is None:
+                    # A3-C6: missing authority is a loud one-beat terminal, not
+                    # an engine-exiting supersession and never an unfenced call.
+                    for packet_copy in validated_packets:
+                        npc_id = packet_copy["npc"]["id"]
+                        self._record(
+                            kind="candidate",
+                            disposition="missing_authority",
+                            batch_id=batch_id,
+                            npc_id=npc_id,
+                        )
+                        _LOGGER.warning(
+                            "T105 voice call for %s skipped without live authority",
+                            npc_id,
+                        )
+                    self._record(
+                        kind="batch",
+                        disposition="missing_authority",
+                        batch_id=batch_id,
+                        latency_seconds=time.perf_counter() - batch_started,
+                        provider=provider,
+                        candidate_count=len(validated_packets),
+                        physical_request_count=0,
+                    )
+                    return terminal_completion_handle((), None)
+                if parent_scope is not active_scope or parent_scope.is_superseded():
+                    for packet_copy in validated_packets:
+                        self._record(
+                            kind="candidate",
+                            disposition="stale_rejected",
+                            batch_id=batch_id,
+                            npc_id=packet_copy["npc"]["id"],
+                        )
+                    return terminal_completion_handle(
+                        (
+                            packet_copy["npc"]["id"]
+                            for packet_copy in validated_packets
+                        ),
+                        parent_scope,
+                    )
+
             pending_packets = []
             for packet_copy in validated_packets:
                 npc_id = packet_copy["npc"]["id"]
@@ -792,11 +853,14 @@ class NpcVoiceService:
                 completion_required=completion_required,
             )
             if len(reserved_scopes) != len(pending_packets):
+                rejected_disposition = (
+                    "stale_rejected" if completion_required else "missing_authority"
+                )
                 for packet_copy in pending_packets:
                     npc_id = packet_copy["npc"]["id"]
                     self._record(
                         kind="candidate",
-                        disposition="missing_authority",
+                        disposition=rejected_disposition,
                         batch_id=batch_id,
                         npc_id=npc_id,
                     )

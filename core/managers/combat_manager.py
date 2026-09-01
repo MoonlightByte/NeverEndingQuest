@@ -3251,11 +3251,43 @@ CRITICAL RULES:
         return None
 
 
+def _finish_owned_combat_round_scope(scope_state):
+   """Close only combat-owned authority (A3-C6 resumed-entry failure)."""
+   owned_scope = scope_state.pop("scope", None)
+   if owned_scope is None:
+       return
+   from utils.capture.live_provider_call import finish_live_turn_scope
+
+   finish_live_turn_scope(owned_scope)
+   owned_scope.quiescent.wait()
+
+
 def run_combat_simulation(
     encounter_id,
     party_tracker_data,
     location_info,
     invocation_claim=None,
+):
+   """Run combat and reap any locally owned round authority on every exit."""
+   owned_round_scope = {}
+   try:
+       return _run_combat_simulation(
+           encounter_id,
+           party_tracker_data,
+           location_info,
+           invocation_claim=invocation_claim,
+           owned_round_scope=owned_round_scope,
+       )
+   finally:
+       _finish_owned_combat_round_scope(owned_round_scope)
+
+
+def _run_combat_simulation(
+    encounter_id,
+    party_tracker_data,
+    location_info,
+    invocation_claim=None,
+    owned_round_scope=None,
 ):
    """Main function to run the combat simulation"""
    print(f"\n[COMBAT_MANAGER] ========== COMBAT SIMULATION START ==========")
@@ -4009,6 +4041,11 @@ This is narration only. Do not advance the round or apply any combat action."""
    except Exception as e:
        debug(f"Could not update status: {e}", category="status")
    while True:
+       # A locally owned scope covers exactly one accepted resumed-combat input.
+       # Close it before the next prompt. Fresh combat reuses its caller's outer
+       # scope, so the state remains empty and caller authority is never closed.
+       _finish_owned_combat_round_scope(owned_round_scope)
+
        # Ensure all character data is synced to the encounter
        debug("[COMBAT_MANAGER] Syncing character data to encounter", category="combat_events")
        print("DEBUG: [COMBAT_LOOP] Top of while loop - syncing character data")
@@ -4306,6 +4343,18 @@ This is narration only. Do not advance the round or apply any combat action."""
        # Skip empty input to prevent infinite loop
        if not user_input_text or not user_input_text.strip():
            continue
+
+       if agentic_mode and not automatic_initiative_step:
+           from utils.capture.live_provider_call import (
+               get_live_turn_scope,
+               open_live_turn_scope,
+           )
+
+           active_round_scope = get_live_turn_scope()
+           if active_round_scope is None:
+               # A3-C6: startup resume bypasses main.py's outer-scope opener.
+               active_round_scope = open_live_turn_scope()
+               owned_round_scope["scope"] = active_round_scope
 
        # Preserve the actual submission for deterministic rule matching. The
        # enriched text below contains code-authored inventory/SRD annotations
