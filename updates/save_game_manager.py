@@ -808,16 +808,12 @@ class SaveGameManager:
                         # any leftover marker, and a missing creation narration is
                         # cosmetic. Fail-forward: always let the player load.
                         with _campaign_transaction_lock("modules/campaign.json"):
-                            save_path = os.path.join(
-                                self.get_save_directory(),
+                            valid, validation_error = self.validate_restore_target(
                                 save_folder,
+                                include_manifest=False,
                             )
-                            if not os.path.isdir(save_path):
-                                return False, f"Save game not found: {save_path}"
-                            if not safe_read_json(
-                                os.path.join(save_path, "save_metadata.json")
-                            ):
-                                return False, "Could not read save game metadata"
+                            if not valid:
+                                return False, validation_error
                             _assert_no_active_campaign_completion(
                                 "modules/campaign.json"
                             )
@@ -832,6 +828,31 @@ class SaveGameManager:
             return False, f"Failed to restore save game: {exc}"
         finally:
             end_invocation_supersession(invocation_barrier)
+
+    def validate_restore_target(
+        self,
+        save_folder: str,
+        include_manifest: bool = True,
+    ) -> Tuple[bool, str]:
+        """Validate one exact restore target without changing campaign state."""
+        save_path = os.path.join(self.get_save_directory(), save_folder)
+        if not os.path.isdir(save_path):
+            return False, f"Save game not found: {save_path}"
+        metadata = safe_read_json(os.path.join(save_path, "save_metadata.json"))
+        if not metadata:
+            return False, "Could not read save game metadata"
+        if include_manifest:
+            manifest_valid, manifest_error = self._validate_state_manifest(
+                save_path,
+                metadata,
+            )
+            if not manifest_valid:
+                return (
+                    False,
+                    "State manifest integrity validation failed: "
+                    f"{manifest_error}",
+                )
+        return True, ""
 
     def _restore_save_game_locked(self, save_folder: str) -> Tuple[bool, str]:
         """
@@ -849,24 +870,12 @@ class SaveGameManager:
             save_dir = self.get_save_directory()
             save_path = f"{save_dir}/{save_folder}"
             
-            if not os.path.exists(save_path):
-                return False, f"Save game not found: {save_path}"
-            
-            # Load save metadata
-            metadata_path = f"{save_path}/save_metadata.json"
-            metadata = safe_read_json(metadata_path)
-            if not metadata:
-                return False, "Could not read save game metadata"
-
-            manifest_valid, manifest_error = self._validate_state_manifest(
-                save_path, metadata
+            valid, validation_error = self.validate_restore_target(
+                save_folder,
+                include_manifest=True,
             )
-            if not manifest_valid:
-                return (
-                    False,
-                    "State manifest integrity validation failed: "
-                    f"{manifest_error}",
-                )
+            if not valid:
+                return False, validation_error
 
             # Create backup of current state before restoring
             backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")

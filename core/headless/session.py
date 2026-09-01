@@ -638,7 +638,115 @@ class HeadlessSession:
                 if not folder:
                     result(False, error="restore requires args.save_folder")
                     return
-                self._on_status("Load is starting safely", True)
+                live_preflight_announced = False
+                if live_scope is not None and welcome_scope is None:
+                    self._on_status("Load is starting safely", True)
+                    live_preflight_announced = True
+                    valid, validation_error = manager.validate_restore_target(
+                        folder,
+                        include_manifest=True,
+                    )
+                    if not valid:
+                        result(False, error=validation_error)
+                        return
+                    # Validation may overlap the exact turn boundary. Re-read
+                    # authority before reserving the restart terminal so a
+                    # completed scope follows the ordinary idle path.
+                    live_scope = get_live_turn_scope()
+                    welcome_scope = get_active_welcome_scope()
+                if live_scope is not None and welcome_scope is None:
+                    from utils.capture.live_provider_call import (
+                        request_live_turn_supersession,
+                    )
+
+                    if self._restart_in_progress.is_set():
+                        result(
+                            False,
+                            error="another lifecycle operation is already pending",
+                        )
+                        return
+                    self._restart_in_progress.set()
+                    may_apply_restore = False
+                    supersession_error = None
+                    try:
+                        operation = request_live_turn_supersession(
+                            "restore",
+                            str(command_id),
+                            scope=live_scope,
+                        )
+                    except Exception as exc:
+                        operation = None
+                        with live_scope.lock:
+                            visible_claim = dict(live_scope.supersession or {})
+                        claimed_here = (
+                            visible_claim.get("kind") == "restore"
+                            and visible_claim.get("operation_id") == str(command_id)
+                        )
+                        supersession_error = "%s: %s%s" % (
+                            type(exc).__name__,
+                            exc,
+                            " after supersession claim" if claimed_here else "",
+                        )
+                    else:
+                        if operation is None:
+                            current_scope = get_live_turn_scope()
+                            with live_scope.lock:
+                                captured_closing = (
+                                    not live_scope.controls_open
+                                    or live_scope.quiescent.is_set()
+                                )
+                            if current_scope is None and captured_closing:
+                                may_apply_restore = True
+                            else:
+                                supersession_error = (
+                                    "the live turn changed before Load acquired it"
+                                )
+                        elif operation.get("kind") == "turn_complete":
+                            may_apply_restore = True
+                        elif operation.get("accepted"):
+                            may_apply_restore = True
+                        else:
+                            supersession_error = (
+                                "another lifecycle operation is already pending: "
+                                + str(operation.get("kind"))
+                            )
+                    if may_apply_restore:
+                        self.writer.emit(
+                            "operation",
+                            id=command_id,
+                            name="restore",
+                            status="accepted_deferred",
+                            operation_id=str(command_id),
+                        )
+                    self._wait_for_scope_quiescence((live_scope,), "Load")
+                    self._quitting = True
+                    self.prompt_pending.clear()
+                    self.input_queue.put(EOF_SENTINEL)
+                    if self._engine_thread is not None:
+                        self._engine_thread.join()
+                    if not may_apply_restore:
+                        result(False, error=supersession_error)
+                        self.emit_exit("error", "state restore did not acquire authority")
+                        return
+                    self._on_status("Load is applying the selected save", True)
+                    try:
+                        ok, message = manager.restore_save_game(folder)
+                    except Exception as exc:
+                        result(False, error="%s: %s" % (type(exc).__name__, exc))
+                        self.emit_exit("error", "state restore failed")
+                        return
+                    if not ok:
+                        result(False, error=message)
+                        self.emit_exit("error", "state restore failed")
+                        return
+                    result(True, data={"message": message})
+                    self.emit_exit(
+                        "restart",
+                        "state restored; relaunch the session",
+                    )
+                    return
+                if not live_preflight_announced:
+                    self._on_status("Load is starting safely", True)
                 if live_scope is not None:
                     from utils.capture.live_provider_call import (
                         request_live_turn_supersession,
