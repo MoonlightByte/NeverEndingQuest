@@ -100,6 +100,15 @@ class LiveProviderCompletedError(RuntimeError):
         )
 
 
+def _can_promote_player_acted(existing, kind):
+    """Return whether a destructive command may replace the welcome marker."""
+    return (
+        isinstance(existing, dict)
+        and existing.get("kind") == "player_acted"
+        and str(kind) in ("restore", "reset")
+    )
+
+
 @dataclass
 class LiveTurnScope:
     """In-memory lifecycle state for one outer player turn."""
@@ -127,8 +136,10 @@ class LiveTurnScope:
                     "operation_id": self.operation_id,
                     "accepted": False,
                 }
-            accepted = self.supersession is None
-            if self.supersession is None:
+            accepted = self.supersession is None or _can_promote_player_acted(
+                self.supersession, kind
+            )
+            if accepted:
                 self.supersession = {
                     "kind": str(kind),
                     "operation_id": operation_id or str(uuid4()),
@@ -269,10 +280,15 @@ def close_live_turn_scope(scope):
         ).start()
 
 
-def request_live_turn_supersession(kind, operation_id=None):
-    scope = get_live_turn_scope()
-    if scope is None:
-        return None
+def request_live_turn_supersession(kind, operation_id=None, scope=None):
+    """Fence the current live turn, optionally only if it is ``scope``."""
+    with _scope_guard:
+        active_scope = _active_scope
+        if active_scope is None or (
+            scope is not None and active_scope is not scope
+        ):
+            return None
+        scope = active_scope
     result = scope.request_supersession(kind, operation_id)
     if result.get("accepted"):
         from core.combat.invocation import supersede_invocations
@@ -357,10 +373,7 @@ def claim_destructive_operation(scope, kind, execute, complete,
                 "operation_id": scope.operation_id,
             }
         existing = scope.supersession
-        if existing is not None and not (
-            existing.get("kind") == "player_acted"
-            and str(kind) in ("restore", "reset")
-        ):
+        if existing is not None and not _can_promote_player_acted(existing, kind):
             # player_acted only cancels the welcome - the first destructive
             # request promotes past it; anything else is a real conflict.
             return {
