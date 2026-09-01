@@ -10,6 +10,7 @@ Slim, code-pinned references for the application's functional systems.
 | Startup and boot | [startup-boot.md](startup-boot.md) |
 | Module lifecycle | [module-lifecycle.md](module-lifecycle.md) |
 | Provider routing | [provider-routing.md](provider-routing.md) |
+| Progression and leveling | [progression-leveling.md](progression-leveling.md) |
 
 The NPC voice references are maintained with the voice implementation branch until
 that architecture reaches main. Git history records the revision each document was
