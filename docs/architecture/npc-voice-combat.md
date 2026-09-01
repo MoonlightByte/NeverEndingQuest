@@ -3,7 +3,7 @@
 Purpose: Build one actor-isolated advisory voice batch for the current typed combat
 window and carry it unchanged through T096, commit, and T097.
 
-- Revision: `integration/npc-voice-episodic` at `5e43e2fa983a8b9085a194ae9c8713159a2b4ee1`
+- Revision: `integration/npc-voice-episodic` at `fa1b27fe681e2f25c2da41876f74726e01519e14`
 - Verified: 2026-09-01
 - Doctrine: [GitHub issue #193 v2.3](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
 - Visual companion: [NPC Voice Flow Map](../npc-voice-flow-map.html)
@@ -46,10 +46,12 @@ object identity is the current-authority check.
 3. Every T096 correction attempt receives the same advisory map, filtered to exact pending
    actor IDs; say/do/want/thought cannot grant capabilities or change actor order.
 4. Deterministic resolution owns legality and mechanics.
-5. `stage_events` persists the envelope under `combatState.pendingTurn.npcVoiceIntents`.
-6. Apply copies it into `pendingDelivery.npcVoiceIntents` with the committed turn.
-7. T097 rebuilds its dossier from `pendingDelivery`; committed facts remain authoritative.
-8. After the turn returns, the accepted batch updates relationship working state idempotently.
+5. The first durable player request persists the envelope under
+   `combatState.pendingTurn.npcVoiceIntents`, before any attack, damage, save, or choice pause.
+6. `stage_events` preserves that same immutable envelope rather than replacing it.
+7. Apply copies it into `pendingDelivery.npcVoiceIntents` with the committed turn.
+8. T097 rebuilds its dossier from `pendingDelivery`; committed facts remain authoritative.
+9. After the turn returns, the accepted batch updates relationship working state idempotently.
 
 ### Failure terminals
 
@@ -68,7 +70,8 @@ object identity is the current-authority check.
 ## State and atomicity
 
 - Process memory: parent/child scopes, futures, cache, and immutable request map.
-- Encounter JSON: envelope moves `pendingTurn` -> `pendingDelivery` in the same committed turn.
+- Encounter JSON: the envelope first persists with the pending player request, remains unchanged
+  through event staging, and moves `pendingTurn` -> `pendingDelivery` in the same committed turn.
 - Relationship sidecar: `data/companion_memories/npc_agent_state.json`.
 - Encounter persistence uses transaction `safe_write_json` and the existing staged/apply replay.
 - Sidecar writes take the path lock, reread/copy/validate, increment revision, and
@@ -108,5 +111,4 @@ object identity is the current-authority check.
 - #255 - stale voice development tests after combat/transition integration.
 - #259 - T105 say/do/want loss before T096/narration.
 - #262 - No-Limits retirement outside the voice wave.
-- #268 - immutable voice map lost at pending player-roll restart.
 - #269 - accepted T105 sidecar batch lost at combat roll pause.
