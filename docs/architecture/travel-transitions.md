@@ -3,9 +3,7 @@
 Purpose: Convert one accepted travel intent into a canonical destination commit,
 recoverable departure effects, and one destination-grounded narrated arrival.
 
-- Revision: `main` at `20f2b0eaf142c33b7f509ce072b55c6a799dfe66`
-- Verified: 2026-09-01
-- Doctrine: [GitHub issue #193 v2.3](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
+Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.
 
 ## Authority table
 
@@ -57,7 +55,7 @@ recoverable departure effects, and one destination-grounded narrated arrival.
    final context, and stable publication in checkpoint order.
 4. Operation-ID correlation prevents an unrelated transition from clearing the checkpoint.
 
-## Atlas and gate
+### Atlas and gate
 
 - `build_atlas_for_module` reads current module area files; conversation rebuild replaces stale
   atlas blocks with one fresh advisory block for T067.
