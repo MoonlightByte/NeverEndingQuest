@@ -90,7 +90,7 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 6. `main.py:8231-8258` - ordinary live scope opening.
 7. `main.py:8888-8904` - mutation boundary.
 8. `main.py:9122-9163` - superseded and normal turn terminals.
-9. `core/headless/session.py:495-693` - headless lifecycle commands and restart.
+9. `core/headless/session.py:379-693` - headless lifecycle commands (reset/quit at :379-466) and restart.
 10. `web/web_interface.py:2614-2959` - web input and Save/Load/Reset entrants.
 11. `updates/save_game_manager.py:465-519` - Save lock and snapshot sequence.
 12. `updates/save_game_manager.py:683-934` - restore validation, backup, copy, rollback, and cleanup.

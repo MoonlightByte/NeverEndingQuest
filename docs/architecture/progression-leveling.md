@@ -30,7 +30,7 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 7. Ordinary DM context exposes each party character's level, XP, and next threshold. The prompt instructs T067 to ask a player before emitting `levelUp`, while an eligible party NPC should advance automatically, one level at a time.
 8. Main intercepts the first accepted `levelUp` action before ordinary narration/action handling and starts a `LevelUpSession`.
 9. The action handler loads the named character and passes current/new level to the session. It does not itself evaluate XP eligibility, consent, or `newLevel == currentLevel + 1`; those are prompt/T048 responsibilities.
-10. The session reloads the current module character and chooses player-versus-NPC instructions from `character_type`.
+10. The session reloads the current module character; the player-versus-NPC split is decided by the T047 model reading `character_type` from the injected sheet under the shared prompt (`prompts/leveling/level_up_system_prompt.txt:16-17`), not by session-side branching (`is_player` at `level_up_manager.py:115` is computed but never read).
 11. It initializes a separate conversation with the leveling prompt, full leveling reference, current sheet, and requested level transition.
 12. T047 produces intermediate questions or a final `updateCharacterInfo`. Player questions are displayed and answered one at a time; NPC instructions request a complete final action on the initial T047 call.
 13. Every T047 assistant turn is persisted to `level_up_conversation.json` before validation or mutation.
