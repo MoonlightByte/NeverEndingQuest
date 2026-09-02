@@ -1313,7 +1313,7 @@ def build_combat_packets_for_window(
                     "location": location_name,
                     "presentActors": present_names,
                     "stakes": stakes,
-                    "recentEvents": committed_facts[-6:],
+                    "recentEvents": committed_facts,
                 },
                 working={
                     "currentGoal": goals[0] if goals else "",
