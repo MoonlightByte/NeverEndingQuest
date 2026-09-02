@@ -148,3 +148,81 @@ NOT-REACHED, while its resumed missing-authority omission polarity is PASS.
 - A4 legacy live injection: **NOT-REACHED**; legacy continuation **FAILED #267**, retirement-only.
 - 4+ voice/M30 and 6-party/9-enemy live scale: **BLOCKED / NOT TESTED**, no legal fixture.
 - Overall feature ship: **OWNER-OPEN (D-VR-9)**.
+
+## Owner-authorized constructed-scale addendum
+
+Date: 2026-09-01
+Revision exercised: `dcc172f034b52c43b2a019fc551f4cca3c489192`
+
+The owner subsequently authorized schema-valid fixture construction through
+`party_tracker.json` plus one validated character file per member. No encounter,
+initiative ledger, combat HP, roll, or event was edited. The official Thornwood module was
+entered through ordinary play, and `createEncounter` naturally produced TW05-E1 with six
+living companions and the authored full garrison: four sentries, four warriors, and Captain
+Gorvek. The resulting encounter contained one human PC plus 15 automatic actors.
+
+Every constructed character file validated against `schemas/char_schema.json`, and the party
+tracker validated against `schemas/party_schema.json` before launch. A first low-HP fixture was rejected as
+inadequate after the opening initiative window reduced the number of living companions. The
+final fixture used six independently identified, schema-valid 50-HP companion sheets and a
+schema-valid 41/47-HP player sheet; all were alive when the encounter opened.
+
+The post-run integrity scan found that the product writer had removed the required
+`worldConditions.weatherConditions` field from `party_tracker.json`. Character validation,
+the six-member roster, the 16 encounter rows, and the nine authored hostiles remained intact.
+This runtime/schema mismatch is recorded separately; it does not retroactively invalidate the
+pre-launch constructed-fixture validation, but the post-run party-schema verdict is **FAILED**.
+Issue: https://github.com/MoonlightByte/NeverEndingQuest/issues/271
+
+### Large-tier verdict
+
+The 15-automatic-actor round completed through the real native-Windows headless path and real
+OpenAI. The player's declaration, attack roll, damage roll, the remaining automatic actor
+window, T096 adjudication, T097 narration, commit, and return to round 2 all completed.
+
+The exact initiative order placed Scout Kira before the player and four living companions
+after the player in the measured window. Consequently the immutable T105 map contained four
+actors (Ranger Derek, Ranger Thane, Scout Elen, and Spirit-Touched Hermit Maelo), not all six
+living companions. This proves the four-voice dispatch and the 6-companion/9-enemy mechanical
+ceiling, but a single greater-than-four T105 dispatch remains honestly **NOT-REACHED**. The
+test does not relabel that M30 boundary as passing merely because six companions were present.
+
+### Four-voice batch telemetry
+
+| Metric | Result |
+|---|---:|
+| Selected / merged | 4 / 4 |
+| Batch wall | 17.889 s |
+| Thought calls | 4.290 / 4.449 / 4.528 / 4.752 s |
+| Classification calls | 3.425 / 3.502 / 3.540 / 4.021 s |
+| Physical calls | 8, all valid on attempt 1 |
+| Total tokens | 11,301 |
+| Lifecycle faults | none: zero reap, reissue, stale rejection, or completed-invalid |
+
+The four thought calls overlapped: their slowest call was 4.752 s while their serial sum was
+18.019 s. The batch then performed four relationship-classification calls, also overlapped.
+This fixture therefore cannot be compared as a pure one-stage line extension of the earlier
+3.8/4.4-second curve; its 17.889-second wall includes both stages plus collection overhead.
+No dollar cost was exposed, so tokens remain the cost proxy.
+
+The measured player turn used three accepted-input continuations. T096 durations were
+4.516 s (declaration), 5.625 s (attack-roll continuation), and 4.219 s (damage continuation).
+The committed round T097 narration took 4.000 s. The remaining five-actor automatic window
+then required one T096 correction (4.250 + 3.234 s) and a 2.938-second T097 narration before
+returning to the next prompt. Input acknowledgement remained within one observed event cycle.
+
+### Addendum evidence
+
+- Fixture/post-run integrity scan: `/mnt/c/vra-evidence/voice_readiness_shipclean_8f51bef3/bigstress_validation_6voice.txt`
+- Final six-companion game: `/mnt/c/vra-voice-bigstress-6voice`
+- T105 telemetry: `/mnt/c/vra-evidence/voice_readiness_shipclean_8f51bef3/bigstress6voice_voice_telemetry.jsonl`
+- T096/T097 attempts: `/mnt/c/vra-voice-bigstress-6voice/debug/combat/agentic_attempts.jsonl`
+- Full native protocol/debug transcript: `/mnt/c/vra-voice-bigstress-6voice/modules/logs/headless_raw.log`
+
+Updated scale dispositions:
+
+- Four-voice M30 dispatch: **PASS**, four selected and merged in one immutable map.
+- Six living companions plus nine enemies / 15 automatic actors: **PASS** for encounter and
+  complete-round scale.
+- Single greater-than-four voice-map dispatch: **NOT-REACHED** due the natural initiative
+  split; no false pass.
