@@ -17,7 +17,11 @@ from core.npc.relationship_store import (
     game_day_ordinal,
     normalize_identity_seed,
 )
-from core.npc.voice_contracts import NEGATIVE_AFFINITY_EVENT_TYPES, validate_packet
+from core.npc.voice_contracts import (
+    NEGATIVE_AFFINITY_EVENT_TYPES,
+    ThoughtContractError,
+    validate_packet,
+)
 from core.npc.voice_selection import (
     SelectionFairness,
     rank_ooc_candidates,
@@ -994,6 +998,7 @@ def build_ooc_packets_for_turn(
     relationship_store: Optional[RelationshipStore] = None,
     fairness: Optional[SelectionFairness] = None,
     limit: int = 4,
+    packet_invalid_handler: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[Dict[str, Any], ...]:
     """Compose and deterministically rank up to four eligible OOC packets."""
     roster = party_tracker_data.get("partyNPCs", [])
@@ -1019,6 +1024,15 @@ def build_ooc_packets_for_turn(
                 relationship_store=store,
                 _selected_candidate=candidate,
             )
+        except ThoughtContractError as exc:
+            npc_reference = _string(candidate.get("name")) or "unknown NPC"
+            _LOGGER.warning("T105 OOC packet invalid for %s: %s", npc_reference, exc)
+            if packet_invalid_handler is not None:
+                try:
+                    packet_invalid_handler(npc_reference, str(exc))
+                except Exception:
+                    pass
+            continue
         except Exception:
             continue
         npc_id = packet["npc"]["id"]
@@ -1062,6 +1076,7 @@ def build_combat_packets_for_window(
     player_input: str,
     legacy_conversation_prefix: Optional[Iterable[Any]] = None,
     relationship_store: Optional[RelationshipStore] = None,
+    packet_invalid_handler: Optional[Callable[[str, str, str], None]] = None,
 ) -> tuple[tuple[str, Dict[str, Any]], ...]:
     """Compose packets for exact pending-window party NPC combatant IDs only."""
     actor_window = list(dict.fromkeys(_string(value) for value in actor_ids if _string(value)))
@@ -1252,45 +1267,57 @@ def build_combat_packets_for_window(
             revision,
             ",".join(actor_window),
         )
-        packet = compose_combat_packet(
-            beat={
-                "id": beat_id,
-                "summary": stakes,
-                "relationshipEvidence": evidence,
-            },
-            npc={"id": npc_id, "name": npc_name, "role": role, "profile": profile},
-            relationship={
-                "counterpartyId": player_id,
-                "counterpartyName": player_name,
-                "state": relationship["current"],
-                "recentEvents": _packet_recent_events(retrieved),
-            },
-            scene={
-                "module": module,
-                "locationId": location_id,
-                "location": location_name,
-                "presentActors": present_names,
-                "stakes": stakes,
-                "recentEvents": committed_facts[-6:],
-            },
-            working={
-                "currentGoal": goals[0] if goals else "",
-                "priorPrivateIntent": working.get("currentPrivateIntent", ""),
-                "openQuestion": working.get("openQuestion", ""),
-                "moodTags": working.get("moodTags", []),
-                "expiresAfterTurn": working.get("expiresAfterTurn"),
-            },
-            status={
-                "hitPoints": {"current": min(hp_current, hp_maximum), "maximum": hp_maximum},
-                "armorClass": armor,
-                "conditions": conditions,
-                "position": _string(creature.get("position")) or "in the encounter",
-            },
-            capabilities=_combat_capabilities(sheet),
-            allies=allies,
-            threats=threats,
-            last_round_events=committed_facts,
-        )
+        try:
+            packet = compose_combat_packet(
+                beat={
+                    "id": beat_id,
+                    "summary": stakes,
+                    "relationshipEvidence": evidence,
+                },
+                npc={"id": npc_id, "name": npc_name, "role": role, "profile": profile},
+                relationship={
+                    "counterpartyId": player_id,
+                    "counterpartyName": player_name,
+                    "state": relationship["current"],
+                    "recentEvents": _packet_recent_events(retrieved),
+                },
+                scene={
+                    "module": module,
+                    "locationId": location_id,
+                    "location": location_name,
+                    "presentActors": present_names,
+                    "stakes": stakes,
+                    "recentEvents": committed_facts[-6:],
+                },
+                working={
+                    "currentGoal": goals[0] if goals else "",
+                    "priorPrivateIntent": working.get("currentPrivateIntent", ""),
+                    "openQuestion": working.get("openQuestion", ""),
+                    "moodTags": working.get("moodTags", []),
+                    "expiresAfterTurn": working.get("expiresAfterTurn"),
+                },
+                status={
+                    "hitPoints": {
+                        "current": min(hp_current, hp_maximum),
+                        "maximum": hp_maximum,
+                    },
+                    "armorClass": armor,
+                    "conditions": conditions,
+                    "position": _string(creature.get("position")) or "in the encounter",
+                },
+                capabilities=_combat_capabilities(sheet),
+                allies=allies,
+                threats=threats,
+                last_round_events=committed_facts,
+            )
+        except ThoughtContractError as exc:
+            _LOGGER.warning("T105 combat packet invalid for %s: %s", npc_name, exc)
+            if packet_invalid_handler is not None:
+                try:
+                    packet_invalid_handler(npc_id, npc_name, str(exc))
+                except Exception:
+                    pass
+            continue
         packets.append((actor_id, packet))
     return tuple(packets)
 
@@ -1365,7 +1392,17 @@ def dispatch_combat_voice_stage(
     """Dispatch one exact actor-window T105 batch for the current combat beat."""
     if recovery_action_name not in {"continue", "regenerate_intent"}:
         return CombatVoiceHandle()
+    voice_service = service or _default_service()
     try:
+        def record_packet_invalid(npc_id: str, npc_name: str, reason: str) -> None:
+            voice_service.telemetry.record_disposition(
+                "candidate",
+                "packet_invalid",
+                batch_id=_string(encounter_data.get("encounterId")),
+                npc_id=npc_id,
+                reason=reason,
+            )
+
         packet_rows = build_combat_packets_for_window(
             encounter_data=encounter_data,
             actor_ids=actor_ids,
@@ -1376,12 +1413,13 @@ def dispatch_combat_voice_stage(
             player_input=player_input,
             legacy_conversation_prefix=legacy_conversation_prefix,
             relationship_store=relationship_store,
+            packet_invalid_handler=record_packet_invalid,
         )
         if not packet_rows:
             return CombatVoiceHandle()
         from utils.capture.live_provider_call import get_live_turn_scope
 
-        handle = (service or _default_service()).dispatch_batch(
+        handle = voice_service.dispatch_batch(
             [packet for _actor_id, packet in packet_rows],
             parent_scope=get_live_turn_scope(),
             completion_required=completion_required,
@@ -1471,6 +1509,16 @@ def run_ooc_voice_stage(
     """Run one bounded Phase 3 T105 batch and contain every failure."""
     try:
         selection = fairness or _OOC_FAIRNESS
+        voice_service = service or _default_service()
+
+        def record_packet_invalid(npc_reference: str, reason: str) -> None:
+            voice_service.telemetry.record_disposition(
+                "candidate",
+                "packet_invalid",
+                npc_id=npc_reference,
+                reason=reason,
+            )
+
         packets = build_ooc_packets_for_turn(
             party_tracker_data=party_tracker_data,
             player_name=player_name,
@@ -1480,12 +1528,13 @@ def run_ooc_voice_stage(
             path_manager=path_manager,
             relationship_store=relationship_store,
             fairness=selection,
+            packet_invalid_handler=record_packet_invalid,
         )
         from utils.capture.live_provider_call import get_live_turn_scope
 
         handle = PreparedOocVoiceHandle(
             packets,
-            service or _default_service(),
+            voice_service,
             get_live_turn_scope(),
             raw_input,
             relationship_store or RelationshipStore(),

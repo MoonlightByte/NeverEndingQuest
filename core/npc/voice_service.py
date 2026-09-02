@@ -65,6 +65,7 @@ class VoiceTelemetryRecord:
     candidate_count: int = 0
     physical_request_count: int = 0
     merged_count: int = 0
+    reason: str = ""
     timestamp: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -88,6 +89,7 @@ class VoiceTelemetryRecord:
             "candidateCount": self.candidate_count,
             "physicalRequestCount": self.physical_request_count,
             "mergedCount": self.merged_count,
+            "reason": self.reason,
             "timestamp": self.timestamp,
         }
         if self.cost_usd is not None:
@@ -143,6 +145,7 @@ class VoiceTelemetry:
         *,
         batch_id: str = "",
         npc_id: str = "",
+        reason: str = "",
     ) -> None:
         try:
             self.record(
@@ -151,6 +154,7 @@ class VoiceTelemetry:
                     disposition=_safe_identifier(disposition),
                     batch_hash=_identifier_hash(batch_id) if batch_id else "",
                     npc_hash=_identifier_hash(npc_id) if npc_id else "",
+                    reason=str(reason),
                 )
             )
         except Exception:
@@ -431,6 +435,7 @@ class NpcVoiceService:
         candidate_count: int = 0,
         physical_request_count: int = 0,
         merged_count: int = 0,
+        reason: str = "",
     ) -> None:
         try:
             self.telemetry.record(
@@ -449,6 +454,7 @@ class NpcVoiceService:
                     candidate_count=max(0, int(candidate_count)),
                     physical_request_count=max(0, int(physical_request_count)),
                     merged_count=max(0, int(merged_count)),
+                    reason=str(reason),
                 )
             )
         except Exception:
@@ -752,11 +758,23 @@ class NpcVoiceService:
                         batch_id=batch_id,
                         npc_id=packet_copy["npc"]["id"],
                     )
-                except Exception:
+                except Exception as exc:
+                    npc_id = ""
+                    if isinstance(packet, Mapping):
+                        npc = packet.get("npc")
+                        if isinstance(npc, Mapping):
+                            npc_id = str(npc.get("id") or "")
+                    _LOGGER.warning(
+                        "T105 packet invalid for %s: %s",
+                        npc_id or "unknown NPC",
+                        exc,
+                    )
                     self._record(
                         kind="candidate",
-                        disposition="invalid_packet",
+                        disposition="packet_invalid",
                         batch_id=batch_id,
+                        npc_id=npc_id,
+                        reason=str(exc),
                     )
 
             def terminal_completion_handle(npc_ids, terminal_parent):
