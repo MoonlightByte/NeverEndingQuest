@@ -533,9 +533,7 @@ def _accepted_legacy_combat_evidence_summary(
                 "System combat continuation:"
             ):
                 break
-            return ("Player: %s Result: %s" % (player_text, narration))[
-                :240
-            ].rstrip()
+            return "Player: %s Result: %s" % (player_text, narration)
     return ""
 
 
@@ -627,7 +625,7 @@ def _utilities(sheet: Mapping[str, Any]) -> list[str]:
     languages = sheet.get("languages")
     if isinstance(languages, list):
         result.extend("Speaks %s" % _string(name) for name in languages if _string(name))
-    return result[:8]
+    return result
 
 
 def _items(sheet: Mapping[str, Any]) -> list[str]:
@@ -642,8 +640,6 @@ def _items(sheet: Mapping[str, Any]) -> list[str]:
             name = _string(item)
         if name:
             result.append(name)
-        if len(result) >= 8:
-            break
     return result
 
 
@@ -681,8 +677,6 @@ def _combat_capabilities(sheet: Mapping[str, Any]) -> list[str]:
                 rendered = _string(entry)
             if rendered and rendered not in result:
                 result.append(rendered)
-            if len(result) >= 8:
-                return result
     return result
 
 
@@ -802,8 +796,6 @@ def _present_actor_names(
     for name in ordered:
         if name and name not in result:
             result.append(name)
-        if len(result) >= 12:
-            break
     return result
 
 
@@ -985,7 +977,7 @@ def build_ooc_packet_for_turn(
         utilities=_utilities(selected_sheet),
         items=_items(selected_sheet),
         social_context=social_context,
-        current_goals=goals[:5],
+        current_goals=goals,
     )
     return packet
 
@@ -1137,7 +1129,7 @@ def build_combat_packets_for_window(
         if _string(creature.get("name"))
         and _string(creature.get("status") or "alive").casefold()
         not in {"dead", "defeated"}
-    ][:12]
+    ]
     threats = [
         {
             "name": _string(creature.get("name")) or "Unknown threat",
@@ -1245,7 +1237,7 @@ def build_combat_packets_for_window(
             if other.get("combatantId") != actor_id
             and other.get("type") in {"player", "npc"}
             and _string(other.get("name"))
-        ][:8]
+        ]
         stakes = " ".join(
             value
             for value in (

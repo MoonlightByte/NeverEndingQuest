@@ -18,7 +18,7 @@ def _text(value: Any) -> str:
     return value.strip()
 
 
-def _text_list(values: Any, count: int) -> List[str]:
+def _text_list(values: Any) -> List[str]:
     if not isinstance(values, list):
         return []
     result = []
@@ -26,8 +26,6 @@ def _text_list(values: Any, count: int) -> List[str]:
         item = _text(value)
         if item and item not in result:
             result.append(item)
-        if len(result) >= count:
-            break
     return result
 
 
@@ -51,27 +49,27 @@ def _normalize_common(packet: Dict[str, Any]) -> None:
         structured_voice["cadence"] = _text(structured_voice.get("cadence"))
         structured_voice["diction"] = _text(structured_voice.get("diction"))
         structured_voice["taboos"] = _text_list(
-            structured_voice.get("taboos"), 3
+            structured_voice.get("taboos")
         )
-    for key, count in (
-        ("goals", 3),
-        ("fears", 3),
-        ("values", 5),
-        ("preferences", 5),
-        ("boundaries", 5),
-        ("protectionPriorities", 3),
-        ("retreatRules", 3),
-        ("arcSeeds", 2),
+    for key in (
+        "goals",
+        "fears",
+        "values",
+        "preferences",
+        "boundaries",
+        "protectionPriorities",
+        "retreatRules",
+        "arcSeeds",
     ):
         if key in profile:
-            profile[key] = _text_list(profile.get(key), count)
+            profile[key] = _text_list(profile.get(key))
     if "conflictStyle" in profile:
         profile["conflictStyle"] = _text(profile.get("conflictStyle"))
 
     relationship = packet["relationship"]
     relationship["counterpartyId"] = _text(relationship.get("counterpartyId"))
     relationship["counterpartyName"] = _text(relationship.get("counterpartyName"))
-    recent_events = relationship.get("recentEvents", [])[:3]
+    recent_events = relationship.get("recentEvents", [])
     for event in recent_events:
         if isinstance(event, dict):
             event["actor"] = _text(event.get("actor"))
@@ -83,15 +81,15 @@ def _normalize_common(packet: Dict[str, Any]) -> None:
     scene["module"] = _text(scene.get("module"))
     scene["locationId"] = _text(scene.get("locationId"))
     scene["location"] = _text(scene.get("location"))
-    scene["presentActors"] = _text_list(scene.get("presentActors"), 12)
+    scene["presentActors"] = _text_list(scene.get("presentActors"))
     scene["stakes"] = _text(scene.get("stakes"))
-    scene["recentEvents"] = _text_list(scene.get("recentEvents"), 6)
+    scene["recentEvents"] = _text_list(scene.get("recentEvents"))
 
     working = packet["working"]
     working["currentGoal"] = _text(working.get("currentGoal"))
     working["priorPrivateIntent"] = _text(working.get("priorPrivateIntent"))
     working["openQuestion"] = _text(working.get("openQuestion"))
-    working["moodTags"] = _text_list(working.get("moodTags"), 4)
+    working["moodTags"] = _text_list(working.get("moodTags"))
 
 
 def _base_packet(
@@ -139,16 +137,16 @@ def compose_out_of_combat_packet(
     }
     _normalize_common(packet)
     packet["context"]["utilities"] = _text_list(
-        packet["context"].get("utilities"), 8
+        packet["context"].get("utilities")
     )
     packet["context"]["items"] = _text_list(
-        packet["context"].get("items"), 8
+        packet["context"].get("items")
     )
     packet["context"]["socialContext"] = _text(
         packet["context"].get("socialContext")
     )
     packet["context"]["currentGoals"] = _text_list(
-        packet["context"].get("currentGoals"), 5
+        packet["context"].get("currentGoals")
     )
     return validate_packet(packet)
 
@@ -177,16 +175,16 @@ def compose_combat_packet(
     }
     _normalize_common(packet)
     packet["context"]["capabilities"] = _text_list(
-        packet["context"].get("capabilities"), 8
+        packet["context"].get("capabilities")
     )
     packet["context"]["allies"] = _text_list(
-        packet["context"].get("allies"), 8
+        packet["context"].get("allies")
     )
     packet["context"]["lastRoundEvents"] = _text_list(
-        packet["context"].get("lastRoundEvents"), 8
+        packet["context"].get("lastRoundEvents")
     )
     threats_result = []
-    for threat in packet["context"].get("threats", [])[:8]:
+    for threat in packet["context"].get("threats", []):
         if not isinstance(threat, dict):
             continue
         threats_result.append(

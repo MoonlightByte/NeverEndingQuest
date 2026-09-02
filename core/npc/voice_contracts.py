@@ -447,7 +447,9 @@ def packet_schema(mode: str) -> Dict[str, Any]:
     properties["context"] = (
         COMBAT_CONTEXT_SCHEMA if mode == "COMBAT" else OUT_OF_COMBAT_CONTEXT_SCHEMA
     )
-    return strict_object(properties, tuple(properties))
+    schema = strict_object(properties, tuple(properties))
+    _remove_array_limits(schema)
+    return schema
 
 
 def openai_response_format() -> Dict[str, Any]:
