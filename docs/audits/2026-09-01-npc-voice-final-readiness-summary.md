@@ -31,14 +31,14 @@ Ship authority: owner-open (`D-VR-9`)
 | Schema compatibility | PASS | 2,819 authentic encounter-shaped records scanned; zero baseline-valid records became invalid |
 | OOC voice path | PASS | A1/A2 evidence under `/mnt/c/vra-evidence/voice_readiness_35320cff` |
 | Typed round-batch combat | PASS | `docs/audits/2026-09-01-a3c7-combat-acceptance-verdict.md` |
-| DM use of spoon-fed voice data | PASS | A3 verdict plus stress narrations |
+| DM use of spoon-fed voice data | SUPERSEDED by W6/W7 | Six-entry W4/W5 maps exposed total `say` omission; W6/W7 tone is owner-accepted, while event truth remains FAILED #275 |
 | Save/Load sidecar round trip | PASS for exercised accepted paths | A5 and ship-clean evidence roots |
 | Player-roll crash replay | PASS | `/mnt/c/vra-evidence/voice_readiness_shipclean_8f51bef3/c1_268/native` |
 | Accepted live-scope Load application | PASS | `/mnt/c/vra-evidence/voice_readiness_shipclean_8f51bef3/c2_236/native` |
 | Small/mid combat stress | PASS | `docs/audits/2026-09-01-voice-roundbatch-stress-telemetry.md` |
 | Six living companions + nine enemies | PASS for encounter and complete-round scale | constructed-scale addendum in the stress report |
-| Four-voice immutable combat map | PASS | 4 selected/merged, 17.889-second wall, 11,301 tokens |
-| Single greater-than-four voice map | NOT-REACHED | natural initiative split placed only four companions in the measured player window |
+| Four-voice immutable combat map | SUPERSEDED as scale ceiling | Original 4 selected/merged telemetry remains valid; W4/W5 proved six-entry maps twice |
+| Single greater-than-four voice map | PASS | #272 W4/W5: 6 selected / 6 physical / 6 merged in two real rounds |
 | Legacy T045 live voice injection | NOT-REACHED / continuation FAILED #267 | retirement-owned, no prohibited legacy-only repair |
 | Natural transport hang/reissue | NOT-REACHED | no false pass; structural path remains code-covered |
 | Post-run party schema | FAILED #271 | runtime writer removed required `weatherConditions` |
@@ -53,7 +53,9 @@ initiative, roll, HP mutation, or committed event was edited.
 Closed with evidence:
 
 - #164: retired flag/filter and packet-loss risks resolved; four-voice M30 dispatch now
-  live-proven. A single greater-than-four dispatch remains explicitly NOT-REACHED.
+  live-proven originally, now superseded by two six-of-six W4/W5 batches.
+- #272: actor-count caps and whole-batch packet loss resolved; six-of-six dispatch proven
+  twice on native Windows with real OpenAI.
 - #236: accepted live-scope headless Load now applies after quiescence.
 - #256: Reset causal identity is fenced.
 - #265: persisted voice envelope and runtime normalization agree.
@@ -67,6 +69,43 @@ Still open and separately owned:
 - #269: accepted T105 sidecar batch is not yet persisted with every roll-pause envelope.
 - #270: overlapping accepted lifecycle operation arbitration.
 - #271: party tracker writer drops required `worldConditions.weatherConditions` after play.
+- #275: T097 receives cumulative prior-beat `encounterActivity.recentFacts` and can narrate
+  an earlier/other-slice strike as current; payload-hygiene repair is owner-scheduled.
+
+## 2026-09-02 W6/W7 readiness correction
+
+W4/W5 at `c7b30769` supersedes the earlier greater-than-four NOT-REACHED row: two
+successive real combat declarations each produced six selected, six physical, and six
+merged T105 results, and both T096 and T097 received the full immutable map. That closes
+#272 and supplies the final M30 scale evidence for #164.
+
+### W6 - storyteller prompt
+
+W6 shipped the owner-reviewed storyteller prompt at `40f06ab7`, with luna reasoning
+remaining `none`.
+
+### W7 - live narration and telemetry
+
+W7 completed two further real native-Windows rounds. The owner accepted
+the narration tone. Turn 1 naturally adapted Morwenna's advice into the scene; turn 2
+appropriately used no companion dialogue and ended on Morwenna's fall. Those W7 slices had
+four advised companions because two companions had already acted before the player, so the
+six-entry scale verdict continues to come from W4/W5 rather than being inferred from W7.
+
+Each W7 batch had one roughly 13-second luna tail call (13.166 and 13.208 seconds), setting
+batch walls of 13.360 and 13.252 seconds. This is latency telemetry, not a lifecycle or
+correctness failure.
+
+The manual narration-truth audit did not pass: turn 1 added a Kira arrow absent from its
+slice ledger, and turn 2 referenced Morwenna's prior blast. That defect is separated as
+#275 because #272 is the fixed count/batch-loss boundary. Therefore the old blanket
+`DM use of spoon-fed voice data: PASS` row is superseded by the narrower current verdict:
+**tone accepted; advisory plumbing and six-entry scale pass; slice-fact truth failed #275**.
+
+Evidence:
+
+- `/mnt/c/vra-evidence/issue_272_w4_c7b30769/W4_W5_VERDICT.md`
+- `/mnt/c/vra-evidence/issue_272_w7_40f06ab7/W7_LIVE_VERBATIM_EVIDENCE.md`
 
 ## Evidence index
 
@@ -86,6 +125,7 @@ Still open and separately owned:
 ## Final disposition
 
 The typed NPC voice runtime is implemented and passes the exercised OOC, typed-combat,
-roll-replay, accepted-Load, and 15-automatic-actor paths. No implementation repair was made
-during the final stress pass. Overall merge/ship remains an owner decision under `D-VR-9`,
-with the open items above and the honest greater-than-four-map NOT-REACHED boundary visible.
+roll-replay, accepted-Load, 15-automatic-actor, and six-entry voice-map paths. W7 tone is
+owner-accepted. T097 slice-fact truth remains open as #275. Overall merge/ship remains an
+owner decision under `D-VR-9`, with that separate defect and the other open items above
+visible.

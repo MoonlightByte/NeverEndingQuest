@@ -221,8 +221,64 @@ returning to the next prompt. Input acknowledgement remained within one observed
 
 Updated scale dispositions:
 
-- Four-voice M30 dispatch: **PASS**, four selected and merged in one immutable map.
+- Four-voice M30 dispatch: **SUPERSEDED as the scale ceiling** by the dedicated W4/W5
+  six-voice evidence below. The original four-entry measurement remains valid telemetry.
 - Six living companions plus nine enemies / 15 automatic actors: **PASS** for encounter and
   complete-round scale.
-- Single greater-than-four voice-map dispatch: **NOT-REACHED** due the natural initiative
-  split; no false pass.
+- Single greater-than-four voice-map dispatch: **SUPERSEDED; PASS** in W4/W5 with six
+  selected, six physical, and six merged twice.
+
+## 2026-09-02 W6/W7 correction and storyteller evidence
+
+Revision exercised: `40f06ab75065e1292e0f5de3a838154e067df066`
+
+The earlier rows stating that a four-entry map was the largest live combat dispatch and
+that a greater-than-four map was NOT-REACHED are superseded. Dedicated #272 W4/W5
+acceptance at `c7b30769a540b8d4043806c3907472c5e5cccbf7` ran the real 16-actor
+Thornwood encounter for two player declarations. Each declaration produced one batch with
+six selected, six physical calls, and six merged results; the same six-entry map reached
+T096 and T097. Zero dispatch-degraded or advisory-omitted warnings occurred.
+
+W4/W5 also superseded the broad historical row `DM use of spoon-fed voice data: PASS`:
+the six-entry maps reached T097, but both narrations omitted every companion `say` line.
+That downstream narration result was not a #272 cap failure; it became the W6 prompt-tuning
+gate.
+
+### W6 - storyteller prompt
+
+W6 shipped the scene-first storyteller prompt and T105 direct-address correction in
+`40f06ab7`, with `gpt-5.6-luna` at reasoning `none`.
+
+### W7 - live narration and telemetry
+
+W7 then completed two further native-Windows real-OpenAI combat turns. The owner accepted
+the live tone: turn 1 grouped
+the volley as a scene and adapted Morwenna's line to Eirik; turn 2 ended on Morwenna's
+fall without a roster-style closer. The post-player slices each carried four voice entries
+because Thane and Kira had already acted in separate pre-player initiative slices; W7 is
+not used as the six-entry cap proof.
+
+W7 latency telemetry:
+
+| Round | Selected / physical / merged | Per-call latency | Batch wall | Disposition |
+|---|---:|---|---:|---|
+| 1 | 4 / 4 / 4 | 4.379 / 5.047 / 13.166 / 13.345 s | 13.360 s | complete; no lifecycle fault |
+| 2 | 4 / 4 / 4 | 4.738 / 4.991 / 5.596 / 13.208 s | 13.252 s | complete; no lifecycle fault |
+
+Both batches had one roughly 13-second luna tail call that determined batch wall time.
+This is recorded as provider latency telemetry; it caused no reissue, reap, stale reject,
+completed-invalid result, or correctness failure.
+
+The required manual event-truth check found a separate defect. Turn 1 narrated a Kira
+arrow absent from that slice's `authoritativeFacts`; turn 2 had no extra current-beat
+strike but referred to Morwenna's earlier blast. Issue #275 owns the cumulative
+`encounterActivity.recentFacts` payload leak. Tone acceptance does not convert that truth
+failure into a pass.
+
+Evidence:
+
+- W4/W5 cap proof: `/mnt/c/vra-evidence/issue_272_w4_c7b30769/W4_W5_VERDICT.md`
+- W7 verbatim suggestions, narration, and truth audit:
+  `/mnt/c/vra-evidence/issue_272_w7_40f06ab7/W7_LIVE_VERBATIM_EVIDENCE.md`
+- #272 closure: https://github.com/MoonlightByte/NeverEndingQuest/issues/272
+- Separate narration-truth defect: https://github.com/MoonlightByte/NeverEndingQuest/issues/275
