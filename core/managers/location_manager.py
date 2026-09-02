@@ -249,7 +249,12 @@ def update_world_conditions(
     )
 
     if location_info:
-        return {
+        # Start from the current block so every schema-required key survives
+        # a move. Rebuilding from scratch here dropped weatherConditions (and
+        # any field added later) after the first travel, so the product-
+        # written tracker failed party_schema validation (#271).
+        updated = dict(current_conditions)
+        updated.update({
             "year": current_conditions["year"],
             "month": current_conditions["month"],
             "day": current_conditions["day"],
@@ -265,8 +270,12 @@ def update_world_conditions(
             "majorEventsUnderway": current_conditions["majorEventsUnderway"],
             "politicalClimate": "",
             "activeEncounter": "",
-            "activeCombatEncounter": current_conditions.get("activeCombatEncounter", "")
-        }
+            "activeCombatEncounter": current_conditions.get("activeCombatEncounter", ""),
+            "weatherConditions": location_info.get(
+                "weatherConditions", current_conditions.get("weatherConditions", "")
+            ),
+        })
+        return updated
     else:
         return current_conditions
 
