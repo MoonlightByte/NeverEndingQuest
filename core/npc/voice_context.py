@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 import threading
 from dataclasses import dataclass, replace
 from types import MappingProxyType
@@ -289,6 +290,26 @@ def _load_json(path: str) -> Optional[Dict[str, Any]]:
 
 def _string(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _canonical_player_display_name(
+    player_name: str,
+    *,
+    path_manager: Any,
+    json_loader: Callable[[str], Optional[Dict[str, Any]]],
+) -> str:
+    """Prefer the sheet's proper name only for the same value-level alias."""
+    supplied = _string(player_name)
+    if not supplied:
+        return ""
+    player_path = path_manager.get_character_path(supplied)
+    sheet = json_loader(player_path)
+    sheet_name = _string(sheet.get("name")) if isinstance(sheet, Mapping) else ""
+    supplied_tokens = tuple(re.findall(r"[a-z0-9]+", supplied.casefold()))
+    sheet_tokens = tuple(re.findall(r"[a-z0-9]+", sheet_name.casefold()))
+    if supplied_tokens and supplied_tokens == sheet_tokens:
+        return sheet_name
+    return supplied
 
 
 def _batch_id(conversation_prefix: Iterable[Any], raw_input: str) -> str:
@@ -1001,6 +1022,11 @@ def build_ooc_packets_for_turn(
     packet_invalid_handler: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[Dict[str, Any], ...]:
     """Compose and deterministically rank up to four eligible OOC packets."""
+    player_name = _canonical_player_display_name(
+        player_name,
+        path_manager=path_manager,
+        json_loader=json_loader,
+    )
     roster = party_tracker_data.get("partyNPCs", [])
     if not isinstance(roster, list):
         return ()
