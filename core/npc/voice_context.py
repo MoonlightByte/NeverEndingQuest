@@ -398,7 +398,7 @@ def _accepted_evidence_summary(
 def _recent_scene_window(
     conversation_prefix: Iterable[Any], player_name: str
 ) -> list[Dict[str, str]]:
-    """Select the last three complete accepted player/DM messages."""
+    """Return the complete accepted player/DM scene window."""
     rows = []
     for message in conversation_prefix:
         if not isinstance(message, Mapping):
@@ -420,7 +420,7 @@ def _recent_scene_window(
                 rows.append(
                     {"speaker": "Dungeon Master", "kind": "narration", "text": text}
                 )
-    return rows[-3:]
+    return rows
 
 
 def _visible_companion_acts(
@@ -441,7 +441,7 @@ def _visible_companion_acts(
             params = action.get("parameters")
             params = params if isinstance(params, Mapping) else {}
             actor_id = _string(action.get("actorId") or params.get("actorId"))
-            if actor_id not in acts or len(acts[actor_id]) >= 2:
+            if actor_id not in acts:
                 continue
             text = _string(
                 action.get("description")
@@ -505,8 +505,6 @@ def _enrich_ooc_packets(
                         "summary": _string(row.get("summary")),
                     }
                 )
-                if len(evidence) >= 2:
-                    break
             relationship_rows.append(
                 {
                     "npcId": other_id,
@@ -581,8 +579,6 @@ def _packet_recent_events(records: Iterable[Mapping[str, Any]]) -> list[Dict[str
                 "summary": record.get("summary", ""),
             }
         )
-        if len(result) >= 3:
-            break
     return result
 
 
@@ -754,7 +750,7 @@ def _committed_combat_facts(encounter_data: Mapping[str, Any]) -> list[str]:
         facts = row.get("recentFacts", [])
         if not isinstance(facts, list):
             continue
-        for fact in facts[-3:]:
+        for fact in facts:
             if isinstance(fact, Mapping):
                 rendered.append(
                     "%s committed %s." % (
@@ -762,7 +758,7 @@ def _committed_combat_facts(encounter_data: Mapping[str, Any]) -> list[str]:
                         _combat_fact_text(fact, names_by_id),
                     )
                 )
-    return rendered[-8:]
+    return rendered
 
 
 def _committed_player_evidence(
