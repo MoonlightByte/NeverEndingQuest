@@ -360,6 +360,21 @@ def clear_all_files():
         shutil.rmtree("combat_logs")
         print("  ✓ Cleared combat_logs directory")
 
+    # Encounter JSON and recovery backups are authoritative live campaign
+    # state. The complete modules tree was copied in Phase 1; remove only
+    # those data files here and preserve persistent lock paths/inodes.
+    encounters_dir = Path("modules/encounters")
+    if encounters_dir.is_dir():
+        removed_encounters = 0
+        for encounter_path in encounters_dir.rglob("*"):
+            if encounter_path.is_file() and (
+                encounter_path.name.endswith(".json")
+                or encounter_path.name.endswith(".bak")
+            ):
+                encounter_path.unlink()
+                removed_encounters += 1
+        print(f"  [OK] Cleared {removed_encounters} live encounter state files")
+
     # Clear companion memories
     if os.path.exists("data/companion_memories"):
         shutil.rmtree("data/companion_memories")
