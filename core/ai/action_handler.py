@@ -3863,43 +3863,42 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             needs_conversation_history_update = True
             try:
                 lifecycle_context = parameters.get("lifecycleContext")
-                source_turn_id = hashlib.sha256(
-                    json.dumps(
-                        {
-                            "action": action,
-                            "historyLength": len(conversation_history or []),
-                        },
-                        ensure_ascii=True,
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ).encode("ascii")
-                ).hexdigest()[:32]
-                npc_name = str(npc.get("name") or "")
-                npc_file = ""
-                try:
-                    _lc_module = party_tracker_data.get("module", "").replace(" ", "_")
-                    _lc_pm = ModulePathManager(_lc_module)
-                    from updates.update_character_info import (
-                        find_character_file_fuzzy,
-                        normalize_character_name,
+                source_turn_id = str(
+                    getattr(invocation_claim, "logical_invocation_id", "") or ""
+                ).strip()
+                if not source_turn_id:
+                    warning(
+                        "T105 NPC lifecycle hook skipped after roster commit: "
+                        "the accepted turn has no logical invocation identity",
+                        category="character_updates",
                     )
-                    _matched = find_character_file_fuzzy(npc_name)
-                    if _matched:
-                        npc_file = _lc_pm.get_character_path(_matched)
-                    else:
-                        npc_file = _lc_pm.get_character_path(
-                            normalize_character_name(npc_name)
-                        )
-                except Exception:
+                else:
+                    npc_name = str(npc.get("name") or "")
                     npc_file = ""
-                _apply_party_npc_lifecycle(
-                    party_tracker_data,
-                    operation,
-                    npc_name,
-                    npc_file,
-                    lifecycle_context,
-                    source_turn_id,
-                )
+                    try:
+                        _lc_module = party_tracker_data.get("module", "").replace(" ", "_")
+                        _lc_pm = ModulePathManager(_lc_module)
+                        from updates.update_character_info import (
+                            find_character_file_fuzzy,
+                            normalize_character_name,
+                        )
+                        _matched = find_character_file_fuzzy(npc_name)
+                        if _matched:
+                            npc_file = _lc_pm.get_character_path(_matched)
+                        else:
+                            npc_file = _lc_pm.get_character_path(
+                                normalize_character_name(npc_name)
+                            )
+                    except Exception:
+                        npc_file = ""
+                    _apply_party_npc_lifecycle(
+                        party_tracker_data,
+                        operation,
+                        npc_name,
+                        npc_file,
+                        lifecycle_context,
+                        source_turn_id,
+                    )
             except Exception as exc:
                 warning(
                     "T105 NPC lifecycle hook raised after roster commit: %s: %s"
