@@ -64,6 +64,50 @@ def append_jsonl_record(path, record):
         _APPEND_FAILURES["count"] += 1
         return False
 
+
+def log_live_provider_envelope(task_id, messages, envelope, *, latency_seconds=0.0):
+    """Record one parent-observed provider-child terminal envelope."""
+    try:
+        value = dict(envelope)
+        correlation = value.get("correlation")
+        correlation = dict(correlation) if isinstance(correlation, dict) else {}
+        usage = value.get("usage")
+        usage = dict(usage) if isinstance(usage, dict) else {}
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "endpoint": str(task_id),
+            "model": str(value.get("model") or "unknown"),
+            "tokens": {
+                "prompt": int(usage.get("prompt_tokens", 0) or 0),
+                "completion": int(usage.get("completion_tokens", 0) or 0),
+                "total": int(usage.get("total_tokens", 0) or 0),
+            },
+            "request": {
+                "messages": messages,
+                "message_count": len(messages),
+            },
+            "response": {"content": str(value.get("content") or "")},
+            "metadata": {
+                "source": "live_provider_parent",
+                "taskId": str(task_id),
+                "operationId": str(correlation.get("operation_id") or ""),
+                "generation": correlation.get("generation"),
+                "correlationAccepted": bool(value.get("correlation_accepted")),
+                "kind": str(value.get("kind") or "unknown"),
+                "disposition": str(value.get("disposition") or "success"),
+                "errorClass": str(value.get("error_class") or ""),
+                "httpStatus": value.get("http_status"),
+                "provider": str(value.get("provider") or ""),
+                "finishReason": str(value.get("finish_reason") or ""),
+                "latencySeconds": max(0.0, float(latency_seconds)),
+            },
+        }
+        Path(MASTER_LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
+        return append_jsonl_record(MASTER_LOG_FILE, record)
+    except Exception:
+        _APPEND_FAILURES["count"] += 1
+        return False
+
 def log_api_call(endpoint_name, messages, response, metadata=None):
     """
     Log an API call with request and response.

@@ -673,7 +673,7 @@ def _reconstruct_response(envelope):
         finish_reason=envelope.get("finish_reason", "unknown"),
         provider=envelope.get("provider", ""),
         task_id=envelope.get("task_id"),
-        raw_response=None,
+        raw_response={"liveProviderCorrelation": dict(envelope["correlation"])},
         usage_invocation_id=envelope.get("usage_invocation_id"),
     )
 
@@ -842,7 +842,11 @@ def call_live_provider(
                 envelope = pickle.loads(output)
             except (EOFError, pickle.PickleError, ValueError, TypeError):
                 envelope = None
-        if (wizard_task or completion_required) and not isinstance(envelope, dict):
+        if (
+            wizard_task
+            or completion_required
+            or task_id in {"T105", "T108", "T113"}
+        ) and not isinstance(envelope, dict):
             envelope = {
                 "kind": "error",
                 "error_class": (
@@ -854,15 +858,37 @@ def call_live_provider(
                 "disposition": "retryable_transport",
                 "http_status": None,
                 "retry_after": None,
+                "correlation": {
+                    "operation_id": operation_id,
+                    "generation": generation,
+                },
             }
         expected_correlation = {
             "operation_id": operation_id,
             "generation": generation,
         }
+        correlation_accepted = (
+            isinstance(envelope, dict)
+            and envelope.get("correlation") == expected_correlation
+        )
+        if isinstance(envelope, dict):
+            envelope["correlation_accepted"] = correlation_accepted
+            if task_id in {"T105", "T108", "T113"}:
+                try:
+                    from utils.api_logger import log_live_provider_envelope
+
+                    log_live_provider_envelope(
+                        task_id,
+                        frozen_messages,
+                        envelope,
+                        latency_seconds=time.monotonic() - started,
+                    )
+                except Exception:
+                    pass
         if (
             isinstance(envelope, dict)
             and envelope.get("kind") == "success"
-            and envelope.get("correlation") == expected_correlation
+            and correlation_accepted
         ):
             return _reconstruct_response(envelope)
 
