@@ -477,7 +477,6 @@ class RelationshipStore:
             old_name = identity["displayName"]
             if old_name != display_name and old_name not in identity["aliases"]:
                 identity["aliases"].append(old_name)
-                identity["aliases"] = identity["aliases"][-32:]
             identity["displayName"] = display_name
             identity["sheetPath"] = normalized_path
             if active is not None:
