@@ -444,7 +444,7 @@ Files expected:
 - `docs/architecture/companion-memory.md`
 - `docs/architecture/npc-voice-ooc.md`
 - `docs/audits/2026-08-18-npc-memory-persistence-structural-map.md`
-- `docs/design/2026-08-31-npc-voice-context-balance.md`
+- live issue #193 and the NPC voice architecture records
 - `docs/npc-voice-flow-map.html`
 - any additional architecture doc whose exact contract changes are identified in C0.
 
@@ -506,13 +506,13 @@ are grouped only when origin, goal, disposition, and proof are identical.
 
 | Exact file/symbol/field | Origin ref | Original goal | Disposition/authority | Proof |
 |---|---|---|---|---|
-| `episode_extraction.flatten_scene(max_chars)` and tail slice | `975f8d7a` `feat(npc): T108 companion episode extraction service (Phase 1c)`; no issue in commit; `docs/design/companion-episodic-memory.md` | bound T108 scene input | RETIRED by #262; full scene | D1/A1 |
+| `episode_extraction.flatten_scene(max_chars)` and tail slice | `975f8d7a` `feat(npc): T108 companion episode extraction service (Phase 1c)`; no issue in commit | bound T108 scene input | RETIRED by #262; full scene | D1/A1 |
 | T108 numeric instructions in `episode_extraction._SYSTEM` | `975f8d7a`, same subject/reference | concise grounded episode output | RETIRED numeric ceilings; grounding retained | prompt diff/A1 |
-| T113 numeric instructions in `episode_backfill._SYSTEM` | `6af9804c` `feat(npc): W4 episodic backfill for existing games (T113)`; no issue in commit; `docs/design/2026-08-18-episodic-upgrade-backfill-plan.md` | concise compatible backfill | RETIRED numeric ceilings; grounding retained | prompt diff/A1b |
-| `episode_store._text(limit)`, `_sanitize_facts` break, `_unique_capped`, `_witness_ids` break | `1736380e` `feat(npc): canonical episode ledger store (Phase 1a)`; no issue in commit; `docs/design/companion-episodic-memory.md` | bounded canonical ledger | RETIRED by #262; type/whitespace/dedupe/identity retained | D1/A1 |
+| T113 numeric instructions in `episode_backfill._SYSTEM` | `6af9804c` `feat(npc): W4 episodic backfill for existing games (T113)`; no issue in commit | concise compatible backfill | RETIRED numeric ceilings; grounding retained | prompt diff/A1b |
+| `episode_store._text(limit)`, `_sanitize_facts` break, `_unique_capped`, `_witness_ids` break | `1736380e` `feat(npc): canonical episode ledger store (Phase 1a)`; no issue in commit | bounded canonical ledger | RETIRED by #262; type/whitespace/dedupe/identity retained | D1/A1 |
 | `episode_store` witness-cap health branch | `4797bfb9` `fix(npc): three bugs from independent feature-dev review`; no issue in commit; episodic design | make witness truncation loud | RETIRED because the truncation it reports retires; store-health reporting otherwise retained | D1/A1 |
 | Episode schema `episodes.*.headline.maxLength`, `canonicalSummary.maxLength`, `salientFacts.maxItems`, `entityTags.maxItems`, `entityTags.items.maxLength`, `witnessIds.maxItems`, `salientFact.oneLine.maxLength`, and `actorRef.label.maxLength` | `1736380e`, same subject/reference | fail-closed bounded model-derived episode content | RETIRED relax-only with writer; coordinate/provenance limits on module/locationId/locationName/boundaryTurnId/promptVersion remain | S1/D1 |
-| `profile_service.validate_profile.retention_counts` | `e5528086` `refactor(npc): preserve complete voice and sidecar text`; no issue in commit; `docs/design/2026-08-31-npc-voice-context-balance.md` | retain count-bounded T105 profile while removing text truncation | RETIRED; validation/dedupe retained | D2/A2 |
+| `profile_service.validate_profile.retention_counts` | `e5528086` `refactor(npc): preserve complete voice and sidecar text`; no issue in commit | retain count-bounded T105 profile while removing text truncation | RETIRED; validation/dedupe retained | D2/A2 |
 | `profile_service._unique(count)` signature and three count-bearing fallback callers | `82448d48` `refactor(npc): simplify the canonical voice flow`; no issue recorded; context-balance design | schema-valid compact fallback API | RETIRED count argument; deterministic non-empty fallback retained | D2/A2 |
 | `profile_service._unique` loop count guard | `7504a717`, same subject/reference | stop fallback arrays at requested count | RETIRED with signature/callers; uniqueness/order retained | D2/A2 |
 | T107 `arcSeeds` numeric instruction | `7504a717`, same subject/reference | compact grounded profile | RETIRED; grounding retained | D14/A2 |
