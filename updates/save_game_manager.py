@@ -79,6 +79,25 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 # Set script name for logging
 set_script_name(__name__)
 
+
+def _lifecycle_wait_reporter(operation):
+    last_second = [-1]
+
+    def report(elapsed):
+        second = max(0, int(elapsed))
+        if second == last_second[0]:
+            return
+        last_second[0] = second
+        from core.managers.status_manager import status_manager
+
+        status_manager.update_status(
+            "%s is waiting for a safe campaign boundary (%d seconds)"
+            % (operation, second),
+            True,
+        )
+
+    return report
+
 # Versioned rules guidance ships with the application. It is never campaign
 # state, and an older saved-game folder must not overwrite a newer installation.
 APPLICATION_OWNED_REFERENCE_FILES = frozenset(
@@ -90,7 +109,7 @@ APPLICATION_OWNED_REFERENCE_FILES = frozenset(
 
 
 @contextmanager
-def _active_combat_snapshot_lease(timeout_seconds=30.0):
+def _active_combat_snapshot_lease(timeout_seconds=30.0, wait_callback=None):
     """Keep a save/restore snapshot outside every combat commit window."""
     party = safe_json_load("party_tracker.json") or {}
     encounter_id = (party.get("worldConditions") or {}).get(
@@ -111,6 +130,7 @@ def _active_combat_snapshot_lease(timeout_seconds=30.0):
         encounter_path,
         suffix=".combat.lock",
         timeout_seconds=timeout_seconds,
+        wait_callback=wait_callback,
     ) as acquired:
         if acquired is None:
             raise RuntimeError("Combat is currently committing; retry this operation")
@@ -592,8 +612,15 @@ class SaveGameManager:
                 self._initialize_module_context()
                 from utils.module_refresh_lock import module_refresh_lock
 
-                with _active_combat_snapshot_lease():
-                    with module_refresh_lock() as refresh_acquired:
+                wait_reporter = _lifecycle_wait_reporter("Save")
+                with _active_combat_snapshot_lease(
+                    timeout_seconds=None,
+                    wait_callback=wait_reporter,
+                ):
+                    with module_refresh_lock(
+                        max_wait_seconds=None,
+                        wait_callback=wait_reporter,
+                    ) as refresh_acquired:
                         if not refresh_acquired:
                             return False, "Module refresh is active; retry save"
                         # P2b: save no longer consults the module-lifecycle store.
@@ -798,8 +825,15 @@ class SaveGameManager:
             from utils.module_refresh_lock import module_refresh_lock
 
             with _party_module_transition_lock():
-                with _active_combat_snapshot_lease():
-                    with module_refresh_lock() as refresh_acquired:
+                wait_reporter = _lifecycle_wait_reporter("Load")
+                with _active_combat_snapshot_lease(
+                    timeout_seconds=None,
+                    wait_callback=wait_reporter,
+                ):
+                    with module_refresh_lock(
+                        max_wait_seconds=None,
+                        wait_callback=wait_reporter,
+                    ) as refresh_acquired:
                         if not refresh_acquired:
                             return False, "Module refresh is active; retry restore"
                         # P2b: restore no longer consults the module-lifecycle

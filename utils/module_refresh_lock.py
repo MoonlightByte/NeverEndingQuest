@@ -43,7 +43,8 @@ def assert_module_refresh_lock_owned() -> None:
 
 
 @contextmanager
-def module_refresh_lock(max_wait_seconds: float = 5.0, poll_seconds: float = 0.05):
+def module_refresh_lock(max_wait_seconds: float = 5.0, poll_seconds: float = 0.05,
+                        wait_callback=None):
     # Advisory OS locks are released automatically when a worker dies. The
     # former O_EXCL sentinel could survive a crash forever and prevented the
     # very recovery operation that needed this boundary.  LOCK_FILE remains
@@ -63,5 +64,6 @@ def module_refresh_lock(max_wait_seconds: float = 5.0, poll_seconds: float = 0.0
         suffix=LOCK_SUFFIX,
         timeout_seconds=max_wait_seconds,
         poll_seconds=poll_seconds,
+        wait_callback=wait_callback,
     ) as acquired:
         yield acquired is not None

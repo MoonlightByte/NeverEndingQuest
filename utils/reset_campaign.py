@@ -28,6 +28,24 @@ RED = "\033[31m"
 CYAN = "\033[36m"
 RESET = "\033[0m"
 
+
+def _reset_wait_reporter():
+    last_second = [-1]
+
+    def report(elapsed):
+        second = max(0, int(elapsed))
+        if second == last_second[0]:
+            return
+        last_second[0] = second
+        from core.managers.status_manager import status_manager
+
+        status_manager.update_status(
+            "Reset is waiting for a safe campaign boundary (%d seconds)" % second,
+            True,
+        )
+
+    return report
+
 def print_header():
     """Print warning header"""
     print(f"\n{RED}{'='*60}")
@@ -205,7 +223,10 @@ def reset_global_state():
 
     # Global lock order: party transition -> module (when needed) -> campaign.
     with _party_module_transition_lock():
-        with module_refresh_lock() as refresh_acquired:
+        with module_refresh_lock(
+            max_wait_seconds=None,
+            wait_callback=_reset_wait_reporter(),
+        ) as refresh_acquired:
             if not refresh_acquired:
                 raise TimeoutError("Module refresh is active; retry reset")
             with _campaign_transaction_lock("modules/campaign.json"):
@@ -423,7 +444,10 @@ def perform_reset_logic():
     invocation_barrier = begin_invocation_supersession("reset")
     try:
         with _party_module_transition_lock():
-            with module_refresh_lock() as refresh_acquired:
+            with module_refresh_lock(
+                max_wait_seconds=None,
+                wait_callback=_reset_wait_reporter(),
+            ) as refresh_acquired:
                 if not refresh_acquired:
                     raise TimeoutError("Module refresh is active; retry reset")
                 with _campaign_transaction_lock("modules/campaign.json"):
