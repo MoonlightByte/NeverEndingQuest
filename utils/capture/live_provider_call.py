@@ -897,7 +897,10 @@ def call_live_provider(
         if (
             policy == "advisory"
             and completion_required
-            and envelope.get("disposition") == "retryable_transport"
+            and envelope.get("disposition") in {
+                "retryable_http",
+                "retryable_transport",
+            }
         ):
             _LOGGER.warning(
                 "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s",
