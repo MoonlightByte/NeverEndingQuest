@@ -1,18 +1,19 @@
 # Tranche B Fail-Forward, Custodian, and Single-Path Plan
 
-Status: **DESIGN ONLY -- NO IMPLEMENTATION AUTHORIZED**
+Status: **G1-G11 AMENDMENT UNDER PART 3 REVIEW -- NO CODE UNTIL CONVERGENCE**
 
 Date: 2026-09-03
 
 Branch: `integration/npc-voice-episodic`
 
-Pinned baseline: `6fc0f8f5db126ffd0818d2372ea69731bc1ad4d1`
+Pinned baseline: `03a8a9abe631fb0d763168981e416754bc2ad44d`
 
-The handoff expected `edf0d6ae`, but the already-approved #262 dispositions follow-up
-advanced both the local and remote branch to `6fc0f8f5`. This plan is grounded in that
-actual clean tracked tip. Four unrelated untracked runtime/plan artifacts remain untouched.
+The approved non-gated Tranche B C0-C10 commits advanced both the local and remote branch from
+`6fc0f8f5` to `03a8a9ab`. This amendment is grounded in that actual reviewed/pushed tip. Four
+unrelated untracked runtime/plan artifacts remain untouched.
 
-Authority: live GitHub issue #193 v2.7, fetched 2026-09-03. Part 1 was read in full,
+Authority: live GitHub issue #193 v2.8, fetched 2026-09-03 (updated
+`2026-09-03T05:39:27Z`). Part 1 was read in full,
 the relevant Part 2 system pages and architecture schematics were read before this plan,
 Part 3 governs review, Part 4 governs the controller/reviewer rhythm and simplifier pass,
 and Part 5 supplies the cited ratified rulings. If this document conflicts with live #193,
@@ -45,34 +46,12 @@ would remove a live contextual capability projection.
 
 S1 through S9 below: B1-B6, B8-B9, B13-B19, B23, and B25 from the ship-gate ledger.
 
-### Owner-gated, separately sliced but represented here
+### Owner-ratified amendment scope
 
-- D-TB-1 / B7: OOC voices completion-collected like combat, or best-effort.
-- D-TB-2 / B11: retire T045 legacy combat before merge, or grant a temporary owner waiver
-  with the already-ratified retirement next.
-- D-TB-3 / R4: retain or retire the top-three memory selection limit.
-- D-TB-4 / R5: retain or retire the four-companion OOC dispatch limit.
-- D-TB-5 / #193 D-6: replace Save/Load/Reset lock-acquisition deadlines with accepted-operation
-  queue/unbounded wait plus changing progress, or grant a temporary waiver.
-- D-TB-6 / #193 D-7: when a selected save contains a malformed optional companion-memory
-  family, allow family-scoped loud omission while completing the rest of Load, or choose a
-  different detected-corruption terminal.
-- D-TB-7 / #193 D-8: extend structural reissue to advisory retryable HTTP results, with remote
-  execution/cost identity explicitly accepted, or retain the present completed-failure bound.
-- D-TB-8 / #193 D-1: authorize the exact lifecycle-discoverable T113 maintenance worker
-  described in section 4.5, or select another explicit owner.
-- D-TB-9: resolve selected-save memory precedence. The handoff says pre-feature Load must not
-  wipe memory, while selected-save authority forbids retaining knowledge created after that
-  save. The recommendation is selected-save canonical > raw legacy migration > an explicitly
-  approved compressed-only adapter > empty canonical; never merge the pre-Load live sidecar.
-- D-TB-10: confirm the Reset encounter-writer entrant set and the ordered reuse of existing
-  party-transition plus per-encounter locks. If a legacy creator can evade that freeze, S7 is
-  gated on D-TB-2 retirement/waiver rather than adding an unproven global lock.
-- D-TB-11 / #198: authorize a Reset-visible lifecycle fence spanning every asynchronous
-  companion-memory writer (T108 episode capture and T113 upgrade) through its last sidecar/marker
-  commit. Without this, Reset may not clear those stores.
-
-No owner-gated slice may be implemented from this plan until its explicit ruling is recorded.
+Part 5 D-VS-1..11 ratifies G1-G11 in section 5. D-VS-4 grants the temporary T045 waiver;
+#282 owns retirement. D-VS-7 is explicitly interim and #284 owns redesign. D-VS-10 accepts the
+current entrant list interim and #285 owns later review. No decision in this scope remains open;
+implementation still waits for targeted Part 3 same-SHA convergence.
 
 ### Out of scope, tracked elsewhere
 
@@ -91,15 +70,15 @@ No owner-gated slice may be implemented from this plan until its explicit ruling
 
 | Pin | Frozen value |
 |---|---|
-| Dynamic branch revision | `6fc0f8f5db126ffd0818d2372ea69731bc1ad4d1`; `origin/main` `52990aa08f1108cdc5660c31fb862ab342871944`; main is an ancestor |
-| Policy | Live #193 v2.7, updated `2026-09-02T23:28:18Z` |
+| Dynamic branch revision | `03a8a9abe631fb0d763168981e416754bc2ad44d`; `origin/main` `52990aa08f1108cdc5660c31fb862ab342871944`; main is an ancestor |
+| Policy | Live #193 v2.8, updated `2026-09-03T05:39:27Z` |
 | Save/Load/Reset | Part 2 page 9 plus `docs/architecture/save-load-reset-lifecycle.md` |
 | NPC memory and voice | Part 2 page 7 (NPC systems) plus `companion-memory.md`, `npc-voice-ooc.md`, `npc-voice-combat.md` |
 | Startup/provider | Part 2 pages 10-11 plus `startup-boot.md`, `provider-routing.md` |
 | Browser/headless | Part 2 pages 10 and 13 plus `web-headless-surfaces.md` |
 | Failure classes | B1/B2; Part 5 Fork-3; open D-1/D-6/D-7/D-8 are not presumed closed |
 | Commit models | Save/restore: multi-file with pre-restore backup/rollback; sidecars: locked reread-copy-validate-write; Reset: durable backup before cleanup; capture: locked JSONL append |
-| Lock order/end states | Lifecycle authority before campaign mutation; no lifecycle lock across provider wait/disk; quiescent worker before Load/Reset; terminal future exactly once; persistent `.lock` identities never copied/unlinked |
+| Lock order/end states | Lifecycle authority before campaign mutation; this tranche introduces no new provider-under-lock wait; the pre-existing module-completion drain exception is tracked separately; quiescent worker before Load/Reset; terminal future exactly once; persistent `.lock` identities never copied/unlinked |
 | Provider/platform | Native Windows, real OpenAI; actual model recorded from capture, never assumed from binding |
 | Player promise | README `Recent Updates -> Current Main -> Player Interfaces` plus #193 Load-never-refused, honest progress, and restart-safe gameplay |
 | Persisted schemas | Existing save metadata, upgrade marker, sidecars, encounter JSON, and master JSONL; no new store |
@@ -109,16 +88,16 @@ No owner-gated slice may be implemented from this plan until its explicit ruling
 | Finding | Pinned code proof | Planned disposition |
 |---|---|---|
 | B1 | `updates/save_game_manager.py:451-495,832-878` makes SHA/schema manifest comparison a Load gate | S1 retires manifest authority; metadata remains diagnostic |
-| B2 | `updates/save_game_manager.py:946-978` cleans live companion memory even when an old save contains none | OWNER-GATED D-TB-9 selects exact precedence; S1 then neither blindly wipes nor leaks the later timeline |
+| B2 | `updates/save_game_manager.py:946-978` cleans live companion memory even when an old save contains none | D-VS-9 selects exact precedence; S1 then neither blindly wipes nor leaks the later timeline |
 | B3 | `updates/save_game_manager.py:653-661` tests `state_manifest` as a dict although the writer stores a list | S1 recognizes the actual completed-save representation |
 | B4 | `core/ai/action_handler.py:3866-3876` hashes action content and history length for relationship dedup | S2 uses the accepted invocation's value identity |
 | B5 | `core/npc/voice_service.py:929-944` publishes a future before `Thread.start()` and does not terminalize it when start raises | S3 resolves the future before unwinding |
 | B6 | `core/npc/voice_context.py:129-258` can return from recall/pre-dispatch failure without launching remaining packets | S3 falls back to each original packet independently and records each disposition |
-| B7 | OOC collection policy is an owner choice | Separate gated slice D-TB-1 |
+| B7 | OOC collection returned before all dispatched work completed | G3 completion-collects every dispatched actor under D-VS-3 |
 | B8 | `core/managers/combat_orchestrator.py:101-140` accepts a second unversioned voice-map shape | S4 deletes the fallback shape |
 | B9 | `core/ai/conversation_utils.py:619-655` selects a legacy renderer when the canonical store is absent/read-only | S4 retains one canonical renderer; read-only remains health, not a mode |
-| B11 | T045 legacy runtime remains | Separate gated slice D-TB-2 |
-| B13 | `main.py:7090-7101` synchronously runs `per_run_cap=40` backfill before first input | S5 makes backfill advisory and post-prompt, with no cap |
+| B11 | T045 legacy runtime remains | D-VS-4 grants a temporary waiver; retirement remains #282 |
+| B13 | `main.py:7090-7101` synchronously runs `per_run_cap=40` backfill before first input | G8 removes the cap while preserving a one-time blocking build only for missing pre-feature state |
 | B14 | Three `docs/design/` files carry branch doctrine | S9 deletes them; #193 remains the sole doctrine |
 | B15 | `relationship_store.assert_store_writable` has zero callers, but `match_owned_capabilities` is live at `combat_agent.py:188-193` | S4 deletes only the dead refusal helper and preserves the live matcher |
 | B16 | T105 catches/skip paths are DEBUG-only or silent in voice context/main | S3 uses existing warning and `VoiceTelemetry` surfaces |
@@ -136,7 +115,7 @@ The selected save directory and its files are restore input. `state_manifest` is
 diagnostic metadata, never an authorization oracle. Load may warn about mismatches but may not
 refuse the requested restore. It does not invent missing saved data.
 
-For `data/companion_memories`, D-TB-9 will resolve the handoff/timeline conflict. The recommended
+For `data/companion_memories`, D-VS-9 resolves the handoff/timeline conflict. The ratified
 precedence is selected-save `episode_ledger.json` schema v1 plus `npc_agent_state.json` schema
 v2; else full raw `*_memories.json` forward
 migration; else compressed-only migration under a ratified exact mapping; else fresh empty
@@ -154,7 +133,7 @@ completion evidence. Replaying `saveGame` returns the existing save without dele
 Current restore is a locked multi-file copy with a pre-restore backup and compensating rollback;
 it is not an atomic directory replacement. This plan preserves and tests that real commit model.
 The current five-second module-refresh and thirty-second combat-lock acquisition terminals are
-not preserved as acceptable. The recommended D-TB-5 result queues or waits for the accepted
+not preserved as acceptable. D-VS-5 requires the accepted
 Save/Load/Reset operation without an abandonment deadline, displays changing truthful progress, and
 executes it once authority becomes available. The implementation is gated on the owner's D-6
 ruling and must also trace `_assert_no_active_campaign_completion` before mutation.
@@ -176,11 +155,10 @@ remain governed by their existing transaction.
 - One packet's construction/dispatch failure cannot erase siblings.
 - Completed-invalid T105 retains the ratified Fork-3 one-beat degradation. No fabricated
   advice enters T096.
-- Retryable transport keeps the existing fresh-child structural reissue. Retryable HTTP
-  408/409/429/5xx is owner-gated by D-TB-7/#193 D-8 because remote execution, cost, identity,
-  concurrency, and backoff are not yet ratified. The recommendation is same-logical-call fresh
-  reissue with existing fencing and telemetry; until ratified, current completed-failure behavior
-  remains. Deterministic 4xx remains a completed failure.
+- Retryable transport keeps the existing fresh-child structural reissue. Under D-VS-7,
+  typed retryable HTTP 408/409/429/5xx enters that same existing reissue branch with its existing
+  fencing and telemetry. No new loop, retry count, or backoff is added; #284 owns redesign.
+  Deterministic 4xx remains a completed failure.
 - Warnings/telemetry are observational and cannot themselves break play.
 
 ### 4.4 Single representations
@@ -197,7 +175,7 @@ The production legacy-writer inventory is complete at the pinned SHA:
 
 - `main.py:7083-7088` calls `check_and_initialize_on_startup` (origin `f01bbc8e`) to build
   legacy memory from journal history. S5's canonical T113 upgrade owns that goal, so the runtime
-  call retires only after D-TB-8 is ratified and C5/T113 passes live acceptance; the module may
+  call retires only after G8/T113 passes live acceptance; the module may
   remain an offline migration utility.
 - `core/ai/cumulative_summary.py:749-790` calls `CompanionMemoryManager` and the compressor
   (origins `5d922597`, `fc775168`, `e2708c8c`) inside
@@ -214,16 +192,18 @@ The production legacy-writer inventory is complete at the pinned SHA:
   compressor remain offline migration/verification tools, not runtime writers.
 - `RelationshipStore.migrate_legacy_identity` remains the single forward adapter for full raw
   `*_memories.json`, guarded by its stored migration value and exact-memory dedup. It does not
-  make new legacy data. Its compressed-only extension is owner-gated by D-TB-9.
+  make new legacy data. Its compressed-only extension follows D-VS-9.
 
 ### 4.5 Startup backfill
 
-Startup exposes the actionable prompt first. The recommended D-TB-8 design registers exactly one
-process-local `EpisodeUpgradeWorker` under the same lifecycle arbiter used by Save/Load/Reset/
-quit before publishing its thread. Its authority spans T113 provider work, episode/relationship
-sidecar commits, and marker advancement. It is not attached to a foreground player-turn scope,
-so ordinary turn closure cannot orphan or repeatedly cancel it. No new persisted state is added;
-the existing upgrade marker is its crash-resume receipt. Remove `per_run_cap=40`.
+Startup performs zero memory work when canonical files and the completion marker are valid. A
+genuinely history-free game creates valid empty canonical state without a model call. Only a
+missing pre-feature state with history enters one uncapped blocking build, with visibly changing
+popup/status until canonical files and marker are terminal. The build registers one maintenance
+scope under the same lifecycle arbiter used by Save/Load/Reset/quit before publishing work. Its
+authority spans T113 provider work, episode/relationship sidecar commits, and marker advancement.
+No new persisted state is added; the existing upgrade marker is its crash-resume receipt. Remove
+`per_run_cap=40`.
 
 Publication order is claim -> publish worker reference -> `Thread.start`. Start failure marks the
 worker terminal and clears the claim in `finally`. Provider completion alone is not quiescence;
@@ -235,8 +215,8 @@ seal the worker immediately, genuinely terminate/reap its provider child, wait o
 already-entered sidecar/marker commit to become quiescent with changing progress, then mutate.
 A stale worker cannot write after those operations.
 
-The worker starts after the first actionable prompt rather than behind it, and resumes from the
-marker on the next session if interrupted. Retire the cap mechanism end to end: delete
+The one-time build completes before gameplay context can render; if interrupted, it resumes from
+the marker on the next session. Retire the cap mechanism end to end: delete
 `per_run_cap`, `max_entries`, their forwarding, the cap-only `paused` branch, and related copy.
 Progress uses the shared status sink but S5 must add
 the missing React event contract/reconnect terminal handling: start/progress are running;
@@ -245,8 +225,8 @@ T113 call, not only every 25 records. T113 uses the existing live-provider child
 second retry loop. Its internal result distinguishes committed, deterministic honest-no-episode,
 retryable/unavailable, and completed-invalid. The marker advances only for committed or
 honest-no-episode; unavailable/invalid leaves that entry current for structural reissue or the
-next authorized resume. This lifecycle is justified only by observed B13/#258 and is owner-gated
-by D-TB-8/D-1; retryable HTTP also obeys D-TB-7/D-8.
+next authorized resume. This lifecycle is justified only by observed B13/#258 and ratified by
+D-VS-8; retryable HTTP obeys D-VS-7's interim structural-reissue ruling.
 
 ### 4.6 Capture fingerprint
 
@@ -345,7 +325,7 @@ provider schematics, focused tests.
 - Record schema rejects through existing store-health evidence.
 - After D-TB-7, route retryable HTTP failures through the existing structural reissue path;
   otherwise preserve their present completed terminal.
-- Do not resolve D-TB-1 here: collection policy remains owner-gated.
+- G3 resolves collection policy under D-VS-3; every dispatched OOC actor completion-collects.
 
 ### C4 / S4 -- Single canonical paths
 
@@ -366,7 +346,7 @@ startup schematics, focused tests.
 - Delete zero-caller `assert_store_writable`.
 - Preserve active `match_owned_capabilities` and its T096 consumer unchanged.
 
-### C5 / S5 -- Prompt-first resumable backfill
+### C5 / S5 -- One-time blocking canonical memory build
 
 Files: `main.py`, `core/npc/episodic_upgrade.py`, `core/npc/episode_backfill.py`,
 `utils/capture/live_provider_call.py`, applicable headless/web status contracts and stores,
@@ -374,7 +354,8 @@ startup/provider/memory/web schematics, focused tests.
 
 - Remove synchronous startup invocation and the complete `per_run_cap`/`max_entries` cap path,
   including forwarding and cap-only paused terminal.
-- After D-TB-8, start/resume through the exact lifecycle-discoverable maintenance worker in 4.5.
+- Under D-VS-8, start/resume the one-time missing-state build through the exact
+  lifecycle-discoverable maintenance scope in 4.5; valid current state performs zero work.
 - Reuse marker idempotency and provider-child reaping; add only the missing UI status consumers
   and terminal semantics required to make the existing progress surface truthful.
 
@@ -426,26 +407,114 @@ replacement doctrine document.
 - No behavior expansion.
 - Re-run sentinel greps, schema/sidecar scans, build/tests, and the full consumer map.
 
-### Owner-gated slices
+### Owner-ratified gated slices (#193 v2.8, D-VS-1..11)
 
-Only after rulings:
+These slices are now authorized. They land one at a time after targeted FULL Part 3 review.
 
-- G1 / D-TB-1: implement exactly the chosen OOC collection policy using the existing batch
-  future set; no third policy.
-- G2 / D-TB-2: either execute the separately approved T045 retirement/migration plan or record
-  the precise temporary waiver. This tranche does not improvise retirement.
-- G3 / D-TB-3 and G4 / D-TB-4: execute only the ratified cap dispositions.
-- G5 / D-TB-5: C1 and C7 may not change Save/Load/Reset waiting until the D-6 ruling.
-- G6 / D-TB-6 and G7 / D-TB-7: C1/C3 may not cross the corresponding owner-open Part 5
-  authority until the ruling is recorded.
-- G8 / D-TB-8: C5 must ship and pass T113 acceptance before C4 may retire the startup legacy
-  initializer; neither crosses D-1 without the ruling.
-- G9 / D-TB-9: C1/C4 may not alter memory restore/migration/rendering until precedence and any
-  compressed-only mapping are ratified.
-- G10 / D-TB-10: C7 may not clear encounter data until the writer entrant/freeze audit is
-  accepted; an uncovered T045 writer routes to D-TB-2.
-- G11 / D-TB-11: C7 may not clear memory state until T108/T113 and every sidecar writer are
-  lifecycle-discoverable and quiescent through their final commit.
+- **G1 / D-VS-1 -- all eligible OOC companions.** Remove the `limit=4` public argument and the
+  `min(4, ...)` selection clamp from `build_ooc_packets_for_turn`. Keep relevance/fairness ordering
+  for deterministic packet order, but call `rank_ooc_candidates(..., limit=None)` so every
+  eligible, valid roster companion receives one actor-isolated packet. Sentinel grep must prove
+  no four-companion OOC runtime limit remains.
+- **G2 / D-VS-2 -- relevance threshold, no fixed memory count.** In
+  `core/ai/conversation_utils._companion_memory_rows`, retain the current pinned/location/
+  salience/grain ordering. The current data contract has no named numeric threshold: its closest
+  value boundary is schema-valid canonical POV membership plus `pinned`, current-location, and
+  `salienceScore` in [0,1]. Make relevance explicit without a new score: include pinned rows,
+  current-location rows, and rows whose existing `salienceScore > 0`; a zero-score, unpinned,
+  elsewhere row is not relevant. Remove the fixed `limit=3` slice and slot-replacement algorithm.
+  In T112 recall, keep the existing `MATCH_THRESHOLD`, exact-value inclusion, and top-two
+  relevance-ranked episode selection under explicit Part 5 D-272-1 authority. The single
+  `arc_seeds[:1]` goal selection at both OOC/combat packet builders remains under that same
+  authority. These are the two ratified semantic selections, not unowned truncation.
+  This is deliberately interim; #283 owns
+  affinity-driven redesign. The authorized relevance boundary uses existing canonical values;
+  it adds no new score, model call, or store.
+- **G3 / D-VS-3 -- OOC completion collection.** Give `PreparedOocVoiceHandle.collect` a
+  completion-required path. Every direct, enriched, and failure-fallback OOC `dispatch_batch`
+  call sets `completion_required=True`. Before collecting T105, wait for the predecessor T112
+  scope to finish and publish either its enriched handle or its original-packet fallback; a
+  T112 thread publication/start failure terminalizes its scope/future and installs that fallback
+  before unwinding. Then use the existing `VoiceBatchHandle.collect_to_completion` plus status
+  sink. `inject_voice_context` completion-collects every dispatched OOC packet before T067 sees
+  the immutable voice block, then seals only already-terminal scopes.
+  Pending work is never pre-empted or cancelled merely because T067 is ready. Save/Load/Reset/quit
+  supersession still seals and reaps the whole batch. One changing, truthful progress owner reports
+  completed/total/elapsed while waiting. No deadline or third collection policy is added.
+- **G4 / D-VS-4 -- legacy waiver.** Make no T045-specific change. Shared-stack improvements may
+  continue to flow through existing seams, but all legacy-only findings remain owned by #282.
+- **G5 / D-VS-5 -- lifecycle locks wait and reclaim.** Pass `timeout_seconds=None` through the
+  existing campaign/combat/module-refresh lock stack for Save, Load, and Reset. No busy-lock result
+  may become a refusal. Preserve the existing lock order. The existing OS advisory lock is released
+  automatically when its process dies, and the persistent lock-path artifact is intentionally not
+  ownership. First prove that behavior in code and the killed-holder native arm; add no PID
+  metadata and never unlink the lock inode. No new lock family, watchdog, or give-up deadline.
+  Progress remains visibly changing while an accepted lifecycle operation waits. Preserve the
+  pre-existing module-completion drain and its current party/completion ordering unchanged in this
+  tranche. D-VS-5 makes lifecycle waiters wait safely for that live holder without a deadline;
+  provider-under-lock debt is tracked by #286, not silently normalized as ideal.
+- **G6 / D-VS-6 -- repair companion memory on Load and preserve clean copies.** At the existing
+  locked save/restore boundary, validate `npc_agent_state.json` and `episode_ledger.json` through
+  their existing schemas/loaders. The marker has no schema: its value-valid form is exactly the
+  existing `is_complete` predicate or the existing resumable in-progress fields with nonnegative
+  indices; every other present value is malformed. Every successful Save already copies the full
+  memory directory into the selected save, and every Load already creates the pre-mutation rollback
+  backup; preserve those patterns, and ensure only schema/value-valid files are chosen as clean
+  recovery inputs. Never use the pre-Load live rollback copy as selected-timeline memory.
+
+  Load becomes a two-phase operation inside the already-held invocation-supersession barrier:
+  phase 1 acquires party -> combat -> module -> campaign, validates the target, creates the rollback
+  backup, and restores selected bytes; then it releases filesystem locks while retaining Load's
+  lifecycle/supersession authority. Phase 2 validates the restored memory family. Prefer a valid
+  selected-save file or valid backup carried inside that selected save. Missing/malformed/schema-
+  incompatible files are repaired, never refused: rebuild canonical state from the now-restored
+  selected save's conversation history and journal through G8's one-time uncapped T113 function.
+  Only after repair reaches a terminal marker does Load end its supersession barrier and report
+  success. On repair failure, keep truthful changing progress and structurally reissue healable
+  provider work; malformed source rows are skipped by the existing per-entry contract, never
+  converted into trusted state. The existing rollback still owns ordinary copy/write exceptions.
+  Delete the live `_build_legacy_companion_memory_message` fallback branch after canonical repair
+  is established: old data feeds this one canonical rebuild path, never a second renderer.
+- **G7 / D-VS-7 -- retryable HTTP.** Admit only the existing typed `retryable_http` disposition
+  (408/409/429/5xx) to the already-existing structural full-reap/fresh-generation reissue branch.
+  Deterministic 4xx remains a completed error. Add no loop, retry count, deadline, or backoff
+  constant; #284 owns replacement of the mechanism.
+- **G8 / D-VS-8 -- one-time uncapped build.** Remove `per_run_cap` from the startup call and
+  backfill call graph. If canonical memory files and the complete marker are valid, startup does
+  zero memory work. A genuinely history-free new game creates valid empty canonical files/complete
+  marker without a model call. A pre-feature game with history performs one uncapped, blocking T113
+  build with visibly changing progress, writes the existing completion marker, and never recurs.
+  Reuse `LiveTurnScope` plus the existing detached startup/welcome registry as the maintenance
+  parent (never a second registry): register it before starting any worker, register one T113
+  `AdvisoryProviderScope` before its logical backfill begins, explicitly pass that child through
+  `capture_and_fanout(..., _live_selected="advisory", _detached_scope=child)`, and publish
+  `quiescent` only after provider, sidecar, and marker terminals. Generalize the existing child
+  opener only enough to recognize the registered detached parent. Thread/start failure finishes
+  the child and records a loud terminal. Save, Load, Reset, and quit seal/reap the maintenance
+  child, wait only for entered commit quiescence, and leave the marker resumable before their
+  lifecycle mutation; Save never queues behind the whole uncapped build. No new coordinator or
+  store.
+- **G9 / D-VS-9 -- pre-feature save rebuild.** Loading a save with no memory family never retains
+  the later live timeline. After selected-save restoration, run the same G6/G8 one-time uncapped
+  builder against that save's restored conversation history and journal, with the same popup and
+  completion marker. Canonical repair/rebuild completes before any context rendering; the runtime
+  legacy companion-memory renderer is deleted. This is one function and one policy, not a second
+  migration or render path.
+- **G10 / D-VS-10 -- accepted Reset entrant list.** Retain the already-shipped encounter cleanup
+  and freeze encounter creation with the existing party-transition lock before backup through
+  cleanup. Do not add a global lock. #285 owns later owner review of the accepted interim list.
+- **G11 / D-VS-11 -- Reset async-writer fence.** Before Reset backs up or clears memory, seal the
+  active, detached, or lifecycle-discoverable closing scope's T108/T113 advisory children and wait
+  for their reapers/quiescence. Extend the existing `_scope_guard` registry, not its lock family:
+  `close_live_turn_scope` moves a scope from active to a closing set before exposing the next-turn
+  slot, and removes it only after every child reaches commit-terminal quiescence. Lifecycle
+  supersession snapshots and seals active plus closing scopes under that same guard, then waits
+  outside the guard. No provider or disk operation runs under `_scope_guard`.
+  T108's current bare executor submits are first adapted to publish an `AdvisoryProviderScope`
+  before `submit`; start failure finishes it, and the worker finishes it only after provider and
+  sidecar commits. T113 uses G8's detached registered child. Reset uses the existing scope child
+  registry plus invocation supersession; add no lock or store. A result fenced by Reset cannot
+  commit afterward. Reset then backs up and clears within the existing lock order.
 
 ## 6. GL-1 behavioral contract
 
@@ -453,26 +522,26 @@ Only after rulings:
 |---|---|---|
 | Load selected save | PRESERVED and strengthened: no metadata refusal | A1 |
 | Manifest helps diagnose provenance | PRESERVED as non-authoritative metadata | D1/A1 |
-| Malformed optional sidecar never becomes trusted input | PRESERVED; recommended family-scoped loud omission is OWNER-GATED | D1/A1 negative control |
+| Malformed optional sidecar never becomes trusted input | PRESERVED; repair from a valid selected/backup copy or regenerate from restored history under D-VS-6 | D1/A1 negative control |
 | Pre-feature saves remain loadable | PRESERVED | A1 |
 | Save replay is idempotent | PRESERVED/fixed | A2 |
 | Relationship event applies once per accepted turn | PRESERVED/fixed | A3 |
 | Distinct equal-text turns remain distinct | PRESERVED/fixed | A3 |
 | T105 packets are actor-isolated | PRESERVED/strengthened | A4 |
 | Completed-invalid T105 degrades one beat | PRESERVED | A4 |
-| Provider transport work structurally reissues | PRESERVED; HTTP extension OWNER-GATED | A4 |
+| Provider transport work structurally reissues | PRESERVED; typed retryable HTTP joins the same existing reissue under D-VS-7 | A4 |
 | One canonical voice envelope | PRESERVED; fallback RETIRED | D4/A5 |
-| Valid legacy compressed memory remains available | PRESERVED by forward import before renderer retirement | D4/A5 |
+| Valid legacy compressed memory remains available | PRESERVED by one-time rebuild from restored history/journal; #282 owns T045 retirement | D4/A1/A5 |
 | One canonical memory renderer | PRESERVED; alternate renderer RETIRED after import | D4/A5 |
 | Capability candidates reach T096 | PRESERVED; live matcher retained | D4/A5 |
 | `assert_store_writable` loud corrupt-store goal (origin `a4cb6174`) | PRESERVED through `_latch_read_only`, `record_store_health`, and planned schema-reject health; zero-caller helper RETIRED | D3/D4 grep + A5 |
-| Legacy compressed renderer compatibility (origin `b901d68c`) | PRESERVED through D-TB-9 selected-save forward adaptation; alternate render branch RETIRED | D4/A1/A5 |
+| Legacy compressed renderer compatibility (origin `b901d68c`) | PRESERVED through D-VS-9 one-time selected-save rebuild; alternate render branch RETIRED | D4/A1/A5 |
 | Unversioned combat envelope custom-caller compatibility (origin `82448d48`) | RETIRED under ratified Single-Path after all production producers are enumerated as versioned | D4/A5 |
-| Startup legacy initializer (origin `f01bbc8e`): reconstruct old memories from journal | PRESERVED through canonical T113 backfill; runtime call RETIRED only after D-TB-8 plus C5 live acceptance, offline utility retained | D4/D5/A5/A6 |
+| Startup legacy initializer (origin `f01bbc8e`): reconstruct old memories from journal | PRESERVED through canonical one-time uncapped T113 build under D-VS-8; ordinary valid startup performs zero work | D4/D5/A5/A6 |
 | Dead cumulative-summary legacy memory block (origins `5d922597`/`fc775168`/`e2708c8c`): historical location-memory goal | Zero production callers; dead block RETIRED. Live goal remains owned by `main.py` T108 location-close seams | D4 call graph + A5 real boundary |
 | Disabled transition legacy writers (origin `b7f7a863`, disabled `4b53aace`): recovery-compatible memory enrichment | PRESERVED by canonical async capture/backfill; unreachable bodies RETIRED while checkpoint `not_applicable` shape remains | D4/A5 legacy checkpoint replay |
 | Legacy manager/compressor offline migration and verification | PRESERVED as non-runtime tools; zero production writer-call gate | D4 grep/import smoke |
-| Raw legacy forward import (origin `7504a717`) | PRESERVED as the sole idempotent runtime migration adapter; compressed extension OWNER-GATED D-TB-9 | D4/A1/A5 |
+| Raw legacy forward import (origin `7504a717`) | PRESERVED only where already valid; missing pre-feature memory rebuilds once under D-VS-9 | D4/A1/A5 |
 | Startup produces an actionable prompt | PRESERVED/strengthened | A6 |
 | Backfill resumes idempotently | PRESERVED | A6 |
 | Captures carry source provenance | PRESERVED without Git/subprocess | A7 |
@@ -489,11 +558,11 @@ Only after rulings:
 - Authentic pre-branch save with no manifest and no companion sidecar.
 - Current save with list manifest.
 - Altered sidecar/hash metadata.
-- Malformed present sidecar negative control: under recommended D-TB-6, overall Load succeeds,
+- Malformed present sidecar negative control: under D-VS-6, overall Load succeeds,
   unrelated saved state applies, D-TB-9's validated selected-save/empty result is installed,
   pre-Load knowledge does not survive, and omission is loud.
 - Repeated `saveGame` against an existing completed folder, with before/after tree hash.
-- Hold module-refresh and combat locks past their former deadlines: under recommended D-TB-5,
+- Hold module-refresh and combat locks past their former deadlines: under D-VS-5,
   accepted Save/Load/Reset waits with changing progress then executes without resubmission.
 
 ### D2 Identity matrix
@@ -528,11 +597,12 @@ Only after rulings:
 - A location-close segment produces one canonical episode and no new `*_memories.json` or
   `memories_compressed.json`; T113 covers authentic historical journal state.
 
-### D5 Startup/backfill matrix
+### D5 One-time memory-build matrix
 
-- Zero, one, and many candidate markers.
-- Prompt marker precedes any T113 call.
-- Concurrent accepted input remains playable while backfill progresses.
+- Valid complete, genuinely history-free, and missing pre-feature states.
+- Valid complete state performs zero T113 work; history-free state creates a valid empty terminal.
+- Missing pre-feature state blocks context rendering behind one uncapped build while native web
+  and headless surfaces show changing truthful progress.
 - Save/Load/Reset/quit seals and reaps the current child, waits for commit quiescence, then runs;
   restart/next session resumes the unchanged current marker entry without duplicate or skip.
 - No per-run cap and no second local orchestrator.
@@ -581,7 +651,7 @@ Only after rulings:
 
 ## 8. Native Windows real-OpenAI acceptance
 
-Every arm records the #193 v2.7 evidence block: pinned commit, actual command/surface, real
+Every arm records the #193 v2.8 evidence block: pinned commit, actual command/surface, real
 provider/model from capture, parsed request payload at its consumer, pre/post authoritative
 state, player-visible stream, lifecycle/quiescence receipts, timing, and exact verdict. Synthetic
 tests may support but cannot substitute.
@@ -593,7 +663,7 @@ whose manifest/sidecar bytes were altered. Both requests are accepted and applie
 companion memory follows D-TB-9 selected-save precedence: canonical, raw-only, compressed-only,
 and no-memory fixtures receive separate disk/player-visible verdicts and never retain post-save
 knowledge accidentally. A present malformed sidecar
-follows D-TB-6; under the recommended ruling, the overall Load succeeds, unrelated saved state
+follows D-VS-6; the overall Load succeeds, unrelated saved state
 applies, the chosen validated selected-save/empty representation is installed, no pre-Load
 knowledge survives, and a loud family-scoped omission is visible.
 Hold both module-refresh and combat locks beyond their former acquisition budgets, then release:
@@ -641,13 +711,14 @@ the T108 request/result and canonical episode/relationship writes; prove no new
 grounded event reaches later companion context/narration. Record player-visible transition/
 history output and successful, omitted, invalid, and degraded counts.
 
-### A6 Prompt-first backfill
+### A6 One-time blocking memory build
 
-Start an authentic save with many upgrade candidates. The actionable prompt appears before
-T113. Submit a turn while visible progress changes. Play remains responsive, completed entries
-persist once, and restart resumes remaining work with no cap or duplicate. Run a >10-second call,
-an error terminal, reconnect hydration, and Save/Load/Reset/quit: browser and headless status must
-change truthfully, terminate cleanly, and no stale worker may write after lifecycle mutation.
+Start an authentic pre-feature save with many upgrade candidates. Before context rendering, one
+uncapped T113 build runs while native browser and headless surfaces show changing truthful
+progress. Completed entries persist once, and restart resumes remaining work with no cap or
+duplicate. A valid-current startup separately proves zero T113 work and no popup. Run a >10-second
+call, an error terminal, reconnect hydration, and Save/Load/Reset/quit: status must change
+truthfully, terminate cleanly, and no stale worker may write after lifecycle mutation.
 
 ### A7 No-freeze fingerprint
 
@@ -668,7 +739,8 @@ memory lock and prove its persistent identity and canonical bytes survive. On na
 hold a real pre-existing encounter writer while Reset begins: Reset must wait, back up its
 committed encounter, clear it, then reject/block a late writer so no stale encounter reappears.
 If no product-legal writer overlap can be reached, that sub-arm is `NOT-REACHED` and D-TB-10
-remains blocked rather than passing on the deterministic control.
+retains its ratified interim disposition on the deterministic entrant/lock trace; #285 owns the
+later owner review. The live sub-arm is not mislabeled as pass.
 
 ### A9 Child-call evidence
 
@@ -686,6 +758,41 @@ start/changing-progress/completion messages, reconnect hydration, restored recen
 and no technical diagnostic in the player stream. The gameplay command input/composer is also
 disabled with the exact truthful reason; text entered before/after the boundary is either durably
 accepted once or remains visibly unsubmitted, never silently lost.
+
+### A11 Ratified gated-slice acceptance (supersedes stale A1/A4/A6 wording)
+
+- **Six-companion OOC:** assemble six distinct companions through the owner-authorized fixture
+  procedure using six separately schema-valid character sheets and canonical party references;
+  preserve a provenance manifest for every copied/built sheet. Submit one real OpenAI OOC turn.
+  Capture six actor-isolated T105 requests, six terminal collections before
+  T067, one DM request containing all six advisory rows, and grounded player narration. Record
+  input-to-prompt wall time and voice batch wall time; expected cost is measured, never asserted.
+- **Corrupt-memory Load:** alter an authentic saved `npc_agent_state.json` after Save. Load must
+  apply unrelated selected-save state, visibly report repair, restore the last clean selected/
+  backup copy or run the same uncapped backfill, then produce a grounded real recall. No malformed
+  bytes or post-save memory survive.
+- **Pre-feature Load:** load an authentic save with no companion-memory family. The restored save's
+  conversation and journal feed one uncapped T113 build; native Playwright proves the progress
+  popup appears, changes, survives reconnect hydration, and reaches a terminal, while headless
+  protocol records the same lifecycle. The complete marker is durable, and a later real turn
+  recalls a true saved event.
+- **Dead-holder lock:** a separate native process acquires each relevant advisory lock and is
+  killed. Load/Save/Reset then acquire the same stable lock identity without refusal or deadline;
+  a living-holder control waits with changing status and proceeds once released.
+- **Valid-memory startup:** launch a current game with schema-valid sidecars and a complete marker.
+  The actionable prompt appears with zero T113 call, zero memory mutation, and no progress popup.
+- **Retryable HTTP:** a naturally occurring real OpenAI typed 408/409/429/5xx T105 result is
+  recorded, fully reaped, and reissued by the existing generation path; deterministic 400
+  completes and does not reissue. If real OpenAI does not produce the retryable status during the
+  approved window, record `NOT-REACHED`; typed deterministic controls remain supporting evidence.
+- **Reset writer fence:** naturally reach or controllably hold existing T108/T113 child work, issue
+  Reset, and prove seal -> reap/quiescence -> backup -> clear ordering with no post-Reset write. If
+  the child branch cannot be reached through a legal fixture, report `NOT-REACHED`; the deterministic
+  lifecycle trace remains supporting evidence rather than a false live pass.
+
+Every arm includes the #193 v2.8 evidence block and inspects native Windows disk/protocol/master
+capture. Real OpenAI is mandatory where a model call is part of the behavior. No state-edit
+substitute may stand in for the final player-visible recall/narration assertion.
 
 ## 9. Simplifier questions
 
@@ -710,7 +817,8 @@ Freeze this file and SHA-256, then dispatch blind independent reviewers against 
 - Single-Path Sentinel: restore, memory renderer, voice envelope, provider and capture paths.
 - Consumer/Compatibility DA: old saves/sidecars, every changed field/function reader/writer,
   UI/history/capture consumers.
-- Player-Experience Reviewer: prompt-first, visible truthful progress/errors, no mechanical drift.
+- Player-Experience Reviewer: blocking work is visibly truthful, errors are player-safe, and no
+  mechanical drift occurs.
 - Leanness Reviewer: reject new stores/ledgers/adapters/retry loops and challenge S5/S6 machinery.
 - Schema/Platform Reviewer: JSON representations, cp1252/ASCII, Windows file replacement/locks.
 - Legacy-Contract Reviewer: T045 boundary, forward compatibility, no unapproved legacy-only fix.
@@ -723,19 +831,19 @@ remains blocked until convergence plus Claude/owner gate.
 
 | ID | Status | Decision / required evidence |
 |---|---|---|
-| D-TB-1 | OWNER-OPEN | OOC completion-collected vs best-effort |
-| D-TB-2 | OWNER-OPEN | T045 retirement before merge vs temporary waiver |
-| D-TB-3 | OWNER-OPEN | Top-three memory selection |
-| D-TB-4 | OWNER-OPEN | Four-companion OOC selection |
-| D-TB-5 | OWNER-OPEN | D-6: replace Save/Load/Reset lock deadlines with wait/queue + progress or waive |
-| D-TB-6 | OWNER-OPEN | D-7: recommended malformed optional sidecar family-scoped loud omission |
-| D-TB-7 | OWNER-OPEN | D-8: advisory retryable-HTTP structural reissue authority |
-| D-TB-8 | OWNER-OPEN | D-1: lifecycle-discoverable T113 maintenance worker |
-| D-TB-9 | OWNER-OPEN | Selected-save memory precedence and compressed-only compatibility mapping; recommendation in 4.1 |
-| D-TB-10 | OWNER-OPEN | Accept complete Reset encounter-writer entrant/freeze proof; uncovered legacy writer routes to D-TB-2 |
-| D-TB-11 | OWNER-OPEN | #198: lifecycle fence for every async T108/T113 companion-memory writer before Reset |
+| D-TB-1 / D-VS-3 | RATIFIED | OOC completion-collects every dispatched companion with progress; no pre-emption |
+| D-TB-2 / D-VS-4 | RATIFIED-WAIVER | T045 stays unchanged; retirement remains #282 |
+| D-TB-3 / D-VS-2 | RATIFIED | Keep relevance ordering/threshold and remove fixed memory count; #283 owns redesign |
+| D-TB-4 / D-VS-1 | RATIFIED | Remove OOC companion count limit; every eligible companion gets a packet |
+| D-TB-5 / D-VS-5 | RATIFIED | Save/Load/Reset lock waits have no give-up deadline and reclaim dead holders |
+| D-TB-6 / D-VS-6 | RATIFIED | Repair malformed/missing memory from clean copy, else existing history/journal backfill |
+| D-TB-7 / D-VS-7 | RATIFIED-INTERIM | Typed retryable HTTP uses existing structural reissue only; #284 owns redesign |
+| D-TB-8 / D-VS-8 | RATIFIED | One-time uncapped blocking memory build with progress; never ordinary-startup work |
+| D-TB-9 / D-VS-9 | RATIFIED | Pre-feature save rebuilds once from its restored history/journal; never keep/wipe |
+| D-TB-10 / D-VS-10 | RATIFIED-INTERIM | Existing Reset encounter entrant/freeze list accepted; owner review #285 |
+| D-TB-11 / D-VS-11 | RATIFIED | Reset seals/reaps existing async memory child scopes; no global lock |
 | R-TB-1 | RESOLVED | Preserve live `match_owned_capabilities`; ledger zero-caller claim disproven by code |
-| R-TB-2 | RESOLVED-PROPOSED | Exact S5 worker lifecycle specified; owner D-TB-8 remains required |
+| R-TB-2 | RESOLVED | Exact one-time blocking G8/T113 lifecycle ratified by D-VS-8 |
 | R-TB-3 | RESOLVED | Exact direct-byte fingerprint entrants/framing and latency evidence specified |
 | R-TB-4 | RESOLVED | Parent observes every primitive envelope before reissue; existing JSONL writer/metadata |
 | R-TB-5 | RESOLVED | B24 remains explicitly out of scope; no implementation here |
@@ -750,7 +858,19 @@ remains blocked until convergence plus Claude/owner gate.
 | R-TB-14 | RESOLVED | Full legacy producer/consumer inventory complete; startup retirement gates on accepted C5, cumulative block is zero-production-caller, live T108 seams pinned |
 | R-TB-15 | RESOLVED | Save seals/reaps T113 immediately; no queue behind an unbounded maintenance worker |
 | R-TB-16 | RESOLVED | A3 uses an internal same-invocation correction, never a later player clarification |
-| R-TB-17 | RESOLVED | Native A8 includes held/late encounter writer overlap and keeps D-TB-10 blocked if NOT-REACHED |
+| R-TB-17 | RESOLVED | Native A8 may honestly mark writer overlap NOT-REACHED while D-VS-10 remains ratified interim and #285 owns later review |
+| R-G-1 | RESOLVED | G3 completion-required covers direct/enriched/fallback OOC dispatch; T112 start failure terminalizes before fallback publication |
+| R-G-2 | RESOLVED | G11 explicitly scopes T108 before executor submit and T113 before detached work; terminal includes sidecar/marker commit |
+| R-G-3 | RESOLVED | G5 reuses OS-released advisory locks; no PID metadata, unlink, watchdog, or new lock identity |
+| R-G-4 | RESOLVED | Load repair is two-phase under one supersession authority; provider work occurs after filesystem-lock release |
+| R-G-5 | RESOLVED | Marker validity is value-defined; repair sources belong only to the selected save timeline |
+| R-G-6 | RESOLVED | Schema-incompatible authentic memory repairs through canonical G8 rather than blocking Load |
+| R-G-7 | RESOLVED | Runtime legacy memory rendering is deleted after canonical repair; D-VS-4 waives T045 only |
+| R-G-8 | RESOLVED | G2 removes the proactive fixed-three slice; D-272-1 retains top-two targeted recall and one arc-seed pick |
+| R-G-9 | RESOLVED | Acceptance requires distinct schema-valid companion provenance, Playwright popup truth, and honest live-HTTP NOT-REACHED |
+| R-G-10 | RESOLVED | Stale prompt-first and v2.7 language retired throughout; one v2.8 blocking-build contract remains |
+| R-G-11 | RESOLVED-OWNER-B | Preserve the pre-existing completion drain; D-VS-5 waiters do not refuse, and provider-under-lock debt is #286 |
+| R-G-12 | RESOLVED | Closing T108 scopes remain discoverable under the existing scope guard until child commit quiescence |
 
 ## 12. Tracked follow-ups
 
@@ -760,12 +880,13 @@ remains blocked until convergence plus Claude/owner gate.
 | #278 | Closed only after S6 real no-Git-child proof |
 | #279 | Encounter faction/identity owner; excluded from voice tranche |
 | #280 | Closed only after S7 native Reset proof |
+| #286 | Pre-existing Save/module-completion provider-under-lock debt; separate planned change |
 | #258 | S5 startup-backfill evidence source and closure target if fully resolved |
 | #198 | Async episode-writer lifetime; D-TB-11 makes it an explicit Reset prerequisite |
 | B21 | Owner-queued agentic death/down scene; no mechanics work here |
 | B22 | Prompt-quality observation; no narration tuning here |
 | B24 | Compressor progress observation; no pacing repair here |
-| T045 retirement | D-TB-2 owner gate and separate approved retirement plan |
+| T045 retirement | D-VS-4 temporary waiver and separate #282 retirement plan |
 
 ## 13. Stop conditions
 
