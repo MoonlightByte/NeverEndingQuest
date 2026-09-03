@@ -384,6 +384,7 @@ def backfill_from_journal(
             isinstance(last_failure, Mapping)
             and last_failure.get("kind") == "completed_invalid"
             and last_failure.get("entryIndex") == failed_index
+            and last_failure.get("errorClass") == type(error).__name__
         ):
             return False
         _LOGGER.warning(
@@ -435,6 +436,18 @@ def backfill_from_journal(
                 player_name=player_name, party_tracker_data=party_tracker_data,
                 path_manager=path_manager, json_loader=json_loader,
             )
+            if result is not None and eid is None:
+                index -= 1
+                failure = {
+                    "kind": "commit_failed",
+                    "entryIndex": index,
+                    "errorClass": "EpisodeStoreCommitFailed",
+                }
+                _LOGGER.warning(
+                    "journal backfill entry %d remains pending after canonical commit failure",
+                    index,
+                )
+                break
             if eid:
                 committed += 1
                 if checkpoint_cb:
