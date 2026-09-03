@@ -225,6 +225,7 @@ class PreparedOocVoiceHandle:
                     enriched.append(validate_packet(value))
                 except Exception as exc:
                     npc_id = value["npc"]["id"]
+                    selected.pop(npc_id, None)
                     _LOGGER.warning(
                         "T112 recall enrichment omitted for %s: %s",
                         npc_id,
@@ -258,10 +259,22 @@ class PreparedOocVoiceHandle:
             )
             with self._lock:
                 if not self._sealed and not scope.is_superseded():
-                    self._voice_handle = self._service.dispatch_batch(
-                        self._packets,
-                        parent_scope=self._parent_scope,
-                    )
+                    try:
+                        self._voice_handle = self._service.dispatch_batch(
+                            self._packets,
+                            parent_scope=self._parent_scope,
+                        )
+                    except Exception as fallback_exc:
+                        _LOGGER.warning(
+                            "T105 OOC fallback dispatch failed: %s",
+                            type(fallback_exc).__name__,
+                        )
+                        self._service.telemetry.record_disposition(
+                            "batch",
+                            "setup_failure",
+                            batch_id=self.batch_id,
+                            reason=type(fallback_exc).__name__,
+                        )
         finally:
             scope.finish()
 
@@ -1601,9 +1614,12 @@ def run_ooc_voice_stage(
     except Exception as exc:
         _LOGGER.warning("T105 OOC stage skipped: %s", type(exc).__name__)
         if "voice_service" in locals():
-            voice_service.telemetry.record_disposition(
-                "batch", "setup_failure", reason=type(exc).__name__
-            )
+            try:
+                voice_service.telemetry.record_disposition(
+                    "batch", "setup_failure", reason=type(exc).__name__
+                )
+            except Exception:
+                pass
         return NpcVoiceBatch(batch_id="", results=())
 
 
