@@ -10,7 +10,6 @@ import inspect
 import json
 import logging
 import os
-import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -38,6 +37,8 @@ _error_logger = None
 _init_lock = threading.Lock()
 _source_revision = None
 _repo_root = Path(__file__).resolve().parents[2]
+_SOURCE_FINGERPRINT_VERSION = b"neq-runtime-inputs/v1\0"
+_RUNTIME_PYTHON_ROOTS = ("core", "utils", "updates", "web")
 
 
 def _capture_dir():
@@ -81,6 +82,38 @@ def _evaluation_primary_override(task_id, provider, attempt):
     return {name: copy.deepcopy(entry[name]) for name in allowed if name in entry}
 
 
+def _runtime_source_paths():
+    """Return the finite, sorted runtime-input set without consulting Git."""
+    paths = {
+        path
+        for path in _repo_root.glob("*.py")
+        if path.is_file() and path.name != "config.py"
+    }
+    for root_name in _RUNTIME_PYTHON_ROOTS:
+        root = _repo_root / root_name
+        if root.is_dir():
+            paths.update(path for path in root.rglob("*.py") if path.is_file())
+    for root_name in ("prompts", "schemas"):
+        root = _repo_root / root_name
+        if root.is_dir():
+            paths.update(path for path in root.rglob("*") if path.is_file())
+    return tuple(sorted(paths, key=lambda path: path.relative_to(_repo_root).as_posix()))
+
+
+def _compute_source_revision():
+    digest = hashlib.sha256()
+    digest.update(_SOURCE_FINGERPRINT_VERSION)
+    paths = _runtime_source_paths()
+    for path in paths:
+        relative = path.relative_to(_repo_root).as_posix().encode("utf-8")
+        content = path.read_bytes()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return "runtime-v1-%s-%d" % (digest.hexdigest(), len(paths))
+
+
 def _get_source_revision():
     """Return a stable fingerprint of model-affecting runtime inputs.
 
@@ -91,50 +124,18 @@ def _get_source_revision():
     """
     global _source_revision
     if _source_revision is None:
-        try:
-            head = subprocess.check_output(
-                ["git", "rev-parse", "HEAD"],
-                text=True,
-                stderr=subprocess.DEVNULL,
-                cwd=_repo_root,
-            ).strip()
-            candidates = subprocess.check_output(
-                ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-                cwd=_repo_root,
-            )
-            digest = hashlib.sha256()
-            included = 0
-            for relative in sorted(candidates.split(b"\0")):
-                if not relative:
-                    continue
-                relative_text = relative.decode("utf-8", errors="surrogateescape")
-                path = Path(relative_text)
-                runtime_input = (
-                    path.suffix.lower() == ".py"
-                    and not path.parts[0] in {"tests", "scripts", "tools", "debug"}
-                ) or (
-                    path.parts
-                    and path.parts[0] in {"prompts", "schemas"}
-                    and path.suffix.lower() in {".json", ".txt"}
-                )
-                if not runtime_input:
-                    continue
-                candidate = _repo_root / path
-                if not candidate.is_file() or candidate.stat().st_size > 10_000_000:
-                    continue
-                digest.update(relative)
-                digest.update(b"\0")
-                digest.update(candidate.read_bytes())
-                digest.update(b"\0")
-                included += 1
-            _source_revision = "%s-runtime-%s-%d" % (
-                head,
-                digest.hexdigest()[:16],
-                included,
-            )
-        except Exception:
-            _source_revision = "unknown"
+        with _init_lock:
+            if _source_revision is None:
+                try:
+                    _source_revision = _compute_source_revision()
+                except Exception:
+                    _source_revision = "unknown"
     return _source_revision
+
+
+# Prime provenance synchronously during normal module import, before any
+# provider/capture worker can ask for it. A failed scan is diagnostic-only.
+_get_source_revision()
 
 
 def _get_error_logger():
