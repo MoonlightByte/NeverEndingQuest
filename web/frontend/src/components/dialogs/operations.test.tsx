@@ -50,6 +50,32 @@ describe('terminal operation feedback', () => {
     expect(container.querySelector('.neq-compression-bar-parity')?.classList.contains('failed')).toBe(true)
   })
 
+  it('renders changing companion-memory recovery progress', () => {
+    useDialogs.getState().memoryUpgradeStart({ completed: 0, total: 10, message: 'recovering companion memories', stage: 'start' })
+    useDialogs.getState().memoryUpgradeProgress({ completed: 4, total: 10, message: 'recovering memories', stage: 'journal' })
+    render(<CompressionOverlay />)
+
+    expect(screen.getByText('Companion Memory Recovery')).toBeTruthy()
+    expect(screen.getByText('recovering memories (4/10)')).toBeTruthy()
+  })
+
+  it('renders a companion-memory terminal restored from a reconnect snapshot', () => {
+    useDialogs.getState().applyOperationSnapshot({
+      compression: {
+        event: 'episodic_upgrade_complete',
+        status: 'running',
+        completed: 10,
+        total: 10,
+        message: 'companions remember the journey',
+        stage: 'complete',
+      },
+    })
+    render(<CompressionOverlay />)
+
+    expect(screen.getByText('Companion Memory Recovery')).toBeTruthy()
+    expect(screen.getByText('companions remember the journey')).toBeTruthy()
+  })
+
   it('renders failed module terminal state with the legacy red treatment', () => {
     useDialogs.getState().moduleProgress({
       build_id: 'failed-build',

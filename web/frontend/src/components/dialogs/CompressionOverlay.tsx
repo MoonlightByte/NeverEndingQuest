@@ -21,7 +21,7 @@ export function CompressionOverlay() {
   const compression = useDialogs((s) => s.compression)
   const [visible, setVisible] = useState(false)
   const [flavor, setFlavor] = useState(FLAVOR_MESSAGES[0])
-  const hasCompleted = compression.result !== null || compression.error !== null
+  const hasCompleted = compression.terminal || compression.error !== null
 
   // A new run starts: show the banner and pick a fresh flavor line.
   useEffect(() => {
@@ -47,14 +47,21 @@ export function CompressionOverlay() {
 
   if (!visible) return null
 
-  const { result, completed, total, totalSections, fromCache } = compression
+  const { result, completed, total, totalSections, fromCache, kind, message } = compression
   const failed = compression.error !== null
-  const complete = result !== null
+  const complete = compression.terminal && !failed
   const percent =
-    result !== null ? 100 : total > 0 ? Math.round((completed / total) * 100) : 0
+    complete ? 100 : total > 0 ? Math.round((completed / total) * 100) : 0
 
   let statusText: string
-  if (compression.error !== null) {
+  if (kind === 'memory' && compression.error !== null) {
+    statusText = `Companion memory recovery failed: ${compression.error}`
+  } else if (kind === 'memory' && complete) {
+    statusText = message || 'Companion memory recovery complete.'
+  } else if (kind === 'memory') {
+    const count = total > 0 ? ` (${completed}/${total})` : ''
+    statusText = `${message || 'Recovering companion memories...'}${count}`
+  } else if (compression.error !== null) {
     statusText = `Chronicle compression failed: ${compression.error}`
   } else if (result !== null) {
     statusText = `Chronicle compression complete! Reduced by ${result.reduction_percentage}%`
@@ -72,8 +79,12 @@ export function CompressionOverlay() {
       role="status"
       aria-live="polite"
     >
-      <div className="neq-compression-title-parity">Chronicle Compression</div>
-      <div className="neq-compression-text-parity">{flavor}</div>
+      <div className="neq-compression-title-parity">
+        {kind === 'memory' ? 'Companion Memory Recovery' : 'Chronicle Compression'}
+      </div>
+      <div className="neq-compression-text-parity">
+        {kind === 'memory' ? 'Reweaving the companions\' shared journey...' : flavor}
+      </div>
       <div className="neq-compression-bar-track-parity">
         <div
           className={`neq-compression-bar-parity${complete ? ' complete' : ''}${failed ? ' failed' : ''}`}

@@ -13,11 +13,14 @@ export type DialogName =
   | null
 
 export interface CompressionState {
+  kind: 'chronicle' | 'memory'
   running: boolean
+  terminal: boolean
   totalSections: number
   completed: number
   total: number
   fromCache: boolean
+  message: string
   result: ServerEvents['compression_complete'] | null
   error: string | null
 }
@@ -78,6 +81,9 @@ export interface DialogsState {
   compressionProgress: (payload: ServerEvents['compression_progress']) => void
   compressionComplete: (payload: ServerEvents['compression_complete']) => void
   compressionFailed: (payload: ServerEvents['compression_error']) => void
+  memoryUpgradeStart: (payload: ServerEvents['episodic_upgrade_start']) => void
+  memoryUpgradeProgress: (payload: ServerEvents['episodic_upgrade_progress']) => void
+  memoryUpgradeComplete: (payload: ServerEvents['episodic_upgrade_complete']) => void
   setProvider: (payload: ServerEvents['provider_changed']) => void
   setLocalEndpoint: (payload: ServerEvents['local_endpoint_changed']) => void
   setOpenaiKeyStatus: (payload: ServerEvents['openai_key_status']) => void
@@ -92,11 +98,14 @@ export interface DialogsState {
 }
 
 const idleCompression: CompressionState = {
+  kind: 'chronicle',
   running: false,
+  terminal: false,
   totalSections: 0,
   completed: 0,
   total: 0,
   fromCache: false,
+  message: '',
   result: null,
   error: null,
 }
@@ -126,6 +135,7 @@ export const useDialogs = create<DialogsState>((set) => ({
     set({
       compression: {
         ...idleCompression,
+        kind: 'chronicle',
         running: true,
         totalSections: payload.total_sections,
       },
@@ -134,18 +144,62 @@ export const useDialogs = create<DialogsState>((set) => ({
     set((s) => ({
       compression: {
         ...s.compression,
+        kind: 'chronicle',
         running: true,
+        terminal: false,
         completed: payload.completed,
         total: payload.total,
         fromCache: payload.from_cache,
+        message: '',
+        result: null,
+        error: null,
       },
     })),
   compressionComplete: (payload) =>
     set((s) => ({
-      compression: { ...s.compression, running: false, result: payload },
+      compression: { ...s.compression, kind: 'chronicle', running: false, terminal: true, result: payload },
     })),
   compressionFailed: (payload) =>
-    set((s) => ({ compression: { ...s.compression, running: false, result: null, error: payload.error } })),
+    set((s) => ({ compression: { ...s.compression, kind: 'chronicle', running: false, terminal: true, result: null, error: payload.error } })),
+  memoryUpgradeStart: (payload) =>
+    set({
+      compression: {
+        ...idleCompression,
+        kind: 'memory',
+        running: true,
+        terminal: false,
+        completed: payload.completed,
+        total: payload.total,
+        message: payload.message,
+        result: null,
+        error: null,
+      },
+    }),
+  memoryUpgradeProgress: (payload) =>
+    set((s) => ({
+      compression: {
+        ...s.compression,
+        kind: 'memory',
+        running: true,
+        completed: payload.completed,
+        total: payload.total,
+        message: payload.message,
+      },
+    })),
+  memoryUpgradeComplete: (payload) =>
+    set((s) => ({
+      compression: {
+        ...s.compression,
+        kind: 'memory',
+        running: false,
+        terminal: true,
+        completed: payload.completed,
+        total: payload.total,
+        message: payload.message,
+        result: null,
+        error: payload.stage === 'error' ? payload.message || 'Companion memory recovery failed' : null,
+      },
+    })),
   setProvider: (payload) =>
     set((s) => ({ settings: { ...s.settings, provider: payload.provider } })),
   setLocalEndpoint: (payload) =>
@@ -197,12 +251,27 @@ export const useDialogs = create<DialogsState>((set) => ({
       next.compression = idleCompression
     } else if (compression) {
       const event = typeof compression['event'] === 'string' ? compression['event'] : ''
-      if (event === 'compression_error') {
-        next.compression = { ...s.compression, running: false, result: null, error: String(compression['error'] ?? 'Compression failed') }
+      if (event.startsWith('episodic_upgrade_')) {
+        const terminal = event === 'episodic_upgrade_complete'
+        const message = String(compression['message'] ?? '')
+        next.compression = {
+          ...idleCompression,
+          kind: 'memory',
+          running: !terminal,
+          terminal,
+          completed: Number(compression['completed'] ?? 0),
+          total: Number(compression['total'] ?? 0),
+          message,
+          error: terminal && compression['stage'] === 'error' ? message || 'Companion memory recovery failed' : null,
+        }
+      } else if (event === 'compression_error') {
+        next.compression = { ...s.compression, kind: 'chronicle', running: false, terminal: true, result: null, error: String(compression['error'] ?? 'Compression failed') }
       } else if (event === 'compression_complete') {
         next.compression = {
           ...s.compression,
+          kind: 'chronicle',
           running: false,
+          terminal: true,
           result: {
             reduction_percentage: Number(compression['reduction_percentage'] ?? 0),
             original_size: Number(compression['original_size'] ?? 0),
@@ -212,11 +281,16 @@ export const useDialogs = create<DialogsState>((set) => ({
       } else {
         next.compression = {
           ...s.compression,
+          kind: 'chronicle',
           running: compression['status'] === 'running',
+          terminal: false,
           totalSections: Number(compression['total_sections'] ?? s.compression.totalSections),
           completed: Number(compression['completed'] ?? s.compression.completed),
           total: Number(compression['total'] ?? s.compression.total),
           fromCache: compression['from_cache'] === true,
+          message: '',
+          result: null,
+          error: null,
         }
       }
     }
