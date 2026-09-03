@@ -14,7 +14,8 @@ probe-first cycle and the #193 v1.8 loop (No-Limits + Single-Path sentinels stan
 
 ## 2. What the T105 packet contains today (validated 2026-08-31)
 Identity/personality/relationship-with-player are solid: full T107 profile, NPC<->player
-relationship state + top-3 evidence, own working memory, utilities/items/goals, location.
+relationship state + complete relevant evidence, own working memory, utilities/items/goals,
+and location.
 
 ## 3. The isolation gaps (owner-confirmed direction: close them, balanced)
 1. NO recent conversation window - scene.recentEvents is hardcoded []; the NPC hears
@@ -27,8 +28,8 @@ relationship state + top-3 evidence, own working memory, utilities/items/goals, 
 4. The player is thin - name + relationship only; no visible condition.
 
 ## 4. The four probe-scoped enrichments (owner: "fold those four in")
-All selection-based (ranked/top-N picks); NO character truncation (banned, #193 v1.8):
-- E1 recent-scene window: last few accepted DM/player beats.
+All are code-selected by relevance and authority, with NO character truncation:
+- E1 recent-scene window: accepted DM/player beats available to the current scene.
 - E2 companion visible acts: what other present companions just visibly said/did.
 - E3 recalled episodes routed INTO the T105 packet (reuse the per-NPC recall already
   computed for the DM block - no new calls).

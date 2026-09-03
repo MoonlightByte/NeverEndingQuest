@@ -3,9 +3,9 @@
 Purpose: Persist canonical shared episodes, per-NPC relationships and point of view,
 then supply grounded memory to conversation and voice calls.
 
-- Revision: `integration/npc-voice-episodic` at `8f51bef3ee39e8f86b9bff635816c2dd6a520082`
-- Verified: 2026-09-01
-- Doctrine: [GitHub issue #193 v2.3](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
+- Revision: `integration/npc-voice-episodic`, including the #262 No-Limits wave
+- Verified: 2026-09-02
+- Doctrine: [GitHub issue #193 v2.7](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
 - Visual companion: [NPC Voice Flow Map](../npc-voice-flow-map.html)
 
 ## Authority table
@@ -40,8 +40,10 @@ then supply grounded memory to conversation and voice calls.
 1. Conversation rebuild joins each NPC POV row to its canonical ledger episode.
 2. Selected `where`, `what`, `youRecall`, and `feeling` values enter companion context; canonical
    episode text remains factual authority and POV supplies personal coloring.
-3. A cheap token-overlap pre-screen determines whether targeted T112 recall is needed.
-4. T112 extracts typed anchors only.
+3. The existence of witnessed episodes opens targeted T112 recall; code does not decide recall
+   meaning from lexical overlap.
+4. T112 determines whether the line contains a concrete past/shared reference and extracts typed
+   anchors, returning empty arrays for present/future or non-historical lines.
 5. Code selects only episodes witnessed by that exact NPC and attaches them to the exact-beat
    T105 packet; honest no-match remains valid.
 
@@ -88,7 +90,7 @@ then supply grounded memory to conversation and voice calls.
 10. `core/npc/episode_extraction.py:138-201` - T108 parsing/presence reconciliation.
 11. `core/npc/episode_capture.py:151-265` - location capture and POV projection.
 12. `core/npc/episode_capture.py:268-412` - combat capture and async dispatch.
-13. `core/npc/episode_recall.py:173-298` - T112 witnessed-only selection.
+13. `core/npc/episode_recall.py` - T112 anchor classification and witnessed-only selection helpers.
 14. `core/npc/episode_backfill.py:195-254` - T113 roster-bound backfill.
 15. `updates/save_game_manager.py:927-1041` - restore, cleanup, and rollback.
 
@@ -104,4 +106,3 @@ then supply grounded memory to conversation and voice calls.
 - #200 - combat-memory persistence/save-provenance tracker remains open.
 - #209 - legacy companion-memory reconciliation remains deferred in travel recovery.
 - #258 - synchronous T113 backfill can delay startup after provider completion.
-- #262 - remaining episodic-storage No-Limits work.

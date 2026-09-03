@@ -83,13 +83,12 @@ decay `0.97**elapsed_days` toward `baseline`.
 | **Companion canonical context** | `=== ACTIVE COMPANION CANONICAL CONTEXT ===` | `conversation_utils.build_companion_memory_message` → `_canonical_context_row` (:398–423) | sidecar (persisted state) | baked into `conversation_history` after the system prompt, refreshed each turn |
 | **NPC voice advisory** | `Private NPC intentions for the Dungeon Master only.` | `voice_context.inject_voice_context` (:1272) | live micro-model batch | injected post-compression before the last user msg; **redacted** from logs/durable history |
 
-The companion block is the **old lightweight persisted-relationship summary**; the voice block is
-the **new advisory** (say/do/want/thought) the DM edits/inlines. The companion projection
-(`_canonical_context_row`) deliberately emits only `npc{id,name,role}`, `profile`,
-`relationshipEvidence[≤3]`, and `currentGoals`, and **drops the numeric vectors and the private
-`working` map** ("Project one bounded packet without vectors or private working memory.", :399).
-Caps holding it thin: `limit=4` NPCs (:454), 16 000-char budget (:332), `recentEvents` ≤3 (:204),
-plus per-field truncation in `voice_packets.py`.
+At the audited 2026-08-18 revision, the companion block was the lightweight persisted-
+relationship summary and the voice block was the live advisory. Subsequent reviewed work retired
+the documented character/cardinality loss points: current code preserves complete relevant
+relationship evidence and packet text, while retaining only owner-ratified semantic selections.
+The numeric vectors and private `working` map remain outside the canonical DM projection because
+that is an authority boundary, not a size limit.
 
 ### 1.3 Update + lifecycle layer
 

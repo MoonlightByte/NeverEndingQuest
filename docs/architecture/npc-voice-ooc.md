@@ -3,9 +3,9 @@
 Purpose: Build private companion advice for one substantive player beat, inject it into
 T067/T065, and commit accepted relationship working state after the DM turn is durable.
 
-- Revision: `integration/npc-voice-episodic` at `5e43e2fa983a8b9085a194ae9c8713159a2b4ee1`
-- Verified: 2026-09-01
-- Doctrine: [GitHub issue #193 v2.3](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
+- Revision: `integration/npc-voice-episodic`, including the #262 No-Limits wave
+- Verified: 2026-09-02
+- Doctrine: [GitHub issue #193 v2.7](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
 - Visual companion: [NPC Voice Flow Map](../npc-voice-flow-map.html)
 
 ## Authority table
@@ -51,8 +51,9 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 
 ### Recall beat
 
-1. Token overlap with stored episodes opens an advisory T112 scope.
-2. T112 selects grounded episode rows for each NPC or records honest no-match/unavailability.
+1. Witnessed episode availability opens an advisory T112 scope; code does not prose-gate recall.
+2. T112 classifies whether the line is a concrete past/shared reference and extracts anchors;
+   code selects grounded episode rows for each NPC or records honest no-match/unavailability.
 3. Validated E3 rows enrich the packet.
 4. T105 dispatch begins after recall; T112 is a serial predecessor, while T105 remains parallel
    across companions.
@@ -107,6 +108,3 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 ## Open items
 
 - #258 - companion-memory backfill can delay startup before player control.
-- #262 - remaining No-Limits retirement outside the voice wave.
-- The visual companion at this revision has stale labels for overlap timing, T065, forensic
-  redaction scope, and episode-ledger ownership; this code-pinned reference is authoritative.
