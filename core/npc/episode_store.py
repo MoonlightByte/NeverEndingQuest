@@ -336,9 +336,9 @@ class EpisodeStore:
             record = {
                 "episodeId": episode_id,
                 "ordinal": ordinal,
-                "module": _coordinate_text(module, 160),
+                "module": _text(module),
                 "locationId": _coordinate_text(location_id, 120),
-                "locationName": _coordinate_text(location_name, 160),
+                "locationName": _text(location_name),
                 "gameDay": game_day_value,
                 "boundaryTurnId": _coordinate_text(boundary_turn_id, 120),
                 "headline": _text(headline),

@@ -26,9 +26,9 @@
       "properties": {
         "episodeId": {"$ref": "#/$defs/uuid"},
         "ordinal": {"type": "integer", "minimum": 0},
-        "module": {"type": "string", "maxLength": 160},
+        "module": {"type": "string"},
         "locationId": {"type": "string", "maxLength": 120},
-        "locationName": {"type": "string", "maxLength": 160},
+        "locationName": {"type": "string"},
         "gameDay": {"type": ["integer", "null"], "minimum": 0},
         "boundaryTurnId": {"type": "string", "maxLength": 120},
         "headline": {"type": "string"},
