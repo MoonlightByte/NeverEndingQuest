@@ -144,7 +144,9 @@ class PreparedOocVoiceHandle:
         candidates = self._recall_candidates(raw_input, self._packets)
         if candidates is None:
             self._voice_handle = service.dispatch_batch(
-                self._packets, parent_scope=parent_scope
+                self._packets,
+                parent_scope=parent_scope,
+                completion_required=True,
             )
             return
         from utils.capture.live_provider_call import open_advisory_scope
@@ -156,14 +158,36 @@ class PreparedOocVoiceHandle:
             self._service.telemetry.record_disposition(
                 "recall", "missing_authority", batch_id=self.batch_id
             )
+            self._voice_handle = service.dispatch_batch(
+                self._packets,
+                parent_scope=parent_scope,
+                completion_required=True,
+            )
             return
         self._recall_scope = recall_scope
-        threading.Thread(
+        recall_thread = threading.Thread(
             target=self._run_recall,
             args=(raw_input, self._packets, candidates, recall_scope),
             name="npc-recall-%s" % self.batch_id,
             daemon=True,
-        ).start()
+        )
+        try:
+            recall_thread.start()
+        except BaseException as exc:
+            recall_scope.finish()
+            self.recall_disposition = "degraded_this_beat"
+            _LOGGER.warning("T112 recall thread failed to start: %s", type(exc).__name__)
+            self._service.telemetry.record_disposition(
+                "recall",
+                "start_failure",
+                batch_id=self.batch_id,
+                reason=type(exc).__name__,
+            )
+            self._voice_handle = service.dispatch_batch(
+                self._packets,
+                parent_scope=parent_scope,
+                completion_required=True,
+            )
 
     @staticmethod
     def _recall_candidates(_raw_input, packets):
@@ -200,6 +224,13 @@ class PreparedOocVoiceHandle:
                 self._service.telemetry.record_disposition(
                     "recall", "degraded_this_beat", batch_id=self.batch_id
                 )
+                with self._lock:
+                    if not self._sealed and not scope.is_superseded():
+                        self._voice_handle = self._service.dispatch_batch(
+                            self._packets,
+                            parent_scope=self._parent_scope,
+                            completion_required=True,
+                        )
                 return
             selected = {}
             for npc_id, episodes in episodes_by_npc.items():
@@ -250,6 +281,7 @@ class PreparedOocVoiceHandle:
                 self._voice_handle = self._service.dispatch_batch(
                     enriched,
                     parent_scope=self._parent_scope,
+                    completion_required=True,
                 )
         except Exception as exc:
             self.recall_disposition = "degraded_this_beat"
@@ -263,6 +295,7 @@ class PreparedOocVoiceHandle:
                         self._voice_handle = self._service.dispatch_batch(
                             self._packets,
                             parent_scope=self._parent_scope,
+                            completion_required=True,
                         )
                     except Exception as fallback_exc:
                         _LOGGER.warning(
@@ -278,12 +311,46 @@ class PreparedOocVoiceHandle:
         finally:
             scope.finish()
 
-    def collect(self):
+    def collect(self, status_emit: Optional[Callable[[str], None]] = None):
+        recall_scope = self._recall_scope
+        started = time.monotonic()
+        last_elapsed = None
+        while recall_scope is not None and not recall_scope.quiescent.wait(1.0):
+            if self._parent_scope is not None and self._parent_scope.is_superseded():
+                from utils.capture.live_provider_call import LiveProviderSuperseded
+
+                raise LiveProviderSuperseded("OOC recall authority superseded")
+            elapsed = max(0, int(time.monotonic() - started))
+            if elapsed != last_elapsed:
+                emit = status_emit
+                if emit is None:
+                    try:
+                        from utils.capture.live_provider_call import _emit_working
+
+                        emit = _emit_working
+                    except Exception:
+                        emit = None
+                if emit is not None:
+                    try:
+                        emit(
+                            "Listening to companion memories "
+                            "(%d seconds elapsed)..." % elapsed
+                        )
+                    except Exception:
+                        pass
+                last_elapsed = elapsed
         with self._lock:
             handle = self._voice_handle
         if handle is None:
             return NpcVoiceBatch(batch_id=self.batch_id, results=())
-        return handle.collect()
+        if status_emit is None:
+            try:
+                from utils.capture.live_provider_call import _emit_working
+
+                status_emit = _emit_working
+            except Exception:
+                status_emit = None
+        return handle.collect_to_completion(status_emit=status_emit)
 
     def seal_and_cancel_pending(self):
         with self._lock:
@@ -1748,10 +1815,9 @@ def _voice_row(result):
 def inject_voice_context(messages: list, batch):
     """Insert vector-free private say/do/want/thought without mutating durable messages.
 
-    Accepts an NpcVoiceBatch OR a VoiceBatchHandle: the handle's collect() is
-    a NON-BLOCKING poll run here, at inject time -- by now the main DM call
-    has overlapped the voice latency, so results are typically ready without
-    any deadline ever having existed."""
+    Accepts an NpcVoiceBatch OR a VoiceBatchHandle. OOC handles wait for every
+    dispatched companion to reach a terminal before the DM receives one
+    immutable advisory block; supersession still fences the whole batch."""
     if batch is None:
         return messages
     if hasattr(batch, "collect"):
