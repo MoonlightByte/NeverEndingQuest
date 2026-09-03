@@ -348,6 +348,122 @@ def _commit_backfill(
     )
 
 
+def _process_backfill_entry(
+    prose: str,
+    roster_names: Sequence[str],
+    resolve_ids: Callable[[Sequence[str]], Mapping[str, str]],
+    *,
+    entry_index: int,
+    last_failure: Optional[Mapping[str, Any]],
+    source_label: str,
+    skip_health_event: str,
+    store: EpisodeStore,
+    rel: RelationshipStore,
+    module: str,
+    location_id: str,
+    location_name: str,
+    boundary_turn_id: str,
+    player_name: str,
+    provider: Optional[str],
+    party_tracker_data: Mapping[str, Any],
+    path_manager: Any,
+    json_loader: Callable[[str], Any],
+    advisory_scope: Any,
+    advisory_status: Optional[Callable[[str], None]],
+) -> Dict[str, Any]:
+    """Run the one shared T113 entry lifecycle for either backfill provenance."""
+    try:
+        result = extract_backfill_episode(
+            prose,
+            roster_names,
+            resolve_ids,
+            player_name=player_name,
+            provider=provider,
+            capture_fn=capture_and_fanout,
+            advisory_scope=advisory_scope,
+            advisory_status=advisory_status,
+        )
+        episode_id = _commit_backfill(
+            store,
+            rel,
+            result,
+            module=module,
+            location_id=location_id,
+            location_name=location_name,
+            boundary_turn_id=boundary_turn_id,
+            player_name=player_name,
+            party_tracker_data=party_tracker_data,
+            path_manager=path_manager,
+            json_loader=json_loader,
+        )
+        if result is not None and episode_id is None:
+            failure = {
+                "kind": "commit_failed",
+                "entryIndex": entry_index,
+                "errorClass": "EpisodeStoreCommitFailed",
+            }
+            _LOGGER.warning(
+                "%s %d remains pending after canonical commit failure",
+                source_label,
+                entry_index,
+            )
+            return {"completed": False, "committed": False, "failure": failure}
+        return {
+            "completed": True,
+            "committed": bool(episode_id),
+            "failure": None,
+        }
+    except BackfillCompletedInvalid as error:
+        error_class = type(error).__name__
+        if (
+            isinstance(last_failure, Mapping)
+            and last_failure.get("kind") == "completed_invalid"
+            and last_failure.get("entryIndex") == entry_index
+            and last_failure.get("errorClass") == error_class
+        ):
+            _LOGGER.warning(
+                "%s %d failed twice and was skipped: %s",
+                source_label,
+                entry_index,
+                error_class,
+            )
+            record_store_health(
+                skip_health_event,
+                detail="%s %d failed twice: %s"
+                % (source_label, entry_index, error_class),
+            )
+            return {"completed": True, "committed": False, "failure": None}
+        failure = {
+            "kind": "completed_invalid",
+            "entryIndex": entry_index,
+            "errorClass": error_class,
+        }
+        _LOGGER.warning(
+            "%s %d remains pending: %s",
+            source_label,
+            entry_index,
+            error_class,
+        )
+        return {"completed": False, "committed": False, "failure": failure}
+    except Exception as error:  # noqa: BLE001 - retain transient entry for resume
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+
+        if isinstance(error, LiveProviderSuperseded):
+            raise
+        failure = {
+            "kind": "entry_error",
+            "entryIndex": entry_index,
+            "errorClass": type(error).__name__,
+        }
+        _LOGGER.warning(
+            "%s %d remains pending after error: %s",
+            source_label,
+            entry_index,
+            type(error).__name__,
+        )
+        return {"completed": False, "committed": False, "failure": failure}
+
+
 def backfill_from_journal(
     journal: Mapping[str, Any],
     party_tracker_data: Mapping[str, Any],
@@ -378,29 +494,6 @@ def backfill_from_journal(
     failure = None
     index = max(0, start_index)
 
-    def skip_after_second_failure(error: BaseException) -> bool:
-        failed_index = index - 1
-        if not (
-            isinstance(last_failure, Mapping)
-            and last_failure.get("kind") == "completed_invalid"
-            and last_failure.get("entryIndex") == failed_index
-            and last_failure.get("errorClass") == type(error).__name__
-        ):
-            return False
-        _LOGGER.warning(
-            "journal backfill entry %d failed twice and was skipped: %s",
-            failed_index,
-            type(error).__name__,
-        )
-        record_store_health(
-            "episodic_upgrade_entry_skipped",
-            detail="entry %d failed twice: %s"
-            % (failed_index, type(error).__name__),
-        )
-        if checkpoint_cb:
-            checkpoint_cb(index, committed)
-        return True
-
     while index < total:
         entry = entries[index]
         index += 1
@@ -422,68 +515,38 @@ def backfill_from_journal(
             if progress_cb:
                 progress_cb(index, total, time.monotonic() - entry_started)
 
-        try:
-            result = extract_backfill_episode(
-                summary, roster_names, resolve_ids,
-                player_name=player_name, provider=provider,
-                capture_fn=capture_and_fanout, advisory_scope=advisory_scope,
-                advisory_status=entry_status,
-            )
-            eid = _commit_backfill(
-                episode_store, rel_store, result,
-                module=module, location_id=loc["id"], location_name=loc["name"],
-                boundary_turn_id="backfill-journal-%s-%d" % (loc["id"] or "mod", index - 1),
-                player_name=player_name, party_tracker_data=party_tracker_data,
-                path_manager=path_manager, json_loader=json_loader,
-            )
-            if result is not None and eid is None:
-                index -= 1
-                failure = {
-                    "kind": "commit_failed",
-                    "entryIndex": index,
-                    "errorClass": "EpisodeStoreCommitFailed",
-                }
-                _LOGGER.warning(
-                    "journal backfill entry %d remains pending after canonical commit failure",
-                    index,
-                )
-                break
-            if eid:
-                committed += 1
-                if checkpoint_cb:
-                    checkpoint_cb(index, committed)
-        except BackfillCompletedInvalid as error:
-            if skip_after_second_failure(error):
-                continue
+        entry_index = index - 1
+        outcome = _process_backfill_entry(
+            summary,
+            roster_names,
+            resolve_ids,
+            entry_index=entry_index,
+            last_failure=last_failure,
+            source_label="journal backfill entry",
+            skip_health_event="episodic_upgrade_entry_skipped",
+            store=episode_store,
+            rel=rel_store,
+            module=module,
+            location_id=loc["id"],
+            location_name=loc["name"],
+            boundary_turn_id="backfill-journal-%s-%d"
+            % (loc["id"] or "mod", entry_index),
+            player_name=player_name,
+            provider=provider,
+            party_tracker_data=party_tracker_data,
+            path_manager=path_manager,
+            json_loader=json_loader,
+            advisory_scope=advisory_scope,
+            advisory_status=entry_status,
+        )
+        if not outcome["completed"]:
             index -= 1
-            failure = {
-                "kind": "completed_invalid",
-                "entryIndex": index,
-                "errorClass": type(error).__name__,
-            }
-            _LOGGER.warning(
-                "journal backfill entry %d remains pending: %s",
-                index,
-                type(error).__name__,
-            )
+            failure = outcome["failure"]
             break
-        except Exception as error:  # noqa: BLE001 - fail-open per entry
-            from utils.capture.live_provider_call import LiveProviderSuperseded
-
-            if isinstance(error, LiveProviderSuperseded):
-                raise
-            index -= 1
-            failure = {
-                "kind": "entry_error",
-                "entryIndex": index,
-                "errorClass": type(error).__name__,
-            }
-            _LOGGER.warning(
-                "journal backfill entry %d remains pending after error: %s",
-                index,
-                type(error).__name__,
-            )
-            break
+        if outcome["committed"]:
+            committed += 1
+        if checkpoint_cb:
+            checkpoint_cb(index, committed)
     return {
         "committed": committed,
         "processed": processed,
@@ -520,29 +583,6 @@ def backfill_from_summaries(
     failure = None
     index = max(0, start_index)
 
-    def skip_after_second_failure(error: BaseException) -> bool:
-        failed_index = index - 1
-        if not (
-            isinstance(last_failure, Mapping)
-            and last_failure.get("kind") == "completed_invalid"
-            and last_failure.get("entryIndex") == failed_index
-            and last_failure.get("errorClass") == type(error).__name__
-        ):
-            return False
-        _LOGGER.warning(
-            "campaign summary %d failed twice and was skipped: %s",
-            failed_index,
-            type(error).__name__,
-        )
-        record_store_health(
-            "episodic_upgrade_summary_skipped",
-            detail="summary %d failed twice: %s"
-            % (failed_index, type(error).__name__),
-        )
-        if checkpoint_cb:
-            checkpoint_cb(index, committed)
-        return True
-
     while index < total:
         i = index
         summary_doc = summaries[index]
@@ -569,69 +609,36 @@ def backfill_from_summaries(
             if progress_cb:
                 progress_cb(i + 1, total, time.monotonic() - entry_started)
 
-        try:
-            result = extract_backfill_episode(
-                prose, roster_names, resolve_ids,
-                player_name=player_name, provider=provider,
-                capture_fn=capture_and_fanout, advisory_scope=advisory_scope,
-                advisory_status=entry_status,
-            )
-            eid = _commit_backfill(
-                episode_store, rel_store, result,
-                module=module_name, location_id="",
-                location_name="%s (module chronicle)" % module_name,
-                boundary_turn_id="backfill-summary-%s" % module_name.replace(" ", "_"),
-                player_name=player_name, party_tracker_data=party_tracker_data,
-                path_manager=path_manager, json_loader=json_loader,
-            )
-            if result is not None and eid is None:
-                index -= 1
-                failure = {
-                    "kind": "commit_failed",
-                    "entryIndex": index,
-                    "errorClass": "EpisodeStoreCommitFailed",
-                }
-                _LOGGER.warning(
-                    "campaign summary %d remains pending after canonical commit failure",
-                    index,
-                )
-                break
-            if eid:
-                committed += 1
-            if checkpoint_cb:
-                checkpoint_cb(index, committed)
-        except BackfillCompletedInvalid as error:
-            if skip_after_second_failure(error):
-                continue
+        outcome = _process_backfill_entry(
+            prose,
+            roster_names,
+            resolve_ids,
+            entry_index=i,
+            last_failure=last_failure,
+            source_label="campaign summary",
+            skip_health_event="episodic_upgrade_summary_skipped",
+            store=episode_store,
+            rel=rel_store,
+            module=module_name,
+            location_id="",
+            location_name="%s (module chronicle)" % module_name,
+            boundary_turn_id="backfill-summary-%s" % module_name.replace(" ", "_"),
+            player_name=player_name,
+            provider=provider,
+            party_tracker_data=party_tracker_data,
+            path_manager=path_manager,
+            json_loader=json_loader,
+            advisory_scope=advisory_scope,
+            advisory_status=entry_status,
+        )
+        if not outcome["completed"]:
             index -= 1
-            failure = {
-                "kind": "completed_invalid",
-                "entryIndex": index,
-                "errorClass": type(error).__name__,
-            }
-            _LOGGER.warning(
-                "campaign summary %d remains pending: %s",
-                index,
-                type(error).__name__,
-            )
+            failure = outcome["failure"]
             break
-        except Exception as error:  # noqa: BLE001 - retain transient summary for resume
-            from utils.capture.live_provider_call import LiveProviderSuperseded
-
-            if isinstance(error, LiveProviderSuperseded):
-                raise
-            index -= 1
-            failure = {
-                "kind": "entry_error",
-                "entryIndex": index,
-                "errorClass": type(error).__name__,
-            }
-            _LOGGER.warning(
-                "campaign summary %d remains pending after error: %s",
-                index,
-                type(error).__name__,
-            )
-            break
+        if outcome["committed"]:
+            committed += 1
+        if checkpoint_cb:
+            checkpoint_cb(index, committed)
     return {
         "committed": committed,
         "processed": processed,
