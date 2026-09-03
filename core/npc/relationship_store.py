@@ -1173,57 +1173,79 @@ class RelationshipStore:
         source_turn_id: str,
         lifecycle_context: Optional[Mapping[str, Any]] = None,
     ) -> str:
-        """Initialize or recover recruitment state while retaining old affinity."""
-        context = lifecycle_context if isinstance(lifecycle_context, Mapping) else {}
-        snapshot = self.snapshot()
-        identity = snapshot["identities"].get(npc_id, {})
-        lifecycle = snapshot["lifecycle"].get(npc_id, {})
-        events = lifecycle.get("events", []) if isinstance(lifecycle, Mapping) else []
-        prior_status = (
-            "inactive"
-            if identity and not identity.get("active", True)
-            else "active"
-            if events
-            else "new"
-        )
-        kind = "rejoin" if prior_status == "inactive" else "join"
-        event = self._lifecycle_event(
-            kind=kind,
-            source_turn_id=source_turn_id,
+        """Record a first arrival through the canonical locked arrival mutation."""
+        return self._mark_arrived(
+            npc_id,
+            player_id,
+            game_day=game_day,
             module=module,
             location_id=location_id,
-            cause=_text(context.get("reason"), 240) or "unknown",
-            game_day=game_day,
-            invited_by=_text(context.get("invitedBy"), 100) or "unknown",
-            terms=_text(context.get("terms"), 240),
-            personal_objective=_text(context.get("personalObjective"), 240),
-            red_lines=context.get("redLines", []),
-            compensation=_text(context.get("compensation"), 160),
-            expected_duration=_text(context.get("expectedDuration"), 160)
-            or "unknown",
-            prior_status=prior_status,
+            source_turn_id=source_turn_id,
+            lifecycle_context=lifecycle_context,
         )
+
+    def _mark_arrived(
+        self,
+        npc_id: str,
+        player_id: str,
+        *,
+        game_day: Optional[int],
+        module: str,
+        location_id: str,
+        source_turn_id: str,
+        lifecycle_context: Optional[Mapping[str, Any]],
+    ) -> str:
+        """Apply one receipt-idempotent join/rejoin under the store lock."""
+        context = lifecycle_context if isinstance(lifecycle_context, Mapping) else {}
 
         def update(document: Dict[str, Any]) -> Tuple[bool, str]:
             selected = document["identities"].get(npc_id)
             if not selected or player_id not in document["identities"]:
-                return False, kind
+                return False, "join"
+            lifecycle_state = document["lifecycle"].setdefault(
+                npc_id, {"status": "active", "events": []}
+            )
+            events = lifecycle_state["events"]
+            if (
+                source_turn_id
+                and events
+                and events[-1].get("kind") in {"join", "rejoin"}
+                and events[-1].get("sourceTurnId") == source_turn_id
+                and selected.get("active") is True
+            ):
+                return False, events[-1]["kind"]
+            prior_status = (
+                "inactive"
+                if selected.get("active") is False
+                or lifecycle_state.get("status") == "inactive"
+                else "active"
+                if events
+                else "new"
+            )
+            kind = "rejoin" if prior_status == "inactive" else "join"
+            event = self._lifecycle_event(
+                kind=kind,
+                source_turn_id=source_turn_id,
+                module=module,
+                location_id=location_id,
+                cause=_text(context.get("reason"), 240) or "unknown",
+                game_day=game_day,
+                invited_by=_text(context.get("invitedBy"), 100) or "unknown",
+                terms=_text(context.get("terms"), 240),
+                personal_objective=_text(context.get("personalObjective"), 240),
+                red_lines=context.get("redLines", []),
+                compensation=_text(context.get("compensation"), 160),
+                expected_duration=_text(context.get("expectedDuration"), 160)
+                or "unknown",
+                prior_status=prior_status,
+            )
             edge, edge_created = self._ensure_edge(
                 document, npc_id, player_id, game_day
             )
             decayed = self._apply_decay(edge, game_day)
-            lifecycle_state = document["lifecycle"].setdefault(
-                npc_id, {"status": "active", "events": []}
-            )
-            duplicate = (
-                lifecycle_state["events"]
-                and lifecycle_state["events"][-1] == event
-                and selected.get("active") is True
-            )
             changed = edge_created or decayed
-            if not duplicate:
-                lifecycle_state["events"] = lifecycle_state["events"] + [event]
-                changed = True
+            lifecycle_state["events"] = events + [event]
+            changed = True
             if selected.get("active") is not True:
                 selected["active"] = True
                 changed = True
@@ -1235,7 +1257,7 @@ class RelationshipStore:
             return changed, kind
 
         _mutated, result = self._mutate(update)
-        return result or kind
+        return result or "join"
 
     def mark_departed(
         self,
@@ -1335,41 +1357,24 @@ class RelationshipStore:
     def mark_rejoined(
         self,
         npc_id: str,
+        player_id: str,
         *,
+        game_day: Optional[int],
         module: str,
         location_id: str,
         source_turn_id: str,
+        lifecycle_context: Optional[Mapping[str, Any]] = None,
     ) -> str:
-        event = self._lifecycle_event(
-            kind="rejoin",
-            source_turn_id=source_turn_id,
+        """Record a return through the canonical locked arrival mutation."""
+        return self._mark_arrived(
+            npc_id,
+            player_id,
+            game_day=game_day,
             module=module,
             location_id=location_id,
+            source_turn_id=source_turn_id,
+            lifecycle_context=lifecycle_context,
         )
-
-        def update(document: Dict[str, Any]) -> Tuple[bool, str]:
-            identity = document["identities"].get(npc_id)
-            if not identity:
-                return False, npc_id
-            lifecycle = document["lifecycle"].setdefault(
-                npc_id, {"status": "inactive", "events": []}
-            )
-            if (
-                lifecycle["events"]
-                and lifecycle["events"][-1] == event
-                and identity["active"]
-            ):
-                return document["working"].pop(npc_id, None) is not None, npc_id
-            identity["active"] = True
-            identity["lastModule"] = _text(module, 160)
-            identity["lastLocationId"] = _text(location_id, 120)
-            lifecycle["status"] = "active"
-            lifecycle["events"] = lifecycle["events"] + [event]
-            document["working"].pop(npc_id, None)
-            return True, npc_id
-
-        self._mutate(update)
-        return npc_id
 
     def get_pov_episodes(self, npc_id: str) -> list[Dict[str, Any]]:
         """The NPC's POV overlay rows, pinned first then by salience desc."""

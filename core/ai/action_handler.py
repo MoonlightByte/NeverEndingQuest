@@ -2524,7 +2524,24 @@ def _apply_party_npc_lifecycle(
         store.get_relationship(npc_id, player_id, game_day=game_day)
         if operation == "add":
             store.migrate_legacy_identity(npc_id, player_id, game_day=game_day)
-            store.mark_joined(
+            before_arrival = store.snapshot()
+            before_identity = before_arrival["identities"].get(npc_id, {})
+            before_lifecycle = before_arrival["lifecycle"].get(npc_id, {})
+            before_events = before_lifecycle.get("events", [])
+            source_already_committed = bool(
+                source_turn_id
+                and before_events
+                and before_events[-1].get("kind") in {"join", "rejoin"}
+                and before_events[-1].get("sourceTurnId") == source_turn_id
+                and before_identity.get("active") is True
+            )
+            arrival = (
+                store.mark_rejoined
+                if before_identity.get("active") is False
+                or before_lifecycle.get("status") == "inactive"
+                else store.mark_joined
+            )
+            arrival(
                 npc_id,
                 player_id,
                 game_day=game_day,
@@ -2588,12 +2605,17 @@ def _apply_party_npc_lifecycle(
         identity = final["identities"].get(npc_id, {})
         events = final["lifecycle"].get(npc_id, {}).get("events", [])
         if operation == "add":
+            final_event = events[-1] if events else {}
             complete = (
                 identity.get("active") is True
                 and edge_key in final["relationships"]
                 and npc_id in final["profiles"]
-                and bool(events)
-                and events[-1].get("kind") in {"join", "rejoin"}
+                and final_event.get("kind") in {"join", "rejoin"}
+                and final_event.get("sourceTurnId") == source_turn_id
+                and (
+                    final["revision"] > starting_revision
+                    or source_already_committed
+                )
             )
         else:
             complete = (
@@ -2601,7 +2623,7 @@ def _apply_party_npc_lifecycle(
                 and bool(events)
                 and events[-1].get("kind") == "depart"
             )
-        if not complete or final["revision"] <= starting_revision:
+        if not complete:
             raise RuntimeError("sidecar lifecycle update did not commit completely")
         return True
     except Exception as exc:
