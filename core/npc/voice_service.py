@@ -742,6 +742,7 @@ class NpcVoiceService:
         futures: Dict[str, Future] = {}
         scopes: Dict[str, Any] = {}
         counters: Dict[str, _RequestCounter] = {}
+        batch_mode = ""
         try:
             provider = model_config.get_provider()
             for packet in candidates:
@@ -751,6 +752,8 @@ class NpcVoiceService:
                     if batch_id and candidate_batch_id != batch_id:
                         raise ValueError("mixed batch IDs")
                     batch_id = candidate_batch_id
+                    if not batch_mode:
+                        batch_mode = packet_copy["mode"]
                     validated_packets.append(packet_copy)
                     self._record(
                         kind="candidate",
@@ -791,6 +794,7 @@ class NpcVoiceService:
                     batch_started=batch_started,
                     provider=provider,
                     completion_required=True,
+                    batch_mode=batch_mode,
                 )
 
             if completion_required:
@@ -974,6 +978,7 @@ class NpcVoiceService:
             batch_started=batch_started,
             provider=provider,
             completion_required=completion_required,
+            batch_mode=batch_mode,
         )
 
 class VoiceBatchHandle:
@@ -1005,6 +1010,7 @@ class VoiceBatchHandle:
         batch_started: float,
         provider: str,
         completion_required: bool,
+        batch_mode: str = "",
     ) -> None:
         self._service = service
         self.batch_id = batch_id
@@ -1020,6 +1026,7 @@ class VoiceBatchHandle:
         self._batch_started = batch_started
         self._provider = provider
         self._completion_required = bool(completion_required)
+        self._batch_mode = batch_mode
         self._finalized = False
 
     def _authority_current(self) -> bool:
@@ -1145,9 +1152,12 @@ class VoiceBatchHandle:
                 wait(pending, timeout=1.0, return_when=FIRST_COMPLETED)
         if status_emit is not None:
             try:
-                status_emit(
-                    "Companion voices are ready; resolving this combat round..."
+                message = (
+                    "Companion voices are ready; the storyteller is weaving them in..."
+                    if self._batch_mode == "OUT_OF_COMBAT"
+                    else "Companion voices are ready; resolving this combat round..."
                 )
+                status_emit(message)
             except Exception:
                 pass
         return self._finalize()
