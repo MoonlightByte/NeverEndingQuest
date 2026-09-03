@@ -1570,7 +1570,10 @@ def update_party_tracker(module_name, character_name):
                 "majorEventsUnderway": [],
                 "politicalClimate": starting_location.get("politicalClimate", ""),
                 "activeEncounter": "",
-                "activeCombatEncounter": ""
+                "activeCombatEncounter": "",
+                # Required by party_schema.json; the location's own detail
+                # text when it has one (#271).
+                "weatherConditions": starting_location.get("weatherConditions", ""),
             }
         
         # DEPRECATED: activeQuests is no longer used - module_plot.json is the single source of truth for quest data

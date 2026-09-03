@@ -264,6 +264,18 @@ status_manager.set_callback(status_callback)
 # Note: Old summarization functions removed - using cumulative summary system instead
 
 
+# Provider error classification lives in utils/provider_errors.py (stdlib
+# only, unit tested). Re-exported here so existing call sites keep working.
+from utils.provider_errors import (  # noqa: E402
+    PROVIDER_MAX_FAILURES,
+    PROVIDER_RETRY_BASE_DELAY,
+    PROVIDER_RETRY_MAX_DELAY,
+    classify_provider_error,
+    provider_failure_policy,
+    provider_retry_delay,
+)
+
+
 def emit_startup_marker(phase, **extra):
     """Emit a structured startup-handoff marker.
 
@@ -8431,6 +8443,11 @@ def main_game_loop():
         planner_projection = None
         previous_semantic_rejection = None
         consecutive_semantic_rejections = 0
+        # Provider failures (key, credit, rate limit, outage) are bounded and
+        # reported to the player; see utils/provider_errors.py.
+        provider_failures = 0
+        provider_failure_message = None
+        provider_retry_notice_shown = False
         while not valid_response_received and not invocation_superseded:
             if live_turn_scope.is_superseded():
                 # Release the T067 invocation claim through the superseded
@@ -8489,12 +8506,34 @@ def main_game_loop():
                 save_conversation_history(conversation_history)
                 break
             except Exception as response_error:
+                classification = classify_provider_error(response_error)
+                provider_failures += 1
+                decision = provider_failure_policy(
+                    classification,
+                    provider_failures,
+                    provider_retry_notice_shown,
+                )
                 error(
                     f"FAILURE: T067 provider call failed on attempt "
-                    f"{retry_count + 1}",
+                    f"{retry_count + 1} (provider failure "
+                    f"{provider_failures}/{PROVIDER_MAX_FAILURES}, "
+                    f"classified as {classification['category']})",
                     exception=response_error,
                     category="ai_validation",
                 )
+                provider_failure_message = decision["player_message"]
+                if decision["stop"]:
+                    # The player's key, credit or model access is the problem,
+                    # or the provider stayed down for the whole budget. Another
+                    # attempt cannot help: restore the accepted history (no
+                    # error notes, nothing changed) and tell the player below.
+                    conversation_history[:] = pre_turn_accepted_history
+                    if not persist_t067_history_if_current(conversation_history):
+                        invocation_superseded = True
+                    break
+                if decision["notice"]:
+                    display_dm_narration(decision["notice"])
+                    provider_retry_notice_shown = True
                 status_manager.update_status(
                     f"Continuing the same response (attempt {retry_count + 1})...",
                     True,
@@ -8510,6 +8549,10 @@ def main_game_loop():
                     invocation_superseded = True
                     break
                 retry_count += 1
+                if decision["delay"]:
+                    # Back off only for the classified transient failures;
+                    # unclassified errors keep the historical immediate retry.
+                    time.sleep(decision["delay"])
                 continue
             if live_turn_scope.is_superseded():
                 # Release the T067 invocation claim through the superseded
@@ -9231,6 +9274,20 @@ def main_game_loop():
         if not valid_response_received:
             from utils.capture.live_provider_call import finish_live_turn_scope
 
+            if not invocation_superseded:
+                # The provider, not the game, ended this turn. The accepted
+                # history was restored above; the player only needs to know
+                # why nothing happened and what to do about it.
+                from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
+
+                error(
+                    "FAILURE: Provider call could not be completed for this "
+                    "turn. No game state was changed.",
+                    category="ai_validation",
+                )
+                display_dm_narration(
+                    provider_failure_message or SAFE_ACTION_FAILURE_MESSAGE
+                )
             finish_live_turn_scope(live_turn_scope)
             status_ready()
             return

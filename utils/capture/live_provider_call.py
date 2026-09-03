@@ -90,13 +90,24 @@ class LiveProviderUnavailable(RuntimeError):
 
 
 class LiveProviderCompletedError(RuntimeError):
-    """A completed deterministic wizard error owned by its existing caller."""
+    """A completed provider error handed back to the caller (#240).
+
+    Raised for a deterministic error on the first attempt and for a retryable
+    one once _NON_WIZARD_MAX_FAILURES attempts have not healed it. The caller
+    (the T067 turn loop) classifies it and tells the player; the child never
+    reissues a completed error forever again. http_status is exposed so the
+    caller's classifier can read it like any provider exception.
+    """
 
     def __init__(self, task_id, envelope=None):
         self.task_id = str(task_id)
         self.envelope = dict(envelope or {})
+        self.http_status = self.envelope.get("http_status")
+        self.status_code = self.http_status
         super().__init__(
-            "%s provider request completed with a deterministic error" % self.task_id
+            "%s provider request completed with a %s error (%s, status %s)"
+            % (self.task_id, self.envelope.get("disposition", "unknown"),
+               self.envelope.get("error_class", "unknown"), self.http_status)
         )
 
 
@@ -635,6 +646,11 @@ def _interruptible_wait(seconds, scope, message, emit=None):
         time.sleep(min(_HEARTBEAT_SECONDS, remaining))
 
 
+# Non-wizard reissue budget per call: after this many failed attempts the
+# child hands the completed error to the caller instead of looping (#240).
+_NON_WIZARD_MAX_FAILURES = 6
+
+
 def _delay_for_error(envelope, failure_count):
     retry_after = envelope.get("retry_after")
     if isinstance(retry_after, (int, float)) and retry_after >= 0:
@@ -885,6 +901,17 @@ def call_live_provider(
                 raise LiveProviderCompletedError(task_id, envelope)
         error_class = envelope.get("error_class", "transport_unavailable")
         if not wizard_task:
+            # A completed deterministic error (HTTP 400/401/403, a schema
+            # rejection) cannot heal through a fresh connection: reissuing it
+            # every ~60s kept the turn "in progress" forever (#240). Hand it
+            # to the caller now. Retryable and empty results get a bounded
+            # number of attempts here; the caller's own retry policy decides
+            # what to do after that.
+            disposition = envelope.get("disposition")
+            if disposition not in {"retryable_http", "retryable_transport", "empty"}:
+                raise LiveProviderCompletedError(task_id, envelope)
+            if failure_count >= _NON_WIZARD_MAX_FAILURES:
+                raise LiveProviderCompletedError(task_id, envelope)
             try:
                 from utils.enhanced_logger import warning
 
