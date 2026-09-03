@@ -105,40 +105,8 @@ def _immutable_voice_intents(npc_voice_intents):
     )
     normalized = normalize_npc_voice_intents(canonical_voice_intents)
     if normalized is None:
-        complete_envelope = (
-            isinstance(canonical_voice_intents, Mapping)
-            and all(
-                key in canonical_voice_intents
-                for key in ("contractVersion", "sourceBeatId", "actors")
-            )
-            and isinstance(canonical_voice_intents.get("contractVersion"), str)
-            and isinstance(canonical_voice_intents.get("sourceBeatId"), str)
-            and isinstance(canonical_voice_intents.get("actors"), Mapping)
-        )
-        if complete_envelope:
-            _LOGGER.warning(
-                "Complete combat voice advisory envelope was invalid and omitted"
-            )
-            return MappingProxyType({})
-        # Preserve the pre-envelope public call shape for custom callers and
-        # tests. It may advise T096, but without a versioned source beat it is
-        # deliberately ineligible for transaction persistence or T097 replay.
-        try:
-            legacy_rows = dict(canonical_voice_intents or {})
-        except (TypeError, ValueError):
-            legacy_rows = {}
-        actors = {}
-        for actor_id, row in legacy_rows.items():
-            if not isinstance(actor_id, str) or not isinstance(row, dict):
-                continue
-            if not isinstance(row.get("npcName"), str):
-                continue
-            if not isinstance(row.get("thought"), str):
-                continue
-            actors[actor_id] = MappingProxyType(dict(row))
-        return MappingProxyType(
-            {"actors": MappingProxyType(actors)} if actors else {}
-        )
+        _LOGGER.warning("Combat voice advisory envelope was invalid and omitted")
+        return MappingProxyType({})
     actors = {
         actor_id: MappingProxyType(dict(row))
         for actor_id, row in normalized["actors"].items()

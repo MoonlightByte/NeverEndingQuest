@@ -745,50 +745,6 @@ def update_journal_with_summary(adventure_summary, party_tracker_data, location_
 
     if safe_write_json("journal.json", journal_data):
         debug_print("Journal updated successfully")
-
-        # Process memories for companion NPCs
-        try:
-            from core.memories.companion_memory import CompanionMemoryManager
-            from utils.npc_name_canonicalizer import get_canonical_name
-            memory_manager = CompanionMemoryManager()
-
-            # Get list of party NPCs with canonical names
-            party_npcs = []
-            for npc in party_tracker_data.get('partyNPCs', []):
-                npc_name = npc.get('name', '') if isinstance(npc, dict) else str(npc)
-                if npc_name:
-                    # Use AI-based canonicalization to handle all D&D naming conventions
-                    canonical_name = get_canonical_name(npc_name)
-                    if canonical_name:
-                        party_npcs.append(canonical_name)
-
-            # Process the journal entry for memories
-            if party_npcs:
-                memories_created = memory_manager.process_journal_entry(
-                    new_entry,
-                    party_npcs
-                )
-
-                if memories_created:
-                    debug_print(f"Created memories for: {', '.join(memories_created.keys())}")
-
-                    # Auto-compress the memories for AI consumption
-                    try:
-                        import subprocess
-                        result = subprocess.run(
-                            ["python", "scripts/memory_management/compress_memories.py"],
-                            capture_output=True,
-                            text=True,
-                            timeout=5
-                        )
-                        if result.returncode == 0:
-                            debug_print("Compressed memories for AI consumption")
-                    except Exception as compress_error:
-                        debug_print(f"Memory compression failed (non-fatal): {compress_error}")
-        except Exception as e:
-            # Don't let memory system errors break journal updates
-            debug_print(f"Memory processing error (non-fatal): {e}")
-
         return True
     else:
         debug_print("Failed to update journal")

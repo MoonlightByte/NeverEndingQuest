@@ -45,7 +45,7 @@ UNRESOLVED_TYPES = frozenset({"abandon", "betray", "rescue"})
 # zero writes despite an eligible packet must never be swallowed at debug level --
 # that is exactly the "dead feature behind perfect narration" failure this project
 # has already shipped once. Callers/tests can inspect these events; a startup guard
-# (assert_store_writable) turns a corrupt/unmigratable store into a hard error.
+# Store-health evidence makes corrupt/unmigratable state loud to callers.
 STORE_HEALTH_EVENTS: list[dict] = []
 _MAX_HEALTH_EVENTS = 100
 
@@ -1461,22 +1461,3 @@ class RelationshipStore:
 
         changed, _ = self._mutate(update)
         return changed
-
-
-def assert_store_writable(
-    path: os.PathLike[str] | str = DEFAULT_STATE_PATH,
-    *,
-    schema_path: os.PathLike[str] | str = DEFAULT_SCHEMA_PATH,
-) -> None:
-    """Startup guard: raise if an existing sidecar cannot be opened writable.
-
-    A corrupt or unmigratable store would otherwise degrade silently to read-only
-    at runtime and persist nothing while narration still looks perfect. Call this
-    at boot so that failure is loud and fatal instead of invisible.
-    """
-    store = RelationshipStore(path, schema_path=schema_path)
-    if store.read_only:
-        raise RuntimeError(
-            "NPC relationship store at %s is read-only (%s); refusing to start with "
-            "a silently non-persisting memory store." % (path, store.read_only_reason)
-        )
