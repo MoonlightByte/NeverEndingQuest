@@ -429,8 +429,7 @@ def _submit_episode_capture(worker, beat_id: str, kwargs: Mapping[str, Any]) -> 
             "episode_capture_missing_lifecycle_authority",
             detail=beat_id,
         )
-        return
-    advisory_scope = children[0]
+    advisory_scope = children[0] if children else None
     worker_kwargs = dict(kwargs)
     worker_kwargs["advisory_scope"] = advisory_scope
 
@@ -438,12 +437,14 @@ def _submit_episode_capture(worker, beat_id: str, kwargs: Mapping[str, Any]) -> 
         try:
             worker(**worker_kwargs)
         finally:
-            advisory_scope.finish()
+            if advisory_scope is not None:
+                advisory_scope.finish()
 
     try:
         _EXECUTOR.submit(run)
     except Exception as error:  # noqa: BLE001 - scheduling cannot strand the child
-        advisory_scope.finish()
+        if advisory_scope is not None:
+            advisory_scope.finish()
         _LOGGER.debug("episode capture could not be scheduled: %r", error)
 
 
