@@ -66,6 +66,9 @@ hash prefixes, time formatting, applied/delivered receipt retention, mechanical
 IDs, or retired legacy/compression paths. TTS remains unchanged and assigned
 whole to #276.
 
+`relationship_store.py:477` keeps `aliases[-32:]` as identity-integrity history consumed in full by `_identity_names` at line 215; it is preserved, not a model-context cap.
+Surviving non-legacy conversation-compression recency windows are assigned to the #276 follow-on; legacy-runtime compression remains owned by #191 retirement.
+
 ## Native fixture and provider
 
 Runtime source: this branch after `4958d92c`.
