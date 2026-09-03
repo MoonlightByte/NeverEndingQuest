@@ -34,11 +34,6 @@ _SHEET_FIELDS = (
     "proficiencyBonus",
     "savingThrows",
     "skills",
-    "attacksAndSpellcasting",
-    "actions",
-    "specialAbilities",
-    "spellcasting",
-    "classFeatures",
     "ammunition",
     "temporaryEffects",
     "activeEffects",
@@ -350,7 +345,6 @@ def build_scene_dossier(encounter, events, characters=None):
                 for event in events
             ],
         },
-        "encounterActivity": _public_copy(state.get("narrationActivity") or {}),
         "ruleReferences": _spell_references(facts),
         "permittedNamedEntities": permitted,
         # This must remain the final payload item. Provider adapters serialize
@@ -390,12 +384,12 @@ def update_narration_activity(activity, events):
         if not isinstance(row, dict):
             row = {}
         normalized = {
-            "actions": list(row.get("actions") or [])[-12:],
+            "actions": list(row.get("actions") or []),
             "damageDealt": max(0, int(row.get("damageDealt", 0) or 0)),
             "damageTaken": max(0, int(row.get("damageTaken", 0) or 0)),
             "healingDealt": max(0, int(row.get("healingDealt", 0) or 0)),
             "healingReceived": max(0, int(row.get("healingReceived", 0) or 0)),
-            "recentFacts": list(row.get("recentFacts") or [])[-12:],
+            "recentFacts": list(row.get("recentFacts") or []),
         }
         result[combatant_id] = normalized
         return normalized
@@ -406,7 +400,7 @@ def update_narration_activity(activity, events):
         actor_id = event["actorId"]
         actor = row_for(actor_id)
         action = _action_name(event)
-        actor["actions"] = (actor["actions"] + [action])[-12:]
+        actor["actions"] = actor["actions"] + [action]
         target_facts = []
         for target in (event.get("outcome") or {}).get("targets", []) or []:
             if not isinstance(target, dict):
@@ -463,17 +457,14 @@ def update_narration_activity(activity, events):
                     if value is not None
                 }
             )
-        actor["recentFacts"] = (
-            actor["recentFacts"]
-            + [
-                {
-                    "action": action,
-                    "targets": target_facts,
-                    "resources": resources,
-                    "effects": effects,
-                }
-            ]
-        )[-12:]
+        actor["recentFacts"] = actor["recentFacts"] + [
+            {
+                "action": action,
+                "targets": target_facts,
+                "resources": resources,
+                "effects": effects,
+            }
+        ]
     return result
 
 

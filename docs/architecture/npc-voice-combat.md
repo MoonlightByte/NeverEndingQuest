@@ -50,8 +50,12 @@ object identity is the current-authority check.
    `combatState.pendingTurn.npcVoiceIntents`, before any attack, damage, save, or choice pause.
 6. `stage_events` preserves that same immutable envelope rather than replacing it.
 7. Apply copies it into `pendingDelivery.npcVoiceIntents` with the committed turn.
-8. T097 rebuilds its dossier from `pendingDelivery`; committed facts remain authoritative.
-9. After the turn returns, the accepted batch updates relationship working state idempotently.
+8. T097 rebuilds its dossier from `pendingDelivery`. Its current combatant projection omits
+   action-capability prose, and `authoritativeFacts` from the committed delivery slice is its
+   sole action-history input.
+9. `combatState.narrationActivity.recentFacts` remains complete T105 continuity input; it is
+   not copied into T097's scene dossier.
+10. After the turn returns, the accepted batch updates relationship working state idempotently.
 
 ### Failure terminals
 
