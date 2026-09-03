@@ -493,8 +493,17 @@ class CompanionMemoryManager:
         self.day_counter = 0
         self.last_date = None
 
-        # Clear files
-        for filepath in self.data_dir.glob('*.json'):
+        # Clear only files owned by this legacy memory manager. Canonical
+        # episodic/relationship sidecars share the directory and must survive
+        # a legacy refresh so their crash-resume cursors remain authoritative.
+        legacy_files = list(self.data_dir.glob('*_memories.json'))
+        legacy_files.extend(
+            self.data_dir / filename
+            for filename in ('memory_config.json', 'memories_compressed.json')
+        )
+        for filepath in legacy_files:
+            if not filepath.exists():
+                continue
             filepath.unlink()
 
         info("CompanionMemory", "Cleared all memory data for fresh rebuild")
