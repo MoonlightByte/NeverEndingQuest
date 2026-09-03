@@ -505,6 +505,9 @@ def backfill_from_summaries(
     provider: Optional[str] = None,
     json_loader: Callable[[str], Any] = safe_json_load,
     progress_cb: Optional[Callable[..., None]] = None,
+    checkpoint_cb: Optional[Callable[[int, int], None]] = None,
+    start_index: int = 0,
+    last_failure: Optional[Mapping[str, Any]] = None,
     advisory_scope: Any = None,
 ) -> Dict[str, Any]:
     """Backfill one COARSE module-level episode per campaign summary. Location is
@@ -513,17 +516,52 @@ def backfill_from_summaries(
     total = len(summaries)
     resolve_ids = _make_resolver(party_tracker_data, path_manager, rel_store, json_loader)
     committed = 0
-    for i, summary_doc in enumerate(summaries):
+    processed = 0
+    failure = None
+    index = max(0, start_index)
+
+    def skip_after_second_failure(error: BaseException) -> bool:
+        failed_index = index - 1
+        if not (
+            isinstance(last_failure, Mapping)
+            and last_failure.get("kind") == "completed_invalid"
+            and last_failure.get("entryIndex") == failed_index
+            and last_failure.get("errorClass") == type(error).__name__
+        ):
+            return False
+        _LOGGER.warning(
+            "campaign summary %d failed twice and was skipped: %s",
+            failed_index,
+            type(error).__name__,
+        )
+        record_store_health(
+            "episodic_upgrade_summary_skipped",
+            detail="summary %d failed twice: %s"
+            % (failed_index, type(error).__name__),
+        )
+        if checkpoint_cb:
+            checkpoint_cb(index, committed)
+        return True
+
+    while index < total:
+        i = index
+        summary_doc = summaries[index]
+        index += 1
+        processed += 1
         if progress_cb:
             try:
                 progress_cb(i + 1, total)
             except Exception:
                 pass
         if not isinstance(summary_doc, Mapping):
+            if checkpoint_cb:
+                checkpoint_cb(index, committed)
             continue
         prose = str(summary_doc.get("summary") or "").strip()
         module_name = str(summary_doc.get("moduleName") or party_tracker_data.get("module") or "")
         if not prose or not module_name:
+            if checkpoint_cb:
+                checkpoint_cb(index, committed)
             continue
         entry_started = time.monotonic()
 
@@ -546,14 +584,58 @@ def backfill_from_summaries(
                 player_name=player_name, party_tracker_data=party_tracker_data,
                 path_manager=path_manager, json_loader=json_loader,
             )
+            if result is not None and eid is None:
+                index -= 1
+                failure = {
+                    "kind": "commit_failed",
+                    "entryIndex": index,
+                    "errorClass": "EpisodeStoreCommitFailed",
+                }
+                _LOGGER.warning(
+                    "campaign summary %d remains pending after canonical commit failure",
+                    index,
+                )
+                break
             if eid:
                 committed += 1
-        except BackfillCompletedInvalid:
-            raise
-        except Exception as error:  # noqa: BLE001 - fail-open per summary
+            if checkpoint_cb:
+                checkpoint_cb(index, committed)
+        except BackfillCompletedInvalid as error:
+            if skip_after_second_failure(error):
+                continue
+            index -= 1
+            failure = {
+                "kind": "completed_invalid",
+                "entryIndex": index,
+                "errorClass": type(error).__name__,
+            }
+            _LOGGER.warning(
+                "campaign summary %d remains pending: %s",
+                index,
+                type(error).__name__,
+            )
+            break
+        except Exception as error:  # noqa: BLE001 - retain transient summary for resume
             from utils.capture.live_provider_call import LiveProviderSuperseded
 
             if isinstance(error, LiveProviderSuperseded):
                 raise
-            _LOGGER.debug("summary backfill %d failed: %r", i, error)
-    return {"committed": committed, "total": total}
+            index -= 1
+            failure = {
+                "kind": "entry_error",
+                "entryIndex": index,
+                "errorClass": type(error).__name__,
+            }
+            _LOGGER.warning(
+                "campaign summary %d remains pending after error: %s",
+                index,
+                type(error).__name__,
+            )
+            break
+    return {
+        "committed": committed,
+        "processed": processed,
+        "next_index": index,
+        "total": total,
+        "failure": failure,
+    }

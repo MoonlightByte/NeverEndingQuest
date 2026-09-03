@@ -90,6 +90,13 @@ def is_valid_marker(marker: Mapping[str, Any]) -> bool:
         and isinstance(marker.get("journalNextIndex"), int)
         and marker.get("journalNextIndex") >= 0
         and isinstance(marker.get("summariesDone"), bool)
+        and (
+            marker.get("summaryNextIndex") is None
+            or (
+                isinstance(marker.get("summaryNextIndex"), int)
+                and marker.get("summaryNextIndex") >= 0
+            )
+        )
         and isinstance(marker.get("committed"), int)
         and marker.get("committed") >= 0
     )
@@ -201,7 +208,8 @@ def backfill_campaign(
     marker = read_marker(marker_path)
     if marker.get("version") != UPGRADE_VERSION:
         marker = {"version": UPGRADE_VERSION, "status": "in_progress",
-                  "journalNextIndex": 0, "summariesDone": False, "committed": 0}
+                  "journalNextIndex": 0, "summaryNextIndex": 0,
+                  "summariesDone": False, "committed": 0}
     committed = int(marker.get("committed", 0))
 
     # The cursor exists before the first paid call. A failed marker write is loud but
@@ -274,6 +282,18 @@ def backfill_campaign(
     if not marker.get("summariesDone"):
         summaries = _load_summaries(summaries_dir, json_loader)
         if summaries:
+            summary_start_index = int(marker.get("summaryNextIndex", 0))
+            committed_before_summaries = committed
+
+            def checkpoint_summary(next_index: int, summary_committed: int) -> None:
+                marker.update({
+                    "status": "in_progress",
+                    "summaryNextIndex": next_index,
+                    "committed": committed_before_summaries + summary_committed,
+                })
+                marker.pop("summaryLastFailure", None)
+                _write_marker(marker, marker_path)
+
             sreport = backfill_from_summaries(
                 summaries, party_tracker_data,
                 path_manager=path_manager, roster_names=roster,
@@ -285,11 +305,42 @@ def backfill_campaign(
                     total,
                     "recovering the saga (%d seconds on this entry)" % int(elapsed),
                 ),
+                start_index=summary_start_index,
+                last_failure=marker.get("summaryLastFailure"),
+                checkpoint_cb=checkpoint_summary,
                 advisory_scope=advisory_scope,
             )
             committed += sreport["committed"]
+            marker.update({
+                "status": "in_progress",
+                "summaryNextIndex": sreport["next_index"],
+                "committed": committed,
+            })
+            if sreport.get("failure"):
+                marker["summaryLastFailure"] = sreport["failure"]
+            else:
+                marker.pop("summaryLastFailure", None)
+            _write_marker(marker, marker_path)
+            if sreport["next_index"] < len(summaries):
+                _LOGGER.warning(
+                    "companion memory repair halted at campaign summary %d; will resume",
+                    sreport["next_index"],
+                )
+                emit(
+                    "error",
+                    sreport["next_index"],
+                    len(summaries),
+                    "memory repair halted; will resume next time",
+                )
+                return {
+                    "status": "error",
+                    "committed": committed,
+                    "next_index": sreport["next_index"],
+                    "total": len(summaries),
+                }
         marker["summariesDone"] = True
         marker["committed"] = committed
+        marker.pop("summaryLastFailure", None)
 
     marker["status"] = "complete"
     marker.pop("lastFailure", None)
