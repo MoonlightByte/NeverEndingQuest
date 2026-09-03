@@ -142,7 +142,7 @@ class PreparedOocVoiceHandle:
         self._parent_scope = parent_scope
         self._relationship_store = relationship_store
         self._packets = tuple(copy.deepcopy(packet) for packet in packets)
-        recall_input = self._recall_candidates(raw_input, self._packets)
+        recall_input = self._recall_candidates(self._packets)
         if recall_input is None:
             self._voice_handle = service.dispatch_batch(
                 self._packets,
@@ -190,7 +190,7 @@ class PreparedOocVoiceHandle:
                 completion_required=True,
             )
 
-    def _recall_candidates(self, _raw_input, packets):
+    def _recall_candidates(self, packets):
         try:
             from core.npc.episode_store import EpisodeStore
 

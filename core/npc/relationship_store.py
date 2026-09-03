@@ -1239,22 +1239,18 @@ class RelationshipStore:
                 or "unknown",
                 prior_status=prior_status,
             )
-            edge, edge_created = self._ensure_edge(
+            edge, _edge_created = self._ensure_edge(
                 document, npc_id, player_id, game_day
             )
-            decayed = self._apply_decay(edge, game_day)
-            changed = edge_created or decayed
+            self._apply_decay(edge, game_day)
             lifecycle_state["events"] = events + [event]
-            changed = True
-            if selected.get("active") is not True:
-                selected["active"] = True
-                changed = True
+            selected["active"] = True
             selected["lastModule"] = _text(module, 160)
             selected["lastLocationId"] = _text(location_id, 120)
             lifecycle_state["status"] = "active"
-            if kind == "rejoin" and document["working"].pop(npc_id, None) is not None:
-                changed = True
-            return changed, kind
+            if kind == "rejoin":
+                document["working"].pop(npc_id, None)
+            return True, kind
 
         _mutated, result = self._mutate(update)
         return result or "join"

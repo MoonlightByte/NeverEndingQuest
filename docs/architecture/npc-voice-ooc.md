@@ -3,9 +3,9 @@
 Purpose: Build private companion advice for one substantive player beat, inject it into
 T067/T065, and commit accepted relationship working state after the DM turn is durable.
 
-- Revision: `integration/npc-voice-episodic`, including the #262 No-Limits wave
-- Verified: 2026-09-02
-- Doctrine: [GitHub issue #193 v2.7](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
+- Revision: `integration/npc-voice-episodic` through `6279ef52`
+- Verified: 2026-09-03
+- Doctrine: [GitHub issue #193 v2.10](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
 - Visual companion: [NPC Voice Flow Map](../npc-voice-flow-map.html)
 
 ## Authority table
@@ -53,7 +53,8 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 
 1. Witnessed episode availability opens an advisory T112 scope; code does not prose-gate recall.
 2. T112 classifies whether the line is a concrete past/shared reference and extracts anchors;
-   code selects grounded episode rows for each NPC or records honest no-match/unavailability.
+   code scores each NPC's full witnessed set with those anchors plus exact typed equality to
+   the packet's canonical current-location ID.
 3. Validated E3 rows enrich the packet.
 4. T105 dispatch begins after recall; T112 is a serial predecessor, while T105 remains parallel
    across companions.
@@ -86,7 +87,8 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 2. `core/npc/voice_context.py:373-398` - E1 scene window.
 3. `core/npc/voice_context.py:401-428` - E2 visible companion acts.
 4. `core/npc/voice_context.py:431-495` - E4 companion relationships.
-5. `core/npc/voice_context.py:159-235` - E3/T112 selection and T105 handoff.
+5. `core/npc/voice_context.py:130-323` - E3/T112 witnessed selection, typed-location scoring,
+   and T105 handoff.
 6. `core/npc/voice_context.py:810-990` - canonical packet construction.
 7. `core/npc/voice_service.py:720-917` - fenced parallel T105 workers.
 8. `core/npc/voice_service.py:493-660` - response validator and affinity classification.
@@ -108,3 +110,4 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 ## Open items
 
 - #258 - companion-memory backfill can delay startup before player control.
+- #291 - lifecycle-write recovery for a roster-active but stale inactive sidecar remains open.

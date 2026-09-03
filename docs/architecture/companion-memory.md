@@ -3,9 +3,9 @@
 Purpose: Persist canonical shared episodes, per-NPC relationships and point of view,
 then supply grounded memory to conversation and voice calls.
 
-- Revision: `integration/npc-voice-episodic`, including the #262 No-Limits wave
-- Verified: 2026-09-02
-- Doctrine: [GitHub issue #193 v2.7](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
+- Revision: `integration/npc-voice-episodic` through `6279ef52`
+- Verified: 2026-09-03
+- Doctrine: [GitHub issue #193 v2.10](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
 - Visual companion: [NPC Voice Flow Map](../npc-voice-flow-map.html)
 
 ## Authority table
@@ -44,8 +44,21 @@ then supply grounded memory to conversation and voice calls.
    meaning from lexical overlap.
 4. T112 determines whether the line contains a concrete past/shared reference and extracts typed
    anchors, returning empty arrays for present/future or non-historical lines.
-5. Code selects only episodes witnessed by that exact NPC and attaches them to the exact-beat
-   T105 packet; honest no-match remains valid.
+5. Code supplies the packet's canonical current-location ID to the one episode scorer. Typed
+   equality boosts witnessed events at that location without filtering out witnessed history
+   elsewhere or admitting an event the NPC did not witness.
+6. The top grounded rows attach to the exact-beat T105 packet; honest no-match remains valid,
+   while an unreadable ledger degrades loudly for that beat instead of masquerading as empty.
+
+### Companion arrival lifecycle
+
+1. The committed party-roster transition chooses `mark_joined` for a first arrival or
+   `mark_rejoined` for an inactive return from the latest sidecar view.
+2. Both public entries converge on one locked mutation. Its reread state determines `join`
+   versus `rejoin`, retains relationship/profile/POV data, and clears request-local working
+   state on return.
+3. A final active arrival event with the same non-empty `sourceTurnId` is verified success
+   without another event or revision increment; the caller verifies that receipt after commit.
 
 ### Historical T113 backfill
 
@@ -80,19 +93,21 @@ then supply grounded memory to conversation and voice calls.
 
 1. `core/npc/episode_store.py:1-12` - canonical episode authority.
 2. `core/npc/episode_store.py:51-73` - coordinate-derived episode identity.
-3. `core/npc/episode_store.py:189-284` - latch, lock, revision, schema, atomic write.
-4. `core/npc/episode_store.py:286-378` - idempotent commit and witness retrieval.
+3. `core/npc/episode_store.py:190-294` - latch, strict query read, lock, revision, schema, atomic write.
+4. `core/npc/episode_store.py:296-378` - idempotent commit and witnessed retrieval.
 5. `core/npc/relationship_store.py:285-377` - relationship-sidecar persistence.
 6. `core/npc/relationship_store.py:422-500` - stable identity registration.
 7. `core/npc/relationship_store.py:765-875` - typed relationship event application.
 8. `core/npc/relationship_store.py:978-1045` - exactly-one legacy identity migration.
-9. `core/npc/relationship_store.py:1413-1506` - POV storage and baseline reinforcement.
-10. `core/npc/episode_extraction.py:138-201` - T108 parsing/presence reconciliation.
-11. `core/npc/episode_capture.py:151-265` - location capture and POV projection.
-12. `core/npc/episode_capture.py:268-412` - combat capture and async dispatch.
-13. `core/npc/episode_recall.py` - T112 anchor classification and witnessed-only selection helpers.
-14. `core/npc/episode_backfill.py:195-254` - T113 roster-bound backfill.
-15. `updates/save_game_manager.py:927-1041` - restore, cleanup, and rollback.
+9. `core/npc/relationship_store.py:1165-1260,1357-1377` - one locked join/rejoin mutation.
+10. `core/ai/action_handler.py:2473-2635` - roster lifecycle routing and receipt verification.
+11. `core/npc/episode_extraction.py:138-201` - T108 parsing/presence reconciliation.
+12. `core/npc/episode_capture.py:151-265` - location capture and POV projection.
+13. `core/npc/episode_capture.py:268-412` - combat capture and async dispatch.
+14. `core/npc/episode_recall.py:173-245` - T112 typed-anchor and current-location scoring.
+15. `core/npc/voice_context.py:130-323` - witnessed candidates, location threading, and T105 handoff.
+16. `core/npc/episode_backfill.py:195-254` - T113 roster-bound backfill.
+17. `updates/save_game_manager.py:927-1041` - restore, cleanup, and rollback.
 
 ## Invariants
 
@@ -106,3 +121,4 @@ then supply grounded memory to conversation and voice calls.
 - #200 - combat-memory persistence/save-provenance tracker remains open.
 - #209 - legacy companion-memory reconciliation remains deferred in travel recovery.
 - #258 - synchronous T113 backfill can delay startup after provider completion.
+- #291 - a roster-active, schema-valid stale inactive sidecar needs owner-designed recovery.
