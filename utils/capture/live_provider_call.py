@@ -133,6 +133,7 @@ class LiveTurnScope:
     lock: threading.RLock = field(default_factory=threading.RLock)
     controls_open: bool = True
     advisory_scopes: list = field(default_factory=list)
+    purpose: str = "turn"
 
     def next_generation(self):
         with self.lock:
@@ -222,7 +223,12 @@ def open_advisory_scope(parent, beat_id):
 
 def open_advisory_scopes(parent, beat_id, count, *, completion_required=False):
     """Atomically register the complete intended advisory child set."""
-    if parent is None or parent is not get_live_turn_scope() or count <= 0:
+    if parent is None or count <= 0:
+        return ()
+    if (
+        parent is not get_live_turn_scope()
+        and parent is not get_active_welcome_scope()
+    ):
         return ()
     scopes = tuple(
         AdvisoryProviderScope(
@@ -708,11 +714,10 @@ def call_live_provider(
     scope = scope if scope is not None else get_live_turn_scope()
     emit = status_emit if status_emit is not None else _emit_working
     completion_required = bool(
-        task_id == "T105"
-        and isinstance(scope, AdvisoryProviderScope)
+        isinstance(scope, AdvisoryProviderScope)
         and scope.completion_required
     )
-    if completion_required:
+    if completion_required and task_id == "T105":
         # The request-local batch owns player-facing progress. Per-child transport
         # details remain developer-only so parallel workers cannot race narration.
         emit = lambda _message: None

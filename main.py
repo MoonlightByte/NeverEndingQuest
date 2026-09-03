@@ -7087,16 +7087,43 @@ def main_game_loop():
     except Exception as e:
         debug(f"Could not initialize memories (non-fatal): {e}", category="startup")
 
-    # W5: one-time seamless upgrade of an existing game to EPISODIC memory. Distinct
-    # from the legacy initializer above; always on, resumable, and
-    # fail-open (never blocks startup). Backfills companion episodes from the
-    # campaign's own journal/summaries so returning companions already remember.
+    # W5: one-time seamless upgrade of a pre-feature game to episodic memory.
+    # Valid current state does zero work. Missing historical state blocks context
+    # rendering behind one visible, resumable build whose provider child remains
+    # discoverable to Save/Load/Reset/quit.
     try:
         from core.npc.episodic_upgrade import check_and_run_episode_upgrade, default_progress
-        # Cap per load so a large old journal doesn't stall startup for minutes; the
-        # marker resumes the remainder on the next few loads (idempotent). Snappy first
-        # load, full memory within a couple of sessions.
-        check_and_run_episode_upgrade(progress=default_progress, per_run_cap=40)
+        from utils.capture.live_provider_call import (
+            LiveTurnScope,
+            clear_welcome_scope,
+            drain_live_saves,
+            open_advisory_scopes,
+            register_welcome_scope,
+        )
+
+        upgrade_scope = LiveTurnScope(purpose="maintenance")
+        register_welcome_scope(upgrade_scope)
+        upgrade_children = open_advisory_scopes(
+            upgrade_scope,
+            "episodic-upgrade",
+            1,
+            completion_required=True,
+        )
+        if not upgrade_children:
+            raise RuntimeError("could not register episodic upgrade provider scope")
+        upgrade_child = upgrade_children[0]
+        try:
+            check_and_run_episode_upgrade(
+                progress=default_progress,
+                advisory_scope=upgrade_child,
+            )
+        finally:
+            upgrade_child.finish()
+            upgrade_scope.seal_advisory_scopes()
+            drain_live_saves(upgrade_scope, seal=True)
+            clear_welcome_scope(upgrade_scope)
+            upgrade_scope.phase = "QUIESCENT"
+            upgrade_scope.quiescent.set()
     except Exception as e:
         debug(f"Episodic upgrade skipped (non-fatal): {e}", category="startup")
 

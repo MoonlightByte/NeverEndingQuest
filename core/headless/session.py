@@ -590,6 +590,37 @@ class HeadlessSession:
                             error=None if ok2 else message2,
                         )
 
+                    if getattr(welcome_scope, "purpose", "") == "maintenance":
+                        from utils.capture.live_provider_call import (
+                            claim_destructive_operation,
+                        )
+
+                        claim = claim_destructive_operation(
+                            welcome_scope,
+                            "save",
+                            execute_welcome_save,
+                            complete_welcome_save,
+                            operation_id=str(command_id),
+                        )
+                        if claim["status"] == "queued":
+                            welcome_scope.seal_advisory_scopes()
+                            self.writer.emit(
+                                "operation",
+                                id=command_id,
+                                name="save",
+                                status="accepted_deferred",
+                            )
+                            return
+                        if claim["status"] == "conflict":
+                            result(
+                                False,
+                                error="another lifecycle operation is already pending",
+                            )
+                            return
+                        welcome_scope.quiescent.wait()
+                        self.handle_command(command)
+                        return
+
                     queued = queue_live_save(
                         execute_welcome_save, complete_welcome_save,
                         command_id, scope=welcome_scope,

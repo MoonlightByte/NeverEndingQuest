@@ -33,8 +33,12 @@ from core.npc.episode_backfill import (
     load_character_dicts,
     load_module_area_dicts,
 )
-from core.npc.episode_store import EpisodeStore
-from core.npc.relationship_store import RelationshipStore, record_store_health
+from core.npc.episode_store import EpisodeStore, new_ledger_document
+from core.npc.relationship_store import (
+    RelationshipStore,
+    new_state_document,
+    record_store_health,
+)
 from utils.encoding_utils import safe_json_load, safe_json_dump
 
 _LOGGER = logging.getLogger(__name__)
@@ -102,6 +106,20 @@ def _load_summaries(summaries_dir: str, json_loader) -> List[Dict[str, Any]]:
     return out
 
 
+def _ensure_empty_canonical_files() -> None:
+    """Create only absent canonical stores; the completion marker lands last."""
+    from utils.path_transaction_lock import path_transaction_lock
+
+    for path, suffix, document in (
+        (EpisodeStore().path, ".episode-ledger.lock", new_ledger_document()),
+        (RelationshipStore().path, ".npc-agent.lock", new_state_document()),
+    ):
+        with path_transaction_lock(path, suffix=suffix):
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                safe_json_dump(document, str(path), ensure_ascii=True)
+
+
 # ---- orchestration --------------------------------------------------------
 
 def backfill_campaign(
@@ -110,7 +128,7 @@ def backfill_campaign(
     *,
     provider: Optional[str] = None,
     progress: Optional[Callable[[str, int, int, str], None]] = None,
-    per_run_cap: Optional[int] = None,
+    advisory_scope: Any = None,
     marker_path: str = MARKER_PATH,
     journal_path: str = JOURNAL_PATH,
     summaries_dir: str = SUMMARIES_DIR,
@@ -122,7 +140,7 @@ def backfill_campaign(
     """Resumable, idempotent, fail-open campaign backfill. Returns a status dict.
 
     `progress(stage, done, total, message)`: stage in
-    {'start','journal','summaries','complete','paused','disabled'}.
+    {'start','journal','summaries','complete','disabled'}.
     """
     def emit(stage, done, total, message=""):
         if progress:
@@ -182,19 +200,31 @@ def backfill_campaign(
             # backfill_from_journal reports the ABSOLUTE entry index, so on a resumed
             # load the bar already shows cumulative progress (e.g. 41/277) -- do NOT
             # add start_index again.
-            progress_cb=lambda done, total: emit("journal", done, total,
-                                                 "recovering memories"),
-            start_index=start_index, max_entries=per_run_cap,
+            progress_cb=lambda done, total, elapsed=0: emit(
+                "journal",
+                done,
+                total,
+                "recovering memories (%d seconds on this entry)" % int(elapsed),
+            ),
+            start_index=start_index, advisory_scope=advisory_scope,
         )
         committed += report["committed"]
         marker.update({"status": "in_progress", "journalNextIndex": report["next_index"],
                        "committed": committed})
         _write_marker(marker, marker_path)
         if report["next_index"] < total_entries:
-            # hit the per-run cap: pause, resume next load
-            emit("paused", report["next_index"], total_entries, "more memories next time")
-            return {"status": "paused", "committed": committed,
-                    "next_index": report["next_index"], "total": total_entries}
+            emit(
+                "error",
+                report["next_index"],
+                total_entries,
+                "memory recovery will resume next time",
+            )
+            return {
+                "status": "error",
+                "committed": committed,
+                "next_index": report["next_index"],
+                "total": total_entries,
+            }
 
     # --- campaign summaries (coarse module-level) ---
     if not marker.get("summariesDone"):
@@ -205,8 +235,13 @@ def backfill_campaign(
                 path_manager=path_manager, roster_names=roster,
                 episode_store=store, rel_store=rel,
                 player_name=player_name, provider=provider, json_loader=json_loader,
-                progress_cb=lambda done, total: emit("summaries", done, total,
-                                                     "recovering the saga"),
+                progress_cb=lambda done, total, elapsed=0: emit(
+                    "summaries",
+                    done,
+                    total,
+                    "recovering the saga (%d seconds on this entry)" % int(elapsed),
+                ),
+                advisory_scope=advisory_scope,
             )
             committed += sreport["committed"]
         marker["summariesDone"] = True
@@ -224,7 +259,7 @@ def check_and_run_episode_upgrade(
     *,
     provider: Optional[str] = None,
     progress: Optional[Callable[[str, int, int, str], None]] = None,
-    per_run_cap: Optional[int] = None,
+    advisory_scope: Any = None,
     marker_path: str = MARKER_PATH,
 ) -> Dict[str, Any]:
     """First-run detector + orchestrator, called ONCE at the startup seam beside the
@@ -237,6 +272,7 @@ def check_and_run_episode_upgrade(
         if not game_has_history():
             # Fresh game -> mark complete so detection never re-runs; memory accrues
             # forward from live capture.
+            _ensure_empty_canonical_files()
             _write_marker(
                 {"version": UPGRADE_VERSION, "status": "complete",
                  "journalNextIndex": 0, "summariesDone": True, "committed": 0},
@@ -253,7 +289,7 @@ def check_and_run_episode_upgrade(
 
         return backfill_campaign(
             party_tracker_data, path_manager,
-            provider=provider, progress=progress, per_run_cap=per_run_cap,
+            provider=provider, progress=progress, advisory_scope=advisory_scope,
             marker_path=marker_path,
         )
     except Exception as error:  # noqa: BLE001 - upgrade never blocks startup
@@ -267,18 +303,18 @@ def default_progress(stage: str, done: int, total: int, message: str = "") -> No
     prints a terminal line for headless/terminal play."""
     try:
         from core.managers.status_manager import status_manager
-        # paused/disabled also close the overlay via the complete event.
+        # Disabled/error also close the overlay via the complete event.
         event = {
             "start": "episodic_upgrade_start",
             "complete": "episodic_upgrade_complete",
-            "paused": "episodic_upgrade_complete",
             "disabled": "episodic_upgrade_complete",
+            "error": "episodic_upgrade_complete",
         }.get(stage, "episodic_upgrade_progress")
         status_manager.emit_compression_event(
             event, {"completed": done, "total": total, "message": message, "stage": stage}
         )
     except Exception:
         pass
-    if stage in ("start", "complete", "paused", "disabled") or (total and done % 25 == 0):
+    if stage in ("start", "complete", "disabled", "error") or (total and done % 25 == 0):
         pct = (" %d/%d" % (done, total)) if total else ""
         print("[MEMORY] %s%s %s" % (stage, pct, message))

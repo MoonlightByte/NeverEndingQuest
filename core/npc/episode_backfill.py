@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 import model_config
@@ -43,6 +44,10 @@ _LOGGER = logging.getLogger(__name__)
 TASK_ID = "T113"
 PROMPT_VERSION = "npc-backfill-extract/v1"
 register_callsite(TASK_ID, "core/npc/episode_backfill.py", 60)
+
+
+class BackfillCompletedInvalid(RuntimeError):
+    """One T113 entry completed without a usable typed result."""
 
 # Response shape: like T108 but the model also SELECTS present companions.
 BACKFILL_RESPONSE_SCHEMA: Dict[str, Any] = {
@@ -201,6 +206,8 @@ def extract_backfill_episode(
     provider: Optional[str] = None,
     completion_fn: Callable[..., Any] = api_client.create_completion,
     capture_fn: Callable[..., Any] = None,
+    advisory_scope: Any = None,
+    advisory_status: Optional[Callable[[str], None]] = None,
 ) -> Optional[Dict[str, Any]]:
     """One T113 call over prose + a CLOSED roster. Returns commit-ready kwargs (minus
     coordinates) or None. `resolve_ids(names)->{name:id}` maps present roster names to
@@ -221,15 +228,27 @@ def extract_backfill_episode(
     ]
     capture = capture_fn or (lambda task_id, fn, **kw: fn(**kw))
     try:
-        response = capture(TASK_ID, completion_fn, _request_provider=prov,
-                           model=config["model"], messages=messages,
-                           **_completion_kwargs(prov, config))
+        response = capture(
+            TASK_ID,
+            completion_fn,
+            _request_provider=prov,
+            _live_selected="advisory" if advisory_scope is not None else None,
+            _detached_scope=advisory_scope,
+            _detached_status=advisory_status,
+            model=config["model"],
+            messages=messages,
+            **_completion_kwargs(prov, config),
+        )
         payload = json.loads(response.choices[0].message.content or "{}")
-    except Exception as error:  # noqa: BLE001 - fail-open
+    except Exception as error:
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+
+        if isinstance(error, LiveProviderSuperseded):
+            raise
         _LOGGER.debug("backfill extraction failed: %r", error)
-        return None
+        raise BackfillCompletedInvalid(type(error).__name__) from error
     if not isinstance(payload, Mapping):
-        return None
+        raise BackfillCompletedInvalid("payload_not_mapping")
 
     # Closed-roster guard IN CODE: keep only present names that are actually on the
     # roster (the model must not invent a companion).
@@ -333,9 +352,9 @@ def backfill_from_journal(
     player_name: str = "",
     provider: Optional[str] = None,
     json_loader: Callable[[str], Any] = safe_json_load,
-    progress_cb: Optional[Callable[[int, int], None]] = None,
+    progress_cb: Optional[Callable[..., None]] = None,
     start_index: int = 0,
-    max_entries: Optional[int] = None,
+    advisory_scope: Any = None,
 ) -> Dict[str, Any]:
     """Backfill episodes from journal entries. Idempotent (stable coordinates), fail-
     open per entry. Returns {committed, processed, next_index, total}."""
@@ -348,8 +367,6 @@ def backfill_from_journal(
     processed = 0
     index = max(0, start_index)
     while index < total:
-        if max_entries is not None and processed >= max_entries:
-            break
         entry = entries[index]
         index += 1
         processed += 1
@@ -364,10 +381,18 @@ def backfill_from_journal(
         if not summary:
             continue
         loc = normalize_journal_location(entry.get("location"), name_to_id_map)
+        entry_started = time.monotonic()
+
+        def entry_status(_message):
+            if progress_cb:
+                progress_cb(index, total, time.monotonic() - entry_started)
+
         try:
             result = extract_backfill_episode(
                 summary, roster_names, resolve_ids,
-                player_name=player_name, provider=provider, capture_fn=capture_and_fanout,
+                player_name=player_name, provider=provider,
+                capture_fn=capture_and_fanout, advisory_scope=advisory_scope,
+                advisory_status=entry_status,
             )
             eid = _commit_backfill(
                 episode_store, rel_store, result,
@@ -378,7 +403,19 @@ def backfill_from_journal(
             )
             if eid:
                 committed += 1
+        except BackfillCompletedInvalid as error:
+            index -= 1
+            _LOGGER.warning(
+                "journal backfill entry %d remains pending: %s",
+                index,
+                type(error).__name__,
+            )
+            break
         except Exception as error:  # noqa: BLE001 - fail-open per entry
+            from utils.capture.live_provider_call import LiveProviderSuperseded
+
+            if isinstance(error, LiveProviderSuperseded):
+                raise
             _LOGGER.debug("journal backfill entry %d failed: %r", index - 1, error)
     return {"committed": committed, "processed": processed, "next_index": index, "total": total}
 
@@ -394,7 +431,8 @@ def backfill_from_summaries(
     player_name: str = "",
     provider: Optional[str] = None,
     json_loader: Callable[[str], Any] = safe_json_load,
-    progress_cb: Optional[Callable[[int, int], None]] = None,
+    progress_cb: Optional[Callable[..., None]] = None,
+    advisory_scope: Any = None,
 ) -> Dict[str, Any]:
     """Backfill one COARSE module-level episode per campaign summary. Location is
     module-level (id=""); grain is derived as 'module' from the backfill-summary
@@ -414,10 +452,18 @@ def backfill_from_summaries(
         module_name = str(summary_doc.get("moduleName") or party_tracker_data.get("module") or "")
         if not prose or not module_name:
             continue
+        entry_started = time.monotonic()
+
+        def entry_status(_message):
+            if progress_cb:
+                progress_cb(i + 1, total, time.monotonic() - entry_started)
+
         try:
             result = extract_backfill_episode(
                 prose, roster_names, resolve_ids,
-                player_name=player_name, provider=provider, capture_fn=capture_and_fanout,
+                player_name=player_name, provider=provider,
+                capture_fn=capture_and_fanout, advisory_scope=advisory_scope,
+                advisory_status=entry_status,
             )
             eid = _commit_backfill(
                 episode_store, rel_store, result,
@@ -429,6 +475,12 @@ def backfill_from_summaries(
             )
             if eid:
                 committed += 1
+        except BackfillCompletedInvalid:
+            raise
         except Exception as error:  # noqa: BLE001 - fail-open per summary
+            from utils.capture.live_provider_call import LiveProviderSuperseded
+
+            if isinstance(error, LiveProviderSuperseded):
+                raise
             _LOGGER.debug("summary backfill %d failed: %r", i, error)
     return {"committed": committed, "total": total}
