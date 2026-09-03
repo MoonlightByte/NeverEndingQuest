@@ -1052,10 +1052,9 @@ def build_ooc_packets_for_turn(
     json_loader: Callable[[str], Optional[Dict[str, Any]]] = _load_json,
     relationship_store: Optional[RelationshipStore] = None,
     fairness: Optional[SelectionFairness] = None,
-    limit: int = 4,
     packet_invalid_handler: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[Dict[str, Any], ...]:
-    """Compose and deterministically rank up to four eligible OOC packets."""
+    """Compose and deterministically rank every eligible OOC packet."""
     player_name = _canonical_player_display_name(
         player_name,
         path_manager=path_manager,
@@ -1112,7 +1111,7 @@ def build_ooc_packets_for_turn(
         raw_input,
         evidence_npc_ids=evidence_npc_ids,
         fairness=fairness or _OOC_FAIRNESS,
-        limit=min(4, max(0, int(limit))),
+        limit=None,
     )
     selected_packets = tuple(
         packets_by_id[candidate["npcId"]] for candidate in ranked

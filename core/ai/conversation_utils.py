@@ -570,7 +570,6 @@ def _build_canonical_companion_context_message(
         path_manager=path_manager,
         json_loader=json_loader,
         relationship_store=relationship_store,
-        limit=4,
     )
     episode_store = None
     try:
