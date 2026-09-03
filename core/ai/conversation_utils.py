@@ -502,64 +502,6 @@ def _recalled_rows_for_npc(npc_id, episodes):
     return rows
 
 
-def _recall_by_npc(player_line, packets, episode_store, current_location_id=None):
-    """When the player references the past, do ONE anchor-parse (T112) and CODE-select
-    matching episodes per present NPC. Skips the model call entirely if no present NPC
-    has any episodes. Returns {npc_id: [canonical episode, ...]}. Fail-open -> {}."""
-    result = {}
-    if not episode_store or not isinstance(player_line, str) or len(player_line.strip()) < 8:
-        return result
-    try:
-        from core.npc.episode_recall import parse_anchors, select_episodes, _tokens, _episode_terms
-    except Exception:
-        return result
-    episodes_by_npc = {}
-    for packet in packets:
-        npc_id = packet.get("npc", {}).get("id")
-        if not npc_id:
-            continue
-        try:
-            episodes_by_npc[npc_id] = episode_store.episodes_for_witness(npc_id)
-        except Exception:
-            episodes_by_npc[npc_id] = []
-    if not any(episodes_by_npc.values()):
-        return result  # nothing to recall -> do not pay for the anchor-parse call
-    # Cheap code-side PRE-SCREEN: only pay for the T112 anchor-parse model call when
-    # the player line lexically overlaps SOME stored episode term (a plausible past
-    # reference). On an ordinary action turn ("I attack the goblin") there is no
-    # overlap -> skip the call. This bounds per-turn cost/latency to recall turns.
-    line_tokens = _tokens(player_line)
-    all_terms = set()
-    for episodes in episodes_by_npc.values():
-        for episode in episodes:
-            all_terms |= _episode_terms(episode)
-    if not (line_tokens & all_terms):
-        return result
-    anchors = parse_anchors(player_line)
-    if not anchors:
-        return result
-    for npc_id, episodes in episodes_by_npc.items():
-        if not episodes:
-            continue
-        ignore = set()
-        for episode in episodes:
-            for fact in episode.get("salientFacts", []) or []:
-                subject = fact.get("subject") if isinstance(fact, dict) else None
-                if isinstance(subject, dict) and subject.get("id") == npc_id:
-                    ignore |= _tokens(subject.get("label"))
-        scored = select_episodes(
-            anchors, episodes, ignore_terms=ignore,
-            current_location_id=current_location_id,
-        )
-        if scored:
-            # Exact value match beats rank: the top-2 cap applies to rank-only
-            # candidates, but an episode flagged "exact" (a normalized anchor
-            # VALUE equals one of its typed-field values) is always included.
-            top = scored[:2] + [s for s in scored[2:] if s.get("exact")]
-            result[npc_id] = [s["episode"] for s in top]
-    return result
-
-
 def _canonical_context_row(packet, episode_store=None, relationship_store=None,
                            recalled_episodes=None, current_location_id=None):
     """Project one bounded packet without vectors or private working memory."""
@@ -962,7 +904,7 @@ def update_conversation_history(
                 hub_type = hub_data.get('hubType', 'settlement')
                 services = hub_data.get('services', [])
                 ownership = hub_data.get('ownership', 'party')
-                services_str = ', '.join(services[:3]) if services else 'basic services'  # Limit to first 3 services
+                services_str = ', '.join(services) if services else 'basic services'
                 hub_details.append(f"{hub_name} ({hub_type} with {services_str}, {ownership} owned)")
             world_state_parts.append(f"Established hubs: {'; '.join(hub_details)}")
             
@@ -1230,7 +1172,7 @@ def update_character_data(conversation_history, party_tracker_data):
                     # Format character data
                     formatted_data = f"""
 CHAR: {member_data['name']}
-TYPE: {member_data['character_type'].capitalize()} | LVL: {member_data['level']} | RACE: {member_data['race']} | CLASS: {member_data['class']} | ALIGN: {member_data['alignment'][:2].upper()} | BG: {member_data['background']}
+TYPE: {member_data['character_type'].capitalize()} | LVL: {member_data['level']} | RACE: {member_data['race']} | CLASS: {member_data['class']} | ALIGN: {str(member_data['alignment']).upper()} | BG: {member_data['background']}
 AC: {member_data['armorClass']} | SPD: {member_data['speed']}
 STATUS: {member_data['status']} | CONDITION: {member_data['condition']} | AFFECTED: {', '.join(member_data['condition_affected'])}
 STATS: STR {member_data['abilities']['strength']}, DEX {member_data['abilities']['dexterity']}, CON {member_data['abilities']['constitution']}, INT {member_data['abilities']['intelligence']}, WIS {member_data['abilities']['wisdom']}, CHA {member_data['abilities']['charisma']}
@@ -1344,7 +1286,7 @@ FLAWS: {member_data['flaws']}
                     # Format NPC data (using same schema as players)
                     formatted_data = f"""
 NPC: {npc_data['name']}
-ROLE: {npc['role']} | TYPE: {npc_data['character_type'].capitalize()} | LVL: {npc_data['level']} | RACE: {npc_data['race']} | CLASS: {npc_data['class']} | ALIGN: {npc_data['alignment'][:2].upper()} | BG: {npc_data['background']}
+ROLE: {npc['role']} | TYPE: {npc_data['character_type'].capitalize()} | LVL: {npc_data['level']} | RACE: {npc_data['race']} | CLASS: {npc_data['class']} | ALIGN: {str(npc_data['alignment']).upper()} | BG: {npc_data['background']}
 AC: {npc_data['armorClass']} | SPD: {npc_data['speed']}
 STATUS: {npc_data['status']} | CONDITION: {npc_data['condition']} | AFFECTED: {', '.join(npc_data['condition_affected'])}
 STATS: STR {npc_data['abilities']['strength']}, DEX {npc_data['abilities']['dexterity']}, CON {npc_data['abilities']['constitution']}, INT {npc_data['abilities']['intelligence']}, WIS {npc_data['abilities']['wisdom']}, CHA {npc_data['abilities']['charisma']}

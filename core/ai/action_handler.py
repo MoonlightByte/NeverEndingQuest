@@ -5082,10 +5082,10 @@ RESPONSE FORMAT (JSON only):
 {{
   "action": "remove|update_status|move",
   "reasoning": "Brief explanation of decision based on narrative context",
-  "newDescription": "Updated NPC description if action is update_status (required field, max 500 chars)",
+  "newDescription": "Updated NPC description if action is update_status (required field)",
   "newAttitude": "Updated attitude if action is update_status (required field)", 
   "newLocation": "Target location ID if action is move (must match available locations exactly)",
-  "locationUpdate": "Brief addition to location description explaining change (optional, max 200 chars)"
+  "locationUpdate": "Addition to location description explaining change (optional)"
 }}
 
 DECISION GUIDELINES WITH EXAMPLES:
@@ -5208,9 +5208,8 @@ def validate_npc_movement_decision(decision, area_data, location_id, party_npcs)
             if not decision.get("newAttitude"):
                 return {"valid": False, "reason": "update_status action requires newAttitude field"}
             
-            # Check length limits
-            if len(decision.get("newDescription", "")) > 500:
-                return {"valid": False, "reason": "newDescription must be 500 characters or less"}
+            if not isinstance(decision.get("newDescription"), str):
+                return {"valid": False, "reason": "newDescription must be a string"}
                 
         elif action == "move":
             new_location = decision.get("newLocation")
@@ -5222,10 +5221,9 @@ def validate_npc_movement_decision(decision, area_data, location_id, party_npcs)
             if new_location not in valid_locations:
                 return {"valid": False, "reason": f"Target location '{new_location}' does not exist. Valid locations: {valid_locations}"}
         
-        # Check location update length
-        location_update = decision.get("locationUpdate", "")
-        if location_update and len(location_update) > 200:
-            return {"valid": False, "reason": "locationUpdate must be 200 characters or less"}
+        location_update = decision.get("locationUpdate")
+        if location_update is not None and not isinstance(location_update, str):
+            return {"valid": False, "reason": "locationUpdate must be a string or null"}
         
         # Schema validation - check NPC structure requirements
         if action == "update_status":

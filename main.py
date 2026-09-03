@@ -2899,8 +2899,8 @@ def _extract_raw_player_message(content):
     return player_text.strip()
 
 
-def _select_validation_history(conversation_history, raw_user_input, limit=4):
-    """Return bounded player-authored history without injected prompt text."""
+def _select_validation_history(conversation_history, raw_user_input):
+    """Return player-authored history without injected prompt text."""
     history = conversation_history if isinstance(conversation_history, list) else []
     current_enhanced_index = None
     normalized_current = str(raw_user_input or "").strip()
@@ -2947,17 +2947,6 @@ def _select_validation_history(conversation_history, raw_user_input, limit=4):
             if not content:
                 continue
         recent_messages.insert(0, {"role": role, "content": content})
-        if len(recent_messages) >= limit:
-            break
-
-    while len(recent_messages) < limit:
-        recent_messages.insert(
-            0,
-            {
-                "role": "assistant",
-                "content": "Previous context not available.",
-            },
-        )
     return recent_messages
 
 
@@ -3068,7 +3057,7 @@ def validate_ai_response(
     # Keep only player-authored text from prior enhanced turns. The current
     # enhanced DM note is excluded and reintroduced below as exact raw input.
     recent_messages = _select_validation_history(
-        conversation_history, user_input, limit=4
+        conversation_history, user_input
     )
 
     # Get location data from party tracker
@@ -3545,7 +3534,7 @@ def process_conversation_history(history):
             message["content"] = "DM Guidance: Proceed with leveling up the player character or the party NPC given the 5th Edition role playing game rules. Only level the player character or party NPC one level at a time to ensure no mistakes are made. If you are leveling up a party NPC then pass all changes at once using the 'updateCharacterInfo' action. If you are leveling up a player character then you must ask the player for important decisions and choices they would have control over. After the player has provided the needed information then use the 'updateCharacterInfo' to pass all changes to the players character sheet and include the experience goal for the next level. Do not update the player's information in segements."
     
     # Apply DM note truncation to clean up bloated messages
-    history = truncate_dm_notes(history)
+    history = normalize_persisted_dm_notes(history)
     
     debug("SUCCESS: Conversation history processing complete", category="conversation_management")
     return history
@@ -3584,7 +3573,7 @@ def remove_duplicate_messages(conversation_history):
 
     return cleaned_history
 
-def truncate_dm_notes(conversation_history):
+def normalize_persisted_dm_notes(conversation_history):
     from core.ai.cumulative_summary import normalize_legacy_dm_notes
 
     normalized = normalize_legacy_dm_notes(conversation_history)
@@ -7667,7 +7656,7 @@ def main_game_loop():
             # Run the first-iteration normalizers BEFORE freezing the fence
             # snapshot so the loop-top truncate/dedup is a no-op against it
             # (both are idempotent).
-            conversation_history = truncate_dm_notes(conversation_history)
+            conversation_history = normalize_persisted_dm_notes(conversation_history)
             conversation_history = remove_duplicate_messages(conversation_history)
             save_conversation_history(conversation_history, allow_compression=False)
             from core.managers.status_manager import set_input_poll_hook
@@ -7705,7 +7694,7 @@ def main_game_loop():
     emit_startup_marker("startup_loop_ready", source="main_loop", result="ready")
     while True:
         print("[DEBUG] Top of main game loop iteration")
-        conversation_history = truncate_dm_notes(conversation_history)
+        conversation_history = normalize_persisted_dm_notes(conversation_history)
         conversation_history = remove_duplicate_messages(conversation_history)
 
         # #214: keep the pending welcome bound to the loop's LIVE history
@@ -8029,7 +8018,7 @@ def main_game_loop():
                                     print(f"Warning: Could not get starting location for {module_name}: {e}")
                                     starting_info = ""
                             
-                                module_description = f"{module_name} [{level_str}]: {', '.join(module_areas[:3])}{starting_info}"
+                                module_description = f"{module_name} [{level_str}]: {', '.join(module_areas)}{starting_info}"
                                 other_module_areas.append(module_description)
                     
                         if other_module_areas:
