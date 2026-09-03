@@ -75,6 +75,21 @@ def is_complete(marker: Mapping[str, Any]) -> bool:
     )
 
 
+def is_valid_marker(marker: Mapping[str, Any]) -> bool:
+    if is_complete(marker):
+        return True
+    return (
+        isinstance(marker, Mapping)
+        and marker.get("version") == UPGRADE_VERSION
+        and marker.get("status") == "in_progress"
+        and isinstance(marker.get("journalNextIndex"), int)
+        and marker.get("journalNextIndex") >= 0
+        and isinstance(marker.get("summariesDone"), bool)
+        and isinstance(marker.get("committed"), int)
+        and marker.get("committed") >= 0
+    )
+
+
 # ---- detection ------------------------------------------------------------
 
 def game_has_history(
@@ -295,6 +310,95 @@ def check_and_run_episode_upgrade(
     except Exception as error:  # noqa: BLE001 - upgrade never blocks startup
         _LOGGER.debug("episodic upgrade failed (non-fatal): %r", error)
         return {"status": "error"}
+
+
+def run_registered_episode_upgrade(
+    *,
+    provider: Optional[str] = None,
+    progress: Optional[Callable[[str, int, int, str], None]] = None,
+) -> Dict[str, Any]:
+    """Run the one-time build under the existing detached lifecycle registry."""
+    marker = read_marker()
+    if is_complete(marker):
+        return {"status": "already_complete"}
+    if not game_has_history():
+        return check_and_run_episode_upgrade(provider=provider, progress=progress)
+
+    from utils.capture.live_provider_call import (
+        LiveTurnScope,
+        clear_welcome_scope,
+        drain_live_saves,
+        open_advisory_scopes,
+        register_welcome_scope,
+    )
+
+    scope = LiveTurnScope(purpose="maintenance")
+    register_welcome_scope(scope)
+    children = open_advisory_scopes(
+        scope,
+        "episodic-upgrade",
+        1,
+        completion_required=True,
+    )
+    if not children:
+        clear_welcome_scope(scope)
+        raise RuntimeError("could not register episodic upgrade provider scope")
+    child = children[0]
+    try:
+        return check_and_run_episode_upgrade(
+            provider=provider,
+            progress=progress,
+            advisory_scope=child,
+        )
+    finally:
+        child.finish()
+        scope.seal_advisory_scopes()
+        # Release the detached registry before draining a queued Load: its
+        # selected timeline may itself need one new maintenance scope.
+        clear_welcome_scope(scope)
+        drain_live_saves(scope, seal=True)
+        scope.phase = "QUIESCENT"
+        scope.quiescent.set()
+
+
+def repair_or_resume_canonical_memory(
+    *,
+    provider: Optional[str] = None,
+    progress: Optional[Callable[[str, int, int, str], None]] = None,
+) -> Dict[str, Any]:
+    """Validate the restored timeline, then rebuild only missing/invalid state."""
+    from utils.path_transaction_lock import path_transaction_lock
+
+    episode_store = EpisodeStore()
+    relationship_store = RelationshipStore()
+    marker = read_marker()
+    episode_valid = episode_store.path.exists() and not episode_store.read_only
+    relationship_valid = (
+        relationship_store.path.exists() and not relationship_store.read_only
+    )
+    marker_valid = os.path.isfile(MARKER_PATH) and is_valid_marker(marker)
+    if episode_valid and relationship_valid and marker_valid and is_complete(marker):
+        return {"status": "already_complete"}
+
+    for path, suffix, valid in (
+        (episode_store.path, ".episode-ledger.lock", episode_valid),
+        (relationship_store.path, ".npc-agent.lock", relationship_valid),
+    ):
+        if valid:
+            continue
+        with path_transaction_lock(path, suffix=suffix):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+    if not marker_valid or not (episode_valid and relationship_valid):
+        with path_transaction_lock(MARKER_PATH, suffix=".upgrade.lock"):
+            try:
+                os.remove(MARKER_PATH)
+            except FileNotFoundError:
+                pass
+
+    return run_registered_episode_upgrade(provider=provider, progress=progress)
 
 
 def default_progress(stage: str, done: int, total: int, message: str = "") -> None:

@@ -7092,38 +7092,12 @@ def main_game_loop():
     # rendering behind one visible, resumable build whose provider child remains
     # discoverable to Save/Load/Reset/quit.
     try:
-        from core.npc.episodic_upgrade import check_and_run_episode_upgrade, default_progress
-        from utils.capture.live_provider_call import (
-            LiveTurnScope,
-            clear_welcome_scope,
-            drain_live_saves,
-            open_advisory_scopes,
-            register_welcome_scope,
+        from core.npc.episodic_upgrade import (
+            default_progress,
+            run_registered_episode_upgrade,
         )
 
-        upgrade_scope = LiveTurnScope(purpose="maintenance")
-        register_welcome_scope(upgrade_scope)
-        upgrade_children = open_advisory_scopes(
-            upgrade_scope,
-            "episodic-upgrade",
-            1,
-            completion_required=True,
-        )
-        if not upgrade_children:
-            raise RuntimeError("could not register episodic upgrade provider scope")
-        upgrade_child = upgrade_children[0]
-        try:
-            check_and_run_episode_upgrade(
-                progress=default_progress,
-                advisory_scope=upgrade_child,
-            )
-        finally:
-            upgrade_child.finish()
-            upgrade_scope.seal_advisory_scopes()
-            drain_live_saves(upgrade_scope, seal=True)
-            clear_welcome_scope(upgrade_scope)
-            upgrade_scope.phase = "QUIESCENT"
-            upgrade_scope.quiescent.set()
+        run_registered_episode_upgrade(progress=default_progress)
     except Exception as e:
         debug(f"Episodic upgrade skipped (non-fatal): {e}", category="startup")
 
