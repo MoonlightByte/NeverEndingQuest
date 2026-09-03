@@ -364,6 +364,9 @@ class RelationshipStore:
                         return False, result
                     candidate["revision"] = current["revision"] + 1
                     if not self._validate(candidate):
+                        record_store_health(
+                            "relationship_schema_rejected", path=str(self.path)
+                        )
                         return False, result
                     try:
                         safe_json_dump(candidate, self.path, ensure_ascii=True)

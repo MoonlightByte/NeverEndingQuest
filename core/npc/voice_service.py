@@ -933,9 +933,16 @@ class NpcVoiceService:
                         name="npc-voice-%s" % _safe_identifier(npc_id),
                         daemon=True,
                     ).start()
-                except Exception:
+                except Exception as exc:
+                    if not future.done():
+                        future.set_exception(exc)
                     advisory_scope.seal()
                     advisory_scope.finish()
+                    _LOGGER.warning(
+                        "T105 voice worker submission failed for %s: %s",
+                        npc_id,
+                        type(exc).__name__,
+                    )
                     self._record(
                         kind="candidate",
                         disposition="submission_failure",

@@ -140,10 +140,11 @@ class PreparedOocVoiceHandle:
         self._service = service
         self._parent_scope = parent_scope
         self._relationship_store = relationship_store
-        candidates = self._recall_candidates(raw_input, packets)
+        self._packets = tuple(copy.deepcopy(packet) for packet in packets)
+        candidates = self._recall_candidates(raw_input, self._packets)
         if candidates is None:
             self._voice_handle = service.dispatch_batch(
-                packets, parent_scope=parent_scope
+                self._packets, parent_scope=parent_scope
             )
             return
         from utils.capture.live_provider_call import open_advisory_scope
@@ -152,11 +153,14 @@ class PreparedOocVoiceHandle:
         if recall_scope is None:
             self.recall_disposition = "missing_authority"
             _LOGGER.warning("T112 recall skipped without live authority")
+            self._service.telemetry.record_disposition(
+                "recall", "missing_authority", batch_id=self.batch_id
+            )
             return
         self._recall_scope = recall_scope
         threading.Thread(
             target=self._run_recall,
-            args=(raw_input, tuple(packets), candidates, recall_scope),
+            args=(raw_input, self._packets, candidates, recall_scope),
             name="npc-recall-%s" % self.batch_id,
             daemon=True,
         ).start()
@@ -217,7 +221,22 @@ class PreparedOocVoiceHandle:
                         _voice_recall_row(value["npc"]["id"], episode)
                         for episode in episodes
                     ]
-                enriched.append(validate_packet(value))
+                try:
+                    enriched.append(validate_packet(value))
+                except Exception as exc:
+                    npc_id = value["npc"]["id"]
+                    _LOGGER.warning(
+                        "T112 recall enrichment omitted for %s: %s",
+                        npc_id,
+                        type(exc).__name__,
+                    )
+                    self._service.telemetry.record_disposition(
+                        "recall",
+                        "enrichment_invalid",
+                        batch_id=self.batch_id,
+                        npc_id=npc_id,
+                    )
+                    enriched.append(copy.deepcopy(packet))
             with self._lock:
                 if self._sealed or scope.is_superseded():
                     self.recall_disposition = "stale_rejected"
@@ -237,6 +256,12 @@ class PreparedOocVoiceHandle:
             self._service.telemetry.record_disposition(
                 "recall", "degraded_this_beat", batch_id=self.batch_id
             )
+            with self._lock:
+                if not self._sealed and not scope.is_superseded():
+                    self._voice_handle = self._service.dispatch_batch(
+                        self._packets,
+                        parent_scope=self._parent_scope,
+                    )
         finally:
             scope.finish()
 
@@ -1574,7 +1599,11 @@ def run_ooc_voice_stage(
         handle._fairness_selection = selection
         return handle
     except Exception as exc:
-        _LOGGER.debug("T105 OOC stage skipped: %s", type(exc).__name__)
+        _LOGGER.warning("T105 OOC stage skipped: %s", type(exc).__name__)
+        if "voice_service" in locals():
+            voice_service.telemetry.record_disposition(
+                "batch", "setup_failure", reason=type(exc).__name__
+            )
         return NpcVoiceBatch(batch_id="", results=())
 
 
@@ -1680,7 +1709,7 @@ def commit_accepted_ooc_voice_batch(
                     batch_id=batch.batch_id,
                     npc_id=result.npc_id,
                 )
-            _LOGGER.debug(
+            _LOGGER.warning(
                 "T105 accepted event skipped: %s", type(exc).__name__
             )
     return committed
