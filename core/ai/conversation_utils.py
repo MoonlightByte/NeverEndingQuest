@@ -466,8 +466,7 @@ def _companion_memory_rows(npc_id, episode_store, relationship_store, limit=3,
                 selected[replace_at] = top_here
             else:
                 # All slots are pinned peaks (never drop them) -> surface the
-                # here-memory as one bounded extra row; outer char-budget truncation
-                # bounds total size.
+                # here-memory as one additional selected row.
                 selected.append(top_here)
     rows = []
     for row, canonical, _here, _grain in selected:
@@ -504,7 +503,7 @@ def _recalled_rows_for_npc(npc_id, episodes):
 
 def _canonical_context_row(packet, episode_store=None, relationship_store=None,
                            recalled_episodes=None, current_location_id=None):
-    """Project one bounded packet without vectors or private working memory."""
+    """Project one canonical packet without vectors or private working memory."""
     npc = packet["npc"]
     context = packet["context"]
     evidence = []

@@ -1,7 +1,7 @@
 """Companion EPISODE extraction (callsite T108).
 
 Turns full-fidelity encounter text into attributed canonical-episode content:
-a headline, a bounded shared-truth summary, entity tags, and salient facts each
+a headline, a shared-truth summary, entity tags, and salient facts each
 attributed to a PRESENT companion. This is the empirically-validated capture that
 recovers the attachment beats the DM-perspective T018 summary drops (a companion's
 quiet gift, joke, fear, tender gesture) -- WITH correct attribution.

@@ -658,7 +658,7 @@ def _items(sheet: Mapping[str, Any]) -> list[str]:
 
 
 def _combat_capabilities(sheet: Mapping[str, Any]) -> list[str]:
-    """Render bounded sheet mechanics without claiming that any are legal now."""
+    """Render sheet mechanics without claiming that any are legal now."""
     result = []
     for field in (
         "attacksAndSpellcasting",
@@ -1536,7 +1536,7 @@ def run_ooc_voice_stage(
     relationship_store: Optional[RelationshipStore] = None,
     fairness: Optional[SelectionFairness] = None,
 ) -> NpcVoiceBatch:
-    """Run one bounded Phase 3 T105 batch and contain every failure."""
+    """Run one Phase 3 T105 batch and contain every failure."""
     try:
         selection = fairness or _OOC_FAIRNESS
         voice_service = service or _default_service()
