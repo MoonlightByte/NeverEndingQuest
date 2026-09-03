@@ -824,6 +824,7 @@ class SaveGameManager:
             )
             from utils.module_refresh_lock import module_refresh_lock
 
+            restore_outcome = None
             with _party_module_transition_lock():
                 wait_reporter = _lifecycle_wait_reporter("Load")
                 with _active_combat_snapshot_lease(
@@ -852,7 +853,23 @@ class SaveGameManager:
                                 "modules/campaign.json"
                             )
                             _bump_campaign_lifecycle_epoch("modules/campaign.json")
-                            return self._restore_save_game_locked(save_folder)
+                            restore_outcome = self._restore_save_game_locked(save_folder)
+            if restore_outcome is None or not restore_outcome[0]:
+                return restore_outcome or (False, "Save restore did not complete")
+
+            from core.npc.episodic_upgrade import (
+                default_progress,
+                repair_or_resume_canonical_memory,
+            )
+
+            repair = repair_or_resume_canonical_memory(progress=default_progress)
+            if repair.get("status") == "error":
+                warning(
+                    "RESTORE: Companion memory remains resumable after selected "
+                    "timeline restore",
+                    category="save_game",
+                )
+            return restore_outcome
         except Exception as exc:
             error(
                 "FAILURE: Could not establish consistent restore boundary",
