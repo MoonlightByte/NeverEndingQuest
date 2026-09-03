@@ -374,6 +374,7 @@ def backfill_from_journal(
         failed_index = index - 1
         if not (
             isinstance(last_failure, Mapping)
+            and last_failure.get("kind") == "completed_invalid"
             and last_failure.get("entryIndex") == failed_index
         ):
             return False
@@ -450,8 +451,6 @@ def backfill_from_journal(
 
             if isinstance(error, LiveProviderSuperseded):
                 raise
-            if skip_after_second_failure(error):
-                continue
             index -= 1
             failure = {
                 "kind": "entry_error",
