@@ -365,6 +365,7 @@ def backfill_from_journal(
     resolve_ids = _make_resolver(party_tracker_data, path_manager, rel_store, json_loader)
     committed = 0
     processed = 0
+    failure = None
     index = max(0, start_index)
     while index < total:
         entry = entries[index]
@@ -405,6 +406,11 @@ def backfill_from_journal(
                 committed += 1
         except BackfillCompletedInvalid as error:
             index -= 1
+            failure = {
+                "kind": "completed_invalid",
+                "entryIndex": index,
+                "errorClass": type(error).__name__,
+            }
             _LOGGER.warning(
                 "journal backfill entry %d remains pending: %s",
                 index,
@@ -417,7 +423,13 @@ def backfill_from_journal(
             if isinstance(error, LiveProviderSuperseded):
                 raise
             _LOGGER.debug("journal backfill entry %d failed: %r", index - 1, error)
-    return {"committed": committed, "processed": processed, "next_index": index, "total": total}
+    return {
+        "committed": committed,
+        "processed": processed,
+        "next_index": index,
+        "total": total,
+        "failure": failure,
+    }
 
 
 def backfill_from_summaries(

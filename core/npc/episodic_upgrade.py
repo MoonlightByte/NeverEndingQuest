@@ -226,13 +226,21 @@ def backfill_campaign(
         committed += report["committed"]
         marker.update({"status": "in_progress", "journalNextIndex": report["next_index"],
                        "committed": committed})
+        if report.get("failure"):
+            marker["lastFailure"] = report["failure"]
+        else:
+            marker.pop("lastFailure", None)
         _write_marker(marker, marker_path)
         if report["next_index"] < total_entries:
+            _LOGGER.warning(
+                "companion memory repair halted at journal entry %d; will resume",
+                report["next_index"],
+            )
             emit(
                 "error",
                 report["next_index"],
                 total_entries,
-                "memory recovery will resume next time",
+                "memory repair halted; will resume next time",
             )
             return {
                 "status": "error",
@@ -263,6 +271,7 @@ def backfill_campaign(
         marker["committed"] = committed
 
     marker["status"] = "complete"
+    marker.pop("lastFailure", None)
     _write_marker(marker, marker_path)
     emit("complete", total_entries, total_entries, "companions remember the journey")
     return {"status": "complete", "committed": committed}
