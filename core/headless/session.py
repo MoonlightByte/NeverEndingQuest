@@ -401,8 +401,7 @@ class HeadlessSession:
     def request_quit(self, kind="quit", operation_id=None):
         from utils.capture.live_provider_call import (
             get_active_welcome_scope,
-            get_live_turn_scope,
-            request_live_turn_supersession,
+            request_lifecycle_turn_supersession,
         )
 
         kind = str(kind)
@@ -416,16 +415,13 @@ class HeadlessSession:
         # so waiting after latching would deadlock. The supersession lets the
         # child exit instead of burning provider work past a player quit.
         welcome_scope = get_active_welcome_scope()
-        live_scope = get_live_turn_scope()
         claims = []
         if welcome_scope is not None:
             claims.append(welcome_scope.request_supersession(kind, requested_id))
-        if live_scope is not None:
-            operation = request_live_turn_supersession(
-                kind, requested_id, scope=live_scope
-            )
-            if operation is not None:
-                claims.append(operation)
+        turn_scopes, turn_claims = request_lifecycle_turn_supersession(
+            kind, requested_id
+        )
+        claims.extend(turn_claims)
         if claims:
             exact_owner = all(
                 claim.get("kind") == kind
@@ -449,8 +445,8 @@ class HeadlessSession:
         # that completion and misreports a player quit as ``engine_stop``.
         self._quitting = True
         self.prompt_pending.clear()
-        if live_scope is not None:
-            self._wait_for_scope_quiescence((live_scope,), operation_name)
+        if turn_scopes:
+            self._wait_for_scope_quiescence(turn_scopes, operation_name)
         if kind == "quit":
             self._on_status("Quit complete", False)
         self.input_queue.put(EOF_SENTINEL)
@@ -511,10 +507,11 @@ class HeadlessSession:
 
         from utils.capture.live_provider_call import (
             get_active_welcome_scope,
-            get_live_turn_scope,
+            get_lifecycle_turn_scopes,
         )
 
-        live_scope = get_live_turn_scope()
+        turn_scopes = get_lifecycle_turn_scopes()
+        live_scope = turn_scopes[0] if turn_scopes else None
         # #214: the detached startup welcome is deliberately NOT the live
         # turn scope; persistence commands must still coordinate with its
         # game-thread handback (the readline pump) instead of overlapping it.
@@ -683,7 +680,8 @@ class HeadlessSession:
                     # Validation may overlap the exact turn boundary. Re-read
                     # authority before reserving the restart terminal so a
                     # completed scope follows the ordinary idle path.
-                    live_scope = get_live_turn_scope()
+                    turn_scopes = get_lifecycle_turn_scopes()
+                    live_scope = turn_scopes[0] if turn_scopes else None
                     welcome_scope = get_active_welcome_scope()
                 if live_scope is not None and welcome_scope is None:
                     from utils.capture.live_provider_call import (
@@ -720,13 +718,13 @@ class HeadlessSession:
                         )
                     else:
                         if operation is None:
-                            current_scope = get_live_turn_scope()
+                            current_scopes = get_lifecycle_turn_scopes()
                             with live_scope.lock:
                                 captured_closing = (
                                     not live_scope.controls_open
                                     or live_scope.quiescent.is_set()
                                 )
-                            if current_scope is None and captured_closing:
+                            if live_scope in current_scopes and captured_closing:
                                 may_apply_restore = True
                             else:
                                 supersession_error = (
@@ -749,7 +747,7 @@ class HeadlessSession:
                             status="accepted_deferred",
                             operation_id=str(command_id),
                         )
-                    self._wait_for_scope_quiescence((live_scope,), "Load")
+                    self._wait_for_scope_quiescence(turn_scopes, "Load")
                     self._quitting = True
                     self.prompt_pending.clear()
                     self.input_queue.put(EOF_SENTINEL)
@@ -788,7 +786,7 @@ class HeadlessSession:
                     )
                     if operation["kind"] == "turn_complete":
                         self._wait_for_scope_quiescence(
-                            (live_scope,), "Load"
+                            turn_scopes, "Load"
                         )
                     elif not operation["accepted"]:
                         result(
@@ -806,7 +804,7 @@ class HeadlessSession:
                         status="accepted_deferred",
                         operation_id=operation["operation_id"],
                     )
-                    self._wait_for_scope_quiescence((live_scope,), "Load")
+                    self._wait_for_scope_quiescence(turn_scopes, "Load")
                 if welcome_scope is not None:
                     # #214 F9: Load supersedes the background welcome and
                     # QUEUES the restore to execute ON THE GAME THREAD inside

@@ -244,6 +244,7 @@ def open_advisory_scopes(parent, beat_id, count, *, completion_required=False):
 
 _scope_guard = threading.RLock()
 _active_scope = None
+_closing_scopes = []
 
 
 def open_live_turn_scope():
@@ -259,6 +260,19 @@ def open_live_turn_scope():
 def get_live_turn_scope():
     with _scope_guard:
         return _active_scope
+
+
+def get_lifecycle_turn_scopes():
+    """Return active and closing turn scopes in one authority snapshot."""
+    with _scope_guard:
+        scopes = []
+        if _active_scope is not None:
+            scopes.append(_active_scope)
+        scopes.extend(
+            scope for scope in _closing_scopes
+            if scope is not _active_scope and not scope.quiescent.is_set()
+        )
+        return tuple(scopes)
 
 
 def live_provider_policy(task_id):
@@ -281,12 +295,18 @@ def close_live_turn_scope(scope):
         with scope.lock:
             scope.controls_open = False
         advisory_scopes = scope.seal_advisory_scopes()
+        if all(item is not scope for item in _closing_scopes):
+            _closing_scopes.append(scope)
         _active_scope = None
     def publish_quiescence():
         for advisory_scope in advisory_scopes:
             advisory_scope.quiescent.wait()
         scope.phase = "QUIESCENT"
         scope.quiescent.set()
+        with _scope_guard:
+            _closing_scopes[:] = [
+                item for item in _closing_scopes if item is not scope
+            ]
     if all(item.quiescent.is_set() for item in advisory_scopes):
         publish_quiescence()
     else:
@@ -300,13 +320,17 @@ def close_live_turn_scope(scope):
 def request_live_turn_supersession(kind, operation_id=None, scope=None):
     """Fence the current live turn, optionally only if it is ``scope``."""
     with _scope_guard:
-        active_scope = _active_scope
-        if active_scope is None or (
-            scope is not None and active_scope is not scope
+        if scope is None:
+            target_scope = _active_scope
+        elif scope is _active_scope or any(
+            item is scope for item in _closing_scopes
         ):
+            target_scope = scope
+        else:
+            target_scope = None
+        if target_scope is None:
             return None
-        scope = active_scope
-    result = scope.request_supersession(kind, operation_id)
+    result = target_scope.request_supersession(kind, operation_id)
     if result.get("accepted"):
         from core.combat.invocation import supersede_invocations
         from core.managers.campaign_manager import _party_module_transition_lock
@@ -317,6 +341,29 @@ def request_live_turn_supersession(kind, operation_id=None, scope=None):
         with _party_module_transition_lock():
             supersede_invocations(kind)
     return result
+
+
+def request_lifecycle_turn_supersession(kind, operation_id=None):
+    """Atomically claim and seal every active/closing player-turn scope."""
+    requested_id = operation_id or str(uuid4())
+    with _scope_guard:
+        scopes = []
+        if _active_scope is not None:
+            scopes.append(_active_scope)
+        scopes.extend(
+            item for item in _closing_scopes
+            if item is not _active_scope and not item.quiescent.is_set()
+        )
+        results = tuple(
+            scope.request_supersession(kind, requested_id) for scope in scopes
+        )
+    if any(result.get("accepted") for result in results):
+        from core.combat.invocation import supersede_invocations
+        from core.managers.campaign_manager import _party_module_transition_lock
+
+        with _party_module_transition_lock():
+            supersede_invocations(kind)
+    return tuple(scopes), results
 
 
 # --- Detached startup-welcome scope (issue #214) ---------------------------

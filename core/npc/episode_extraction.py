@@ -142,6 +142,7 @@ def extract_episode(
     provider: Optional[str] = None,
     completion_fn: Callable[..., Any] = api_client.create_completion,
     capture_fn: Callable[..., Any] = None,
+    advisory_scope: Any = None,
 ) -> Optional[Dict[str, Any]]:
     """Extract canonical-episode content from a scene. Returns commit-ready kwargs
     (minus coordinates) or None on failure. present_companions: [{'name','id'}, ...].
@@ -158,8 +159,15 @@ def extract_episode(
     capture = capture_fn or (lambda task_id, fn, **kw: fn(**kw))
 
     try:
-        response = capture(TASK_ID, completion_fn, _request_provider=prov,
-                           messages=messages, **_completion_kwargs(prov, config))
+        response = capture(
+            TASK_ID,
+            completion_fn,
+            _request_provider=prov,
+            _live_selected="advisory" if advisory_scope is not None else None,
+            _detached_scope=advisory_scope,
+            messages=messages,
+            **_completion_kwargs(prov, config),
+        )
         payload = json.loads(response.choices[0].message.content or "{}")
     except Exception as error:  # noqa: BLE001 - fail-open by design
         _LOGGER.debug("episode extraction failed: %r", error)

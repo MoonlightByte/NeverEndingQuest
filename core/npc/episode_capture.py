@@ -8,11 +8,12 @@ Ties the pieces together per the blind-review resolutions:
                   cannot resolve; FAIL LOUD (never commit a witness-less episode).
   R2 boundary  -> episodeId coordinate uses the close-time world clock (idempotent
                   within a visit, distinct across revisits; never a content hash).
-  R4 hot-path  -> the sync core is offloaded fire-and-forget by capture_* _async so
-                  the player-blocking location-close seam is never gated on a model
-                  call; the whole thing is best-effort and never mutates history.
+  R4 hot-path  -> the sync core is offloaded by capture_*_async, registered before
+                  submit as a lifecycle child, and remains discoverable through its
+                  sidecar commit. Ordinary play does not wait; Reset fences/reaps it.
 
-Everything is always on at the call site and fail-open here.
+Everything is always on at the call site and degrades loudly when no owning lifecycle
+scope exists; extraction failure never breaks the gameplay turn.
 """
 
 from __future__ import annotations
@@ -166,6 +167,7 @@ def capture_location_episode(
     episode_store: Optional[EpisodeStore] = None,
     rel_store: Optional[RelationshipStore] = None,
     json_loader: Callable[[str], Any] = safe_json_load,
+    advisory_scope: Any = None,
 ) -> Optional[str]:
     """Synchronous, testable core. Returns the committed episodeId or None.
     Never mutates conversation history; never raises."""
@@ -190,7 +192,7 @@ def capture_location_episode(
         scene = flatten_scene(segment_messages)
         result = extract_episode(
             scene, present, player_name=player_name, provider=provider,
-            capture_fn=capture_and_fanout,
+            capture_fn=capture_and_fanout, advisory_scope=advisory_scope,
         )
         if result is None:
             return None
@@ -331,6 +333,7 @@ def capture_combat_episode(
     episode_store: Optional[EpisodeStore] = None,
     rel_store: Optional[RelationshipStore] = None,
     json_loader: Callable[[str], Any] = safe_json_load,
+    advisory_scope: Any = None,
 ) -> Optional[str]:
     """W2: capture one combat episode from the raw combat transcript at combat exit,
     BEFORE the transcript is archived/cleared. Presence + near-death come from the
@@ -366,7 +369,7 @@ def capture_combat_episode(
         ])
         result = extract_episode(
             scene, present, player_name=player_name, provider=provider,
-            capture_fn=capture_and_fanout,
+            capture_fn=capture_and_fanout, advisory_scope=advisory_scope,
         )
         if result is None:
             return None
@@ -406,14 +409,53 @@ def capture_combat_episode(
         return None
 
 
-def capture_combat_episode_async(**kwargs: Any) -> None:
-    """Fire-and-forget offload: combat exit is never gated on the extraction call.
-    Callers pass deepcopied transcript + encounter so the worker reads a stable
-    snapshot after the caller archives/clears live state."""
+def _submit_episode_capture(worker, beat_id: str, kwargs: Mapping[str, Any]) -> None:
+    """Publish one T108 child before submit and finish it after sidecar commit."""
+    from utils.capture.live_provider_call import (
+        get_active_welcome_scope,
+        get_live_turn_scope,
+        open_advisory_scopes,
+    )
+
+    parent = get_live_turn_scope() or get_active_welcome_scope()
+    children = open_advisory_scopes(
+        parent,
+        beat_id,
+        1,
+        completion_required=True,
+    )
+    if not children:
+        record_store_health(
+            "episode_capture_missing_lifecycle_authority",
+            detail=beat_id,
+        )
+        return
+    advisory_scope = children[0]
+    worker_kwargs = dict(kwargs)
+    worker_kwargs["advisory_scope"] = advisory_scope
+
+    def run() -> None:
+        try:
+            worker(**worker_kwargs)
+        finally:
+            advisory_scope.finish()
+
     try:
-        _EXECUTOR.submit(capture_combat_episode, **kwargs)
-    except Exception as error:  # noqa: BLE001 - never let scheduling break combat exit
-        _LOGGER.debug("combat episode capture could not be scheduled: %r", error)
+        _EXECUTOR.submit(run)
+    except Exception as error:  # noqa: BLE001 - scheduling cannot strand the child
+        advisory_scope.finish()
+        _LOGGER.debug("episode capture could not be scheduled: %r", error)
+
+
+def capture_combat_episode_async(**kwargs: Any) -> None:
+    """Register then offload combat extraction against one stable snapshot."""
+    encounter = kwargs.get("encounter_data")
+    encounter_id = encounter.get("encounterId") if isinstance(encounter, Mapping) else ""
+    _submit_episode_capture(
+        capture_combat_episode,
+        "T108-combat-%s" % (encounter_id or "unknown"),
+        kwargs,
+    )
 
 
 def leaving_location_id_from_marker(transition_content: str) -> str:
@@ -491,9 +533,9 @@ def consolidate_module_episodes(
 
 
 def capture_location_episode_async(**kwargs: Any) -> None:
-    """Fire-and-forget offload (R4): the player-blocking location-close seam is
-    never gated on the extraction model call. Failures are swallowed."""
-    try:
-        _EXECUTOR.submit(capture_location_episode, **kwargs)
-    except Exception as error:  # noqa: BLE001 - never let scheduling break a turn
-        _LOGGER.debug("episode capture could not be scheduled: %r", error)
+    """Register then offload location extraction against one stable snapshot."""
+    _submit_episode_capture(
+        capture_location_episode,
+        "T108-location-%s" % (kwargs.get("boundary_turn_id") or "unknown"),
+        kwargs,
+    )

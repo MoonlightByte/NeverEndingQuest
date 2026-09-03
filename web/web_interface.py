@@ -2643,11 +2643,13 @@ def handle_action(data):
     action_type = data.get('action')
     parameters = data.get('parameters', {})
     from utils.capture.live_provider_call import (
-        get_live_turn_scope,
+        get_lifecycle_turn_scopes,
         get_active_welcome_scope,
+        request_lifecycle_turn_supersession,
     )
 
-    live_scope = get_live_turn_scope()
+    turn_scopes = get_lifecycle_turn_scopes()
+    live_scope = turn_scopes[0] if turn_scopes else None
     # #214: a background startup welcome must never make the gate refuse
     # Save/Load/Reset (effective scope = player-turn scope OR welcome scope).
     welcome_scope = get_active_welcome_scope()
@@ -2784,24 +2786,33 @@ def handle_action(data):
             manager = SaveGameManager()
             save_folder = parameters.get("saveFolder")
             if live_scope is not None:
-                from utils.capture.live_provider_call import request_live_turn_supersession
-
-                operation = request_live_turn_supersession("restore")
-                if operation['kind'] == 'turn_complete':
-                    live_scope.quiescent.wait()
-                elif not operation['accepted']:
+                operation_id = str(uuid4())
+                turn_scopes, operations = request_lifecycle_turn_supersession(
+                    "restore", operation_id
+                )
+                conflict = next(
+                    (
+                        operation for operation in operations
+                        if operation is not None
+                        and operation.get('kind') != 'turn_complete'
+                        and not operation.get('accepted')
+                    ),
+                    None,
+                )
+                if conflict is not None:
                     emit('error', {
                         'message': (
                             'Another lifecycle operation is already pending: '
-                            + operation['kind']
+                            + conflict['kind']
                         )
                     })
                     return
                 emit('system_message', {
                     'content': 'Load accepted. The current turn is stopping safely before the save is restored.',
-                    'operation_id': operation['operation_id'],
+                    'operation_id': operation_id,
                 })
-                live_scope.quiescent.wait()
+                for turn_scope in turn_scopes:
+                    turn_scope.quiescent.wait()
             if welcome_scope is not None:
                 # #214 F9: Load supersedes the background welcome and QUEUES
                 # the restore to execute ON THE GAME THREAD inside the
@@ -2883,24 +2894,33 @@ def handle_action(data):
     elif action_type == 'nuclearReset':
         try:
             if live_scope is not None:
-                from utils.capture.live_provider_call import request_live_turn_supersession
-
-                operation = request_live_turn_supersession("reset")
-                if operation['kind'] == 'turn_complete':
-                    live_scope.quiescent.wait()
-                elif not operation['accepted']:
+                operation_id = str(uuid4())
+                turn_scopes, operations = request_lifecycle_turn_supersession(
+                    "reset", operation_id
+                )
+                conflict = next(
+                    (
+                        operation for operation in operations
+                        if operation is not None
+                        and operation.get('kind') != 'turn_complete'
+                        and not operation.get('accepted')
+                    ),
+                    None,
+                )
+                if conflict is not None:
                     emit('error', {
                         'message': (
                             'Another lifecycle operation is already pending: '
-                            + operation['kind']
+                            + conflict['kind']
                         )
                     })
                     return
                 emit('system_message', {
                     'content': 'Reset accepted. The current turn is stopping safely before reset.',
-                    'operation_id': operation['operation_id'],
+                    'operation_id': operation_id,
                 })
-                live_scope.quiescent.wait()
+                for turn_scope in turn_scopes:
+                    turn_scope.quiescent.wait()
             if welcome_scope is not None:
                 # #214 F9: same discipline as Load - supersede and QUEUE the
                 # reset to execute on the game thread inside the welcome
