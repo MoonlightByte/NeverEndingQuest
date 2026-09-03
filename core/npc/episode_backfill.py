@@ -32,6 +32,8 @@ import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 import model_config
+from jsonschema import Draft202012Validator
+
 from core.ai import api_client
 from core.npc.episode_capture import _commit_and_overlay, resolve_present_companions
 from core.npc.episode_store import EpisodeStore, VALID_SALIENT_KINDS
@@ -76,6 +78,7 @@ BACKFILL_RESPONSE_SCHEMA: Dict[str, Any] = {
         },
     },
 }
+_BACKFILL_RESPONSE_VALIDATOR = Draft202012Validator(BACKFILL_RESPONSE_SCHEMA)
 
 _SYSTEM = """You reconstruct a CANONICAL episode from a PAST journal/summary passage, and the PER-COMPANION beats it contains. You are given a CLOSED roster of the campaign's known companions; ONLY those names may appear.
 
@@ -239,16 +242,21 @@ def extract_backfill_episode(
             messages=messages,
             **_completion_kwargs(prov, config),
         )
+    except Exception as error:
+        # No provider-call failure is a completed typed result. Let the caller
+        # retain this journal entry for a later attempt; only a response that
+        # actually arrived can earn a completed-invalid strike.
+        _LOGGER.debug("backfill provider call failed: %r", error)
+        raise
+    try:
         payload = json.loads(response.choices[0].message.content or "{}")
     except Exception as error:
-        from utils.capture.live_provider_call import LiveProviderSuperseded
-
-        if isinstance(error, LiveProviderSuperseded):
-            raise
         _LOGGER.debug("backfill extraction failed: %r", error)
         raise BackfillCompletedInvalid(type(error).__name__) from error
-    if not isinstance(payload, Mapping):
-        raise BackfillCompletedInvalid("payload_not_mapping")
+    if not isinstance(payload, Mapping) or not _BACKFILL_RESPONSE_VALIDATOR.is_valid(
+        payload
+    ):
+        raise BackfillCompletedInvalid("payload_schema_invalid")
 
     # Closed-roster guard IN CODE: keep only present names that are actually on the
     # roster (the model must not invent a companion).
