@@ -769,10 +769,10 @@ def append_pending_player_input(
         exchanges = pending.get("playerExchanges")
         if not isinstance(exchanges, list):
             exchanges = []
-        exchanges = [item for item in exchanges if isinstance(item, dict)][-7:]
+        exchanges = [item for item in exchanges if isinstance(item, dict)]
         if not exchanges or exchanges[-1].get("playerInput") != rendered:
             exchanges.append({"playerInput": rendered})
-        pending["playerExchanges"] = exchanges[-8:]
+        pending["playerExchanges"] = exchanges
         _write_object(encounter_path, encounter, "pending player clarification")
 
 
@@ -805,7 +805,7 @@ def record_pending_player_request(
         die = str(requested_die or "").strip().lower()
         if re.fullmatch(r"(?:\d+)?d(?:4|6|8|10|12|20|100)", die):
             exchanges[-1]["requestedDie"] = die
-        pending["playerExchanges"] = exchanges[-8:]
+        pending["playerExchanges"] = exchanges
         existing_voice_envelope = normalize_npc_voice_intents(
             pending.get("npcVoiceIntents")
         )
@@ -1024,12 +1024,12 @@ def record_narration_attempt(
         str(code)
         for code in (violations or [])
         if isinstance(code, str)
-    ][:24]
+    ]
     warning_codes = [
         str(code)
         for code in (warnings or [])
         if isinstance(code, str)
-    ][:24]
+    ]
     with _invocation_commit_authority(invocation_claim), path_transaction_lock(
         encounter_path,
         suffix=".combat.lock",

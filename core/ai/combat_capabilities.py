@@ -78,7 +78,7 @@ def _normalized_text(value):
     return " ".join(str(value or "").split())
 
 
-def _named_entries(value, limit=24):
+def _named_entries(value):
     if isinstance(value, dict):
         value = [
             {"name": name, "description": description}
@@ -102,8 +102,6 @@ def _named_entries(value, limit=24):
         if description:
             entry["description"] = description
         result.append(entry)
-        if len(result) >= limit:
-            break
     return result
 
 
@@ -158,7 +156,7 @@ def _skill_context(sheet):
                 item["ability"] = ability
             result.append(item)
     result.sort(key=lambda item: item["name"].lower())
-    return result[:24]
+    return result
 
 
 def _proficiency_context(sheet):
@@ -172,12 +170,12 @@ def _proficiency_context(sheet):
                 continue
             clean = [str(name) for name in names if isinstance(name, str) and name.strip()]
             if clean:
-                result.append({"category": str(category), "names": clean[:24]})
+                result.append({"category": str(category), "names": clean})
     elif isinstance(value, list):
         clean = [str(name) for name in value if isinstance(name, str) and name.strip()]
         if clean:
-            result.append({"category": "general", "names": clean[:24]})
-    return result[:12]
+            result.append({"category": "general", "names": clean})
+    return result
 
 
 def build_player_capability_context(sheet, actor_name=None):
@@ -213,7 +211,7 @@ def _candidate_rows(sheet, context):
                 "name": name.strip(),
                 "aliases": tuple(
                     alias for alias in aliases if isinstance(alias, str) and alias.strip()
-                )[:12],
+                ),
             }
         )
 
@@ -274,7 +272,7 @@ def _fuzzy_score(text_tokens, name_tokens):
     return best
 
 
-def match_owned_capabilities(sheet, text, actor_name=None, max_candidates=8):
+def match_owned_capabilities(sheet, text, actor_name=None):
     """Return deterministic hints only from capabilities owned by the actor."""
     context = build_player_capability_context(sheet, actor_name=actor_name)
     rows = _candidate_rows(sheet or {}, context)
@@ -387,4 +385,4 @@ def match_owned_capabilities(sheet, text, actor_name=None, max_candidates=8):
     return sorted(
         selected.values(),
         key=lambda item: (-item["score"], item["kind"], item["name"].lower()),
-    )[:max_candidates]
+    )

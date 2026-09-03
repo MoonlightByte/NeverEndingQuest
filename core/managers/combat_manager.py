@@ -1923,7 +1923,7 @@ def summarize_dialogue(
     clean_text = "\n\n".join(clean_conversation)
     
     dialogue_summary_prompt = [
-        {"role": "system", "content": "Your task is to create a vivid, colorful narrative summary of this combat encounter. Capture the dramatic highs and lows - critical hits, narrow misses, clever tactics, desperate moments, and heroic actions. Write it as an exciting story paragraph that captures the flow and feel of the battle. Include: the initial setup, key turning points, memorable moments, the final blow, total XP awarded, and what remains after combat (defeated foes, environmental changes). Write in past tense as a complete narrative summary, not a play-by-play. Make it engaging and memorable - this will be the permanent record of this battle. Do NOT use markdown formatting (no **, no headers, no bullet points) -- weave XP totals and aftermath into the flowing narrative prose. Keep the summary to 1-2 paragraphs (150-250 words). Use only standard ASCII characters -- no smart quotes, no Unicode, no non-English words."},
+        {"role": "system", "content": "Your task is to create a vivid, colorful narrative summary of this combat encounter. Capture the dramatic highs and lows - critical hits, narrow misses, clever tactics, desperate moments, and heroic actions. Write an exciting story that captures the flow and feel of the battle. Include: the initial setup, key turning points, memorable moments, the final blow, total XP awarded, and what remains after combat (defeated foes, environmental changes). Write in past tense as a complete narrative summary, not a play-by-play. Make it engaging and memorable - this will be the permanent record of this battle. Do NOT use markdown formatting (no **, no headers, no bullet points) -- weave XP totals and aftermath into the flowing narrative prose. Use only standard ASCII characters -- no smart quotes, no Unicode, no non-English words."},
         {"role": "user", "content": clean_text}
     ]
 
@@ -2650,7 +2650,7 @@ def format_character_for_combat(char_data, char_type="player", role=None):
     
     # Build the formatted string (exactly matching conversation_utils format)
     formatted_data = f"""{header}
-{type_line} | LVL: {char_data.get('level', 1)} | RACE: {char_data.get('race', 'Unknown')} | CLASS: {char_data.get('class', 'Unknown')} | ALIGN: {char_data.get('alignment', 'neutral')[:2].upper()} | BG: {char_data.get('background', 'None')}
+{type_line} | LVL: {char_data.get('level', 1)} | RACE: {char_data.get('race', 'Unknown')} | CLASS: {char_data.get('class', 'Unknown')} | ALIGN: {str(char_data.get('alignment', 'neutral')).upper()} | BG: {char_data.get('background', 'None')}
 AC: {char_data.get('armorClass', 10)} | SPD: {char_data.get('speed', 30)}
 STATUS: {char_data.get('status', 'alive')} | CONDITION: {char_data.get('condition', 'none')} | AFFECTED: {', '.join(char_data.get('condition_affected', []))}
 STATS: STR {char_data.get('abilities', {}).get('strength', 10)}, DEX {char_data.get('abilities', {}).get('dexterity', 10)}, CON {char_data.get('abilities', {}).get('constitution', 10)}, INT {char_data.get('abilities', {}).get('intelligence', 10)}, WIS {char_data.get('abilities', {}).get('wisdom', 10)}, CHA {char_data.get('abilities', {}).get('charisma', 10)}
@@ -2781,7 +2781,7 @@ def format_npc_for_combat(npc_data, npc_role=None):
     
     # Build the formatted string (exactly matching conversation_utils format)
     formatted_data = f"""NPC: {npc_data.get('name', 'Unknown')}
-ROLE: {npc_role if npc_role else 'Adventurer'} | TYPE: {npc_data.get('character_type', 'npc').capitalize()} | LVL: {npc_data.get('level', 1)} | RACE: {npc_data.get('race', 'Unknown')} | CLASS: {npc_data.get('class', 'Unknown')} | ALIGN: {npc_data.get('alignment', 'neutral')[:2].upper()} | BG: {npc_data.get('background', 'None')}
+ROLE: {npc_role if npc_role else 'Adventurer'} | TYPE: {npc_data.get('character_type', 'npc').capitalize()} | LVL: {npc_data.get('level', 1)} | RACE: {npc_data.get('race', 'Unknown')} | CLASS: {npc_data.get('class', 'Unknown')} | ALIGN: {str(npc_data.get('alignment', 'neutral')).upper()} | BG: {npc_data.get('background', 'None')}
 AC: {npc_data.get('armorClass', 10)} | SPD: {npc_data.get('speed', 30)}
 STATUS: {npc_data.get('status', 'alive')} | CONDITION: {npc_data.get('condition', 'none')} | AFFECTED: {', '.join(npc_data.get('condition_affected', []))}
 STATS: STR {npc_data.get('abilities', {}).get('strength', 10)}, DEX {npc_data.get('abilities', {}).get('dexterity', 10)}, CON {npc_data.get('abilities', {}).get('constitution', 10)}, INT {npc_data.get('abilities', {}).get('intelligence', 10)}, WIS {npc_data.get('abilities', {}).get('wisdom', 10)}, CHA {npc_data.get('abilities', {}).get('charisma', 10)}
@@ -3128,11 +3128,6 @@ def _is_valid_combat_round_summary(summary, expected_round):
     ):
         return False
 
-    # The prompt explicitly requests two to four narrative highlights.
-    highlights = summary["narrative_highlights"]
-    if not 2 <= len(highlights) <= 4:
-        return False
-
     round_end_state = summary["round_end_state"]
     required_end_state_types = {
         "alive": list,
@@ -3186,7 +3181,7 @@ Create a JSON summary with EXACTLY this structure:
   "deaths": ["ALL creatures with HP 0 or listed as dead in the creature states -- include every dead creature regardless of when they died"],
   "status_changes": ["new conditions or effects applied this round"],
   "resource_usage": {{"character": "resources used (spell slots, abilities, etc)"}},
-  "narrative_highlights": ["2-4 evocative single sentences capturing key dramatic moments, critical hits, deaths, powerful spells, or memorable character actions"],
+  "narrative_highlights": ["evocative highlights capturing key dramatic moments, critical hits, deaths, powerful spells, or memorable character actions"],
   "round_end_state": {{
     "alive": ["Name (current/max HP)"],
     "dead": ["Name"],
@@ -3197,7 +3192,7 @@ Create a JSON summary with EXACTLY this structure:
 CRITICAL RULES:
 - The "deaths" array MUST include every creature shown as dead or at 0 HP in the creature states, even if they died in a prior round. This is a complete death list for state tracking.
 - Focus on mechanical accuracy for the actions -- exact roll values, damage numbers, and HP totals.
-- For narrative_highlights, extract the most dramatic moments. Keep each highlight to one evocative sentence.
+- For narrative_highlights, extract the most dramatic moments.
 - Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
 
         # Select model config per provider

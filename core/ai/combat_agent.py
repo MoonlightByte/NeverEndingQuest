@@ -162,14 +162,10 @@ def build_contextual_spell_payload(
     actor_names=None,
     encounter_context=None,
     index=None,
-    max_references=3,
 ):
     """Build complete selected T096 guidance for the current actor window."""
     index = index or load_srd_reference_index()
-    matcher = SRDContextMatcher(
-        index=index,
-        max_references=max_references,
-    )
+    matcher = SRDContextMatcher(index=index)
     names = list(actor_names or ())
     if not names:
         names = sorted((characters or {}).keys())
@@ -243,8 +239,6 @@ def build_contextual_spell_payload(
             continue
         seen_rule_ids.add(candidate["ruleId"])
         selected.append(candidate)
-        if len(selected) >= max_references:
-            break
 
     spell_references = {
         match["key"]: _compact_spell_entry(match["entry"])

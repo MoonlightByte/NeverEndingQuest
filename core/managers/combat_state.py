@@ -156,7 +156,6 @@ def valid_pending_delivery(delivery):
             codes = attempt.get(field)
             if (
                 not isinstance(codes, list)
-                or len(codes) > 24
                 or any(
                     not isinstance(code, str)
                     or not _NARRATION_CODE_RE.fullmatch(code)

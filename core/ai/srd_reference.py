@@ -319,7 +319,6 @@ class SRDContextMatcher:
         self,
         index=None,
         rule_index=_DEFAULT_RULE_INDEX,
-        max_references=3,
     ):
         self.index = index or load_srd_reference_index()
         if rule_index is _DEFAULT_RULE_INDEX:
@@ -330,7 +329,6 @@ class SRDContextMatcher:
                 # file must not disable valid spell guidance or gameplay.
                 rule_index = None
         self.rule_index = rule_index
-        self.max_references = max(1, int(max_references))
         indexes = [self.index]
         if self.rule_index is not None:
             indexes.append(self.rule_index)
@@ -471,7 +469,7 @@ class SRDContextMatcher:
         ranked = sorted(
             selected.values(),
             key=lambda item: (-item["score"], item["ruleId"]),
-        )[: self.max_references]
+        )
         for match in ranked:
             key = match["key"]
             entry = match["entry"]
@@ -502,7 +500,7 @@ class SRDContextMatcher:
             "Do not invent actor availability or resource names."
         )
         blocks = []
-        for match in matches[: self.max_references]:
+        for match in matches:
             entry = match["entry"]
             lines = [
                 "[%s] %s" % (match["ruleId"], entry["name"]),
@@ -614,7 +612,6 @@ def corrective_rule_references(
     encounter,
     characters,
     index=None,
-    max_references=3,
 ):
     """Return exact SRD guidance named by one rejected structured intent.
 
@@ -668,10 +665,7 @@ def corrective_rule_references(
     )
     actor_name = actor.get("name") if isinstance(actor, dict) else None
     actor_sheet = (characters or {}).get(actor_name) if actor_name else None
-    matcher = SRDContextMatcher(
-        index=index,
-        max_references=max_references,
-    )
+    matcher = SRDContextMatcher(index=index)
     matches = matcher.select(
         "",
         actor_sheet=actor_sheet,

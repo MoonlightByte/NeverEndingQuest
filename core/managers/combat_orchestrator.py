@@ -427,7 +427,7 @@ def _composed_player_input(pending, fallback):
     if not isinstance(exchanges, list) or not exchanges:
         return str(fallback or "")
     lines = []
-    for index, exchange in enumerate(exchanges[-8:]):
+    for index, exchange in enumerate(exchanges):
         if not isinstance(exchange, dict):
             continue
         player_text = str(exchange.get("playerInput") or "").strip()
