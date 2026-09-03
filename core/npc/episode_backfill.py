@@ -356,7 +356,6 @@ def _process_backfill_entry(
     entry_index: int,
     last_failure: Optional[Mapping[str, Any]],
     source_label: str,
-    skip_health_event: str,
     store: EpisodeStore,
     rel: RelationshipStore,
     module: str,
@@ -428,7 +427,7 @@ def _process_backfill_entry(
                 error_class,
             )
             record_store_health(
-                skip_health_event,
+                "episodic_upgrade_entry_skipped",
                 detail="%s %d failed twice: %s"
                 % (source_label, entry_index, error_class),
             )
@@ -523,7 +522,6 @@ def backfill_from_journal(
             entry_index=entry_index,
             last_failure=last_failure,
             source_label="journal backfill entry",
-            skip_health_event="episodic_upgrade_entry_skipped",
             store=episode_store,
             rel=rel_store,
             module=module,
@@ -616,7 +614,6 @@ def backfill_from_summaries(
             entry_index=i,
             last_failure=last_failure,
             source_label="campaign summary",
-            skip_health_event="episodic_upgrade_summary_skipped",
             store=episode_store,
             rel=rel_store,
             module=module_name,
