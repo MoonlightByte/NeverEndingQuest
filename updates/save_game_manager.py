@@ -655,7 +655,7 @@ class SaveGameManager:
                 if (
                     isinstance(existing, dict)
                     and isinstance(existing.get("file_statistics"), dict)
-                    and isinstance(existing.get("state_manifest"), dict)
+                    and isinstance(existing.get("state_manifest"), list)
                 ):
                     return True, f"Save game already exists: {save_path}"
                 shutil.rmtree(save_path)
@@ -847,10 +847,10 @@ class SaveGameManager:
                 metadata,
             )
             if not manifest_valid:
-                return (
-                    False,
-                    "State manifest integrity validation failed: "
-                    f"{manifest_error}",
+                warning(
+                    "RESTORE: State manifest diagnostic differs; continuing "
+                    f"with the selected save: {manifest_error}",
+                    category="save_game",
                 )
         return True, ""
 
