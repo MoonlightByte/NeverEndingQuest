@@ -409,7 +409,7 @@ def _latest_player_input(conversation_history):
     return ""
 
 
-def _companion_memory_rows(npc_id, episode_store, relationship_store, limit=3,
+def _companion_memory_rows(npc_id, episode_store, relationship_store,
                            current_location_id=None):
     """Top pinned/salient episodic memories for one NPC, rendered against the shared
     canonical episode (headline is the factual authority; personalLine is the NPC's
@@ -447,27 +447,13 @@ def _companion_memory_rows(npc_id, episode_store, relationship_store, limit=3,
         ),
         reverse=True,
     )
-    selected = enriched[:limit]
-    # Revisit guarantee: if the party is AT a location this NPC witnessed but their
-    # top-`limit` slots were filled entirely by pinned peaks from elsewhere, ensure
-    # the single strongest here-memory still surfaces -- returning to a place should
-    # recall it without the player having to name it. Displace only the weakest
-    # NON-pinned selected row so pinned peaks are never lost.
-    if current_location_id and not any(here for _r, _c, here, _g in selected):
-        here_rows = [t for t in enriched if t[2]]
-        if here_rows:
-            top_here = here_rows[0]  # already salience/grain-ordered
-            replace_at = None
-            for idx in range(len(selected) - 1, -1, -1):
-                if not selected[idx][0].get("pinned"):
-                    replace_at = idx
-                    break
-            if replace_at is not None:
-                selected[replace_at] = top_here
-            else:
-                # All slots are pinned peaks (never drop them) -> surface the
-                # here-memory as one additional selected row.
-                selected.append(top_here)
+    selected = [
+        item
+        for item in enriched
+        if item[0].get("pinned")
+        or item[2]
+        or item[0].get("salienceScore", 0.0) > 0
+    ]
     rows = []
     for row, canonical, _here, _grain in selected:
         rows.append(
