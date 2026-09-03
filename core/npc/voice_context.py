@@ -142,8 +142,8 @@ class PreparedOocVoiceHandle:
         self._parent_scope = parent_scope
         self._relationship_store = relationship_store
         self._packets = tuple(copy.deepcopy(packet) for packet in packets)
-        candidates = self._recall_candidates(raw_input, self._packets)
-        if candidates is None:
+        recall_input = self._recall_candidates(raw_input, self._packets)
+        if recall_input is None:
             self._voice_handle = service.dispatch_batch(
                 self._packets,
                 parent_scope=parent_scope,
@@ -168,7 +168,7 @@ class PreparedOocVoiceHandle:
         self._recall_scope = recall_scope
         recall_thread = threading.Thread(
             target=self._run_recall,
-            args=(raw_input, self._packets, candidates, recall_scope),
+            args=(raw_input, self._packets, *recall_input, recall_scope),
             name="npc-recall-%s" % self.batch_id,
             daemon=True,
         )
@@ -190,25 +190,35 @@ class PreparedOocVoiceHandle:
                 completion_required=True,
             )
 
-    @staticmethod
-    def _recall_candidates(_raw_input, packets):
+    def _recall_candidates(self, _raw_input, packets):
         try:
             from core.npc.episode_store import EpisodeStore
 
             store = EpisodeStore()
-            if store.read_only:
-                return None
             episodes_by_npc = {
                 packet["npc"]["id"]: store.episodes_for_witness(packet["npc"]["id"])
                 for packet in packets
             }
             if not any(episodes_by_npc.values()):
                 return None
-            return episodes_by_npc
-        except Exception:
+            location_ids = {packet["scene"]["locationId"] for packet in packets}
+            if len(location_ids) != 1:
+                raise ValueError("OOC recall packets disagree on current location")
+            return episodes_by_npc, location_ids.pop()
+        except Exception as exc:
+            self.recall_disposition = "degraded_this_beat"
+            _LOGGER.warning("T112 recall candidates unavailable: %s", type(exc).__name__)
+            self._service.telemetry.record_disposition(
+                "recall",
+                "candidate_read_failure",
+                batch_id=self.batch_id,
+                reason=type(exc).__name__,
+            )
             return None
 
-    def _run_recall(self, raw_input, packets, episodes_by_npc, scope):
+    def _run_recall(
+        self, raw_input, packets, episodes_by_npc, current_location_id, scope
+    ):
         try:
             from core.npc.episode_recall import parse_anchors, select_episodes, _tokens
 
@@ -241,7 +251,12 @@ class PreparedOocVoiceHandle:
                         subject = fact.get("subject") if isinstance(fact, Mapping) else None
                         if isinstance(subject, Mapping) and subject.get("id") == npc_id:
                             ignore |= _tokens(subject.get("label"))
-                scored = select_episodes(anchors, episodes, ignore_terms=ignore)
+                scored = select_episodes(
+                    anchors,
+                    episodes,
+                    current_location_id=current_location_id,
+                    ignore_terms=ignore,
+                )
                 if scored:
                     selected[npc_id] = [row["episode"] for row in scored[:2]]
             enriched = []

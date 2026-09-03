@@ -231,6 +231,18 @@ class EpisodeStore:
         value = self._read_existing() if self.path.exists() else None
         return copy.deepcopy(value if value is not None else new_ledger_document())
 
+    def _query_snapshot(self) -> Dict[str, Any]:
+        """Read query state without disguising an invalid ledger as empty."""
+        if self.read_only:
+            raise RuntimeError("episode ledger is read-only")
+        if not self.path.exists():
+            return new_ledger_document()
+        value = self._read_existing()
+        if value is None:
+            self._latch_read_only("corrupt_or_unsupported")
+            raise RuntimeError("episode ledger is corrupt or unsupported")
+        return copy.deepcopy(value)
+
     def _mutate(
         self, callback: Callable[[Dict[str, Any]], Tuple[bool, Any]]
     ) -> Tuple[str, Any]:
@@ -359,22 +371,8 @@ class EpisodeStore:
     def episodes_for_witness(self, npc_id: str) -> List[Dict[str, Any]]:
         rows = [
             episode
-            for episode in self.snapshot()["episodes"].values()
+            for episode in self._query_snapshot()["episodes"].values()
             if npc_id in episode.get("witnessIds", [])
-        ]
-        rows.sort(key=lambda e: e.get("ordinal", 0))
-        return rows
-
-    def episodes_at_location(self, location_id: str) -> List[Dict[str, Any]]:
-        """All episodes recorded at one location, oldest-first (mirrors
-        episodes_for_witness). Read-only; used to make retrieval location-aware --
-        returning to a place can surface what happened there."""
-        if not location_id:
-            return []
-        rows = [
-            episode
-            for episode in self.snapshot()["episodes"].values()
-            if episode.get("locationId") == location_id
         ]
         rows.sort(key=lambda e: e.get("ordinal", 0))
         return rows
