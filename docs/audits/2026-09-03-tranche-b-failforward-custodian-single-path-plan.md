@@ -1,19 +1,20 @@
 # Tranche B Fail-Forward, Custodian, and Single-Path Plan
 
-Status: **G1-G11 AMENDMENT UNDER PART 3 REVIEW -- NO CODE UNTIL CONVERGENCE**
+Status: **G1-G11 IMPLEMENTED; C11/C12 ACCEPTANCE CORRECTION UNDER PART 3 REVIEW**
 
 Date: 2026-09-03
 
 Branch: `integration/npc-voice-episodic`
 
-Pinned baseline: `03a8a9abe631fb0d763168981e416754bc2ad44d`
+Pinned C11/C12 baseline: `2fe0b6f781cd91405d9f036acf30c8da52b274d0`
 
 The approved non-gated Tranche B C0-C10 commits advanced both the local and remote branch from
-`6fc0f8f5` to `03a8a9ab`. This amendment is grounded in that actual reviewed/pushed tip. Four
-unrelated untracked runtime/plan artifacts remain untouched.
+`6fc0f8f5` to `03a8a9ab`. G1-G11 and their two reviewed corrections then advanced the isolated
+local branch to `2fe0b6f7`; push remains blocked on the final acceptance gate. C11/C12 are grounded
+in that actual acceptance baseline. Unrelated untracked runtime/plan artifacts remain untouched.
 
-Authority: live GitHub issue #193 v2.8, fetched 2026-09-03 (updated
-`2026-09-03T05:39:27Z`). Part 1 was read in full,
+Authority: live GitHub issue #193 v2.9, fetched 2026-09-03 (updated
+`2026-09-03T07:07:51Z`). Part 1 was read in full,
 the relevant Part 2 system pages and architecture schematics were read before this plan,
 Part 3 governs review, Part 4 governs the controller/reviewer rhythm and simplifier pass,
 and Part 5 supplies the cited ratified rulings. If this document conflicts with live #193,
@@ -70,8 +71,8 @@ implementation still waits for targeted Part 3 same-SHA convergence.
 
 | Pin | Frozen value |
 |---|---|
-| Dynamic branch revision | `03a8a9abe631fb0d763168981e416754bc2ad44d`; `origin/main` `52990aa08f1108cdc5660c31fb862ab342871944`; main is an ancestor |
-| Policy | Live #193 v2.8, updated `2026-09-03T05:39:27Z` |
+| Dynamic branch revision | C11/C12 baseline `2fe0b6f781cd91405d9f036acf30c8da52b274d0`; remote pre-gated tip `03a8a9abe631fb0d763168981e416754bc2ad44d`; `origin/main` `52990aa08f1108cdc5660c31fb862ab342871944`; main is an ancestor |
+| Policy | Live #193 v2.9, updated `2026-09-03T07:07:51Z` |
 | Save/Load/Reset | Part 2 page 9 plus `docs/architecture/save-load-reset-lifecycle.md` |
 | NPC memory and voice | Part 2 page 7 (NPC systems) plus `companion-memory.md`, `npc-voice-ooc.md`, `npc-voice-combat.md` |
 | Startup/provider | Part 2 pages 10-11 plus `startup-boot.md`, `provider-routing.md` |
@@ -407,7 +408,7 @@ replacement doctrine document.
 - No behavior expansion.
 - Re-run sentinel greps, schema/sidecar scans, build/tests, and the full consumer map.
 
-### Owner-ratified gated slices (#193 v2.8, D-VS-1..11)
+### Owner-ratified gated slices (#193 v2.9, D-VS-1..11)
 
 These slices are now authorized. They land one at a time after targeted FULL Part 3 review.
 
@@ -643,6 +644,7 @@ These slices are now authorized. They land one at a time after targeted FULL Par
 ### D9 Hygiene and standard gates
 
 - `py_compile` changed Python files.
+- `pyflakes` every changed Python file; no new undefined names or import defects are accepted.
 - Focused tests plus `python -m pytest tests`.
 - `tsc -b` and Vite build if touched paths affect the web bundle; otherwise record NOT-APPLICABLE.
 - ASCII scan of additions, secret scan, schema/sidecar compatibility scan, imports, conflict markers,
@@ -651,7 +653,7 @@ These slices are now authorized. They land one at a time after targeted FULL Par
 
 ## 8. Native Windows real-OpenAI acceptance
 
-Every arm records the #193 v2.8 evidence block: pinned commit, actual command/surface, real
+Every arm records the #193 v2.9 evidence block: pinned commit, actual command/surface, real
 provider/model from capture, parsed request payload at its consumer, pre/post authoritative
 state, player-visible stream, lifecycle/quiescence receipts, timing, and exact verdict. Synthetic
 tests may support but cannot substitute.
@@ -790,11 +792,104 @@ accepted once or remains visibly unsubmitted, never silently lost.
   the child branch cannot be reached through a legal fixture, report `NOT-REACHED`; the deterministic
   lifecycle trace remains supporting evidence rather than a false live pass.
 
-Every arm includes the #193 v2.8 evidence block and inspects native Windows disk/protocol/master
+Every arm includes the #193 v2.9 evidence block and inspects native Windows disk/protocol/master
 capture. Real OpenAI is mandatory where a model call is part of the behavior. No state-edit
 substitute may stand in for the final player-visible recall/narration assertion.
 
 ## 9. Simplifier questions
+
+## 10. Acceptance-discovered corrections (#287 and G8b)
+
+These corrections were discovered by the native authentic pre-feature Load arm after G1-G11
+were implemented. They are part of completing the already-ratified D-VS-8/D-VS-9 behavior, not
+a new feature wave. No other Tranche B behavior changes.
+
+### C11 -- durable per-entry upgrade cursor (#287)
+
+Observed failure: during a successful 133-entry backfill, canonical episodes were committed but
+`episodic_upgrade.json` did not exist until the whole journal loop returned. A crash would restart
+T113 at index zero. Stable episode coordinates prevent duplicate canonical episodes, but they do
+not prevent repeated paid model work and do not satisfy the ratified resumable-marker contract.
+
+Smallest correction:
+
+- Write the initial `in_progress` marker before the first T113 call.
+- A marker-write `OSError` never halts the build the player is watching. Upgrade the existing
+  swallowed DEBUG-only marker-write failure to WARN plus the existing store-health telemetry, then
+  continue; the next successful per-entry write re-covers the cursor. The ledger commit remains
+  authoritative and idempotent, so a marker-write failure risks repeated paid work after a later
+  crash, never corrupt or skipped game state. Add no retry loop, lock, store, or deadline.
+- Add a callback from `backfill_from_journal` to the existing orchestrator. After each journal
+  entry whose canonical EPISODE LEDGER commit returns a non-empty episode ID, persist
+  `journalNextIndex` and cumulative `committed` in the existing marker. A no-episode/skip may be
+  covered by a later successfully committed checkpoint or the terminal marker, but does not itself
+  claim durability. A pending `BackfillCompletedInvalid`, `LiveProviderSuperseded`, provider
+  failure, or canonical ledger commit/write failure never writes a cursor for that entry; a
+  completed entry error returns the existing loud resumable terminal rather than letting a later
+  checkpoint skip past the uncommitted entry. POV/relationship overlays retain their already
+  ratified fail-open plus WARN/telemetry behavior from S3 and are not cursor authority.
+- The canonical episode-ledger commit remains first; the marker is only its recovery cursor.
+  `_write_marker` remains the sole marker writer and the existing stable coordinates remain the
+  idempotency authority. If the episode committed but its cursor checkpoint failed, restart may
+  revisit that entry and the stable coordinate converges without duplication. No new store,
+  receipt, lock, timeout, or prose/hash authority is added.
+- Preserve callers by making the callback optional. Preserve the final journal and summary marker
+  writes as terminal reconciliation.
+
+GL-1: valid-current zero-work, history-free empty completion, completed-invalid resumability,
+malformed-row fail-open behavior, summary backfill, canonical commit idempotency, and lifecycle
+supersession are PRESERVED. Only the false "cursor is durable during successful work" gap changes.
+
+Proof: on an isolated native-Windows copy of the authentic pre-feature save, begin a real OpenAI
+build, wait for at least ten journal entries, record the marker and canonical episode coordinates,
+then terminate and reap the entire game/provider process tree. Prove no descendant remains and no
+file changes after quiescence; only then capture the authoritative marker and canonical sidecars
+before restart. The first resumed T113 journal request must start exactly at that post-death cursor
+(not merely at or beyond an earlier racing sample and never at index zero); prior coordinates must
+remain singletons; the build must complete and a grounded recall must reach an actionable prompt.
+Capture exact marker bytes before termination, after full-tree death, and after restart.
+
+### C12 -- React memory-upgrade progress overlay (G8b)
+
+Observed failure: `default_progress` emits `episodic_upgrade_start/progress/complete`, but the
+React event contract and socket adapter subscribe only to `compression_*`. The server already
+routes these events through the existing compression-operation snapshot slot, so live clients do
+not render them and reconnect cannot render their payload truthfully.
+
+Smallest correction:
+
+- Add the three existing `episodic_upgrade_*` payloads to the typed server-event contract and
+  subscribe to them in the existing socket adapter.
+- Extend the existing compression-operation Zustand state with a presentation kind and memory
+  message. Map live memory events and snapshot events into that same single overlay state; do not
+  create another queue, coordinator, or persistence record.
+- Extend the existing `CompressionOverlay` presentation so memory upgrade shows a truthful
+  "Companion Memory Recovery" title, the emitted changing message/count, and a terminal state.
+  Chronicle compression behavior and payloads remain byte-for-byte compatible at their existing
+  handlers.
+
+GL-1: compression live events, reconnect hydration, completion/error display, hide delay, and
+module/update operations are PRESERVED. The only new behavior is rendering the server events that
+G8 already emits. The overlay remains presentational and never gates or authorizes mutation.
+
+Proof: native Playwright loads an isolated authentic pre-feature save through the production web
+path. It must observe the overlay appear, record at least two increasing progress states, disconnect
+and reconnect while the build is active, observe the hydrated current state, then observe the
+terminal state. A valid-current control must reach an actionable prompt with no T113 call and no
+memory overlay. Run the focused frontend tests, `tsc -b`, and Vite build; inspect the browser player
+stream for technical leakage.
+
+### C13 -- remaining ratified acceptance
+
+After C11/C12 pass, run the dead-holder/living-holder lock arm, valid-memory zero-work startup,
+retryable-HTTP real-OpenAI reachability window, and Reset writer-fence arm exactly as A11 states.
+Record `NOT-REACHED` honestly. The final gate package explicitly records:
+
+- #287 as resolved only by the kill/restart cursor proof;
+- legacy `*_memories.json` and `memory_config.json` writers as remaining #283-owned residue, not
+  silently treated as retired by G9;
+- the authentic 133-entry Load result (982.063 seconds, marker complete at 133, grounded recall)
+  separately from the C11 crash-resume proof and the C12 Playwright proof.
 
 After each slice and once integrated:
 
@@ -868,7 +963,7 @@ remains blocked until convergence plus Claude/owner gate.
 | R-G-7 | RESOLVED | Runtime legacy memory rendering is deleted after canonical repair; D-VS-4 waives T045 only |
 | R-G-8 | RESOLVED | G2 removes the proactive fixed-three slice; D-272-1 retains top-two targeted recall and one arc-seed pick |
 | R-G-9 | RESOLVED | Acceptance requires distinct schema-valid companion provenance, Playwright popup truth, and honest live-HTTP NOT-REACHED |
-| R-G-10 | RESOLVED | Stale prompt-first and v2.7 language retired throughout; one v2.8 blocking-build contract remains |
+| R-G-10 | RESOLVED | Stale prompt-first and v2.7 language retired throughout; the current v2.9 blocking-build contract remains |
 | R-G-11 | RESOLVED-OWNER-B | Preserve the pre-existing completion drain; D-VS-5 waiters do not refuse, and provider-under-lock debt is #286 |
 | R-G-12 | RESOLVED | Closing T108 scopes remain discoverable under the existing scope guard until child commit quiescence |
 
