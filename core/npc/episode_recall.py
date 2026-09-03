@@ -39,12 +39,12 @@ ANCHOR_RESPONSE_SCHEMA: Dict[str, Any] = {
     },
 }
 
-_SYSTEM = """The player is referencing a PAST shared event. Extract the concrete anchors they name, so we can look it up. Do not judge whether it happened; just parse.
+_SYSTEM = """Decide whether the player's line makes a concrete reference to a past shared event. If it does, extract the concrete anchors they name so code can look it up. Do not judge whether it happened; just parse.
 Return ONLY JSON: {"entities":[...], "places":[...], "outcomes":[...]}
 - entities: named foes/people/things ("the wizard", "the wolf collar").
 - places: named locations ("Mountain of Chaos", "the caves").
 - outcomes: what happened ("almost died", "clever move", "betrayed me").
-Lowercase the extracted values; omit filler. If the line references nothing concrete, return empty arrays."""
+Lowercase the extracted values; omit filler. Present or future intent, and any line without a concrete past/shared reference, must return empty arrays."""
 
 _STOPWORDS = frozenset({
     "the", "and", "you", "your", "our", "that", "this", "with", "from", "into", "was",
@@ -244,55 +244,3 @@ def select_episodes(
         reverse=True,
     )
     return scored
-
-
-def recall_episodes(
-    player_line: str,
-    npc_id: str,
-    *,
-    episode_store: Any,
-    provider: Optional[str] = None,
-    completion_fn: Callable[..., Any] = api_client.create_completion,
-    capture_fn: Callable[..., Any] = None,
-    limit: int = 3,
-    current_location_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Grounded recall for one NPC. Returns {confidence, episodes, anchors}.
-    confidence: 'vivid' | 'partial' | 'absent'. Fail-open -> 'absent'."""
-    empty = {"confidence": "absent", "episodes": [], "anchors": None}
-    if not player_line.strip() or not npc_id or episode_store is None:
-        return empty
-    try:
-        episodes = episode_store.episodes_for_witness(npc_id)
-    except Exception:
-        return empty
-    if not episodes:
-        return empty
-    anchors = parse_anchors(
-        player_line, provider=provider, completion_fn=completion_fn, capture_fn=capture_fn
-    )
-    if anchors is None:
-        return empty
-    # The NPC's own name(s) are never a distinguishing anchor (every one of their
-    # episodes mentions them); strip them so an addressed name can't false-match.
-    ignore_terms = set()
-    for episode in episodes:
-        for fact in episode.get("salientFacts", []) or []:
-            subject = fact.get("subject") if isinstance(fact, Mapping) else None
-            if isinstance(subject, Mapping) and subject.get("id") == npc_id:
-                ignore_terms |= _tokens(subject.get("label"))
-    scored = select_episodes(
-        anchors, episodes, ignore_terms=ignore_terms,
-        current_location_id=current_location_id,
-    )
-    if not scored:
-        return {"confidence": "absent", "episodes": [], "anchors": anchors}
-    # Exact value match beats rank: keep the cap for rank-only candidates, but an
-    # episode whose typed fields exactly match an anchor value is always included.
-    top = scored[:limit] + [s for s in scored[limit:] if s.get("exact")]
-    confidence = "vivid" if top[0]["score"] >= VIVID_THRESHOLD else "partial"
-    return {
-        "confidence": confidence,
-        "episodes": [s["episode"] for s in top],
-        "anchors": anchors,
-    }

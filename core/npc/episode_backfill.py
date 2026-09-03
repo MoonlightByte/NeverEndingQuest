@@ -76,10 +76,10 @@ _SYSTEM = """You reconstruct a CANONICAL episode from a PAST journal/summary pas
 
 Produce:
 - present: which roster companions are PHYSICALLY PRESENT and acting in this passage (a subset of the roster; [] if none). A companion merely mentioned/absent is NOT present.
-- headline: a short label for what happened (<=100 chars).
-- canonicalSummary: the shared, factual account, third person, <=600 chars. Only what the passage supports; do not embellish or invent.
+- headline: a short label for what happened.
+- canonicalSummary: the shared, factual account, third person. Only what the passage supports; do not embellish or invent.
 - intensity: 0..1 emotional weight (near-death/betrayal high; idle travel low).
-- entityTags: short lowercase recall anchors (e.g. "wizard", "wishing well"). <=12.
+- entityTags: short lowercase recall anchors (e.g. "wizard", "wishing well").
 - salientFacts: the specific, personal, character-defining beats a plot summary drops -- a gift, joke, fear shown, tender act, vow, near-death. Each: {npc, kind, oneLine, objectLabel?}.
 
 STRICT RULES:
@@ -87,7 +87,7 @@ STRICT RULES:
 - present and every salientFact.npc MUST be an EXACT name from the roster. Never output a name not on the roster.
 - Attribute each fact to the present companion who DID it. No fact for an absent/mentioned companion.
 - kind is one of: {kinds}.
-- oneLine <=120 chars, concrete + attribution intact.
+- oneLine is concrete and keeps attribution intact.
 
 Roster: {roster}. Player: {player}.
 Return ONLY JSON matching the requested shape."""

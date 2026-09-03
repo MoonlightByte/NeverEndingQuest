@@ -49,7 +49,11 @@ def segment_witness_names(messages: Sequence[Mapping[str, Any]]) -> List[str]:
             continue
         start = content.find("Party NPCs: ") + len("Party NPCs: ")
         end = content.find(" Party stats:", start)
-        roster = content[start:end] if end > start else content[start : start + 500]
+        if end > start:
+            roster = content[start:end]
+        else:
+            line_end = content.find("\n", start)
+            roster = content[start:] if line_end < 0 else content[start:line_end]
         for part in roster.split(","):
             name = part.strip()
             paren = name.find(" (")

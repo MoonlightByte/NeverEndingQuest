@@ -122,7 +122,6 @@ STRUCTURED_PROFILE_SCHEMA = strict_object(
                 "diction": {"type": "string"},
                 "taboos": {
                     "type": "array",
-                    "maxItems": 3,
                     "uniqueItems": True,
                     "items": {"type": "string", "minLength": 1},
                 },
@@ -130,23 +129,23 @@ STRUCTURED_PROFILE_SCHEMA = strict_object(
             ("cadence", "diction", "taboos"),
         ),
         "goals": {
-            "type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": True,
+            "type": "array", "minItems": 1, "uniqueItems": True,
             "items": {"type": "string", "minLength": 1},
         },
         "fears": {
-            "type": "array", "maxItems": 3, "uniqueItems": True,
+            "type": "array", "uniqueItems": True,
             "items": {"type": "string", "minLength": 1},
         },
         "values": {
-            "type": "array", "minItems": 1, "maxItems": 5, "uniqueItems": True,
+            "type": "array", "minItems": 1, "uniqueItems": True,
             "items": {"type": "string", "minLength": 1},
         },
         "preferences": {
-            "type": "array", "maxItems": 5, "uniqueItems": True,
+            "type": "array", "uniqueItems": True,
             "items": {"type": "string", "minLength": 1},
         },
         "boundaries": {
-            "type": "array", "maxItems": 5, "uniqueItems": True,
+            "type": "array", "uniqueItems": True,
             "items": {"type": "string", "minLength": 1},
         },
         "conflictStyle": {"type": "string"},
@@ -158,15 +157,15 @@ STRUCTURED_PROFILE_SCHEMA = strict_object(
             "type": "string", "enum": ["cautious", "measured", "bold"]
         },
         "protectionPriorities": {
-            "type": "array", "maxItems": 3, "uniqueItems": True,
+            "type": "array", "uniqueItems": True,
             "items": {"type": "string", "minLength": 1},
         },
         "retreatRules": {
-            "type": "array", "maxItems": 3, "uniqueItems": True,
+            "type": "array", "uniqueItems": True,
             "items": {"type": "string", "minLength": 1},
         },
         "arcSeeds": {
-            "type": "array", "maxItems": 2, "uniqueItems": True,
+            "type": "array", "uniqueItems": True,
             "items": {"type": "string", "minLength": 1},
         },
     },
@@ -258,7 +257,6 @@ COMMON_PACKET_PROPERTIES: Dict[str, Any] = {
             "state": RELATIONSHIP_STATE_SCHEMA,
             "recentEvents": {
                 "type": "array",
-                "maxItems": 3,
                 "items": RECENT_EVENT_SCHEMA,
             },
         },
@@ -272,19 +270,16 @@ COMMON_PACKET_PROPERTIES: Dict[str, Any] = {
             "presentActors": {
                 "type": "array",
                 "minItems": 1,
-                "maxItems": 12,
                 "uniqueItems": True,
                 "items": {"type": "string", "minLength": 1},
             },
             "stakes": {"type": "string", "minLength": 1},
             "recentEvents": {
                 "type": "array",
-                "maxItems": 6,
                 "items": {"type": "string", "minLength": 1},
             },
             "recentSceneWindow": {
                 "type": "array",
-                "maxItems": 3,
                 "items": strict_object(
                     {
                         "speaker": {"type": "string", "minLength": 1},
@@ -304,7 +299,6 @@ COMMON_PACKET_PROPERTIES: Dict[str, Any] = {
             "openQuestion": {"type": "string"},
             "moodTags": {
                 "type": "array",
-                "maxItems": 4,
                 "uniqueItems": True,
                 "items": {"type": "string", "minLength": 1},
             },
@@ -339,7 +333,6 @@ COMBAT_CONTEXT_SCHEMA = strict_object(
                 "armorClass": {"type": "integer", "minimum": 1, "maximum": 40},
                 "conditions": {
                     "type": "array",
-                    "maxItems": 8,
                     "uniqueItems": True,
                     "items": {"type": "string", "minLength": 1},
                 },
@@ -349,17 +342,14 @@ COMBAT_CONTEXT_SCHEMA = strict_object(
         ),
         "capabilities": {
             "type": "array",
-            "maxItems": 8,
             "items": {"type": "string", "minLength": 1},
         },
         "allies": {
             "type": "array",
-            "maxItems": 8,
             "items": {"type": "string", "minLength": 1},
         },
         "threats": {
             "type": "array",
-            "maxItems": 8,
             "items": strict_object(
                 {
                     "name": {"type": "string", "minLength": 1},
@@ -371,7 +361,6 @@ COMBAT_CONTEXT_SCHEMA = strict_object(
         },
         "lastRoundEvents": {
             "type": "array",
-            "maxItems": 8,
             "items": {"type": "string", "minLength": 1},
         },
     },
@@ -382,19 +371,16 @@ OUT_OF_COMBAT_CONTEXT_SCHEMA = strict_object(
     {
         "utilities": {
             "type": "array",
-            "maxItems": 8,
             "items": {"type": "string", "minLength": 1},
         },
         "items": {
             "type": "array",
-            "maxItems": 8,
             "items": {"type": "string", "minLength": 1},
         },
         "socialContext": {"type": "string", "minLength": 1},
         "currentGoals": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 5,
             "items": {"type": "string", "minLength": 1},
         },
         "presentCompanionVisibleActs": {
@@ -405,7 +391,6 @@ OUT_OF_COMBAT_CONTEXT_SCHEMA = strict_object(
                     "npcName": {"type": "string", "minLength": 1},
                     "acts": {
                         "type": "array",
-                        "maxItems": 2,
                         "items": {"type": "string", "minLength": 1},
                     },
                 },
@@ -414,7 +399,6 @@ OUT_OF_COMBAT_CONTEXT_SCHEMA = strict_object(
         },
         "recalledEpisodes": {
             "type": "array",
-            "maxItems": 2,
             "items": {"type": "object"},
         },
         "companionRelationships": {
@@ -426,7 +410,6 @@ OUT_OF_COMBAT_CONTEXT_SCHEMA = strict_object(
                     "state": RELATIONSHIP_STATE_SCHEMA,
                     "evidence": {
                         "type": "array",
-                        "maxItems": 2,
                         "items": RECENT_EVENT_SCHEMA,
                     },
                 },
@@ -447,9 +430,7 @@ def packet_schema(mode: str) -> Dict[str, Any]:
     properties["context"] = (
         COMBAT_CONTEXT_SCHEMA if mode == "COMBAT" else OUT_OF_COMBAT_CONTEXT_SCHEMA
     )
-    schema = strict_object(properties, tuple(properties))
-    _remove_array_limits(schema)
-    return schema
+    return strict_object(properties, tuple(properties))
 
 
 def openai_response_format() -> Dict[str, Any]:
@@ -492,7 +473,6 @@ def gemini_response_schema() -> Dict[str, Any]:
 
 def profile_openai_response_format() -> Dict[str, Any]:
     response_schema = copy.deepcopy(STRUCTURED_PROFILE_SCHEMA)
-    _remove_array_limits(response_schema)
     return {
         "type": "json_schema",
         "json_schema": {
@@ -506,30 +486,15 @@ def profile_openai_response_format() -> Dict[str, Any]:
 def profile_gemini_response_schema() -> Dict[str, Any]:
     from model_config import convert_to_gemini_schema
 
-    response_schema = copy.deepcopy(STRUCTURED_PROFILE_SCHEMA)
-    _remove_array_limits(response_schema)
     return convert_to_gemini_schema(
-        response_schema,
+        copy.deepcopy(STRUCTURED_PROFILE_SCHEMA),
         preserve_required=True,
         preserve_constraints=True,
     )
 
 
-def _remove_array_limits(value: Any) -> None:
-    """Relax model-output cardinality while preserving all other constraints."""
-    if isinstance(value, dict):
-        value.pop("maxItems", None)
-        for child in value.values():
-            _remove_array_limits(child)
-    elif isinstance(value, list):
-        for child in value:
-            _remove_array_limits(child)
-
-
 def profile_response_schema() -> Dict[str, Any]:
-    schema = copy.deepcopy(STRUCTURED_PROFILE_SCHEMA)
-    _remove_array_limits(schema)
-    return schema
+    return copy.deepcopy(STRUCTURED_PROFILE_SCHEMA)
 
 
 def _first_error(schema: Mapping[str, Any], value: Any):

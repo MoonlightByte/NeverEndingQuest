@@ -54,7 +54,7 @@
       "type": "object",
       "additionalProperties": false,
       "patternProperties": {
-        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"type": "array", "maxItems": 512, "items": {"$ref": "#/$defs/povEpisode"}}
+        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"type": "array", "items": {"$ref": "#/$defs/povEpisode"}}
       }
     }
   },
@@ -82,6 +82,7 @@
         "profileVersion": {"const": 1},
         "sourceHash": {"type": "string"},
         "sourceCanonical": {"type": "string"},
+        "profileProvenance": {"enum": ["fallback", "model"]},
         "voice": {
           "type": "object",
           "additionalProperties": false,
@@ -89,20 +90,20 @@
           "properties": {
             "cadence": {"type": "string"},
             "diction": {"type": "string"},
-            "taboos": {"type": "array", "maxItems": 3, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+            "taboos": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
           }
         },
-        "goals": {"type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-        "fears": {"type": "array", "maxItems": 3, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-        "values": {"type": "array", "minItems": 1, "maxItems": 5, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-        "preferences": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-        "boundaries": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "goals": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "fears": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "preferences": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "boundaries": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "conflictStyle": {"type": "string"},
         "initiativeTendency": {"type": "string", "enum": ["reserved", "balanced", "proactive"]},
         "riskTolerance": {"type": "string", "enum": ["cautious", "measured", "bold"]},
-        "protectionPriorities": {"type": "array", "maxItems": 3, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-        "retreatRules": {"type": "array", "maxItems": 3, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-        "arcSeeds": {"type": "array", "maxItems": 2, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        "protectionPriorities": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "retreatRules": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "arcSeeds": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
       }
     },
     "vector": {
@@ -152,7 +153,7 @@
         "gameDay": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
         "module": {"type": "string"},
         "locationId": {"type": "string"},
-        "topicIds": {"type": "array", "maxItems": 12, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "topicIds": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "unresolved": {"type": "boolean"},
         "sourceHash": {"type": "string"},
         "sourceCanonical": {"type": "string"}
@@ -176,8 +177,8 @@
         "personaBaseline": {"$ref": "#/$defs/vector"},
         "current": {"$ref": "#/$defs/vector"},
         "lastDecayDay": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
-        "evidence": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/evidence"}},
-        "appliedEventIds": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+        "appliedEventIds": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "appliedEventHistory": {"type": "string"},
         "aggregateCounts": {"$ref": "#/$defs/aggregateCounts"},
         "evidenceHashChain": {"type": "string"}
@@ -192,11 +193,11 @@
         "sourceTurn": {"type": "string", "minLength": 1},
         "currentGoalReference": {"type": "string"},
         "openQuestion": {"type": "string"},
-        "moodTags": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "moodTags": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "expiresAfterTurn": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
         "sceneId": {"type": "string"},
         "advisory": {"$ref": "#/$defs/advisoryBeat"},
-        "advisoryHistory": {"type": "array", "maxItems": 10, "items": {"$ref": "#/$defs/advisoryBeat"}}
+        "advisoryHistory": {"type": "array", "items": {"$ref": "#/$defs/advisoryBeat"}}
       }
     },
     "advisoryBeat": {
@@ -228,11 +229,11 @@
         "invitedBy": {"type": "string"},
         "terms": {"type": "string"},
         "personalObjective": {"type": "string"},
-        "redLines": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "redLines": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "compensation": {"type": "string"},
         "expectedDuration": {"type": "string"},
         "priorStatus": {"enum": ["new", "active", "inactive", "unknown"]},
-        "unresolvedObligations": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        "unresolvedObligations": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
       }
     },
     "lifecycleState": {
@@ -241,7 +242,7 @@
       "required": ["status", "events"],
       "properties": {
         "status": {"enum": ["active", "inactive"]},
-        "events": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/lifecycleEvent"}}
+        "events": {"type": "array", "items": {"$ref": "#/$defs/lifecycleEvent"}}
       }
     },
     "migration": {
@@ -269,7 +270,7 @@
         "salienceScore": {"type": "number", "minimum": 0, "maximum": 1},
         "pinned": {"type": "boolean"},
         "personalLine": {"type": "string"},
-        "linkedEvidenceIds": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        "linkedEvidenceIds": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
       }
     }
   }

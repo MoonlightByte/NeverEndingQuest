@@ -8,7 +8,7 @@ initiativeTendency, riskTolerance, protectionPriorities, retreatRules, arcSeeds.
 Use only facts present in the supplied source. Compress, quote, or leave optional fields
 empty. Never invent a secret, promise, item, allegiance, quest status, relationship,
 world event, or completed action. goals and values must each contain at least one grounded
-entry. arcSeeds may contain no more than two source-grounded tensions or objectives; an
+entry. arcSeeds may contain source-grounded tensions or objectives; an
 arc seed is advisory and cannot assert plot progress. initiativeTendency must be reserved,
 balanced, or proactive. riskTolerance must be cautious, measured, or bold.
 

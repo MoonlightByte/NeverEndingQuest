@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import re
 import threading
 from collections import OrderedDict
@@ -31,6 +32,7 @@ PROMPT_VERSION = "npc-profile-seed-prompt/v1"
 SCHEMA_VERSION = "npc-profile-seed-response/v1"
 TEMPERATURE = 0.4
 MAX_ATTEMPTS = 2
+_LOGGER = logging.getLogger(__name__)
 
 register_callsite("T107", "core/npc/profile_service.py", 292)
 
@@ -105,20 +107,6 @@ def validate_profile(raw: Any) -> Dict[str, Any]:
         if any(not item for item in stripped) or len(set(stripped)) != len(stripped):
             raise ProfileContractError("profile strings must be nonempty and unique")
         container[key] = stripped
-    retention_counts = {
-        "taboos": 3,
-        "goals": 3,
-        "fears": 3,
-        "values": 5,
-        "preferences": 5,
-        "boundaries": 5,
-        "protectionPriorities": 3,
-        "retreatRules": 3,
-        "arcSeeds": 2,
-    }
-    for key, count in retention_counts.items():
-        container = result["voice"] if key == "taboos" else result
-        container[key] = container[key][:count]
     return result
 
 
@@ -126,7 +114,7 @@ def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _unique(values: Any, count: int) -> list[str]:
+def _unique(values: Any) -> list[str]:
     if not isinstance(values, (list, tuple)):
         values = [values]
     result = []
@@ -134,8 +122,6 @@ def _unique(values: Any, count: int) -> list[str]:
         item = _text(value)
         if item and item not in result:
             result.append(item)
-        if len(result) >= count:
-            break
     return result
 
 
@@ -161,9 +147,13 @@ def deterministic_fallback_profile(
     ideals = _text(sheet.get("ideals"))
     role = _text(sheet.get("role") or sheet.get("class"))
     objective = _text(context.get("personalObjective"))
-    goals = _unique([objective, bonds, role, ideals, "unknown"], 3)
-    values = _unique([ideals, _text(sheet.get("alignment")), "unknown"], 5)
-    red_lines = _unique(context.get("redLines", []), 5)
+    goals = _unique([objective, bonds, role, ideals])
+    values = _unique([ideals, _text(sheet.get("alignment"))])
+    red_lines = _unique(context.get("redLines", []))
+    if not goals:
+        goals = ["unknown"]
+    if not values:
+        values = ["unknown"]
     return {
         "voice": {"cadence": personality, "diction": "", "taboos": []},
         "goals": goals,
@@ -369,22 +359,46 @@ def seed_profile_best_effort(
     }
     source_fingerprint = profile_source_canonical(full_hash_source)
     existing = store.get_profile(npc_id)
+    fallback = deterministic_fallback_profile(sheet, lifecycle_value)
     # Value-fingerprint gate: string equality of sourceCanonical <=> value
     # equality of the same {profileVersion, source} material the retired
     # sourceHash digest covered. A legacy profile that only carries sourceHash
-    # is tolerated on load but treated as non-matching here, so it regenerates
-    # ONCE; the write below persists sourceCanonical and the value gate then
-    # holds from that point on.
-    if (
+    # is tolerated on load. Exact legacy fallback values are classified as
+    # fallback and retried; distinct legacy values migrate as model-authored.
+    source_matches = (
         isinstance(existing, dict)
         and existing.get("profileVersion") == PROFILE_VERSION
         and existing.get("sourceCanonical") == source_fingerprint
-    ):
+    )
+    if source_matches and existing.get("profileProvenance") == "model":
         return existing
-    fallback = deterministic_fallback_profile(sheet, lifecycle_value)
+    if source_matches and "profileProvenance" not in existing:
+        comparable = {
+            key: existing.get(key)
+            for key in fallback
+        }
+        if comparable != fallback:
+            migrated = {**existing, "profileProvenance": "model"}
+            store.store_profile(npc_id, migrated)
+            return store.get_profile(npc_id) or migrated
+    existing_source = existing.get("sourceCanonical") if isinstance(existing, dict) else ""
+    if existing_source and not source_matches:
+        try:
+            parsed_source = json.loads(existing_source)
+        except (TypeError, ValueError):
+            _LOGGER.error(
+                "T107 preserved profile with unsafe sourceCanonical npc_id=%s", npc_id
+            )
+            return existing
+        if not isinstance(parsed_source, dict):
+            _LOGGER.error(
+                "T107 preserved profile with non-object sourceCanonical npc_id=%s", npc_id
+            )
+            return existing
     persisted_fallback = {
         "profileVersion": PROFILE_VERSION,
         "sourceCanonical": source_fingerprint,
+        "profileProvenance": "fallback",
         **fallback,
     }
     store.store_profile(npc_id, persisted_fallback)
@@ -403,9 +417,52 @@ def seed_profile_best_effort(
         seeded = {
             "profileVersion": PROFILE_VERSION,
             "sourceCanonical": source_fingerprint,
+            "profileProvenance": "model",
             **result.profile,
         }
         store.store_profile(npc_id, seeded)
         return store.get_profile(npc_id) or persisted_fallback
-    except Exception:
+    except Exception as exc:
+        _LOGGER.error(
+            "T107 retained grounded fallback for this beat npc_id=%s error=%s",
+            npc_id,
+            type(exc).__name__,
+        )
         return store.get_profile(npc_id) or persisted_fallback
+
+
+def profile_for_packet_best_effort(
+    *,
+    store: RelationshipStore,
+    npc_id: str,
+    npc_name: str,
+    sheet: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Return a playable profile and retry a persisted fallback on this beat."""
+    snapshot = store.snapshot()
+    lifecycle = snapshot.get("lifecycle", {}).get(npc_id, {})
+    events = lifecycle.get("events", []) if isinstance(lifecycle, Mapping) else []
+    join = next(
+        (
+            event
+            for event in events
+            if isinstance(event, Mapping) and event.get("kind") == "join"
+        ),
+        {},
+    )
+    source = {
+        "reason": join.get("cause", "unknown"),
+        "invitedBy": join.get("invitedBy", "unknown"),
+        "terms": join.get("terms", ""),
+        "personalObjective": join.get("personalObjective", ""),
+        "redLines": join.get("redLines", []),
+        "compensation": join.get("compensation", ""),
+        "expectedDuration": join.get("expectedDuration", "unknown"),
+    }
+    return seed_profile_best_effort(
+        store=store,
+        npc_id=npc_id,
+        npc_name=npc_name,
+        sheet=sheet,
+        lifecycle=source,
+    )

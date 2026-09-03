@@ -31,11 +31,11 @@
         "locationName": {"type": "string", "maxLength": 160},
         "gameDay": {"type": ["integer", "null"], "minimum": 0},
         "boundaryTurnId": {"type": "string", "maxLength": 120},
-        "headline": {"type": "string", "maxLength": 100},
-        "canonicalSummary": {"type": "string", "maxLength": 600},
-        "salientFacts": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/salientFact"}},
-        "entityTags": {"type": "array", "maxItems": 12, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 60}},
-        "witnessIds": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/uuid"}},
+        "headline": {"type": "string"},
+        "canonicalSummary": {"type": "string"},
+        "salientFacts": {"type": "array", "items": {"$ref": "#/$defs/salientFact"}},
+        "entityTags": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "witnessIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/uuid"}},
         "intensity": {"type": "number", "minimum": 0, "maximum": 1},
         "derivedFrom": {"enum": ["location_summary", "combat_telemetry", "backfill", "module_consolidation"]},
         "sourceHash": {"type": "string", "pattern": "^([0-9a-f]{64})?$"},
@@ -50,7 +50,7 @@
         "kind": {"enum": ["defeat", "near_death", "rescue", "protect", "sacrifice", "loss", "discovery", "vow", "betrayal", "victory", "defeat_suffered", "first_meeting", "reunion", "bond", "tender", "joke", "fear", "vulnerability", "habit", "gift", "confession"]},
         "subject": {"$ref": "#/$defs/actorRef"},
         "object": {"$ref": "#/$defs/actorRef"},
-        "oneLine": {"type": "string", "minLength": 1, "maxLength": 120}
+        "oneLine": {"type": "string", "minLength": 1}
       }
     },
     "actorRef": {
@@ -59,7 +59,7 @@
       "required": ["label"],
       "properties": {
         "id": {"$ref": "#/$defs/uuid"},
-        "label": {"type": "string", "minLength": 1, "maxLength": 80}
+        "label": {"type": "string", "minLength": 1}
       }
     }
   }

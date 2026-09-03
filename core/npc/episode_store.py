@@ -83,8 +83,12 @@ def _is_uuid(value: Any) -> bool:
         return False
 
 
-def _text(value: Any, limit: int) -> str:
-    return value.strip()[:limit] if isinstance(value, str) else ""
+def _text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _coordinate_text(value: Any, limit: int) -> str:
+    return _text(value)[:limit]
 
 
 def _clamp01(value: Any) -> float:
@@ -130,7 +134,7 @@ def _migrate_document(document: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 def _sanitize_actor_ref(value: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(value, Mapping):
         return None
-    label = _text(value.get("label"), 80)
+    label = _text(value.get("label"))
     if not label:
         return None
     ref: Dict[str, Any] = {"label": label}
@@ -148,7 +152,7 @@ def _sanitize_salient_facts(value: Any) -> List[Dict[str, Any]]:
             continue
         kind = item.get("kind")
         subject = _sanitize_actor_ref(item.get("subject"))
-        one_line = _text(item.get("oneLine"), 120)
+        one_line = _text(item.get("oneLine"))
         if kind not in VALID_SALIENT_KINDS or subject is None or not one_line:
             continue
         fact: Dict[str, Any] = {"kind": kind, "subject": subject, "oneLine": one_line}
@@ -156,21 +160,17 @@ def _sanitize_salient_facts(value: Any) -> List[Dict[str, Any]]:
         if obj is not None:
             fact["object"] = obj
         facts.append(fact)
-        if len(facts) >= 8:
-            break
     return facts
 
 
-def _unique_capped(value: Any, *, limit_len: int, count: int) -> List[str]:
+def _unique_text(value: Any) -> List[str]:
     result: List[str] = []
     if not isinstance(value, (list, tuple)):
         return result
     for item in value:
-        text = _text(item, limit_len)
+        text = _text(item)
         if text and text not in result:
             result.append(text)
-        if len(result) >= count:
-            break
     return result
 
 
@@ -181,8 +181,6 @@ def _witness_ids(value: Any) -> List[str]:
     for item in value:
         if _is_uuid(item) and item not in result:
             result.append(item)
-        if len(result) >= 16:
-            break
     return result
 
 
@@ -313,17 +311,7 @@ class EpisodeStore:
         # is keyed on stable_episode_id value coordinates above.
         source = source_hash if (isinstance(source_hash, str) and (source_hash == "" or (len(source_hash) == 64))) else ""
         game_day_value = game_day if isinstance(game_day, int) and game_day >= 0 else None
-        # Materialize once (the iterable is read below) and fail LOUD if witnesses are
-        # truncated -- an over-cap drop would make a present companion's episode
-        # unrecallable via episodes_for_witness (a silent blank-recall). The cap is 16;
-        # realistic parties are far smaller, but truncation must never be silent.
         witness_ids = list(witness_ids)
-        _distinct_witnesses = {w for w in witness_ids if _is_uuid(w)}
-        if len(_distinct_witnesses) > 16:
-            record_store_health(
-                "episode_witness_truncated", path=str(self.path),
-                detail="episode %s had %d witnesses, capped at 16" % (episode_id, len(_distinct_witnesses)),
-            )
 
         def update(document: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
             episodes = document["episodes"]
@@ -336,21 +324,21 @@ class EpisodeStore:
             record = {
                 "episodeId": episode_id,
                 "ordinal": ordinal,
-                "module": _text(module, 160),
-                "locationId": _text(location_id, 120),
-                "locationName": _text(location_name, 160),
+                "module": _coordinate_text(module, 160),
+                "locationId": _coordinate_text(location_id, 120),
+                "locationName": _coordinate_text(location_name, 160),
                 "gameDay": game_day_value,
-                "boundaryTurnId": _text(boundary_turn_id, 120),
-                "headline": _text(headline, 100),
-                "canonicalSummary": _text(canonical_summary, 600),
+                "boundaryTurnId": _coordinate_text(boundary_turn_id, 120),
+                "headline": _text(headline),
+                "canonicalSummary": _text(canonical_summary),
                 "salientFacts": _sanitize_salient_facts(salient_facts),
-                "entityTags": _unique_capped(entity_tags, limit_len=60, count=12),
+                "entityTags": _unique_text(entity_tags),
                 "witnessIds": _witness_ids(witness_ids),
                 "intensity": _clamp01(intensity),
                 "derivedFrom": derived,
                 # Write-only provenance; never used as identity (see above).
                 "sourceHash": source,
-                "promptVersion": _text(prompt_version, 40),
+                "promptVersion": _coordinate_text(prompt_version, 40),
             }
             if existing == record:
                 return False, episode_id

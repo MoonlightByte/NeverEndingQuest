@@ -162,9 +162,8 @@ class PreparedOocVoiceHandle:
         ).start()
 
     @staticmethod
-    def _recall_candidates(raw_input, packets):
+    def _recall_candidates(_raw_input, packets):
         try:
-            from core.npc.episode_recall import _episode_terms, _tokens
             from core.npc.episode_store import EpisodeStore
 
             store = EpisodeStore()
@@ -175,12 +174,6 @@ class PreparedOocVoiceHandle:
                 for packet in packets
             }
             if not any(episodes_by_npc.values()):
-                return None
-            terms = set()
-            for episodes in episodes_by_npc.values():
-                for episode in episodes:
-                    terms |= _episode_terms(episode)
-            if not (_tokens(raw_input) & terms):
                 return None
             return episodes_by_npc
         except Exception:
@@ -938,7 +931,14 @@ def build_ooc_packet_for_turn(
             "witnessed": accepted_witnessed,
         }
 
-    stored_profile = store.get_profile(npc_id)
+    from core.npc.profile_service import profile_for_packet_best_effort
+
+    stored_profile = profile_for_packet_best_effort(
+        store=store,
+        npc_id=npc_id,
+        npc_name=npc_name,
+        sheet=selected_sheet,
+    )
     profile = _canonical_packet_profile(selected_sheet, stored_profile)
     structured_goals = (
         list(profile.get("goals", [])) if isinstance(profile.get("goals"), list) else []
@@ -1248,7 +1248,15 @@ def build_combat_packets_for_window(
         conditions = creature.get("conditions", sheet.get("condition_affected", []))
         conditions = conditions if isinstance(conditions, list) else []
         role = _string(roster_by_name[npc_name].get("role")) or "party companion"
-        profile = _canonical_packet_profile(sheet, store.get_profile(npc_id))
+        from core.npc.profile_service import profile_for_packet_best_effort
+
+        stored_profile = profile_for_packet_best_effort(
+            store=store,
+            npc_id=npc_id,
+            npc_name=npc_name,
+            sheet=sheet,
+        )
+        profile = _canonical_packet_profile(sheet, stored_profile)
         structured_goals = (
             list(profile.get("goals", []))
             if isinstance(profile.get("goals"), list)

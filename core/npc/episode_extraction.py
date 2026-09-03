@@ -63,10 +63,10 @@ EXTRACTION_RESPONSE_SCHEMA: Dict[str, Any] = {
 _SYSTEM = """You extract a CANONICAL episode from a raw scene of tabletop play, plus the PER-COMPANION personal beats it contains. Present companions are listed; only they can be the subject of a salient fact.
 
 Produce:
-- headline: a short label for what happened here (<=100 chars).
-- canonicalSummary: the shared, factual account of the scene, third person, <=600 chars. Only what the text supports. This is the DM-agreed truth; do not embellish or invent.
+- headline: a short label for what happened here.
+- canonicalSummary: the shared, factual account of the scene, third person. Only what the text supports. This is the DM-agreed truth; do not embellish or invent.
 - intensity: 0..1, how emotionally weighty this scene is (a near-death or betrayal is high; idle travel is low).
-- entityTags: short lowercase anchors for later recall (e.g. "wizard", "boss:vheshk", "wishing well"). <=12.
+- entityTags: short lowercase anchors for later recall (e.g. "wizard", "boss:vheshk", "wishing well").
 - salientFacts: the SPECIFIC, personal, character-defining beats a plot summary drops -- a gesture, habit, joke, fear shown, tender act, gift, vow, near-death. Each: {npc, kind, oneLine, objectLabel?}.
 
 STRICT RULES:
@@ -74,13 +74,13 @@ STRICT RULES:
 - Attribute each salient fact to the EXACT present companion who DID it.
 - PRESENCE GUARD: only companions who are physically present and acting get facts. If a companion is merely MENTIONED or talked ABOUT (not present), do NOT create a fact for them.
 - kind is one of: {kinds}.
-- oneLine <=120 chars, concrete detail + attribution intact. Ignore generic combat/plot beats for salientFacts (those live in canonicalSummary).
+- oneLine is a concrete detail with attribution intact. Ignore generic combat/plot beats for salientFacts (those live in canonicalSummary).
 
 Present companions: {companions}. Player: {player}.
 Return ONLY JSON matching the requested shape."""
 
 
-def flatten_scene(messages: Sequence[Mapping[str, Any]], *, max_chars: int = 16000) -> str:
+def flatten_scene(messages: Sequence[Mapping[str, Any]]) -> str:
     """Flatten raw play messages to DM/Player dialogue, skipping already-compressed
     summary blocks. Mirrors the T018 flattener so extraction reads the same source."""
     def is_summary(text: str) -> bool:
@@ -102,8 +102,7 @@ def flatten_scene(messages: Sequence[Mapping[str, Any]], *, max_chars: int = 160
                 lines.append("Dungeon Master: %s" % narration)
         elif role == "user" and "Player:" in content:
             lines.append("Player: %s" % content.split("Player:", 1)[1].strip())
-    scene = "\n\n".join(lines)
-    return scene[-max_chars:] if len(scene) > max_chars else scene
+    return "\n\n".join(lines)
 
 
 def _build_messages(scene_text: str, companion_names: Sequence[str], player_name: str) -> List[Dict[str, str]]:

@@ -78,16 +78,14 @@ def _text(value: Any, _limit: int = 0) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _text_list(value: Any, count: int, limit: int) -> list[str]:
+def _text_list(value: Any) -> list[str]:
     if not isinstance(value, (list, tuple)):
         return []
     result = []
     for item in value:
-        candidate = _text(item, limit)
+        candidate = _text(item)
         if candidate and candidate not in result:
             result.append(candidate)
-        if len(result) >= count:
-            break
     return result
 
 
@@ -248,14 +246,12 @@ def _legacy_name_matches_identity(legacy_name: str, identity: Mapping[str, Any])
     return False
 
 
-# Per-NPC POV overlay (Phase 2). Bounded + pinned: pinned peaks never drop; routine
-# rows are capped by salience. The canonical episode ledger holds the shared truth;
+# Per-NPC POV overlay (Phase 2). The canonical episode ledger holds the shared truth;
 # these rows are the cheap per-NPC delta (how THIS npc holds it), code-derived.
 POV_TAGS = frozenset({
     "proud", "triumphant", "traumatic", "tender", "guilty", "grieving", "resentful",
     "afraid", "grateful", "protective", "amused", "smitten", "longing", "heartbroken",
 })
-_MAX_POV_NONPINNED = 40
 
 
 def _sanitize_pov_episode(value: Any) -> Optional[Dict[str, Any]]:
@@ -278,7 +274,7 @@ def _sanitize_pov_episode(value: Any) -> Optional[Dict[str, Any]]:
         "salienceScore": salience,
         "pinned": bool(value.get("pinned")),
         "personalLine": _text(value.get("personalLine"), 160),
-        "linkedEvidenceIds": _text_list(value.get("linkedEvidenceIds"), 8, 80),
+        "linkedEvidenceIds": _text_list(value.get("linkedEvidenceIds")),
     }
 
 
@@ -644,50 +640,18 @@ class RelationshipStore:
 
     @staticmethod
     def _prune_evidence(edge: Dict[str, Any]) -> None:
-        # appliedEventIds = kept typed-event ids PLUS previously-applied ids whose
-        # records were evicted (exact-membership dedup replaces the retired
-        # probabilistic bitmap, which could silently drop colliding events).
-        # Capped at 256 total; when over cap, the OLDEST evicted ids rotate out
-        # first (kept-record ids are never dropped).
+        """Keep every accepted evidence row and every exact applied event ID."""
         records = edge["evidence"]
         prior_applied = list(dict.fromkeys(
             value for value in edge.get("appliedEventIds", [])
             if isinstance(value, str) and value
         ))
-        if len(records) <= 256:
-            kept = records
-        else:
-            ranked = sorted(
-                enumerate(records),
-                key=lambda row: (
-                    row[1]["magnitude"] == 3,
-                    row[1]["gameDay"] if row[1]["gameDay"] is not None else -1,
-                    row[0],
-                ),
-                reverse=True,
-            )
-            keep_indexes = {index for index, _record in ranked[:256]}
-            kept = []
-            for index, record in enumerate(records):
-                if index in keep_indexes:
-                    kept.append(record)
-                    continue
-                aggregate_key = record["eventType"] or "legacyEvidence"
-                counts = edge["aggregateCounts"]
-                counts[aggregate_key] = counts.get(aggregate_key, 0) + 1
-            edge["evidence"] = kept
-        kept_ids = [
+        record_ids = [
             record["eventId"]
-            for record in kept
+            for record in records
             if record["kind"] == "typedEvent"
         ]
-        evicted_ids = [
-            value
-            for value in prior_applied
-            if value not in kept_ids
-        ]
-        overflow = max(0, len(kept_ids) + len(evicted_ids) - 256)
-        edge["appliedEventIds"] = kept_ids + evicted_ids[overflow:]
+        edge["appliedEventIds"] = list(dict.fromkeys(prior_applied + record_ids))
 
     @staticmethod
     def _sanitize_advisory(value: Any) -> Optional[Dict[str, Any]]:
@@ -727,7 +691,7 @@ class RelationshipStore:
                 _text(value, 60)
                 for value in working.get("moodTags", [])
                 if _text(value, 60)
-            ))[:4],
+            )),
             "expiresAfterTurn": working.get("expiresAfterTurn")
             if isinstance(working.get("expiresAfterTurn"), int)
             and not isinstance(working.get("expiresAfterTurn"), bool)
@@ -735,10 +699,8 @@ class RelationshipStore:
             else None,
             "sceneId": _text(working.get("sceneId"), 240),
         }
-        # M7: persist the accepted say/do/want advisory beat. Retention rule
-        # (value): keep the LAST accepted advisory per NPC plus a rolling
-        # advisoryHistory capped at 10 entries, oldest-out; a re-commit of the
-        # identical beat appends nothing (idempotent, value comparison).
+        # M7: persist the accepted say/do/want advisory beat and its complete
+        # duplicate-free history.
         existing = document["working"].get(npc_id)
         existing = existing if isinstance(existing, dict) else {}
         advisory = RelationshipStore._sanitize_advisory(working.get("advisory"))
@@ -749,7 +711,7 @@ class RelationshipStore:
                 if isinstance(row, dict)
             ]
             if not history or history[-1] != advisory:
-                history = (history + [advisory])[-10:]
+                history = history + [advisory]
             candidate["advisoryHistory"] = history
         else:
             # An advisory-less working refresh never erases persisted beats.
@@ -853,7 +815,7 @@ class RelationshipStore:
                 "locationId": _text(location_id, 120),
                 "topicIds": list(dict.fromkeys(
                     _text(value, 240) for value in topic_ids if _text(value, 240)
-                ))[:12],
+                )),
                 "unresolved": event["eventType"] in UNRESOLVED_TYPES,
                 # sourceHash retired (digest identity is banned); kept as an
                 # empty legacy-schema field for old-file compatibility.
@@ -1188,15 +1150,13 @@ class RelationshipStore:
             "invitedBy": _text(invited_by, 100),
             "terms": _text(terms, 240),
             "personalObjective": _text(personal_objective, 240),
-            "redLines": _text_list(red_lines, 5, 160),
+            "redLines": _text_list(red_lines),
             "compensation": _text(compensation, 160),
             "expectedDuration": _text(expected_duration, 160),
             "priorStatus": prior_status
             if prior_status in {"new", "active", "inactive", "unknown"}
             else "unknown",
-            "unresolvedObligations": _text_list(
-                unresolved_obligations, 5, 180
-            ),
+            "unresolvedObligations": _text_list(unresolved_obligations),
         }
 
     def mark_joined(
@@ -1259,9 +1219,7 @@ class RelationshipStore:
             )
             changed = edge_created or decayed
             if not duplicate:
-                lifecycle_state["events"] = (
-                    lifecycle_state["events"] + [event]
-                )[-64:]
+                lifecycle_state["events"] = lifecycle_state["events"] + [event]
                 changed = True
             if selected.get("active") is not True:
                 selected["active"] = True
@@ -1321,7 +1279,7 @@ class RelationshipStore:
             identity["lastModule"] = _text(module, 160)
             identity["lastLocationId"] = _text(location_id, 120)
             lifecycle["status"] = "inactive"
-            lifecycle["events"] = (lifecycle["events"] + [event])[-64:]
+            lifecycle["events"] = lifecycle["events"] + [event]
             document["working"].pop(npc_id, None)
             return True, None
 
@@ -1361,7 +1319,7 @@ class RelationshipStore:
                     identity["lastLocationId"] = _text(location_id, 120)
                     changed = True
                 if not lifecycle["events"] or lifecycle["events"][-1] != event:
-                    lifecycle["events"] = (lifecycle["events"] + [event])[-64:]
+                    lifecycle["events"] = lifecycle["events"] + [event]
                     changed = True
                 lifecycle["status"] = "active"
                 if document["working"].pop(npc_id, None) is not None:
@@ -1403,7 +1361,7 @@ class RelationshipStore:
             identity["lastModule"] = _text(module, 160)
             identity["lastLocationId"] = _text(location_id, 120)
             lifecycle["status"] = "active"
-            lifecycle["events"] = (lifecycle["events"] + [event])[-64:]
+            lifecycle["events"] = lifecycle["events"] + [event]
             document["working"].pop(npc_id, None)
             return True, npc_id
 
@@ -1418,11 +1376,7 @@ class RelationshipStore:
     def upsert_pov_episodes(
         self, npc_id: str, pov_episodes: Iterable[Mapping[str, Any]]
     ) -> bool:
-        """Idempotently write per-NPC POV rows with bounded+pinned retention.
-
-        Pinned peaks are never dropped; non-pinned rows are capped by salience. The
-        final list is deterministically ordered so a re-run with the same inputs is a
-        true no-op (idempotent). Keyed by episodeId (update-in-place)."""
+        """Idempotently write every per-NPC POV row in deterministic order."""
         sanitized = [
             row for row in (_sanitize_pov_episode(e) for e in pov_episodes) if row
         ]
@@ -1443,11 +1397,11 @@ class RelationshipStore:
                 (r for r in rows if not r.get("pinned")),
                 key=lambda r: (r.get("salienceScore", 0.0), r["episodeId"]),
                 reverse=True,
-            )[:_MAX_POV_NONPINNED]
+            )
             merged = sorted(
                 pinned + non_pinned,
                 key=lambda r: (not r.get("pinned"), -r.get("salienceScore", 0.0), r["episodeId"]),
-            )[:512]
+            )
             if merged == episodes.get(npc_id, []):
                 return False, None
             if merged:
