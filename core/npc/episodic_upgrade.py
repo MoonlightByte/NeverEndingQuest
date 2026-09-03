@@ -64,7 +64,12 @@ def _write_marker(doc: Mapping[str, Any], path: str = MARKER_PATH) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         safe_json_dump(dict(doc), path, ensure_ascii=True)
     except Exception as error:  # noqa: BLE001 - marker failure never breaks the game
-        _LOGGER.debug("episodic upgrade marker write failed: %r", error)
+        _LOGGER.warning("episodic upgrade marker write failed: %r", error)
+        record_store_health(
+            "episodic_upgrade_marker_write_failed",
+            path=path,
+            detail=type(error).__name__,
+        )
 
 
 def is_complete(marker: Mapping[str, Any]) -> bool:
@@ -199,6 +204,10 @@ def backfill_campaign(
                   "journalNextIndex": 0, "summariesDone": False, "committed": 0}
     committed = int(marker.get("committed", 0))
 
+    # The cursor exists before the first paid call. A failed marker write is loud but
+    # never blocks play; stable episode coordinates keep any replay idempotent.
+    _write_marker(marker, marker_path)
+
     emit("start", 0, 0, "recovering companion memories")
 
     # --- journal (the strong source) ---
@@ -207,6 +216,16 @@ def backfill_campaign(
     start_index = int(marker.get("journalNextIndex", 0))
     total_entries = len(journal.get("entries") or [])
     if start_index < total_entries:
+        committed_before_journal = committed
+
+        def checkpoint_journal(next_index: int, journal_committed: int) -> None:
+            marker.update({
+                "status": "in_progress",
+                "journalNextIndex": next_index,
+                "committed": committed_before_journal + journal_committed,
+            })
+            _write_marker(marker, marker_path)
+
         report = backfill_from_journal(
             journal, party_tracker_data,
             path_manager=path_manager, roster_names=roster,
@@ -222,6 +241,7 @@ def backfill_campaign(
                 "recovering memories (%d seconds on this entry)" % int(elapsed),
             ),
             start_index=start_index, advisory_scope=advisory_scope,
+            checkpoint_cb=checkpoint_journal,
         )
         committed += report["committed"]
         marker.update({"status": "in_progress", "journalNextIndex": report["next_index"],

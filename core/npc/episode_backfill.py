@@ -353,6 +353,7 @@ def backfill_from_journal(
     provider: Optional[str] = None,
     json_loader: Callable[[str], Any] = safe_json_load,
     progress_cb: Optional[Callable[..., None]] = None,
+    checkpoint_cb: Optional[Callable[[int, int], None]] = None,
     start_index: int = 0,
     advisory_scope: Any = None,
 ) -> Dict[str, Any]:
@@ -404,6 +405,8 @@ def backfill_from_journal(
             )
             if eid:
                 committed += 1
+                if checkpoint_cb:
+                    checkpoint_cb(index, committed)
         except BackfillCompletedInvalid as error:
             index -= 1
             failure = {
@@ -422,7 +425,18 @@ def backfill_from_journal(
 
             if isinstance(error, LiveProviderSuperseded):
                 raise
-            _LOGGER.debug("journal backfill entry %d failed: %r", index - 1, error)
+            index -= 1
+            failure = {
+                "kind": "entry_error",
+                "entryIndex": index,
+                "errorClass": type(error).__name__,
+            }
+            _LOGGER.warning(
+                "journal backfill entry %d remains pending after error: %s",
+                index,
+                type(error).__name__,
+            )
+            break
     return {
         "committed": committed,
         "processed": processed,
