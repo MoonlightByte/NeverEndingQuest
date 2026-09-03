@@ -433,17 +433,6 @@ def packet_schema(mode: str) -> Dict[str, Any]:
     return strict_object(properties, tuple(properties))
 
 
-def openai_response_format() -> Dict[str, Any]:
-    return {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "npc_voice_response",
-            "strict": True,
-            "schema": copy.deepcopy(THOUGHT_RESPONSE_SCHEMA),
-        },
-    }
-
-
 def gemini_response_schema() -> Dict[str, Any]:
     """Return Gemini's strict subset with a nullable event object."""
     from model_config import convert_to_gemini_schema
@@ -469,18 +458,6 @@ def gemini_response_schema() -> Dict[str, Any]:
     for field_name in nullable_fields:
         converted["properties"][field_name]["nullable"] = True
     return converted
-
-
-def profile_openai_response_format() -> Dict[str, Any]:
-    response_schema = copy.deepcopy(STRUCTURED_PROFILE_SCHEMA)
-    return {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "npc_profile_seed_t107",
-            "strict": True,
-            "schema": response_schema,
-        },
-    }
 
 
 def profile_gemini_response_schema() -> Dict[str, Any]:

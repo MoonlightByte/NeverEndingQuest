@@ -129,10 +129,3 @@ def rank_ooc_candidates(
     if limit is None:
         return ranked
     return ranked[: max(0, int(limit))]
-
-
-def select_ooc_candidate(
-    party_npcs: Iterable[Mapping[str, Any]], raw_input: str
-) -> Optional[Dict[str, Any]]:
-    ranked = rank_ooc_candidates(party_npcs, raw_input)
-    return ranked[0] if ranked else None

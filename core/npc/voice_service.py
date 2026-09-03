@@ -376,11 +376,7 @@ def build_classification_messages(
 
 
 def _config_for_provider(provider: str) -> Dict[str, Any]:
-    # OpenAI/legacy use plain JSON mode (json_object) + client-side
-    # validate_thought_response + one bounded retry. We deliberately do NOT use
-    # OpenAI strict json_schema here: the enriched contract makes say/do/want
-    # OPTIONAL (strict mode requires every property), and the same callsite also
-    # serves the affinity classifier which returns only thought + affinityEvent.
+    # OpenAI/legacy use plain JSON mode plus client-side response validation.
     # Gemini needs response_schema or it silently drops the enriched fields
     # (T014-class bug). Never attach response_schema on the OpenAI path (400).
     if provider == "openai":
@@ -485,15 +481,6 @@ class NpcVoiceService:
                 "modelConfig": _config_for_provider(provider),
                 "provider": provider,
             }
-        )
-
-    def think(self, packet: Mapping[str, Any]) -> NpcVoiceResult:
-        packet_copy = validate_packet(packet)
-        return self._think_with_provider(
-            packet_copy,
-            model_config.get_provider(),
-            counter=_RequestCounter(),
-            cache_result=True,
         )
 
     def _request_validated(
