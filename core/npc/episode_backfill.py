@@ -355,6 +355,7 @@ def backfill_from_journal(
     progress_cb: Optional[Callable[..., None]] = None,
     checkpoint_cb: Optional[Callable[[int, int], None]] = None,
     start_index: int = 0,
+    last_failure: Optional[Mapping[str, Any]] = None,
     advisory_scope: Any = None,
 ) -> Dict[str, Any]:
     """Backfill episodes from journal entries. Idempotent (stable coordinates), fail-
@@ -368,6 +369,28 @@ def backfill_from_journal(
     processed = 0
     failure = None
     index = max(0, start_index)
+
+    def skip_after_second_failure(error: BaseException) -> bool:
+        failed_index = index - 1
+        if not (
+            isinstance(last_failure, Mapping)
+            and last_failure.get("entryIndex") == failed_index
+        ):
+            return False
+        _LOGGER.warning(
+            "journal backfill entry %d failed twice and was skipped: %s",
+            failed_index,
+            type(error).__name__,
+        )
+        record_store_health(
+            "episodic_upgrade_entry_skipped",
+            detail="entry %d failed twice: %s"
+            % (failed_index, type(error).__name__),
+        )
+        if checkpoint_cb:
+            checkpoint_cb(index, committed)
+        return True
+
     while index < total:
         entry = entries[index]
         index += 1
@@ -408,6 +431,8 @@ def backfill_from_journal(
                 if checkpoint_cb:
                     checkpoint_cb(index, committed)
         except BackfillCompletedInvalid as error:
+            if skip_after_second_failure(error):
+                continue
             index -= 1
             failure = {
                 "kind": "completed_invalid",
@@ -425,6 +450,8 @@ def backfill_from_journal(
 
             if isinstance(error, LiveProviderSuperseded):
                 raise
+            if skip_after_second_failure(error):
+                continue
             index -= 1
             failure = {
                 "kind": "entry_error",

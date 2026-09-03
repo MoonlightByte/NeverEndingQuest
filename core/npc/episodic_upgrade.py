@@ -241,6 +241,7 @@ def backfill_campaign(
                 "recovering memories (%d seconds on this entry)" % int(elapsed),
             ),
             start_index=start_index, advisory_scope=advisory_scope,
+            last_failure=marker.get("lastFailure"),
             checkpoint_cb=checkpoint_journal,
         )
         committed += report["committed"]
