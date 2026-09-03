@@ -154,13 +154,13 @@
       "monsters": [
         {
           "name": "Spectral Soldier",
-          "number": "1d3+1",
+          "quantity": {"min": 2, "max": 4},
           "disposition": "territorial",
           "strategy": "These ghosts of soldiers who once defended the causeway still patrol their posts, attacking anyone they perceive as enemies\u2014particularly those carrying symbols of rival lords or magical items."
         },
         {
           "name": "Corrupted Vine Blight",
-          "number": "1d3+1",
+          "quantity": {"min": 2, "max": 4},
           "disposition": "ambush",
           "strategy": "These plant creatures hide among the vegetation growing over ruined sections, grabbing passersby and attempting to drag them into the marsh."
         }
@@ -231,13 +231,19 @@
       "monsters": [
         {
           "name": "Will-o'-Wisp",
-          "number": "1d3+1",
+          "quantity": {"min": 2, "max": 4},
           "disposition": "deceptive",
           "strategy": "These malevolent lights mimic calls for help, attempting to lead travelers into deep water or quicksand before attacking with electrical discharges."
         },
         {
           "name": "Bog Mummy",
-          "number": 1,
+          "quantity": {
+
+            "min": 1,
+
+            "max": 1
+
+          },
           "disposition": "vengeful",
           "strategy": "This preserved corpse of an ancient druid now corrupted by shadow energy rises from the depths to attack those who disturb certain sacred areas within the mire."
         }
@@ -267,12 +273,11 @@
         },
         {
           "name": "Echo Snare",
-          "description": "Pockets where echoes become overwhelming and disorienting.",
-          "type": "supernatural",
-          "trigger": "Entering areas where multiple echo lines converge",
-          "trapDC": 14,
-          "trapEffect": "Overwhelming cacophony requires DC 14 Wisdom save or become confused for 1d4 rounds, moving in random directions potentially toward danger.",
-          "disarmNotes": "Can be detected with DC 15 Perception check by noticing how sounds interact strangely in these areas."
+          "description": "Pockets where echoes become overwhelming and disorienting. Entering areas where multiple echo lines converge causes overwhelming cacophony. DC 14 Wisdom save or become confused for 1d4 rounds. Can be detected with DC 15 Perception check by noticing how sounds interact strangely.",
+          "detectDC": 15,
+          "disableDC": 14,
+          "triggerDC": 14,
+          "damage": "0 psychic"
         }
       ],
       "dcChecks": [
@@ -322,13 +327,13 @@
       "monsters": [
         {
           "name": "Animated Armor",
-          "number": "1d4",
+          "quantity": {"min": 1, "max": 4},
           "disposition": "guardian",
           "strategy": "These empty suits once belonged to the tower guards and now patrol specific floors, attacking intruders who disturb certain areas or approach Morven's quarters without permission."
         },
         {
           "name": "Shadow",
-          "number": "1d3+1",
+          "quantity": {"min": 2, "max": 4},
           "disposition": "parasitic",
           "strategy": "These shadows cling to the darkest corners of the tower, attacking at night or when light sources are extinguished."
         }
@@ -432,13 +437,13 @@
       "monsters": [
         {
           "name": "Black Banner Guard",
-          "number": "1d4+2",
+          "quantity": {"min": 3, "max": 6},
           "disposition": "alert",
           "strategy": "These trained soldiers patrol the camp's perimeter and escort important cultists. They wear light armor enhanced with shadow-resistant materials and carry poisoned weapons."
         },
         {
           "name": "Shadow Hound",
-          "number": "1d4",
+          "quantity": {"min": 1, "max": 4},
           "disposition": "obedient",
           "strategy": "These canine creatures of semi-solid shadow serve as the camp's alarm system, able to sense intruders and alert guards. They can pass through solid objects to outflank enemies."
         }
@@ -532,13 +537,13 @@
       "monsters": [
         {
           "name": "Stone Guardian",
-          "number": "1d4",
+          "quantity": {"min": 1, "max": 4},
           "disposition": "judging",
           "strategy": "These animated constructs resemble rough humanoid figures formed from the same material as the standing stones. They remain inanimate until someone attempts improper rituals or damages the stones, then attack with devastating force."
         },
         {
           "name": "Wisps of Memory",
-          "number": "2d6",
+          "quantity": {"min": 2, "max": 12},
           "disposition": "reminiscent",
           "strategy": "These benign but disorienting spirits manifest as small, floating lights containing fragments of memories from past rituals. They attempt to merge with living minds, sharing their knowledge but potentially overwhelming the unprepared."
         }
@@ -599,13 +604,19 @@
       "monsters": [
         {
           "name": "Barrow Guardian",
-          "number": "1d3+1",
+          "quantity": {"min": 2, "max": 4},
           "disposition": "protective",
           "strategy": "These spectral warriors were bound to protect the barrow long before the shadow relic's creation. They attack those who bring shadow-corrupted items too close to the inner chambers."
         },
         {
           "name": "The Entity",
-          "number": 1,
+          "quantity": {
+
+            "min": 1,
+
+            "max": 1
+
+          },
           "disposition": "imprisoned",
           "strategy": "This is not a true monster but a fragment of the ancient being once imprisoned here. It cannot physically attack but attempts to influence intruders through whispered promises and illusions, seeking freedom or a new vessel."
         }

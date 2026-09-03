@@ -167,7 +167,7 @@
       "monsters": [
         {
           "name": "Shadow",
-          "number": "1d6",
+          "quantity": {"min": 1, "max": 6},
           "disposition": "ambush",
           "strategy": "These shadows hide in the naturally dark corners of the chamber, attacking when visitors have fully entered and are examining the prisoner ledgers."
         }
@@ -276,13 +276,19 @@
       "monsters": [
         {
           "name": "Ghoul",
-          "number": "1d3+1",
+          "quantity": {"min": 2, "max": 4},
           "disposition": "hungry",
           "strategy": "These ghouls were once prisoners who resorted to cannibalism. They hide in cells, springing out to paralyze and drag away isolated targets."
         },
         {
           "name": "Gibbering Mouther",
-          "number": 1,
+          "quantity": {
+
+            "min": 1,
+
+            "max": 1
+
+          },
           "disposition": "insane",
           "strategy": "This horrific mass of mouths and eyes was created from prisoners subjected to the shadow relic's worst influences. It hides in the darkest cell, luring victims with whispered pleas for help."
         }
@@ -375,13 +381,19 @@
       "monsters": [
         {
           "name": "Phantom Torturer",
-          "number": 1,
+          "quantity": {
+
+            "min": 1,
+
+            "max": 1
+
+          },
           "disposition": "methodical",
           "strategy": "This ghost of the keep's former torturer relives his cruel work, attempting to restrain intruders and subject them to spectral torment that causes psychic damage."
         },
         {
           "name": "Animated Torture Device",
-          "number": "1d4",
+          "quantity": {"min": 1, "max": 4},
           "disposition": "hungry",
           "strategy": "These animate objects\u2014iron maidens, cages, and restraints\u2014attempt to capture and hold victims while the Phantom Torturer works."
         }
@@ -463,13 +475,19 @@
       "monsters": [
         {
           "name": "Zombie",
-          "number": "1d3+1",
+          "quantity": {"min": 2, "max": 4},
           "disposition": "sentinel",
           "strategy": "These undead former guards still patrol their post, shambling toward intruders with relentless determination. They coordinate in a mindless but effective way, attempting to surround and overwhelm targets."
         },
         {
           "name": "Shadow Mastiff",
-          "number": 1,
+          "quantity": {
+
+            "min": 1,
+
+            "max": 1
+
+          },
           "disposition": "loyal",
           "strategy": "This shadow beast served as the guards' hound in life and now aids the zombies, using darkness to hide and ambush from unexpected angles."
         }
@@ -564,13 +582,25 @@
       "monsters": [
         {
           "name": "Gelatinous Cube",
-          "number": 1,
+          "quantity": {
+
+            "min": 1,
+
+            "max": 1
+
+          },
           "disposition": "mindless",
           "strategy": "This transparent ooze moves slowly through the chambers, absorbing organic matter. It contains visible bones and equipment from previous victims."
         },
         {
           "name": "Mimic",
-          "number": 1,
+          "quantity": {
+
+            "min": 1,
+
+            "max": 1
+
+          },
           "disposition": "hungry",
           "strategy": "Disguised as a valuable-looking chest, this creature waits for opportunistic looters to come within reach."
         }
@@ -659,7 +689,7 @@
       "monsters": [
         {
           "name": "Skeleton",
-          "number": "1d4+2",
+          "quantity": {"min": 3, "max": 6},
           "disposition": "dormant then hostile",
           "strategy": "These remain inanimate among the walls until the Bone Speaker commands them to attack or until holy symbols in the chamber are desecrated."
         }
@@ -763,26 +793,44 @@
         {
           "name": "Lord Thaddeus Greymont",
           "monsterType": "wight_lord",
-          "number": 1,
+          "quantity": {
+
+            "min": 1,
+
+            "max": 1
+
+          },
           "disposition": "conflicted_guardian",
           "strategy": "The corrupted form of Sir Garran Vael. He is the primary active combatant, defending the relic with his life drain and longsword. He will focus attacks on anyone who damages the relic."
         },
         {
           "name": "Shadow Cage",
           "monsterType": "shadow_cage_object",
-          "number": 1,
+          "quantity": {
+
+            "min": 1,
+
+            "max": 1
+
+          },
           "disposition": "objective",
           "strategy": "A swirling cage of shadow energy protecting Elen. It is a stationary, attackable target with its own HP. It takes no actions. Destroying it is the only way to free Elen. It is vulnerable to radiant damage."
         },
         {
           "name": "Shadow Relic",
-          "number": 1,
+          "quantity": {
+
+            "min": 1,
+
+            "max": 1
+
+          },
           "disposition": "manipulative_source",
           "strategy": "This semi-sentient artifact is the source of corruption. While it cannot move, it can be targeted. On its turn, it uses 'Relic Bolt' against a random enemy and can use 'Spawn Manifestation' as a legendary action when damaged."
         },
         {
           "name": "Shadow Manifestation",
-          "number": "1d3+1",
+          "quantity": {"min": 2, "max": 4},
           "disposition": "protective",
           "strategy": "These shadows are spawned by the relic and will defend it and Lord Thaddeus, prioritizing attackers who are dealing the most damage."
         }

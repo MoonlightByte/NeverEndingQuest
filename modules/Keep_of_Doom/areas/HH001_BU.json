@@ -614,7 +614,13 @@
         {
           "id": "giant_rat",
           "name": "Giant Rat",
-          "number": 3,
+          "quantity": {
+
+            "min": 3,
+
+            "max": 3
+
+          },
           "disposition": "hostile",
           "strategy": "The rats nest in the tunnel and attack anyone who disturbs their territory, emerging from cracks in the walls."
         }
@@ -658,12 +664,12 @@
       ],
       "traps": [
         {
-          "description": "Loose ceiling stone that falls when disturbed.",
-          "detectionDC": 13,
-          "disarmDC": 12,
-          "saveDC": 12,
-          "damage": "1d6 bludgeoning",
-          "effect": "Dexterity save or take damage from falling debris. Makes loud noise alerting rats."
+          "name": "Falling Ceiling Stone",
+          "description": "Loose ceiling stone that falls when disturbed. Dexterity save or take damage from falling debris. Makes loud noise alerting rats.",
+          "detectDC": 13,
+          "disableDC": 12,
+          "triggerDC": 12,
+          "damage": "1d6 bludgeoning"
         }
       ],
       "dcChecks": [

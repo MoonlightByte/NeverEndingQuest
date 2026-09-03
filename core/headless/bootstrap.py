@@ -105,20 +105,7 @@ def prepare_game_dir(game_dir, repo_root, module=None):
         src = os.path.join(repo_root, name)
         dst = os.path.join(game_dir, name)
         if os.path.isdir(src) and not os.path.exists(dst):
-            ignore = None
-            if name == "data":
-                def ignore_private_runtime(directory, names):
-                    normalized = os.path.normpath(directory).replace("\\", "/")
-                    if normalized.endswith("/data/companion_memories"):
-                        return [
-                            value
-                            for value in names
-                            if value.endswith((".json", ".lock", ".tmp", ".bak"))
-                        ]
-                    return []
-
-                ignore = ignore_private_runtime
-            shutil.copytree(src, dst, ignore=ignore)
+            shutil.copytree(src, dst)
             copied.append(name)
     if module:
         dst = os.path.join(game_dir, "modules", module)
