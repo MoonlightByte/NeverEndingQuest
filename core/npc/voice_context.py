@@ -25,7 +25,6 @@ from core.npc.voice_contracts import (
     validate_packet,
 )
 from core.npc.voice_selection import (
-    SelectionFairness,
     rank_ooc_candidates,
     resolve_ooc_mention,
 )
@@ -34,7 +33,6 @@ from core.npc.voice_service import NpcVoiceBatch, NpcVoiceService
 
 _LOGGER = logging.getLogger(__name__)
 _DEFAULT_SERVICE: Optional[NpcVoiceService] = None
-_OOC_FAIRNESS = SelectionFairness()
 _PRIVATE_BLOCK_PREFIX = "Private NPC intentions for the Dungeon Master only."
 
 
@@ -1134,7 +1132,6 @@ def build_ooc_packets_for_turn(
     path_manager: Any,
     json_loader: Callable[[str], Optional[Dict[str, Any]]] = _load_json,
     relationship_store: Optional[RelationshipStore] = None,
-    fairness: Optional[SelectionFairness] = None,
     packet_invalid_handler: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[Dict[str, Any], ...]:
     """Compose and deterministically rank every eligible OOC packet."""
@@ -1150,7 +1147,6 @@ def build_ooc_packets_for_turn(
     store = relationship_store or RelationshipStore()
     packets_by_id: Dict[str, Dict[str, Any]] = {}
     ranked_inputs = []
-    evidence_npc_ids = set()
     for candidate in roster:
         if not isinstance(candidate, Mapping):
             continue
@@ -1186,16 +1182,7 @@ def build_ooc_packets_for_turn(
                 "npcId": npc_id,
             }
         )
-        if packet["beat"]["relationshipEvidence"] is not None:
-            evidence_npc_ids.add(npc_id)
-
-    ranked = rank_ooc_candidates(
-        ranked_inputs,
-        raw_input,
-        evidence_npc_ids=evidence_npc_ids,
-        fairness=fairness or _OOC_FAIRNESS,
-        limit=None,
-    )
+    ranked = rank_ooc_candidates(ranked_inputs, raw_input)
     selected_packets = tuple(
         packets_by_id[candidate["npcId"]] for candidate in ranked
     )
@@ -1654,11 +1641,9 @@ def run_ooc_voice_stage(
     path_manager: Any,
     service: Optional[NpcVoiceService] = None,
     relationship_store: Optional[RelationshipStore] = None,
-    fairness: Optional[SelectionFairness] = None,
 ) -> NpcVoiceBatch:
     """Run one Phase 3 T105 batch and contain every failure."""
     try:
-        selection = fairness or _OOC_FAIRNESS
         voice_service = service or _default_service()
 
         def record_packet_invalid(npc_reference: str, reason: str) -> None:
@@ -1677,7 +1662,6 @@ def run_ooc_voice_stage(
             conversation_prefix=conversation_prefix,
             path_manager=path_manager,
             relationship_store=relationship_store,
-            fairness=selection,
             packet_invalid_handler=record_packet_invalid,
         )
         from utils.capture.live_provider_call import get_live_turn_scope
@@ -1689,9 +1673,6 @@ def run_ooc_voice_stage(
             raw_input,
             relationship_store or RelationshipStore(),
         )
-        # Fairness bookkeeping moves to collection time: record_merged runs in
-        # inject (below) against what actually merged, not what was dispatched.
-        handle._fairness_selection = selection
         return handle
     except Exception as exc:
         _LOGGER.warning("T105 OOC stage skipped: %s", type(exc).__name__)
@@ -1838,14 +1819,8 @@ def inject_voice_context(messages: list, batch):
         return messages
     if hasattr(batch, "collect"):
         handle = batch
-        selection = getattr(batch, "_fairness_selection", None)
         batch = batch.collect()
         handle.seal_and_cancel_pending()
-        if selection is not None:
-            try:
-                selection.record_merged(r.npc_id for r in batch.results)
-            except Exception:
-                pass
     if not batch.results:
         return messages
     rows = [_voice_row(result) for result in batch.results]
