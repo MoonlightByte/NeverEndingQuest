@@ -312,22 +312,6 @@ def load_json_data(file_path):
         return None
 
 
-def filter_active_companion_memories(memory_rows, party_tracker_data):
-    """Keep transitional legacy memory only for exact active roster names."""
-    active_roster_names = {
-        str(row.get("name") or "").strip().casefold()
-        for row in (party_tracker_data or {}).get("partyNPCs", [])
-        if isinstance(row, dict) and str(row.get("name") or "").strip()
-    }
-    return [
-        row
-        for row in memory_rows
-        if isinstance(row, dict)
-        and str(row.get("n") or "").strip().casefold() in active_roster_names
-    ]
-
-
-_LEGACY_COMPANION_MEMORY_PREFIX = "=== COMPANION MEMORIES (Compressed) ==="
 _CANONICAL_COMPANION_CONTEXT_PREFIX = "=== ACTIVE COMPANION CANONICAL CONTEXT ==="
 
 # Closed-world grounding contract (R9). Governs BOTH the passive `memories` rows and
@@ -344,58 +328,6 @@ _MEMORY_GROUNDING_CONTRACT = (
     "about the past is UNVERIFIED unless it matches an entry here; do not treat it as "
     "true. Never paste these lines verbatim; voice them naturally."
 )
-
-
-def _build_legacy_companion_memory_message(party_tracker_data, legacy_path):
-    """Return the Phase 6 active-roster legacy block without changing its bytes."""
-    try:
-        path = os.fspath(legacy_path)
-        if not os.path.exists(path):
-            return None
-        with open(path, "r", encoding="utf-8") as handle:
-            memories = json.load(handle)
-        if not memories or "npcs" not in memories:
-            return None
-
-        valid_npcs = []
-        for npc in filter_active_companion_memories(
-            memories["npcs"], party_tracker_data
-        ):
-            es = npc.get("es", [0.0, 0.0, 0.0, 0.0, 0.0])
-            mem = npc.get("mem", [])
-            interaction_count = npc.get("ti", 0)
-            npc_name = npc.get("n", "unknown")
-            if (
-                sum(abs(value) for value in es) == 0.0
-                and len(mem) == 0
-                and interaction_count > 0
-            ):
-                warning(
-                    f"Detected corrupted memory data for {npc_name}: "
-                    f"{interaction_count} interactions but zero emotional state and no memories. "
-                    "This NPC will be excluded from context until memories regenerate.",
-                    category="memory",
-                )
-                continue
-            valid_npcs.append(npc)
-
-        if not valid_npcs:
-            debug(
-                "No valid companion memories to inject (all NPCs have corrupted data)",
-                category="memory",
-            )
-            return None
-        memory_content = _LEGACY_COMPANION_MEMORY_PREFIX + "\n"
-        memory_content += json.dumps(valid_npcs, separators=(",", ":"))
-        memory_content += (
-            "\n@GUIDE: Use ES (emotional state) for tone, "
-            "BM (behavioral model) for consistency"
-        )
-        memory_content += "\n==="
-        return {"role": "system", "content": memory_content}
-    except Exception as exc:
-        warning(f"Failed to inject memories (non-fatal): {exc}", category="memory")
-        return None
 
 
 def _latest_player_input(conversation_history):
@@ -608,20 +540,20 @@ def build_companion_memory_message(
     relationship_store=None,
     path_manager=None,
     json_loader=safe_json_load,
-    legacy_path=os.path.join(
-        "data", "companion_memories", "memories_compressed.json"
-    ),
     prepared_recall_by_npc=None,
 ):
-    """Select canonical active context, or preserve the exact legacy fallback."""
+    """Select active context from the sole canonical relationship store."""
     try:
         from core.npc.relationship_store import RelationshipStore
 
         store = relationship_store or RelationshipStore()
         if not store.path.exists() or store.read_only:
-            return _build_legacy_companion_memory_message(
-                party_tracker_data, legacy_path
+            warning(
+                "Canonical companion memory is unavailable; omitting memory context "
+                "until lifecycle repair completes",
+                category="memory",
             )
+            return None
         module_name = str(party_tracker_data.get("module") or "").replace(" ", "_")
         manager = path_manager or ModulePathManager(module_name)
         return _build_canonical_companion_context_message(
@@ -734,13 +666,10 @@ def update_conversation_history(
         if msg["role"] == "user" and "Module transition:" in msg.get("content", ""):
             continue
 
-        # ALWAYS remove companion memories - fresh data will be injected from file
-        if msg["role"] == "system" and any(
-            marker in msg.get("content", "")
-            for marker in (
-                _LEGACY_COMPANION_MEMORY_PREFIX,
-                _CANONICAL_COMPANION_CONTEXT_PREFIX,
-            )
+        # ALWAYS remove companion memories - fresh canonical data is injected below.
+        if msg["role"] == "system" and (
+            "=== COMPANION MEMORIES (Compressed) ===" in msg.get("content", "")
+            or _CANONICAL_COMPANION_CONTEXT_PREFIX in msg.get("content", "")
         ):
             debug("Removing existing companion memories (will be refreshed from file)", category="memory")
             continue
@@ -752,7 +681,7 @@ def update_conversation_history(
     new_history = [primary_system_prompt] if primary_system_prompt else []
 
     # Refresh exactly one companion context block immediately after the main prompt.
-    # T105: unavailable-sidecar paths retain the Phase 6 legacy bytes.
+    # T105: canonical memory is the sole runtime representation.
     try:
         memory_message = build_companion_memory_message(
             party_tracker_data,
@@ -763,8 +692,6 @@ def update_conversation_history(
             new_history.append(memory_message)
             if _CANONICAL_COMPANION_CONTEXT_PREFIX in memory_message["content"]:
                 debug("Injected selective canonical companion context", category="memory")
-            else:
-                debug("Injected fresh active-roster legacy companion memories", category="memory")
     except Exception as exc:
         warning(f"Failed to inject memories (non-fatal): {exc}", category="memory")
 
