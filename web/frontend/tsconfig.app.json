@@ -15,6 +15,9 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "paths": {
+      "mapper-lib": ["./src/vendor/mapper/mapper.js"]
+    },
 
     /* Linting */
     "strict": true,
