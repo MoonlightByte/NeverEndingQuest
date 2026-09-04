@@ -422,16 +422,17 @@ _declare(
 _declare(
     "T067",
     _profiles(
-        ("OPENAI_GPT56_LUNA_NONE", "OPENAI_GPT56_LUNA_LOW"),
+        "OPENAI_GPT56_LUNA_NONE",
         "DM_FULL_MODEL_GEMINI_PRO_LOW",
         "DM_FULL_MODEL_LEGACY",
         "DM_FULL_MODEL_LMSTUDIO",
     ),
     note=(
-        "Rung 0 (none) narrates; rung 1 (low) is selected by the T082 action "
-        "predictor for turns that must emit actions, where reasoning-off was "
-        "measured dropping contract fields (lifecycleContext, 2026-09-04). "
-        "Failure-driven escalation is deliberately NOT wired here."
+        "Single rung by evidence: a five-arm live matrix (2026-09-04) had "
+        "luna|none, luna|low, luna|medium, terra|none and terra|low ALL pass "
+        "the same action turn on one attempt. The earlier reasoning-off "
+        "failures were a stale-prompt fixture, not the effort setting, so no "
+        "measurement justifies paying for a higher rung here."
     ),
 )
 _declare(
