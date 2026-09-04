@@ -8783,6 +8783,46 @@ def main_game_loop():
                             "change in place (owner ruling O1 2026-09-03).",
                             category="location_transitions",
                         )
+                        # The cancelled transition is captured as an accepted
+                        # fact for THIS turn so T065 and any retry see the same
+                        # ruling (NEQ-OPS-02 coherence: the validator must never
+                        # demand back what the gate cancelled).
+                        cancelled_transition = next(
+                            (
+                                item for item in actions
+                                if isinstance(item, dict)
+                                and item.get("action") == "transitionLocation"
+                            ),
+                            {},
+                        )
+                        roster_action = next(
+                            (
+                                item for item in actions
+                                if isinstance(item, dict)
+                                and item.get("action") == "updatePartyNPCs"
+                            ),
+                            {},
+                        )
+                        roster_params = roster_action.get("parameters") or {}
+                        planner_projection = {
+                            "reason_code": "roster_change_in_place",
+                            "ruling": (
+                                "Code cancelled the co-emitted transitionLocation "
+                                "because updatePartyNPCs was present. This turn is "
+                                "a single companion roster change IN PLACE: the "
+                                "party does NOT travel and stays at its current "
+                                "location. The response MUST NOT contain "
+                                "transitionLocation, and narration must not claim "
+                                "the party travelled. The companion alone may be "
+                                "described as leaving or arriving."
+                            ),
+                            "cancelled_destination": (
+                                (cancelled_transition.get("parameters") or {})
+                                .get("newLocation")
+                            ),
+                            "roster_operation": roster_params.get("operation"),
+                            "companion": roster_params.get("npcName"),
+                        }
                         actions[:] = stripped_actions
                         response_data["actions"] = actions
                         ai_response_content = json.dumps(response_data)

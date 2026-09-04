@@ -353,6 +353,7 @@ When characters request travel across multiple areas or distant locations:
 - VALID: Single transitionLocation to final destination with full journey narrated
 - VALID EXCEPTION: When supplied accepted Travel Agent facts authorize an intermediate stop, narration may retain the original goal but the single first transitionLocation must target only that stop.
 - VALID UNAVAILABLE OUTCOME: When supplied accepted Travel Agent facts establish no valid route, the response uses no transitionLocation, invents no alternate destination, explains the obstruction in fiction, and returns the next choice to the player.
+- VALID ROSTER CHANGE IN PLACE: When supplied accepted Travel Agent facts carry reason_code roster_change_in_place, code has already cancelled a co-emitted transitionLocation because updatePartyNPCs was present. The party stays at its current location. The response MUST NOT contain transitionLocation and narration must not claim the party travelled; only the named companion leaves or arrives. Never reject such a response for lacking transitionLocation.
 - VALID: Appropriate travel time for entire multi-area journey (updateTime)
 - VALID: Plot updates reflecting major location change or adventure completion
 

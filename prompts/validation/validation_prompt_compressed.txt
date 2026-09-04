@@ -112,6 +112,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 @MULTI_AREA_TRAVEL={
   valid: Single transitionLocation to final destination with journey narration
   accepted_stop: If supplied accepted Travel Agent facts authorize stop X, narration may retain original goal but the single first transitionLocation MUST target X only
+  roster_change_in_place: If supplied accepted Travel Agent facts carry reason_code roster_change_in_place, code cancelled a co-emitted transitionLocation because updatePartyNPCs was present. Party stays put. Response MUST NOT contain transitionLocation, narration must not claim party travel, only the named companion leaves/arrives. NEVER reject for missing transitionLocation
   unavailable: If supplied accepted facts say no valid route, no transitionLocation, no alternate destination, honest in-fiction explanation, player owns next choice
   invalid: Multiple transitions for one request
   required: updateTime for full journey
