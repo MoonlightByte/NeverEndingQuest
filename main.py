@@ -8755,8 +8755,39 @@ def main_game_loop():
                         if not isinstance(item, dict)
                         or item.get("action") not in supported_siblings
                     ]
+                    # O1 (owner 2026-09-03): a roster change (updatePartyNPCs,
+                    # remove OR add) co-emitted with a within-module travel must
+                    # NOT be dropped in favor of the travel. Cancel the spurious
+                    # party travel and apply the roster change in place. This is
+                    # the single depart/join-preserving resolution for RC-A / RC-A'.
+                    # It resolves deterministically here (no corrective retry), so
+                    # a non-compliant model can never loop the turn (B2).
+                    roster_change_coemitted = any(
+                        isinstance(item, dict)
+                        and item.get("action") == "updatePartyNPCs"
+                        for item in actions[1:]
+                    )
                     contract_error = None
-                    if unsupported:
+                    if roster_change_coemitted:
+                        stripped_actions = [
+                            item
+                            for item in actions
+                            if not (
+                                isinstance(item, dict)
+                                and item.get("action") == "transitionLocation"
+                            )
+                        ]
+                        info(
+                            "VALIDATION: updatePartyNPCs co-emitted with within-module "
+                            "travel; cancelling the travel and applying the roster "
+                            "change in place (owner ruling O1 2026-09-03).",
+                            category="location_transitions",
+                        )
+                        actions[:] = stripped_actions
+                        response_data["actions"] = actions
+                        ai_response_content = json.dumps(response_data)
+                        transition_indexes = []
+                    elif unsupported:
                         contract_error = (
                             "Travel ends at the committed destination. These "
                             "actions belong to a later player turn and cannot "

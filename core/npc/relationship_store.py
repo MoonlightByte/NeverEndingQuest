@@ -1289,11 +1289,26 @@ class RelationshipStore:
             lifecycle = document["lifecycle"].setdefault(
                 npc_id, {"status": "active", "events": []}
             )
-            if (
-                lifecycle["events"]
-                and lifecycle["events"][-1] == event
-                and not identity["active"]
-            ):
+            # R3b (2026-09-03): dedup a replayed departure by its stable
+            # operation identity (sourceTurnId), not full-dict event equality,
+            # so a retry carrying different model-supplied lifecycleContext
+            # values cannot append a second depart event (invariant: exactly
+            # one depart per departure). Fall back to full-dict equality when
+            # no sourceTurnId is present.
+            _source_turn_id = event.get("sourceTurnId")
+            if _source_turn_id:
+                _already_departed = any(
+                    isinstance(ev, dict)
+                    and ev.get("kind") == "depart"
+                    and ev.get("sourceTurnId") == _source_turn_id
+                    for ev in lifecycle["events"]
+                )
+            else:
+                _already_departed = bool(
+                    lifecycle["events"]
+                    and lifecycle["events"][-1] == event
+                )
+            if _already_departed and not identity["active"]:
                 return False, None
             identity["active"] = False
             identity["lastModule"] = _text(module, 160)

@@ -996,6 +996,11 @@ Use the following format for updates:
             "name": "<npc_name>",
             "role": "<npc_role>",
             "level": "<recommended_level>"
+          },
+          "lifecycleContext": {
+            "reason": "<short phrase: why this NPC is joining or leaving>",
+            "departureKind": "<remove only: e.g. sent_ahead, stayed_behind, parted_ways, escorted_away>",
+            "destination": "<remove only: where the NPC is heading; omit if you do not know>"
           }
         }
       }
@@ -1006,6 +1011,7 @@ Use the following format for updates:
 - Replace <npc_role> with a brief description of the NPC's role or function in the party.
 - Replace <recommended_level> with an appropriate level (usually party level or slightly lower for support NPCs).
 - If level is not specified, the system will automatically use the party's level as default.
+- On a "remove", ALWAYS include "lifecycleContext" with at least "reason" and "departureKind", and "destination" when you know where the companion is going, so the departure is recorded to the companion's memory ledger. Fail-open: if you do not know the destination, omit only that field - never invent one; omitting lifecycleContext entirely never blocks the departure.
 - This action MUST be included immediately after narrating an NPC joining or leaving the party.
 - Do not proceed with further narration, actions, or dialogue until you've updated the party NPCs.
 - After every response, double-check if any NPCs have joined or left the party. If so, and you haven't updated the party NPCs, do so immediately in your next response.
