@@ -6698,7 +6698,18 @@ def _get_ai_response_impl(
         selected_config = full_config
 
     print(f"DEBUG: [MAIN.PY] Using model: {selected_config['model']} (provider: {MODEL_PROVIDER})")
-    detached_t067_kwargs = {}
+    # The registry owns the model and its reasoning effort; the historical
+    # mini/full config pair above no longer changes the request (the registry
+    # overwrites model + reasoning_effort in _resolve_effective_callsite_kwargs),
+    # so the routing decision is expressed as the T067 LADDER RUNG instead:
+    #   rung 0 = narration-only turn (reasoning none, lowest latency)
+    #   rung 1 = the predictor says this turn must emit actions (reasoning low)
+    # Measured 2026-09-04: reasoning-off drops optional contract fields on
+    # action turns. Providers whose ladder has one rung clamp to it, so this is
+    # a no-op for gemini/legacy/lmstudio. Failure-driven escalation is a
+    # separate concern and is NOT wired here.
+    callsite_rung = 0 if use_mini else 1
+    detached_t067_kwargs = {"_callsite_attempt": callsite_rung}
     if detached_context:
         # #214 stale-result fence (early-out, correctly NOT cancellation):
         # skip the final call when the welcome was already superseded.
@@ -6706,10 +6717,10 @@ def _get_ai_response_impl(
         if _welcome_scope is not None and _welcome_scope.is_superseded():
             from utils.capture.live_provider_call import LiveProviderSuperseded
             raise LiveProviderSuperseded("startup welcome superseded")
-        detached_t067_kwargs = {
+        detached_t067_kwargs.update({
             "_detached_scope": detached_context.get("scope"),
             "_detached_status": detached_context.get("status"),
-        }
+        })
     response = capture_and_fanout("T067", api_client.create_completion,
         _request_provider=MODEL_PROVIDER,
         _live_selected=live_selected,
