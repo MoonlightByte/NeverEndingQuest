@@ -11,6 +11,7 @@ import { InventoryTab } from './InventoryTab'
 import { SpellsTab } from './SpellsTab'
 import { NpcsTab } from './NpcsTab'
 import { DebugTab } from './DebugTab'
+import { MapTab } from './MapTab'
 
 const TABS: ReadonlyArray<{ id: SheetTab; label: string }> = [
   { id: 'character', label: 'Character' },
@@ -52,7 +53,8 @@ export function RightPanelTabs() {
           )
         })}
         <button type="button" onClick={() => useDialogs.getState().openDialog('journal')} className="neq-tab-button flex-1 border-b-2 border-r border-card px-1 py-2 font-chrome text-xs font-bold text-secondary hover:text-primary">Journal</button>
-        <button type="button" role="tab" aria-selected={active === 'debug'} onClick={() => setActive('debug')} className={'neq-tab-button flex-1 border-b-2 px-1 py-2 font-chrome text-xs font-bold ' + (active === 'debug' ? 'border-accent bg-panel text-accent' : 'border-card text-secondary hover:text-primary')}>Debug</button>
+        <button type="button" role="tab" aria-selected={active === 'debug'} onClick={() => setActive('debug')} className={'neq-tab-button flex-1 border-b-2 border-r border-card px-1 py-2 font-chrome text-xs font-bold ' + (active === 'debug' ? 'border-accent bg-panel text-accent' : 'border-card text-secondary hover:text-primary')}>Debug</button>
+        <button type="button" role="tab" aria-selected={active === 'map'} onClick={() => setActive('map')} className={'neq-tab-button flex-1 border-b-2 px-1 py-2 font-chrome text-xs font-bold ' + (active === 'map' ? 'border-accent bg-panel text-accent' : 'border-card text-secondary hover:text-primary')}>Map</button>
       </div>
       <div role="tabpanel" className="min-h-0 flex-1 overflow-hidden">
         {active === 'character' && <CharacterSheet />}
@@ -60,6 +62,7 @@ export function RightPanelTabs() {
         {active === 'spells' && <SpellsTab />}
         {active === 'npcs' && <NpcsTab />}
         {active === 'debug' && <DebugTab />}
+        {active === 'map' && <MapTab />}
       </div>
     </div>
   )

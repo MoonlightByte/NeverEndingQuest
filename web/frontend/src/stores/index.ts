@@ -6,6 +6,7 @@ export type { LogState, GeneratedImage } from './log'
 
 export { useWorld } from './world'
 export type { WorldState, LocationData, InitiativeState, PartyMember, Combatant, PlotData } from './world'
+export type { MapDataPayload, MapRoom } from '../types/map'
 
 export { usePlayer } from './player'
 export type { PlayerState, PlayerDataType, NpcDetails, NpcInventory } from './player'
@@ -14,4 +15,4 @@ export { useDialogs } from './dialogs'
 export type { DialogsState, DialogName, CompressionState, ActionResult, ProviderSettings } from './dialogs'
 
 export { useSettings } from './settings'
-export type { SettingsState, TtsEngine } from './settings'
+export type { SettingsState, TtsEngine, MapTheme } from './settings'

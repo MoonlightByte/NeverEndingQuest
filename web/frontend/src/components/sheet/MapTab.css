@@ -1,0 +1,497 @@
+/* =========================================================================
+   Day / night palette tokens. The renderer paints the map SVG itself (see
+   createMap's `palette` option); these tokens theme everything React owns
+   around it -- stage backdrop, "you are here" marker/pill, and the
+   Explorer's Notes card -- so both halves change together on one attribute.
+   ========================================================================= */
+.neq-map-tab,
+.neq-map-modal {
+  --map-bg: #e7d6ac;
+  --notes-bg: #e7d6ac;
+  --notes-ink: #3b2b17;
+  --notes-rule: rgba(59, 43, 23, 0.35);
+  --notes-accent: #8e1f10;
+  --stage-shadow: rgba(0, 0, 0, 0.35);
+  --here: #8e1f10;
+}
+
+.neq-map-tab[data-map-theme='night'],
+.neq-map-modal[data-map-theme='night'] {
+  --map-bg: #0f1922;
+  --notes-bg: #0d141b;
+  --notes-ink: #e6dfc9;
+  --notes-rule: rgba(217, 162, 60, 0.18);
+  --notes-accent: #d9a23c;
+  --stage-shadow: rgba(0, 0, 0, 0.6);
+  --here: #50c878;
+}
+
+.neq-map-tab {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  background: #1a1a1a;
+}
+
+.neq-map-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  border-bottom: 1px solid #383838;
+  background: #232323;
+  padding: 4px 6px;
+}
+
+.neq-map-zoom {
+  margin-right: 2px;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+}
+
+.neq-map-btn {
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #333;
+  padding: 3px 7px;
+  color: #cfcfcf;
+  font: inherit;
+  font-size: 10.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.neq-map-btn:hover {
+  background: #3d3d3d;
+  color: #fff;
+}
+/* The day/night toggle reports the CURRENT theme, so its pressed state is
+   "night is on" rather than a transient press. */
+.neq-map-btn[aria-pressed='true'] {
+  border-color: #50c878;
+  color: #7fe3a3;
+}
+
+/* Pushed hard left (margin-right:auto) so it never crowds the buttons. */
+.neq-map-warn {
+  margin-right: auto;
+  color: #e0a030;
+  cursor: help;
+}
+
+/* Legend for the pulsing marker on the stage: the marker alone doesn't say
+   what it means, and the map SVG has no room for an inline label. */
+.neq-map-here-pill {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--here);
+  border-radius: 999px;
+  background: var(--map-bg);
+  padding: 0 9px;
+  color: var(--here);
+  font: 600 9px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.neq-map-here-pill i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--here);
+}
+
+/* Wraps the mapper-managed stage and the empty-state placeholder as
+   siblings (fix round 1, F5): `.neq-map-stage` is exclusively owned by
+   createMap()'s `container.innerHTML = ...`/`destroy()` -- React must never
+   render children into it, or the two DOM owners fight. The placeholder is
+   an absolutely-positioned overlay instead.
+
+   Letterboxed to the map's 4:3 aspect and does NOT grow to fill the rail --
+   the remaining vertical space belongs to the Explorer's Notes card
+   rendered below it. Ported from demo/neq-notes.html's .map-stage rule. */
+.neq-map-stage-wrap {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+
+/* No mapData yet -- no notes card is rendered to claim the remaining rail
+   height, so fall back to filling it here instead of stranding the
+   placeholder above a dead void. */
+.neq-map-stage-wrap--empty {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+
+.neq-map-stage {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--map-bg);
+  box-shadow: inset 0 0 40px var(--stage-shadow);
+  touch-action: none;
+}
+
+/* Letterbox dead space belongs below the map, not split top/bottom:
+   height:auto (not 100%) sizes the SVG box to its own aspect ratio, and the
+   stage's align-items:flex-start pins that box to the top. Ported from
+   demo/neq-rail.html's .map-stage svg rule. */
+.neq-map-stage svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+}
+
+.neq-map-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: #a89568;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-size: 16px;
+  font-style: italic;
+  text-align: center;
+}
+
+/* Current-room pulse marker, ported from demo/neq-rail.html. */
+.neq-map-here-marker .neq-map-here-dot {
+  fill: var(--here);
+  stroke: var(--map-bg);
+  stroke-width: 3;
+}
+/* Animates the `r` (radius) presentation attribute directly, not a
+   transform, so no transform-box/transform-origin is needed here. Accepted
+   limitation: Safari doesn't animate SVG geometry attributes like `r` via
+   CSS, so the ring is static (still visible, just not pulsing) there; every
+   other engine gets the full pulse. */
+.neq-map-here-marker .neq-map-here-ring {
+  fill: none;
+  stroke: var(--here);
+  stroke-width: 4.5;
+  animation: neq-map-pulse 1.8s ease-out infinite;
+}
+@keyframes neq-map-pulse {
+  0% {
+    r: 15;
+    stroke-opacity: 0.95;
+  }
+  75% {
+    r: 48;
+    stroke-opacity: 0;
+  }
+  100% {
+    r: 48;
+    stroke-opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .neq-map-here-marker .neq-map-here-ring {
+    r: 24;
+    stroke-opacity: 0.55;
+    animation: none;
+  }
+}
+
+/* =========================================================================
+   Explorer's Notes panel -- ported from demo/neq-notes.html/.js, the
+   approved mockup. Fills the rail height remaining below the letterboxed
+   map stage.
+   ========================================================================= */
+.neq-notes-wrap {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding: 10px;
+  background: #1a1a1a;
+}
+
+.neq-notes-card {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 3px solid var(--notes-ink);
+  border-radius: 2px;
+  background: var(--notes-bg);
+  background-image:
+    radial-gradient(ellipse at top left, rgba(255, 255, 255, 0.1), transparent 55%),
+    radial-gradient(ellipse at bottom right, rgba(0, 0, 0, 0.08), transparent 55%);
+  box-shadow:
+    inset 0 0 0 6px var(--notes-bg),
+    inset 0 0 0 7px var(--notes-ink);
+  color: var(--notes-ink);
+  font-family: 'IM Fell English', Georgia, serif;
+}
+
+.neq-notes-header {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1.5px solid var(--notes-rule);
+  padding: 12px 16px 7px;
+}
+
+.neq-notes-title {
+  font-variant: small-caps;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--notes-ink);
+  white-space: nowrap;
+}
+
+.neq-notes-progress {
+  color: var(--notes-accent);
+  font-size: 12px;
+  font-style: italic;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Positioning context so a row's offsetTop is measured against this scroll
+   container, not some higher positioned ancestor -- see the auto-scroll
+   effect in ExplorerNotes.tsx for why scrollIntoView isn't used here
+   instead. */
+.neq-notes-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 16px 20px;
+}
+.neq-notes-scroll::-webkit-scrollbar {
+  width: 9px;
+}
+.neq-notes-scroll::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  background: var(--notes-rule);
+}
+.neq-notes-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.neq-notes-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.neq-notes-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: none;
+  border-bottom: 1px dotted var(--notes-rule);
+  background: none;
+  padding: 5px 4px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.neq-notes-row:last-child {
+  border-bottom: none;
+}
+.neq-notes-row:hover,
+.neq-notes-row:focus-visible {
+  background: color-mix(in srgb, var(--notes-ink) 8%, transparent);
+  outline: none;
+}
+.neq-notes-row:hover .neq-notes-row-name,
+.neq-notes-row:focus-visible .neq-notes-row-name {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--notes-ink) 45%, transparent);
+}
+.neq-notes-row.is-focused {
+  background: color-mix(in srgb, var(--notes-accent) 9%, transparent);
+}
+
+.neq-notes-row-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.neq-notes-row-name {
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.neq-notes-row-type {
+  flex-shrink: 0;
+  color: var(--notes-accent);
+  font-size: 11px;
+  font-style: italic;
+  letter-spacing: 0.2px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.neq-notes-row.is-current .neq-notes-row-name,
+.neq-notes-row.is-current .neq-notes-row-type {
+  font-weight: 700;
+}
+
+/* Small static pulse dot inline in the notes list -- CSS-only, independent
+   of the SVG marker on the map itself. */
+.neq-notes-dot {
+  position: relative;
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+}
+.neq-notes-dot::before,
+.neq-notes-dot::after {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  content: '';
+}
+.neq-notes-dot::before {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--notes-ink) 40%, transparent);
+  background: var(--notes-accent);
+}
+.neq-notes-dot::after {
+  border: 1.6px solid var(--notes-accent);
+  animation: neq-notes-dot-pulse 1.8s ease-out infinite;
+}
+@keyframes neq-notes-dot-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  75% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .neq-notes-dot::after {
+    transform: scale(1.8);
+    opacity: 0.45;
+    animation: none;
+  }
+}
+
+.neq-notes-undiscovered {
+  margin-top: 8px;
+  color: color-mix(in srgb, var(--notes-ink) 62%, transparent);
+  font-size: 12.5px;
+  font-style: italic;
+}
+
+.neq-notes-excerpt-rule {
+  margin: 12px 0 8px;
+  border: none;
+  border-top: 1px solid var(--notes-rule);
+}
+
+.neq-notes-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--notes-ink) 80%, transparent);
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* Night ink drops the parchment conceits -- the embossed double border and
+   paper gradients read as damage rather than texture on a dark card. */
+.neq-map-tab[data-map-theme='night'] .neq-notes-card,
+.neq-map-modal[data-map-theme='night'] .neq-notes-card {
+  border-width: 1px;
+  border-radius: 0;
+  background-image: none;
+  box-shadow: none;
+}
+
+/* =========================================================================
+   Full-screen map (MapModal): the same stage and notes card, laid out side
+   by side inside the dialog body instead of stacked in the rail. The stage
+   drops the rail's 4:3 letterbox and grows to fill the dialog height, so the
+   SVG is sized by height here rather than width.
+   ========================================================================= */
+.neq-map-modal {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 12px;
+  /* Fits inside DialogShell's max-h-[85vh] card once its header and the
+     body's p-4 padding are accounted for -- otherwise the body scrolls and
+     the map's bottom edge (with it the "you are here" pill and the scale
+     bar) is clipped. 8rem, not the old 96px: 96px under-counted the header
+     plus both padding edges, so the card's last ~2rem fell outside the
+     viewport at 1280x800. */
+  height: min(820px, calc(85vh - 8rem));
+}
+
+.neq-map-modal-main {
+  display: flex;
+  min-width: 0;
+  /* min-height:0 lets the flex child actually shrink to the grid row's
+     height instead of being floored by the stage's content size; overflow
+     hidden keeps a stray overflow from scrolling the dialog body. */
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.neq-map-modal .neq-map-stage-wrap {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+
+.neq-map-modal .neq-map-stage svg {
+  height: 100%;
+  max-height: 100%;
+}
+
+/* The dialog body already supplies the padding the rail's wrapper adds. */
+.neq-notes-wrap--modal {
+  padding: 0;
+}
+.neq-notes-wrap--modal .neq-notes-row {
+  padding: 8px 4px;
+}
+
+/* Too narrow for a side-by-side split: stack the notes under the map. */
+@media (max-width: 900px) {
+  .neq-map-modal {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) 220px;
+  }
+}

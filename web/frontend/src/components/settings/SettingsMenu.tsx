@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { MouseEventHandler } from 'react'
 import { createPortal } from 'react-dom'
 import { useDialogs, useLog, useSettings } from '../../stores'
-import type { TtsEngine } from '../../stores'
+import type { MapTheme, TtsEngine } from '../../stores'
 import { LocalProviderPanel } from './LocalProviderPanel'
 import './settings-parity.css'
 
@@ -125,9 +125,14 @@ function SettingsDropdown() {
   const setAiImages = useSettings((s) => s.setAiImages)
   const ttsEnabled = useSettings((s) => s.ttsEnabled)
   const setTtsEnabled = useSettings((s) => s.setTtsEnabled)
+  const mapTheme = useSettings((s) => s.mapTheme)
+  const setMapTheme = useSettings((s) => s.setMapTheme)
   return <div className="neq-settings-dropdown neq-settings-dropdown-parity" role="menu" aria-label="Settings">
     <div className="neq-settings-section"><div className="neq-settings-title">Features</div><Toggle id="setting-ai-images" label="AI Images" checked={aiImages} onChange={setAiImages} /><Toggle id="setting-dm-voice" label="DM Voice" checked={ttsEnabled} onChange={(value) => { setTtsEnabled(value); if (!value && 'speechSynthesis' in window) window.speechSynthesis.cancel() }} /></div>
     {ttsEnabled ? <VoiceSettings /> : <div className="neq-settings-collapsed-spacer-parity" aria-hidden="true" />}
+    <div className="neq-settings-section"><div className="neq-settings-title">Map</div>
+      <div className="neq-settings-item"><label htmlFor="map-theme-select">Map style</label><select id="map-theme-select" value={mapTheme} onChange={(event) => setMapTheme((event.target.value as MapTheme) === 'night' ? 'night' : 'day')}><option value="day">Parchment</option><option value="night">Night ink</option></select></div>
+    </div>
     <LocalProviderPanel />
   </div>
 }
