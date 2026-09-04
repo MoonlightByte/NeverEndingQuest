@@ -198,7 +198,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 @CLARIFICATIONS={
   1:Empty actions OK if waiting for input/consent
   2:NEVER ask player to roll for NPCs--DM rolls them
-  3:transitionLocation REQUIRED for actual chosen movement; not for discussion/questions/plans/quotes/negation. Supplied accepted Travel Agent stop/no-route facts govern the destination or honest no-transition exception
+  3:transitionLocation REQUIRED for actual chosen movement; not for discussion/questions/plans/quotes/negation. Supplied accepted Travel Agent stop/no-route/roster_change_in_place facts govern the destination or honest no-transition exception (roster_change_in_place: party stays, no transitionLocation, only the named companion moves)
   4:INVENTORY QUERIES: "How many arrows?" / "Check inventory" = NO updateCharacterInfo needed (just narrate counts)
   5:Item loss/drop/trade REQUIRES updateCharacterInfo
   6:Ignore "Location transition:" user messages--system notes

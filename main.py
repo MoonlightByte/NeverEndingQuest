@@ -8821,7 +8821,7 @@ def main_game_loop():
                                 .get("newLocation")
                             ),
                             "roster_operation": roster_params.get("operation"),
-                            "companion": roster_params.get("npcName"),
+                            "companion": (roster_params.get("npc") or {}).get("name"),
                         }
                         actions[:] = stripped_actions
                         response_data["actions"] = actions
@@ -8982,7 +8982,24 @@ def main_game_loop():
                             "currentLocationId", ""
                         )
                     )
-                    if proposed_location == current_location:
+                    roster_ruling_in_force = (
+                        isinstance(planner_projection, dict)
+                        and planner_projection.get("reason_code")
+                        == "roster_change_in_place"
+                    )
+                    if proposed_location == current_location or roster_ruling_in_force:
+                        # A transition that survives T065 while a roster-change
+                        # ruling is in force is the same spurious party travel
+                        # the gate already cancelled: strip it deterministically
+                        # (no retry) so the ruling cannot be lost to route
+                        # planning or a later planner_projection overwrite.
+                        if roster_ruling_in_force:
+                            info(
+                                "VALIDATION: roster_change_in_place ruling in force; "
+                                "stripping a re-emitted transitionLocation before "
+                                "route planning.",
+                                category="location_transitions",
+                            )
                         validated_actions.remove(transition_action)
                         validated_data["actions"] = validated_actions
                         ai_response_content = json.dumps(validated_data)
