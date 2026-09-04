@@ -1,0 +1,83 @@
+{
+  "areaId": "HH001",
+  "areaName": "Harrow's Hollow",
+  "map": {
+    "mapId": "HH001",
+    "mapName": "Harrow's Hollow",
+    "rooms": [
+      {
+        "id": "A01",
+        "coordinates": "X2Y2",
+        "name": "Harrow's Hollow General Store",
+        "type": "shop",
+        "connections": [
+          "A02",
+          "A03",
+          "A04",
+          "A05"
+        ]
+      },
+      {
+        "id": "A02",
+        "coordinates": "X3Y2",
+        "name": "Harrow's Hollow Town Square",
+        "type": "square",
+        "connections": [
+          "A01"
+        ]
+      },
+      {
+        "id": "A03",
+        "coordinates": "X2Y3",
+        "name": "East Gate and Guardhouse",
+        "type": "gate",
+        "connections": [
+          "A01",
+          "A05",
+          "A06"
+        ]
+      },
+      {
+        "id": "A04",
+        "coordinates": "X2Y1",
+        "connections": [
+          "A01"
+        ]
+      },
+      {
+        "id": "A05",
+        "coordinates": "X1Y2",
+        "connections": [
+          "A01",
+          "A03"
+        ]
+      },
+      {
+        "id": "A06",
+        "coordinates": "X1Y3",
+        "connections": [
+          "A03"
+        ]
+      }
+    ],
+    "grid": {
+      "cols": 3,
+      "rows": 3,
+      "originX": 1,
+      "originY": 1
+    }
+  },
+  "area": {
+    "areaType": "town",
+    "terrain": "urban streets and buildings",
+    "climate": "temperate",
+    "areaDescription": "Harrow's Hollow is a medium settlement where civilization meets the frontier. Politics and intrigue mix with everyday commerce."
+  },
+  "revealed": [
+    "A01",
+    "A02",
+    "A03"
+  ],
+  "currentLocationId": "A02",
+  "undiscoveredCount": 3
+}

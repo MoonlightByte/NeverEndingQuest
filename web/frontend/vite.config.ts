@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -11,6 +12,11 @@ export default defineConfig({
   // so built asset URLs must resolve under /play/.
   base: '/play/',
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      'mapper-lib': fileURLToPath(new URL('./src/vendor/mapper/mapper.js', import.meta.url)),
+    },
+  },
   test: {
     exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
   },

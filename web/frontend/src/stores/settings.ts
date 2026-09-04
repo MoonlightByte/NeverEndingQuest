@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 export type TtsEngine = 'browser' | 'openai' | 'openai-hd'
+export type MapTheme = 'day' | 'night'
 
 function read(key: string, fallback: string): string {
   try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
@@ -20,11 +21,13 @@ export interface SettingsState {
   autoplay: boolean
   engine: TtsEngine
   voices: Record<TtsEngine, string>
+  mapTheme: MapTheme
   setAiImages: (value: boolean) => void
   setTtsEnabled: (value: boolean) => void
   setAutoplay: (value: boolean) => void
   setEngine: (value: TtsEngine) => void
   setVoice: (engine: TtsEngine, value: string) => void
+  setMapTheme: (value: MapTheme) => void
 }
 
 export const useSettings = create<SettingsState>((set) => ({
@@ -37,6 +40,7 @@ export const useSettings = create<SettingsState>((set) => ({
     openai: read('ttsVoice_openai', 'fable'),
     'openai-hd': read('ttsVoice_openai-hd', 'fable'),
   },
+  mapTheme: read('mapTheme', 'day') === 'night' ? 'night' : 'day',
   setAiImages: (aiImages) => { persist('imageGenerationEnabled', aiImages); set({ aiImages }) },
   setTtsEnabled: (ttsEnabled) => { persist('ttsEnabled', ttsEnabled); set({ ttsEnabled }) },
   setAutoplay: (autoplay) => { persist('ttsAutoplayEnabled', autoplay); set({ autoplay }) },
@@ -45,4 +49,5 @@ export const useSettings = create<SettingsState>((set) => ({
     persist(`ttsVoice_${engine}`, voice)
     set((state) => ({ voices: { ...state.voices, [engine]: voice } }))
   },
+  setMapTheme: (mapTheme) => { persist('mapTheme', mapTheme); set({ mapTheme }) },
 }))

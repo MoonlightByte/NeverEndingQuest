@@ -6,7 +6,7 @@
  */
 import { emitC } from '../../services/socket'
 
-export type SheetTab = 'character' | 'inventory' | 'spells' | 'npcs' | 'debug'
+export type SheetTab = 'character' | 'inventory' | 'spells' | 'npcs' | 'debug' | 'map'
 
 export type NpcDetailTab = 'saves' | 'skills' | 'spells' | 'inventory'
 
@@ -24,6 +24,8 @@ export function requestTabData(tab: SheetTab): void {
     emitC('request_player_data', { dataType: 'spells' })
   } else if (tab === 'npcs') {
     emitC('request_player_data', { dataType: 'npcs' })
+  } else if (tab === 'map') {
+    emitC('request_map_data', undefined)
   }
 }
 
