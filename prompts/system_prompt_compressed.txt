@@ -126,6 +126,9 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   rule: CRITICAL - If NPC accepts invitation to join, MUST include updatePartyNPCs in SAME response.
   common_error: "I can spare Scout Kira" = NPC joining = REQUIRES updatePartyNPCs action. updateCharacterInfo is NOT sufficient.
   correct_flow: NPC agrees -> updatePartyNPCs with operation="add" -> system creates character file automatically
+  depart: NPC leaves party = updatePartyNPCs operation="remove" with npc.name only (level/class NOT required on remove)
+  depart_context: On remove ALWAYS include lifecycleContext with reason and departureKind, plus destination when the narrative states where the companion is going. This records the departure to the companion memory ledger. FAIL-OPEN: omit destination if unknown, NEVER invent one; omitting lifecycleContext entirely never blocks the departure
+  depart_in_place: A companion leaving does NOT move the party. Never emit transitionLocation for a departure unless the player asked the whole party to travel
 }
 
 @TRAPS={
@@ -199,7 +202,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   removeEffect:        {"characterName": string, "effectId": string, "effectName": string, "reason": string} // exact active identity; use effectId when shown
   updateTime:          {"timeEstimate": integer}        // minutes (integer only, not string)
   updatePlot:          {"plotPointId": string, "newStatus": string, "plotImpact": string}
-  updatePartyNPCs:     {"operation": string, "npc": object}  // operation: "add"/"remove"
+  updatePartyNPCs:     {"operation": string, "npc": object, "lifecycleContext": object}  // operation: "add"/"remove"; npc {name, level, class} on add, {name} on remove; lifecycleContext {reason, departureKind, destination} on remove (optional, never blocks)
   moveBackgroundNPC:   {"npcName": string, "context": string, "currentLocation": string}
   levelUp:             {"entityName": string, "newLevel": integer}  // integer only, not string
   establishHub:        {"hubName": string, "hubType": string, "description": string, "services": array, "ownership": string}
@@ -222,6 +225,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 
 @NOTES={
   updatePartyNPCs.operation: allowed values are exactly "add" or "remove" only.
+  updatePartyNPCs remove: npc.name is the only required npc field; do not withhold the action for a missing level or class.
   createEncounter.monsters: MUST be an array of strings. For multiple monsters of the same type, list them as separate strings (e.g., ["Bandit", "Bandit", "Bandit"]).
   createEncounter.scene: participants EXACTLY match player:0, npc:N, monster:N positional keys; each has participation, initiativeEligible:boolean, persistence, controller. Relations/objectives/disclosure use only those exact keys. Presence, relation, controller, initiative eligibility are independent. Never disclose private facts.
 }
@@ -248,7 +252,8 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
     {"action":"updateTime","parameters":{"timeEstimate":15}}
   ],
   updatePartyNPCs:[
-    {"action":"updatePartyNPCs","parameters":{"operation":"add","npc":{"name":"Kira","level":"4","class":"Scout"}}}
+    {"action":"updatePartyNPCs","parameters":{"operation":"add","npc":{"name":"Kira","level":"4","class":"Scout"}}},
+    {"action":"updatePartyNPCs","parameters":{"operation":"remove","npc":{"name":"Kira"},"lifecycleContext":{"reason":"watch the river crossing","departureKind":"sent_ahead","destination":"Scout's Watch"}}}
   ],
   moveBackgroundNPC:[
     {"action":"moveBackgroundNPC","parameters":{"npcName":"Brother Lintar","context":"Escorted toward the abbey for questioning.","currentLocation":"AD01"}}
