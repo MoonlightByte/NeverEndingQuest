@@ -172,7 +172,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   removeEffect: {"characterName":str,"effectId":str,"effectName":str,"reason":str} #requires effectId or effectName
   updateTime: {"timeEstimate":int} #integer only, not string
   updatePlot: {"plotPointId":str,"newStatus":str,"plotImpact":str}
-  updatePartyNPCs: {"operation":str,"npc":obj} #npc is object: {"name":str,"level":str,"class":str}
+  updatePartyNPCs: {"operation":str,"npc":obj,"lifecycleContext":obj optional} #add: npc {"name","level","class"}. remove: npc {"name"} ONLY - NEVER demand level or class on a remove. lifecycleContext {"reason","departureKind","destination"} is optional on remove and its absence is NEVER a rejection
   moveBackgroundNPC: {"npcName":str,"context":str,"currentLocation":str}
   levelUp: {"entityName":str,"newLevel":int} #integer only, not string
   establishHub: {"hubName":str,"hubType":str,"description":str,"services":arr,"ownership":str}
