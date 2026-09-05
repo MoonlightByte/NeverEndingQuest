@@ -159,6 +159,7 @@ _MODULE_COMPLETION_FLIGHTS = {}
 _MODULE_COMPLETION_FLIGHTS_GUARD = threading.Lock()
 _CAMPAIGN_COMPLETION_TRANSACTION_VERSION = 1
 _LIFECYCLE_EPOCH_UNSET = object()
+_SUMMARY_PLOT_UNSET = object()
 
 
 class _ModuleCompletionCheckpointError(OSError):
@@ -2745,6 +2746,17 @@ class CampaignManager:
             completion_paths,
             module_name,
         )
+        # Capture before publishing a joinable flight: a follower may already
+        # own the party lock, so the leader must not need it to capture inputs.
+        # These copies are request inputs, never additional recovery state.
+        with _party_module_transition_lock(), _campaign_transaction_lock(self.campaign_file):
+            if _load_campaign_lifecycle_epoch(self.campaign_file) != expected_lifecycle_epoch:
+                raise LiveProviderSuperseded(
+                    "Campaign timeline changed before completion input capture"
+                )
+            party_snapshot = copy.deepcopy(party_tracker_data)
+            history_snapshot = copy.deepcopy(conversation_history)
+            plot_snapshot = copy.deepcopy(self._load_module_plot_data(module_name))
         with _MODULE_COMPLETION_FLIGHTS_GUARD:
             completion = _MODULE_COMPLETION_FLIGHTS.get(key)
             if completion is None:
@@ -2797,12 +2809,13 @@ class CampaignManager:
         try:
             result = self._complete_module_once(
                 module_name,
-                party_tracker_data,
-                conversation_history,
+                party_snapshot,
+                history_snapshot,
                 completion_paths=completion_paths,
                 pre_lock_snapshot=pre_lock_snapshot,
                 completion_id=completion_id,
                 expected_lifecycle_epoch=expected_lifecycle_epoch,
+                _plot_data=plot_snapshot,
             )
         except BaseException as exc:
             completion.set_exception(exc)
@@ -2824,6 +2837,7 @@ class CampaignManager:
         pre_lock_snapshot=None,
         completion_id: Optional[str] = None,
         expected_lifecycle_epoch: Optional[str] = None,
+        _plot_data: Any = _SUMMARY_PLOT_UNSET,
     ) -> Dict[str, Any]:
         module_name = _normalize_module_name(module_name)
         completion_id = _normalize_completion_id(completion_id)
@@ -3027,6 +3041,7 @@ class CampaignManager:
                         skip_archiving=True,
                         _resume_t038_summary_text=resume_t038_summary_text,
                         _t038_checkpoint=checkpoint_t038,
+                        _plot_data=_plot_data,
                     )
                     # Persist the combined T038/T039 output immediately. A
                     # same-ID retry can resume locally after a crash; the
@@ -3410,6 +3425,7 @@ class CampaignManager:
         skip_archiving: bool = False,
         _resume_t038_summary_text: Optional[str] = None,
         _t038_checkpoint: Optional[Callable[[str], None]] = None,
+        _plot_data: Any = _SUMMARY_PLOT_UNSET,
     ) -> Dict[str, Any]:
         """Generate AI-powered module summary"""
         # Archive full conversation history before summarization (unless skipped for delayed archiving)
@@ -3421,8 +3437,10 @@ class CampaignManager:
                     f"Could not durably archive conversation for {module_name}"
                 )
         
-        # Load module plot data for structured information
-        plot_data = self._load_module_plot_data(module_name)
+        # Explicit None means the captured plot was absent, not "reload it".
+        # Direct callers retain their existing load behavior when omitted.
+        plot_data = (self._load_module_plot_data(module_name)
+                     if _plot_data is _SUMMARY_PLOT_UNSET else _plot_data)
         
         # Extract key information from party tracker
         party_npcs = party_tracker_data.get('partyNPCs', [])
