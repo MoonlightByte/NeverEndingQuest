@@ -165,6 +165,10 @@ class _ModuleCompletionCheckpointError(OSError):
     """A local durability failure that must not become an AI fallback."""
 
 
+class _ModuleCompletionOwnerActive(Exception):
+    """Internal follow/retry signal; its caller must release locks before waiting."""
+
+
 def _completion_process_namespace() -> Optional[str]:
     """Identify the native PID namespace; inability to read it is not death."""
     try:
@@ -1202,7 +1206,7 @@ def _recover_module_work_locked(
         return None
     if work.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION:
         raise OSError("Unsupported module-completion work marker version")
-    _completion_work_ownership(work)
+    ownership = _completion_work_ownership(work)
     module_name = _normalize_module_name(module_name)
     if work.get("module_name") != module_name:
         raise OSError("Module-completion work marker identity mismatch")
@@ -1213,6 +1217,15 @@ def _recover_module_work_locked(
     transaction_id = work.get("transaction_id")
     if not isinstance(transaction_id, str) or not transaction_id:
         raise OSError("Module-completion work marker has no transaction id")
+
+    if ownership is not None:
+        if ownership["epoch"] != _load_campaign_lifecycle_epoch(campaign_file):
+            raise LiveProviderSuperseded("Completion recovery belongs to an old timeline")
+        producer = ownership["producer"]
+        if producer is not None and _completion_producer_state(producer) != "dead":
+            # A short acquired lock is not proof of producer death. Unknown
+            # native identity is deliberately no more reclaimable than live.
+            raise _ModuleCompletionOwnerActive()
 
     completion_id = work.get("completion_id")
     try:
@@ -1347,8 +1360,11 @@ def _recover_module_work_locked(
             archive_path,
             archives_dir,
             module_name,
+            transaction_id,
         )
-    _durable_remove(paths["work"])
+    _finish_completion_marker_cleanup(
+        {**work, "work_path": paths["work"], "campaign_path": campaign_file}, work,
+    )
     return {
         "status": "committed_cleanup" if committed else "orphan_cleanup",
         "transaction_id": transaction_id,
