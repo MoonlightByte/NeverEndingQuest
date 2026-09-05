@@ -79,6 +79,7 @@ from uuid import uuid4
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from utils.capture.live_provider_call import LiveProviderSuperseded
 register_callsite("T038", "core/managers/campaign_manager.py", 3192)
 register_callsite("T039", "core/managers/campaign_manager.py", 3245)
 import config
@@ -2454,6 +2455,8 @@ class CampaignManager:
                     self.campaign_file,
                     self.summaries_dir,
                 )
+            except LiveProviderSuperseded:
+                raise
             except Exception as exc:
                 outcome["failed"].append(
                     {
@@ -2488,6 +2491,8 @@ class CampaignManager:
                         outcome["cancelled"].append(intent["completion_id"])
                     else:
                         outcome["completed"].append(intent["completion_id"])
+                except LiveProviderSuperseded:
+                    raise
                 except Exception as exc:
                     outcome["failed"].append(
                         {"path": intent_path, "error": str(exc)}
@@ -3352,6 +3357,8 @@ Focus on story outcomes, character development, and decisions that will matter i
             if _t038_checkpoint is not None:
                 try:
                     _t038_checkpoint(summary_text)
+                except LiveProviderSuperseded:
+                    raise
                 except Exception as checkpoint_exc:
                     raise _ModuleCompletionCheckpointError(
                         "Could not durably checkpoint T038 output"
@@ -3399,6 +3406,8 @@ Focus on story outcomes, character development, and decisions that will matter i
                 exported_data = json.loads(export_response.choices[0].message.content)
                 if not _is_valid_campaign_export_data(exported_data):
                     raise ValueError("T039 returned invalid campaign export data")
+            except LiveProviderSuperseded:
+                raise
             except Exception as e:
                 debug(f"T039 fallback to local processor: {e}", category="campaign_management")
                 exported_data = self._process_module_summary_for_export(summary_text, party_tracker_data)
@@ -3435,7 +3444,7 @@ Focus on story outcomes, character development, and decisions that will matter i
                 **({"export_error": export_error} if export_error else {}),
             }
 
-        except _ModuleCompletionCheckpointError:
+        except (LiveProviderSuperseded, _ModuleCompletionCheckpointError):
             raise
         except Exception as e:
             error(f"FAILURE: Error generating module summary", exception=e, category="summary_building")
@@ -3501,6 +3510,8 @@ Focus on story outcomes, character development, and decisions that will matter i
                     module_name,
                     expected_lifecycle_epoch=expected_lifecycle_epoch,
                 )
+        except LiveProviderSuperseded:
+            raise
         except Exception as exc:
             error(
                 f"FAILURE: regenerate_failed_summary error for {module_name}",
@@ -3676,6 +3687,8 @@ Focus on story outcomes, character development, and decisions that will matter i
                 category="summary_building",
             )
             return True
+        except LiveProviderSuperseded:
+            raise
         except Exception as e:
             error(
                 f"FAILURE: regenerate_failed_summary error for {module_name}",
