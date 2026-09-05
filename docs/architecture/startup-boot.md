@@ -10,10 +10,10 @@ Startup repair delta verified on 2026-09-05 against the `fix/issue-114-startup-r
 
 | Datum | Source of truth | Acceptance or commit point |
 |---|---|---|
-| Wizard required | `party_tracker.json`, its first party member, and the canonical character file | `startup_required()` checks all three |
+| Wizard required | Unfinished startup checkpoint, or missing tracker/module/player identity | `startup_required()` resumes unfinished builds; completed history cannot override current campaign state |
 | Available adventures | Public module directories and files on disk | Read-only module scan |
 | Wizard dialogue and resume phase | `modules/conversation_history/startup_conversation.json` | Accepted author response and code-authored v1 checkpoint; rejected proposals remain correction context |
-| Character sheet | Unified canonical character path, with legacy module identity discovery | Schema validation and independent semantic review precede guarded write and read-back |
+| Character sheet | Unified canonical character path, with legacy module identity discovery | New conversational builds receive schema/semantic review; existing sheets retain values; supplied headless seeds use their existing repair/validation path. Guarded write/read-back publishes the sheet |
 | Initial location | T093 proposal resolved against selected module's actual areas/locations | Validated IDs and canonical names precede whole tracker projection; no invented fallback |
 | Current game context | Tracker, module, location, plot, roster, and history files | Reloaded after recovery and used to rebuild conversation context |
 | Welcome identity | `startup_state.json` attempt ID, status, and lease owner | Lock-protected claim/processing/done transition |

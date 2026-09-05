@@ -87,8 +87,9 @@ Startup/locking delta verified 2026-09-05 against the `fix/issue-114-startup-rep
 - Shared safe JSON writes now hold an OS advisory lock at an installation-local
   `.runtime_locks/atomic/` identity derived from the canonical target path. Dead processes
   release ownership through the OS; persistent lock files are not stale-owner evidence.
-- Windows sharing violations wait interruptibly while retaining original file bytes and
-  lock ownership. A superseded startup scope cannot publish a late replace.
+- Windows sharing violations keep retrying while retaining original file bytes.
+  Startup's optional `commit_guard` checks supersession before a late replace; unguarded
+  callers and sibling `safe_json_dump` have no scope-aware cancellation check.
 
 ## Deployment boundary
 
