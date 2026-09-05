@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Server } from 'socket.io'
 import { createProviderFixture } from './provider-fixture.mjs'
+import { applyEmberFixture, emberNarration, emberMediaFiles } from './ember-visual-fixture.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 // Canned map_data_response: a server-shaped, spoiler-safe map projection with
@@ -19,6 +20,8 @@ const mapDataMidReveal = JSON.parse(
 const dist = path.resolve(here, '..', 'dist')
 const port = Number(process.env.NEQ_E2E_PORT ?? 4174)
 const providerFixture = createProviderFixture()
+const emberVisual = process.env.NEQ_E2E_EMBER_VISUAL === '1'
+let emberMedia = true
 const supportedHydrationModes = new Set(['legacy', 'correlated', 'mixed', 'delayed'])
 let hydrationMode = supportedHydrationModes.has(process.env.NEQ_E2E_HYDRATION_MODE)
   ? process.env.NEQ_E2E_HYDRATION_MODE
@@ -33,6 +36,17 @@ const contentTypes = {
 
 const server = http.createServer((request, response) => {
   const requestPath = new URL(request.url ?? '/', `http://${request.headers.host}`).pathname
+  if (emberVisual && request.method === 'POST' && ['/__e2e__/media/on', '/__e2e__/media/off'].includes(requestPath)) {
+    emberMedia = requestPath.endsWith('/on')
+    response.writeHead(200).end()
+    return
+  }
+  if (emberVisual && Object.hasOwn(emberMediaFiles, requestPath)) {
+    const file = path.resolve(here, '../../..', emberMediaFiles[requestPath])
+    response.writeHead(200, { 'content-type': file.endsWith('.png') ? 'image/png' : 'image/jpeg' })
+    fs.createReadStream(file).pipe(response)
+    return
+  }
   if (request.method === 'POST' && ['/__e2e__/providers/reset', '/__e2e__/providers/reject'].includes(requestPath)) {
     if (requestPath.endsWith('/reset')) providerFixture.reset()
     else providerFixture.reject()
@@ -116,6 +130,7 @@ const locationNpcs = [
 const initialMessages = [
   { type: 'narration', content: 'The wind whispers across the Forsaken Crossroads.' },
 ]
+if (emberVisual) applyEmberFixture({ location, stats, party, locationNpcs, initialMessages })
 
 io.on('connection', (socket) => {
   let initiative = { active: false, combatants: [], round: 0 }
@@ -148,8 +163,14 @@ io.on('connection', (socket) => {
   socket.emit('version_status', {
     update_available: false, local_version: 'e2e', remote_version: 'e2e', message: 'Current',
   })
-  socket.emit('cached_messages', initialMessages)
-  socket.emit('game_resumed', { is_processing: false, message: 'Reconnected to your game.' })
+  if (emberVisual) {
+    socket.emit('game_started', { message: 'Visual fixture ready' })
+    for (const message of initialMessages) socket.emit('game_output', message)
+    if (emberMedia) socket.emit('image_generated', { image_url: '/__e2e__/scene.jpg', prompt: emberNarration, source_message_id: 'ember-dm' })
+  } else {
+    socket.emit('cached_messages', initialMessages)
+    socket.emit('game_resumed', { is_processing: false, message: 'Reconnected to your game.' })
+  }
 
   socket.on('request_location_data', (requestPayload) => hydrate('location_data_response', requestPayload, { data: location }))
   socket.on('request_party_data', (requestPayload) => hydrate('party_data_response', requestPayload, {

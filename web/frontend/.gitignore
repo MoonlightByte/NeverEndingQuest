@@ -14,6 +14,8 @@ dist-ssr
 playwright-report
 test-results
 !e2e/provider_contract_test.py
+!e2e/ember-visual.spec.ts-snapshots/
+!e2e/ember-visual.spec.ts-snapshots/*.png
 
 # Editor directories and files
 .vscode/*

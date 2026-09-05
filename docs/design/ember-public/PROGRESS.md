@@ -199,3 +199,16 @@ Remaining provider gates include the real Flask/Socket.IO integration with
 temporary profiles, full backend restart, all failure/disconnect states, optional
 real-provider turns with approved credentials and the eventual settings redesign.
 The 14 existing Ember/public browser checks also pass with the expanded fixture.
+
+## Populated visual checkpoint — 2026-09-05
+
+Added an opt-in media-capable public fixture, preserving existing public artwork
+and isolating synthetic character assignments from production. Personally reviewed
+four populated desktop captures and saved browser regression goldens. See
+`VISUAL-REVIEW.md` for reproduction and the open reference-differences register.
+This is not exact concept parity or additional-screen approval. The populated
+fixture replaces the earlier missing-artwork captures for main-screen review.
+
+Public main was fetched again at `5fe14683f2c2edfae447249c44e10b501b8c074c`;
+`git rev-list --count HEAD..FETCH_HEAD` reports zero missing upstream commits.
+No public main integration or push has occurred.
