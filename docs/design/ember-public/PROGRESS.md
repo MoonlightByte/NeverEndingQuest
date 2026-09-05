@@ -1,5 +1,46 @@
 # Public Ember implementation ledger
 
+## Inventory/spell inspection implementation — 2026-09-05
+
+First post-audit implementation batch adds desktop Ember inventory/spell panels
+and shared nonmodal detail cards with hover/focus preview, click/tap pinning,
+visible close, Escape and scrollable viewport-clamped placement beside the sheet.
+Inventory and magic-item details expose supplied equipment facts; inventory now
+uses the same coin component as the main character sheet. Existing phone UI and
+public game action contracts are preserved.
+
+Player spell reference lookup now follows the actual public compatibility-map
+normalization, including Unicode aliases. Reference content includes range,
+duration, components/materials, ritual, concentration, higher-level text and
+attribution. A test compares all shipped names/aliases with the actual Python
+reference index. Python is a test dependency only, configurable with
+`NEQ_TEST_PYTHON`; it is not added to the browser bundle.
+
+Independent feature/architecture reviews exposed and prompted fixes for pure
+hover Escape, passive-hover stealing pinned focus, metadata row layout, missing
+item subtype/level and inherited orange spell-summary text. Personal screenshot
+inspection also moved popups beside the rail so they do not cover adjacent items.
+These are code fixes, not just plan updates.
+
+Still pending: inventory state continuity F1; NPC and scroll spell-reference
+integration; full modal/portal stack A4; responsive owner continuity; media/audio
+lifecycle; remaining screens and final visual parity. This batch must not be
+reported as closing F5 across all consumers or the complete Ember redesign.
+
+Verification: five real-Flask inspection browser tests pass, including touch,
+hover-only Escape, pinned focus, switching/closing and viewport bounds; two
+real-runtime smoke tests pass. All 28 focused sheet/reference tests pass, build
+succeeds, lint has only the 11 inherited warnings, and all six main visual checks
+pass without changing existing goldens. Both independent reviewers re-reviewed
+the fixes and personally inspected final captures, reporting no remaining
+must-fix findings in this bounded batch. Main agent personally inspected them too.
+
+Review captures: [inventory](captures/inventory-inspection.png),
+[spells at 1024px](captures/spell-inspection.png). Synthetic public runtime data
+intentionally lacks matching portraits; these captures prove neither artwork
+parity nor full-screen completion. The canonical spell name is retained inside
+the detail body (sometimes repeating the trigger name) for alias identification.
+
 ## Repeated independent review — 2026-09-05
 
 At the owner's request, separate feature-development and architecture agents

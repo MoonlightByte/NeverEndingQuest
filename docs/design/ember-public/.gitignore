@@ -1,0 +1,3 @@
+# Reviewed synthetic public captures only; keep unrelated generated images ignored.
+!captures/inventory-inspection.png
+!captures/spell-inspection.png

@@ -69,3 +69,14 @@ Both reviewers personally viewed the exact locked image. Ten identified findings
 are retained as mandatory pending implementation/verification gates; none were
 removed to achieve closure. Code, visual parity and final owner approval remain
 incomplete. No production code or tests were changed during this planning loop.
+
+## Implementation batch 1 — inventory/spell inspection
+
+Feature and architecture agents reviewed the actual code against the locked image.
+Round 1 found hover-only Escape, pinned-focus theft, metadata grid mismatch and
+missing item subtype/level. All were fixed with browser tests. Round 2 source
+review was clean; subsequent visual review found inherited orange spell summary
+text, which was corrected and recaptured. Both agents then personally inspected
+the final inventory/spell captures and closed this bounded review. The main agent
+also inspected the final captures. Results and remaining scope are in PROGRESS.
+This batch does not close all transition gates or the final owner review.

@@ -6,6 +6,11 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { usePlayer } from '../../stores'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { EmberInspection } from './EmberInspection'
+import { EquipmentDetails } from './EquipmentDetails'
+import { SpellDetails } from './spellDetails'
+import { spellKey as emberSpellKey } from './spellKey'
 import { equipmentList, formatModifier, slotTone, spellcastingView, type EquipmentItem, type SpellLevelGroup } from './characterData'
 
 function SlotBadge({ slots }: { slots: { current: number; max: number } }) {
@@ -27,6 +32,7 @@ function SpellRow({
   prepared: boolean
   detail?: Record<string, unknown>
 }) {
+  const ember = useEmberDesktop()
   const targetRef = useRef<HTMLSpanElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const [hovered, setHovered] = useState(false)
@@ -47,10 +53,10 @@ function SpellRow({
   return (
     <div
       className="neq-spell-item relative flex items-center justify-between text-sm"
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => { if (!ember) setHovered(true) }}
       onMouseLeave={() => { setHovered(false); setPosition(null) }}
     >
-      <span ref={targetRef} className="neq-spell-name text-primary">{spell}</span>
+      <span ref={targetRef} className="neq-spell-name text-primary">{ember ? <EmberInspection label={spell}><SpellDetails detail={detail} fallbackName={spell} /></EmberInspection> : spell}</span>
       {prepared && (
         <div className="neq-spell-badges"><span className="neq-spell-badge prepared" title="Prepared">P</span></div>
       )}
@@ -78,8 +84,14 @@ function formatComponents(raw: unknown): string {
 function spellKey(name: string): string { return name.toLowerCase().replace(/['\s/-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') }
 
 function MagicCategory({ title, items }: { title: string; items: EquipmentItem[] }) {
+  const ember = useEmberDesktop()
   if (items.length === 0) return null
-  return <section className="neq-magic-category"><h4>{title}</h4>{items.map((item, index) => <div key={`${item.name}-${index}`} title={item.description || 'No description available.'} className="neq-magic-item"><span className="neq-magic-item-name">{item.name}</span>{title === 'Scrolls' && item.spellLevel !== null && <span className="neq-spell-badge">{item.spellLevel === 0 ? 'Cantrip' : `Level ${item.spellLevel}`}</span>}{title !== 'Magic Items' && (item.quantity > 1 ? <span className="neq-magic-item-charges">×{item.quantity}</span> : item.consumable ? <span className="neq-magic-item-charges neq-consumable">[1x]</span> : null)}{title === 'Magic Items' && item.charges && <span className={`neq-magic-item-charges ${slotTone(item.charges)}`}>{item.charges.current}/{item.charges.max}</span>}</div>)}</section>
+  return <section className="neq-magic-category"><h4>{title}</h4>{items.map((item, index) => <div key={`${item.name}-${index}`} title={ember ? undefined : item.description || 'No description available.'} className="neq-magic-item">
+    <span className="neq-magic-item-name">{ember ? <EmberInspection label={item.name}><EquipmentDetails item={item} /></EmberInspection> : item.name}</span>
+    {title === 'Scrolls' && item.spellLevel !== null && <span className="neq-spell-badge">{item.spellLevel === 0 ? 'Cantrip' : `Level ${item.spellLevel}`}</span>}
+    {title !== 'Magic Items' && (item.quantity > 1 ? <span className="neq-magic-item-charges">×{item.quantity}</span> : item.consumable ? <span className="neq-magic-item-charges neq-consumable">[1x]</span> : null)}
+    {title === 'Magic Items' && item.charges && <span className={`neq-magic-item-charges ${slotTone(item.charges)}`}>{item.charges.current}/{item.charges.max}</span>}
+  </div>)}</section>
 }
 
 export function SpellsTab() {
@@ -131,7 +143,7 @@ export function SpellsTab() {
                 spell={spell}
                 group={group}
                 prepared={view.prepared.includes(spell)}
-                detail={spellData[spellKey(spell)]}
+                detail={spellData[emberSpellKey(spell)] ?? spellData[spellKey(spell)]}
               />
             ))}
           </div>

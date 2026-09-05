@@ -7,9 +7,14 @@
 import { useMemo, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, usePlayer } from '../../stores'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { EmberInspection } from './EmberInspection'
+import { EquipmentDetails } from './EquipmentDetails'
+import { EmberCurrency } from './EmberCurrency'
 import '../dialogs/dialog-parity.css'
 import {
   equipmentList,
+  currencyOf,
   filterEquipment,
   sortEquipment,
   type InventorySort,
@@ -23,6 +28,7 @@ const SORT_OPTIONS: ReadonlyArray<{ value: InventorySort; label: string }> = [
 ]
 
 export function InventoryTab() {
+  const ember = useEmberDesktop()
   const inventory = usePlayer((s) => s.inventory)
   const error = usePlayer((s) => s.dataErrors.inventory)
   const notice = usePlayer((s) => s.dataNotices.inventory)
@@ -104,9 +110,10 @@ export function InventoryTab() {
                 className="neq-inventory-item group relative"
               >
                 <span className="neq-feature-bullet">{'\u25CF'}</span>
-                <span className="neq-item-name">{`${item.name}${item.quantity > 1 ? ` \u00D7${item.quantity}` : ''}`}</span>
+                <span className="neq-item-name">{ember ? <EmberInspection label={`${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`}><EquipmentDetails item={item} /></EmberInspection> : `${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`}</span>
                 <span className="neq-item-type">{` (${item.type.toLowerCase()})`}</span>
-                {item.description !== '' && (
+                {ember && item.equipped && <span className="neq-item-type"> · Equipped</span>}
+                {!ember && item.description !== '' && (
                   <div className="pointer-events-none absolute left-2 top-full z-20 hidden w-64 rounded border-2 border-card bg-panel p-2 shadow-lg group-hover:block">
                     <div className="font-display text-xs text-accent">{item.name}</div>
                     <div className="mt-1 text-xs text-secondary">{item.description}</div>
@@ -117,6 +124,7 @@ export function InventoryTab() {
           )}
         </div>
       </section>
+      {ember && <EmberCurrency currency={currencyOf(inventory)} />}
       {searchOpen && <div className="neq-search-overlay-parity" onClick={() => setSearchOpen(false)}><div role="dialog" aria-label="Search Inventory" className="neq-search-popup-parity" onClick={(event) => event.stopPropagation()}><div className="neq-search-header-parity"><h3 className="neq-search-title-parity">Search Inventory</h3><button type="button" aria-label="Close" onClick={() => setSearchOpen(false)} className="neq-search-close-parity">×</button></div><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false) }} placeholder="Search items..." className="neq-search-input-parity" /></div></div>}
     </div>
   )

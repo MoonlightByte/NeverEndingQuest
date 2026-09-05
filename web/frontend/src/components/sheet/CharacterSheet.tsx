@@ -28,6 +28,7 @@ import {
 } from './characterData'
 import type { AbilityName } from './characterData'
 import { useEmberDesktop } from '../layout/EmberPresentation'
+import { EmberCurrency } from './EmberCurrency'
 import { EmberIcon } from '../layout/EmberIcon'
 
 // ASCII-only source: proficiency dots as escapes (filled / open circle).
@@ -272,7 +273,7 @@ export function CharacterSheet() {
       {background?.['name'] !== undefined && <SheetSection title="Background" items={[{ name: str(background['name']), detail: str(background['description']) }]} />}
       {arr(stats['feats']).length > 0 && <SheetSection title="Feats" items={featureItems('feats')} />}
       </div>
-      {ember && <div className="ember-currency-row">{[['GP', currency.gold], ['SP', currency.silver], ['CP', currency.copper]].map(([label, value]) => <div key={label} className="neq-currency"><span className={`ember-coin ember-coin-${label}`} aria-hidden="true" /><span>{label}</span> {value}</div>)}</div>}
+      {ember && <EmberCurrency currency={currency} />}
       </div>
     </div>
   )
