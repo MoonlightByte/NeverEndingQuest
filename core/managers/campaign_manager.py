@@ -337,6 +337,33 @@ def _completion_work_matches(work: Any, expected: Dict[str, Any]) -> bool:
     )
 
 
+def _await_completion_flight(completion, campaign_file, expected_epoch):
+    """Join existing work without blocking cancellation or holding state locks."""
+    from utils.capture.live_provider_call import (
+        _check_live_authority, _interruptible_wait,
+        get_live_turn_scope,
+    )
+
+    scope = get_live_turn_scope()
+
+    def current():
+        return _load_campaign_lifecycle_epoch(campaign_file) == expected_epoch
+
+    while True:
+        try:
+            _check_live_authority(scope, current)
+        except OSError:
+            # An unreadable epoch is not permission to return a ready result.
+            pass
+        else:
+            if completion.done():
+                return completion.result()
+        _interruptible_wait(
+            0.25, scope, "Finishing the campaign record...",
+            authority_check=current,
+        )
+
+
 def _reset_module_completion_flights_after_fork() -> None:
     """Discard Futures/locks that cannot be completed in a forked child."""
     global _MODULE_COMPLETION_FLIGHTS, _MODULE_COMPLETION_FLIGHTS_GUARD
@@ -2781,7 +2808,9 @@ class CampaignManager:
             completion = flight["future"]
 
         if not is_leader:
-            result = copy.deepcopy(completion.result())
+            result = copy.deepcopy(_await_completion_flight(
+                completion, self.campaign_file, expected_lifecycle_epoch,
+            ))
             # The leader can finish immediately before a restore/reset wins
             # the lifecycle boundary. A joined caller must re-linearize its
             # own return rather than blindly returning the Future payload from
