@@ -165,6 +165,8 @@ from core.managers.combat_state import (
     valid_pending_delivery,
 )
 from core.managers.combat_orchestrator import CombatTurnPaused, execute_agentic_turn
+from core.combat.invocation import InvocationSupersededError
+from utils.capture.live_provider_call import LiveProviderSuperseded
 
 
 def _require_current_combat_invocation(invocation_claim):
@@ -173,12 +175,9 @@ def _require_current_combat_invocation(invocation_claim):
     from core.combat.invocation import invocation_is_current
 
     if not invocation_is_current(invocation_claim):
-        raise CombatTurnPaused(
+        raise InvocationSupersededError(
             "Combat invocation was superseded",
-            player_message=(
-                "That combat response was superseded by Load or Reset. "
-                "The restored game state remains authoritative."
-            ),
+            claim=invocation_claim,
         )
 
 
@@ -313,7 +312,7 @@ def _finalize_t043_resume_exchange(
     if response_content is None and retry_provider is not None:
         try:
             response_content = retry_provider(None)
-        except CombatTurnPaused:
+        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
             raise
         except Exception as exc:
             parse_error = exc
@@ -335,7 +334,7 @@ def _finalize_t043_resume_exchange(
             break
         try:
             response_content = retry_provider(parse_error)
-        except CombatTurnPaused:
+        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
             raise
         except Exception as exc:
             parse_error = exc
@@ -1225,6 +1224,8 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
                 debug(f"VALIDATION: Problematic response: {validation_response}", category="combat_validation")
                 continue
                 
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
         except Exception as e:
             debug(f"VALIDATION: Validation error - {str(e)}", category="combat_validation")
             continue
@@ -1966,6 +1967,8 @@ def summarize_dialogue(
                 pass
 
         dialogue_summary = _extract_t041_summary(response)
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
     except Exception as e:
         warning(
             f"T041 summary unavailable; preserving transcript and using fallback: {e}",
@@ -2111,6 +2114,8 @@ def _finalize_combat_exit(
             location_info,
             party_tracker_data,
         )
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
     except Exception as e:
         error(
             "T041 failed unexpectedly during combat exit; using fallback",
@@ -3042,7 +3047,7 @@ def compress_old_combat_rounds(
         
         return new_conversation
         
-    except CombatTurnPaused:
+    except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
         raise
     except Exception as e:
         error(f"COMPRESSION: Error compressing combat rounds", exception=e, category="combat_events")
@@ -3235,7 +3240,7 @@ CRITICAL RULES:
             )
         return summary
         
-    except CombatTurnPaused:
+    except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
         raise
     except Exception as e:
         error(
@@ -3791,7 +3796,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                **{k: v for k, v in combat_config.items() if k != "model"})
            _require_current_combat_invocation(invocation_claim)
 
-       except CombatTurnPaused:
+       except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
            raise
        except Exception as e:
            resume_stage_failed = True
@@ -3976,7 +3981,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                    # validation_result is now the full feedback string
                    conversation_history.append({"role": "user", "content": validation_result})
                    continue
-           except CombatTurnPaused:
+           except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
                raise
            except Exception as e:
                error(f"FAILURE: AI call for initial scene failed on attempt {attempt + 1}", exception=e, category="combat_events")
@@ -4608,8 +4613,6 @@ This is narration only. Do not advance the round or apply any combat action."""
                        completion_required=True,
                    )
                except Exception as exc:
-                   from utils.capture.live_provider_call import LiveProviderSuperseded
-
                    if isinstance(exc, LiveProviderSuperseded):
                        raise
                    debug(
@@ -5339,6 +5342,8 @@ Rules:
                    else:
                        warning("VALIDATION: Max retries exceeded for combat validation. Using last response.", category="combat_validation")
                        break
+           except (LiveProviderSuperseded, InvocationSupersededError):
+               raise
            except Exception as e:
                error(f"FAILURE: Failed to get or validate AI response (Attempt {attempt + 1}/{max_retries})", exception=e, category="combat_events")
                if attempt < max_retries - 1:

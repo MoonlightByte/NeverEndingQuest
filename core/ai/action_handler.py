@@ -64,6 +64,8 @@ from uuid import uuid4
 from core.ai import api_client
 import model_config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from utils.capture.live_provider_call import LiveProviderSuperseded
+from core.combat.invocation import InvocationSupersededError
 register_callsite("T013", "core/ai/action_handler.py", 1255)
 register_callsite("T012", "core/ai/action_handler.py", 676)
 register_callsite("T014", "core/ai/action_handler.py", 2506)
@@ -3311,6 +3313,8 @@ def process_action(
                 except Exception:
                     pass
 
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
         except subprocess.CalledProcessError as e:
             print(f"Error occurred while running combat_builder.py: {e}")
             print("Error output:", e.stderr)

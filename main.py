@@ -4589,6 +4589,9 @@ def _complete_committed_module_followup_locked(
     playing -- the player may simply not see the creation narration this turn
     (cosmetic, fail-forward; never hangs or corrupts).
     """
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+
     response_data = result.get("response_data", {})
     module_name = response_data.get("module_name")
     try:
@@ -4659,6 +4662,8 @@ def _complete_committed_module_followup_locked(
         completed_data["followup_message_id"] = followup_id
         completed["response_data"] = completed_data
         return completed
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
     except Exception as followup_error:
         # The module is already live; a narration failure must NOT hang or break
         # the game. Return a terminal published result -- the player keeps

@@ -1347,14 +1347,8 @@ def execute_agentic_turn(
                 spell_references,
                 now_scalar=combat_now_scalar,
             )
-        except InvocationSupersededError as exc:
-            raise CombatTurnPaused(
-                "Combat invocation was superseded",
-                player_message=(
-                    "That combat response was superseded by Load or Reset. "
-                    "The restored game state remains authoritative."
-                ),
-            ) from exc
+        except InvocationSupersededError:
+            raise
         except Exception as exc:
             # Keep the same persisted logical operation alive. Provider/network
             # failure is correction input, never authority to invent an NPC

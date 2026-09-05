@@ -28,6 +28,7 @@ from core.ai.srd_reference import (
 )
 from core.managers.combat_state import combatant_by_id, resolve_creature_controller
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from utils.capture.live_provider_call import LiveProviderSuperseded
 from utils.character_sheet_contract import extract_json_object
 
 
@@ -451,15 +452,20 @@ def request_intent_batch(
         {"role": "system", "content": _intent_system_prompt()},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
-    response = capture_and_fanout(
-        "T096",
-        api_client.create_completion,
-        _request_provider=provider,
-        messages=messages,
-        model=call_config.pop("model"),
-        temperature=0.2,
-        **call_config,
-    )
+    try:
+        response = capture_and_fanout(
+            "T096",
+            api_client.create_completion,
+            _request_provider=provider,
+            messages=messages,
+            model=call_config.pop("model"),
+            temperature=0.2,
+            **call_config,
+        )
+    except LiveProviderSuperseded as exc:
+        from core.combat.invocation import InvocationSupersededError
+
+        raise InvocationSupersededError("Combat intent request was superseded") from exc
     result = _parse_object(response.choices[0].message.content, "T096")
     returned_version = result.get("stateVersion")
     if isinstance(returned_version, str) and returned_version.strip().isdigit():

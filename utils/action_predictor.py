@@ -43,6 +43,8 @@ import traceback
 import config
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from utils.capture.live_provider_call import LiveProviderSuperseded
+from core.combat.invocation import InvocationSupersededError
 register_callsite("T082", "utils/action_predictor.py", 167)
 
 # Action prediction system prompt (condensed from full system analysis)
@@ -209,6 +211,8 @@ def predict_actions_required(user_input):
             "confidence": "high" if len(reason) > 10 else "low"
         }
         
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
     except Exception as e:
         # HIGH-7: print the FULL traceback (not just str(e)) so a persistent
         # predictor failure -- which silently routes every turn to the full
