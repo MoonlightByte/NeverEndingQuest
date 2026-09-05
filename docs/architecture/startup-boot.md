@@ -38,6 +38,9 @@ Startup repair delta verified on 2026-09-05 against the `fix/issue-114-startup-r
 13. Finalization checkpoints `approved`, writes and reads back the sheet, checkpoints `character_saved`, resolves T093 against installed module data, writes/reads the tracker, then checkpoints `ready`. The caller verifies readiness before archiving the interview or announcing success.
 14. Headless installs its shims before starting the engine thread and converts startup markers, output, and prompts into NDJSON events.
 15. Module choices come from the public installed catalog, never fixed adventure names. If a selected module disappears, choosing its replacement retains approved character identity, clears the former location, and re-enters the shared commit/read-back path.
+16. A retained code-authored interview task record resumes that interview directly,
+    not the initial character menu. Catalog presentation has a separate T092 request
+    context without interview wire instructions; its output appends to the same history.
 
 ## State and atomicity
 
@@ -57,10 +60,10 @@ Startup repair delta verified on 2026-09-05 against the `fix/issue-114-startup-r
 
 1. `main.py:9172-9295` - terminal wrapper and shared-loop handoff.
 2. `main.py:7007-7057` - shared hydration, memory check, and startup attempt.
-3. `utils/startup_wizard.py:173` - orchestration, approved-checkpoint resume, and verified handoff.
-4. `utils/startup_wizard.py:440` - dynamic module choice and missing-module continuity.
-5. `utils/startup_wizard.py:684` - independent semantic review, followed by the author/review interview loop.
-6. `utils/startup_wizard.py:1624` - approved-build commit and per-file read-back.
+3. `utils/startup_wizard.py:174` - orchestration, checkpoint/interview resume, and verified handoff.
+4. `utils/startup_wizard.py:392` and `:460` - isolated menu requests, dynamic module choice and missing-module continuity.
+5. `utils/startup_wizard.py:714` - independent semantic review, followed by the author/review interview loop.
+6. `utils/startup_wizard.py:1654` - approved-build commit and per-file read-back.
 7. `utils/startup_contract.py:1` and `utils/startup_prompt_builder.py:19` - narrow response/checkpoint contract and agent instructions.
 8. `utils/startup_handoff_state.py:112-159` - handoff-state loading and wizard status.
 9. `utils/startup_handoff_state.py:212-350` - welcome claim and completion lifecycle.

@@ -189,7 +189,9 @@ def run_startup_sequence():
                                       live_scope=scope, preserve_existing=True)
             character = progress["candidate"]
         else:
-            name = select_or_create_character(conversation, module)
+            name = (create_new_character(conversation, module)
+                    if _startup_interview_started(conversation)
+                    else select_or_create_character(conversation, module))
             if not name:
                 return False
             character = safe_json_load(ModulePathManager(module["name"]).get_character_unified_path(name))
@@ -387,6 +389,28 @@ def _scan_available_modules_locked():
     status_ready()
     return modules
 
+def _present_startup_menu(conversation, prompt, *, phase="startup_interview"):
+    """Keep catalog presentation separate from retained interview instructions."""
+    request = [
+        {"role": "system", "content": (
+            "Present only the supplied startup menu in plain ASCII prose. "
+            "Preserve every supplied option and its exact number. Do not choose "
+            "for the player, create a character, or claim anything was saved. "
+            "This is menu presentation, not a character interview; do not emit JSON."
+        )},
+        {"role": "user", "content": prompt},
+    ]
+    with _startup_operation() as scope:
+        response = get_ai_response(request, persist_response=False,
+                                   live_scope=scope, startup_phase=phase)
+        conversation.extend([
+            {"role": "system", "content": prompt},
+            {"role": "assistant", "content": response},
+        ])
+        save_startup_conversation(conversation, live_scope=scope)
+        print(f"Dungeon Master: {response}")
+
+
 def present_module_options(conversation, modules):
     """Show available modules to player using AI"""
     if not modules:
@@ -413,12 +437,12 @@ def present_module_options(conversation, modules):
 Start with: "Welcome to NeverEndingQuest! This adventure game uses the SRD 5.2.1 rules (based on the world's most popular 5th edition roleplaying game) to bring you an immersive text-based fantasy experience."
 
 Then mention these key features:
-• AI-powered storytelling that adapts to your choices
-• Turn-based tactical combat with dice rolling
-• Character progression from level 1 to 20
-• Inventory management and magical items
-• Multiple adventure modules with interconnected stories
-• Save/load system to continue your adventures
+- AI-powered storytelling that adapts to your choices
+- Turn-based tactical combat with dice rolling
+- Character progression from level 1 to 20
+- Inventory management and magical items
+- Multiple adventure modules with interconnected stories
+- Save/load system to continue your adventures
 
 Available Modules:
 {modules_text}
@@ -429,11 +453,7 @@ for the player. Even a sole installed module needs the player's confirmation.
 
 Ask the player which module they'd like to play, and explain that they can just tell you the number (1, 2, etc.) or the name of the module they prefer."""
     
-    conversation.append({"role": "system", "content": ai_prompt})
-    
-    # Get AI response
-    response = get_ai_response(conversation, startup_phase="startup_module_selection")
-    print(f"Dungeon Master: {response}")
+    _present_startup_menu(conversation, ai_prompt, phase="startup_module_selection")
     
     return modules
 
@@ -548,9 +568,7 @@ def present_character_options(conversation, characters, module_name):
         # No existing characters
         ai_prompt = f"""The player has chosen a module but there are no existing player characters. Let them know they'll need to create a new character for this adventure. Be encouraging and exciting about the character creation process!"""
         
-        conversation.append({"role": "system", "content": ai_prompt})
-        response = get_ai_response(conversation)
-        print(f"Dungeon Master: {response}")
+        _present_startup_menu(conversation, ai_prompt)
         return "create_new"
     
     # Build character list
@@ -573,9 +591,7 @@ You can also mention option: "new" or "create" to make a new character.
 
 Be helpful and explain that they can type the character number, character name, or "new" to create a fresh character."""
     
-    conversation.append({"role": "system", "content": ai_prompt})
-    response = get_ai_response(conversation)
-    print(f"Dungeon Master: {response}")
+    _present_startup_menu(conversation, ai_prompt)
     
     return characters
 
@@ -658,6 +674,20 @@ def build_character_creation_system_prompt():
 def _latest_player_index(conversation):
     return next((i for i in range(len(conversation) - 1, -1, -1)
                  if conversation[i].get("role") == "user"), None)
+
+
+def _startup_interview_started(conversation):
+    """Recognize the existing code-authored task record, never approval prose."""
+    for message in conversation:
+        if message.get("role") != "system":
+            continue
+        try:
+            record = json.loads(message.get("content", ""))
+        except (ValueError, TypeError):
+            continue
+        if isinstance(record, dict) and record.get("task_purpose") == "startup_character_interview":
+            return True
+    return False
 
 
 def _startup_progress(conversation):

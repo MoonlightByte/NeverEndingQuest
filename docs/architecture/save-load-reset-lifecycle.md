@@ -74,6 +74,9 @@ Startup/locking delta verified 2026-09-05 against the `fix/issue-114-startup-rep
 4. Before a party exists, Save resolves the validated startup checkpoint's installed module.
    Startup conversation is essential snapshot state. Restore removes current unfinished
    history if absent from the selected save; compensating rollback restores its backup on failure.
+5. Reset removes that exact unfinished startup record after backup, before best-effort
+   diagnostic cleanup. Windows deletion contention waits with status; it cannot silently
+   preserve an approved build and report success. Fixed reset console labels are ASCII.
 
 ## State and atomicity
 
