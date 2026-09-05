@@ -2445,20 +2445,7 @@ class CampaignManager:
         module_name: str,
         completion_id: str,
         conversation_history: Optional[List[Dict[str, Any]]] = None,
-    ) -> Optional[Dict[str, Any]]:
-        """Drain one transition while holding the global publication order."""
-        with _party_module_transition_lock():
-            return self._complete_staged_module_completion_locked(
-                module_name,
-                completion_id,
-                conversation_history=conversation_history,
-            )
-
-    def _complete_staged_module_completion_locked(
-        self,
-        module_name: str,
-        completion_id: str,
-        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        _expected_lifecycle_epoch: Any = _LIFECYCLE_EPOCH_UNSET,
     ) -> Optional[Dict[str, Any]]:
         """Drain one durable intent; retain it until receipt-backed success."""
         module_name = _normalize_module_name(module_name)
@@ -2482,6 +2469,12 @@ class CampaignManager:
         with _party_module_transition_lock(), path_transaction_lock(
             paths["lock_target"], suffix=".completion.lock"
         ), _campaign_transaction_lock(self.campaign_file):
+            lifecycle_epoch = _load_campaign_lifecycle_epoch(self.campaign_file)
+            if (_expected_lifecycle_epoch is not _LIFECYCLE_EPOCH_UNSET
+                    and lifecycle_epoch != _expected_lifecycle_epoch):
+                raise LiveProviderSuperseded(
+                    "Campaign timeline changed before staged completion"
+                )
             intent = _load_completion_intent(
                 intent_path,
                 self.campaign_file,
@@ -2617,9 +2610,6 @@ class CampaignManager:
             _durable_write_json(intent_path, intent)
             party_snapshot = copy.deepcopy(intent["party_tracker_data"])
             intent_history = copy.deepcopy(intent["conversation_history"])
-            lifecycle_epoch = _load_campaign_lifecycle_epoch(
-                self.campaign_file
-            )
 
         result = self.complete_module(
             module_name,
@@ -2629,7 +2619,7 @@ class CampaignManager:
             _expected_lifecycle_epoch=lifecycle_epoch,
         )
 
-        with path_transaction_lock(
+        with _party_module_transition_lock(), path_transaction_lock(
             paths["lock_target"],
             suffix=".completion.lock",
         ), _campaign_transaction_lock(self.campaign_file):
@@ -2663,8 +2653,9 @@ class CampaignManager:
             "blocked": [],
             "failed": [],
         }
-        with _party_module_transition_lock():
+        with _party_module_transition_lock(), _campaign_transaction_lock(self.campaign_file):
             try:
+                lifecycle_epoch = _load_campaign_lifecycle_epoch(self.campaign_file)
                 ordered_intents = _ordered_completion_intents(
                     self.campaign_file,
                     self.summaries_dir,
@@ -2690,35 +2681,34 @@ class CampaignManager:
                 )
                 return outcome
 
-            for intent_path, intent in ordered_intents:
-                try:
-                    result = self.complete_staged_module_completion(
-                        intent["module_name"],
-                        intent["completion_id"],
-                    )
-                    if result is None:
-                        if os.path.exists(intent_path):
-                            outcome["blocked"].append(
-                                intent["completion_id"]
-                            )
-                            break
-                        outcome["cancelled"].append(intent["completion_id"])
-                    else:
-                        outcome["completed"].append(intent["completion_id"])
-                except LiveProviderSuperseded:
-                    raise
-                except Exception as exc:
-                    outcome["failed"].append(
-                        {"path": intent_path, "error": str(exc)}
-                    )
-                    error(
-                        "FAILURE: Could not drain module completion intent "
-                        f"{intent_path}",
-                        exception=exc,
-                        category="module_management",
-                    )
-                    break
-            return outcome
+        # Each entry rechecks head-of-queue and captured timeline under its
+        # prepare lock. Never keep the queue snapshot lock across generation.
+        for intent_path, intent in ordered_intents:
+            try:
+                result = self.complete_staged_module_completion(
+                    intent["module_name"],
+                    intent["completion_id"],
+                    _expected_lifecycle_epoch=lifecycle_epoch,
+                )
+                if result is None:
+                    if os.path.exists(intent_path):
+                        outcome["blocked"].append(intent["completion_id"])
+                        break
+                    outcome["cancelled"].append(intent["completion_id"])
+                else:
+                    outcome["completed"].append(intent["completion_id"])
+            except LiveProviderSuperseded:
+                raise
+            except Exception as exc:
+                outcome["failed"].append({"path": intent_path, "error": str(exc)})
+                error(
+                    "FAILURE: Could not drain module completion intent "
+                    f"{intent_path}",
+                    exception=exc,
+                    category="module_management",
+                )
+                break
+        return outcome
 
     def complete_module(
         self,
