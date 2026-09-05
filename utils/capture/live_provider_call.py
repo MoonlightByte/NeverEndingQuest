@@ -759,12 +759,32 @@ def _safe_emit(emit, message):
         pass
 
 
-def _interruptible_wait(seconds, scope, message, emit=None):
+def _check_live_authority(scope, authority_check=None):
+    """Check caller authority without acquiring a scope or filesystem lock.
+
+    The optional callback must perform a non-waiting observation: False means
+    superseded; OSError means unreadable, never evidence of supersession.
+    """
+    if scope is not None and scope.is_superseded():
+        raise LiveProviderSuperseded("live player turn superseded")
+    if authority_check is not None:
+        current = authority_check()
+        if current is False:
+            raise LiveProviderSuperseded("live request authority superseded")
+        if current is not True:
+            raise OSError("Live request authority observation is unavailable")
+
+
+def _interruptible_wait(seconds, scope, message, emit=None, authority_check=None):
     emit = emit if emit is not None else _emit_working
     deadline = time.monotonic() + max(0.0, float(seconds))
     while True:
-        if scope is not None and scope.is_superseded():
-            raise LiveProviderSuperseded("live player turn superseded")
+        try:
+            _check_live_authority(scope, authority_check)
+        except OSError:
+            # Do not infer cancellation from an unreadable authority file.
+            # The next generation cannot start until its own check succeeds.
+            pass
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return
@@ -809,6 +829,7 @@ def call_live_provider(
     policy="required",
     scope=None,
     status_emit=None,
+    authority_check=None,
 ):
     """Run one frozen selected request under its required/advisory policy.
 
@@ -818,6 +839,8 @@ def call_live_provider(
     ``status_emit`` routes liveness/heartbeat messages to a caller-owned sink
     (the non-input-locking welcome status channel) instead of the global
     input-locking status manager.
+    ``authority_check`` optionally observes the completion epoch in the parent,
+    outside locks. It is never serialized into the provider request.
     """
     if task_id not in _LIVE_TASK_IDS:
         raise ValueError("task is outside the reviewed live provider allowlist")
@@ -870,8 +893,16 @@ def call_live_provider(
         return "Still working on character setup (%d seconds elapsed)..." % elapsed
 
     while True:
-        if scope is not None and scope.is_superseded():
-            raise LiveProviderSuperseded("live player turn superseded")
+        try:
+            _check_live_authority(scope, authority_check)
+        except OSError:
+            failure_count += 1
+            _interruptible_wait(
+                _delay_for_error({}, failure_count), scope,
+                "Still working; checking the current adventure...", emit,
+                authority_check,
+            )
+            continue
         generation = (
             scope.next_generation() if scope is not None else failure_count + 1
         )
@@ -908,6 +939,7 @@ def call_live_provider(
                     "Still working; preparing a fresh provider connection..."
                 ),
                 emit,
+                authority_check,
             )
             continue
 
@@ -927,10 +959,16 @@ def call_live_provider(
         output = None
         first_communicate = True
         backstop_exhausted = False
+        authority_unavailable = False
         try:
             while generation_limit is None or time.monotonic() - started < generation_limit:
-                if scope is not None and scope.is_superseded():
+                try:
+                    _check_live_authority(scope, authority_check)
+                except LiveProviderSuperseded:
                     superseded = True
+                    break
+                except OSError:
+                    authority_unavailable = True
                     break
                 try:
                     output, _ = process.communicate(
@@ -959,7 +997,11 @@ def call_live_provider(
                 _close_process_streams(process)
         if superseded:
             raise LiveProviderSuperseded("live player turn superseded")
-        if output:
+        try:
+            _check_live_authority(scope, authority_check)
+        except OSError:
+            authority_unavailable = True
+        if output and not authority_unavailable:
             try:
                 envelope = pickle.loads(output)
             except (EOFError, pickle.PickleError, ValueError, TypeError):
@@ -1023,8 +1065,16 @@ def call_live_provider(
             and correlation_accepted
         ):
             response = _reconstruct_response(envelope)
-            if scope is not None and scope.is_superseded():
-                raise LiveProviderSuperseded("live player turn superseded")
+            try:
+                _check_live_authority(scope, authority_check)
+            except OSError:
+                failure_count += 1
+                _interruptible_wait(
+                    _delay_for_error({}, failure_count), scope,
+                    "Still working; checking the current adventure...", emit,
+                    authority_check,
+                )
+                continue
             return response
 
         failure_count += 1
@@ -1048,6 +1098,7 @@ def call_live_provider(
                 scope,
                 "",
                 emit,
+                authority_check,
             )
             continue
         if policy == "advisory":
@@ -1096,6 +1147,7 @@ def call_live_provider(
                 "Still retrying the provider connection (%s)..." % error_class
             ),
             emit,
+            authority_check,
         )
 
 
