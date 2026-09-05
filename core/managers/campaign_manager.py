@@ -2626,6 +2626,10 @@ class CampaignManager:
             paths["lock_target"],
             suffix=".completion.lock",
         ), _campaign_transaction_lock(self.campaign_file):
+            if _load_campaign_lifecycle_epoch(self.campaign_file) != lifecycle_epoch:
+                raise LiveProviderSuperseded(
+                    "Campaign timeline changed before completion intent cleanup"
+                )
             receipt = _load_completion_receipt(
                 paths,
                 module_name,
@@ -2760,7 +2764,7 @@ class CampaignManager:
                 if _load_campaign_lifecycle_epoch(
                     self.campaign_file
                 ) != expected_lifecycle_epoch:
-                    raise OSError(
+                    raise LiveProviderSuperseded(
                         "Campaign timeline changed during module completion"
                     )
                 receipt = _load_completion_receipt(
@@ -2839,6 +2843,10 @@ class CampaignManager:
             # marker then distinguishes an orphan archive from a completed
             # transaction whose final cleanup was interrupted.
             with _campaign_transaction_lock(self.campaign_file):
+                if _load_campaign_lifecycle_epoch(self.campaign_file) != expected_lifecycle_epoch:
+                    raise LiveProviderSuperseded(
+                        "Campaign timeline changed before completion recovery"
+                    )
                 recovery = _recover_campaign_completion_transaction_locked(
                     self.campaign_file,
                     self.summaries_dir,
@@ -2847,13 +2855,13 @@ class CampaignManager:
                 persisted_campaign = _load_json_dict(self.campaign_file)
                 if persisted_campaign is not None:
                     self.campaign_data = persisted_campaign
-            work_recovery = _recover_module_work_locked(
-                paths,
-                module_name,
-                self.archives_dir,
-                self.campaign_file,
-                resume_completion_id=completion_id,
-            )
+                work_recovery = _recover_module_work_locked(
+                    paths,
+                    module_name,
+                    self.archives_dir,
+                    self.campaign_file,
+                    resume_completion_id=completion_id,
+                )
 
             # Receipt replay and legacy-overlap reuse are completion fast
             # paths, but they still cross the restore/reset lifecycle
@@ -2863,7 +2871,7 @@ class CampaignManager:
                 if _load_campaign_lifecycle_epoch(
                     self.campaign_file
                 ) != expected_lifecycle_epoch:
-                    raise OSError(
+                    raise LiveProviderSuperseded(
                         "Campaign timeline changed during module completion"
                     )
                 receipt = _load_completion_receipt(
@@ -2978,7 +2986,7 @@ class CampaignManager:
                         self.campaign_file
                     )
                     if current_lifecycle_epoch != expected_lifecycle_epoch:
-                        raise OSError(
+                        raise LiveProviderSuperseded(
                             "Campaign timeline changed before module completion began"
                         )
                     _durable_write_json(paths["work"], work)
@@ -3034,7 +3042,7 @@ class CampaignManager:
                     if _load_campaign_lifecycle_epoch(
                         self.campaign_file
                     ) != expected_lifecycle_epoch:
-                        raise OSError(
+                        raise LiveProviderSuperseded(
                             "Campaign timeline changed during module completion"
                         )
                     _recover_campaign_completion_transaction_locked(
@@ -3734,12 +3742,12 @@ Focus on story outcomes, character development, and decisions that will matter i
                     expected_lifecycle_epoch = _load_campaign_lifecycle_epoch(
                         campaign_file
                     )
-                _recover_module_work_locked(
-                    paths,
-                    module_name,
-                    self.archives_dir,
-                    campaign_file,
-                )
+                    _recover_module_work_locked(
+                        paths,
+                        module_name,
+                        self.archives_dir,
+                        campaign_file,
+                    )
                 return self._regenerate_failed_summary_locked(
                     module_name,
                     expected_lifecycle_epoch=expected_lifecycle_epoch,
@@ -3887,11 +3895,9 @@ Focus on story outcomes, character development, and decisions that will matter i
                         and _load_campaign_lifecycle_epoch(campaign_file)
                         != expected_lifecycle_epoch
                     ):
-                        warning(
+                        raise LiveProviderSuperseded(
                             "Campaign timeline changed during summary regeneration",
-                            category="summary_building",
                         )
-                        return False
                     latest = safe_json_load(summary_file)
                     if not isinstance(latest, dict):
                         return False
