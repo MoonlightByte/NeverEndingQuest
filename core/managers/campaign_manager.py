@@ -307,6 +307,23 @@ def _completion_work_ownership(work: Dict[str, Any]) -> Optional[Dict[str, Any]]
     return ownership
 
 
+def _completion_owner_state(producer: Dict[str, Any]) -> str:
+    """Use attempt liveness only inside the verified current native process."""
+    state = _completion_producer_state(producer)
+    if state != "live" or producer.get("pid") != os.getpid():
+        return state
+    attempt_id = producer.get("attempt_id")
+    if not isinstance(attempt_id, str) or not attempt_id:
+        return "unknown"
+    # Registration precedes work publication; removal follows the producer's
+    # finally (including child reap). Another process's registry is unknowable.
+    with _MODULE_COMPLETION_FLIGHTS_GUARD:
+        return "live" if any(
+            flight["attempt_id"] == attempt_id
+            for flight in _MODULE_COMPLETION_FLIGHTS.values()
+        ) else "dead"
+
+
 def _completion_work_matches(work: Any, expected: Dict[str, Any]) -> bool:
     """Compare logical work AND exact attempt; status/checkpoints may advance."""
     if not isinstance(work, dict):
@@ -1229,7 +1246,7 @@ def _recover_module_work_locked(
         if ownership["epoch"] != _load_campaign_lifecycle_epoch(campaign_file):
             raise LiveProviderSuperseded("Completion recovery belongs to an old timeline")
         producer = ownership["producer"]
-        if producer is not None and _completion_producer_state(producer) != "dead":
+        if producer is not None and _completion_owner_state(producer) != "dead":
             # A short acquired lock is not proof of producer death. Unknown
             # native identity is deliberately no more reclaimable than live.
             raise _ModuleCompletionOwnerActive()
@@ -2754,13 +2771,14 @@ class CampaignManager:
             history_snapshot = copy.deepcopy(conversation_history)
             plot_snapshot = copy.deepcopy(self._load_module_plot_data(module_name))
         with _MODULE_COMPLETION_FLIGHTS_GUARD:
-            completion = _MODULE_COMPLETION_FLIGHTS.get(key)
-            if completion is None:
-                completion = Future()
-                _MODULE_COMPLETION_FLIGHTS[key] = completion
+            flight = _MODULE_COMPLETION_FLIGHTS.get(key)
+            if flight is None:
+                flight = {"future": Future(), "attempt_id": uuid4().hex}
+                _MODULE_COMPLETION_FLIGHTS[key] = flight
                 is_leader = True
             else:
                 is_leader = False
+            completion = flight["future"]
 
         if not is_leader:
             result = copy.deepcopy(completion.result())
@@ -2821,7 +2839,7 @@ class CampaignManager:
             return result
         finally:
             with _MODULE_COMPLETION_FLIGHTS_GUARD:
-                if _MODULE_COMPLETION_FLIGHTS.get(key) is completion:
+                if _MODULE_COMPLETION_FLIGHTS.get(key) is flight:
                     del _MODULE_COMPLETION_FLIGHTS[key]
 
     def _complete_module_once(
