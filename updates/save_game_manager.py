@@ -61,6 +61,7 @@ Handles save and restore functionality for game state preservation.
 
 import json
 import hashlib
+import ntpath
 import os
 import shutil
 import zipfile
@@ -426,6 +427,64 @@ class SaveGameManager:
         
         return f"modules/{self.current_module}/saved_games"
 
+    def _resolve_save_target(
+        self, target: str, *, allow_missing: bool = False, receipt_path: bool = False
+    ) -> str:
+        """Resolve an owned save artifact, including native junction identity.
+
+        Task 8: lexical containment alone did not protect direct deletes or
+        persisted delete receipts. Missing targets are legal only for creation
+        and replay of that receipt's completed rename/removal.
+        """
+        if not isinstance(target, str) or not target or "\0" in target:
+            raise ValueError("Choose an existing save from the save list")
+        if not receipt_path and (
+            ntpath.splitdrive(target)[0]
+            or target in (".", "..")
+            or "/" in target
+            or "\\" in target
+        ):
+            raise ValueError("Choose an existing save from the save list")
+        if receipt_path and not os.path.isabs(target):
+            raise ValueError("The delete receipt does not identify an owned save")
+
+        def resolve_identity(path):
+            # Resolve existing ancestors strictly: access/sharing failures must
+            # not be mistaken for a proven absent resource or a safe link.
+            missing = []
+            while True:
+                try:
+                    identity = os.path.realpath(path, strict=True)
+                    return os.path.join(identity, *reversed(missing))
+                except FileNotFoundError:
+                    parent, name = os.path.split(path)
+                    if parent == path or not name or os.path.lexists(path):
+                        raise
+                    missing.append(name)
+                    path = parent
+
+        root = os.path.abspath(self.get_save_directory())
+        candidate = os.path.abspath(
+            target if receipt_path else os.path.join(root, target)
+        )
+        if os.path.commonpath(
+            [os.path.normcase(root), os.path.normcase(candidate)]
+        ) != os.path.normcase(root):
+            raise ValueError("Choose an existing save from the save list")
+        root_identity = os.path.normcase(resolve_identity(root))
+        identity = os.path.normcase(resolve_identity(candidate))
+        if (
+            identity == root_identity
+            or os.path.commonpath([root_identity, identity]) != root_identity
+        ):
+            raise ValueError("Choose an existing save from the save list")
+        if os.path.lexists(candidate):
+            if not os.path.isdir(candidate):
+                raise ValueError("The referenced save is not a directory")
+        elif not allow_missing:
+            raise ValueError("The referenced save does not exist")
+        return candidate
+
     # Private NPC state files fingerprinted in the save manifest (never by contents).
     _MANIFEST_STATE_PATHS = (
         "data/companion_memories/npc_agent_state.json",
@@ -664,18 +723,15 @@ class SaveGameManager:
         """
         try:
             # Generate timestamp for save directory
-            save_dir = self.get_save_directory()
             if save_folder is None:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 save_folder = f"save_{timestamp}"
             if (
                 not isinstance(save_folder, str)
                 or not save_folder.startswith("save_")
-                or os.path.basename(save_folder) != save_folder
-                or any(separator in save_folder for separator in ("/", "\\"))
             ):
                 return False, "Invalid staged save folder"
-            save_path = os.path.join(save_dir, save_folder)
+            save_path = self._resolve_save_target(save_folder, allow_missing=True)
             metadata_path = f"{save_path}/save_metadata.json"
             if os.path.isdir(save_path):
                 existing = safe_read_json(metadata_path)
@@ -706,7 +762,7 @@ class SaveGameManager:
             # Walk through all files in the current directory
             for root, dirs, files in os.walk("."):
                 # Skip the save directory itself
-                if save_path in root:
+                if os.path.commonpath([save_path, os.path.abspath(root)]) == save_path:
                     continue
                 
                 # Skip any saved_games directories to prevent recursive nesting
@@ -791,8 +847,11 @@ class SaveGameManager:
         
         try:
             for item in os.listdir(save_dir):
-                item_path = os.path.join(save_dir, item)
-                if os.path.isdir(item_path) and item.startswith("save_"):
+                try:
+                    item_path = self._resolve_save_target(item)
+                except (ValueError, FileNotFoundError):
+                    continue
+                if item.startswith("save_"):
                     metadata_path = os.path.join(item_path, "save_metadata.json")
                     if os.path.exists(metadata_path):
                         metadata = safe_read_json(metadata_path)
@@ -886,9 +945,10 @@ class SaveGameManager:
         include_manifest: bool = True,
     ) -> Tuple[bool, str]:
         """Validate one exact restore target without changing campaign state."""
-        save_path = os.path.join(self.get_save_directory(), save_folder)
-        if not os.path.isdir(save_path):
-            return False, f"Save game not found: {save_path}"
+        try:
+            save_path = self._resolve_save_target(save_folder)
+        except (ValueError, FileNotFoundError) as exc:
+            return False, str(exc)
         metadata = safe_read_json(os.path.join(save_path, "save_metadata.json"))
         if not metadata:
             return False, "Could not read save game metadata"
@@ -918,8 +978,7 @@ class SaveGameManager:
         backup_complete = False
         restore_mutation_started = False
         try:
-            save_dir = self.get_save_directory()
-            save_path = f"{save_dir}/{save_folder}"
+            save_path = self._resolve_save_target(save_folder)
             
             valid, validation_error = self.validate_restore_target(
                 save_folder,
@@ -1123,13 +1182,11 @@ class SaveGameManager:
     def delete_save_game(self, save_folder: str) -> Tuple[bool, str]:
         """Delete a save game"""
         try:
-            save_dir = self.get_save_directory()
-            save_path = f"{save_dir}/{save_folder}"
-            
-            if not os.path.exists(save_path):
-                return False, f"Save game not found: {save_path}"
-            
-            shutil.rmtree(save_path)
+            from core.managers.campaign_manager import _party_module_transition_lock
+
+            with _party_module_transition_lock():
+                save_path = self._resolve_save_target(save_folder)
+                shutil.rmtree(save_path)
             info(f"SUCCESS: Deleted save game: {save_path}", category="save_game")
             return True, f"Save game deleted: {save_folder}"
             
@@ -1142,18 +1199,9 @@ class SaveGameManager:
         self, save_folder: str, operation_id: str
     ) -> Dict[str, Any]:
         """Freeze one validated save target for a v2 deferred delete."""
-        if (
-            not isinstance(save_folder, str)
-            or os.path.basename(save_folder) != save_folder
-            or any(separator in save_folder for separator in ("/", "\\"))
-        ):
-            raise ValueError("Invalid save folder")
-        save_dir = os.path.abspath(self.get_save_directory())
-        target = os.path.abspath(os.path.join(save_dir, save_folder))
-        if os.path.commonpath([save_dir, target]) != save_dir or not os.path.isdir(target):
-            raise ValueError("The referenced save does not exist")
-        quarantine = os.path.join(
-            save_dir, ".delete-%s-%s" % (operation_id, save_folder)
+        target = self._resolve_save_target(save_folder)
+        quarantine = self._resolve_save_target(
+            ".delete-%s-%s" % (operation_id, save_folder), allow_missing=True
         )
         if os.path.exists(quarantine):
             raise ValueError("A delete quarantine already exists for this operation")
@@ -1166,17 +1214,35 @@ class SaveGameManager:
 
     def apply_staged_delete(self, receipt: Dict[str, Any]) -> str:
         """Rename then remove only the exact pre-staged save directory."""
-        target = receipt["target"]
-        quarantine = receipt["quarantine"]
-        target_exists = os.path.isdir(target)
-        quarantine_exists = os.path.isdir(quarantine)
-        if target_exists and quarantine_exists:
-            return "blocked_conflict"
-        if target_exists:
-            os.replace(target, quarantine)
-            quarantine_exists = True
-        if quarantine_exists:
-            shutil.rmtree(quarantine)
+        from core.managers.campaign_manager import _party_module_transition_lock
+
+        with _party_module_transition_lock():
+            target = self._resolve_save_target(
+                receipt["target"], allow_missing=True, receipt_path=True
+            )
+            quarantine = self._resolve_save_target(
+                receipt["quarantine"], allow_missing=True, receipt_path=True
+            )
+            expected = self._resolve_save_target(
+                receipt["save_folder"], allow_missing=True
+            )
+            if (
+                os.path.normcase(target) != os.path.normcase(expected)
+                or os.path.normcase(os.path.dirname(quarantine))
+                != os.path.normcase(os.path.dirname(target))
+                or not os.path.basename(quarantine).startswith(".delete-")
+                or not os.path.basename(quarantine).endswith("-" + receipt["save_folder"])
+            ):
+                raise ValueError("The delete receipt does not identify its staged save")
+            target_exists = os.path.isdir(target)
+            quarantine_exists = os.path.isdir(quarantine)
+            if target_exists and quarantine_exists:
+                return "blocked_conflict"
+            if target_exists:
+                os.replace(target, quarantine)
+                quarantine_exists = True
+            if quarantine_exists:
+                shutil.rmtree(quarantine)
         return "committed"
 
 # Example usage and testing
