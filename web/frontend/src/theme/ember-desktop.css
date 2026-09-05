@@ -232,3 +232,13 @@
 @media (prefers-reduced-motion: reduce) {
   .ember-desktop *, .ember-desktop *::before, .ember-desktop *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Compatibility repair below the Ember breakpoint: the legacy desktop rules
+   force one unbroken header row and clip the last sheet tabs at tablet widths.
+   Keep the existing layout and phone styles; make its controls reachable. */
+@media (min-width: 761px) and (max-width: 1023px) {
+  .neq-app-grid:not(.ember-desktop) .neq-header-actions { flex-wrap: wrap; max-width: 100%; }
+  .neq-app-grid:not(.ember-desktop) .neq-tabs { overflow-x: auto; }
+  .neq-app-grid:not(.ember-desktop) .neq-tab-button { flex-shrink: 0; }
+  .neq-app-grid:not(.ember-desktop) .neq-game-panel-header { overflow-x: auto; }
+}

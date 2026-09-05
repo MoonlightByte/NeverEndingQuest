@@ -212,3 +212,27 @@ fixture replaces the earlier missing-artwork captures for main-screen review.
 Public main was fetched again at `5fe14683f2c2edfae447249c44e10b501b8c074c`;
 `git rev-list --count HEAD..FETCH_HEAD` reports zero missing upstream commits.
 No public main integration or push has occurred.
+
+## Responsive boundary repair — 2026-09-05
+
+New browser checks exercise typed turns at 360×800, 390×844, 844×390,
+760×800, 761×800, 1023×768 and 1024×768, plus resizing across the Ember
+breakpoint while preserving an unsent draft and selected inventory panel.
+The first run exposed page overflow at 761px: the inherited desktop CSS forced
+an unbroken header-action row. Source inspection confirmed that rule exists in
+the public-main baseline. The last sheet tabs were also clipped.
+
+Scoped compatibility CSS at 761–1023px permits header wrapping and horizontal
+scrolling of the sheet tabs and game-panel header. Existing phone rules and the
+approved Ember desktop composition are unaffected. Personally inspected the
+repaired 761px render with the Map tab keyboard-focused. The tablet still uses
+the existing public layout, not a newly approved Ember tablet design. These
+checks do not substitute for the outstanding full mobile, zoom, touch, assistive
+technology and all-screen accessibility gates.
+
+Verification: all eight responsive tests pass, including keyboard access to Map,
+D4 roll and Clear at intermediate widths. The seven existing Ember shell checks
+pass; all six populated visual checks pass without changing their goldens after
+the header/tab repair. Build and lint succeed (11 inherited lint warnings).
+Also personally inspected the final 761px dice-focused capture: the quick-roll
+row scrolls to D4 within the panel instead of clipping the focused control.
