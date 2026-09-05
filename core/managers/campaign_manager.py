@@ -1003,16 +1003,20 @@ def _completion_targets_match(pending: Dict[str, Any], after: bool) -> bool:
     return True
 
 
-def _finish_completion_marker_cleanup(
+def _read_completion_work_for_pending(
     pending: Dict[str, Any], expected_work: Optional[Dict[str, Any]] = None,
-) -> None:
+) -> Optional[Dict[str, Any]]:
+    """Require the same work before pending replay, marking or cleanup writes."""
     work_path = pending.get("work_path")
     if isinstance(work_path, str) and work_path:
         work = _load_json_dict(work_path)
         if work is None:
             if os.path.exists(work_path):
                 raise OSError("Unreadable completion work during cleanup")
-            return  # Its own already-removed marker is an idempotent terminal.
+            return None  # Its own already-removed marker is idempotent.
+        if (work.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION
+                or work.get("operation") not in {"completion", "regeneration"}):
+            raise OSError("Invalid completion work during pending operation")
         expected = expected_work if expected_work is not None else pending
         if any(expected.get(key) != pending.get(key) for key in (
             "version", "transaction_id", "module_name", "completion_id",
@@ -1025,33 +1029,30 @@ def _finish_completion_marker_cleanup(
             pending["campaign_path"]
         ):
             raise LiveProviderSuperseded("Completion cleanup belongs to an old timeline")
-        _durable_remove(work_path)
+        return work
+    return None
 
 
-def _mark_completion_work_committed(pending: Dict[str, Any]) -> None:
+def _finish_completion_marker_cleanup(
+    pending: Dict[str, Any], expected_work: Optional[Dict[str, Any]] = None,
+) -> None:
+    if _read_completion_work_for_pending(pending, expected_work) is not None:
+        _durable_remove(pending["work_path"])
+
+
+def _mark_completion_work_committed(
+    pending: Dict[str, Any], expected_work: Optional[Dict[str, Any]] = None,
+) -> None:
     """Publish a durable outcome before removing transaction markers."""
-    work_path = pending.get("work_path")
-    if not isinstance(work_path, str) or not work_path:
-        return
-    work = _load_json_dict(work_path)
+    work = _read_completion_work_for_pending(pending, expected_work)
     if work is None:
-        if os.path.exists(work_path):
-            raise OSError(f"Unreadable module-completion work marker {work_path}")
         return
-    if (
-        work.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION
-        or work.get("operation") != "completion"
-        or work.get("transaction_id") != pending.get("transaction_id")
-        or work.get("module_name") != pending.get("module_name")
-        or work.get("completion_id") != pending.get("completion_id")
-    ):
-        raise OSError("Module-completion work marker conflicts with commit")
     work["status"] = "committed"
     work["summary_fingerprint"] = _json_fingerprint(
         pending["summary_after"]
     )
     work["committed_at"] = datetime.now().isoformat()
-    _durable_write_json(work_path, work)
+    _durable_write_json(pending["work_path"], work)
 
 
 def _recover_campaign_completion_transaction_locked(
@@ -1076,6 +1077,13 @@ def _recover_campaign_completion_transaction_locked(
         summaries_dir,
         archives_dir,
     )
+    # Recovery has canonical pending authority under the campaign lock. Freeze
+    # its matching work identity before touching any projection; keep that exact
+    # expectation through marking and cleanup, not a fresh winner at each seam.
+    expected_work = (
+        _load_json_dict(pending["work_path"]) if pending.get("work_path") else None
+    )
+    _read_completion_work_for_pending(pending, expected_work)
     if not _completion_targets_are_known(pending):
         raise OSError(
             "Campaign-completion recovery found an unjournaled target state"
@@ -1089,7 +1097,7 @@ def _recover_campaign_completion_transaction_locked(
             )
         if not _completion_targets_match(pending, after=True):
             raise OSError("Campaign-completion roll-forward verification failed")
-        _mark_completion_work_committed(pending)
+        _mark_completion_work_committed(pending, expected_work)
         recovered_status = "rolled_forward"
     else:
         for prefix, path_field in _completion_target_specs(pending):
@@ -1114,13 +1122,13 @@ def _recover_campaign_completion_transaction_locked(
         # process dies after deleting the archive but before deleting work,
         # the retained pending marker makes the absent archive an explicitly
         # recoverable state instead of an unprovable orphan.
-        _finish_completion_marker_cleanup(pending)
+        _finish_completion_marker_cleanup(pending, expected_work)
         _durable_remove(pending_path)
     else:
         # A rolled-forward committed work marker is independently verifiable,
         # so the legacy pending-then-work cleanup window is safe here.
         _durable_remove(pending_path)
-        _finish_completion_marker_cleanup(pending)
+        _finish_completion_marker_cleanup(pending, expected_work)
     return {
         "status": recovered_status,
         "operation": pending.get("operation"),
@@ -3071,14 +3079,10 @@ class CampaignManager:
         work_path: Optional[str] = None,
         completion_id: Optional[str] = None,
         operation: str = "completion",
+        expected_work: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Crash-recoverably commit summary and campaign projection."""
         module_name = _normalize_module_name(module_name)
-        _recover_campaign_completion_transaction_locked(
-            self.campaign_file,
-            self.summaries_dir,
-            self.archives_dir,
-        )
         paths = _module_completion_paths(
             self.campaign_file,
             self.summaries_dir,
@@ -3093,6 +3097,22 @@ class CampaignManager:
             raise ValueError(f"Unsupported campaign completion operation {operation}")
         if completion_id is not None and operation != "completion":
             raise ValueError("Only completions may publish completion receipts")
+        authority = {
+            "version": _CAMPAIGN_COMPLETION_TRANSACTION_VERSION,
+            "operation": operation,
+            "transaction_id": transaction_id,
+            "module_name": module_name,
+            "completion_id": completion_id,
+            "campaign_path": campaign_file,
+            "work_path": work_path,
+        }
+        if work_path and _read_completion_work_for_pending(authority, expected_work) is None:
+            raise LiveProviderSuperseded("Completion commit no longer has its work record")
+        _recover_campaign_completion_transaction_locked(
+            self.campaign_file,
+            self.summaries_dir,
+            self.archives_dir,
+        )
         if operation == "completion":
             _validate_module_archive(
                 archive_path,
@@ -3170,18 +3190,12 @@ class CampaignManager:
                 "committed_at": datetime.now().isoformat(),
             }
         pending = {
-            "version": _CAMPAIGN_COMPLETION_TRANSACTION_VERSION,
+            **authority,
             "status": "staged",
-            "operation": operation,
-            "transaction_id": transaction_id,
-            "module_name": module_name,
-            "completion_id": completion_id,
             "summary_path": summary_file,
-            "campaign_path": campaign_file,
             "archive_path": archive_path,
             "archive_fingerprint": archive_fingerprint,
             "archives_dir": os.path.abspath(os.path.normpath(self.archives_dir)),
-            "work_path": work_path,
             "receipt_path": receipt_path,
             "summary_existed": summary_existed,
             "campaign_existed": campaign_existed,
@@ -3193,6 +3207,9 @@ class CampaignManager:
             "campaign_after": copy.deepcopy(updated_campaign),
             "receipt_after": receipt_after,
         }
+        current_work = _read_completion_work_for_pending(pending, expected_work)
+        if work_path and current_work is None:
+            raise LiveProviderSuperseded("Completion commit no longer has its work record")
         _durable_write_json(pending_path, pending)
         try:
             for prefix, path_field in _completion_target_specs(pending):
@@ -3247,7 +3264,9 @@ class CampaignManager:
                     module_name,
                     transaction_id,
                 )
-                _finish_completion_marker_cleanup(pending)
+                _finish_completion_marker_cleanup(pending, expected_work)
+            except LiveProviderSuperseded:
+                raise
             except Exception as cleanup_exc:
                 pending["rollback_errors"] = [
                     f"transaction cleanup: {cleanup_exc}"
@@ -3290,8 +3309,10 @@ class CampaignManager:
 
         work_marked = False
         try:
-            _mark_completion_work_committed(pending)
+            _mark_completion_work_committed(pending, expected_work)
             work_marked = True
+        except LiveProviderSuperseded:
+            raise
         except Exception as cleanup_exc:
             warning(
                 "FILE_OP: Campaign completion committed but outcome-marker "
