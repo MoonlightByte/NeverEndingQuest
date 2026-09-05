@@ -6605,6 +6605,14 @@
         }
         
         socket.on('player_data_response', (response) => {
+            // Benign empty state (no character yet): show the server's notice
+            // in place of the generic 'no data' copy so it does not read as a bug.
+            if (response.notice && response.data == null) {
+                const tab = response.dataType === 'stats' ? document.getElementById('stats-tab')
+                    : response.dataType === 'inventory' ? document.getElementById('inventory-tab')
+                    : response.dataType === 'spells' ? document.getElementById('spells-content') : null;
+                if (tab) { tab.innerHTML = '<div class="loading">' + response.notice + '</div>'; return; }
+            }
             if (response.dataType === 'inventory') {
                 const activeTab = document.querySelector('.tab-button.active')?.textContent.toLowerCase();
                 if (activeTab === 'spells & magic') {

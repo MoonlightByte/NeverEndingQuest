@@ -26,6 +26,8 @@ export interface PlayerState {
   /** Full NPC character files; never substitute party/location summaries. */
   npcs: Array<Record<string, unknown>>
   dataErrors: Partial<Record<PlayerDataType, string>>
+  /** Benign empty-state notices (no character yet); rendered neutral, not red. */
+  dataNotices: Partial<Record<PlayerDataType, string>>
   revisions: Record<PlayerDataType, number>
   /** NPC detail modal payloads (npc_details_response / npc_inventory_response). */
   npcDetails: NpcDetails | null
@@ -47,6 +49,7 @@ export const usePlayer = create<PlayerState>((set) => ({
   spells: null,
   npcs: [],
   dataErrors: {},
+  dataNotices: {},
   revisions: { stats: -1, inventory: -1, spells: -1, npcs: -1 },
   npcDetails: null,
   npcInventory: null,
@@ -69,13 +72,21 @@ export const usePlayer = create<PlayerState>((set) => ({
       if (payload.server_instance_id && s.serverInstanceId && payload.server_instance_id !== s.serverInstanceId) return {}
       if (payload.revision !== undefined && payload.revision < s.revisions[payload.dataType]) return {}
       const dataErrors = { ...s.dataErrors }
+      const dataNotices = { ...s.dataNotices }
       const revisions = { ...s.revisions, [payload.dataType]: payload.revision ?? s.revisions[payload.dataType] }
-      const common = { serverInstanceId: payload.server_instance_id ?? s.serverInstanceId, dataErrors, revisions }
+      const common = { serverInstanceId: payload.server_instance_id ?? s.serverInstanceId, dataErrors, dataNotices, revisions }
       if (payload.error) {
         dataErrors[payload.dataType] = payload.error
+        delete dataNotices[payload.dataType]
         return common
       }
       delete dataErrors[payload.dataType]
+      const notice = 'notice' in payload ? payload.notice : undefined
+      if (notice && payload.data === null && payload.dataType !== 'npcs') {
+        dataNotices[payload.dataType] = notice
+        return { [payload.dataType]: null, ...common }
+      }
+      delete dataNotices[payload.dataType]
       if (payload.dataType === 'stats') return { stats: payload.data, ...common }
       if (payload.dataType === 'inventory') return { inventory: payload.data, ...common }
       if (payload.dataType === 'spells') return { spells: payload.data, ...common }

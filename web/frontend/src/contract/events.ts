@@ -45,6 +45,8 @@ export type PlayerDataResponse =
       dataType: 'stats' | 'inventory' | 'spells';
       data: Record<string, unknown> | null;
       error?: string;
+      /** Benign empty state (no character created yet); never an error. */
+      notice?: string;
       request_id?: string;
       revision?: number;
       server_instance_id?: string;

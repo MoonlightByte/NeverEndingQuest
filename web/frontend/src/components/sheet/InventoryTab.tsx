@@ -25,6 +25,7 @@ const SORT_OPTIONS: ReadonlyArray<{ value: InventorySort; label: string }> = [
 export function InventoryTab() {
   const inventory = usePlayer((s) => s.inventory)
   const error = usePlayer((s) => s.dataErrors.inventory)
+  const notice = usePlayer((s) => s.dataNotices.inventory)
   const [sort, setSort] = useState<InventorySort>('name-asc')
   const [sortTouched, setSortTouched] = useState(false)
   const [query, setQuery] = useState('')
@@ -47,6 +48,9 @@ export function InventoryTab() {
 
   if (error) {
     return <p className="p-4 font-body text-sm text-red-400">{error}</p>
+  }
+  if (notice) {
+    return <p className="p-4 font-body text-sm text-secondary">{notice}</p>
   }
   if (!inventory) {
     return <p className="p-4 font-body text-sm text-secondary">Loading inventory...</p>

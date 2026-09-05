@@ -1581,7 +1581,8 @@ def check_existing_images():
         if not pack_name or not monster_ids:
             return jsonify({'success': False, 'error': 'Missing pack_name or monster_ids'})
         
-        # Check which files exist
+        # Check which files exist (issue #289: Path was never imported here)
+        from pathlib import Path
         pack_dir = Path(f"graphic_packs/{pack_name}/monsters")
         existing = []
         
@@ -3203,7 +3204,13 @@ def handle_player_data_request(data=None):
         
         payload = {'dataType': dataType, 'data': response_data}
         if dataType in ('stats', 'inventory', 'spells') and response_data is None:
-            payload['error'] = 'Player data not found'
+            if not party_tracker.get('partyMembers'):
+                # Expected state, not a defect: fresh install, post-reset, or
+                # character creation still in progress. The sheet fills in
+                # once the first party member is written.
+                payload['notice'] = 'No character yet. Your hero appears here once character creation finishes.'
+            else:
+                payload['error'] = 'Player data not found'
         emit('player_data_response', _ui_response(data, payload))
     
     except Exception as e:
