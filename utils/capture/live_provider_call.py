@@ -29,14 +29,22 @@ _REQUIRED_TASK_IDS = frozenset(
         "T016",
         "T021",
         "T035",
+        "T040",
+        "T041",
+        "T042",
+        "T043",
+        "T044",
         "T049",
         "T065",
         "T067",
         "T077",
         "T078",
         "T079",
+        "T082",
         "T092",
         "T093",
+        "T096",
+        "T097",
     }
 )
 _ADVISORY_TASK_IDS = frozenset(
@@ -93,11 +101,10 @@ class LiveProviderUnavailable(RuntimeError):
 class LiveProviderCompletedError(RuntimeError):
     """A completed provider error handed back to the caller (#240).
 
-    Raised for a deterministic error on the first attempt and for a retryable
-    one once _NON_WIZARD_MAX_FAILURES attempts have not healed it. The caller
-    (the T067 turn loop) classifies it and tells the player; the child never
-    reissues a completed error forever again. http_status is exposed so the
-    caller's classifier can read it like any provider exception.
+    Deterministic errors return to the existing caller immediately; required
+    transport failures reissue until recovery or supersession. The existing
+    T093 completed-empty policy is unchanged. http_status remains available
+    to the caller's classifier.
     """
 
     def __init__(self, task_id, envelope=None):
@@ -700,11 +707,6 @@ def _interruptible_wait(seconds, scope, message, emit=None):
         time.sleep(min(_HEARTBEAT_SECONDS, remaining))
 
 
-# Non-wizard reissue budget per call: after this many failed attempts the
-# child hands the completed error to the caller instead of looping (#240).
-_NON_WIZARD_MAX_FAILURES = 6
-
-
 def _delay_for_error(envelope, failure_count):
     retry_after = envelope.get("retry_after")
     if isinstance(retry_after, (int, float)) and retry_after >= 0:
@@ -712,7 +714,8 @@ def _delay_for_error(envelope, failure_count):
     status = envelope.get("http_status")
     if isinstance(status, int) and 400 <= status < 500:
         return _PERMANENT_ERROR_SECONDS
-    base = min(_MAX_BACKOFF_SECONDS, 0.5 * (2 ** max(0, failure_count - 1)))
+    # Saturate the arithmetic, not the number of attempts in the logical call.
+    base = min(_MAX_BACKOFF_SECONDS, 0.5 * (2 ** min(4, max(0, failure_count - 1))))
     return random.uniform(base * 0.75, base)
 
 
@@ -895,11 +898,29 @@ def call_live_provider(
                 envelope = pickle.loads(output)
             except (EOFError, pickle.PickleError, ValueError, TypeError):
                 envelope = None
-        if (
-            wizard_task
-            or completion_required
-            or task_id in {"T105", "T108", "T113"}
-        ) and not isinstance(envelope, dict):
+        expected_correlation = {
+            "operation_id": operation_id,
+            "generation": generation,
+        }
+        correlation_accepted = (
+            isinstance(envelope, dict)
+            and envelope.get("correlation") == expected_correlation
+        )
+        valid_envelope = correlation_accepted and (
+            (
+                envelope.get("kind") == "success"
+                and isinstance(envelope.get("content"), str)
+                and bool(envelope["content"].strip())
+                and isinstance(envelope.get("usage"), dict)
+            )
+            or (
+                envelope.get("kind") == "error"
+                and envelope.get("disposition") in (
+                    "retryable_transport", "retryable_http", "empty", "deterministic",
+                )
+            )
+        )
+        if not valid_envelope:
             envelope = {
                 "kind": "error",
                 "error_class": (
@@ -916,14 +937,6 @@ def call_live_provider(
                     "generation": generation,
                 },
             }
-        expected_correlation = {
-            "operation_id": operation_id,
-            "generation": generation,
-        }
-        correlation_accepted = (
-            isinstance(envelope, dict)
-            and envelope.get("correlation") == expected_correlation
-        )
         if isinstance(envelope, dict):
             envelope["correlation_accepted"] = correlation_accepted
             if task_id in {"T105", "T108", "T113"}:
@@ -943,7 +956,10 @@ def call_live_provider(
             and envelope.get("kind") == "success"
             and correlation_accepted
         ):
-            return _reconstruct_response(envelope)
+            response = _reconstruct_response(envelope)
+            if scope is not None and scope.is_superseded():
+                raise LiveProviderSuperseded("live player turn superseded")
+            return response
 
         failure_count += 1
         envelope = envelope if isinstance(envelope, dict) else {}
@@ -986,13 +1002,10 @@ def call_live_provider(
             # A completed deterministic error (HTTP 400/401/403, a schema
             # rejection) cannot heal through a fresh connection: reissuing it
             # every ~60s kept the turn "in progress" forever (#240). Hand it
-            # to the caller now. Retryable and empty results get a bounded
-            # number of attempts here; the caller's own retry policy decides
-            # what to do after that.
+            # to the caller now. Transport/empty failures instead retain the
+            # same logical call until recovery or genuine supersession.
             disposition = envelope.get("disposition")
             if disposition not in {"retryable_http", "retryable_transport", "empty"}:
-                raise LiveProviderCompletedError(task_id, envelope)
-            if failure_count >= _NON_WIZARD_MAX_FAILURES:
                 raise LiveProviderCompletedError(task_id, envelope)
             try:
                 from utils.enhanced_logger import warning
