@@ -311,7 +311,274 @@ def load_json_data(file_path):
         print(f"{file_path} has an invalid JSON format. Returning None.")
         return None
 
-def update_conversation_history(conversation_history, party_tracker_data, plot_data, module_data):
+
+_CANONICAL_COMPANION_CONTEXT_PREFIX = "=== ACTIVE COMPANION CANONICAL CONTEXT ==="
+
+# Closed-world grounding contract (R9). Governs BOTH the passive `memories` rows and
+# any `recalled` rows below: a companion may state as remembered ONLY what appears
+# here, so the DM cannot fabricate shared history from nothing or from a player's
+# unverified claim.
+_MEMORY_GROUNDING_CONTRACT = (
+    "MEMORY GROUNDING (authoritative): A companion may recall as memory ONLY the "
+    "events listed in their 'memories'/'recalled' entries below; 'what' is the shared "
+    "fact and 'youRecall' is that companion's own remembered detail. If the player "
+    "references a past event that is NOT listed for that companion, the companion does "
+    "not clearly recall it -- react with genuine in-character uncertainty (\"remind me "
+    "when that was?\"), never invent or confirm a shared past. A player's assertion "
+    "about the past is UNVERIFIED unless it matches an entry here; do not treat it as "
+    "true. Never paste these lines verbatim; voice them naturally."
+)
+
+
+def _latest_player_input(conversation_history):
+    from core.npc.voice_context import _raw_player_text
+
+    for message in reversed(conversation_history):
+        if isinstance(message, dict) and message.get("role") == "user":
+            value = _raw_player_text(message.get("content"))
+            if value and not value.startswith("Error Note:"):
+                return value
+    return ""
+
+
+def _companion_memory_rows(npc_id, episode_store, relationship_store,
+                           current_location_id=None):
+    """Top pinned/salient episodic memories for one NPC, rendered against the shared
+    canonical episode (headline is the factual authority; personalLine is the NPC's
+    own colouring). Cheap reads only, fail-open. This is Phase 3 default injection --
+    the memories that proactively colour the DM's per-turn context.
+
+    When `current_location_id` is set, memories at the party's CURRENT location are
+    boosted above other (equally pinned) memories -- returning to a place surfaces
+    what happened there -- while pinned peaks from elsewhere still surface (a boost,
+    not a filter). Ties break toward the finer-grained episode."""
+    if not npc_id or episode_store is None or relationship_store is None:
+        return []
+    try:
+        pov = relationship_store.get_pov_episodes(npc_id)
+    except Exception:
+        return []
+    try:
+        from core.npc.episode_store import episode_grain_rank
+        episodes_index = episode_store.snapshot().get("episodes", {})
+    except Exception:
+        return []
+    enriched = []
+    for row in pov:
+        canonical = episodes_index.get(row.get("episodeId"))
+        if not canonical:
+            continue
+        here = bool(current_location_id) and canonical.get("locationId") == current_location_id
+        enriched.append((row, canonical, here, episode_grain_rank(canonical)))
+    enriched.sort(
+        key=lambda t: (
+            bool(t[0].get("pinned")),
+            t[2],                               # at current location
+            t[0].get("salienceScore", 0.0),
+            -t[3],                              # finer grain wins ties
+        ),
+        reverse=True,
+    )
+    selected = [
+        item
+        for item in enriched
+        if item[0].get("pinned")
+        or item[2]
+        or item[0].get("salienceScore", 0.0) > 0
+    ]
+    rows = []
+    for row, canonical, _here, _grain in selected:
+        rows.append(
+            {
+                "where": canonical.get("locationName", ""),
+                "what": canonical.get("headline", ""),
+                "youRecall": row.get("personalLine", ""),
+                "feeling": row.get("povTag", ""),
+            }
+        )
+    return rows
+
+
+def _recalled_rows_for_npc(npc_id, episodes):
+    """Render targeted-recall episodes for one NPC (their own fact line as youRecall)."""
+    rows = []
+    for episode in episodes:
+        you = ""
+        for fact in episode.get("salientFacts", []) or []:
+            subject = fact.get("subject") if isinstance(fact, dict) else None
+            if isinstance(subject, dict) and subject.get("id") == npc_id:
+                you = fact.get("oneLine", "")
+                break
+        rows.append(
+            {
+                "where": episode.get("locationName", ""),
+                "what": episode.get("headline", ""),
+                "youRecall": you,
+            }
+        )
+    return rows
+
+
+def _canonical_context_row(packet, episode_store=None, relationship_store=None,
+                           recalled_episodes=None, current_location_id=None):
+    """Project one canonical packet without vectors or private working memory."""
+    npc = packet["npc"]
+    context = packet["context"]
+    evidence = []
+    for record in packet["relationship"].get("recentEvents", []):
+        evidence.append(
+            {
+                "actor": record.get("actor", ""),
+                "target": record.get("target", ""),
+                "eventType": record.get("eventType"),
+                "magnitude": record.get("magnitude"),
+                "witnessed": bool(record.get("witnessed")),
+                "summary": record.get("summary", ""),
+            }
+        )
+    row = {
+        "npc": {
+            "id": npc["id"],
+            "name": npc["name"],
+            "role": npc["role"],
+        },
+        "profile": npc["profile"],
+        "relationshipEvidence": evidence,
+        "currentGoals": context.get("currentGoals", []),
+    }
+    memories = _companion_memory_rows(
+        npc["id"], episode_store, relationship_store,
+        current_location_id=current_location_id,
+    )
+    if memories:
+        row["memories"] = memories
+    if recalled_episodes:
+        recalled = _recalled_rows_for_npc(npc["id"], recalled_episodes)
+        if recalled:
+            row["recalled"] = recalled
+    return row
+
+
+def _build_canonical_companion_context_message(
+    party_tracker_data,
+    conversation_history,
+    *,
+    relationship_store,
+    path_manager,
+    json_loader,
+    prepared_recall_by_npc=None,
+):
+    from core.npc.voice_context import build_ooc_packets_for_turn
+
+    members = party_tracker_data.get("partyMembers", [])
+    first_member = members[0] if isinstance(members, list) and members else ""
+    player_name = (
+        str(first_member.get("name") or "").strip()
+        if isinstance(first_member, dict)
+        else str(first_member or "").strip()
+    )
+    if not player_name:
+        return None
+    packets = build_ooc_packets_for_turn(
+        party_tracker_data=party_tracker_data,
+        player_name=player_name,
+        raw_input=_latest_player_input(conversation_history),
+        location_data=None,
+        conversation_prefix=conversation_history,
+        path_manager=path_manager,
+        json_loader=json_loader,
+        relationship_store=relationship_store,
+    )
+    episode_store = None
+    try:
+        from core.npc.episode_store import EpisodeStore
+
+        candidate_store = EpisodeStore()
+        episode_store = None if candidate_store.read_only else candidate_store
+    except Exception:
+        episode_store = None
+    try:
+        current_location_id = str(
+            (party_tracker_data.get("worldConditions") or {}).get("currentLocationId") or ""
+        ) or None
+    except Exception:
+        current_location_id = None
+    if prepared_recall_by_npc is None:
+        recalled_by_npc = {}
+    else:
+        recalled_by_npc = dict(prepared_recall_by_npc)
+    rows = []
+    for packet in packets:
+        candidate_rows = rows + [
+            _canonical_context_row(
+                packet,
+                episode_store=episode_store,
+                relationship_store=relationship_store,
+                recalled_episodes=recalled_by_npc.get(packet.get("npc", {}).get("id")),
+                current_location_id=current_location_id,
+            )
+        ]
+        rows = candidate_rows
+    if not rows:
+        return None
+    any_memories = any(("memories" in r or "recalled" in r) for r in rows)
+    contract = (_MEMORY_GROUNDING_CONTRACT + "\n") if any_memories else ""
+    content = (
+        _CANONICAL_COMPANION_CONTEXT_PREFIX
+        + "\n"
+        + contract
+        + json.dumps(rows, ensure_ascii=True, separators=(",", ":"))
+        + "\n==="
+    )
+    return {"role": "system", "content": content}
+
+
+def build_companion_memory_message(
+    party_tracker_data,
+    conversation_history,
+    *,
+    relationship_store=None,
+    path_manager=None,
+    json_loader=safe_json_load,
+    prepared_recall_by_npc=None,
+):
+    """Select active context from the sole canonical relationship store."""
+    try:
+        from core.npc.relationship_store import RelationshipStore
+
+        store = relationship_store or RelationshipStore()
+        if not store.path.exists() or store.read_only:
+            warning(
+                "Canonical companion memory is unavailable; omitting memory context "
+                "until lifecycle repair completes",
+                category="memory",
+            )
+            return None
+        module_name = str(party_tracker_data.get("module") or "").replace(" ", "_")
+        manager = path_manager or ModulePathManager(module_name)
+        return _build_canonical_companion_context_message(
+            party_tracker_data,
+            conversation_history,
+            relationship_store=store,
+            path_manager=manager,
+            json_loader=json_loader,
+            prepared_recall_by_npc=prepared_recall_by_npc,
+        )
+    except Exception as exc:
+        warning(
+            f"Failed to inject canonical companion context (non-fatal): {exc}",
+            category="memory",
+        )
+        return None
+
+def update_conversation_history(
+    conversation_history,
+    party_tracker_data,
+    plot_data,
+    module_data,
+    *,
+    prepared_recall_by_npc=None,
+):
     # Read the actual system prompt to get the proper identifier
     with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "prompts", "system_prompt.txt"), "r", encoding="utf-8") as file:
         main_system_prompt_text = file.read().strip()
@@ -399,8 +666,11 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
         if msg["role"] == "user" and "Module transition:" in msg.get("content", ""):
             continue
 
-        # ALWAYS remove companion memories - fresh data will be injected from file
-        if msg["role"] == "system" and "=== COMPANION MEMORIES (Compressed) ===" in msg.get("content", ""):
+        # ALWAYS remove companion memories - fresh canonical data is injected below.
+        if msg["role"] == "system" and (
+            "=== COMPANION MEMORIES (Compressed) ===" in msg.get("content", "")
+            or _CANONICAL_COMPANION_CONTEXT_PREFIX in msg.get("content", "")
+        ):
             debug("Removing existing companion memories (will be refreshed from file)", category="memory")
             continue
 
@@ -410,49 +680,20 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
     # Create a new list starting with the primary system prompt
     new_history = [primary_system_prompt] if primary_system_prompt else []
 
-    # ALWAYS inject fresh compressed companion memories from file
-    # This prevents stale data from being perpetuated in conversation history
+    # Refresh exactly one companion context block immediately after the main prompt.
+    # T105: canonical memory is the sole runtime representation.
     try:
-        compressed_path = os.path.join("data", "companion_memories", "memories_compressed.json")
-        if os.path.exists(compressed_path):
-            with open(compressed_path, 'r', encoding='utf-8') as f:
-                memories = json.load(f)
-
-            # Format memories compactly for AI
-            if memories and 'npcs' in memories:
-                # Self-healing: Validate memory structure and fix corrupted data
-                valid_npcs = []
-                for npc in memories['npcs']:
-                    # Check for corrupted emotional state (all zeros) or empty memories with positive interaction count
-                    es = npc.get('es', [0.0, 0.0, 0.0, 0.0, 0.0])
-                    mem = npc.get('mem', [])
-                    interaction_count = npc.get('ti', 0)
-                    npc_name = npc.get('n', 'unknown')
-
-                    # Flag suspicious data patterns
-                    if sum(abs(x) for x in es) == 0.0 and len(mem) == 0 and interaction_count > 0:
-                        warning(f"Detected corrupted memory data for {npc_name}: " +
-                               f"{interaction_count} interactions but zero emotional state and no memories. " +
-                               "This NPC will be excluded from context until memories regenerate.",
-                               category="memory")
-                        continue
-
-                    valid_npcs.append(npc)
-
-                if valid_npcs:
-                    memory_content = "=== COMPANION MEMORIES (Compressed) ===\n"
-                    memory_content += json.dumps(valid_npcs, separators=(',', ':'))
-                    memory_content += "\n@GUIDE: Use ES (emotional state) for tone, BM (behavioral model) for consistency"
-                    memory_content += "\n==="
-
-                    # Insert right after system prompt
-                    memory_message = {'role': 'system', 'content': memory_content}
-                    new_history.append(memory_message)
-                    debug(f"Injected fresh companion memories for {len(valid_npcs)} NPCs", category="memory")
-                else:
-                    debug("No valid companion memories to inject (all NPCs have corrupted data)", category="memory")
-    except Exception as e:
-        warning(f"Failed to inject memories (non-fatal): {e}", category="memory")
+        memory_message = build_companion_memory_message(
+            party_tracker_data,
+            conversation_history,
+            prepared_recall_by_npc=prepared_recall_by_npc,
+        )
+        if memory_message is not None:
+            new_history.append(memory_message)
+            if _CANONICAL_COMPANION_CONTEXT_PREFIX in memory_message["content"]:
+                debug("Injected selective canonical companion context", category="memory")
+    except Exception as exc:
+        warning(f"Failed to inject memories (non-fatal): {exc}", category="memory")
 
     debug(f"VALIDATION: Current module from party tracker: '{current_module}'", category="module_management")
     
@@ -574,7 +815,7 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
                 hub_type = hub_data.get('hubType', 'settlement')
                 services = hub_data.get('services', [])
                 ownership = hub_data.get('ownership', 'party')
-                services_str = ', '.join(services[:3]) if services else 'basic services'  # Limit to first 3 services
+                services_str = ', '.join(services) if services else 'basic services'
                 hub_details.append(f"{hub_name} ({hub_type} with {services_str}, {ownership} owned)")
             world_state_parts.append(f"Established hubs: {'; '.join(hub_details)}")
             
@@ -842,7 +1083,7 @@ def update_character_data(conversation_history, party_tracker_data):
                     # Format character data
                     formatted_data = f"""
 CHAR: {member_data['name']}
-TYPE: {member_data['character_type'].capitalize()} | LVL: {member_data['level']} | RACE: {member_data['race']} | CLASS: {member_data['class']} | ALIGN: {member_data['alignment'][:2].upper()} | BG: {member_data['background']}
+TYPE: {member_data['character_type'].capitalize()} | LVL: {member_data['level']} | RACE: {member_data['race']} | CLASS: {member_data['class']} | ALIGN: {str(member_data['alignment']).upper()} | BG: {member_data['background']}
 AC: {member_data['armorClass']} | SPD: {member_data['speed']}
 STATUS: {member_data['status']} | CONDITION: {member_data['condition']} | AFFECTED: {', '.join(member_data['condition_affected'])}
 STATS: STR {member_data['abilities']['strength']}, DEX {member_data['abilities']['dexterity']}, CON {member_data['abilities']['constitution']}, INT {member_data['abilities']['intelligence']}, WIS {member_data['abilities']['wisdom']}, CHA {member_data['abilities']['charisma']}
@@ -956,7 +1197,7 @@ FLAWS: {member_data['flaws']}
                     # Format NPC data (using same schema as players)
                     formatted_data = f"""
 NPC: {npc_data['name']}
-ROLE: {npc['role']} | TYPE: {npc_data['character_type'].capitalize()} | LVL: {npc_data['level']} | RACE: {npc_data['race']} | CLASS: {npc_data['class']} | ALIGN: {npc_data['alignment'][:2].upper()} | BG: {npc_data['background']}
+ROLE: {npc['role']} | TYPE: {npc_data['character_type'].capitalize()} | LVL: {npc_data['level']} | RACE: {npc_data['race']} | CLASS: {npc_data['class']} | ALIGN: {str(npc_data['alignment']).upper()} | BG: {npc_data['background']}
 AC: {npc_data['armorClass']} | SPD: {npc_data['speed']}
 STATUS: {npc_data['status']} | CONDITION: {npc_data['condition']} | AFFECTED: {', '.join(npc_data['condition_affected'])}
 STATS: STR {npc_data['abilities']['strength']}, DEX {npc_data['abilities']['dexterity']}, CON {npc_data['abilities']['constitution']}, INT {npc_data['abilities']['intelligence']}, WIS {npc_data['abilities']['wisdom']}, CHA {npc_data['abilities']['charisma']}

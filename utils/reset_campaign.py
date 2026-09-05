@@ -28,6 +28,24 @@ RED = "\033[31m"
 CYAN = "\033[36m"
 RESET = "\033[0m"
 
+
+def _reset_wait_reporter():
+    last_second = [-1]
+
+    def report(elapsed):
+        second = max(0, int(elapsed))
+        if second == last_second[0]:
+            return
+        last_second[0] = second
+        from core.managers.status_manager import status_manager
+
+        status_manager.update_status(
+            "Reset is waiting for a safe campaign boundary (%d seconds)" % second,
+            True,
+        )
+
+    return report
+
 def print_header():
     """Print warning header"""
     print(f"\n{RED}{'='*60}")
@@ -205,7 +223,10 @@ def reset_global_state():
 
     # Global lock order: party transition -> module (when needed) -> campaign.
     with _party_module_transition_lock():
-        with module_refresh_lock() as refresh_acquired:
+        with module_refresh_lock(
+            max_wait_seconds=None,
+            wait_callback=_reset_wait_reporter(),
+        ) as refresh_acquired:
             if not refresh_acquired:
                 raise TimeoutError("Module refresh is active; retry reset")
             with _campaign_transaction_lock("modules/campaign.json"):
@@ -360,6 +381,21 @@ def clear_all_files():
         shutil.rmtree("combat_logs")
         print("  ✓ Cleared combat_logs directory")
 
+    # Encounter JSON and recovery backups are authoritative live campaign
+    # state. The complete modules tree was copied in Phase 1; remove only
+    # those data files here and preserve persistent lock paths/inodes.
+    encounters_dir = Path("modules/encounters")
+    if encounters_dir.is_dir():
+        removed_encounters = 0
+        for encounter_path in encounters_dir.rglob("*"):
+            if encounter_path.is_file() and (
+                encounter_path.name.endswith(".json")
+                or encounter_path.name.endswith(".bak")
+            ):
+                encounter_path.unlink()
+                removed_encounters += 1
+        print(f"  [OK] Cleared {removed_encounters} live encounter state files")
+
     # Clear companion memories
     if os.path.exists("data/companion_memories"):
         shutil.rmtree("data/companion_memories")
@@ -408,7 +444,10 @@ def perform_reset_logic():
     invocation_barrier = begin_invocation_supersession("reset")
     try:
         with _party_module_transition_lock():
-            with module_refresh_lock() as refresh_acquired:
+            with module_refresh_lock(
+                max_wait_seconds=None,
+                wait_callback=_reset_wait_reporter(),
+            ) as refresh_acquired:
                 if not refresh_acquired:
                     raise TimeoutError("Module refresh is active; retry reset")
                 with _campaign_transaction_lock("modules/campaign.json"):

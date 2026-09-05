@@ -1,0 +1,108 @@
+{
+  "type": "object",
+  "properties": {
+    "say": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    },
+    "do": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    },
+    "want": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    },
+    "thought": {
+      "type": "string",
+      "minLength": 1
+    },
+    "affinityEvent": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "actor": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1
+            },
+            "eventType": {
+              "type": "string",
+              "enum": [
+                "abandon",
+                "betray",
+                "deceive",
+                "disrespect",
+                "give",
+                "harm",
+                "heal",
+                "honor",
+                "protect",
+                "rescue",
+                "share",
+                "support",
+                "threaten",
+                "trust"
+              ]
+            },
+            "magnitude": {
+              "type": "integer",
+              "enum": [
+                -3,
+                -2,
+                -1,
+                1,
+                2,
+                3
+              ]
+            },
+            "witnessed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "actor",
+            "target",
+            "eventType",
+            "magnitude",
+            "witnessed"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": [
+    "thought",
+    "affinityEvent"
+  ],
+  "additionalProperties": false
+}

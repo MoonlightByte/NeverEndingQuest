@@ -2347,7 +2347,14 @@ def update_party_npcs(party_tracker_data, operation, npc):
                 npc_entry['name'] = npc_data['name']
                 debug(f"STATE_CHANGE: Using character file name '{npc_data['name']}' for party tracker", category="character_updates")
         
-        party_tracker_data["partyNPCs"].append(npc_entry)
+        # Idempotent add: skip if this NPC (by resolved display name) is already
+        # on the roster, so a duplicate add is a true no-op (T105 lifecycle relies
+        # on before/after roster equality to decide whether to fire).
+        _existing_names = {
+            str(x.get("name")) for x in party_tracker_data["partyNPCs"]
+        }
+        if npc_entry["name"] not in _existing_names:
+            party_tracker_data["partyNPCs"].append(npc_entry)
     elif operation == "remove":
         party_tracker_data["partyNPCs"] = [x for x in party_tracker_data["partyNPCs"] if x["name"] != npc["name"]]
 
@@ -2517,7 +2524,24 @@ def _apply_party_npc_lifecycle(
         store.get_relationship(npc_id, player_id, game_day=game_day)
         if operation == "add":
             store.migrate_legacy_identity(npc_id, player_id, game_day=game_day)
-            store.mark_joined(
+            before_arrival = store.snapshot()
+            before_identity = before_arrival["identities"].get(npc_id, {})
+            before_lifecycle = before_arrival["lifecycle"].get(npc_id, {})
+            before_events = before_lifecycle.get("events", [])
+            source_already_committed = bool(
+                source_turn_id
+                and before_events
+                and before_events[-1].get("kind") in {"join", "rejoin"}
+                and before_events[-1].get("sourceTurnId") == source_turn_id
+                and before_identity.get("active") is True
+            )
+            arrival = (
+                store.mark_rejoined
+                if before_identity.get("active") is False
+                or before_lifecycle.get("status") == "inactive"
+                else store.mark_joined
+            )
+            arrival(
                 npc_id,
                 player_id,
                 game_day=game_day,
@@ -2581,12 +2605,17 @@ def _apply_party_npc_lifecycle(
         identity = final["identities"].get(npc_id, {})
         events = final["lifecycle"].get(npc_id, {}).get("events", [])
         if operation == "add":
+            final_event = events[-1] if events else {}
             complete = (
                 identity.get("active") is True
                 and edge_key in final["relationships"]
                 and npc_id in final["profiles"]
-                and bool(events)
-                and events[-1].get("kind") in {"join", "rejoin"}
+                and final_event.get("kind") in {"join", "rejoin"}
+                and final_event.get("sourceTurnId") == source_turn_id
+                and (
+                    final["revision"] > starting_revision
+                    or source_already_committed
+                )
             )
         else:
             complete = (
@@ -2594,7 +2623,7 @@ def _apply_party_npc_lifecycle(
                 and bool(events)
                 and events[-1].get("kind") == "depart"
             )
-        if not complete or final["revision"] <= starting_revision:
+        if not complete:
             raise RuntimeError("sidecar lifecycle update did not commit completely")
         return True
     except Exception as exc:
@@ -3839,7 +3868,65 @@ Please use a valid location that exists in the current area ({current_area_id}) 
     elif action_type == ACTION_UPDATE_PARTY_NPCS:
         operation = parameters["operation"]
         npc = parameters["npc"]
+        # Capture the roster before the commit so we can tell whether this action
+        # actually changed state (idempotent duplicate add / no-op remove must not
+        # trigger a lifecycle hook or a conversation-history refresh).
+        _roster_before = [
+            dict(x) for x in party_tracker_data.get("partyNPCs", [])
+        ]
         update_party_npcs(party_tracker_data, operation, npc)
+        _roster_after = party_tracker_data.get("partyNPCs", [])
+        _state_changed = _roster_after != _roster_before
+        # T105: best-effort NPC-voice lifecycle hook after the roster commit.
+        # Only fires when the roster actually changed (idempotent duplicate add /
+        # no-op remove is a true no-op). Always live and fail-open; it must never break
+        # the committed roster action.
+        if _state_changed:
+            needs_conversation_history_update = True
+            try:
+                lifecycle_context = parameters.get("lifecycleContext")
+                source_turn_id = str(
+                    getattr(invocation_claim, "logical_invocation_id", "") or ""
+                ).strip()
+                if not source_turn_id:
+                    warning(
+                        "T105 NPC lifecycle hook skipped after roster commit: "
+                        "the accepted turn has no logical invocation identity",
+                        category="character_updates",
+                    )
+                else:
+                    npc_name = str(npc.get("name") or "")
+                    npc_file = ""
+                    try:
+                        _lc_module = party_tracker_data.get("module", "").replace(" ", "_")
+                        _lc_pm = ModulePathManager(_lc_module)
+                        from updates.update_character_info import (
+                            find_character_file_fuzzy,
+                            normalize_character_name,
+                        )
+                        _matched = find_character_file_fuzzy(npc_name)
+                        if _matched:
+                            npc_file = _lc_pm.get_character_path(_matched)
+                        else:
+                            npc_file = _lc_pm.get_character_path(
+                                normalize_character_name(npc_name)
+                            )
+                    except Exception:
+                        npc_file = ""
+                    _apply_party_npc_lifecycle(
+                        party_tracker_data,
+                        operation,
+                        npc_name,
+                        npc_file,
+                        lifecycle_context,
+                        source_turn_id,
+                    )
+            except Exception as exc:
+                warning(
+                    "T105 NPC lifecycle hook raised after roster commit: %s: %s"
+                    % (type(exc).__name__, str(exc)),
+                    category="character_updates",
+                )
 
     elif action_type == ACTION_UPDATE_ENCOUNTER:
         debug("STATE_CHANGE: Processing updateEncounter action", category="combat_processing")
@@ -5016,10 +5103,10 @@ RESPONSE FORMAT (JSON only):
 {{
   "action": "remove|update_status|move",
   "reasoning": "Brief explanation of decision based on narrative context",
-  "newDescription": "Updated NPC description if action is update_status (required field, max 500 chars)",
+  "newDescription": "Updated NPC description if action is update_status (required field)",
   "newAttitude": "Updated attitude if action is update_status (required field)", 
   "newLocation": "Target location ID if action is move (must match available locations exactly)",
-  "locationUpdate": "Brief addition to location description explaining change (optional, max 200 chars)"
+  "locationUpdate": "Addition to location description explaining change (optional)"
 }}
 
 DECISION GUIDELINES WITH EXAMPLES:
@@ -5142,9 +5229,8 @@ def validate_npc_movement_decision(decision, area_data, location_id, party_npcs)
             if not decision.get("newAttitude"):
                 return {"valid": False, "reason": "update_status action requires newAttitude field"}
             
-            # Check length limits
-            if len(decision.get("newDescription", "")) > 500:
-                return {"valid": False, "reason": "newDescription must be 500 characters or less"}
+            if not isinstance(decision.get("newDescription"), str):
+                return {"valid": False, "reason": "newDescription must be a string"}
                 
         elif action == "move":
             new_location = decision.get("newLocation")
@@ -5156,10 +5242,9 @@ def validate_npc_movement_decision(decision, area_data, location_id, party_npcs)
             if new_location not in valid_locations:
                 return {"valid": False, "reason": f"Target location '{new_location}' does not exist. Valid locations: {valid_locations}"}
         
-        # Check location update length
-        location_update = decision.get("locationUpdate", "")
-        if location_update and len(location_update) > 200:
-            return {"valid": False, "reason": "locationUpdate must be 200 characters or less"}
+        location_update = decision.get("locationUpdate")
+        if location_update is not None and not isinstance(location_update, str):
+            return {"valid": False, "reason": "locationUpdate must be a string or null"}
         
         # Schema validation - check NPC structure requirements
         if action == "update_status":

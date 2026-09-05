@@ -977,6 +977,54 @@ NPC_COHERENCE_T104_LMSTUDIO = {"model": "local-model"}
 # it. ON: the pass is fail-closed + heal-forward so shipping enabled is safe.
 ENABLE_NPC_COHERENCE_REPAIR = True
 
+# ----- T105 NPC Voice (+ isolated affinity classifier) & T107 NPC Profile Seed -----
+# Per-NPC "voice" micro-model agents (always on). These are per-NPC,
+# per-relevant-turn micro calls, so OpenAI uses the CHEAPEST luna tier. Both the
+# voice/affinity call (T105) and the one-time profile seed (T107) share the same
+# cheap tier per provider. Temperature/output-cap stay at the callsite; the Gemini
+# response_schema is supplied by the service from its own contract (kept out of here
+# to avoid a model_config <-> core.npc import cycle). T105/T107 are distinct from
+# main's T104 (NPC cross-area coherence), a different feature.
+NPC_VOICE_T105_OPENAI_LUNA_NONE = copy.deepcopy(OPENAI_GPT56_LUNA_NONE)
+NPC_VOICE_T105_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
+NPC_VOICE_T105_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+NPC_VOICE_T105_LMSTUDIO = {"model": "local-model"}
+
+NPC_PROFILE_T107_OPENAI_LUNA_NONE = copy.deepcopy(OPENAI_GPT56_LUNA_NONE)
+NPC_PROFILE_T107_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
+NPC_PROFILE_T107_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+NPC_PROFILE_T107_LMSTUDIO = {"model": "local-model"}
+
+# T108: companion EPISODE extraction (attributed salient facts from full-fidelity
+# encounter text -> canonical episode ledger). Runs at per-location close and at
+# module-leave consolidation -- infrequent, quality-leaning within the luna tier.
+# OpenAI on luna|LOW, designated after a real-archive sample (none/low/medium: all
+# correct attribution + present-guard; low is the cost/quality balance). Final
+# effort pending a blind 3-reviewer eval in the fine-tuning pass (cf. T026).
+NPC_EPISODE_T108_OPENAI_LUNA_LOW = copy.deepcopy(OPENAI_GPT56_LUNA_LOW)
+NPC_EPISODE_T108_GEMINI_FLASH_LOW = {"model": "gemini-3.1-flash-preview", "thinking_level": "low"}
+NPC_EPISODE_T108_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+NPC_EPISODE_T108_LMSTUDIO = {"model": "local-model"}
+
+# T112: episodic RECALL anchor-parse. When the player references the past, this
+# parses their line into structured anchors (entities/places/outcomes); CODE then
+# selects the matching episodeIds from the NPC's own index (the model never sees or
+# selects episodes -> it cannot fabricate a memory). On-demand + cheap.
+NPC_RECALL_T112_OPENAI_LUNA_LOW = copy.deepcopy(OPENAI_GPT56_LUNA_LOW)
+NPC_RECALL_T112_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
+NPC_RECALL_T112_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+NPC_RECALL_T112_LMSTUDIO = {"model": "local-model"}
+
+# T113: episodic BACKFILL extraction. One-time, when upgrading an existing game to
+# the episodic-memory feature: reads compressed journal / campaign-summary PROSE and
+# selects the PRESENT companions from a CLOSED module roster (agentic presence,
+# reconciled by code -- a name not in the roster is dropped) into attributed
+# backfilled episodes. Same luna tier as T108; runs behind the upgrade progress UI.
+NPC_BACKFILL_T113_OPENAI_LUNA_LOW = copy.deepcopy(OPENAI_GPT56_LUNA_LOW)
+NPC_BACKFILL_T113_GEMINI_FLASH_LOW = {"model": "gemini-3.1-flash-preview", "thinking_level": "low"}
+NPC_BACKFILL_T113_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+NPC_BACKFILL_T113_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures

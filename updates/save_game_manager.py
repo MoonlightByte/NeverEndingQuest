@@ -60,6 +60,7 @@ Handles save and restore functionality for game state preservation.
 # ============================================================================
 
 import json
+import hashlib
 import os
 import shutil
 import zipfile
@@ -78,6 +79,25 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 # Set script name for logging
 set_script_name(__name__)
 
+
+def _lifecycle_wait_reporter(operation):
+    last_second = [-1]
+
+    def report(elapsed):
+        second = max(0, int(elapsed))
+        if second == last_second[0]:
+            return
+        last_second[0] = second
+        from core.managers.status_manager import status_manager
+
+        status_manager.update_status(
+            "%s is waiting for a safe campaign boundary (%d seconds)"
+            % (operation, second),
+            True,
+        )
+
+    return report
+
 # Versioned rules guidance ships with the application. It is never campaign
 # state, and an older saved-game folder must not overwrite a newer installation.
 APPLICATION_OWNED_REFERENCE_FILES = frozenset(
@@ -89,7 +109,7 @@ APPLICATION_OWNED_REFERENCE_FILES = frozenset(
 
 
 @contextmanager
-def _active_combat_snapshot_lease(timeout_seconds=30.0):
+def _active_combat_snapshot_lease(timeout_seconds=30.0, wait_callback=None):
     """Keep a save/restore snapshot outside every combat commit window."""
     party = safe_json_load("party_tracker.json") or {}
     encounter_id = (party.get("worldConditions") or {}).get(
@@ -110,6 +130,7 @@ def _active_combat_snapshot_lease(timeout_seconds=30.0):
         encounter_path,
         suffix=".combat.lock",
         timeout_seconds=timeout_seconds,
+        wait_callback=wait_callback,
     ) as acquired:
         if acquired is None:
             raise RuntimeError("Combat is currently committing; retry this operation")
@@ -206,7 +227,8 @@ class SaveGameManager:
             "current_location.json", 
             "journal.json",
             "player_storage.json",
-            
+            "data/companion_memories/",
+
             # Installed SRD reference data is application-owned, not campaign
             # state. Restoring an old save must never downgrade current rules.
             "training_data.json",
@@ -297,6 +319,7 @@ class SaveGameManager:
             "modules/.module_transactions/",
             "modules/.publication_transactions/",
             "modules/.module_orphan_quarantine/",
+            "modules/.runtime_quarantine/",
             ".runtime_locks/",
             "modules/conversation_history/pending_location_transition.json",
             
@@ -308,6 +331,7 @@ class SaveGameManager:
             # Temporary files
             "*.tmp",
             "*.bak",
+            "*.lock",
             "*.backup_*",
             # NOTE: *_BU.json files are now INCLUDED in saves as they are critical
             # for the reset_campaign.py functionality
@@ -401,7 +425,95 @@ class SaveGameManager:
             return "saved_games"
         
         return f"modules/{self.current_module}/saved_games"
-    
+
+    # Private NPC state files fingerprinted in the save manifest (never by contents).
+    _MANIFEST_STATE_PATHS = (
+        "data/companion_memories/npc_agent_state.json",
+        "data/companion_memories/episode_ledger.json",
+        # W5: the one-time episodic-upgrade resume marker travels with save/restore so
+        # a mid-upgrade save resumes correctly; skipped-if-absent keeps old saves valid.
+        "data/companion_memories/episodic_upgrade.json",
+    )
+
+    @staticmethod
+    def _state_manifest_for_root(root: str = ".") -> List[Dict[str, Any]]:
+        """Describe private state files by fingerprint, never by contents."""
+        entries: List[Dict[str, Any]] = []
+        for relative_path in SaveGameManager._MANIFEST_STATE_PATHS:
+            file_path = os.path.join(root, relative_path)
+            if not os.path.isfile(file_path):
+                continue
+            try:
+                with open(file_path, "rb") as handle:
+                    raw = handle.read()
+            except OSError:
+                continue
+            try:
+                parsed = json.loads(raw.decode("utf-8"))
+                schema_version = (
+                    parsed.get("schemaVersion", -1)
+                    if isinstance(parsed, dict)
+                    else -1
+                )
+            except (UnicodeError, ValueError, TypeError):
+                schema_version = -1
+            entries.append(
+                {
+                    "path": relative_path,
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                    "schemaVersion": schema_version,
+                    "bytes": len(raw),
+                }
+            )
+        return entries
+
+    @staticmethod
+    def _validate_state_manifest(
+        save_path: str, metadata: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        """Validate every listed private state file before live mutation."""
+        manifest = metadata.get("state_manifest")
+        if manifest is None:
+            return True, ""
+        if not isinstance(manifest, list):
+            return False, "state manifest is not a list"
+        allowed_paths = set(SaveGameManager._MANIFEST_STATE_PATHS)
+        for entry in manifest:
+            if not isinstance(entry, dict) or set(entry) != {
+                "path", "sha256", "schemaVersion", "bytes"
+            }:
+                return False, "state manifest entry is malformed"
+            if entry["path"] not in allowed_paths:
+                return False, "state manifest path is not recognized"
+            candidate = os.path.join(save_path, entry["path"])
+            try:
+                with open(candidate, "rb") as handle:
+                    raw = handle.read()
+            except OSError:
+                return False, "listed state file is missing"
+            if len(raw) != entry["bytes"]:
+                return False, "listed state file size differs"
+            if hashlib.sha256(raw).hexdigest() != entry["sha256"]:
+                return False, "listed state file hash differs"
+            try:
+                parsed = json.loads(raw.decode("utf-8"))
+            except (UnicodeError, ValueError, TypeError):
+                return False, "listed state file is not JSON"
+            # DEFECT-2 fix (T8f): the writer records -1 for files WITHOUT a
+            # schemaVersion key (e.g. the episodic_upgrade marker), but
+            # parsed.get() returns None for those same files here -- so every
+            # save containing such a file failed its own restore validation
+            # (a B1 violation: loading a save is NEVER refused). Normalize the
+            # read exactly the way the writer does before comparing.
+            observed_version = (
+                parsed.get("schemaVersion", -1) if isinstance(parsed, dict) else -1
+            )
+            if observed_version is None:
+                observed_version = -1
+            if not isinstance(parsed, dict) or observed_version != entry["schemaVersion"]:
+                return False, "listed state schema version differs"
+        return True, ""
+
     def generate_save_metadata(self, description: str = "", save_mode: str = "essential") -> Dict[str, Any]:
         """Generate metadata for a save game"""
         timestamp = datetime.now()
@@ -457,9 +569,10 @@ class SaveGameManager:
             "system_info": {
                 "save_format_version": "1.0",
                 "created_by": "NeverEndingQuest Save System",
-            }
+            },
+            "state_manifest": self._state_manifest_for_root(),
         }
-        
+
         return metadata
     
     def create_save_game(
@@ -499,8 +612,15 @@ class SaveGameManager:
                 self._initialize_module_context()
                 from utils.module_refresh_lock import module_refresh_lock
 
-                with _active_combat_snapshot_lease():
-                    with module_refresh_lock() as refresh_acquired:
+                wait_reporter = _lifecycle_wait_reporter("Save")
+                with _active_combat_snapshot_lease(
+                    timeout_seconds=None,
+                    wait_callback=wait_reporter,
+                ):
+                    with module_refresh_lock(
+                        max_wait_seconds=None,
+                        wait_callback=wait_reporter,
+                    ) as refresh_acquired:
                         if not refresh_acquired:
                             return False, "Module refresh is active; retry save"
                         # P2b: save no longer consults the module-lifecycle store.
@@ -562,7 +682,7 @@ class SaveGameManager:
                 if (
                     isinstance(existing, dict)
                     and isinstance(existing.get("file_statistics"), dict)
-                    and isinstance(existing.get("state_manifest"), dict)
+                    and isinstance(existing.get("state_manifest"), list)
                 ):
                     return True, f"Save game already exists: {save_path}"
                 shutil.rmtree(save_path)
@@ -635,9 +755,16 @@ class SaveGameManager:
                 "files_skipped": len(skipped_files),
                 "total_files_processed": len(copied_files) + len(skipped_files),
             }
-            
+
+            # Fingerprint the copied bytes, not a later live revision. This
+            # keeps metadata and the save payload on the exact same timeline.
+            metadata["state_manifest"] = self._state_manifest_for_root(save_path)
+
             # Save updated metadata
-            safe_write_json(metadata_path, metadata)
+            if not safe_write_json(
+                metadata_path, metadata, create_backup=False
+            ):
+                return False, "Failed to finalize save metadata"
             
             success_msg = f"Save game created successfully: {save_path}"
             success_msg += f"\nCopied {len(copied_files)} files"
@@ -697,9 +824,17 @@ class SaveGameManager:
             )
             from utils.module_refresh_lock import module_refresh_lock
 
+            restore_outcome = None
             with _party_module_transition_lock():
-                with _active_combat_snapshot_lease():
-                    with module_refresh_lock() as refresh_acquired:
+                wait_reporter = _lifecycle_wait_reporter("Load")
+                with _active_combat_snapshot_lease(
+                    timeout_seconds=None,
+                    wait_callback=wait_reporter,
+                ):
+                    with module_refresh_lock(
+                        max_wait_seconds=None,
+                        wait_callback=wait_reporter,
+                    ) as refresh_acquired:
                         if not refresh_acquired:
                             return False, "Module refresh is active; retry restore"
                         # P2b: restore no longer consults the module-lifecycle
@@ -708,21 +843,33 @@ class SaveGameManager:
                         # any leftover marker, and a missing creation narration is
                         # cosmetic. Fail-forward: always let the player load.
                         with _campaign_transaction_lock("modules/campaign.json"):
-                            save_path = os.path.join(
-                                self.get_save_directory(),
+                            valid, validation_error = self.validate_restore_target(
                                 save_folder,
+                                include_manifest=False,
                             )
-                            if not os.path.isdir(save_path):
-                                return False, f"Save game not found: {save_path}"
-                            if not safe_read_json(
-                                os.path.join(save_path, "save_metadata.json")
-                            ):
-                                return False, "Could not read save game metadata"
+                            if not valid:
+                                return False, validation_error
                             _assert_no_active_campaign_completion(
                                 "modules/campaign.json"
                             )
                             _bump_campaign_lifecycle_epoch("modules/campaign.json")
-                            return self._restore_save_game_locked(save_folder)
+                            restore_outcome = self._restore_save_game_locked(save_folder)
+            if restore_outcome is None or not restore_outcome[0]:
+                return restore_outcome or (False, "Save restore did not complete")
+
+            from core.npc.episodic_upgrade import (
+                default_progress,
+                repair_or_resume_canonical_memory,
+            )
+
+            repair = repair_or_resume_canonical_memory(progress=default_progress)
+            if repair.get("status") == "error":
+                warning(
+                    "RESTORE: Companion memory remains resumable after selected "
+                    "timeline restore",
+                    category="save_game",
+                )
+            return restore_outcome
         except Exception as exc:
             error(
                 "FAILURE: Could not establish consistent restore boundary",
@@ -732,6 +879,31 @@ class SaveGameManager:
             return False, f"Failed to restore save game: {exc}"
         finally:
             end_invocation_supersession(invocation_barrier)
+
+    def validate_restore_target(
+        self,
+        save_folder: str,
+        include_manifest: bool = True,
+    ) -> Tuple[bool, str]:
+        """Validate one exact restore target without changing campaign state."""
+        save_path = os.path.join(self.get_save_directory(), save_folder)
+        if not os.path.isdir(save_path):
+            return False, f"Save game not found: {save_path}"
+        metadata = safe_read_json(os.path.join(save_path, "save_metadata.json"))
+        if not metadata:
+            return False, "Could not read save game metadata"
+        if include_manifest:
+            manifest_valid, manifest_error = self._validate_state_manifest(
+                save_path,
+                metadata,
+            )
+            if not manifest_valid:
+                warning(
+                    "RESTORE: State manifest diagnostic differs; continuing "
+                    f"with the selected save: {manifest_error}",
+                    category="save_game",
+                )
+        return True, ""
 
     def _restore_save_game_locked(self, save_folder: str) -> Tuple[bool, str]:
         """
@@ -749,15 +921,13 @@ class SaveGameManager:
             save_dir = self.get_save_directory()
             save_path = f"{save_dir}/{save_folder}"
             
-            if not os.path.exists(save_path):
-                return False, f"Save game not found: {save_path}"
-            
-            # Load save metadata
-            metadata_path = f"{save_path}/save_metadata.json"
-            metadata = safe_read_json(metadata_path)
-            if not metadata:
-                return False, "Could not read save game metadata"
-            
+            valid, validation_error = self.validate_restore_target(
+                save_folder,
+                include_manifest=True,
+            )
+            if not valid:
+                return False, validation_error
+
             # Create backup of current state before restoring
             backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_dir = (
@@ -827,6 +997,7 @@ class SaveGameManager:
             directories_to_clean = [
                 "modules/encounters/",  # Global encounters directory
                 "characters/",  # Player/NPC characters
+                "data/companion_memories/",  # Private campaign runtime state
             ]
             
             # Add module-specific directories if we have a current module
@@ -848,6 +1019,14 @@ class SaveGameManager:
                         for file in os.listdir(directory):
                             file_path = os.path.join(directory, file)
                             if os.path.isfile(file_path):
+                                if directory == "data/companion_memories/":
+                                    if (
+                                        file not in {".gitkeep", ".gitignore"}
+                                        and not file.endswith(".lock")
+                                    ):
+                                        os.remove(file_path)
+                                        debug(f"FILE_OP: Removed: {file_path}", category="save_game")
+                                    continue
                                 # CRITICAL: Preserve BU files during restore
                                 if file.endswith("_BU.json"):
                                     debug(f"FILE_OP: Preserving BU file: {file_path}", category="save_game")

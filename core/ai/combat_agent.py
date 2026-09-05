@@ -11,6 +11,7 @@ Neither role writes game state.
 
 import json
 import time
+from collections.abc import Mapping
 
 from core.ai import api_client
 from core.ai.combat_capabilities import (
@@ -43,7 +44,7 @@ class CombatNarrationAttemptError(CombatAgentContractError):
 
     def __init__(self, message, candidate="", failure_class="response_contract_error"):
         super().__init__(message)
-        self.candidate = str(candidate or "")[:12000]
+        self.candidate = str(candidate or "")
         self.failure_class = str(failure_class or "response_contract_error")
 
 
@@ -161,16 +162,10 @@ def build_contextual_spell_payload(
     actor_names=None,
     encounter_context=None,
     index=None,
-    max_references=3,
-    max_context_characters=4800,
 ):
-    """Build bounded T096 spell guidance for only the current actor window."""
+    """Build complete selected T096 guidance for the current actor window."""
     index = index or load_srd_reference_index()
-    matcher = SRDContextMatcher(
-        index=index,
-        max_references=max_references,
-        max_context_characters=max_context_characters,
-    )
+    matcher = SRDContextMatcher(index=index)
     names = list(actor_names or ())
     if not names:
         names = sorted((characters or {}).keys())
@@ -244,8 +239,6 @@ def build_contextual_spell_payload(
             continue
         seen_rule_ids.add(candidate["ruleId"])
         selected.append(candidate)
-        if len(selected) >= max_references:
-            break
 
     spell_references = {
         match["key"]: _compact_spell_entry(match["entry"])
@@ -259,15 +252,8 @@ def build_contextual_spell_payload(
         "_contextVersion": 1,
         "spellReferences": spell_references,
         "ruleReferences": rule_references,
-        "encounterContext": (
-            encounter_context[:2000]
-            if isinstance(encounter_context, str)
-            else ""
-        ),
-        "spellActionIndex": matcher.legal_spell_index(
-            actor_rows,
-            max_characters=max_context_characters,
-        ),
+        "encounterContext": encounter_context if isinstance(encounter_context, str) else "",
+        "spellActionIndex": matcher.legal_spell_index(actor_rows),
         "capabilityContexts": capability_contexts,
         "capabilityCandidates": capability_candidates,
     }
@@ -275,7 +261,7 @@ def build_contextual_spell_payload(
 
 def _intent_system_prompt():
     return """You are the tactical-intent role in a turn-based fantasy combat engine.
-You choose actions and bounded rulings; code owns initiative, dice consumption,
+You choose actions and structured rulings; code owns initiative, dice consumption,
 arithmetic, state mutation, and recovery.
 
 Treat playerInput as natural narrative intent. Use capabilityContext together
@@ -284,6 +270,8 @@ map it to the actor's actual skills, attacks, spells, features and resources.
 The player need not name mechanics. Do not invent an unavailable capability.
 For multi-step actions, preserve the player's goal, resolve only the steps that
 are currently possible, and request a roll or choice when required.
+
+npcVoiceIntents, when present, is private advisory characterization for only the exact actor IDs keyed in that object. For an advised companion, treat 'do' as the primary characterization when selecting a mechanically legal action, target, posture, and tactical purpose. Use 'say' and 'want' to preserve the companion's voice and motive in that legal choice. 'thought' is secondary subtext: it may refine a compatible choice but must not displace a legal, scene-compatible do. The encounter, requiredActorIds, sheets, capabilities, resources, and rule references remain authoritative. Ignore or reconcile impossible advice without inventing mechanics. If an advised NPC's proposed action or target has become stale because the ordered scene changed, you may adjust that NPC's action or target to a mechanically legal, scene-compatible expression of the same motive and voice; never alter the player's submitted action, invent a capability, or reorder actors. For every advised companion intent, include a description that preserves the chosen action intent and any scene-compatible line or motive needed by downstream narration; never quote or reveal private thought.
 
 Return one JSON object with stateVersion and intents. Return EXACTLY one intent
 for every actorId in requiredActorIds, in that exact order. Do not add or omit
@@ -301,7 +289,7 @@ keys. If no suitable listed spell remains, choose a listed weapon/action or a
 defensive action instead of guessing spell mechanics. encounterContext and
 ruleReferences are authoritative scene/rule guidance when present.
 An adjudicated intent may contain:
-- description: concise mechanical ruling
+- description: mechanical ruling
 - save: {type, dc, halfOnSave} when targets roll a save
 - targets: [{combatantId, hpDelta}], negative damage / positive healing
 - resources: [{owner, kind, name, delta}], using exact sheet names; kind is
@@ -381,6 +369,7 @@ def request_intent_batch(
     player_input,
     spell_references=None,
     correction=None,
+    npc_voice_intents=None,
 ):
     """Call T096 once for an ordered batch of decisions, with no mutations."""
     provider, call_config = _provider_config("intent")
@@ -405,6 +394,30 @@ def request_intent_batch(
             else spell_references or {}
         ),
     }
+    pending_ids = list(pending_turn.get("actorIds", []))
+    if isinstance(npc_voice_intents, Mapping):
+        selected_voice = {}
+        for actor_id in pending_ids:
+            row = npc_voice_intents.get(actor_id)
+            if not isinstance(row, Mapping):
+                continue
+            npc_name = row.get("npcName")
+            thought = row.get("thought")
+            if not isinstance(npc_name, str) or not npc_name.strip():
+                continue
+            if not isinstance(thought, str) or not thought.strip():
+                continue
+            entry = {
+                "npcName": npc_name,
+                "thought": thought,
+            }
+            for field in ("say", "do", "want"):
+                value = row.get(field)
+                if isinstance(value, str) and value.strip():
+                    entry[field] = value
+            selected_voice[actor_id] = entry
+        if selected_voice:
+            payload["npcVoiceIntents"] = selected_voice
     if contextual_payload:
         payload["ruleReferences"] = contextual_payload.get("ruleReferences", [])
         payload["spellActionIndex"] = contextual_payload.get("spellActionIndex", [])
@@ -515,6 +528,7 @@ def request_narration_candidate(
     model = str(call_config.get("model") or "unknown")
     dossier = dict(scene_dossier or {})
     authoritative_facts = dossier.pop("authoritativeFacts", {})
+    npc_voice_intents = dossier.pop("npcVoiceIntents", None)
     combat_state = encounter.get("combatState") or {}
     controllers = {}
     for row in dossier.get("combatants", []) or []:
@@ -537,6 +551,8 @@ def request_narration_candidate(
     }
     if correction:
         payload["correction"] = correction
+    if isinstance(npc_voice_intents, Mapping) and npc_voice_intents:
+        payload["npcVoiceIntents"] = dict(npc_voice_intents)
     # This must remain last even when correction context exists.
     payload["authoritativeFacts"] = authoritative_facts
     messages = [
@@ -544,14 +560,39 @@ def request_narration_candidate(
             "role": "system",
             "content": (
                 "You narrate already-resolved fantasy combat events. The event data is "
-                "authoritative. Narrate every authoritative event exactly once, in the "
-                "listed order. Return JSON "
+                "authoritative. Narrate every authoritative event exactly once. Return JSON "
                 '{"narration":"...","coveredEventIds":["exact eventId",...]}. '
                 "coveredEventIds must contain every authoritative eventId exactly once "
                 "in that same order and is never shown to the player. Do not change, "
                 "invent, or recalculate mechanics; do not announce actions beyond these "
                 "events. Do not quote bookkeeping from the event data. Keep the prose "
-                "vivid, clear, and concise. "
+                "vivid and clear. You are the storyteller for this round, not its clerk. "
+                "Write the round as a scene: group volleys and simultaneous blows into "
+                "beats, let cause and consequence carry the order, and keep every outcome "
+                "exactly as the events state. Narrate ONLY the events listed in "
+                "authoritativeFacts for this beat. A wound, bolt, arrow, or blow that is "
+                "not in those events did not happen this beat -- never mention it. "
+                "One arrow is one arrow; "
+                "a companion with one action this beat takes one action. npcVoiceIntents "
+                "are the companions' own suggestions for what they would say, do, and "
+                "want this beat, keyed by actor ID. Treat them as a cast handing you their "
+                "lines: use the ones that serve the scene. Each suggestion belongs to "
+                "exactly one companion -- check the actor ID before you quote, and never "
+                "give one companion another's words. A suggestion that names the player "
+                "in the third person is spoken TO the player: 'I'll keep the nearest "
+                "blade off you, Eirik', never 'off Eirik' said to his face. Trim or "
+                "reword rather than paste; terse characters get fragments. Let a "
+                "companion act without speaking when that reads better, and show private "
+                "thought only as demeanor. You may overrule a suggestion when the "
+                "committed events or the player's moment call for it. Companions should "
+                "sound like themselves -- terse ones stay terse, schemers stay sly. In a "
+                "large fight the companions are part of the scene, heard and seen in "
+                "their own manner as the story warrants, not listed by their attacks. "
+                "Do not close the round with a roll call of who held their ground "
+                "-- once a companion has been felt, let them be. End on the beat that "
+                "matters most to the player. GOOD: Oswin steps into the gap without a "
+                "word, his sword opening a warrior's arm, and only then speaks, low and "
+                "even: 'I'll keep the nearest blade off you, Eirik.' "
                 + T097_SCENE_CONTRACT_SENTENCE
             ),
         },

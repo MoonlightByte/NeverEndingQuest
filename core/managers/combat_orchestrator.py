@@ -4,9 +4,12 @@
 
 """Agentic combat turn orchestration with deterministic commit boundaries."""
 
+from collections.abc import Mapping
 from copy import deepcopy
+import logging
 import re
 import time
+from types import MappingProxyType
 
 from core.ai.combat_diagnostics import record_combat_diagnostic
 from core.combat import (
@@ -19,6 +22,7 @@ from core.combat import (
 from core.managers.combat_state import (
     combatant_by_id,
     ensure_combat_state,
+    normalize_npc_voice_intents,
     resolve_creature_controller,
     valid_pending_delivery,
 )
@@ -34,7 +38,10 @@ from core.managers.combat_transaction import (
     record_pending_player_request,
     stage_events,
 )
-from utils.encoding_utils import safe_json_load
+from utils.encoding_utils import normalize_typography_deep, safe_json_load
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CombatTurnPaused(RuntimeError):
@@ -89,6 +96,28 @@ def _is_human_controlled(encounter, actor):
         actor,
         (encounter or {}).get("combatState") or {},
     ) == "human"
+
+
+def _immutable_voice_intents(npc_voice_intents):
+    """Copy once at the coordinator boundary, then reuse unchanged on retries."""
+    canonical_voice_intents, _replaced, _residual = normalize_typography_deep(
+        npc_voice_intents
+    )
+    normalized = normalize_npc_voice_intents(canonical_voice_intents)
+    if normalized is None:
+        _LOGGER.warning("Combat voice advisory envelope was invalid and omitted")
+        return MappingProxyType({})
+    actors = {
+        actor_id: MappingProxyType(dict(row))
+        for actor_id, row in normalized["actors"].items()
+    }
+    return MappingProxyType(
+        {
+            "contractVersion": normalized["contractVersion"],
+            "sourceBeatId": normalized["sourceBeatId"],
+            "actors": MappingProxyType(actors),
+        }
+    )
 
 
 def _diagnostic_context_counts(spell_references):
@@ -361,22 +390,22 @@ def _authoritative_requested_die(request):
 
 
 def _composed_player_input(pending, fallback):
-    """Render a bounded durable action/clarification chain for T096."""
+    """Render the complete retained action/clarification chain for T096."""
     exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
     if not isinstance(exchanges, list) or not exchanges:
         return str(fallback or "")
     lines = []
-    for index, exchange in enumerate(exchanges[-8:]):
+    for index, exchange in enumerate(exchanges):
         if not isinstance(exchange, dict):
             continue
         player_text = str(exchange.get("playerInput") or "").strip()
         request_text = str(exchange.get("dmRequest") or "").strip()
         if player_text:
             label = "Original player action" if not lines else "Player follow-up"
-            lines.append("%s: %s" % (label, player_text[:12000]))
+            lines.append("%s: %s" % (label, player_text))
         if request_text:
-            lines.append("DM requested: %s" % request_text[:4000])
-    return "\n".join(lines)[:24000] or str(fallback or "")
+            lines.append("DM requested: %s" % request_text)
+    return "\n".join(lines) or str(fallback or "")
 
 
 def _pending_actor_names(encounter, pending):
@@ -676,6 +705,25 @@ def _deliver_committed_turn(
     used_fallback = delivery.get("narrationFallback")
     if not isinstance(narration, str) or not narration.strip():
         dossier = build_scene_dossier(encounter, events, characters)
+        voice_envelope = normalize_npc_voice_intents(
+            delivery.get("npcVoiceIntents")
+        )
+        if voice_envelope is not None:
+            dossier["npcVoiceIntents"] = voice_envelope["actors"]
+        elif delivery.get("npcVoiceIntents") is not None:
+            _LOGGER.warning(
+                "Committed combat voice advisory was invalid and was omitted"
+            )
+            record_combat_diagnostic(
+                record_type="window_outcome",
+                callsite="T097",
+                outcome="voice_advisory_invalid",
+                encounter_id=encounter.get("encounterId"),
+                turn_id=delivery.get("turnId"),
+                revision=state.get("revision"),
+                round_number=state.get("round"),
+                actor_count=len(events or []),
+            )
         attempts = list(delivery.get("narrationAttempts") or [])
         max_attempts = max(3, min(int(max_narration_attempts or 3), 12))
         if deterministic_narration:
@@ -791,7 +839,7 @@ def _deliver_committed_turn(
                 except InvocationSupersededError:
                     raise
                 except Exception as exc:
-                    candidate = str(getattr(exc, "candidate", "") or "")[:12000]
+                    candidate = str(getattr(exc, "candidate", "") or "")
                     failure_class = str(
                         getattr(exc, "failure_class", "unexpected_internal_error")
                     )
@@ -958,6 +1006,7 @@ def execute_agentic_turn(
     max_narration_attempts=3,
     intent_provider=None,
     narrator=None,
+    npc_voice_intents=None,
     invocation_claim=None,
 ):
     """Choose, resolve, commit, then narrate one persisted actor window.
@@ -967,8 +1016,8 @@ def execute_agentic_turn(
     rejected/provider-failed results visibly continue the same logical turn;
     they never consume the player's turn or invent an NPC fallback action.
     """
+    immutable_voice_intents = _immutable_voice_intents(npc_voice_intents)
     from core.combat.invocation import InvocationSupersededError
-
     narrator_is_default = narrator is None
     narration_diagnostics = {} if narrator_is_default else None
     intent_provider_name = "custom"
@@ -1137,6 +1186,12 @@ def execute_agentic_turn(
             )
             encounter = safe_json_load(encounter_path)
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
+        persisted_voice_intents = normalize_npc_voice_intents(
+            pending.get("npcVoiceIntents") if isinstance(pending, dict) else None
+        )
+        immutable_voice_intents = _immutable_voice_intents(
+            persisted_voice_intents
+        )
     else:
         initial_player_input = (
             None if _all_non_player(encounter, actor_ids) else player_input
@@ -1224,6 +1279,7 @@ def execute_agentic_turn(
             pending.get("turnId"),
             roll_contract_error,
             requested_die=previous_exchange.get("requestedDie"),
+            npc_voice_intents=immutable_voice_intents,
         )
         record_combat_diagnostic(
             record_type="window_outcome",
@@ -1269,13 +1325,21 @@ def execute_agentic_turn(
         batch = None
         try:
             _require_current_invocation(invocation_claim)
+            intent_kwargs = {
+                "spell_references": spell_references,
+                "correction": correction,
+            }
+            # T105: pass the immutable NPC-voice advisory map (built once at the
+            # coordinator boundary) unchanged on every intent attempt/correction.
+            voice_actors = immutable_voice_intents.get("actors", {})
+            if voice_actors:
+                intent_kwargs["npc_voice_intents"] = voice_actors
             batch = intent_provider(
                 encounter,
                 provider_characters,
                 pending,
                 provider_player_input,
-                spell_references=spell_references,
-                correction=correction,
+                **intent_kwargs,
             )
             _require_current_invocation(invocation_claim)
             batch = _apply_trusted_spell_durations(
@@ -1441,6 +1505,7 @@ def execute_agentic_turn(
                 pending.get("turnId"),
                 player_message,
                 requested_die=_authoritative_requested_die(request),
+                npc_voice_intents=immutable_voice_intents,
             )
             raise CombatTurnPaused(
                 "Combat resolution requires more player input",
@@ -1507,6 +1572,7 @@ def execute_agentic_turn(
         character_paths=character_paths,
         character_preconditions=characters,
         character_postconditions=_preview_characters,
+        npc_voice_intents=immutable_voice_intents,
         invocation_claim=invocation_claim,
     )
     committed, committed_characters = apply_staged_turn(

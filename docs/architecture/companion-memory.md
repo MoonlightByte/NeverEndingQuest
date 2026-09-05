@@ -1,0 +1,124 @@
+# Companion Memory
+
+Purpose: Persist canonical shared episodes, per-NPC relationships and point of view,
+then supply grounded memory to conversation and voice calls.
+
+- Revision: `integration/npc-voice-episodic` through `6279ef52`
+- Verified: 2026-09-03
+- Doctrine: [GitHub issue #193 v2.10](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)
+- Visual companion: [NPC Voice Flow Map](../npc-voice-flow-map.html)
+
+## Authority table
+
+| Datum | Single source of truth | Commit or acceptance point |
+|---|---|---|
+| Shared episode fact | `episode_ledger.json` coordinate-addressed episode | Idempotent canonical episode commit |
+| NPC identity/profile/relationship/working state | `npc_agent_state.json` schema v2 | Revisioned `RelationshipStore` mutation |
+| NPC personal memory | POV overlay linked to a canonical episode ID | Written only after canonical episode commit |
+| Historical upgrade cursor | `episodic_upgrade.json` | T113 backfill marker advances after accepted entries |
+| Roster/presence/raw scene | Party, character, encounter, and history files | Existing canonical game-state commits |
+| Legacy `*_memories.json` | Compatibility input only | Import requires exactly one canonical identity match |
+| Save copy identity | Save manifest path/hash/schema/byte count | Restore validates listed bytes before mutation |
+
+## Flow
+
+### Live episode capture
+
+1. A location transition checkpoint preserves the full source segment.
+2. T108 extracts a canonical summary and companion-attributed typed facts.
+3. Code admits facts only for resolved present companions and assigns canonical identities.
+4. `EpisodeStore` derives an episode ID from module, location, and boundary turn and commits that
+   coordinate idempotently.
+5. After the canonical write, code derives per-NPC POV rows and writes them to
+   `npc_agent_state.json`; baseline relationship evidence may be reinforced from pinned POV.
+6. Combat exit builds presence and near-death facts from authoritative roster/HP telemetry and
+   submits T108 asynchronously on deep-copied inputs.
+7. Module completion synchronously captures the final location segment that had no exit.
+
+### Recall and conversation injection
+
+1. Conversation rebuild joins each NPC POV row to its canonical ledger episode.
+2. Selected `where`, `what`, `youRecall`, and `feeling` values enter companion context; canonical
+   episode text remains factual authority and POV supplies personal coloring.
+3. The existence of witnessed episodes opens targeted T112 recall; code does not decide recall
+   meaning from lexical overlap.
+4. T112 determines whether the line contains a concrete past/shared reference and extracts typed
+   anchors, returning empty arrays for present/future or non-historical lines.
+5. Code supplies the packet's canonical current-location ID to the one episode scorer. Typed
+   equality boosts witnessed events at that location without filtering out witnessed history
+   elsewhere or admitting an event the NPC did not witness.
+6. The top grounded rows attach to the exact-beat T105 packet; honest no-match remains valid,
+   while an unreadable ledger degrades loudly for that beat instead of masquerading as empty.
+
+### Companion arrival lifecycle
+
+1. The committed party-roster transition chooses `mark_joined` for a first arrival or
+   `mark_rejoined` for an inactive return from the latest sidecar view.
+2. Both public entries converge on one locked mutation. Its reread state determines `join`
+   versus `rejoin`, retains relationship/profile/POV data, and clears request-local working
+   state on return.
+3. A final active arrival event with the same non-empty `sourceTurnId` is verified success
+   without another event or revision increment; the caller verifies that receipt after commit.
+
+### Historical T113 backfill
+
+1. Startup detects old campaign history without a completed upgrade marker.
+2. Journal entries and campaign summaries are processed against a closed companion roster.
+3. T113 selects presence and parses facts; code drops unknown companions.
+4. Stable `backfill-*` coordinates commit through the same canonical episode store.
+5. The marker records status, journal cursor, summary completion, and commit count for resume.
+
+### Save, restore, reset
+
+1. Essential Save copies the complete companion-memory directory.
+2. Metadata fingerprints both sidecars and the upgrade marker.
+3. Restore validates manifest bytes before mutation, backs up current memory, clears live files,
+   copies saved files, and restores the backup on copy failure.
+4. Saves without `state_manifest` remain accepted for backward compatibility.
+5. Reset deletes and recreates the companion-memory directory.
+
+## State and atomicity
+
+- `data/companion_memories/episode_ledger.json`: closed schema v1, path lock, revision, whole-file
+  validation, and `safe_json_dump`.
+- `data/companion_memories/npc_agent_state.json`: closed schema v2 with the same persistence
+  discipline; corrupt/unsupported state latches read-only and emits health events.
+- `data/companion_memories/episodic_upgrade.json`: atomic JSON replacement without the sidecar
+  revision/path-lock protocol.
+- Canonical episode commits before POV/relationship state; there is no cross-file transaction.
+- Multi-NPC POV writes are independent RelationshipStore mutations.
+- Save metadata verifies copied files but does not make the directory copy one atomic snapshot.
+
+## Load-bearing seams
+
+1. `core/npc/episode_store.py:1-12` - canonical episode authority.
+2. `core/npc/episode_store.py:51-73` - coordinate-derived episode identity.
+3. `core/npc/episode_store.py:190-294` - latch, strict query read, lock, revision, schema, atomic write.
+4. `core/npc/episode_store.py:296-378` - idempotent commit and witnessed retrieval.
+5. `core/npc/relationship_store.py:285-377` - relationship-sidecar persistence.
+6. `core/npc/relationship_store.py:422-500` - stable identity registration.
+7. `core/npc/relationship_store.py:765-875` - typed relationship event application.
+8. `core/npc/relationship_store.py:978-1045` - exactly-one legacy identity migration.
+9. `core/npc/relationship_store.py:1165-1260,1357-1377` - one locked join/rejoin mutation.
+10. `core/ai/action_handler.py:2473-2635` - roster lifecycle routing and receipt verification.
+11. `core/npc/episode_extraction.py:138-201` - T108 parsing/presence reconciliation.
+12. `core/npc/episode_capture.py:151-265` - location capture and POV projection.
+13. `core/npc/episode_capture.py:268-412` - combat capture and async dispatch.
+14. `core/npc/episode_recall.py:173-245` - T112 typed-anchor and current-location scoring.
+15. `core/npc/voice_context.py:130-323` - witnessed candidates, location threading, and T105 handoff.
+16. `core/npc/episode_backfill.py:195-254` - T113 roster-bound backfill.
+17. `updates/save_game_manager.py:927-1041` - restore, cleanup, and rollback.
+
+## Invariants
+
+- #193 Part 1, B1/B2, AP-4, AP-7, evidence, and lineage.
+- #193 Part 2, NPC systems; Save/restore/reset; Schema.
+- #193 Part 5, No-Limits, Single-Path, always-live features, and Fork-3.
+
+## Open items
+
+- #198 - asynchronous episode capture can outlive its owning workflow.
+- #200 - combat-memory persistence/save-provenance tracker remains open.
+- #209 - legacy companion-memory reconciliation remains deferred in travel recovery.
+- #258 - synchronous T113 backfill can delay startup after provider completion.
+- #291 - a roster-active, schema-valid stale inactive sidecar needs owner-designed recovery.

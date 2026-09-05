@@ -6,6 +6,7 @@ fully reaps that child before returning or reissuing.
 """
 
 import copy
+import logging
 import os
 import pickle
 import random
@@ -16,6 +17,9 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from uuid import uuid4
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 _REQUIRED_TASK_IDS = frozenset(
@@ -57,6 +61,9 @@ _ADVISORY_TASK_IDS = frozenset(
         "T091",
         "T107",
         "T108",
+        "T113",
+        "T105",
+        "T112",
     }
 )
 _LIVE_TASK_IDS = _REQUIRED_TASK_IDS | _ADVISORY_TASK_IDS
@@ -65,6 +72,7 @@ _WATCHDOG_SECONDS = 600.0
 _WIZARD_READ_INACTIVITY_SECONDS = 40.0
 _WIZARD_BACKSTOP_SECONDS = 180.0
 _WIZARD_TASK_IDS = frozenset({"T092", "T093"})
+_NO_WATCHDOG_ADVISORY_TASK_IDS = frozenset({"T105", "T112"})
 _MAX_BACKOFF_SECONDS = 8.0
 _PERMANENT_ERROR_SECONDS = 60.0
 
@@ -104,6 +112,15 @@ class LiveProviderCompletedError(RuntimeError):
         )
 
 
+def _can_promote_player_acted(existing, kind):
+    """Return whether a destructive command may replace the welcome marker."""
+    return (
+        isinstance(existing, dict)
+        and existing.get("kind") == "player_acted"
+        and str(kind) in ("restore", "reset")
+    )
+
+
 @dataclass
 class LiveTurnScope:
     """In-memory lifecycle state for one outer player turn."""
@@ -116,6 +133,8 @@ class LiveTurnScope:
     quiescent: threading.Event = field(default_factory=threading.Event)
     lock: threading.RLock = field(default_factory=threading.RLock)
     controls_open: bool = True
+    advisory_scopes: list = field(default_factory=list)
+    purpose: str = "turn"
 
     def next_generation(self):
         with self.lock:
@@ -130,22 +149,103 @@ class LiveTurnScope:
                     "operation_id": self.operation_id,
                     "accepted": False,
                 }
-            accepted = self.supersession is None
-            if self.supersession is None:
+            accepted = self.supersession is None or _can_promote_player_acted(
+                self.supersession, kind
+            )
+            if accepted:
                 self.supersession = {
                     "kind": str(kind),
                     "operation_id": operation_id or str(uuid4()),
                 }
             result = dict(self.supersession)
             result["accepted"] = accepted
-            return result
+            advisory_scopes = tuple(self.advisory_scopes)
+        for advisory_scope in advisory_scopes:
+            advisory_scope.seal()
+        return result
 
     def is_superseded(self):
         with self.lock:
             return self.supersession is not None
 
+    def register_advisory_scopes(self, advisory_scopes):
+        with self.lock:
+            if not self.controls_open or self.supersession is not None:
+                return False
+            self.advisory_scopes.extend(advisory_scopes)
+            return True
+
+    def seal_advisory_scopes(self):
+        with self.lock:
+            scopes = tuple(self.advisory_scopes)
+        for advisory_scope in scopes:
+            advisory_scope.seal()
+        return scopes
+
+
+@dataclass
+class AdvisoryProviderScope:
+    """One task-owned, beat-fenced advisory provider lifetime."""
+
+    parent: LiveTurnScope
+    beat_id: str
+    completion_required: bool = False
+    generation: int = 0
+    sealed: threading.Event = field(default_factory=threading.Event)
+    quiescent: threading.Event = field(default_factory=threading.Event)
+    lock: threading.RLock = field(default_factory=threading.RLock)
+
+    @property
+    def operation_id(self):
+        return self.parent.operation_id
+
+    def next_generation(self):
+        with self.lock:
+            self.generation += 1
+            return self.generation
+
+    def is_superseded(self):
+        return self.sealed.is_set() or self.parent.is_superseded()
+
+    def seal(self):
+        self.sealed.set()
+
+    def finish(self):
+        self.quiescent.set()
+
+
+def open_advisory_scope(parent, beat_id):
+    """Register one exact beat child before its monitor may start."""
+    if parent is None or parent is not get_live_turn_scope():
+        return None
+    scopes = open_advisory_scopes(parent, beat_id, 1)
+    return scopes[0] if scopes else None
+
+
+def open_advisory_scopes(parent, beat_id, count, *, completion_required=False):
+    """Atomically register the complete intended advisory child set."""
+    if parent is None or count <= 0:
+        return ()
+    if (
+        parent is not get_live_turn_scope()
+        and parent is not get_active_welcome_scope()
+    ):
+        return ()
+    scopes = tuple(
+        AdvisoryProviderScope(
+            parent=parent,
+            beat_id=str(beat_id),
+            completion_required=bool(completion_required),
+        )
+        for _index in range(count)
+    )
+    if not parent.register_advisory_scopes(scopes):
+        return ()
+    return scopes
+
 _scope_guard = threading.RLock()
 _active_scope = None
+_closing_scopes = []
 
 
 def open_live_turn_scope():
@@ -163,6 +263,19 @@ def get_live_turn_scope():
         return _active_scope
 
 
+def get_lifecycle_turn_scopes():
+    """Return active and closing turn scopes in one authority snapshot."""
+    with _scope_guard:
+        scopes = []
+        if _active_scope is not None:
+            scopes.append(_active_scope)
+        scopes.extend(
+            scope for scope in _closing_scopes
+            if scope is not _active_scope and not scope.quiescent.is_set()
+        )
+        return tuple(scopes)
+
+
 def live_provider_policy(task_id):
     """Return the reviewed policy only while a live player-turn scope exists."""
     if get_live_turn_scope() is None:
@@ -178,19 +291,47 @@ def close_live_turn_scope(scope):
     """Close only the exact active scope supplied by its game thread."""
     global _active_scope
     with _scope_guard:
-        if _active_scope is scope:
-            with scope.lock:
-                scope.controls_open = False
-            scope.phase = "QUIESCENT"
-            scope.quiescent.set()
-            _active_scope = None
+        if _active_scope is not scope:
+            return
+        with scope.lock:
+            scope.controls_open = False
+        advisory_scopes = scope.seal_advisory_scopes()
+        if all(item is not scope for item in _closing_scopes):
+            _closing_scopes.append(scope)
+        _active_scope = None
+    def publish_quiescence():
+        for advisory_scope in advisory_scopes:
+            advisory_scope.quiescent.wait()
+        scope.phase = "QUIESCENT"
+        scope.quiescent.set()
+        with _scope_guard:
+            _closing_scopes[:] = [
+                item for item in _closing_scopes if item is not scope
+            ]
+    if all(item.quiescent.is_set() for item in advisory_scopes):
+        publish_quiescence()
+    else:
+        threading.Thread(
+            target=publish_quiescence,
+            name="live-turn-advisory-reap",
+            daemon=True,
+        ).start()
 
 
-def request_live_turn_supersession(kind, operation_id=None):
-    scope = get_live_turn_scope()
-    if scope is None:
-        return None
-    result = scope.request_supersession(kind, operation_id)
+def request_live_turn_supersession(kind, operation_id=None, scope=None):
+    """Fence the current live turn, optionally only if it is ``scope``."""
+    with _scope_guard:
+        if scope is None:
+            target_scope = _active_scope
+        elif scope is _active_scope or any(
+            item is scope for item in _closing_scopes
+        ):
+            target_scope = scope
+        else:
+            target_scope = None
+        if target_scope is None:
+            return None
+    result = target_scope.request_supersession(kind, operation_id)
     if result.get("accepted"):
         from core.combat.invocation import supersede_invocations
         from core.managers.campaign_manager import _party_module_transition_lock
@@ -201,6 +342,29 @@ def request_live_turn_supersession(kind, operation_id=None):
         with _party_module_transition_lock():
             supersede_invocations(kind)
     return result
+
+
+def request_lifecycle_turn_supersession(kind, operation_id=None):
+    """Atomically claim and seal every active/closing player-turn scope."""
+    requested_id = operation_id or str(uuid4())
+    with _scope_guard:
+        scopes = []
+        if _active_scope is not None:
+            scopes.append(_active_scope)
+        scopes.extend(
+            item for item in _closing_scopes
+            if item is not _active_scope and not item.quiescent.is_set()
+        )
+        results = tuple(
+            scope.request_supersession(kind, requested_id) for scope in scopes
+        )
+    if any(result.get("accepted") for result in results):
+        from core.combat.invocation import supersede_invocations
+        from core.managers.campaign_manager import _party_module_transition_lock
+
+        with _party_module_transition_lock():
+            supersede_invocations(kind)
+    return tuple(scopes), results
 
 
 # --- Detached startup-welcome scope (issue #214) ---------------------------
@@ -274,10 +438,7 @@ def claim_destructive_operation(scope, kind, execute, complete,
                 "operation_id": scope.operation_id,
             }
         existing = scope.supersession
-        if existing is not None and not (
-            existing.get("kind") == "player_acted"
-            and str(kind) in ("restore", "reset")
-        ):
+        if existing is not None and not _can_promote_player_acted(existing, kind):
             # player_acted only cancels the welcome - the first destructive
             # request promotes past it; anything else is a real conflict.
             return {
@@ -320,6 +481,15 @@ def drain_live_saves(scope, *, seal=False):
 
 def finish_live_turn_scope(scope):
     """Drain accepted saves and publish game-thread quiescence."""
+    if scope.is_superseded():
+        scopes = scope.seal_advisory_scopes()
+        started = time.monotonic()
+        while not all(item.quiescent.wait(0.1) for item in scopes):
+            _safe_emit(
+                _emit_working,
+                "Finishing background character work safely (%d seconds elapsed)..."
+                % max(1, int(time.monotonic() - started)),
+            )
     drain_live_saves(scope, seal=True)
     close_live_turn_scope(scope)
 
@@ -557,7 +727,7 @@ def _reconstruct_response(envelope):
         finish_reason=envelope.get("finish_reason", "unknown"),
         provider=envelope.get("provider", ""),
         task_id=envelope.get("task_id"),
-        raw_response=None,
+        raw_response={"liveProviderCorrelation": dict(envelope["correlation"])},
         usage_invocation_id=envelope.get("usage_invocation_id"),
     )
 
@@ -591,18 +761,32 @@ def call_live_provider(
         )
     scope = scope if scope is not None else get_live_turn_scope()
     emit = status_emit if status_emit is not None else _emit_working
+    completion_required = bool(
+        isinstance(scope, AdvisoryProviderScope)
+        and scope.completion_required
+    )
+    if completion_required and task_id == "T105":
+        # The request-local batch owns player-facing progress. Per-child transport
+        # details remain developer-only so parallel workers cannot race narration.
+        emit = lambda _message: None
     operation_id = scope.operation_id if scope is not None else str(uuid4())
     frozen_messages = copy.deepcopy(messages)
     frozen_kwargs = copy.deepcopy(request_kwargs)
     wizard_task = task_id in _WIZARD_TASK_IDS
-    if wizard_task and frozen_kwargs.get("_request_provider") == "openai":
+    if completion_required and frozen_kwargs.get("_request_provider") in {
+        "openai",
+        "legacy",
+        "lmstudio",
+    }:
+        frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
+    elif wizard_task and frozen_kwargs.get("_request_provider") == "openai":
         import httpx
 
         frozen_kwargs["timeout"] = httpx.Timeout(
             _WATCHDOG_SECONDS,
             read=_WIZARD_READ_INACTIVITY_SECONDS,
         )
-    elif frozen_kwargs.get("_request_provider") in {
+    elif task_id not in _NO_WATCHDOG_ADVISORY_TASK_IDS and frozen_kwargs.get("_request_provider") in {
         "openai",
         "legacy",
         "lmstudio",
@@ -643,7 +827,7 @@ def call_live_provider(
                 cwd=os.getcwd(),
             )
         except BaseException:
-            if policy == "advisory":
+            if policy == "advisory" and not completion_required:
                 raise LiveProviderUnavailable(
                     task_id, {"error_class": "process_setup_unavailable"}
                 )
@@ -660,7 +844,13 @@ def call_live_provider(
 
         started = time.monotonic()
         generation_limit = (
-            _WIZARD_BACKSTOP_SECONDS if wizard_task else _WATCHDOG_SECONDS
+            _WATCHDOG_SECONDS
+            if completion_required
+            else (
+                None
+                if task_id in _NO_WATCHDOG_ADVISORY_TASK_IDS
+                else (_WIZARD_BACKSTOP_SECONDS if wizard_task else _WATCHDOG_SECONDS)
+            )
         )
         next_heartbeat = started + _HEARTBEAT_SECONDS
         envelope = None
@@ -669,7 +859,7 @@ def call_live_provider(
         first_communicate = True
         backstop_exhausted = False
         try:
-            while time.monotonic() - started < generation_limit:
+            while generation_limit is None or time.monotonic() - started < generation_limit:
                 if scope is not None and scope.is_superseded():
                     superseded = True
                     break
@@ -705,11 +895,15 @@ def call_live_provider(
                 envelope = pickle.loads(output)
             except (EOFError, pickle.PickleError, ValueError, TypeError):
                 envelope = None
-        if wizard_task and not isinstance(envelope, dict):
+        if (
+            wizard_task
+            or completion_required
+            or task_id in {"T105", "T108", "T113"}
+        ) and not isinstance(envelope, dict):
             envelope = {
                 "kind": "error",
                 "error_class": (
-                    "WizardGenerationBackstop"
+                    "ProviderChildGenerationBackstop"
                     if backstop_exhausted
                     else "ProviderChildUnavailable"
                 ),
@@ -717,20 +911,63 @@ def call_live_provider(
                 "disposition": "retryable_transport",
                 "http_status": None,
                 "retry_after": None,
+                "correlation": {
+                    "operation_id": operation_id,
+                    "generation": generation,
+                },
             }
         expected_correlation = {
             "operation_id": operation_id,
             "generation": generation,
         }
+        correlation_accepted = (
+            isinstance(envelope, dict)
+            and envelope.get("correlation") == expected_correlation
+        )
+        if isinstance(envelope, dict):
+            envelope["correlation_accepted"] = correlation_accepted
+            if task_id in {"T105", "T108", "T113"}:
+                try:
+                    from utils.api_logger import log_live_provider_envelope
+
+                    log_live_provider_envelope(
+                        task_id,
+                        frozen_messages,
+                        envelope,
+                        latency_seconds=time.monotonic() - started,
+                    )
+                except Exception:
+                    pass
         if (
             isinstance(envelope, dict)
             and envelope.get("kind") == "success"
-            and envelope.get("correlation") == expected_correlation
+            and correlation_accepted
         ):
             return _reconstruct_response(envelope)
 
         failure_count += 1
         envelope = envelope if isinstance(envelope, dict) else {}
+        if (
+            policy == "advisory"
+            and completion_required
+            and envelope.get("disposition") in {
+                "retryable_http",
+                "retryable_transport",
+            }
+        ):
+            _LOGGER.warning(
+                "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s",
+                task_id,
+                envelope.get("error_class", "transport_unavailable"),
+                envelope.get("http_status"),
+            )
+            _interruptible_wait(
+                _delay_for_error(envelope, failure_count),
+                scope,
+                "",
+                emit,
+            )
+            continue
         if policy == "advisory":
             raise LiveProviderUnavailable(task_id, envelope)
         if wizard_task:

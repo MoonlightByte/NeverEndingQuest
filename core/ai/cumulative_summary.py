@@ -376,12 +376,19 @@ def clean_old_summaries_from_conversation(conversation_history):
     
     return cleaned_history
 
-def compress_conversation_history_on_transition(conversation_history, leaving_location_name):
+def compress_conversation_history_on_transition(conversation_history, leaving_location_name,
+                                                party_tracker_data=None, path_manager=None,
+                                                player_name=""):
     """
     Compress conversation history when transitioning out of a location.
     Creates a summary of the location being left and removes those messages.
     Uses location transition messages as markers.
     Returns the compressed conversation history.
+
+    party_tracker_data/path_manager/player_name are optional; when provided,
+    a best-effort per-companion episode is captured from the raw
+    segment before it is compressed away (Phase 1d). Capture is offloaded and
+    fail-open -- it never gates, mutates, or blocks the summary/history.
     """
     status_compressing_history()
     debug_print(f"Compressing conversation history when leaving {leaving_location_name}")
@@ -451,7 +458,37 @@ def compress_conversation_history_on_transition(conversation_history, leaving_lo
     # Generate summary if we have messages to summarize
     if len(messages_to_summarize) > 0:
         summary = generate_location_summary(leaving_location_name, messages_to_summarize)
-        
+
+        # Phase 1d: best-effort per-companion episode capture from the SAME raw
+        # segment, before it is compressed away. Offloaded (fire-and-forget) and
+        # fail-open: never gates or mutates the summary/history.
+        try:
+            if party_tracker_data is not None and path_manager is not None:
+                from core.npc.episode_capture import (
+                    capture_location_episode_async,
+                    leaving_location_id_from_marker,
+                    location_close_position,
+                    boundary_turn_id_for_position,
+                )
+                import copy as _copy
+                position = location_close_position(conversation_history, transition_index)
+                capture_location_episode_async(
+                    leaving_location_name=leaving_location_name,
+                    leaving_location_id=leaving_location_id_from_marker(
+                        conversation_history[transition_index].get("content", "")),
+                    segment_messages=list(messages_to_summarize),
+                    # Snapshot the tracker: the offloaded thread reads module/world
+                    # seconds later (after the luna call), and the main loop mutates
+                    # the live dict on the very next action (often a module transition)
+                    # -- a live reference would corrupt the episode's module coordinate.
+                    party_tracker_data=_copy.deepcopy(party_tracker_data),
+                    path_manager=path_manager,
+                    boundary_turn_id=boundary_turn_id_for_position(position),
+                    player_name=player_name,
+                )
+        except Exception:
+            pass
+
         if summary:
             # Build the new conversation history
             new_history = []
@@ -708,50 +745,6 @@ def update_journal_with_summary(adventure_summary, party_tracker_data, location_
 
     if safe_write_json("journal.json", journal_data):
         debug_print("Journal updated successfully")
-
-        # Process memories for companion NPCs
-        try:
-            from core.memories.companion_memory import CompanionMemoryManager
-            from utils.npc_name_canonicalizer import get_canonical_name
-            memory_manager = CompanionMemoryManager()
-
-            # Get list of party NPCs with canonical names
-            party_npcs = []
-            for npc in party_tracker_data.get('partyNPCs', []):
-                npc_name = npc.get('name', '') if isinstance(npc, dict) else str(npc)
-                if npc_name:
-                    # Use AI-based canonicalization to handle all D&D naming conventions
-                    canonical_name = get_canonical_name(npc_name)
-                    if canonical_name:
-                        party_npcs.append(canonical_name)
-
-            # Process the journal entry for memories
-            if party_npcs:
-                memories_created = memory_manager.process_journal_entry(
-                    new_entry,
-                    party_npcs
-                )
-
-                if memories_created:
-                    debug_print(f"Created memories for: {', '.join(memories_created.keys())}")
-
-                    # Auto-compress the memories for AI consumption
-                    try:
-                        import subprocess
-                        result = subprocess.run(
-                            ["python", "scripts/memory_management/compress_memories.py"],
-                            capture_output=True,
-                            text=True,
-                            timeout=5
-                        )
-                        if result.returncode == 0:
-                            debug_print("Compressed memories for AI consumption")
-                    except Exception as compress_error:
-                        debug_print(f"Memory compression failed (non-fatal): {compress_error}")
-        except Exception as e:
-            # Don't let memory system errors break journal updates
-            debug_print(f"Memory processing error (non-fatal): {e}")
-
         return True
     else:
         debug_print("Failed to update journal")

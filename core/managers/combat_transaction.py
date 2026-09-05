@@ -12,6 +12,7 @@ encounter receipt and cursor are committed last.
 
 from contextlib import contextmanager
 from copy import deepcopy
+import logging
 import os
 import re
 import uuid
@@ -29,6 +30,7 @@ from core.managers.combat_state import (
     begin_turn,
     commit_turn,
     ensure_combat_state,
+    normalize_npc_voice_intents,
     recovery_action,
     stage_turn_events,
     valid_pending_delivery,
@@ -45,6 +47,9 @@ from utils.state_transaction import (
     StateTransactionCoordinator,
     TransactionBusyError,
 )
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CombatTransactionError(RuntimeError):
@@ -614,8 +619,8 @@ def _typed_dependency_conflicts(encounter, characters, pending, events):
     return conflicts
 
 
-def _bounded_player_text(value, limit=12000):
-    return str(value or "").strip()[:limit]
+def _player_text(value):
+    return str(value or "").strip()
 
 
 def _require_active_typed_encounter(encounter, state):
@@ -727,7 +732,7 @@ def claim_turn(
             pending["intentDependencies"] = _initial_intent_dependencies(
                 encounter, actor_ids
             )
-        initial_input = _bounded_player_text(player_input)
+        initial_input = _player_text(player_input)
         if initial_input:
             pending["playerExchanges"] = [{"playerInput": initial_input}]
         state.pop("pauseReason", None)
@@ -744,7 +749,7 @@ def append_pending_player_input(
     timeout_seconds=5.0,
 ):
     """Durably add one clarification/roll to an unresolved player turn."""
-    rendered = _bounded_player_text(player_input)
+    rendered = _player_text(player_input)
     if not rendered:
         return
     with path_transaction_lock(
@@ -764,10 +769,10 @@ def append_pending_player_input(
         exchanges = pending.get("playerExchanges")
         if not isinstance(exchanges, list):
             exchanges = []
-        exchanges = [item for item in exchanges if isinstance(item, dict)][-7:]
+        exchanges = [item for item in exchanges if isinstance(item, dict)]
         if not exchanges or exchanges[-1].get("playerInput") != rendered:
             exchanges.append({"playerInput": rendered})
-        pending["playerExchanges"] = exchanges[-8:]
+        pending["playerExchanges"] = exchanges
         _write_object(encounter_path, encounter, "pending player clarification")
 
 
@@ -777,9 +782,10 @@ def record_pending_player_request(
     player_message,
     requested_die=None,
     timeout_seconds=5.0,
+    npc_voice_intents=None,
 ):
-    """Persist the DM's bounded question beside the action it clarifies."""
-    rendered = _bounded_player_text(player_message, limit=4000)
+    """Persist the DM's complete question beside the action it clarifies."""
+    rendered = _player_text(player_message)
     with path_transaction_lock(
         encounter_path,
         suffix=".combat.lock",
@@ -799,7 +805,18 @@ def record_pending_player_request(
         die = str(requested_die or "").strip().lower()
         if re.fullmatch(r"(?:\d+)?d(?:4|6|8|10|12|20|100)", die):
             exchanges[-1]["requestedDie"] = die
-        pending["playerExchanges"] = exchanges[-8:]
+        pending["playerExchanges"] = exchanges
+        existing_voice_envelope = normalize_npc_voice_intents(
+            pending.get("npcVoiceIntents")
+        )
+        if existing_voice_envelope is not None:
+            pending["npcVoiceIntents"] = existing_voice_envelope
+        else:
+            supplied_voice_envelope = normalize_npc_voice_intents(
+                npc_voice_intents
+            )
+            if supplied_voice_envelope is not None:
+                pending["npcVoiceIntents"] = supplied_voice_envelope
         _write_object(encounter_path, encounter, "pending player request")
 
 
@@ -812,6 +829,7 @@ def stage_events(
     character_paths=None,
     character_preconditions=None,
     character_postconditions=None,
+    npc_voice_intents=None,
     timeout_seconds=5.0,
     invocation_claim=None,
 ):
@@ -914,9 +932,18 @@ def stage_events(
             )
         context = delivery_context if isinstance(delivery_context, dict) else {}
         pending["deliveryContext"] = {
-            "historyInput": str(context.get("historyInput") or "")[:24000],
-            "displayPrefix": str(context.get("displayPrefix") or "")[:4000],
+            "historyInput": str(context.get("historyInput") or ""),
+            "displayPrefix": str(context.get("displayPrefix") or ""),
         }
+        voice_envelope = normalize_npc_voice_intents(npc_voice_intents)
+        if voice_envelope is not None:
+            pending["npcVoiceIntents"] = voice_envelope
+        else:
+            pending.pop("npcVoiceIntents", None)
+            if npc_voice_intents:
+                _LOGGER.warning(
+                    "T105 combat advisory was invalid and was omitted before staging"
+                )
         if isinstance(roll_consumption, dict):
             encounter.setdefault("preroll_cache", {})["consumed"] = deepcopy(
                 roll_consumption
@@ -997,12 +1024,12 @@ def record_narration_attempt(
         str(code)
         for code in (violations or [])
         if isinstance(code, str)
-    ][:24]
+    ]
     warning_codes = [
         str(code)
         for code in (warnings or [])
         if isinstance(code, str)
-    ][:24]
+    ]
     with _invocation_commit_authority(invocation_claim), path_transaction_lock(
         encounter_path,
         suffix=".combat.lock",
@@ -1034,7 +1061,7 @@ def record_narration_attempt(
             {
                 "attempt": attempt,
                 "status": status,
-                "candidate": str(candidate or "")[:12000],
+                "candidate": str(candidate or ""),
                 "violations": violation_codes,
                 "warnings": warning_codes,
             }

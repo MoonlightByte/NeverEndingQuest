@@ -4377,7 +4377,22 @@
             Preparing compression...
         </div>
     </div>
-    
+
+    <!-- Episodic Memory Upgrade Progress (distinct DOM element so it never fights the
+         compaction widget above; reuses the same styling for a familiar screen) -->
+    <div class="compression-progress-container" id="episodic-upgrade-progress">
+        <div class="compression-progress-title">Recovering Companion Memories</div>
+        <div class="compression-progress-text" id="episodic-upgrade-text">
+            Your companions are remembering the journey you shared...
+        </div>
+        <div class="compression-progress-bar-container">
+            <div class="compression-progress-bar" id="episodic-upgrade-bar"></div>
+        </div>
+        <div class="compression-progress-status" id="episodic-upgrade-status">
+            Preparing...
+        </div>
+    </div>
+
     <div class="header">
         <h1>Never<span>Ending</span>Quest <small style="font-size: 0.4em; opacity: 0.7;" id="version-display">v{{ version }}</small><button id="update-button" style="display: none; margin-left: 10px; padding: 4px 12px; font-size: 11px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-family: Arial, sans-serif;" onclick="showUpdateDialog()">[UPDATE] Update Available</button></h1>
         <div class="location-info" id="location-info">
@@ -5780,7 +5795,53 @@
                 container.classList.remove('active');
             }, 2000);
         });
-        
+
+        // --- Episodic memory upgrade (W5): distinct widget, distinct event names ---
+        socket.on('episodic_upgrade_start', (data) => {
+            const container = document.getElementById('episodic-upgrade-progress');
+            const textElement = document.getElementById('episodic-upgrade-text');
+            const statusElement = document.getElementById('episodic-upgrade-status');
+            const barElement = document.getElementById('episodic-upgrade-bar');
+            if (!container) return;
+            container.classList.add('active');
+            const messages = [
+                "Your companions are remembering the journey you shared...",
+                "Old friends recall the battles, the losses, and the quiet moments...",
+                "The bonds forged on the road are being woven back into memory...",
+                "Every gift, every near-miss, every promise is being recalled..."
+            ];
+            textElement.textContent = messages[Math.floor(Math.random() * messages.length)];
+            statusElement.textContent = (data && data.message) ? data.message : 'Recovering memories...';
+            barElement.style.width = '0%';
+            barElement.classList.remove('complete');
+        });
+
+        socket.on('episodic_upgrade_progress', (data) => {
+            const statusElement = document.getElementById('episodic-upgrade-status');
+            const barElement = document.getElementById('episodic-upgrade-bar');
+            if (!barElement) return;
+            const total = data && data.total ? data.total : 0;
+            const done = data && data.completed ? data.completed : 0;
+            if (total > 0) {
+                barElement.style.width = Math.min(100, Math.round((done / total) * 100)) + '%';
+                statusElement.textContent = `Recovering memory ${done} of ${total}...`;
+            } else {
+                statusElement.textContent = (data && data.message) ? data.message : 'Recovering memories...';
+            }
+        });
+
+        socket.on('episodic_upgrade_complete', (data) => {
+            const container = document.getElementById('episodic-upgrade-progress');
+            const statusElement = document.getElementById('episodic-upgrade-status');
+            const barElement = document.getElementById('episodic-upgrade-bar');
+            if (!container) return;
+            barElement.style.width = '100%';
+            barElement.classList.add('complete');
+            statusElement.textContent = (data && data.message) ? data.message
+                : 'Your companions remember the journey.';
+            setTimeout(() => { container.classList.remove('active'); }, 2500);
+        });
+
         // Image generation event handlers
         socket.on('image_generated', (data) => {
             // Find the button that was marked as loading and re-enable it

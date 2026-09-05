@@ -2468,7 +2468,7 @@ def create_module_validation_context(party_tracker_data, path_manager):
                 npc_name = party_npc.get("name", "")
                 if npc_name and npc_name not in current_location_npcs:
                     current_location_npcs.append(npc_name)
-            
+
             # IDs AND names: the validator judges narration, and narration
             # speaks in names. An ids-only list made it reject the area's own
             # location names as hallucinations.
@@ -2572,7 +2572,7 @@ def create_module_validation_context(party_tracker_data, path_manager):
         # Get all valid NPCs from ALL module codexes
         try:
             valid_npcs = []
-            
+
             # Import all module codexes and merge their NPCs
             modules_dir = "modules"
             if os.path.exists(modules_dir):
@@ -2869,6 +2869,7 @@ def validate_json_structure(response_text):
         return False, None, f"Validation error: {str(e)}"
 
 
+
 _ENHANCED_DM_NOTE_PREFIX = "Dungeon Master Note:"
 _ENHANCED_PLAYER_MARKER = " Player: "
 _INVENTORY_CONTEXT_MARKER = "\n[Inventory Context:"
@@ -2898,8 +2899,8 @@ def _extract_raw_player_message(content):
     return player_text.strip()
 
 
-def _select_validation_history(conversation_history, raw_user_input, limit=4):
-    """Return bounded player-authored history without injected prompt text."""
+def _select_validation_history(conversation_history, raw_user_input):
+    """Return player-authored history without injected prompt text."""
     history = conversation_history if isinstance(conversation_history, list) else []
     current_enhanced_index = None
     normalized_current = str(raw_user_input or "").strip()
@@ -2946,17 +2947,6 @@ def _select_validation_history(conversation_history, raw_user_input, limit=4):
             if not content:
                 continue
         recent_messages.insert(0, {"role": role, "content": content})
-        if len(recent_messages) >= limit:
-            break
-
-    while len(recent_messages) < limit:
-        recent_messages.insert(
-            0,
-            {
-                "role": "assistant",
-                "content": "Previous context not available.",
-            },
-        )
     return recent_messages
 
 
@@ -2966,6 +2956,7 @@ def _assemble_validation_messages(
     candidate_response,
     compress_prefix=None,
     srd_context=None,
+    npc_voice_batch=None,
     local_template_tail=False,
 ):
     """Compress context first, then preserve the raw intent/candidate pair.
@@ -2985,13 +2976,25 @@ def _assemble_validation_messages(
         prefix = compress_prefix(prefix)
     if srd_context:
         prefix.append({"role": "system", "content": srd_context})
-    tail = [
+    messages = prefix + [
         {"role": "user", "content": str(raw_user_input or "")},
         {"role": "assistant", "content": candidate_response},
     ]
+    if npc_voice_batch is not None:
+        try:
+            from core.npc.voice_context import inject_voice_context
+
+            messages = inject_voice_context(messages, npc_voice_batch)
+        except Exception as voice_error:
+            debug(
+                f"T105 validator guidance skipped: {type(voice_error).__name__}",
+                category="ai_validation",
+            )
+    # local_template_tail (issue #168): the strict-template nudge must remain the
+    # FINAL user turn, so it is appended after any voice-context injection.
     if local_template_tail:
-        tail.append({"role": "user", "content": "Return the JSON verdict now."})
-    return prefix + tail
+        messages.append({"role": "user", "content": "Return the JSON verdict now."})
+    return messages
 
 
 def validate_ai_response(
@@ -3054,7 +3057,7 @@ def validate_ai_response(
     # Keep only player-authored text from prior enhanced turns. The current
     # enhanced DM note is excluded and reintroduced below as exact raw input.
     recent_messages = _select_validation_history(
-        conversation_history, user_input, limit=4
+        conversation_history, user_input
     )
 
     # Get location data from party tracker
@@ -3334,19 +3337,32 @@ def validate_ai_response(
         user_input,
         response_to_validate,
         srd_context=srd_context,
+        npc_voice_batch=npc_voice_batch,
         local_template_tail=(_val_provider == "lmstudio"),
     )
+    validation_messages_for_diagnostics = validation_messages_to_send
+    if npc_voice_batch is not None:
+        try:
+            from core.npc.voice_context import redact_voice_context
+
+            validation_messages_for_diagnostics = redact_voice_context(
+                validation_messages_to_send
+            )
+        except Exception:
+            validation_messages_for_diagnostics = [
+                {"role": "system", "content": "Private NPC guidance: [redacted]"}
+            ]
 
     if '"action": "createNewModule"' in response_to_validate:
         debug(
             "VALIDATION: createNewModule raw intent/candidate pair isolated",
             category="ai_validation",
         )
-    
+
     # Export validation messages for debugging
     os.makedirs("debug/api_captures", exist_ok=True)
     with open("debug/api_captures/main_validation_messages_to_api.json", "w", encoding="utf-8") as f:
-        json.dump(validation_messages_to_send, f, indent=2, ensure_ascii=False)
+        json.dump(validation_messages_for_diagnostics, f, indent=2, ensure_ascii=False)
     print(f"DEBUG: [MAIN VALIDATION] Exported validation messages to debug/api_captures/main_validation_messages_to_api.json")
     
     # Select per-provider validation model config
@@ -3517,8 +3533,8 @@ def process_conversation_history(history):
         if message["role"] == "user" and message["content"].startswith("Leveling Dungeon Master Guidance"):
             message["content"] = "DM Guidance: Proceed with leveling up the player character or the party NPC given the 5th Edition role playing game rules. Only level the player character or party NPC one level at a time to ensure no mistakes are made. If you are leveling up a party NPC then pass all changes at once using the 'updateCharacterInfo' action. If you are leveling up a player character then you must ask the player for important decisions and choices they would have control over. After the player has provided the needed information then use the 'updateCharacterInfo' to pass all changes to the players character sheet and include the experience goal for the next level. Do not update the player's information in segements."
     
-    # Apply DM note truncation to clean up bloated messages
-    history = truncate_dm_notes(history)
+    # Normalize legacy DM note headers before reuse.
+    history = normalize_persisted_dm_notes(history)
     
     debug("SUCCESS: Conversation history processing complete", category="conversation_management")
     return history
@@ -3554,10 +3570,10 @@ def remove_duplicate_messages(conversation_history):
             cleaned_history.append(msg)
         else:
             debug(f"Removed duplicate message at index {i}", category="conversation_management")
-    
+
     return cleaned_history
 
-def truncate_dm_notes(conversation_history):
+def normalize_persisted_dm_notes(conversation_history):
     from core.ai.cumulative_summary import normalize_legacy_dm_notes
 
     normalized = normalize_legacy_dm_notes(conversation_history)
@@ -6624,14 +6640,34 @@ def _get_ai_response_impl(
                 temp_file.unlink()
             except OSError as cleanup_error:
                 print(f"WARNING: Could not remove compression input: {cleanup_error}")
-    
-    # Export main conversation messages for debugging. Suppressed for the
-    # detached welcome (#214): this is a fixed-path overwrite that would race
-    # a concurrent player turn; the api master log still captures the request.
+    # T105 guidance is request-local and is inserted only after compression.
+    # A missing, invalid, or failed batch returns the existing messages unchanged.
+    messages_for_diagnostics = messages_to_send
+    if npc_voice_batch is not None:
+        try:
+            from core.npc.voice_context import (
+                inject_voice_context,
+                redact_voice_context,
+            )
+
+            messages_to_send = inject_voice_context(
+                messages_to_send, npc_voice_batch
+            )
+            messages_for_diagnostics = redact_voice_context(messages_to_send)
+        except Exception as voice_error:
+            debug(
+                f"T105 DM guidance skipped: {type(voice_error).__name__}",
+                category="ai_routing",
+            )
+
+    # Suppress the fixed-path diagnostics export for the detached welcome; it
+    # would race a concurrent player turn. T105 private guidance is redacted
+    # from the ordinary export, while the API master log retains the request.
     if not detached_context:
         with open("main_conversation_messages_to_api.json", "w", encoding="utf-8") as f:
-            json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-        print(f"DEBUG: [MAIN CONVERSATION] Exported conversation messages to main_conversation_messages_to_api.json")
+            json.dump(messages_for_diagnostics, f, indent=2, ensure_ascii=False)
+        print("DEBUG: [MAIN CONVERSATION] Exported conversation messages to main_conversation_messages_to_api.json")
+
     
     # Generate response with selected model (unified path -- provider-agnostic).
     # NOTE: the actual model is selected_config["model"] below, chosen by the use_mini
@@ -6662,6 +6698,16 @@ def _get_ai_response_impl(
         selected_config = full_config
 
     print(f"DEBUG: [MAIN.PY] Using model: {selected_config['model']} (provider: {MODEL_PROVIDER})")
+    # HONESTY (2026-09-04): selected_config above no longer reaches the
+    # provider. capture_and_fanout overwrites model AND reasoning_effort from
+    # the registry binding for T067 (_resolve_effective_callsite_kwargs,
+    # utils/capture/multi_model_capture.py:339-343), so the mini/full choice
+    # -- and therefore the T082 prediction that drives it -- changes nothing
+    # about the request. T067 is intentionally a SINGLE-rung ladder: a
+    # five-arm live matrix found no setting that beat luna|none on this work,
+    # so no rung escalation is wired here. Failure-driven escalation is
+    # tracked separately (issue #295); the predictor's future is an owner
+    # decision recorded there.
     detached_t067_kwargs = {}
     if detached_context:
         # #214 stale-result fence (early-out, correctly NOT cancellation):
@@ -6686,7 +6732,7 @@ def _get_ai_response_impl(
     # Log API call to master log
     try:
         from utils.api_logger import log_api_call
-        log_api_call("main_dm", messages_to_send, response,
+        log_api_call("main_dm", messages_for_diagnostics, response,
                     metadata={"temperature": TEMPERATURE, "retry_count": validation_retry_count, "provider": MODEL_PROVIDER})
     except Exception as e:
         print(f"[API_LOG] Warning: Failed to log main DM call: {e}")
@@ -7050,6 +7096,20 @@ def main_game_loop():
         check_and_initialize_on_startup()
     except Exception as e:
         debug(f"Could not initialize memories (non-fatal): {e}", category="startup")
+
+    # W5: one-time seamless upgrade of a pre-feature game to episodic memory.
+    # Valid current state does zero work. Missing historical state blocks context
+    # rendering behind one visible, resumable build whose provider child remains
+    # discoverable to Save/Load/Reset/quit.
+    try:
+        from core.npc.episodic_upgrade import (
+            default_progress,
+            run_registered_episode_upgrade,
+        )
+
+        run_registered_episode_upgrade(progress=default_progress)
+    except Exception as e:
+        debug(f"Episodic upgrade skipped (non-fatal): {e}", category="startup")
 
     # Reset startup state for this session. The lease file persists "kickoff_done"
     # from the previous session, which causes claim_kickoff_lease() to return
@@ -7581,7 +7641,9 @@ def main_game_loop():
             lease_owner=context_state.get("lease_owner"),
             attempt_count=context_state.get("attempt_count"),
         )
-        conversation_history = update_conversation_history(conversation_history, party_tracker_data, plot_data, module_data)
+        conversation_history = update_conversation_history(
+            conversation_history, party_tracker_data, plot_data, module_data
+        )
         debug(f"STATE_CHANGE: After update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
         conversation_history = update_character_data(conversation_history, party_tracker_data)
     
@@ -7603,9 +7665,9 @@ def main_game_loop():
         # (owner-approved limited-mode difference) with no deadline.
         if hasattr(sys.stdin, "queue"):
             # Run the first-iteration normalizers BEFORE freezing the fence
-            # snapshot so the loop-top truncate/dedup is a no-op against it
+            # snapshot so the loop-top normalize/dedup is a no-op against it
             # (both are idempotent).
-            conversation_history = truncate_dm_notes(conversation_history)
+            conversation_history = normalize_persisted_dm_notes(conversation_history)
             conversation_history = remove_duplicate_messages(conversation_history)
             save_conversation_history(conversation_history, allow_compression=False)
             from core.managers.status_manager import set_input_poll_hook
@@ -7643,7 +7705,7 @@ def main_game_loop():
     emit_startup_marker("startup_loop_ready", source="main_loop", result="ready")
     while True:
         print("[DEBUG] Top of main game loop iteration")
-        conversation_history = truncate_dm_notes(conversation_history)
+        conversation_history = normalize_persisted_dm_notes(conversation_history)
         conversation_history = remove_duplicate_messages(conversation_history)
 
         # #214: keep the pending welcome bound to the loop's LIVE history
@@ -7967,7 +8029,7 @@ def main_game_loop():
                                     print(f"Warning: Could not get starting location for {module_name}: {e}")
                                     starting_info = ""
                             
-                                module_description = f"{module_name} [{level_str}]: {', '.join(module_areas[:3])}{starting_info}"
+                                module_description = f"{module_name} [{level_str}]: {', '.join(module_areas)}{starting_info}"
                                 other_module_areas.append(module_description)
                     
                         if other_module_areas:
@@ -8347,6 +8409,28 @@ def main_game_loop():
         initial_history_persisted = persist_t067_history_if_current(
             conversation_history
         )
+
+        # Run T105 once per substantive player beat after the durable player
+        # input is claimed. The accepted advisory is request-local and reused
+        # unchanged across correction attempts.
+        npc_voice_batch = None
+        if initial_history_persisted:
+            try:
+                from core.npc.voice_context import run_ooc_voice_stage
+
+                npc_voice_batch = run_ooc_voice_stage(
+                    party_tracker_data=party_tracker_data,
+                    player_name=player_name_actual,
+                    raw_input=user_input_text,
+                    location_data=location_data,
+                    conversation_prefix=conversation_history[:-1],
+                    path_manager=path_manager,
+                )
+            except Exception as voice_error:
+                debug(
+                    f"T105 OOC stage skipped: {type(voice_error).__name__}",
+                    category="ai_routing",
+                )
         validation_prefix_length = len(conversation_history)
 
         retry_count = 0
@@ -8364,10 +8448,6 @@ def main_game_loop():
         provider_failures = 0
         provider_failure_message = None
         provider_retry_notice_shown = False
-        # [travel-clean #209] NPC voice advisory is deferred until the voice line
-        # lands; keep the parameter inert so the turn threads None, not a NameError.
-        npc_voice_batch = None
-
         while not valid_response_received and not invocation_superseded:
             if live_turn_scope.is_superseded():
                 # Release the T067 invocation claim through the superseded
@@ -8415,6 +8495,7 @@ def main_game_loop():
                 ai_response_content = _get_live_ai_response(
                     request_history,
                     validation_retry_count=retry_count,
+                    npc_voice_batch=npc_voice_batch,
                 )
             except LiveProviderSuperseded:
                 # Release the T067 invocation claim through the superseded
@@ -8550,6 +8631,7 @@ def main_game_loop():
             transition_action = None
             try:
                 response_data = json.loads(ai_response_content)
+
                 actions = response_data.get("actions", [])
 
                 transition_indexes = [
@@ -8683,8 +8765,79 @@ def main_game_loop():
                         if not isinstance(item, dict)
                         or item.get("action") not in supported_siblings
                     ]
+                    # O1 (owner 2026-09-03): a roster change (updatePartyNPCs,
+                    # remove OR add) co-emitted with a within-module travel must
+                    # NOT be dropped in favor of the travel. Cancel the spurious
+                    # party travel and apply the roster change in place. This is
+                    # the single depart/join-preserving resolution for RC-A / RC-A'.
+                    # It resolves deterministically here (no corrective retry), so
+                    # a non-compliant model can never loop the turn (B2).
+                    roster_change_coemitted = any(
+                        isinstance(item, dict)
+                        and item.get("action") == "updatePartyNPCs"
+                        for item in actions[1:]
+                    )
                     contract_error = None
-                    if unsupported:
+                    if roster_change_coemitted:
+                        stripped_actions = [
+                            item
+                            for item in actions
+                            if not (
+                                isinstance(item, dict)
+                                and item.get("action") == "transitionLocation"
+                            )
+                        ]
+                        info(
+                            "VALIDATION: updatePartyNPCs co-emitted with within-module "
+                            "travel; cancelling the travel and applying the roster "
+                            "change in place (owner ruling O1 2026-09-03).",
+                            category="location_transitions",
+                        )
+                        # The cancelled transition is captured as an accepted
+                        # fact for THIS turn so T065 and any retry see the same
+                        # ruling (NEQ-OPS-02 coherence: the validator must never
+                        # demand back what the gate cancelled).
+                        cancelled_transition = next(
+                            (
+                                item for item in actions
+                                if isinstance(item, dict)
+                                and item.get("action") == "transitionLocation"
+                            ),
+                            {},
+                        )
+                        roster_action = next(
+                            (
+                                item for item in actions
+                                if isinstance(item, dict)
+                                and item.get("action") == "updatePartyNPCs"
+                            ),
+                            {},
+                        )
+                        roster_params = roster_action.get("parameters") or {}
+                        planner_projection = {
+                            "reason_code": "roster_change_in_place",
+                            "ruling": (
+                                "Code cancelled the co-emitted transitionLocation "
+                                "because updatePartyNPCs was present. This turn is "
+                                "a single companion roster change IN PLACE: the "
+                                "party does NOT travel and stays at its current "
+                                "location. The response MUST NOT contain "
+                                "transitionLocation, and narration must not claim "
+                                "the party travelled. The companion alone may be "
+                                "described as leaving or arriving."
+                            ),
+                            "cancelled_destination": (
+                                (cancelled_transition.get("parameters") or {})
+                                .get("newLocation")
+                            ),
+                            "roster_operation": roster_params.get("operation"),
+                            "companion": (roster_params.get("npc") or {}).get("name"),
+                        }
+                        actions[:] = stripped_actions
+                        response_data["actions"] = actions
+                        ai_response_content = json.dumps(response_data)
+                        transition_indexes = []
+                    elif unsupported:
                         contract_error = (
                             "Travel ends at the committed destination. These "
                             "actions belong to a later player turn and cannot "
@@ -8839,7 +8992,24 @@ def main_game_loop():
                             "currentLocationId", ""
                         )
                     )
-                    if proposed_location == current_location:
+                    roster_ruling_in_force = (
+                        isinstance(planner_projection, dict)
+                        and planner_projection.get("reason_code")
+                        == "roster_change_in_place"
+                    )
+                    if proposed_location == current_location or roster_ruling_in_force:
+                        # A transition that survives T065 while a roster-change
+                        # ruling is in force is the same spurious party travel
+                        # the gate already cancelled: strip it deterministically
+                        # (no retry) so the ruling cannot be lost to route
+                        # planning or a later planner_projection overwrite.
+                        if roster_ruling_in_force:
+                            info(
+                                "VALIDATION: roster_change_in_place ruling in force; "
+                                "stripping a re-emitted transitionLocation before "
+                                "route planning.",
+                                category="location_transitions",
+                            )
                         validated_actions.remove(transition_action)
                         validated_data["actions"] = validated_actions
                         ai_response_content = json.dumps(validated_data)
@@ -8947,7 +9117,26 @@ def main_game_loop():
                     invocation_superseded = True
                     valid_response_received = False
                     break
-            
+
+                # Commit T105 sidecar effects only after this exact T067
+                # response and its durable history are accepted.
+                if npc_voice_batch is not None:
+                    try:
+                        from core.npc.voice_context import (
+                            commit_accepted_ooc_voice_batch,
+                        )
+
+                        commit_accepted_ooc_voice_batch(
+                            npc_voice_batch,
+                            party_tracker_data,
+                        )
+                    except Exception as voice_commit_error:
+                        debug(
+                            "T105 accepted event skipped: %s"
+                            % type(voice_commit_error).__name__,
+                            category="ai_routing",
+                        )
+
                 # SIMPLIFIED ARCHITECTURE: process_ai_response now handles ALL complexity internally.
                 # This includes:
                 # - Standard turn processing
@@ -9205,7 +9394,16 @@ def main_game_loop():
         debug(f"FILE_OP: Updated plot file path: {updated_path_manager.get_plot_path()}", category="module_management")
 
         debug(f"STATE_CHANGE: Before AI response update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
-        conversation_history = update_conversation_history(conversation_history, party_tracker_data, plot_data, module_data)
+        prepared_recall_by_npc = getattr(
+            npc_voice_batch, "recalled_by_npc", None
+        )
+        conversation_history = update_conversation_history(
+            conversation_history,
+            party_tracker_data,
+            plot_data,
+            module_data,
+            prepared_recall_by_npc=prepared_recall_by_npc,
+        )
         debug(f"STATE_CHANGE: After AI response update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
         conversation_history = update_character_data(conversation_history, party_tracker_data)
         conversation_history = ensure_main_system_prompt(conversation_history, main_system_prompt_text)

@@ -427,6 +427,13 @@ _declare(
         "DM_FULL_MODEL_LEGACY",
         "DM_FULL_MODEL_LMSTUDIO",
     ),
+    note=(
+        "Single rung by evidence: a five-arm live matrix (2026-09-04) had "
+        "luna|none, luna|low, luna|medium, terra|none and terra|low ALL pass "
+        "the same action turn on one attempt. The earlier reasoning-off "
+        "failures were a stale-prompt fixture, not the effort setting, so no "
+        "measurement justifies paying for a higher rung here."
+    ),
 )
 _declare(
     "T077",
@@ -568,6 +575,72 @@ _declare(
     ),
     note="Classic-build NPC coherence repair is enabled at the reviewed tip default.",
 )
+_declare(
+    "T105",
+    _profiles(
+        "NPC_VOICE_T105_OPENAI_LUNA_NONE",
+        "NPC_VOICE_T105_GEMINI_FLASHLITE_LOW",
+        "NPC_VOICE_T105_LEGACY",
+        "NPC_VOICE_T105_LMSTUDIO",
+    ),
+    note="Per-NPC voice (+ isolated affinity classifier, same config) micro call, "
+         "always on. OpenAI on cheapest luna|none (per-NPC per-turn "
+         "micro tier). Distinct from T104 (NPC cross-area coherence). The Gemini "
+         "response_schema is supplied by the service (core/npc/voice_service.py).",
+)
+_declare(
+    "T107",
+    _profiles(
+        "NPC_PROFILE_T107_OPENAI_LUNA_NONE",
+        "NPC_PROFILE_T107_GEMINI_FLASHLITE_LOW",
+        "NPC_PROFILE_T107_LEGACY",
+        "NPC_PROFILE_T107_LMSTUDIO",
+    ),
+    note="One-time per-NPC profile seed (structured behavior profile) for the NPC "
+         "voice system, always on. OpenAI on cheapest luna|none.",
+)
+_declare(
+    "T108",
+    _profiles(
+        "NPC_EPISODE_T108_OPENAI_LUNA_LOW",
+        "NPC_EPISODE_T108_GEMINI_FLASH_LOW",
+        "NPC_EPISODE_T108_LEGACY",
+        "NPC_EPISODE_T108_LMSTUDIO",
+    ),
+    note="Companion EPISODE extraction: attributed salient facts from full-fidelity "
+         "encounter text into the canonical episode ledger, at per-location close and "
+         "module-leave consolidation. Always on. OpenAI on luna|low "
+         "(designated on a real-archive sample). The Gemini response_schema is supplied "
+         "by the service (core/npc/episode_extraction.py).",
+)
+_declare(
+    "T112",
+    _profiles(
+        "NPC_RECALL_T112_OPENAI_LUNA_LOW",
+        "NPC_RECALL_T112_GEMINI_FLASHLITE_LOW",
+        "NPC_RECALL_T112_LEGACY",
+        "NPC_RECALL_T112_LMSTUDIO",
+    ),
+    note="Episodic RECALL anchor-parse: parses a player's 'remember when...' line into "
+         "structured anchors; CODE selects the matching episodeIds from the NPC's own "
+         "index (model never selects episodes -> cannot fabricate). Always "
+         "on. OpenAI luna|low. Service: core/npc/episode_recall.py.",
+)
+_declare(
+    "T113",
+    _profiles(
+        "NPC_BACKFILL_T113_OPENAI_LUNA_LOW",
+        "NPC_BACKFILL_T113_GEMINI_FLASH_LOW",
+        "NPC_BACKFILL_T113_LEGACY",
+        "NPC_BACKFILL_T113_LMSTUDIO",
+    ),
+    note="Episodic BACKFILL extraction: one-time upgrade of an existing game. Reads "
+         "compressed journal/campaign-summary prose and SELECTS present companions from "
+         "a CLOSED module roster (agentic presence, reconciled by code -> a name not in "
+         "the roster is dropped), producing attributed backfilled episodes. Always "
+         "on, behind the upgrade progress UI. OpenAI luna|low (same tier "
+         "as T108). Service: core/npc/episode_backfill.py.",
+)
 
 
 def _build_bindings():
@@ -580,16 +653,17 @@ def _build_bindings():
 
 
 CALLSITE_BINDINGS: Mapping[str, CallsiteBinding] = _build_bindings()
-# Reviewed source inventory: 75 register_callsite IDs plus enabled T104.
-# Keep this independent from _DECLARATIONS so deleting/adding a binding cannot
-# make the expected set silently redefine itself.
+# Reviewed source inventory: 75 register_callsite IDs plus enabled T104, plus the
+# NPC-voice family T105 (voice+affinity) and T107 (profile seed). Keep this
+# independent from _DECLARATIONS so deleting/adding a binding cannot make the
+# expected set silently redefine itself.
 REGISTERED_TASK_IDS = tuple(
     "T012 T013 T014 T015 T016 T017 T018 T019 T020 T021 T022 T023 T024 T025 "
     "T026 T027 T028 T029 T030 T031 T032 T033 T034 T035 T036 T037 T038 T039 "
     "T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T050 T051 T052 T053 "
     "T054 T059 T063 T064 T065 T066 T067 T077 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T091 T092 T093 T094 T095 T096 T097 T098 "
-    "T099 T100 T101 T102 T103".split()
+    "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 

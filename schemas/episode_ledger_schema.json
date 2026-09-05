@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "npc-episode-ledger/v1",
+  "title": "NPC Canonical Episode Ledger v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "ordinalCounter", "episodes"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "ordinalCounter": {"type": "integer", "minimum": 0},
+    "episodes": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"$ref": "#/$defs/canonicalEpisode"}
+      }
+    }
+  },
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "canonicalEpisode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["episodeId", "ordinal", "module", "locationId", "locationName", "gameDay", "boundaryTurnId", "headline", "canonicalSummary", "salientFacts", "entityTags", "witnessIds", "intensity", "derivedFrom", "sourceHash", "promptVersion"],
+      "properties": {
+        "episodeId": {"$ref": "#/$defs/uuid"},
+        "ordinal": {"type": "integer", "minimum": 0},
+        "module": {"type": "string"},
+        "locationId": {"type": "string", "maxLength": 120},
+        "locationName": {"type": "string"},
+        "gameDay": {"type": ["integer", "null"], "minimum": 0},
+        "boundaryTurnId": {"type": "string", "maxLength": 120},
+        "headline": {"type": "string"},
+        "canonicalSummary": {"type": "string"},
+        "salientFacts": {"type": "array", "items": {"$ref": "#/$defs/salientFact"}},
+        "entityTags": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "witnessIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/uuid"}},
+        "intensity": {"type": "number", "minimum": 0, "maximum": 1},
+        "derivedFrom": {"enum": ["location_summary", "combat_telemetry", "backfill", "module_consolidation"]},
+        "sourceHash": {"type": "string", "pattern": "^([0-9a-f]{64})?$"},
+        "promptVersion": {"type": "string", "maxLength": 40}
+      }
+    },
+    "salientFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "subject", "oneLine"],
+      "properties": {
+        "kind": {"enum": ["defeat", "near_death", "rescue", "protect", "sacrifice", "loss", "discovery", "vow", "betrayal", "victory", "defeat_suffered", "first_meeting", "reunion", "bond", "tender", "joke", "fear", "vulnerability", "habit", "gift", "confession"]},
+        "subject": {"$ref": "#/$defs/actorRef"},
+        "object": {"$ref": "#/$defs/actorRef"},
+        "oneLine": {"type": "string", "minLength": 1}
+      }
+    },
+    "actorRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label"],
+      "properties": {
+        "id": {"$ref": "#/$defs/uuid"},
+        "label": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

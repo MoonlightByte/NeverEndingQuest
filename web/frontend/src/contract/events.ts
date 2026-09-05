@@ -199,6 +199,9 @@ export interface ServerEvents {
   compression_progress: { completed: number; total: number; from_cache: boolean };
   compression_complete: { reduction_percentage: number; original_size: number; compressed_size: number };
   compression_error: { error: string };
+  episodic_upgrade_start: { completed: number; total: number; message: string; stage: string };
+  episodic_upgrade_progress: { completed: number; total: number; message: string; stage: string };
+  episodic_upgrade_complete: { completed: number; total: number; message: string; stage: string };
   module_list_response: Array<Record<string, unknown>>;
   // --- toolkit/operator scope (received only on toolkit page; typed for completeness) ---
   module_creation_progress: {

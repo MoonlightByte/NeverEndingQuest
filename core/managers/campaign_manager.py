@@ -94,6 +94,33 @@ from utils.enhanced_logger import debug, info, warning, error, game_event, set_s
 set_script_name(__name__)
 
 
+def _update_npc_module_lifecycle_best_effort(party_tracker, source_turn_id):
+    """Advance private active-NPC context after a committed party transition.
+
+    Best-effort: a failure never blocks the module transition.
+    Records the transition in the NPC voice relationship sidecar so departed /
+    rejoined companions and per-module lifecycle stay consistent for T105.
+    """
+    try:
+        from core.npc.relationship_store import RelationshipStore, game_day_ordinal
+
+        if not isinstance(party_tracker, dict):
+            return
+        world = party_tracker.get("worldConditions", {})
+        world = world if isinstance(world, dict) else {}
+        RelationshipStore().mark_module_transition(
+            module=str(party_tracker.get("module") or ""),
+            location_id=str(world.get("currentLocationId") or ""),
+            source_turn_id=str(source_turn_id or "")[:120],
+            game_day=game_day_ordinal(world),
+        )
+    except Exception as exc:
+        warning(
+            "NPC module lifecycle update failed open: %s" % type(exc).__name__,
+            category="module_loading",
+        )
+
+
 def _is_valid_campaign_export_data(exported_data: Any) -> bool:
     """Check the structural contract consumed by campaign-state importers."""
     if not isinstance(exported_data, dict):
@@ -1852,6 +1879,7 @@ class CampaignManager:
                 completion_id,
                 conversation_history=conversation_history,
             )
+            _update_npc_module_lifecycle_best_effort(updated, completion_id)
             return original, updated
 
     def publish_location_module_transition(
@@ -1950,6 +1978,7 @@ class CampaignManager:
                 completion_id,
                 conversation_history=conversation_history,
             )
+            _update_npc_module_lifecycle_best_effort(updated, completion_id)
             return transition_result, updated
 
     def _cancel_prepared_module_completion_intent(
@@ -2314,6 +2343,9 @@ class CampaignManager:
                     repaired_party = copy.deepcopy(persisted_party)
                     repaired_party["module"] = intent["to_module"]
                     safe_json_dump(repaired_party, "party_tracker.json")
+                    _update_npc_module_lifecycle_best_effort(
+                        repaired_party, intent.get("completion_id", "")
+                    )
                     persisted_module = intent["to_module"]
                 if persisted_module != intent["to_module"]:
                     next_intent = (
@@ -3054,6 +3086,28 @@ class CampaignManager:
                 "Campaign completion commit failed; prior state restored: "
                 f"{commit_exc}"
             ) from commit_exc
+
+        # Phase 1d: module-leave consolidation -- capture the FINAL location that live
+        # per-location capture structurally misses (it never gets a transition-out).
+        # Placed HERE, only after the completion is DURABLY committed (the except above
+        # re-raises on failure, so this line is unreachable on rollback) and outside the
+        # archive/checkpoint critical section -- so it can never affect module
+        # completion. Best-effort, fail-open. Uses an explicit module_name snapshot so
+        # the episode coordinate is the completed module, not a live-mutated tracker.
+        try:
+            from core.npc.episode_capture import consolidate_module_episodes
+            from utils.module_path_manager import ModulePathManager
+            tracker_snapshot = copy.deepcopy(party_tracker_data)
+            if isinstance(tracker_snapshot, dict):
+                tracker_snapshot["module"] = module_name
+            consolidate_module_episodes(
+                conversation_history,
+                tracker_snapshot,
+                path_manager=ModulePathManager(module_name),
+                player_name=(party_tracker_data.get("partyMembers") or [""])[0],
+            )
+        except Exception:
+            pass
 
         work_marked = False
         try:

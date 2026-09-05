@@ -329,7 +329,14 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
         
         start, end, filtered_to_compress = compress_result
         debug(f"Compressing {len(filtered_to_compress)} messages")
-        
+
+        # W3: capture a companion episode from THIS raw window before it is
+        # compressed away (long locations lose their early beats here, before the
+        # location ever closes). Offloaded, gated, fail-open, non-mutating.
+        _capture_rolling_episode_best_effort(
+            messages, current_segment, filtered_to_compress, location_info, party_data
+        )
+
         # Perform compression
         compressed = self.compress_messages(filtered_to_compress, location_info)
         if not compressed:
@@ -471,6 +478,68 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
         print("="*50)
         
         return True
+
+_ROLLING_SUMMARY_MARKER = "[SUMMARY OF EVENTS AT THIS LOCATION]"
+
+
+def _rolling_boundary_turn_id(messages, current_segment):
+    """W3 coordinate: roll-<N>.<k>, distinct from close-<N> so a rolling capture and
+    the eventual location-close never overwrite each other.
+
+    N = Location-transition count in the whole history (which location VISIT this is).
+    k = number of rolling summaries ALREADY in the current segment. This is derived
+    from durable structure, NOT a shifting window index: a failed compression adds no
+    summary marker, so a retry re-derives the SAME k -> same episodeId -> an idempotent
+    in-place update (never a duplicate), even though the raw window may have grown by a
+    turn meanwhile. A successful compression adds one marker, so the next roll gets k+1.
+    """
+    n = sum(
+        1 for m in messages
+        if isinstance(m, dict) and m.get("role") == "user"
+        and "Location transition:" in (m.get("content") or "")
+    )
+    k = sum(
+        1 for m in current_segment
+        if isinstance(m, dict) and _ROLLING_SUMMARY_MARKER in (m.get("content") or "")
+    )
+    return "roll-%d.%d" % (n, k)
+
+
+def _capture_rolling_episode_best_effort(
+    messages, current_segment, filtered_to_compress, location_info, party_data
+):
+    """Offload a companion episode from the raw window about to be compressed.
+    Fail-open, never mutates or blocks the save path."""
+    try:
+        if not isinstance(party_data, dict) or not filtered_to_compress:
+            return
+        from core.npc.episode_capture import capture_location_episode_async
+        from utils.module_path_manager import ModulePathManager
+        import copy as _copy
+
+        module_name = str(party_data.get("module") or "").replace(" ", "_")
+        path_manager = ModulePathManager(module_name) if module_name else ModulePathManager()
+        members = party_data.get("partyMembers") or []
+        first = members[0] if members else ""
+        player_name = (
+            str(first.get("name") or "").strip() if isinstance(first, dict)
+            else str(first or "").strip()
+        )
+        capture_location_episode_async(
+            leaving_location_name=str(location_info.get("name") or "Unknown Location"),
+            leaving_location_id=str(location_info.get("id") or ""),
+            segment_messages=_copy.deepcopy(list(filtered_to_compress)),
+            # Snapshot the tracker: the offloaded worker reads module/world after the
+            # luna call while the main loop mutates the live dict on the next action.
+            party_tracker_data=_copy.deepcopy(party_data),
+            path_manager=path_manager,
+            boundary_turn_id=_rolling_boundary_turn_id(messages, current_segment),
+            player_name=player_name,
+            derived_from="location_summary",
+        )
+    except Exception:
+        pass
+
 
 def main():
     """Apply incremental compression to conversation history."""

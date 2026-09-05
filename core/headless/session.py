@@ -25,6 +25,7 @@ import os
 import queue
 import threading
 import traceback
+from uuid import uuid4
 
 from core.headless import bootstrap as bootstrap_mod
 from core.headless.classifier import strip_ansi, looks_like_prompt
@@ -376,12 +377,36 @@ class HeadlessSession:
         self.prompt_pending.clear()
         self.input_queue.put(content)
 
-    def request_quit(self):
+    def _wait_for_scope_quiescence(self, scopes, operation_name):
+        """Wait without a deadline while one lifecycle status remains visible."""
+        pending = []
+        seen = set()
+        for scope in scopes:
+            if scope is None or id(scope) in seen:
+                continue
+            seen.add(id(scope))
+            pending.append(scope)
+        elapsed = 0
+        while any(not scope.quiescent.is_set() for scope in pending):
+            self._on_status(
+                "%s is waiting for current game work to finish safely (%ds)"
+                % (operation_name, elapsed),
+                True,
+            )
+            next(
+                scope for scope in pending if not scope.quiescent.is_set()
+            ).quiescent.wait(timeout=1.0)
+            elapsed += 1
+
+    def request_quit(self, kind="quit", operation_id=None):
         from utils.capture.live_provider_call import (
             get_active_welcome_scope,
-            get_live_turn_scope,
-            request_live_turn_supersession,
+            request_lifecycle_turn_supersession,
         )
+
+        kind = str(kind)
+        requested_id = str(operation_id or uuid4())
+        operation_name = "Reset" if kind == "reset" else "Quit"
 
         # #214: a background startup welcome must quiesce BEFORE the quit
         # intent is latched. The game thread is parked at the prompt, and its
@@ -390,14 +415,29 @@ class HeadlessSession:
         # so waiting after latching would deadlock. The supersession lets the
         # child exit instead of burning provider work past a player quit.
         welcome_scope = get_active_welcome_scope()
+        claims = []
         if welcome_scope is not None:
-            welcome_scope.request_supersession("quit")
+            claims.append(welcome_scope.request_supersession(kind, requested_id))
+        turn_scopes, turn_claims = request_lifecycle_turn_supersession(
+            kind, requested_id
+        )
+        claims.extend(turn_claims)
+        if claims:
+            exact_owner = all(
+                claim.get("kind") == kind
+                and claim.get("operation_id") == requested_id
+                for claim in claims
+            )
             self.writer.emit(
                 "operation",
-                name="quit",
+                id=requested_id,
+                name=kind,
                 status="accepted_deferred",
+                operation_id=requested_id,
+                waiting_for_current_operation=not exact_owner,
             )
-            welcome_scope.quiescent.wait()
+        if welcome_scope is not None:
+            self._wait_for_scope_quiescence((welcome_scope,), operation_name)
 
         # Preserve the historical terminal reason even when a live turn must
         # quiesce first. The engine thread may finish its superseded turn while
@@ -405,16 +445,10 @@ class HeadlessSession:
         # that completion and misreports a player quit as ``engine_stop``.
         self._quitting = True
         self.prompt_pending.clear()
-        scope = get_live_turn_scope()
-        if scope is not None:
-            operation = request_live_turn_supersession("quit")
-            self.writer.emit(
-                "operation",
-                name="quit",
-                status="accepted_deferred",
-                operation_id=operation["operation_id"],
-            )
-            scope.quiescent.wait()
+        if turn_scopes:
+            self._wait_for_scope_quiescence(turn_scopes, operation_name)
+        if kind == "quit":
+            self._on_status("Quit complete", False)
         self.input_queue.put(EOF_SENTINEL)
 
     def handle_command(self, command):
@@ -429,6 +463,10 @@ class HeadlessSession:
             if error is not None:
                 payload["error"] = error
             self.writer.emit("result", **payload)
+            if name in ("restore", "reset"):
+                label = "Load" if name == "restore" else "Reset"
+                terminal = "complete" if ok else "failed"
+                self._on_status("%s %s" % (label, terminal), False)
 
         if name == "state":
             result(True, data=build_snapshot())
@@ -442,12 +480,13 @@ class HeadlessSession:
                 result(False, error="reset requires args.confirmed=true")
                 return
             self._restart_in_progress.set()
+            self._on_status("Reset is starting safely", True)
             try:
                 # The synchronous combat loop can retain module/campaign
                 # authority while it waits at a player prompt.  End and join
                 # that exact engine before Reset attempts to acquire the same
                 # authority; no filesystem lock is held during this wait.
-                self.request_quit()
+                self.request_quit("reset", str(command_id))
                 if self._engine_thread is not None:
                     self._engine_thread.join()
                 from utils.reset_campaign import perform_reset_logic
@@ -468,10 +507,11 @@ class HeadlessSession:
 
         from utils.capture.live_provider_call import (
             get_active_welcome_scope,
-            get_live_turn_scope,
+            get_lifecycle_turn_scopes,
         )
 
-        live_scope = get_live_turn_scope()
+        turn_scopes = get_lifecycle_turn_scopes()
+        live_scope = turn_scopes[0] if turn_scopes else None
         # #214: the detached startup welcome is deliberately NOT the live
         # turn scope; persistence commands must still coordinate with its
         # game-thread handback (the readline pump) instead of overlapping it.
@@ -547,6 +587,37 @@ class HeadlessSession:
                             error=None if ok2 else message2,
                         )
 
+                    if getattr(welcome_scope, "purpose", "") == "maintenance":
+                        from utils.capture.live_provider_call import (
+                            claim_destructive_operation,
+                        )
+
+                        claim = claim_destructive_operation(
+                            welcome_scope,
+                            "save",
+                            execute_welcome_save,
+                            complete_welcome_save,
+                            operation_id=str(command_id),
+                        )
+                        if claim["status"] == "queued":
+                            welcome_scope.seal_advisory_scopes()
+                            self.writer.emit(
+                                "operation",
+                                id=command_id,
+                                name="save",
+                                status="accepted_deferred",
+                            )
+                            return
+                        if claim["status"] == "conflict":
+                            result(
+                                False,
+                                error="another lifecycle operation is already pending",
+                            )
+                            return
+                        welcome_scope.quiescent.wait()
+                        self.handle_command(command)
+                        return
+
                     queued = queue_live_save(
                         execute_welcome_save, complete_welcome_save,
                         command_id, scope=welcome_scope,
@@ -595,6 +666,116 @@ class HeadlessSession:
                 if not folder:
                     result(False, error="restore requires args.save_folder")
                     return
+                live_preflight_announced = False
+                if live_scope is not None and welcome_scope is None:
+                    self._on_status("Load is starting safely", True)
+                    live_preflight_announced = True
+                    valid, validation_error = manager.validate_restore_target(
+                        folder,
+                        include_manifest=True,
+                    )
+                    if not valid:
+                        result(False, error=validation_error)
+                        return
+                    # Validation may overlap the exact turn boundary. Re-read
+                    # authority before reserving the restart terminal so a
+                    # completed scope follows the ordinary idle path.
+                    turn_scopes = get_lifecycle_turn_scopes()
+                    live_scope = turn_scopes[0] if turn_scopes else None
+                    welcome_scope = get_active_welcome_scope()
+                if live_scope is not None and welcome_scope is None:
+                    from utils.capture.live_provider_call import (
+                        request_live_turn_supersession,
+                    )
+
+                    if self._restart_in_progress.is_set():
+                        result(
+                            False,
+                            error="another lifecycle operation is already pending",
+                        )
+                        return
+                    self._restart_in_progress.set()
+                    may_apply_restore = False
+                    supersession_error = None
+                    try:
+                        operation = request_live_turn_supersession(
+                            "restore",
+                            str(command_id),
+                            scope=live_scope,
+                        )
+                    except Exception as exc:
+                        operation = None
+                        with live_scope.lock:
+                            visible_claim = dict(live_scope.supersession or {})
+                        claimed_here = (
+                            visible_claim.get("kind") == "restore"
+                            and visible_claim.get("operation_id") == str(command_id)
+                        )
+                        supersession_error = "%s: %s%s" % (
+                            type(exc).__name__,
+                            exc,
+                            " after supersession claim" if claimed_here else "",
+                        )
+                    else:
+                        if operation is None:
+                            current_scopes = get_lifecycle_turn_scopes()
+                            with live_scope.lock:
+                                captured_closing = (
+                                    not live_scope.controls_open
+                                    or live_scope.quiescent.is_set()
+                                )
+                            if live_scope in current_scopes and captured_closing:
+                                may_apply_restore = True
+                            else:
+                                supersession_error = (
+                                    "the live turn changed before Load acquired it"
+                                )
+                        elif operation.get("kind") == "turn_complete":
+                            may_apply_restore = True
+                        elif operation.get("accepted"):
+                            may_apply_restore = True
+                        else:
+                            supersession_error = (
+                                "another lifecycle operation is already pending: "
+                                + str(operation.get("kind"))
+                            )
+                    if may_apply_restore:
+                        self.writer.emit(
+                            "operation",
+                            id=command_id,
+                            name="restore",
+                            status="accepted_deferred",
+                            operation_id=str(command_id),
+                        )
+                    self._wait_for_scope_quiescence(turn_scopes, "Load")
+                    self._quitting = True
+                    self.prompt_pending.clear()
+                    self.input_queue.put(EOF_SENTINEL)
+                    if self._engine_thread is not None:
+                        self._engine_thread.join()
+                    if not may_apply_restore:
+                        result(False, error=supersession_error)
+                        self.emit_exit("error", "state restore did not acquire authority")
+                        return
+                    self._on_status("Load is applying the selected save", True)
+                    try:
+                        ok, message = manager.restore_save_game(folder)
+                    except Exception as exc:
+                        result(False, error="%s: %s" % (type(exc).__name__, exc))
+                        self.emit_exit("error", "state restore failed")
+                        return
+                    if not ok:
+                        result(False, error=message)
+                        self.emit_exit("error", "state restore failed")
+                        return
+                    result(True, data={"message": message})
+                    self.emit_exit(
+                        "restart",
+                        "state restored; relaunch the session",
+                    )
+                    return
+                if not live_preflight_announced:
+                    self._on_status("Load is starting safely", True)
                 if live_scope is not None:
                     from utils.capture.live_provider_call import (
                         request_live_turn_supersession,
@@ -604,7 +785,9 @@ class HeadlessSession:
                         "restore", str(command_id)
                     )
                     if operation["kind"] == "turn_complete":
-                        live_scope.quiescent.wait()
+                        self._wait_for_scope_quiescence(
+                            turn_scopes, "Load"
+                        )
                     elif not operation["accepted"]:
                         result(
                             False,
@@ -621,7 +804,7 @@ class HeadlessSession:
                         status="accepted_deferred",
                         operation_id=operation["operation_id"],
                     )
-                    live_scope.quiescent.wait()
+                    self._wait_for_scope_quiescence(turn_scopes, "Load")
                 if welcome_scope is not None:
                     # #214 F9: Load supersedes the background welcome and
                     # QUEUES the restore to execute ON THE GAME THREAD inside
@@ -661,7 +844,9 @@ class HeadlessSession:
                         # re-dispatch the SAME command against freshly read
                         # scopes - never the stale scope, no tight
                         # recursion, exactly one result (the re-dispatch's).
-                        welcome_scope.quiescent.wait()
+                        self._wait_for_scope_quiescence(
+                            (welcome_scope,), "Load"
+                        )
                         self.handle_command(command)
                         return
                     if claim["status"] == "conflict":

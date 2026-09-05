@@ -958,7 +958,7 @@ def sanitize_unicode_for_logging(text):
     
     return text
 
-def validate_combat_response(response, encounter_data, user_input, conversation_history=None):
+def validate_combat_response(response, encounter_data, user_input, conversation_history=None, npc_voice_batch=None):
     """
     Validate a combat response for accuracy in HP tracking, combat flow, etc.
     Returns True if valid, or a string with the reason for failure if invalid.
@@ -1056,9 +1056,31 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
         {"role": "user", "content": T040_VERDICT_REQUEST},
     ])
 
+    validation_messages_for_diagnostics = validation_conversation
+    if npc_voice_batch is not None:
+        try:
+            from core.npc.voice_context import (
+                inject_voice_context,
+                redact_voice_context,
+            )
+
+            validation_conversation = inject_voice_context(
+                validation_conversation,
+                npc_voice_batch,
+            )
+            validation_messages_for_diagnostics = redact_voice_context(
+                validation_conversation
+            )
+        except Exception as voice_error:
+            debug(
+                "T105 combat validator guidance skipped: %s"
+                % type(voice_error).__name__,
+                category="combat_validation",
+            )
+
     # Export validation conversation for review
     with open("validation_messages_to_api.json", "w", encoding="utf-8") as f:
-        json.dump(validation_conversation, f, indent=2, ensure_ascii=False)
+        json.dump(validation_messages_for_diagnostics, f, indent=2, ensure_ascii=False)
     
     # Calculate size for debugging
     validation_size = sum(len(json.dumps(msg)) for msg in validation_conversation)
@@ -1092,7 +1114,7 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
             # Log API call to master log
             try:
                 from utils.api_logger import log_api_call
-                log_api_call("combat_validation", validation_conversation, validation_result,
+                log_api_call("combat_validation", validation_messages_for_diagnostics, validation_result,
                             metadata={"temperature": 0.3, "attempt": attempt+1})
             except Exception as e:
                 print(f"[API_LOG] Warning: Failed to log combat validation call: {e}")
@@ -1901,7 +1923,7 @@ def summarize_dialogue(
     clean_text = "\n\n".join(clean_conversation)
     
     dialogue_summary_prompt = [
-        {"role": "system", "content": "Your task is to create a vivid, colorful narrative summary of this combat encounter. Capture the dramatic highs and lows - critical hits, narrow misses, clever tactics, desperate moments, and heroic actions. Write it as an exciting story paragraph that captures the flow and feel of the battle. Include: the initial setup, key turning points, memorable moments, the final blow, total XP awarded, and what remains after combat (defeated foes, environmental changes). Write in past tense as a complete narrative summary, not a play-by-play. Make it engaging and memorable - this will be the permanent record of this battle. Do NOT use markdown formatting (no **, no headers, no bullet points) -- weave XP totals and aftermath into the flowing narrative prose. Keep the summary to 1-2 paragraphs (150-250 words). Use only standard ASCII characters -- no smart quotes, no Unicode, no non-English words."},
+        {"role": "system", "content": "Your task is to create a vivid, colorful narrative summary of this combat encounter. Capture the dramatic highs and lows - critical hits, narrow misses, clever tactics, desperate moments, and heroic actions. Write an exciting story that captures the flow and feel of the battle. Include: the initial setup, key turning points, memorable moments, the final blow, total XP awarded, and what remains after combat (defeated foes, environmental changes). Write in past tense as a complete narrative summary, not a play-by-play. Make it engaging and memorable - this will be the permanent record of this battle. Do NOT use markdown formatting (no **, no headers, no bullet points) -- weave XP totals and aftermath into the flowing narrative prose. Use only standard ASCII characters -- no smart quotes, no Unicode, no non-English words."},
         {"role": "user", "content": clean_text}
     ]
 
@@ -2036,12 +2058,38 @@ def summarize_dialogue(
     return dialogue_summary
 
 
+def _capture_combat_episode_best_effort(conversation_history, encounter_data, party_tracker_data):
+    """W2 seam shared by both combat-exit paths (legacy + agentic). Offloaded
+    fire-and-forget; deepcopies transcript + encounter so the worker reads a
+    stable snapshot after the caller archives/clears live state.
+    Fail-open: any problem here never affects combat exit."""
+    try:
+        if not isinstance(encounter_data, dict) or not isinstance(party_tracker_data, dict):
+            return
+        import copy as _copy
+        from core.npc.episode_capture import capture_combat_episode_async
+        player_name = ""
+        for creature in encounter_data.get("creatures", []) or []:
+            if isinstance(creature, dict) and creature.get("type") == "player":
+                player_name = str(creature.get("name") or "")
+                break
+        capture_combat_episode_async(
+            conversation_history=_copy.deepcopy(list(conversation_history or [])),
+            encounter_data=_copy.deepcopy(encounter_data),
+            party_tracker_data=_copy.deepcopy(party_tracker_data),
+            player_name=player_name,
+        )
+    except Exception:
+        pass
+
+
 def _finalize_combat_exit(
     conversation_history,
     location_info,
     party_tracker_data,
     encounter_id,
     player_file,
+    encounter_data=None,
 ):
     """Finalize an exit without allowing optional work to block the return.
 
@@ -2050,6 +2098,12 @@ def _finalize_combat_exit(
     intact so startup can retry/recover it on the next run.
     """
     import copy
+
+    # W2: capture a combat episode from the raw transcript BEFORE it is archived/
+    # cleared. Offloaded, gated, fail-open -- must never block or fail the exit.
+    _capture_combat_episode_best_effort(
+        conversation_history, encounter_data, party_tracker_data
+    )
 
     try:
         dialogue_summary = summarize_dialogue(
@@ -2203,6 +2257,12 @@ def _complete_agentic_combat(
             )
             completion["dialogueSummary"] = dialogue_summary
             completion["summaryPublished"] = True
+
+    # W2: capture a combat episode from the raw transcript BEFORE it is archived.
+    # Offloaded, gated, fail-open -- never blocks or fails the agentic exit.
+    _capture_combat_episode_best_effort(
+        conversation_history, encounter_data, party_tracker_data
+    )
 
     # Step A: use one deterministic archive path for this final revision. A
     # retry after the file write simply overwrites the same transcript.
@@ -2381,6 +2441,21 @@ def generate_chat_history(conversation_history, encounter_id, archive_filename=N
         error(f"FAILURE: Error generating combat chat history", exception=e, category="combat_logs")
         return False
 
+def _track_combat_low_water(creature, sheet_hp):
+    """W2/R8: record the fight's low-water-mark HP per combatant from the AUTHORITATIVE
+    character-sheet HP (source of truth), not the possibly-stale exit mirror. Persisted
+    on the creature so it survives later syncs, save/restore, and combat exit. Returns
+    True when it lowered the mark (so the caller persists the encounter). Additive field
+    (encounter schema allows extra properties) -> backward compatible."""
+    if not isinstance(sheet_hp, (int, float)):
+        return False
+    previous = creature.get("combatMinHitPoints")
+    if not isinstance(previous, (int, float)) or sheet_hp < previous:
+        creature["combatMinHitPoints"] = sheet_hp
+        return True
+    return False
+
+
 def sync_active_encounter():
     """Sync player and NPC data to the active encounter file if one exists"""
     from utils.module_path_manager import ModulePathManager
@@ -2434,6 +2509,8 @@ def sync_active_encounter():
                     if creature.get("currentHitPoints") != player_data.get("hitPoints"):
                         creature["currentHitPoints"] = player_data.get("hitPoints")
                         changes_made = True
+                    if _track_combat_low_water(creature, player_data.get("hitPoints")):
+                        changes_made = True
                     if creature.get("maxHitPoints") != player_data.get("maxHitPoints"):
                         creature["maxHitPoints"] = player_data.get("maxHitPoints")
                         changes_made = True
@@ -2462,6 +2539,8 @@ def sync_active_encounter():
                         # Update combat-relevant fields
                         if creature.get("currentHitPoints") != npc_data.get("hitPoints"):
                             creature["currentHitPoints"] = npc_data.get("hitPoints")
+                            changes_made = True
+                        if _track_combat_low_water(creature, npc_data.get("hitPoints")):
                             changes_made = True
                         if creature.get("maxHitPoints") != npc_data.get("maxHitPoints"):
                             creature["maxHitPoints"] = npc_data.get("maxHitPoints")
@@ -2571,7 +2650,7 @@ def format_character_for_combat(char_data, char_type="player", role=None):
     
     # Build the formatted string (exactly matching conversation_utils format)
     formatted_data = f"""{header}
-{type_line} | LVL: {char_data.get('level', 1)} | RACE: {char_data.get('race', 'Unknown')} | CLASS: {char_data.get('class', 'Unknown')} | ALIGN: {char_data.get('alignment', 'neutral')[:2].upper()} | BG: {char_data.get('background', 'None')}
+{type_line} | LVL: {char_data.get('level', 1)} | RACE: {char_data.get('race', 'Unknown')} | CLASS: {char_data.get('class', 'Unknown')} | ALIGN: {str(char_data.get('alignment', 'neutral')).upper()} | BG: {char_data.get('background', 'None')}
 AC: {char_data.get('armorClass', 10)} | SPD: {char_data.get('speed', 30)}
 STATUS: {char_data.get('status', 'alive')} | CONDITION: {char_data.get('condition', 'none')} | AFFECTED: {', '.join(char_data.get('condition_affected', []))}
 STATS: STR {char_data.get('abilities', {}).get('strength', 10)}, DEX {char_data.get('abilities', {}).get('dexterity', 10)}, CON {char_data.get('abilities', {}).get('constitution', 10)}, INT {char_data.get('abilities', {}).get('intelligence', 10)}, WIS {char_data.get('abilities', {}).get('wisdom', 10)}, CHA {char_data.get('abilities', {}).get('charisma', 10)}
@@ -2702,7 +2781,7 @@ def format_npc_for_combat(npc_data, npc_role=None):
     
     # Build the formatted string (exactly matching conversation_utils format)
     formatted_data = f"""NPC: {npc_data.get('name', 'Unknown')}
-ROLE: {npc_role if npc_role else 'Adventurer'} | TYPE: {npc_data.get('character_type', 'npc').capitalize()} | LVL: {npc_data.get('level', 1)} | RACE: {npc_data.get('race', 'Unknown')} | CLASS: {npc_data.get('class', 'Unknown')} | ALIGN: {npc_data.get('alignment', 'neutral')[:2].upper()} | BG: {npc_data.get('background', 'None')}
+ROLE: {npc_role if npc_role else 'Adventurer'} | TYPE: {npc_data.get('character_type', 'npc').capitalize()} | LVL: {npc_data.get('level', 1)} | RACE: {npc_data.get('race', 'Unknown')} | CLASS: {npc_data.get('class', 'Unknown')} | ALIGN: {str(npc_data.get('alignment', 'neutral')).upper()} | BG: {npc_data.get('background', 'None')}
 AC: {npc_data.get('armorClass', 10)} | SPD: {npc_data.get('speed', 30)}
 STATUS: {npc_data.get('status', 'alive')} | CONDITION: {npc_data.get('condition', 'none')} | AFFECTED: {', '.join(npc_data.get('condition_affected', []))}
 STATS: STR {npc_data.get('abilities', {}).get('strength', 10)}, DEX {npc_data.get('abilities', {}).get('dexterity', 10)}, CON {npc_data.get('abilities', {}).get('constitution', 10)}, INT {npc_data.get('abilities', {}).get('intelligence', 10)}, WIS {npc_data.get('abilities', {}).get('wisdom', 10)}, CHA {npc_data.get('abilities', {}).get('charisma', 10)}
@@ -3049,11 +3128,6 @@ def _is_valid_combat_round_summary(summary, expected_round):
     ):
         return False
 
-    # The prompt explicitly requests two to four narrative highlights.
-    highlights = summary["narrative_highlights"]
-    if not 2 <= len(highlights) <= 4:
-        return False
-
     round_end_state = summary["round_end_state"]
     required_end_state_types = {
         "alive": list,
@@ -3107,7 +3181,7 @@ Create a JSON summary with EXACTLY this structure:
   "deaths": ["ALL creatures with HP 0 or listed as dead in the creature states -- include every dead creature regardless of when they died"],
   "status_changes": ["new conditions or effects applied this round"],
   "resource_usage": {{"character": "resources used (spell slots, abilities, etc)"}},
-  "narrative_highlights": ["2-4 evocative single sentences capturing key dramatic moments, critical hits, deaths, powerful spells, or memorable character actions"],
+  "narrative_highlights": ["evocative highlights capturing key dramatic moments, critical hits, deaths, powerful spells, or memorable character actions"],
   "round_end_state": {{
     "alive": ["Name (current/max HP)"],
     "dead": ["Name"],
@@ -3118,7 +3192,7 @@ Create a JSON summary with EXACTLY this structure:
 CRITICAL RULES:
 - The "deaths" array MUST include every creature shown as dead or at 0 HP in the creature states, even if they died in a prior round. This is a complete death list for state tracking.
 - Focus on mechanical accuracy for the actions -- exact roll values, damage numbers, and HP totals.
-- For narrative_highlights, extract the most dramatic moments. Keep each highlight to one evocative sentence.
+- For narrative_highlights, extract the most dramatic moments.
 - Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
 
         # Select model config per provider
@@ -3172,11 +3246,43 @@ CRITICAL RULES:
         return None
 
 
+def _finish_owned_combat_round_scope(scope_state):
+   """Close only combat-owned authority (A3-C6 resumed-entry failure)."""
+   owned_scope = scope_state.pop("scope", None)
+   if owned_scope is None:
+       return
+   from utils.capture.live_provider_call import finish_live_turn_scope
+
+   finish_live_turn_scope(owned_scope)
+   owned_scope.quiescent.wait()
+
+
 def run_combat_simulation(
     encounter_id,
     party_tracker_data,
     location_info,
     invocation_claim=None,
+):
+   """Run combat and reap any locally owned round authority on every exit."""
+   owned_round_scope = {}
+   try:
+       return _run_combat_simulation(
+           encounter_id,
+           party_tracker_data,
+           location_info,
+           invocation_claim=invocation_claim,
+           owned_round_scope=owned_round_scope,
+       )
+   finally:
+       _finish_owned_combat_round_scope(owned_round_scope)
+
+
+def _run_combat_simulation(
+    encounter_id,
+    party_tracker_data,
+    location_info,
+    invocation_claim=None,
+    owned_round_scope=None,
 ):
    """Main function to run the combat simulation"""
    print(f"\n[COMBAT_MANAGER] ========== COMBAT SIMULATION START ==========")
@@ -3930,6 +4036,11 @@ This is narration only. Do not advance the round or apply any combat action."""
    except Exception as e:
        debug(f"Could not update status: {e}", category="status")
    while True:
+       # A locally owned scope covers exactly one accepted resumed-combat input.
+       # Close it before the next prompt. Fresh combat reuses its caller's outer
+       # scope, so the state remains empty and caller authority is never closed.
+       _finish_owned_combat_round_scope(owned_round_scope)
+
        # Ensure all character data is synced to the encounter
        debug("[COMBAT_MANAGER] Syncing character data to encounter", category="combat_events")
        print("DEBUG: [COMBAT_LOOP] Top of while loop - syncing character data")
@@ -4228,6 +4339,18 @@ This is narration only. Do not advance the round or apply any combat action."""
        if not user_input_text or not user_input_text.strip():
            continue
 
+       if agentic_mode and not automatic_initiative_step:
+           from utils.capture.live_provider_call import (
+               get_live_turn_scope,
+               open_live_turn_scope,
+           )
+
+           active_round_scope = get_live_turn_scope()
+           if active_round_scope is None:
+               # A3-C6: startup resume bypasses main.py's outer-scope opener.
+               active_round_scope = open_live_turn_scope()
+               owned_round_scope["scope"] = active_round_scope
+
        # Preserve the actual submission for deterministic rule matching. The
        # enriched text below contains code-authored inventory/SRD annotations
        # and must never be treated as a fresh player mention.
@@ -4457,6 +4580,42 @@ This is narration only. Do not advance the round or apply any combat action."""
                path_manager,
                monster_templates,
            )
+           # T105: after one accepted non-empty player input, launch the exact
+           # actor-window voice calls in parallel and completion-collect them as
+           # part of constructing this typed round. Recovery/automatic opening
+           # windows have no fresh player sentence and do not mint a new scope.
+           npc_voice_intents = None
+           voice_stage = None
+           voice_handle = None
+           if (
+               agentic_recovery["action"] == "continue"
+               and not automatic_initiative_step
+           ):
+               try:
+                   from core.npc.voice_context import (
+                       dispatch_combat_voice_stage,
+                   )
+
+                   voice_handle = dispatch_combat_voice_stage(
+                       recovery_action_name=agentic_recovery["action"],
+                       encounter_data=encounter_data,
+                       actor_ids=agentic_actor_ids,
+                       character_paths=character_paths,
+                       context_sheets=context_sheets,
+                       party_tracker_data=party_tracker_data,
+                       location_info=location_info,
+                       player_input=raw_combat_input_text,
+                       completion_required=True,
+                   )
+               except Exception as exc:
+                   from utils.capture.live_provider_call import LiveProviderSuperseded
+
+                   if isinstance(exc, LiveProviderSuperseded):
+                       raise
+                   debug(
+                       "T105 combat dispatch skipped: %s" % type(exc).__name__,
+                       category="combat_events",
+                   )
            try:
                from core.ai.combat_agent import build_contextual_spell_payload
 
@@ -4480,6 +4639,28 @@ This is narration only. Do not advance the round or apply any combat action."""
                    category="combat_events",
                )
                spell_references = {}
+
+           if voice_handle is not None:
+               def emit_voice_batch_status(message):
+                   try:
+                       from core.managers.status_manager import status_manager
+
+                       status_manager.update_status(message, is_processing=True)
+                   except Exception:
+                       pass
+
+               voice_stage = voice_handle.collect(
+                   status_emit=emit_voice_batch_status,
+               )
+               if voice_stage.intents:
+                   npc_voice_intents = {
+                       "contractVersion": "npc-voice-intents/v1",
+                       "sourceBeatId": voice_stage.batch.batch_id,
+                       "actors": {
+                           actor_id: dict(row)
+                           for actor_id, row in voice_stage.intents.items()
+                       },
+                   }
 
            try:
                try:
@@ -4512,8 +4693,25 @@ This is narration only. Do not advance the round or apply any combat action."""
                    provider_player_input,
                    spell_references=spell_references,
                    delivery_context=delivery_context,
-                    invocation_claim=invocation_claim,
-                )
+                   npc_voice_intents=npc_voice_intents,
+                   invocation_claim=invocation_claim,
+               )
+               if voice_stage is not None:
+                   try:
+                       from core.npc.voice_context import (
+                           commit_accepted_combat_voice_batch,
+                       )
+
+                       commit_accepted_combat_voice_batch(
+                           voice_stage.batch,
+                           party_tracker_data,
+                       )
+                   except Exception as exc:
+                       debug(
+                           "T105 accepted combat event skipped: %s"
+                           % type(exc).__name__,
+                           category="combat_events",
+                       )
            except (CombatTurnPaused, CombatTransactionError) as exc:
                # Technical exception text may contain internal state terms,
                # paths, or provider details. Only explicitly approved player
@@ -4907,7 +5105,37 @@ Rules:
        # Add user input to conversation history
        conversation_history.append({"role": "user", "content": user_input_with_note})
        save_json_file(conversation_history_file, conversation_history)
-       
+
+       # Compose legacy NPC guidance once for this calculated initiative
+       # window. The batch is request-local and is reused for every T045/T040
+       # correction attempt below.
+       legacy_voice_batch = None
+       try:
+           from core.npc.voice_context import run_legacy_combat_voice_stage
+
+           character_paths, context_sheets = _agentic_combat_context(
+               encounter_data,
+               path_manager,
+               monster_templates,
+           )
+           legacy_voice_stage = run_legacy_combat_voice_stage(
+               encounter_data=encounter_data,
+               turn_window=turn_window_json,
+               character_paths=character_paths,
+               context_sheets=context_sheets,
+               party_tracker_data=party_tracker_data,
+               location_info=location_info,
+               player_input=raw_combat_input_text,
+               conversation_prefix=conversation_history,
+           )
+           legacy_voice_batch = legacy_voice_stage.batch
+       except Exception as exc:
+           debug(
+               "T105 legacy combat stage skipped: %s"
+               % type(exc).__name__,
+               category="combat_events",
+           )
+
        # Get AI response with validation and retries
        max_retries = 5
        valid_response = False
@@ -4944,6 +5172,26 @@ Rules:
 
                # Compress conversation history before sending to AI
                messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+
+               # T105 guidance is private and request-local. Compression runs
+               # first, then the same immutable batch is inserted before the
+               # final user combat-state message on every correction attempt.
+               if legacy_voice_batch is not None:
+                   try:
+                       from core.npc.voice_context import (
+                           inject_legacy_combat_voice_context,
+                       )
+
+                       messages_to_send = inject_legacy_combat_voice_context(
+                           messages_to_send,
+                           legacy_voice_batch,
+                       )
+                   except Exception as voice_error:
+                       debug(
+                           "T105 legacy T045 guidance skipped: %s"
+                           % type(voice_error).__name__,
+                           category="combat_events",
+                       )
 
                response = capture_and_fanout("T045", api_client.create_completion,
                    _request_provider=MODEL_PROVIDER,
@@ -5051,7 +5299,13 @@ Rules:
                except Exception as e:
                    debug(f"Could not update status: {e}", category="status")
                
-               validation_result = validate_combat_response(ai_response, encounter_data, user_input_text, conversation_history)
+               validation_result = validate_combat_response(
+                   ai_response,
+                   encounter_data,
+                   user_input_text,
+                   conversation_history,
+                   npc_voice_batch=legacy_voice_batch,
+               )
                
                if validation_result is True:
                    valid_response = True
@@ -5152,7 +5406,27 @@ Rules:
            error("FAILURE: Failed to get a valid AI response after multiple attempts", category="combat_events")
            _display_combat_narration(T045_REJECTED_ACTION_NARRATION)
            continue
-       
+
+       # The T105 event describes only prior accepted evidence. Commit it once
+       # the current T045 candidate crosses T040, before legacy action
+       # processing begins. Store failures remain advisory and fail open.
+       if legacy_voice_batch is not None:
+           try:
+               from core.npc.voice_context import (
+                   commit_accepted_combat_voice_batch,
+               )
+
+               commit_accepted_combat_voice_batch(
+                   legacy_voice_batch,
+                   party_tracker_data,
+               )
+           except Exception as exc:
+               debug(
+                   "T105 accepted legacy combat event skipped: %s"
+                   % type(exc).__name__,
+                   category="combat_events",
+               )
+
        # Process the validated response
        try:
            round_advanced_this_response = False
@@ -5344,6 +5618,7 @@ Rules:
                party_tracker_data,
                encounter_id,
                player_file,
+               encounter_data=encounter_data,
            )
            info("SUCCESS: Combat complete. Exiting simulation.", category="combat_events")
            return final_result

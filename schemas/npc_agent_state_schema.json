@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "npc-agent-state/v2",
+  "title": "NPC Agent State Sidecar v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "identities", "profiles", "relationships", "working", "lifecycle", "migrations", "episodes"],
+  "properties": {
+    "schemaVersion": {"const": 2},
+    "revision": {"type": "integer", "minimum": 0},
+    "identities": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"$ref": "#/$defs/profile"}
+      }
+    },
+    "relationships": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9a-f-]{36}\\|[0-9a-f-]{36}$": {"$ref": "#/$defs/relationship"}
+      }
+    },
+    "working": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"$ref": "#/$defs/workingState"}
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"$ref": "#/$defs/lifecycleState"}
+      }
+    },
+    "migrations": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^companion-memory-v1\\|[0-9a-f-]{36}$": {"$ref": "#/$defs/migration"}
+      }
+    },
+    "episodes": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$": {"type": "array", "items": {"$ref": "#/$defs/povEpisode"}}
+      }
+    }
+  },
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "displayName", "aliases", "sheetPath", "identitySeed", "active", "lastModule", "lastLocationId"],
+      "properties": {
+        "kind": {"enum": ["npc", "player"]},
+        "displayName": {"type": "string", "minLength": 1},
+        "aliases": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "sheetPath": {"type": "string", "minLength": 1},
+        "identitySeed": {"type": "string", "minLength": 1},
+        "active": {"type": "boolean"},
+        "lastModule": {"type": "string"},
+        "lastLocationId": {"type": "string"}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileVersion", "voice", "goals", "fears", "values", "preferences", "boundaries", "conflictStyle", "initiativeTendency", "riskTolerance", "protectionPriorities", "retreatRules", "arcSeeds"],
+      "properties": {
+        "profileVersion": {"const": 1},
+        "sourceHash": {"type": "string"},
+        "sourceCanonical": {"type": "string"},
+        "profileProvenance": {"enum": ["fallback", "model"]},
+        "voice": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cadence", "diction", "taboos"],
+          "properties": {
+            "cadence": {"type": "string"},
+            "diction": {"type": "string"},
+            "taboos": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+          }
+        },
+        "goals": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "fears": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "preferences": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "boundaries": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "conflictStyle": {"type": "string"},
+        "initiativeTendency": {"type": "string", "enum": ["reserved", "balanced", "proactive"]},
+        "riskTolerance": {"type": "string", "enum": ["cautious", "measured", "bold"]},
+        "protectionPriorities": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "retreatRules": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "arcSeeds": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "vector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trust", "power", "intimacy", "fear", "respect"],
+      "properties": {
+        "trust": {"type": "number", "minimum": -1, "maximum": 1},
+        "power": {"type": "number", "minimum": -1, "maximum": 1},
+        "intimacy": {"type": "number", "minimum": 0, "maximum": 1},
+        "fear": {"type": "number", "minimum": 0, "maximum": 1},
+        "respect": {"type": "number", "minimum": -1, "maximum": 1}
+      }
+    },
+    "delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trust", "power", "intimacy", "fear", "respect"],
+      "properties": {
+        "trust": {"type": "number", "minimum": -1, "maximum": 1},
+        "power": {"type": "number", "minimum": -1, "maximum": 1},
+        "intimacy": {"type": "number", "minimum": -1, "maximum": 1},
+        "fear": {"type": "number", "minimum": -1, "maximum": 1},
+        "respect": {"type": "number", "minimum": -1, "maximum": 1}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "eventId", "actorId", "targetId", "actor", "target", "eventType", "magnitude", "witnessed", "applied", "delta", "summary", "sourceTurnId", "promptVersion", "gameDay", "module", "locationId", "topicIds", "unresolved"],
+      "properties": {
+        "kind": {"enum": ["typedEvent", "legacyEvidence"]},
+        "eventId": {"type": "string", "minLength": 1},
+        "actorId": {"type": "string", "minLength": 1},
+        "targetId": {"type": "string", "minLength": 1},
+        "actor": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1},
+        "eventType": {"anyOf": [{"type": "null"}, {"enum": ["abandon", "betray", "deceive", "disrespect", "give", "harm", "heal", "honor", "protect", "rescue", "share", "support", "threaten", "trust"]}]},
+        "magnitude": {"type": "integer", "minimum": 0, "maximum": 3},
+        "witnessed": {"type": "boolean"},
+        "applied": {"type": "boolean"},
+        "delta": {"$ref": "#/$defs/delta"},
+        "summary": {"type": "string", "minLength": 1},
+        "sourceTurnId": {"type": "string", "minLength": 1},
+        "promptVersion": {"type": "string"},
+        "packetHash": {"type": "string"},
+        "gameDay": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+        "module": {"type": "string"},
+        "locationId": {"type": "string"},
+        "topicIds": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "unresolved": {"type": "boolean"},
+        "sourceHash": {"type": "string"},
+        "sourceCanonical": {"type": "string"}
+      }
+    },
+    "aggregateCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "abandon": {"type": "integer", "minimum": 0}, "betray": {"type": "integer", "minimum": 0}, "deceive": {"type": "integer", "minimum": 0}, "disrespect": {"type": "integer", "minimum": 0}, "give": {"type": "integer", "minimum": 0}, "harm": {"type": "integer", "minimum": 0}, "heal": {"type": "integer", "minimum": 0}, "honor": {"type": "integer", "minimum": 0}, "protect": {"type": "integer", "minimum": 0}, "rescue": {"type": "integer", "minimum": 0}, "share": {"type": "integer", "minimum": 0}, "support": {"type": "integer", "minimum": 0}, "threaten": {"type": "integer", "minimum": 0}, "trust": {"type": "integer", "minimum": 0}, "legacyEvidence": {"type": "integer", "minimum": 0}
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subjectId", "counterpartyId", "baseline", "current", "lastDecayDay", "evidence", "appliedEventIds", "aggregateCounts"],
+      "properties": {
+        "subjectId": {"type": "string", "minLength": 1},
+        "counterpartyId": {"type": "string", "minLength": 1},
+        "baseline": {"$ref": "#/$defs/vector"},
+        "personaBaseline": {"$ref": "#/$defs/vector"},
+        "current": {"$ref": "#/$defs/vector"},
+        "lastDecayDay": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+        "appliedEventIds": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "appliedEventHistory": {"type": "string"},
+        "aggregateCounts": {"$ref": "#/$defs/aggregateCounts"},
+        "evidenceHashChain": {"type": "string"}
+      }
+    },
+    "workingState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currentPrivateIntent", "sourceTurn", "currentGoalReference", "openQuestion", "moodTags", "expiresAfterTurn", "sceneId"],
+      "properties": {
+        "currentPrivateIntent": {"type": "string"},
+        "sourceTurn": {"type": "string", "minLength": 1},
+        "currentGoalReference": {"type": "string"},
+        "openQuestion": {"type": "string"},
+        "moodTags": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "expiresAfterTurn": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+        "sceneId": {"type": "string"},
+        "advisory": {"$ref": "#/$defs/advisoryBeat"},
+        "advisoryHistory": {"type": "array", "items": {"$ref": "#/$defs/advisoryBeat"}}
+      }
+    },
+    "advisoryBeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "say": {"type": "string"},
+        "do": {"type": "string"},
+        "want": {"type": "string"},
+        "thought": {"type": "string"},
+        "beatId": {"type": "string"},
+        "stale": {"type": "boolean"}
+      }
+    },
+    "lifecycleEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sourceTurnId", "module", "locationId", "cause", "departureKind", "destination", "returnHook"],
+      "properties": {
+        "kind": {"enum": ["join", "depart", "rejoin", "module"]},
+        "sourceTurnId": {"type": "string"},
+        "module": {"type": "string"},
+        "locationId": {"type": "string"},
+        "cause": {"type": "string"},
+        "departureKind": {"type": "string"},
+        "destination": {"type": "string"},
+        "returnHook": {"type": "string"},
+        "gameDay": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+        "invitedBy": {"type": "string"},
+        "terms": {"type": "string"},
+        "personalObjective": {"type": "string"},
+        "redLines": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "compensation": {"type": "string"},
+        "expectedDuration": {"type": "string"},
+        "priorStatus": {"enum": ["new", "active", "inactive", "unknown"]},
+        "unresolvedObligations": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "lifecycleState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "events"],
+      "properties": {
+        "status": {"enum": ["active", "inactive"]},
+        "events": {"type": "array", "items": {"$ref": "#/$defs/lifecycleEvent"}}
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "npcId", "sourcePath", "status", "legacyBehaviorHint", "migratedEvidence"],
+      "properties": {
+        "version": {"const": "companion-memory-v1"},
+        "npcId": {"type": "string", "minLength": 1},
+        "sourcePath": {"type": "string", "minLength": 1},
+        "sourceHash": {"type": "string"},
+        "sourceCanonical": {"type": "string"},
+        "status": {"const": "migrated"},
+        "legacyBehaviorHint": {"type": "string"},
+        "migratedEvidence": {"type": "integer", "minimum": 0, "maximum": 256}
+      }
+    },
+    "povEpisode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["episodeId", "povTag", "salienceScore", "pinned", "personalLine", "linkedEvidenceIds"],
+      "properties": {
+        "episodeId": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+        "povTag": {"enum": ["proud", "triumphant", "traumatic", "tender", "guilty", "grieving", "resentful", "afraid", "grateful", "protective", "amused", "smitten", "longing", "heartbroken"]},
+        "salienceScore": {"type": "number", "minimum": 0, "maximum": 1},
+        "pinned": {"type": "boolean"},
+        "personalLine": {"type": "string"},
+        "linkedEvidenceIds": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

@@ -112,6 +112,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 @MULTI_AREA_TRAVEL={
   valid: Single transitionLocation to final destination with journey narration
   accepted_stop: If supplied accepted Travel Agent facts authorize stop X, narration may retain original goal but the single first transitionLocation MUST target X only
+  roster_change_in_place: If supplied accepted Travel Agent facts carry reason_code roster_change_in_place, code cancelled a co-emitted transitionLocation because updatePartyNPCs was present. Party stays put. Response MUST NOT contain transitionLocation, narration must not claim party travel, only the named companion leaves/arrives. NEVER reject for missing transitionLocation
   unavailable: If supplied accepted facts say no valid route, no transitionLocation, no alternate destination, honest in-fiction explanation, player owns next choice
   invalid: Multiple transitions for one request
   required: updateTime for full journey
@@ -171,7 +172,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   removeEffect: {"characterName":str,"effectId":str,"effectName":str,"reason":str} #requires effectId or effectName
   updateTime: {"timeEstimate":int} #integer only, not string
   updatePlot: {"plotPointId":str,"newStatus":str,"plotImpact":str}
-  updatePartyNPCs: {"operation":str,"npc":obj} #npc is object: {"name":str,"level":str,"class":str}
+  updatePartyNPCs: {"operation":str,"npc":obj,"lifecycleContext":obj optional} #add: npc {"name","level","class"}. remove: npc {"name"} ONLY - NEVER demand level or class on a remove. lifecycleContext {"reason","departureKind","destination"} is optional on remove and its absence is NEVER a rejection
   moveBackgroundNPC: {"npcName":str,"context":str,"currentLocation":str}
   levelUp: {"entityName":str,"newLevel":int} #integer only, not string
   establishHub: {"hubName":str,"hubType":str,"description":str,"services":arr,"ownership":str}
@@ -197,7 +198,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 @CLARIFICATIONS={
   1:Empty actions OK if waiting for input/consent
   2:NEVER ask player to roll for NPCs--DM rolls them
-  3:transitionLocation REQUIRED for actual chosen movement; not for discussion/questions/plans/quotes/negation. Supplied accepted Travel Agent stop/no-route facts govern the destination or honest no-transition exception
+  3:transitionLocation REQUIRED for actual chosen movement; not for discussion/questions/plans/quotes/negation. Supplied accepted Travel Agent stop/no-route/roster_change_in_place facts govern the destination or honest no-transition exception (roster_change_in_place: party stays, no transitionLocation, only the named companion moves)
   4:INVENTORY QUERIES: "How many arrows?" / "Check inventory" = NO updateCharacterInfo needed (just narrate counts)
   5:Item loss/drop/trade REQUIRES updateCharacterInfo
   6:Ignore "Location transition:" user messages--system notes

@@ -27,6 +27,15 @@ _ACTIVE_LOCK_FILES_GUARD = threading.RLock()
 _WINDOWS_LOCK_RETRY_SECONDS = 0.05
 
 
+def _notify_wait(wait_callback, wait_started) -> None:
+    if wait_callback is None:
+        return
+    try:
+        wait_callback(time.monotonic() - wait_started)
+    except Exception:
+        pass
+
+
 def _prepare_for_fork() -> None:
     """Freeze open/close registration across the fork boundary."""
     _ACTIVE_LOCK_FILES_GUARD.acquire()
@@ -97,15 +106,18 @@ def path_transaction_lock_owned(
     return getattr(state.local, "depth", 0) > 0
 
 
-def _wait_to_retry(deadline, poll_seconds: float) -> bool:
+def _wait_to_retry(deadline, poll_seconds: float, wait_callback=None,
+                   wait_started=None) -> bool:
     """Sleep only within the caller's acquisition budget."""
     if deadline is None:
         time.sleep(poll_seconds)
+        _notify_wait(wait_callback, wait_started)
         return True
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         return False
     time.sleep(min(poll_seconds, remaining))
+    _notify_wait(wait_callback, wait_started)
     return deadline - time.monotonic() > 0
 
 
@@ -115,6 +127,8 @@ def _lock_windows_file(
     *,
     deadline=None,
     poll_seconds: float = _WINDOWS_LOCK_RETRY_SECONDS,
+    wait_callback=None,
+    wait_started=None,
 ) -> bool:
     """Wait for a Windows byte-range lock without LK_LOCK's ten-try cap."""
     if msvcrt_module is None:
@@ -142,21 +156,26 @@ def _lock_windows_file(
             retryable_winerror = getattr(exc, "winerror", None) in {33, 36}
             if not (retryable_errno or retryable_winerror):
                 raise
-            if not _wait_to_retry(deadline, poll_seconds):
+            if not _wait_to_retry(
+                deadline, poll_seconds, wait_callback, wait_started
+            ):
                 return False
 
 
-def _lock_file(lock_file, *, deadline=None, poll_seconds: float = 0.05) -> bool:
+def _lock_file(lock_file, *, deadline=None, poll_seconds: float = 0.05,
+               wait_callback=None, wait_started=None) -> bool:
     if os.name == "nt":
         return _lock_windows_file(
             lock_file,
             deadline=deadline,
             poll_seconds=poll_seconds,
+            wait_callback=wait_callback,
+            wait_started=wait_started,
         )
     else:
         import fcntl
 
-        if deadline is None:
+        if deadline is None and wait_callback is None:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             return True
         while True:
@@ -169,11 +188,14 @@ def _lock_file(lock_file, *, deadline=None, poll_seconds: float = 0.05) -> bool:
             except OSError as exc:
                 if exc.errno not in {errno.EACCES, errno.EAGAIN}:
                     raise
-                if not _wait_to_retry(deadline, poll_seconds):
+                if not _wait_to_retry(
+                    deadline, poll_seconds, wait_callback, wait_started
+                ):
                     return False
 
 
-def _open_lock_file(lock_path, *, deadline=None, poll_seconds: float = 0.05):
+def _open_lock_file(lock_path, *, deadline=None, poll_seconds: float = 0.05,
+                    wait_callback=None, wait_started=None):
     """Open the persistent lock identity within the acquisition budget."""
     attempts = 0
     while True:
@@ -185,7 +207,9 @@ def _open_lock_file(lock_path, *, deadline=None, poll_seconds: float = 0.05):
                 raise
             if attempts >= TRANSIENT_FILESYSTEM_ATTEMPTS:
                 raise
-            if not _wait_to_retry(deadline, poll_seconds):
+            if not _wait_to_retry(
+                deadline, poll_seconds, wait_callback, wait_started
+            ):
                 return None
 
 
@@ -208,6 +232,7 @@ def path_transaction_lock(
     suffix=".transaction.lock",
     timeout_seconds=None,
     poll_seconds: float = 0.05,
+    wait_callback=None,
 ):
     """Exclusively hold one logical target across threads and processes.
 
@@ -229,9 +254,16 @@ def path_transaction_lock(
         else time.monotonic() + timeout_seconds
     )
 
+    wait_started = time.monotonic()
     state = _lock_state(canonical, suffix)
-    if deadline is None:
+    if deadline is None and wait_callback is None:
         thread_acquired = state.thread_lock.acquire()
+    elif deadline is None:
+        thread_acquired = False
+        while not thread_acquired:
+            thread_acquired = state.thread_lock.acquire(timeout=poll_seconds)
+            if not thread_acquired:
+                _notify_wait(wait_callback, wait_started)
     else:
         thread_acquired = state.thread_lock.acquire(
             timeout=max(0.0, deadline - time.monotonic())
@@ -253,6 +285,8 @@ def path_transaction_lock(
             lock_path,
             deadline=deadline,
             poll_seconds=poll_seconds,
+            wait_callback=wait_callback,
+            wait_started=wait_started,
         )
         if lock_file is None:
             yield None
@@ -266,6 +300,8 @@ def path_transaction_lock(
                 lock_file,
                 deadline=deadline,
                 poll_seconds=poll_seconds,
+                wait_callback=wait_callback,
+                wait_started=wait_started,
             )
             if not locked:
                 yield None

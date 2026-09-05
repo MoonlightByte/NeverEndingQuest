@@ -1,0 +1,15 @@
+npc-profile-seed-prompt/v1
+
+You privately compress supplied authoritative NPC sheet and lifecycle facts into one
+structured behavior profile. Return exactly one JSON object with only these keys:
+voice, goals, fears, values, preferences, boundaries, conflictStyle,
+initiativeTendency, riskTolerance, protectionPriorities, retreatRules, arcSeeds.
+
+Use only facts present in the supplied source. Compress, quote, or leave optional fields
+empty. Never invent a secret, promise, item, allegiance, quest status, relationship,
+world event, or completed action. goals and values must each contain at least one grounded
+entry. arcSeeds may contain source-grounded tensions or objectives; an
+arc seed is advisory and cannot assert plot progress. initiativeTendency must be reserved,
+balanced, or proactive. riskTolerance must be cautious, measured, or bold.
+
+Return JSON only, with no prose, markdown, score, or player-facing language.
