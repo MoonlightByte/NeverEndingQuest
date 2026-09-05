@@ -156,3 +156,46 @@ focused unit tests, 4 new message-presentation tests and 2 viewport tests pass.
 Lint succeeds with inherited warnings; diff whitespace check is clean. A final
 fetch still reports zero public-main commits missing from this branch. These
 scoped checks do not replace the remaining full-plan/runtime/visual gates.
+
+## Provider contract verification checkpoint — 2026-09-05
+
+Added a write-capable settings fixture and three browser tests covering all four
+provider selections across browser reload, endpoint/model save, blank-key presence,
+posted endpoint success/failure and a rejected selection followed by retry. All
+three pass against the actual built public React client on an isolated fixture
+process. The fixture stores presence flags only, not typed secrets; its test-only
+reset/failure controls are not production routes. It models protocol responses,
+not real provider inference or durable backend storage.
+
+Separately, `web/frontend/e2e/provider_contract_test.py` runs eleven passing Python
+tests using the actual production handler bodies and a fresh temporary copy of
+`model_config.py`. Real file persistence and fresh module reload are exercised;
+OS credentials and provider network calls are replaced with isolated test doubles.
+No developer settings, actual keys or production campaign is accessed. Handler
+source is compiled without importing full application startup. One test retains
+the production event decorators and routes selections/getters through a minimal
+real Flask-SocketIO app, including reconnect and settings-module reload. These
+checks do not prove full game-server boot, a process restart or real model responses.
+
+Coverage: four providers persisted/reloaded, invalid provider rejection, endpoint
+updates preserving a blank key without echoing it, OpenAI/Gemini key status-only
+responses, posted-value probe behavior, model mismatch warning and empty URL.
+No gameplay or production provider handler was changed in this checkpoint.
+
+Reproduce (from repository root):
+
+```sh
+python -m pytest -q web/frontend/e2e/provider_contract_test.py
+```
+
+Browser checks (from `web/frontend`, using a separate terminal for the server):
+
+```sh
+NEQ_E2E_PORT=4203 node e2e/mock-server.mjs
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:4203 npx playwright test e2e/ember-providers.spec.ts --workers=1
+```
+
+Remaining provider gates include the real Flask/Socket.IO integration with
+temporary profiles, full backend restart, all failure/disconnect states, optional
+real-provider turns with approved credentials and the eventual settings redesign.
+The 14 existing Ember/public browser checks also pass with the expanded fixture.

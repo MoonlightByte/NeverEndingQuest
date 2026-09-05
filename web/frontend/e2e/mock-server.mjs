@@ -3,6 +3,7 @@ import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Server } from 'socket.io'
+import { createProviderFixture } from './provider-fixture.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 // Canned map_data_response: a server-shaped, spoiler-safe map projection with
@@ -17,6 +18,7 @@ const mapDataMidReveal = JSON.parse(
 )
 const dist = path.resolve(here, '..', 'dist')
 const port = Number(process.env.NEQ_E2E_PORT ?? 4174)
+const providerFixture = createProviderFixture()
 const supportedHydrationModes = new Set(['legacy', 'correlated', 'mixed', 'delayed'])
 let hydrationMode = supportedHydrationModes.has(process.env.NEQ_E2E_HYDRATION_MODE)
   ? process.env.NEQ_E2E_HYDRATION_MODE
@@ -31,6 +33,12 @@ const contentTypes = {
 
 const server = http.createServer((request, response) => {
   const requestPath = new URL(request.url ?? '/', `http://${request.headers.host}`).pathname
+  if (request.method === 'POST' && ['/__e2e__/providers/reset', '/__e2e__/providers/reject'].includes(requestPath)) {
+    if (requestPath.endsWith('/reset')) providerFixture.reset()
+    else providerFixture.reject()
+    response.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}')
+    return
+  }
   if (request.method === 'POST' && requestPath.startsWith('/__e2e__/hydration/')) {
     const requestedMode = requestPath.split('/').at(-1)
     if (!supportedHydrationModes.has(requestedMode)) {
@@ -155,12 +163,7 @@ io.on('connection', (socket) => {
     if (dataType === 'stats') socket.emit('player_data_response', { dataType, data: stats })
     else socket.emit('player_data_response', { dataType, data: {} })
   })
-  socket.on('get_model_provider', () => socket.emit('provider_changed', { provider: 'legacy' }))
-  socket.on('get_local_endpoint', () => socket.emit('local_endpoint_changed', {
-    base_url: 'http://localhost:1234/v1', model: '', has_key: false,
-  }))
-  socket.on('get_openai_key', () => socket.emit('openai_key_status', { has_key: false }))
-  socket.on('get_gemini_key', () => socket.emit('gemini_key_status', { has_key: false }))
+  providerFixture.attach(socket)
 
   socket.on('action', ({ action, parameters }) => {
     if (action === 'listSaves') {

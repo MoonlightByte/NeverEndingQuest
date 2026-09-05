@@ -13,6 +13,7 @@ dist-ssr
 *.local
 playwright-report
 test-results
+!e2e/provider_contract_test.py
 
 # Editor directories and files
 .vscode/*
