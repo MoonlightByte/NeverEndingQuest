@@ -845,6 +845,9 @@ class WebInput:
         self.queue = queue
     
     def readline(self):
+        from utils.capture.live_provider_call import service_live_input_boundary
+
+        service_live_input_boundary()
         # Signal that we're ready for input (with error handling)
         try:
             from core.managers.status_manager import status_ready
@@ -860,13 +863,9 @@ class WebInput:
         # (Previously this capped at 1000 * 0.1s = 100s and then returned '\n',
         # which made the combat loop busy-spin on empty input -- see issue #122.)
         while True:
+            service_live_input_boundary()
             try:
                 user_input = self.queue.get(timeout=0.5)
-                # Ensure input is a string and handle encoding issues
-                if isinstance(user_input, str):
-                    return user_input + '\n'
-                # Convert to string if needed
-                return str(user_input) + '\n'
             except queue.Empty:
                 # #214: the game thread parks here between turns; this pump
                 # services the off-thread startup-welcome lifecycle (lease
@@ -885,6 +884,10 @@ class WebInput:
                 # Unexpected failure: signal EOF for a clean exit rather than
                 # looping forever on empty input.
                 return ''
+            service_live_input_boundary()
+            if isinstance(user_input, str):
+                return user_input + '\n'
+            return str(user_input) + '\n'
 
 @app.route('/')
 def index():

@@ -386,6 +386,7 @@ def request_live_turn_supersession(kind, operation_id=None, scope=None):
             return None
     result = target_scope.request_supersession(kind, operation_id)
     if result.get("accepted"):
+        _safe_emit(_emit_working, "Applying your requested game control...")
         from core.combat.invocation import supersede_invocations
         from core.managers.campaign_manager import _party_module_transition_lock
 
@@ -412,6 +413,9 @@ def request_lifecycle_turn_supersession(kind, operation_id=None):
             scope.request_supersession(kind, requested_id) for scope in scopes
         )
     if any(result.get("accepted") for result in results):
+        # Never acquire the status lock while holding the scope registry or a
+        # scope lock. Ready admission takes those locks in the other direction.
+        _safe_emit(_emit_working, "Applying your requested game control...")
         from core.combat.invocation import supersede_invocations
         from core.managers.campaign_manager import _party_module_transition_lock
 
@@ -545,6 +549,22 @@ def finish_live_turn_scope(scope):
             )
     drain_live_saves(scope, seal=True)
     close_live_turn_scope(scope)
+
+
+def service_live_input_boundary():
+    """Service accepted controls while the game thread is safely at input.
+
+    Deliberately called outside best-effort presentation hooks: supersession
+    must unwind the game, not become EOF or a swallowed status failure.
+    """
+    scope = get_live_turn_scope()
+    if scope is None:
+        return
+    if scope.is_superseded():
+        raise LiveProviderSuperseded("input boundary was superseded")
+    drain_live_saves(scope, seal=False)
+    if scope.is_superseded():
+        raise LiveProviderSuperseded("input boundary was superseded")
 
 
 def abort_live_turn_scope(

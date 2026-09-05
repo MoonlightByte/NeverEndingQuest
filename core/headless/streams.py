@@ -109,6 +109,9 @@ class HeadlessInput:
             return False
 
     def readline(self):
+        from utils.capture.live_provider_call import service_live_input_boundary
+
+        service_live_input_boundary()
         # Once quit is requested, EVERY readline returns EOF, not just the
         # one that consumes the sentinel: the combat and level-up sub-loops
         # swallow a single EOFError and drop back to the main loop, which
@@ -128,6 +131,7 @@ class HeadlessInput:
             except Exception:
                 pass
         while True:
+            service_live_input_boundary()
             if self._quit_requested():
                 return ""
             try:
@@ -144,6 +148,7 @@ class HeadlessInput:
                 continue
             except Exception:
                 return ""
+            service_live_input_boundary()
             if user_input is EOF_SENTINEL:
                 return ""
             if isinstance(user_input, str):

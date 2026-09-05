@@ -102,16 +102,19 @@ class StatusManager:
                 the combat manager's early completion signal) must NOT pass it;
                 their premature un-processing stays rejected by the scope guard.
         """
-        if not is_processing and not at_input_boundary:
-            try:
-                from utils.capture.live_provider_call import get_live_turn_scope
-
-                scope = get_live_turn_scope()
-                if scope is not None and scope.phase != "QUIESCENT":
-                    return False
-            except ImportError:
-                pass
         with self._lock:
+            if not is_processing:
+                try:
+                    from utils.capture.live_provider_call import get_live_turn_scope
+
+                    scope = get_live_turn_scope()
+                    if scope is not None and (
+                        scope.is_superseded()
+                        or (not at_input_boundary and scope.phase != "QUIESCENT")
+                    ):
+                        return False
+                except ImportError:
+                    pass
             self._status = message
             self._is_processing = is_processing
             if self._status_callback:
