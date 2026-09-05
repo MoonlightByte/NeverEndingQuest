@@ -145,17 +145,27 @@ class SaveGameManager:
         self._initialize_module_context()
     
     def _initialize_module_context(self):
-        """Initialize the current module context from party tracker"""
+        """Use the current party or the validated pending adventure selection."""
+        self.current_module = None
+        self.path_manager = None
         try:
             party_tracker = safe_json_load("party_tracker.json")
             if party_tracker:
-                self.current_module = party_tracker.get("module", "").replace(" ", "_")
+                self.current_module = party_tracker.get("module", "").replace(" ", "_") or None
+            if not self.current_module:
+                from utils.startup_contract import parse_startup_checkpoint
+                history = safe_json_load("modules/conversation_history/startup_conversation.json")
+                progress = parse_startup_checkpoint(history or [])
+                selected = progress.get("module") if progress else None
+                # The catalog's exact installed-directory identity, not a path
+                # supplied by arbitrary old history or the default module.
+                if selected and os.path.isdir("modules") and selected in os.listdir("modules"):
+                    if os.path.isdir(os.path.join("modules", selected)):
+                        self.current_module = selected
+            if self.current_module:
                 self.path_manager = ModulePathManager(self.current_module)
-            else:
-                self.path_manager = ModulePathManager()
         except Exception as e:
-            warning(f"INITIALIZATION: Could not initialize module context", category="save_game")
-            self.path_manager = ModulePathManager()
+            warning(f"INITIALIZATION: Module context remains unselected: {e}", category="save_game")
 
     @staticmethod
     def _clear_campaign_completion_metadata() -> None:
@@ -237,6 +247,7 @@ class SaveGameManager:
             # Conversation and chat history (critical for game continuity)
             "modules/conversation_history/conversation_history.json",
             "modules/conversation_history/chat_history.json",
+            "modules/conversation_history/startup_conversation.json",
             
             # Character data
             "characters/",
@@ -968,6 +979,16 @@ class SaveGameManager:
 
             backup_complete = True
             restore_mutation_started = True
+
+            # An ordinary campaign save has no unfinished interview. Its
+            # absence replaces current startup progress, just like its files.
+            # The essential backup above restores this exact file on failure.
+            startup_history = "modules/conversation_history/startup_conversation.json"
+            if not os.path.isfile(os.path.join(save_path, startup_history)):
+                try:
+                    os.remove(startup_history)
+                except FileNotFoundError:
+                    pass
 
             # A pre-V2 save intentionally has no effects_state.json.  Remove
             # the newer live stamp before copying so startup re-detects and

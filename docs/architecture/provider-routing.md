@@ -6,6 +6,8 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 
 Branch delta: voices `8f51bef3ee39e8f86b9bff635816c2dd6a520082` adds T105/T107/T108/T112/T113 registry profiles and task-owned advisory child scopes; it does not change the router, capture writer, API logger, or provider clients described here.
 
+Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` working candidate based on `3f521f70429cf9bef4e0a5688d11c4fce44f7596`: T092 author/reviewer and T093 location work use the existing required live path. Unchanged routing anchors retain the earlier pin; live #193 remains doctrine authority.
+
 ## Authority table
 
 | Datum | Source of truth | Explicit non-authority |
@@ -39,6 +41,8 @@ Branch delta: voices `8f51bef3ee39e8f86b9bff635816c2dd6a520082` adds T105/T107/T
 16. Callsite schema/format/temperature overlays survive registry resolution. The adapter removes unsupported combinations per provider, including `top_p` and incompatible temperature/effort/schema forms.
 17. Local/Custom may replace only the LM Studio model from persisted settings and omits unsupported `json_object` while preserving explicit JSON schema.
 18. Required live tasks structurally reissue after a fully reaped unavailable generation. Advisory tasks terminate for that beat. The live policy, not capture, owns this distinction.
+19. Startup supplies a private reactive message-repair callback when a provider rejects request ordering. The live transport invokes it only after the correlated failed child is reaped, then freezes the repaired messages for the next generation. It does not fabricate a response or change provider selection.
+20. Capture removes that callback before serialization/API dispatch and records the actual repaired message sequence. Independent startup review uses the existing T092 binding; no parallel startup router or model-specific gameplay branch is introduced.
 
 ## State and atomicity
 
@@ -67,7 +71,7 @@ Branch delta: voices `8f51bef3ee39e8f86b9bff635816c2dd6a520082` adds T105/T107/T
 11. `core/ai/api_client.py:181-263` - response rejection and actual model/ID normalization.
 12. `core/ai/api_client.py:280-367` - provider-neutral router and error normalization.
 13. `core/ai/api_client.py:370-552` - provider constraints and Gemini translation.
-14. `utils/capture/live_provider_call.py:550-756` - live children, correlation, and reissue.
+14. `utils/capture/live_provider_call.py:735` and `utils/capture/multi_model_capture.py:380` - live children, correlation, required reissue, reactive request repair, and capture bookkeeping (startup candidate).
 15. `utils/capture/file_writer.py:36-181` and `utils/api_logger.py:42-123` - capture and API evidence stores.
 
 ## Invariants

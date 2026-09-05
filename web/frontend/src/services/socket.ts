@@ -142,7 +142,10 @@ on('status_update', (s) => {
   applyProcessingTransition(s.is_processing, () => useSession.getState().setStatus(s))
   if (wasProcessing && !s.is_processing) refreshAuthoritativeState()
 })
-on('startup_status', (s) => useSession.getState().setStartup(s.status, s.phase, s.startupAttemptId))
+on('startup_status', (s) => {
+  useSession.getState().setStartup(s.status, s.phase, s.startupAttemptId)
+  if (s.status === 'ready') refreshAuthoritativeState()
+})
 // #214 D-214-4=A: background welcome liveness - presentational only, never
 // touches isProcessing, so it can never lock the input.
 on('welcome_progress', (p) => useSession.getState().setWelcome((p && p.message) || ''))

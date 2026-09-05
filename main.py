@@ -7139,7 +7139,7 @@ def main_game_loop():
             print("Let's get you ready for adventure!\n")
 
             success = run_startup_sequence()
-            if not success:
+            if not success or startup_required():
                 print("[ERROR] Setup was cancelled or failed. Cannot start game loop.")
                 return
             wizard_state = mark_wizard_complete().get("state", load_startup_state())
