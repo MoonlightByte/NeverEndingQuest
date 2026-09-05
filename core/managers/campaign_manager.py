@@ -1040,6 +1040,15 @@ def _finish_completion_marker_cleanup(
         _durable_remove(pending["work_path"])
 
 
+def _checkpoint_completion_work(campaign_file: str, work_path: str, work: Dict[str, Any]) -> None:
+    """Write only this exact attempt under the existing campaign mutation lock."""
+    with _campaign_transaction_lock(campaign_file):
+        authority = {**work, "campaign_path": campaign_file, "work_path": work_path}
+        if _read_completion_work_for_pending(authority, work) is None:
+            raise LiveProviderSuperseded("Completion checkpoint lost its work record")
+        _durable_write_json(work_path, work)
+
+
 def _mark_completion_work_committed(
     pending: Dict[str, Any], expected_work: Optional[Dict[str, Any]] = None,
 ) -> None:
@@ -2975,7 +2984,7 @@ class CampaignManager:
                             os.path.normpath(archive_result)
                         )
                         work["archive_path"] = archive_path
-                        _durable_write_json(paths["work"], work)
+                        _checkpoint_completion_work(self.campaign_file, paths["work"], work)
 
                 if not isinstance(summary, dict):
                     resume_t038_summary_text = work.get("t038_summary_text")
@@ -2985,7 +2994,7 @@ class CampaignManager:
                         work["t038_summary_fingerprint"] = _json_fingerprint(
                             summary_text
                         )
-                        _durable_write_json(paths["work"], work)
+                        _checkpoint_completion_work(self.campaign_file, paths["work"], work)
 
                     summary = self._generate_module_summary(
                         module_name,
@@ -3003,7 +3012,7 @@ class CampaignManager:
                     work["generated_summary_fingerprint"] = _json_fingerprint(
                         summary
                     )
-                    _durable_write_json(paths["work"], work)
+                    _checkpoint_completion_work(self.campaign_file, paths["work"], work)
 
                 with _campaign_transaction_lock(self.campaign_file):
                     if _load_campaign_lifecycle_epoch(
@@ -3026,7 +3035,7 @@ class CampaignManager:
                     summary["lastVisitDate"] = now
                     summary["sequenceNumber"] = 1
                     work["summary_fingerprint"] = _json_fingerprint(summary)
-                    _durable_write_json(paths["work"], work)
+                    _checkpoint_completion_work(self.campaign_file, paths["work"], work)
                     self._commit_module_summary_locked(
                         module_name,
                         summary,
@@ -3036,23 +3045,35 @@ class CampaignManager:
                         work_path=paths["work"],
                         completion_id=completion_id,
                         operation="completion",
+                        expected_work=copy.deepcopy(work),
                     )
-            except BaseException:
-                pending = _load_json_dict(paths["campaign_pending"])
-                pending_owns_work = (
-                    isinstance(pending, dict)
-                    and pending.get("transaction_id") == transaction_id
-                )
-                if not pending_owns_work:
-                    latest_work = _load_json_dict(paths["work"])
-                    if isinstance(latest_work, dict):
-                        _remove_scoped_archive(
-                            latest_work.get("archive_path"),
-                            self.archives_dir,
-                            module_name,
-                            transaction_id,
+            except BaseException as completion_exc:
+                try:
+                    with _campaign_transaction_lock(self.campaign_file):
+                        authority = {**work, "work_path": paths["work"],
+                                     "campaign_path": self.campaign_file}
+                        latest_work = _read_completion_work_for_pending(authority, work)
+                        pending = _load_json_dict(paths["campaign_pending"])
+                        if pending is None and os.path.exists(paths["campaign_pending"]):
+                            raise OSError("Unreadable canonical pending commit during cleanup")
+                        pending_owns_work = (
+                            isinstance(pending, dict)
+                            and pending.get("transaction_id") == transaction_id
                         )
-                    _durable_remove(paths["work"])
+                        if latest_work is not None and not pending_owns_work:
+                            _remove_scoped_archive(
+                                latest_work.get("archive_path"),
+                                self.archives_dir,
+                                module_name,
+                                transaction_id,
+                            )
+                            _finish_completion_marker_cleanup(authority, work)
+                except Exception as cleanup_exc:
+                    # A local cleanup fault cannot turn accepted cancellation
+                    # into an engine failure or a generated-summary fallback.
+                    if isinstance(completion_exc, LiveProviderSuperseded):
+                        raise completion_exc from cleanup_exc
+                    raise
                 raise
 
             # The summary, campaign projection, and optional receipt are now
@@ -3060,7 +3081,13 @@ class CampaignManager:
             # the marker lets the next locked entry verify the receipt and
             # finish cleanup without deleting the committed archive.
             try:
-                _durable_remove(paths["work"])
+                with _campaign_transaction_lock(self.campaign_file):
+                    _finish_completion_marker_cleanup(
+                        {**work, "work_path": paths["work"], "campaign_path": self.campaign_file},
+                        work,
+                    )
+            except LiveProviderSuperseded:
+                raise
             except Exception as cleanup_exc:
                 warning(
                     "FILE_OP: Module completion committed but work-marker "
@@ -3946,7 +3973,9 @@ Focus on story outcomes, character development, and decisions that will matter i
                 "campaign_file",
                 os.path.join(self.archives_dir, "campaign_archive"),
             )
-            with _campaign_transaction_lock(f"{archive_lock_target}.archive"):
+            with _campaign_transaction_lock(archive_lock_target), _campaign_transaction_lock(
+                f"{archive_lock_target}.archive"
+            ):
                 sequence_num = self._get_next_sequence_number(
                     self.archives_dir,
                     f"{module_name}_conversation",
@@ -3968,7 +3997,7 @@ Focus on story outcomes, character development, and decisions that will matter i
                 # worker can remove both the orphan and its stale writer lock.
                 if completion_work_path and isinstance(completion_work, dict):
                     completion_work["archive_path"] = archive_file
-                    _durable_write_json(completion_work_path, completion_work)
+                    _checkpoint_completion_work(archive_lock_target, completion_work_path, completion_work)
 
                 archived_history = copy.deepcopy(conversation_history)
                 filtered_history = []
@@ -4018,10 +4047,7 @@ Focus on story outcomes, character development, and decisions that will matter i
                     completion_work["archive_fingerprint"] = _json_fingerprint(
                         archive_data
                     )
-                    _durable_write_json(
-                        completion_work_path,
-                        completion_work,
-                    )
+                    _checkpoint_completion_work(archive_lock_target, completion_work_path, completion_work)
             print(
                 f"DEBUG: [Module Archive] Archived {len(filtered_history)} "
                 f"messages to: {archive_file}"
@@ -4034,6 +4060,8 @@ Focus on story outcomes, character development, and decisions that will matter i
             if completion_work_path and isinstance(completion_work, dict):
                 return archive_file
             return True
+        except LiveProviderSuperseded:
+            raise
         except Exception as e:
             warning(
                 f"FAILURE: Failed to archive conversation history for "
