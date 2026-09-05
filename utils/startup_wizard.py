@@ -1671,7 +1671,7 @@ def _ensure_local_provider_alternation(messages, provider):
       2. "System message must be at the beginning" -> only ONE system message,
          at the start (a second/mid/trailing system message is rejected).
 
-    This is applied REACTIVELY by get_ai_response -- only after a local-provider
+    This is applied REACTIVELY by startup transport -- only after a local-provider
     call fails -- so lenient models (e.g. Gemma 12B), which accept the raw shape
     and succeed on the first attempt, are never reshaped (byte-identical). Only a
     strict template that actually 500s triggers a normalized retry.
@@ -1688,7 +1688,7 @@ def _ensure_local_provider_alternation(messages, provider):
     An already-valid request (one leading system, turns ending on user) is
     reconstructed identically, so this cannot alter a currently-working call.
     OpenAI/Gemini/legacy are returned unchanged -- they accept the raw shape.
-    STARTUP-ONLY (utils/startup_wizard.get_ai_response); the main game loop and
+    STARTUP-ONLY (T092 interview/review and T093 location); the main game loop and
     every non-LM-Studio provider are untouched.
     """
     if provider != "lmstudio":
@@ -1858,7 +1858,12 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                 response = capture_and_fanout(
                     "T093", api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
-                    _detached_scope=scope, messages=copy.deepcopy(messages),
+                    _detached_scope=scope,
+                    _live_retry_message_repair=(
+                        (lambda rejected, failure: _ensure_local_provider_alternation(rejected, provider))
+                        if provider == "lmstudio" else None
+                    ),
+                    messages=copy.deepcopy(messages),
                     model=mini_cfg["model"], temperature=0.7, response_format=None,
                     **{key: value for key, value in mini_cfg.items() if key != "model"},
                 )
