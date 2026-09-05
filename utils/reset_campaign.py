@@ -222,14 +222,17 @@ def reset_global_state():
     from utils.module_refresh_lock import module_refresh_lock
 
     # Global lock order: party transition -> module (when needed) -> campaign.
-    with _party_module_transition_lock():
+    wait_reporter = _reset_wait_reporter()
+    with _party_module_transition_lock(wait_callback=wait_reporter):
         with module_refresh_lock(
             max_wait_seconds=None,
-            wait_callback=_reset_wait_reporter(),
+            wait_callback=wait_reporter,
         ) as refresh_acquired:
             if not refresh_acquired:
                 raise TimeoutError("Module refresh is active; retry reset")
-            with _campaign_transaction_lock("modules/campaign.json"):
+            with _campaign_transaction_lock(
+                "modules/campaign.json", wait_callback=wait_reporter
+            ):
                 return _reset_global_state_locked()
 
 
@@ -443,14 +446,17 @@ def perform_reset_logic():
 
     invocation_barrier = begin_invocation_supersession("reset")
     try:
-        with _party_module_transition_lock():
+        wait_reporter = _reset_wait_reporter()
+        with _party_module_transition_lock(wait_callback=wait_reporter):
             with module_refresh_lock(
                 max_wait_seconds=None,
-                wait_callback=_reset_wait_reporter(),
+                wait_callback=wait_reporter,
             ) as refresh_acquired:
                 if not refresh_acquired:
                     raise TimeoutError("Module refresh is active; retry reset")
-                with _campaign_transaction_lock("modules/campaign.json"):
+                with _campaign_transaction_lock(
+                    "modules/campaign.json", wait_callback=wait_reporter
+                ):
                     _assert_no_active_campaign_completion("modules/campaign.json")
                     return _perform_reset_logic_locked()
     finally:

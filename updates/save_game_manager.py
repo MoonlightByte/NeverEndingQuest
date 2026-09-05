@@ -655,7 +655,8 @@ class SaveGameManager:
             # combat before module refresh, so this preserves that ordering.
             # Hold the party lock while draining so no ready intent can appear
             # between the drain and the snapshot.
-            with _party_module_transition_lock():
+            wait_reporter = _lifecycle_wait_reporter("Save")
+            with _party_module_transition_lock(wait_callback=wait_reporter):
                 drain_outcome = (
                     CampaignManager().drain_module_completion_intents()
                 )
@@ -671,7 +672,6 @@ class SaveGameManager:
                 self._initialize_module_context()
                 from utils.module_refresh_lock import module_refresh_lock
 
-                wait_reporter = _lifecycle_wait_reporter("Save")
                 with _active_combat_snapshot_lease(
                     timeout_seconds=None,
                     wait_callback=wait_reporter,
@@ -687,7 +687,9 @@ class SaveGameManager:
                         # swap) and never leaves a half-built module live, so the
                         # live state is always safe to snapshot -- nothing to
                         # recover, nothing that can block a save.
-                        with _campaign_transaction_lock("modules/campaign.json"):
+                        with _campaign_transaction_lock(
+                            "modules/campaign.json", wait_callback=wait_reporter
+                        ):
                             _assert_no_active_campaign_completion(
                                 "modules/campaign.json"
                             )
@@ -884,8 +886,8 @@ class SaveGameManager:
             from utils.module_refresh_lock import module_refresh_lock
 
             restore_outcome = None
-            with _party_module_transition_lock():
-                wait_reporter = _lifecycle_wait_reporter("Load")
+            wait_reporter = _lifecycle_wait_reporter("Load")
+            with _party_module_transition_lock(wait_callback=wait_reporter):
                 with _active_combat_snapshot_lease(
                     timeout_seconds=None,
                     wait_callback=wait_reporter,
@@ -901,7 +903,9 @@ class SaveGameManager:
                         # published module is already live on disk regardless of
                         # any leftover marker, and a missing creation narration is
                         # cosmetic. Fail-forward: always let the player load.
-                        with _campaign_transaction_lock("modules/campaign.json"):
+                        with _campaign_transaction_lock(
+                            "modules/campaign.json", wait_callback=wait_reporter
+                        ):
                             valid, validation_error = self.validate_restore_target(
                                 save_folder,
                                 include_manifest=False,
@@ -1184,7 +1188,9 @@ class SaveGameManager:
         try:
             from core.managers.campaign_manager import _party_module_transition_lock
 
-            with _party_module_transition_lock():
+            with _party_module_transition_lock(
+                wait_callback=_lifecycle_wait_reporter("Delete save")
+            ):
                 save_path = self._resolve_save_target(save_folder)
                 shutil.rmtree(save_path)
             info(f"SUCCESS: Deleted save game: {save_path}", category="save_game")
@@ -1216,7 +1222,9 @@ class SaveGameManager:
         """Rename then remove only the exact pre-staged save directory."""
         from core.managers.campaign_manager import _party_module_transition_lock
 
-        with _party_module_transition_lock():
+        with _party_module_transition_lock(
+            wait_callback=_lifecycle_wait_reporter("Delete save")
+        ):
             target = self._resolve_save_target(
                 receipt["target"], allow_missing=True, receipt_path=True
             )

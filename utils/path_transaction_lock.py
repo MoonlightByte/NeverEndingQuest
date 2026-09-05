@@ -197,15 +197,49 @@ def _lock_file(lock_file, *, deadline=None, poll_seconds: float = 0.05,
 def _open_lock_file(lock_path, *, deadline=None, poll_seconds: float = 0.05,
                     wait_callback=None, wait_started=None):
     """Open the persistent lock identity within the acquisition budget."""
+    def windows_opener(path, flags):
+        # A native lockfile probe exposed CRT open() collapsing WinError 32 to
+        # EACCES without winerror. Preserve the actual error, rather than
+        # treating all permission denials as transient sharing contention.
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.argtypes = (
+            wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+            wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+        )
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel.CloseHandle.restype = wintypes.BOOL
+        handle = kernel.CreateFileW(
+            os.fsdecode(path),
+            0x80000000 | 0x40000000,  # GENERIC_READ | GENERIC_WRITE
+            1 | 2,  # FILE_SHARE_READ | FILE_SHARE_WRITE; do not unlink held locks
+            None, 4, 0x80, None,  # non-inherited, OPEN_ALWAYS, normal attributes
+        )
+        if handle == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return msvcrt.open_osfhandle(
+                handle, os.O_RDWR | os.O_APPEND | os.O_BINARY | os.O_NOINHERIT
+            )
+        except BaseException:
+            kernel.CloseHandle(handle)
+            raise
+
     attempts = 0
     while True:
         try:
-            return open(lock_path, "a+b")
+            return open(
+                lock_path, "a+b", opener=windows_opener if os.name == "nt" else None
+            )
         except OSError as exc:
             attempts += 1
             if not is_transient_filesystem_error(exc):
                 raise
-            if attempts >= TRANSIENT_FILESYSTEM_ATTEMPTS:
+            if deadline is not None and attempts >= TRANSIENT_FILESYSTEM_ATTEMPTS:
                 raise
             if not _wait_to_retry(
                 deadline, poll_seconds, wait_callback, wait_started

@@ -259,7 +259,7 @@ def _assert_no_active_campaign_completion(campaign_file: str) -> None:
             )
 
 
-def _campaign_transaction_lock(campaign_file: str):
+def _campaign_transaction_lock(campaign_file: str, *, wait_callback=None):
     """Serialize campaign read/merge/write transactions across workers."""
     # Keep the lifecycle lock outside the metadata directory. Restore/reset
     # intentionally replace that directory and must not invalidate a lock
@@ -268,14 +268,18 @@ def _campaign_transaction_lock(campaign_file: str):
     return path_transaction_lock(
         lock_target,
         suffix=".completion.transaction.lock",
+        wait_callback=wait_callback,
     )
 
 
-def _party_module_transition_lock(party_tracker_file: str = "party_tracker.json"):
+def _party_module_transition_lock(
+    party_tracker_file: str = "party_tracker.json", *, wait_callback=None
+):
     """Serialize fresh-check + party module publication across workers."""
     return path_transaction_lock(
         party_tracker_file,
         suffix=".module-transition.lock",
+        wait_callback=wait_callback,
     )
 
 
