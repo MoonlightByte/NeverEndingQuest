@@ -54,6 +54,15 @@ describe('SaveDialog', () => {
 })
 
 describe('LoadDialog', () => {
+  it('moves focus inside without a primary input and handles Escape', () => {
+    useDialogs.getState().openDialog('load')
+    render(<LoadDialog />)
+    const dialog = screen.getByRole('dialog', { name: 'Load Saved Game' })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    expect(useDialogs.getState().open).toBeNull()
+  })
+
   it('requests the save list on open and emits restoreGame for the selected save', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     useDialogs.getState().openDialog('load')

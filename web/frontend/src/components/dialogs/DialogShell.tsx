@@ -37,6 +37,14 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem', lega
       : null
     if (initialFocusRef?.current) initialFocusRef.current.focus()
     else if (!legacy) closeButtonRef.current?.focus()
+    else {
+      // Legacy dialogs without a primary input (notably Load) must still move
+      // focus inside the overlay, otherwise Escape/Tab never reach this handler.
+      const firstAction = dialogRef.current?.querySelector<HTMLElement>(
+        '.neq-dialog-body-parity button:not([disabled]), .neq-dialog-body-parity input:not([disabled])',
+      )
+      ;(firstAction ?? dialogRef.current)?.focus()
+    }
     return () => previousFocus?.focus()
   }, [initialFocusRef, legacy])
 
@@ -81,6 +89,7 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem', lega
     >
       <div
         ref={dialogRef}
+        tabIndex={-1}
         className={legacy ? `neq-save-dialog-parity ${className}` : `neq-card flex max-h-[85vh] w-full flex-col overflow-hidden ${className}`}
         style={{ maxWidth }}
       >

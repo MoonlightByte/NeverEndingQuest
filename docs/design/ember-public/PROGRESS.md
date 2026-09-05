@@ -236,3 +236,50 @@ pass; all six populated visual checks pass without changing their goldens after
 the header/tab repair. Build and lint succeed (11 inherited lint warnings).
 Also personally inspected the final 761px dice-focused capture: the quick-roll
 row scrolls to D4 within the panel instead of clipping the focused control.
+
+## Isolated real-server integration — 2026-09-05
+
+Added `web/frontend/e2e/ember_runtime_server.py`: it exports committed public
+files to a fresh temporary directory, copies the locally built frontend, installs
+the example configuration, disables OS credential access before game imports,
+and rejects external Python socket connections/DNS. It runs the existing
+`tests/react_parity_server.py` against a separate synthetic campaign. No developer
+configuration, ignored saves or settings are copied. The printed temporary
+directory is retained for inspection. This is a test runner, not a hardened
+security sandbox; do not expose it publicly or use it with real credentials.
+
+The full Flask app successfully boots in this export. New opt-in browser checks
+exercise public React hydration, inventory, save-list display, settings reachability,
+combat and transport reconnect through real production routes/handlers. The
+underlying parity harness still replaces provider persistence, start, image,
+endpoint probe, update and save listing with deterministic doubles. This does not
+prove actual model turns, durable provider settings, actual restore/restart or
+toolkit writes. Those original full-plan gates remain open.
+
+The integration exposed a pre-existing Load-dialog keyboard problem: its legacy
+shell had neither a primary input nor an initial focus target, so Escape stayed
+on the underlying page. The shared shell now focuses a body action (or its card
+as fallback). Save's explicit input focus remains unchanged. Added regression
+coverage for initial focus, Escape close and focus return to the Load trigger.
+No visual layout or game/provider contract changed in this repair.
+
+Reproduce from repository root (first build `web/frontend`):
+
+```sh
+python web/frontend/e2e/ember_runtime_server.py --port 4205
+```
+
+In another terminal, from `web/frontend`:
+
+```sh
+NEQ_E2E_REAL_RUNTIME=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:4205 npx playwright test e2e/ember-runtime.spec.ts --workers=1
+```
+
+Both integration tests pass. The first also opens the actual legacy `/` page and
+waits for its character and transcript hydration before opening React `/play/`;
+this is stronger fallback evidence than the old Node fixture's placeholder HTML.
+It is still only a scoped smoke check, not a full legacy workflow audit.
+All 25 focused dialog/operation unit tests pass; build and lint succeed with
+the 11 inherited warnings. Personally inspected the real-runtime Load capture;
+its existing dialog treatment is retained pending the additional-screen design
+review, with initial focus now inside the dialog.
