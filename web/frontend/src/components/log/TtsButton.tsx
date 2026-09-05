@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLog, useSettings } from '../../stores'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { EmberIcon } from '../layout/EmberIcon'
 
 const buttonClass =
   'mr-1.5 inline-flex h-[22px] w-[22px] min-w-[22px] cursor-pointer items-center justify-center rounded ' +
@@ -44,6 +46,7 @@ async function createOpenAiAudio(text: string, voice: string, engine: 'openai' |
 }
 
 export function TtsButton({ content, autoplay = false }: { content: string; autoplay?: boolean }) {
+  const ember = useEmberDesktop()
   const enabled = useSettings((s) => s.ttsEnabled)
   const engine = useSettings((s) => s.engine)
   const voice = useSettings((s) => s.voices[s.engine])
@@ -119,5 +122,6 @@ export function TtsButton({ content, autoplay = false }: { content: string; auto
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  if (ember) return <button type="button" onClick={() => void play()} title={state === 'playing' ? 'Stop playback' : 'Play DM Voice'} className="ember-message-action"><EmberIcon name="sound" />{state === 'loading' ? 'Loading…' : state === 'playing' ? 'Stop' : 'Listen'}</button>
   return <button type="button" onClick={() => void play()} title={state === 'playing' ? 'Stop playback' : 'Play DM Voice'} className={buttonClass} style={{ backgroundColor: state === 'playing' ? '#e74c3c' : state === 'loading' ? '#ffa500' : autoplay ? '#27ae60' : '#4a4a4a', color: '#ddd' }}>{state === 'loading' ? '...' : state === 'playing' ? '■' : '▶'}</button>
 }

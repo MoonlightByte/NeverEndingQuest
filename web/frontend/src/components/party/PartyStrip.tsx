@@ -14,6 +14,7 @@ import type { ChipVariant } from './CharacterChip'
 import { MediaPopup } from './MediaPopup'
 import { asString, npcThumbCandidates, partyClickMedia, playerThumbCandidates } from './media'
 import type { MediaSource } from './media'
+import { useEmberDesktop } from '../layout/EmberPresentation'
 import './party-parity.css'
 
 interface HorizontalChipRailProps {
@@ -24,19 +25,20 @@ interface HorizontalChipRailProps {
 
 /** Shared legacy scroller used by both exploration and initiative rails. */
 export function HorizontalChipRail({ label, itemCount, children }: HorizontalChipRailProps) {
+  const ember = useEmberDesktop()
   const railRef = useRef<HTMLDivElement>(null)
   const [arrows, setArrows] = useState({ left: false, right: false })
 
   const updateArrows = useCallback(() => {
     const rail = railRef.current
     if (!rail) return
-    const maxScrollLeft = Math.max(0, rail.scrollWidth - rail.clientWidth)
+    const maxScrollLeft = ember ? 0 : Math.max(0, rail.scrollWidth - rail.clientWidth)
     const next = {
       left: maxScrollLeft > 0 && rail.scrollLeft > 0,
       right: maxScrollLeft > 0 && rail.scrollLeft < maxScrollLeft - 1,
     }
     setArrows((current) => current.left === next.left && current.right === next.right ? current : next)
-  }, [])
+  }, [ember])
 
   useLayoutEffect(() => {
     const rail = railRef.current
@@ -72,6 +74,7 @@ export function HorizontalChipRail({ label, itemCount, children }: HorizontalChi
 }
 
 export function PartyStrip() {
+  const ember = useEmberDesktop()
   const party = useWorld((s) => s.party)
   const locationNpcs = useWorld((s) => s.locationNpcs)
   const combatActive = useWorld((s) => s.initiative.active)
@@ -107,6 +110,7 @@ export function PartyStrip() {
   return <>
     <HorizontalChipRail label="Party members" itemCount={party.length + locationNpcs.length}>
       {party.map((member) => renderMember(member, false))}
+      {ember && locationNpcs.length > 0 && <div className="ember-nearby-label">Nearby</div>}
       {locationNpcs.map((npc) => renderMember(npc, true))}
     </HorizontalChipRail>
     <MediaPopup media={media} onClose={() => setMedia(null)} />

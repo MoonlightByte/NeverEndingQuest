@@ -8,6 +8,8 @@
  */
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { EmberIcon } from '../layout/EmberIcon'
 
 const DICE_SIDES = [20, 12, 10, 8, 6, 4] as const
 
@@ -37,6 +39,7 @@ const clearButtonClass =
   'cursor-pointer rounded border-0 bg-[#f44336] px-3 py-1.5 font-chrome text-[13px] text-white hover:bg-[#d32f2f]'
 
 export function DiceStrip() {
+  const ember = useEmberDesktop()
   const [d20Rolls, setD20Rolls] = useState<number[]>([])
   const [damageRolls, setDamageRolls] = useState<DamageRoll[]>([])
 
@@ -81,7 +84,8 @@ export function DiceStrip() {
     <>
     <div className="neq-dice-strip flex shrink-0 flex-col items-center">
       <div className="neq-dice-label relative w-full text-center before:absolute before:left-0 before:right-0 before:top-1/2 before:h-px before:bg-[#ffa500]">
-        <span className="neq-dice-label-text relative z-10 inline-block rounded border border-[#ffa500] bg-[#333] px-5 py-0.5 font-chrome text-xs font-bold uppercase tracking-wider text-[#ffa500]">Quick Rolls</span>
+        <span className="neq-dice-label-text relative z-10 inline-block rounded border border-[#ffa500] bg-[#333] px-5 py-0.5 font-chrome text-xs font-bold uppercase tracking-wider text-[#ffa500]">Quick {ember ? 'rolls' : 'Rolls'}</span>
+        {ember && <span className="ember-dice-disclaimer">Local dice · not game checks</span>}
       </div>
       <div className="neq-dice-buttons flex items-center gap-1.5">
         {DICE_SIDES.map((sides) => (
@@ -92,11 +96,11 @@ export function DiceStrip() {
             onClick={() => roll(sides)}
             className={diceButtonClass}
           >
-            D{sides}
+            {ember && <EmberIcon name="dice" />}D{sides}
           </button>
         ))}
         <button type="button" title="Clear results" onClick={clear} className={clearButtonClass}>
-          Clear
+          {ember && <EmberIcon name="clear" />}Clear
         </button>
       </div>
     </div>

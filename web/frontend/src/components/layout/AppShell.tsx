@@ -34,6 +34,10 @@ import { StorageModal } from '../dialogs/StorageModal'
 import { UpdateDialog } from '../dialogs/UpdateDialog'
 import { CompressionOverlay } from '../dialogs/CompressionOverlay'
 import { ModuleProgressOverlay } from '../dialogs/ModuleProgressOverlay'
+import { EmberPresentation, useEmberDesktop } from './EmberPresentation'
+import { EmberIcon } from './EmberIcon'
+import { useEmberViewport } from './useEmberViewport'
+import '../../theme/ember-desktop.css'
 
 function FirstRunBanner() {
   const sessionMode = useSession((s) => s.mode)
@@ -53,10 +57,11 @@ function ExitOverlay() {
 
 /** Center column: party/initiative rail above the log, then input + dice. */
 function CenterColumn() {
+  const ember = useEmberDesktop()
   const awaitingInitiative = useWorld((state) => state.revisions.initiative < 0)
   return (
     <div className="neq-main-panel flex min-h-0 flex-col">
-      <div className="neq-game-panel-header flex shrink-0 items-center">
+      {!ember && <><div className="neq-game-panel-header flex shrink-0 items-center">
         {awaitingInitiative && <span className="neq-panel-header-label">Game Output</span>}
         <AdventureBox />
         <div className="neq-party-scroller min-w-0 flex-1">
@@ -66,12 +71,13 @@ function CenterColumn() {
         </div>
         <DiceStrip />
       </div>
-      <div className="neq-header-divider" />
-      <div id="neq-dice-results-host" />
+      <div className="neq-header-divider" /></>}
+      {!ember && <div id="neq-dice-results-host" />}
       <FirstRunBanner />
       <div className="min-h-0 flex-1">
         <GameLog />
       </div>
+      {ember && <div className="ember-dice-dock"><DiceStrip /><div id="neq-dice-results-host" /></div>}
       <InputBar />
     </div>
   )
@@ -79,12 +85,14 @@ function CenterColumn() {
 
 /** App shell: CSS grid of header / center column / right panel rail. */
 export function AppShell() {
+  const ember = useEmberViewport()
+  const combat = useWorld((state) => state.initiative.active)
   return (
-    <>
+    <EmberPresentation value={ember}>
       <CoreHydrationOwner />
       <StartingPanel />
       <div
-        className="neq-app-grid"
+        className={`neq-app-grid${ember ? ' ember-desktop' : ''}`}
       >
         <header style={{ gridArea: 'header' }}>
           <HeaderBar />
@@ -95,6 +103,12 @@ export function AppShell() {
         <aside className="neq-rail-area min-h-0" style={{ gridArea: 'rail' }}>
           <RightPanelTabs />
         </aside>
+        {ember && <aside className="ember-people" style={{ gridArea: 'people' }} aria-label="Party and initiative">
+          <h2><EmberIcon name="people" />{combat ? 'Initiative' : 'Party & nearby'}{!combat && <AdventureBox />}</h2>
+          {combat && <AdventureBox />}
+          <PartyStrip />
+          <InitiativeTracker />
+        </aside>}
       </div>
 
       {/* Dialogs: each self-gates on the dialogs store (MODAL overlay). */}
@@ -108,6 +122,6 @@ export function AppShell() {
       <CompressionOverlay />
       <ModuleProgressOverlay />
       <ExitOverlay />
-    </>
+    </EmberPresentation>
   )
 }

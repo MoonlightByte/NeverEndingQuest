@@ -115,3 +115,44 @@ redefinition of the full goal. Final visual/functional review is still mandatory
    every row in the full plan, adding detailed state references where still missing.
 4. Repeat personal screenshot corrections and functional regression gates, with
    final owner review before any public main integration.
+
+## Main React port checkpoint — 2026-09-05
+
+The approved main composition is now implemented as an initial public React
+pass. This is not full-plan completion or visual sign-off. Only audited
+presentation hunks were transferred: scoped CSS/context/icons, character stacking,
+optional inline message images, dice/composer placement and vertical party rails.
+AppShell, input, TTS, image tools and tab ownership were adapted to their public
+implementations rather than replaced by private versions. The latest public
+no-character notice remains intact. Public providers, startup, save/load/reset,
+toolkit, update and exit are not replaced with hosted account/campaign controls.
+
+Cinzel and Crimson Text are now self-hosted with their license and provenance;
+the product no longer loads a font CDN. Production artwork and model prompts
+are unchanged. Initial desktop activation is 1024px and above; below that the
+existing public shell remains active. Intermediate-width and full mobile review
+are still required, not exempted by that temporary boundary.
+
+Personally inspected the first actual public browser render at 1586×992 and a
+combat/map state. Column composition, sheet stacking and composer placement are
+present. Moved the existing time-of-day thumbnail into the rail heading and made
+the heading reflect combat. The default fixture does not serve character/logo
+artwork, so those captures have missing images and cannot prove artwork loading
+or reference parity. A media-capable public fixture and populated reference state
+remain necessary. Other tabs/dialogs retain their original rendering pending the
+additional-screen design review and subsequent implementation.
+
+New tests check five desktop widths, public action reachability, keyboard tabs,
+combat ownership and the phone boundary. Message unit tests check optional image
+placement, no reserved image space, original action inputs, non-Ember behavior
+and safe text rendering. Viewport tests cover change subscription and cleanup.
+The initial browser pass exposed a test selector counting a decorative fallback
+initial as name text; the assertion now checks the actual accessible name and
+the initial is explicitly decorative. This was not an initiative gameplay defect.
+
+Checkpoint verification: production build succeeds; all 14 selected browser tests
+pass (7 new Ember tests plus the 7 existing public shell/map checks); 65 existing
+focused unit tests, 4 new message-presentation tests and 2 viewport tests pass.
+Lint succeeds with inherited warnings; diff whitespace check is clean. A final
+fetch still reports zero public-main commits missing from this branch. These
+scoped checks do not replace the remaining full-plan/runtime/visual gates.

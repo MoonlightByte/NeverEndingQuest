@@ -11,6 +11,7 @@ import { StatsTooltip } from './StatsTooltip'
 import { chipFontSize, probeImage, resolveClickMedia, resolveFirstImage } from './media'
 import type { ClickMedia, MediaSource } from './media'
 import './party-parity.css'
+import { useEmberDesktop } from '../layout/EmberPresentation'
 
 export type ChipVariant =
   | 'party-player'
@@ -78,6 +79,7 @@ export function CharacterChip({
   active,
   onOpenMedia,
 }: CharacterChipProps) {
+  const ember = useEmberDesktop()
   const chipRef = useRef<HTMLButtonElement>(null)
   const showTimer = useRef<number | null>(null)
   const hideTimer = useRef<number | null>(null)
@@ -156,6 +158,7 @@ export function CharacterChip({
         ref={chipRef}
         type="button"
         aria-label={displayName}
+        aria-current={ember && isActive ? 'step' : undefined}
         data-chip={variant}
         data-name={name}
         data-active={isActive ? 'true' : 'false'}
@@ -178,7 +181,7 @@ export function CharacterChip({
             ? '0 0 15px rgba(255, 165, 0, 0.7)'
             : hoverShadow ?? variantStyle.glow,
           cursor: clickMedia ? 'pointer' : 'default',
-          ...(thumb ? { backgroundImage: `url('${thumb}')` } : {}),
+          ...(thumb && !ember ? { backgroundImage: `url('${thumb}')` } : {}),
           ...(variantStyle.opacity !== undefined
             ? { opacity: isLocationHover ? 1 : variantStyle.opacity }
             : isEnemyMediaHover
@@ -191,6 +194,7 @@ export function CharacterChip({
               : {}),
         }}
       >
+        {ember && <span className="ember-chip-portrait" aria-hidden="true" style={thumb ? { backgroundImage: `url('${thumb}')` } : undefined}>{!thumb && displayName.slice(0, 1)}</span>}
         <span
           className="w-full break-words"
           style={{
@@ -201,6 +205,7 @@ export function CharacterChip({
           }}
         >
           {displayName}
+          {ember && isActive && <small className="ember-turn-label">Your turn</small>}
         </span>
       </button>
       {hovered && <StatsTooltip stats={stats} anchor={chipRef.current} />}

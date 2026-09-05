@@ -10,11 +10,13 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useLog } from '../../stores'
 import type { GeneratedImage } from '../../stores'
 import { MessageCard } from './MessageCard'
+import { useEmberDesktop } from '../layout/EmberPresentation'
 
 /** Within this many pixels of the bottom still counts as pinned. */
 const BOTTOM_PIN_THRESHOLD_PX = 48
 
 export function GameLog() {
+  const ember = useEmberDesktop()
   const messages = useLog((s) => s.messages)
   const images = useLog((s) => s.images)
   const previousSessionCount = useLog((s) => s.previousSessionCount)
@@ -70,6 +72,10 @@ export function GameLog() {
     <div
       ref={containerRef}
       onScroll={handleScroll}
+      onLoadCapture={() => {
+        const el = containerRef.current
+        if (ember && el && pinnedRef.current) el.scrollTop = el.scrollHeight
+      }}
       role="log"
       aria-label="Game log"
       className="neq-game-log h-full min-h-0 overflow-y-auto px-[10px] py-2"
@@ -77,7 +83,7 @@ export function GameLog() {
       {messages.length > 0 || orphanImages.length > 0 ? (
         <>
           {previousSessionCount > 0 && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Previous Session Messages ---</div>}
-          {messages.map((message, index) => <div key={message.message_id ?? index}>{index === previousSessionCount && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Current Session ---</div>}<MessageCard message={message} images={imagesByMessage.get(index)} /></div>)}
+          {messages.map((message, index) => <div key={message.message_id ?? index}>{index === previousSessionCount && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">{ember ? 'Current session' : '--- Current Session ---'}</div>}<MessageCard message={message} images={imagesByMessage.get(index)} /></div>)}
           {previousSessionCount === messages.length && previousSessionCount > 0 && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Current Session ---</div>}
           {orphanImages.map((image, index) => (
             <div key={`${image.image_url}-${index}`} className="my-4 flex justify-center">
