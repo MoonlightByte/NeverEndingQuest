@@ -278,6 +278,43 @@ def _completion_producer_state(producer: Dict[str, Any]) -> str:
     return "live"
 
 
+def _completion_work_ownership(work: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Absent is legacy; null producer is relinquished, never malformed-live."""
+    if "ownership" not in work:
+        return None
+    ownership = work["ownership"]
+    if (not isinstance(ownership, dict) or type(ownership.get("version")) is not int
+            or ownership["version"] != 1 or "epoch" not in ownership
+            or "producer" not in ownership):
+        raise OSError("Invalid completion ownership record")
+    epoch = ownership["epoch"]
+    if epoch is not None and (not isinstance(epoch, str) or not epoch):
+        raise OSError("Invalid completion ownership epoch")
+    producer = ownership["producer"]
+    if producer is not None:
+        if (not isinstance(producer, dict)
+                or any(not isinstance(producer.get(key), str) or not producer[key]
+                       for key in ("attempt_id", "backend", "created"))
+                or type(producer.get("pid")) is not int or producer["pid"] <= 0
+                or producer["created"][0] not in "123456789"
+                or any(c not in "0123456789" for c in producer["created"])):
+            raise OSError("Invalid completion producer identity")
+    return ownership
+
+
+def _completion_work_matches(work: Any, expected: Dict[str, Any]) -> bool:
+    """Compare logical work AND exact attempt; status/checkpoints may advance."""
+    if not isinstance(work, dict):
+        return False
+    return (
+        all(work.get(key) == expected.get(key) for key in (
+            "version", "transaction_id", "module_name", "completion_id",
+        ))
+        and work.get("operation", "completion") == expected.get("operation", "completion")
+        and _completion_work_ownership(work) == _completion_work_ownership(expected)
+    )
+
+
 def _reset_module_completion_flights_after_fork() -> None:
     """Discard Futures/locks that cannot be completed in a forked child."""
     global _MODULE_COMPLETION_FLIGHTS, _MODULE_COMPLETION_FLIGHTS_GUARD
@@ -966,9 +1003,28 @@ def _completion_targets_match(pending: Dict[str, Any], after: bool) -> bool:
     return True
 
 
-def _finish_completion_marker_cleanup(pending: Dict[str, Any]) -> None:
+def _finish_completion_marker_cleanup(
+    pending: Dict[str, Any], expected_work: Optional[Dict[str, Any]] = None,
+) -> None:
     work_path = pending.get("work_path")
     if isinstance(work_path, str) and work_path:
+        work = _load_json_dict(work_path)
+        if work is None:
+            if os.path.exists(work_path):
+                raise OSError("Unreadable completion work during cleanup")
+            return  # Its own already-removed marker is an idempotent terminal.
+        expected = expected_work if expected_work is not None else pending
+        if any(expected.get(key) != pending.get(key) for key in (
+            "version", "transaction_id", "module_name", "completion_id",
+        )) or expected.get("operation", "completion") != pending.get("operation", "completion"):
+            raise LiveProviderSuperseded("Completion cleanup expectation changed transaction")
+        if not _completion_work_matches(work, expected):
+            raise LiveProviderSuperseded("Completion cleanup no longer owns this work")
+        ownership = _completion_work_ownership(work)
+        if ownership is not None and ownership["epoch"] != _load_campaign_lifecycle_epoch(
+            pending["campaign_path"]
+        ):
+            raise LiveProviderSuperseded("Completion cleanup belongs to an old timeline")
         _durable_remove(work_path)
 
 
@@ -1129,6 +1185,7 @@ def _recover_module_work_locked(
         return None
     if work.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION:
         raise OSError("Unsupported module-completion work marker version")
+    _completion_work_ownership(work)
     module_name = _normalize_module_name(module_name)
     if work.get("module_name") != module_name:
         raise OSError("Module-completion work marker identity mismatch")
