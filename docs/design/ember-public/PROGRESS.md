@@ -1,5 +1,16 @@
 # Public Ember implementation ledger
 
+## Owner review and independent audit — 2026-09-05
+
+General approval of the additional-screen direction is now received, conditional
+on completeness of information/interactions and correction of visual gaps. Earlier
+pending-approval entries below are historical, not the current blocker.
+An independent agent reviewed both codebases and the plan; findings and required
+gates are recorded in `INTERACTION-PARITY-AUDIT.md`, now linked from the plan.
+The audit rejects resting-screen goldens as proof of tooltip/media/NPC parity.
+The full redesign remains incomplete; no final visual or public-main approval
+has been given. Next implementation follows the audit's priority order.
+
 ## Current checkpoint — 2026-09-05
 
 Implementation branch: `feat/ember-public-complete`.

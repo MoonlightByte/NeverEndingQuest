@@ -1,6 +1,8 @@
 # Ember Public — complete game UI port plan
 
-Status: proposal for inspection; no application changes or release authorization.
+Status: general design approval received, subject to the independent interaction
+and visual-completeness audit in [INTERACTION-PARITY-AUDIT.md](INTERACTION-PARITY-AUDIT.md).
+Implementation is on `feat/ember-public-complete`; no public-main release authorization.
 Prepared: 2026-09-05.
 Repository: `MoonlightByte/NeverEndingQuest` (public).
 Planning branch: `plan/ember-public-all-screens`.
