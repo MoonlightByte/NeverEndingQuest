@@ -365,11 +365,17 @@ def _campaign_lifecycle_epoch_path(campaign_file: str) -> str:
 
 def _load_campaign_lifecycle_epoch(campaign_file: str) -> Optional[str]:
     path = _campaign_lifecycle_epoch_path(campaign_file)
-    payload = _load_json_dict(path)
-    if payload is None:
-        if os.path.exists(path):
-            raise OSError(f"Unreadable campaign lifecycle epoch {path}")
+    try:
+        # One observation, no lock/retry here: provider polling must be able to
+        # distinguish absence from a sharing/read failure and reap on the latter.
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
         return None
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise OSError(f"Unreadable campaign lifecycle epoch {path}") from exc
+    if not isinstance(payload, dict):
+        raise OSError(f"Invalid campaign lifecycle epoch {path}")
     epoch = payload.get("epoch")
     if (
         payload.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION

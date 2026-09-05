@@ -398,6 +398,8 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     # input-locking status channel. Absent = byte-identical legacy behavior.
     detached_scope = kwargs.pop("_detached_scope", None)
     detached_status = kwargs.pop("_detached_status", None)
+    # Parent-only lifecycle observation: never a model option or capture field.
+    authority_check = kwargs.pop("_live_authority_check", None)
     if live_selected is None:
         from utils.capture.live_provider_call import live_provider_policy
 
@@ -410,6 +412,8 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         live_policy = None
     else:
         raise ValueError("_live_selected must be required, advisory, or false")
+    if authority_check is not None and (not callable(authority_check) or not live_policy):
+        raise ValueError("_live_authority_check requires callable live transport authority")
 
     # Keep the provider used for config selection attached to this request. A UI
     # provider switch while the request is in flight must not redirect it.
@@ -468,6 +472,7 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
             policy=live_policy,
             scope=detached_scope,
             status_emit=detached_status,
+            authority_check=authority_check,
         )
         primary_latency = round(time.time() - start, 3)
         _track_module_primary(
