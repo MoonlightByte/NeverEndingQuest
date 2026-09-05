@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from uuid import uuid4
 
@@ -268,6 +269,51 @@ def open_live_turn_scope():
 def get_live_turn_scope():
     with _scope_guard:
         return _active_scope
+
+
+@contextmanager
+def combat_execution_authority(invocation_claim=None):
+    """Borrow caller authority or own an unowned combat entry through handoff.
+
+    This is an in-memory lifetime boundary, not additional recovery state.
+    Recursive combat callers must forward the yielded claim.
+    """
+    from core.combat.invocation import (
+        InvocationSupersededError,
+        begin_invocation,
+        complete_invocation,
+        require_current_invocation,
+    )
+
+    scope = get_live_turn_scope()
+    owns_scope = scope is None
+    owns_claim = invocation_claim is None
+    if owns_scope:
+        scope = open_live_turn_scope()
+    engine_fault = False
+    try:
+        if scope.is_superseded():
+            raise LiveProviderSuperseded("combat entry was superseded")
+        if owns_claim:
+            invocation_claim = begin_invocation("combat")
+        if scope.is_superseded():
+            raise LiveProviderSuperseded("combat entry was superseded")
+        require_current_invocation(invocation_claim)
+        yield invocation_claim
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
+    except BaseException:
+        engine_fault = True
+        raise
+    finally:
+        if owns_claim and invocation_claim is not None:
+            complete_invocation(invocation_claim)
+        if owns_scope:
+            if engine_fault:
+                abort_live_turn_scope(scope=scope)
+            else:
+                finish_live_turn_scope(scope)
+            scope.quiescent.wait()
 
 
 def get_lifecycle_turn_scopes():

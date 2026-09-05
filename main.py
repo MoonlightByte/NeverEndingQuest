@@ -6387,8 +6387,11 @@ def resolve_retryable_ai_result(
     conversation_history,
     *,
     max_state_retries=2,
+    invocation_claim=None,
 ):
     """Regenerate responses invalidated by a concurrent timeline change."""
+    from core.combat.invocation import require_current_invocation
+
     retry_statuses = {
         "invalid_transition_actions",
         "stale_response_context",
@@ -6401,6 +6404,8 @@ def resolve_retryable_ai_result(
         and final_result.get("status") in retry_statuses
         and retries < max_state_retries
     ):
+        if invocation_claim is not None:
+            require_current_invocation(invocation_claim)
         retries += 1
         conversation_history = load_json_file(json_file) or conversation_history
         try:
@@ -6427,6 +6432,7 @@ def resolve_retryable_ai_result(
             party_tracker_data,
             location_data,
             conversation_history,
+            invocation_claim=invocation_claim,
         )
     return (
         final_result,
@@ -6817,14 +6823,15 @@ def get_ai_response(
     validation_retry_count=0,
     *,
     npc_voice_batch=None,
+    live_selected=None,
 ):
-    """Legacy synchronous T067 path used outside the live player-turn seam."""
+    """Prepare T067 using current authority unless explicitly opted out."""
     return _get_ai_response_impl(
         conversation_history,
         validation_retry_count=validation_retry_count,
         npc_voice_batch=npc_voice_batch,
         prepare_history=True,
-        live_selected=False,
+        live_selected=live_selected,
     )
 
 
@@ -7068,7 +7075,34 @@ def check_all_modules_plot_completion():
     return all_modules_data
 
 def main_game_loop():
+    """Keep startup/turn cleanup outside the single game-loop implementation."""
+    from contextlib import ExitStack
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded,
+        abort_live_turn_scope,
+        finish_live_turn_scope,
+        get_live_turn_scope,
+    )
+
+    try:
+        with ExitStack() as startup_authority, ExitStack() as turn_authority:
+            return _main_game_loop(startup_authority, turn_authority)
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        scope = get_live_turn_scope()
+        if scope is not None:
+            finish_live_turn_scope(scope)
+            scope.quiescent.wait()
+        return
+    except BaseException:
+        abort_live_turn_scope()
+        raise
+
+
+def _main_game_loop(startup_authority, turn_authority):
     global needs_conversation_history_update, should_inject_creation_prompt
+    from core.combat.invocation import InvocationSupersededError, require_current_invocation
+    from utils.capture.live_provider_call import LiveProviderSuperseded, get_live_turn_scope
 
     # Ensure debug directories and files exist
     import os
@@ -7135,7 +7169,6 @@ def main_game_loop():
 
     # Check if first-time setup is needed
     try:
-        from utils.capture.live_provider_call import LiveProviderSuperseded
         from utils.startup_wizard import startup_required, run_startup_sequence
 
         if startup_required():
@@ -7380,6 +7413,9 @@ def main_game_loop():
     debug("INITIALIZATION: Main system prompt loaded for both paths", category="initialization")
     
     if party_tracker_data and party_tracker_data["worldConditions"].get("activeCombatEncounter"):
+        from utils.capture.live_provider_call import combat_execution_authority
+
+        startup_claim = startup_authority.enter_context(combat_execution_authority())
         active_encounter_id = party_tracker_data["worldConditions"]["activeCombatEncounter"]
         print(colored(f"[SYSTEM] Active combat encounter '{active_encounter_id}' detected. Resuming combat...", "yellow"))
         combat_was_resumed = True  # Mark that we're resuming from combat
@@ -7414,7 +7450,11 @@ def main_game_loop():
 
         # Call run_combat_simulation directly to get the return values
         from core.managers.combat_manager import run_combat_simulation
-        dialogue_summary, _ = run_combat_simulation(active_encounter_id, party_tracker_data, location_data_resume)
+        dialogue_summary, _ = run_combat_simulation(
+            active_encounter_id, party_tracker_data, location_data_resume,
+            invocation_claim=startup_claim,
+        )
+        require_current_invocation(startup_claim)
 
         # After combat, reload everything to ensure state is fresh
         party_tracker_data = load_json_file("party_tracker.json")
@@ -7496,6 +7536,7 @@ def main_game_loop():
             else get_ai_response(conversation_history)
         )
         if ai_response_after_combat:
+            require_current_invocation(startup_claim)
             # Process the AI's post-combat response to get the game moving again.
             # We need to load the fresh location data for this call.
             current_area_id_post_combat = party_tracker_data["worldConditions"]["currentAreaId"]
@@ -7513,6 +7554,7 @@ def main_game_loop():
                 party_tracker_data,
                 location_data_post_combat,
                 conversation_history,
+                invocation_claim=startup_claim,
             )
             (
                 post_combat_result,
@@ -7524,7 +7566,11 @@ def main_game_loop():
                 party_tracker_data,
                 location_data_post_combat,
                 conversation_history,
+                invocation_claim=startup_claim,
             )
+            if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "superseded_invocation":
+                raise InvocationSupersededError("Post-combat handoff was superseded")
+            require_current_invocation(startup_claim)
             if (
                 isinstance(post_combat_result, dict)
                 and (
@@ -7707,7 +7753,9 @@ def main_game_loop():
     # #214: the loop is about to read input - the UI unlocks NOW, even while
     # a background welcome is still generating (D-214-1=B). The web layer maps
     # this marker to startup_status:ready + game_started.
-    emit_startup_marker("startup_loop_ready", source="main_loop", result="ready")
+    startup_ready_pending = combat_was_resumed
+    if not startup_ready_pending:
+        emit_startup_marker("startup_loop_ready", source="main_loop", result="ready")
     while True:
         print("[DEBUG] Top of main game loop iteration")
         conversation_history = normalize_persisted_dm_notes(conversation_history)
@@ -7774,8 +7822,7 @@ def main_game_loop():
             )
 
 
-        # Set status to ready before accepting input
-        status_ready()
+        # Readiness is published below, after startup combat ownership closes.
 
         # Check if stdin is available (prevent infinite loops in non-interactive environments)
         if hasattr(sys.stdin, 'isatty') and not sys.stdin.isatty():
@@ -7804,6 +7851,19 @@ def main_game_loop():
         if player_data_current:
             player_data_current = _effects_runtime_view(player_data_current)
     
+        # The startup combat scope owns all first-prompt preparation, not the
+        # next ordinary input. Finish only after those reads/writes are done.
+        startup_scope = get_live_turn_scope()
+        if startup_scope is not None and startup_scope.is_superseded():
+            raise LiveProviderSuperseded("First input preparation was superseded")
+        startup_authority.close()
+        if startup_scope is not None and startup_scope.is_superseded():
+            raise LiveProviderSuperseded("First input preparation was superseded")
+        if startup_ready_pending:
+            emit_startup_marker("startup_loop_ready", source="main_loop", result="ready")
+            startup_ready_pending = False
+        status_ready()
+
         # Display the prompt with the (now correct) stats.
         if player_data_current:
             current_hp = player_data_current.get("hitPoints", "N/A")
@@ -8399,6 +8459,9 @@ def main_game_loop():
                 "[SYSTEM] The current game operation is still finishing; waiting safely."
             ),
         )
+        # One bounded local cleanup stack, not another authority registry.
+        # It also releases this claim if an earlier provider/input seam unwinds.
+        turn_authority.callback(complete_invocation, t067_claim)
 
         def persist_t067_history_if_current(history):
             with _party_module_transition_lock():
@@ -8460,7 +8523,6 @@ def main_game_loop():
                 # leak the claim and starve the next begin_invocation).
                 invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
-                save_conversation_history(conversation_history)
                 break
             with _party_module_transition_lock():
                 if not invocation_is_current(t067_claim):
@@ -8508,7 +8570,6 @@ def main_game_loop():
                 # leak the claim and starve the next begin_invocation).
                 invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
-                save_conversation_history(conversation_history)
                 break
             except Exception as response_error:
                 classification = classify_provider_error(response_error)
@@ -8565,7 +8626,6 @@ def main_game_loop():
                 # leak the claim and starve the next begin_invocation).
                 invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
-                save_conversation_history(conversation_history)
                 break
 
             with _party_module_transition_lock():
@@ -8892,7 +8952,6 @@ def main_game_loop():
                 # leak the claim and starve the next begin_invocation).
                 invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
-                save_conversation_history(conversation_history)
                 break
             with _party_module_transition_lock():
                 if not invocation_is_current(t067_claim):
@@ -8917,7 +8976,6 @@ def main_game_loop():
                 # leak the claim and starve the next begin_invocation).
                 invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
-                save_conversation_history(conversation_history)
                 break
             except InvocationSupersededError:
                 invocation_superseded = True
@@ -8949,7 +9007,6 @@ def main_game_loop():
                 # leak the claim and starve the next begin_invocation).
                 invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
-                save_conversation_history(conversation_history)
                 break
             
             if is_valid:
@@ -9038,7 +9095,6 @@ def main_game_loop():
                         # leak the claim and starve the next begin_invocation).
                         invocation_superseded = True
                         conversation_history[:] = pre_turn_accepted_history
-                        save_conversation_history(conversation_history)
                         break
                     if not route_outcome.approved:
                         rejected_candidate = ai_response_content
@@ -9100,7 +9156,6 @@ def main_game_loop():
                     # leak the claim and starve the next begin_invocation).
                     invocation_superseded = True
                     conversation_history[:] = pre_turn_accepted_history
-                    save_conversation_history(conversation_history)
                     break
 
                 valid_response_received = True
@@ -9159,19 +9214,25 @@ def main_game_loop():
                         approved_transition_plan=approved_transition_plan,
                         invocation_claim=t067_claim,
                     )
+                    if isinstance(final_result, dict) and final_result.get("status") == "superseded_invocation":
+                        raise InvocationSupersededError("Turn processing was superseded")
+                    (
+                        final_result,
+                        party_tracker_data,
+                        location_data,
+                        conversation_history,
+                    ) = resolve_retryable_ai_result(
+                        final_result,
+                        party_tracker_data,
+                        location_data,
+                        conversation_history,
+                        invocation_claim=t067_claim,
+                    )
+                    if isinstance(final_result, dict) and final_result.get("status") == "superseded_invocation":
+                        raise InvocationSupersededError("Regenerated turn was superseded")
+                    require_current_invocation(t067_claim)
                 finally:
-                    complete_invocation(t067_claim)
-                (
-                    final_result,
-                    party_tracker_data,
-                    location_data,
-                    conversation_history,
-                ) = resolve_retryable_ai_result(
-                    final_result,
-                    party_tracker_data,
-                    location_data,
-                    conversation_history,
-                )
+                    turn_authority.close()
 
                 if (
                     isinstance(final_result, dict)
@@ -9357,12 +9418,8 @@ def main_game_loop():
                 retry_count += 1
 
         if invocation_superseded:
-            complete_invocation(t067_claim)
-            conversation_history = load_json_file(json_file) or []
-            print(
-                "[SYSTEM] That in-flight response was superseded by Load, Reset, "
-                "or exit; restored state remains authoritative."
-            )
+            turn_authority.close()
+            raise InvocationSupersededError("The player turn was superseded")
 
         if not valid_response_received:
             from utils.capture.live_provider_call import finish_live_turn_scope
@@ -9382,6 +9439,9 @@ def main_game_loop():
                     provider_failure_message or SAFE_ACTION_FAILURE_MESSAGE
                 )
             finish_live_turn_scope(live_turn_scope)
+            turn_authority.close()
+            if live_turn_scope.is_superseded():
+                raise LiveProviderSuperseded("Player turn ended after supersession")
             status_ready()
             return
 
@@ -9421,12 +9481,14 @@ def main_game_loop():
         from utils.capture.live_provider_call import finish_live_turn_scope
 
         finish_live_turn_scope(live_turn_scope)
+        if live_turn_scope.is_superseded():
+            raise LiveProviderSuperseded("Player turn ended after supersession")
         # Post-combat integration defect (three-surface redo finding): the
         # combat manager's early is_processing=False is correctly REJECTED by
         # the status guard while this turn's scope is still open, so the
         # ready signal must be re-sent AFTER the scope closes or the legacy
         # UI stays locked on 'Resolving combat intents...' until a reconnect.
-        # Mirrors the superseded-exit path, which already does this.
+        # Superseded turns never publish this readiness signal.
         status_ready()
 
 def main():

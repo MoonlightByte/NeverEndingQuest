@@ -3268,18 +3268,21 @@ def run_combat_simulation(
     location_info,
     invocation_claim=None,
 ):
-   """Run combat and reap any locally owned round authority on every exit."""
-   owned_round_scope = {}
-   try:
-       return _run_combat_simulation(
-           encounter_id,
-           party_tracker_data,
-           location_info,
-           invocation_claim=invocation_claim,
-           owned_round_scope=owned_round_scope,
-       )
-   finally:
-       _finish_owned_combat_round_scope(owned_round_scope)
+   """Borrow outer combat authority, or own the complete direct/CLI entry."""
+   from utils.capture.live_provider_call import combat_execution_authority
+
+   with combat_execution_authority(invocation_claim) as claim:
+       owned_round_scope = {}
+       try:
+           return _run_combat_simulation(
+               encounter_id,
+               party_tracker_data,
+               location_info,
+               invocation_claim=claim,
+               owned_round_scope=owned_round_scope,
+           )
+       finally:
+           _finish_owned_combat_round_scope(owned_round_scope)
 
 
 def _run_combat_simulation(
