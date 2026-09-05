@@ -3,6 +3,9 @@
 Status: general design approval received, subject to the independent interaction
 and visual-completeness audit in [INTERACTION-PARITY-AUDIT.md](INTERACTION-PARITY-AUDIT.md).
 Implementation is on `feat/ember-public-complete`; no public-main release authorization.
+Mandatory supplements: [transition gates](TRANSITION-GATES.md) and
+[independent review log](REVIEW-LOOP.md). Screen and transition requirements must
+both pass; neither set replaces the other.
 Prepared: 2026-09-05.
 Repository: `MoonlightByte/NeverEndingQuest` (public).
 Planning branch: `plan/ember-public-all-screens`.

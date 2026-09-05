@@ -1,5 +1,15 @@
 # Public Ember implementation ledger
 
+## Repeated independent review — 2026-09-05
+
+At the owner's request, separate feature-development and architecture agents
+reviewed the plan against public/Ember code and each personally viewed the locked
+design image. Three rounds produced ten findings, all incorporated as explicit
+requirements in `TRANSITION-GATES.md`. Architecture returned planning-clean in
+round 2; features returned planning-clean in round 3. See `REVIEW-LOOP.md` for
+scope, closure and the mandatory repeated code-review process during implementation.
+This closes planning omissions only, not the known implementation or visual gaps.
+
 ## Owner review and independent audit — 2026-09-05
 
 General approval of the additional-screen direction is now received, conditional
