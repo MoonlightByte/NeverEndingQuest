@@ -165,6 +165,119 @@ class _ModuleCompletionCheckpointError(OSError):
     """A local durability failure that must not become an AI fallback."""
 
 
+def _completion_process_namespace() -> Optional[str]:
+    """Identify the native PID namespace; inability to read it is not death."""
+    try:
+        if os.name == "nt":
+            import winreg
+
+            with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography",
+                0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
+            ) as key:
+                identity, _ = winreg.QueryValueEx(key, "MachineGuid")
+            if isinstance(identity, str) and identity.strip():
+                return "windows:" + identity.strip()
+            return None
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        namespace = os.readlink("/proc/self/ns/pid")
+        return "linux:%s:%s" % (boot, namespace) if boot and namespace else None
+    except (OSError, ValueError):
+        return None
+
+
+def _completion_process_observation(pid: int) -> Optional[Dict[str, Any]]:
+    """Read creation identity and liveness without a PID-only takeover guess."""
+    if type(pid) is not int or pid <= 0 or pid > 0xFFFFFFFF:
+        return None
+    namespace = _completion_process_namespace()
+    if namespace is None:
+        return None
+    observed = {"backend": namespace, "pid": pid, "created": None, "alive": False}
+    try:
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+            kernel.OpenProcess.restype = wintypes.HANDLE
+            kernel.GetProcessTimes.argtypes = (wintypes.HANDLE,) + (
+                ctypes.POINTER(wintypes.FILETIME),
+            ) * 4
+            kernel.GetProcessTimes.restype = wintypes.BOOL
+            kernel.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+            kernel.WaitForSingleObject.restype = wintypes.DWORD
+            kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+            kernel.CloseHandle.restype = wintypes.BOOL
+            # QUERY_LIMITED_INFORMATION | SYNCHRONIZE. One handle pins the
+            # process identity across both observations, even if its PID recycles.
+            handle = kernel.OpenProcess(0x1000 | 0x100000, False, pid)
+            if not handle:
+                return observed if ctypes.get_last_error() == 87 else None
+            try:
+                times = [wintypes.FILETIME() for _ in range(4)]
+                if not kernel.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+                    return None
+                state = kernel.WaitForSingleObject(handle, 0)
+                if state not in (0, 258):
+                    return None
+                observed["created"] = str(
+                    (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+                )
+                observed["alive"] = state == 258
+            finally:
+                kernel.CloseHandle(handle)
+        else:
+            # Open the process directory once so stat and namespace reads cannot
+            # silently address a replacement PID between separate path opens.
+            process_dir = os.open("/proc/%d" % pid, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                stat_fd = os.open("stat", os.O_RDONLY, dir_fd=process_dir)
+                with os.fdopen(stat_fd, "r") as stream:
+                    record = stream.read()
+                fields = record[record.rindex(")") + 2:].split()
+                created = int(fields[19])  # /proc/<pid>/stat field 22.
+                if created <= 0:
+                    return None
+                observed["created"] = str(created)
+                observed["alive"] = fields[0] not in {"Z", "X", "x"}
+                if observed["alive"] and os.readlink(
+                    "ns/pid", dir_fd=process_dir
+                ) != namespace.split(":", 2)[2]:
+                    return None
+            finally:
+                os.close(process_dir)
+        return observed
+    except FileNotFoundError:
+        # A lost /proc mount is not evidence that the producer has exited.
+        if _completion_process_namespace() != namespace:
+            return None
+        observed["alive"] = False
+        return observed
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _completion_producer_state(producer: Dict[str, Any]) -> str:
+    """Unknown owners must be followed, never reclaimed as supposedly dead."""
+    if not isinstance(producer, dict):
+        return "unknown"
+    created = producer.get("created")
+    if (not isinstance(created, str) or not created or created[0] not in "123456789"
+            or any(character not in "0123456789" for character in created)):
+        return "unknown"
+    namespace = _completion_process_namespace()
+    if namespace is None or producer.get("backend") != namespace:
+        return "unknown"
+    observed = _completion_process_observation(producer.get("pid"))
+    if observed is None or observed["backend"] != namespace:
+        return "unknown"
+    if not observed["alive"] or observed["created"] != created:
+        return "dead"
+    return "live"
+
+
 def _reset_module_completion_flights_after_fork() -> None:
     """Discard Futures/locks that cannot be completed in a forked child."""
     global _MODULE_COMPLETION_FLIGHTS, _MODULE_COMPLETION_FLIGHTS_GUARD
