@@ -819,11 +819,12 @@ def call_live_provider(
     frozen_messages = copy.deepcopy(messages)
     frozen_kwargs = copy.deepcopy(request_kwargs)
     wizard_task = task_id in _WIZARD_TASK_IDS
-    if completion_required and frozen_kwargs.get("_request_provider") in {
-        "openai",
-        "legacy",
-        "lmstudio",
-    }:
+    # The per-generation transport deadline is the REISSUE TRIGGER, never a
+    # terminal (#193 B2-iii). It is set for every provider; each adapter
+    # translates it (OpenAI-compatible: request option with SDK retries
+    # zeroed; Gemini: http_options timeout). The task-level exclusion for
+    # plain-advisory T105/T112 is unchanged (D-VS-3).
+    if completion_required:
         frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
     elif wizard_task and frozen_kwargs.get("_request_provider") == "openai":
         import httpx
@@ -832,11 +833,7 @@ def call_live_provider(
             _WATCHDOG_SECONDS,
             read=_WIZARD_READ_INACTIVITY_SECONDS,
         )
-    elif task_id not in _NO_WATCHDOG_ADVISORY_TASK_IDS and frozen_kwargs.get("_request_provider") in {
-        "openai",
-        "legacy",
-        "lmstudio",
-    }:
+    elif task_id not in _NO_WATCHDOG_ADVISORY_TASK_IDS:
         frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
     failure_count = 0
     logical_started = time.monotonic()
@@ -952,11 +949,12 @@ def call_live_provider(
                 envelope = pickle.loads(output)
             except (EOFError, pickle.PickleError, ValueError, TypeError):
                 envelope = None
-        if (
-            wizard_task
-            or completion_required
-            or task_id in {"T105", "T108", "T113"}
-        ) and not isinstance(envelope, dict):
+        if not isinstance(envelope, dict):
+            # A reaped or silent child yields a classified retryable envelope
+            # for EVERY task. Before #284 this was gated to wizard and batch
+            # tasks, so a required T067 fell through to the {} fallback and
+            # was handed off as a completed error after the watchdog fired
+            # instead of being reissued (#284 F1b).
             envelope = _synthesized_envelope(
                 (
                     "ProviderChildGenerationBackstop"
