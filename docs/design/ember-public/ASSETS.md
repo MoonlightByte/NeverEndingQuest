@@ -14,6 +14,13 @@ portrait files or integration history accompanied this copy.
 public portrait files remain unchanged; fixture-only character assignments are
 not game-data changes. The owner must review the artifacts before public release.
 
+`intermediate/captures/` contains ten synthetic 1024/1180px drawer-study captures.
+The study uses the existing public artwork and fonts, makes no game requests,
+and is not an approved runtime layout. `review-load-selected.png` records the
+personally inspected selected/hover state after the legacy styling correction.
+`review-combat-overflow.png` records the synthetic 20-combatant processing state,
+scrolled to its final entry after the combat badge correction.
+
 Runtime assets and licenses:
 
 - `web/frontend/src/theme/fonts/PROVENANCE.md` and `OFL.txt`: bundled fonts.

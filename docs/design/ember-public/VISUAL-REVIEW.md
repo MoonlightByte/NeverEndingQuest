@@ -58,3 +58,26 @@ contrast and preserved phone fallback; this is not whole-product accessibility
 certification. [Reviewed error state](captures/review-provider-error.png).
 Main goldens passed again unchanged after this correction. The exact locked
 reference and documentation provenance now live alongside this file.
+
+## Additional edge-state pass
+
+Personally inspected full-save, selected Load, reset confirmation, failed module,
+failed compression and long initiative browser states. Load's outer card was
+Ember, but its inner list retained legacy green/blue colors, sans type and an
+unused `.selected` selector. The correction styles the actual `aria-pressed`
+state. A new assertion then caught the general dialog-button hover rule winning
+over that correction; excluding save cards fixed the final border/filter mismatch.
+An independent reviewer inspected the corrected selected/hover capture and
+closed this bounded visual review. [Final selected Load](captures/review-load-selected.png).
+
+The 20-combatant capture exposed legacy colors and tiny ROUND text in the combat
+badge. Desktop-only semantic styles now use the shared Ember palette/Crimson
+type; the round value and original phone caption are browser-asserted. Personally
+inspected the final [scroll-to-last-combatant capture](captures/review-combat-overflow.png).
+Combat list scrolling and the disabled processing composer remain intact.
+
+The separate [intermediate-width study](intermediate/README.md) preserves Ember's
+palette, stacked sheet and optional inline imagery with collapsible drawers.
+Personally inspected 1024 main/sheet and 1180 initiative against the reference.
+It deliberately changes layout at narrower widths, so it is a proposal for owner
+review, not reference-raster equality or approved production navigation.

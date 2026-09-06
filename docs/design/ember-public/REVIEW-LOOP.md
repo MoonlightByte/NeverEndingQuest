@@ -143,3 +143,27 @@ personally inspected both browser captures. A browser check verifies PASS/FAIL
 contrast and the existing phone fallback; independent source review is clean.
 Main goldens and interactive preview tests still pass without baseline updates.
 These receipts do not close every acceptance-matrix row or owner approval.
+
+## Lifecycle and narrow-width review loop
+
+Independent architecture review checked the actual-handler lifecycle probe's
+export, no-network/write containment, credential isolation and assertion scope.
+Its findings clarified busy-save assertions and retained-backup versus tested
+backup recovery. Both save modes pass, with those limits documented.
+
+Independent feature review inspected selected Load, reset and compression
+captures after the primary agent's CSS correction. It requested explicit
+selected/hover assertions and a clearer distinction between blocking module and
+nonblocking compression failure. The new assertion exposed a higher-specificity
+generic hover rule; excluding save cards fixed it. All four edge-state tests
+then passed, and the reviewer personally inspected the final capture cleanly.
+An architecture reviewer also found no blocker in the subsequent presentation-only
+combat round-badge correction; 27 existing party unit tests and the updated
+desktop/phone browser assertions pass.
+
+A separate agent created the plan-required review-only intermediate-width drawer
+prototype using the locked image and public tokens/art. Independent review tested
+touch, native modality, focus containment/return and reviewed the 1024 captures.
+The author added explicit native-inert/touch tests; all three cases passed in both
+the author's run and a primary-agent rerun. No production navigation was changed.
+Owner approval and unverified full-plan rows remain open.

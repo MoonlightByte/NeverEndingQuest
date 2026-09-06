@@ -31,11 +31,11 @@ intentional compatibility exception, not a second Ember game. `e2e/` below means
 | Journal | Populated preview/browser dialog, `dialogs.test.tsx` populated/error/pending/empty | Edge-state unit assertions are not a complete screenshot review |
 | Storage | Populated preview, actual request bindings, `dialogs.test.tsx` failed hydration | Real storage refresh during a live campaign unverified |
 | Settings / providers | Seven browser checks; 25 real handler/SDK/stub tests; 10 settings unit tests; reviewed provider/voice/error captures | Paid inference unverified; old-response-after-new-probe correlation needs a contract decision |
-| Save | Browser dialog/intent tests; `dialogs.test.tsx` exact description/mode payload | Actual campaign write/failure journey unverified; preview save is simulated |
-| Load / delete | Selection, restore/delete/cancel/restart-preparation unit tests; browser dialog | Real filesystem restore/delete and every corrupt/unavailable state unverified |
-| Reset | Exact five-digit confirmation, pending/duplicate protection unit tests; browser open/cancel | No destructive live reset performed |
+| Save | Browser dialog/intent/full-mode checks; exact payload unit tests; actual essential/full handler-and-file probe | Full live browser journey and active-turn save queue unverified; owner preview is simulated |
+| Load / delete | Selection/hover styling, restore/delete/cancel/restart-preparation tests; actual valid/corrupt restore and delete/reconnect file probe | Actual process restart and every unavailable state unverified; probe intercepts exit |
+| Reset | Exact five-digit confirmation, pending/duplicate protection, browser cancel-without-reset; actual disposable reset and retained-backup probe | No production reset; actual restart and recovery from reset backup unverified |
 | Update / exit | Unit callbacks/restart failures/offline exit; browser version/progress surfaces | Actual updating process and platform browser-close behavior unverified |
-| Long-running work | `operations.test.tsx`, current-commit blocking-overlay/reconnect browser checks; personally inspected operation capture | Real compression/module jobs and every terminal screenshot unverified |
+| Long-running work | `operations.test.tsx`, blocking-overlay/reconnect browser checks; reviewed module failure/blocking and compression failure/nonblocking captures | Real compression/module jobs and every terminal screenshot unverified |
 | Media / narration | Original portrait viewer, asset revision refresh, cache/race/audio tests and reduced-motion checks | No paid image/TTS calls; full real upload across every simultaneous consumer unverified |
 | Debug | `DebugTab.test.tsx`, populated 64-line browser surface and capture | No formal large-log performance profile |
 | Toolkit — six tabs | Six browser workbench tests with actual open/cancel handlers, nested focus, failure/export wording, populated phone tables/toasts | Network-intercepted jobs are not proof of real authoring mutations/generation/export |
@@ -88,13 +88,14 @@ was nearly full; the successful run used a dedicated directory on E: instead.
 
 - Inspect the running actual UI, not only gallery images. Additional-screen
   mockups and intentional public adaptations still need explicit owner sign-off.
-- Review the plan-required intermediate-width collapsible-panel prototype once
-  delivered; that prototype is still outstanding. The current tested runtime
-  layout retains public breakpoint ownership.
+- Review the delivered [intermediate-width collapsible-panel prototype](intermediate/README.md).
+  Three bounded browser cases and independent review pass; it is not approved
+  production navigation. The runtime retains public breakpoint ownership.
 - Approve any optional endpoint response-correlation contract change separately.
 - Approve credentials/cost for opt-in live-provider tests before calling those
-  providers verified. Safe disposable real lifecycle tests remain implementation
-  work, not proof supplied by the synthetic preview. No paid/destructive
+  providers verified. [Safe disposable real lifecycle tests](LIFECYCLE-REVIEW.md)
+  now pass for handlers/files, but do not prove the full live browser journey.
+  No paid/destructive
   production testing or public-main push is authorized by this goal.
 - Native platform/browser checks, formal performance and full state-by-state
   screenshot acceptance remain open. Three development-dependency audit findings

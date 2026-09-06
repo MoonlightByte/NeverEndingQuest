@@ -1,5 +1,33 @@
 # Public Ember implementation ledger
 
+## Lifecycle, edge-state and intermediate-width pass — 2026-09-05
+
+Actual public save/list/restore/delete/reset handlers and filesystem operations
+now pass in disposable campaigns for both essential and full save modes. No live
+engine or developer credentials are involved; process exit/restart sleep are
+intercepted and backups retained. See LIFECYCLE-REVIEW.md for the exact source
+commit, reproduction, assertions and remaining live-browser/restart limits.
+
+Four new browser cases pass: full save mode and selected Load (including hover
+and phone fallback), deliberate reset/cancel, blocking module failure versus
+nonblocking compression failure, and a twenty-combatant processing state.
+Primary-agent screenshots exposed legacy inner Load colors/type and a generic
+hover override; both were fixed and independently re-reviewed. The combat round
+badge also now uses brass/muted/text Ember colors and readable desktop type,
+without altering its phone styles, round value or mechanics. Its 27 existing
+party unit tests pass with the changed component overlaid in the isolated export.
+Production build and lint pass (16 existing warnings); ten main visual/interactive
+regressions passed without updating goldens after the final Load/combat correction.
+
+The plan-required intermediate-width drawer study is delivered separately at
+http://localhost:4214/intermediate. Three Chromium tests pass at 1024/1180 and
+touch; the independent architecture review is clean. Primary agent personally
+inspected 1024 main/sheet and 1180 initiative against the locked language; the
+author inspected all ten captures. This is an unapproved review-only prototype,
+not a production breakpoint/navigation change. The implemented React game remains
+available at http://localhost:4204/play/ with scripted data. Final owner approval
+and the remaining acceptance-matrix work are still open; no public-main merge.
+
 ## Additional acceptance fixes — 2026-09-05
 
 The post-handoff audit made further concrete progress rather than treating owner

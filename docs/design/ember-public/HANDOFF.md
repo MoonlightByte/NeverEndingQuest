@@ -2,6 +2,7 @@
 
 Branch: `feat/ember-public-complete` in `/mnt/e/NEQ-ember-public`.
 Implementation checkpoint: `e6f83c5`; public main through `21702a7` is included.
+Additional visual fixes: `9d930df`; review-only drawer study: `074f8cc`.
 The last upstream fetch found no additional main commits. Nothing from this
 public implementation has been pushed or merged into public main.
 
@@ -10,6 +11,10 @@ public implementation has been pushed or merged into public main.
 - Game: http://localhost:4204/play/
 - Toolkit: http://localhost:4204/toolkit
 - Standalone builder presentation: http://localhost:4204/builder
+
+Separate, review-only intermediate-width drawer proposal:
+http://localhost:4214/intermediate. This is not production navigation; see
+[its scope and captures](intermediate/README.md) before considering integration.
 
 These serve the implemented React app and actual themed toolkit templates, not
 screenshots. They use **scripted sample state**, not a live AI campaign. No real
@@ -75,6 +80,18 @@ and `TRANSITION-GATES.md` for acceptance requirements.
   changes now correctly invalidate the React build.
 - Final focused checks include **4 audio ownership tests** and **2 phone settings
   browser tests**, including visible keyboard focus.
+- Additional lifecycle verification passes with actual handlers and files in
+  disposable campaigns for both essential and full saves, restore, delete and
+  reset. No real user data was touched; see [scope and limits](LIFECYCLE-REVIEW.md).
+- Four extra browser edge-state checks cover full-save presentation, selected
+  Load hover/phone fallback, reset confirmation/cancel, failure overlays and a
+  twenty-combatant initiative list. The selected-save review caught and corrected
+  inherited legacy colors/type and a higher-specificity generic hover rule.
+  The combat round badge also now follows Ember's palette/type, with original
+  phone styling preserved; all 27 existing party unit tests pass.
+- The separate intermediate-width prototype passes three browser checks for
+  keyboard/touch, focus/inertness, draft/filter/scroll continuity and sample-only
+  interactions. It remains unapproved and does not change production breakpoints.
 
 Final provider fixes: `c957f93` validates and durably saves a provider choice
 before applying it live, serializing simultaneous selections. The new failure
@@ -97,11 +114,11 @@ authored SVG icons, actual fonts/antialiasing and content-driven wrapping differ
 from the concept. No mockup-only footer or mandatory hero image was added.
 
 Still unverified: paid/live provider turns, full real new-game-to-save/restore
-journey, real generation/export/update/reset operations, every possible error or
+journey, real generation/export/update jobs and reset process restart, every possible error or
 loading state, native zoom/keyboard/safe-area behavior, Firefox/WebKit and native
 Windows/macOS rendering, and formal performance profiling. Intermediate widths
-retain the existing responsive ownership with containment tests; a separate
-tablet side-panel prototype was not implemented. Legacy fallback selection is
+retain the existing responsive ownership with containment tests; the separate
+side-panel prototype is delivered for owner review, not integrated. Legacy fallback selection is
 preserved and actual missing-build/route/launcher behavior has been tested.
 
 The existing endpoint probe protocol has no request identity. If probe A times
