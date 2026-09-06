@@ -4,6 +4,28 @@ Purpose: expose one authoritative game loop through terminal, legacy/React web, 
 
 Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.
 
+## Safety worktree delta (2026-09-05; live acceptance pending)
+
+Parked input services accepted Saves and checks supersession before Ready/prompt
+and before returning input. Model-emitted Load uses typed control unwind, not a
+restore inside an active gameplay mutation fence. Web/React/legacy consumers use
+the manager's restore disposition: recovery-required keeps Load/Reset/Quit controls
+available without automatically restarting mixed state. Headless similarly keeps
+recovery command intake after a failed restore. No frontend projection is state
+authority. Headless transport now receives commands on its existing stdin thread
+and dispatches them FIFO on the existing waiting runner thread. Received is not
+accepted/applied. Only outer read-only Load preflight observes a received Quit;
+inner application/rollback remains unaffected. Native cancellation acceptance
+must be verified separately; do not infer it from these source contracts.
+
+TypeScript checks pass on native Windows and Linux; the production asset build
+passes on Linux with existing dependencies. Actual native React and legacy
+failed-Load controls retained recovery intake and applied a subsequent clean
+save from the same page; selected files matched the save. These scoped browser
+checks do not establish universal quiescence or automatic server restart.
+Legacy Reset's inherited cp1252 failure and Reset backup fidelity remain explicit
+owner ship decisions. Follow the safety execution ledger for exact P/S verdicts.
+
 ## Authority table
 
 | Datum | Source of truth | Acceptance or commit point |

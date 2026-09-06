@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
-import { useDialogs, useLog } from '../../stores'
+import { useDialogs, useLog, useSession } from '../../stores'
 import { prepareForServerRestart, reloadWhenServerReady } from '../../services/restart'
 import {
   DialogShell,
@@ -42,6 +42,7 @@ function toSaveEntry(raw: Record<string, unknown>): SaveEntry {
 function LoadDialogBody() {
   const closeDialog = useDialogs((s) => s.closeDialog)
   const saveList = useDialogs((s) => s.saveList)
+  const recoveryRequired = useSession((s) => s.restoreRecoveryRequired)
   const [selected, setSelected] = useState<string | null>(null)
   const [restoring, setRestoring] = useState(false)
   const refreshTimer = useRef<number | null>(null)
@@ -73,7 +74,7 @@ function LoadDialogBody() {
   }
 
   const deleteSelected = () => {
-    if (!selected || restoring) return
+    if (!selected || restoring || recoveryRequired) return
     if (!window.confirm('Delete this save? This cannot be undone.')) return
     emitC('action', { action: 'deleteSave', parameters: { saveFolder: selected } })
     setSelected(null)
@@ -140,7 +141,7 @@ function LoadDialogBody() {
             type="button"
             className={dialogButtonDanger}
             onClick={deleteSelected}
-            disabled={!selected || restoring}
+            disabled={!selected || restoring || recoveryRequired}
           >
             Delete
           </button>
@@ -169,7 +170,9 @@ export function LoadDialog() {
   // restore_complete lands in the dialogs store as an actionResult; the server
   // restarts itself after emitting it, so the client reloads to reattach.
   useEffect(() => {
-    if (actionResult?.kind === 'restore') {
+    if (actionResult?.kind === 'restore'
+      && actionResult.can_resume !== false
+      && (actionResult.restart_required ?? (actionResult.restore_outcome === undefined || actionResult.can_resume === true))) {
       void reloadWhenServerReady()
     }
   }, [actionResult])

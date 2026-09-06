@@ -3003,6 +3003,8 @@ def process_action(
     """Process an action based on its type
     
     Returns:
+        RestoreRequest for model-requested Load, before any restore mutation;
+        the surface consumes it only after gameplay unwinds. Otherwise:
         dict: {
             "status": "continue" | "exit" | "needs_response",
             "needs_update": bool,
@@ -4631,7 +4633,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
     elif action_type == ACTION_RESTORE_GAME:
         debug("STATE_CHANGE: Processing restore game action", category="save_game")
         try:
-            from updates.save_game_manager import SaveGameManager
+            from updates.save_game_manager import RestoreRequest, SaveGameManager
             
             # Extract parameters
             save_folder = parameters.get("saveFolder")
@@ -4643,24 +4645,10 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 needs_conversation_history_update = True
                 return create_return(needs_update=needs_conversation_history_update)
             
-            # Restore save game
+            # Return a control proposal, not a mutation inside the old turn.
+            # The surface applies it only after claims/scopes have unwound.
             manager = SaveGameManager()
-            success, message = manager.restore_save_game(save_folder)
-            
-            if success:
-                info(f"SUCCESS: Save game restored: {message}", category="save_game")
-                # Add success message to conversation
-                restore_message = f"Game restored successfully! {message}\nRestarting game session..."
-                conversation_history.append({"role": "system", "content": restore_message})
-                needs_conversation_history_update = True
-                # Return special status to indicate game should restart
-                return create_return(status="restart", needs_update=needs_conversation_history_update)
-            else:
-                print(f"ERROR: Failed to restore game: {message}")
-                # Add error message to conversation
-                error_message = f"Failed to restore game: {message}"
-                conversation_history.append({"role": "system", "content": error_message})
-                needs_conversation_history_update = True
+            return RestoreRequest(manager, save_folder)
                 
         except Exception as e:
             print(f"ERROR: Exception while processing restoreGame: {str(e)}")

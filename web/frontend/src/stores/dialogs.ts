@@ -28,6 +28,9 @@ export interface CompressionState {
 export interface ActionResult {
   kind: 'restore' | 'reset' | 'exit'
   message: string
+  restore_outcome?: ServerEvents['restore_complete']['restore_outcome']
+  can_resume?: boolean
+  restart_required?: boolean
 }
 
 export interface UpdateState {
@@ -246,6 +249,8 @@ export const useDialogs = create<DialogsState>((set) => ({
   }),
   applyOperationSnapshot: (operations) => set((s) => {
     const next: Partial<DialogsState> = {}
+    if (operations.restore && !operations.restore.pending) next.actionResult = { kind: 'restore', ...operations.restore }
+    else if (operations.restore === null && s.actionResult?.kind === 'restore') next.actionResult = null
     const compression = operations.compression
     if (compression === null) {
       next.compression = idleCompression

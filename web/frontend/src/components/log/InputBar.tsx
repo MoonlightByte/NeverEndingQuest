@@ -17,15 +17,19 @@ export function InputBar() {
   const startupInputReady = useSession((s) => s.startupInputReady)
   const startupStatus = useSession((s) => s.startupStatus)
   const statusMessage = useSession((s) => s.statusMessage)
+  const recoveryRequired = useSession((s) => s.restoreRecoveryRequired)
+  const restorePending = useSession((s) => s.restorePending)
   // #214: background welcome liveness - presentational, never locks input.
   const welcomeMessage = useSession((s) => s.welcomeMessage)
   const destructiveAction = useDialogs((s) => s.actionResult?.kind)
+  const restoreRestartPending = useDialogs((s) => s.actionResult?.kind === 'restore'
+    && s.actionResult.can_resume !== false && s.actionResult.restart_required !== false)
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const startupStillLocks = mode === 'starting'
     && startupStatus !== 'failed'
     && !(startupStatus === 'in_progress' && startupInputReady)
-  const locked = destructiveAction === 'exit' || destructiveAction === 'reset'
+  const locked = destructiveAction === 'exit' || destructiveAction === 'reset' || restoreRestartPending || recoveryRequired || restorePending
     || isProcessing || !connected || mode === 'disconnected' || startupStillLocks
 
   // The legacy client places focus in the command field as soon as a live
@@ -48,7 +52,8 @@ export function InputBar() {
 
   return (
     <div className="neq-input-container shrink-0 border-t border-card bg-[#333] p-[10px]">
-      {isProcessing && <span className="sr-only" role="status">{statusMessage || 'The DM is thinking...'}</span>}
+      {(isProcessing || recoveryRequired) && <span className="sr-only" role="status">{statusMessage || 'The DM is thinking...'}</span>}
+      {recoveryRequired && <p role="status">{statusMessage || 'Gameplay is paused. Choose Load, Reset, or Exit.'}</p>}
       <div className="flex items-center">
         <input
           ref={inputRef}
@@ -59,7 +64,7 @@ export function InputBar() {
             if (e.key === 'Enter') send()
           }}
           disabled={locked}
-          placeholder={isProcessing
+          placeholder={isProcessing || recoveryRequired
             ? (statusMessage || 'The DM is thinking...')
             : (welcomeMessage ? `${welcomeMessage} (you can act anytime)` : 'Enter your command...')}
           aria-label="Player input"

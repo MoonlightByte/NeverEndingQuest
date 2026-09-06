@@ -16,6 +16,7 @@ import threading
 import time
 from collections import deque
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from uuid import uuid4
 
@@ -30,6 +31,8 @@ _REQUIRED_TASK_IDS = frozenset(
         "T016",
         "T021",
         "T035",
+        "T038",
+        "T039",
         "T040",
         "T041",
         "T042",
@@ -54,8 +57,6 @@ _ADVISORY_TASK_IDS = frozenset(
         "T018",
         "T019",
         "T027",
-        "T038",
-        "T039",
         "T050",
         "T051",
         "T052",
@@ -254,6 +255,7 @@ def open_advisory_scopes(parent, beat_id, count, *, completion_required=False):
 _scope_guard = threading.RLock()
 _active_scope = None
 _closing_scopes = []
+_executing_control_scope = ContextVar("executing_live_control_scope", default=None)
 
 
 def open_live_turn_scope():
@@ -269,6 +271,11 @@ def open_live_turn_scope():
 def get_live_turn_scope():
     with _scope_guard:
         return _active_scope
+
+
+def get_live_provider_scope():
+    """Accepted callback authority takes precedence only in its execution context."""
+    return _executing_control_scope.get() or get_live_turn_scope()
 
 
 @contextmanager
@@ -331,7 +338,7 @@ def get_lifecycle_turn_scopes():
 
 def live_provider_policy(task_id):
     """Return the reviewed policy only while a live player-turn scope exists."""
-    if get_live_turn_scope() is None:
+    if get_live_provider_scope() is None:
         return False
     if task_id in _REQUIRED_TASK_IDS:
         return "required"
@@ -516,17 +523,31 @@ def claim_destructive_operation(scope, kind, execute, complete,
 
 def drain_live_saves(scope, *, seal=False):
     """Execute accepted Saves FIFO on the game thread, optionally sealing it."""
+    drained = False
     while True:
         with scope.lock:
             if not scope.pending_saves:
                 if seal:
                     scope.controls_open = False
-                return
+                return drained
             record = scope.pending_saves.popleft()
+        control_scope = LiveTurnScope(
+            operation_id=record["operation_id"], purpose="accepted_control",
+            controls_open=False,
+        )
+        record["provider_scope"] = control_scope
+        token = _executing_control_scope.set(control_scope)
         try:
             outcome = record["execute"]()
         except BaseException as exc:
             outcome = (False, "%s: %s" % (type(exc).__name__, exc))
+        finally:
+            # Synchronous provider calls have returned through their reap-finally
+            # before the accepted callback completes. This is not a second turn
+            # registry and must never replace or close the original turn scope.
+            control_scope.phase = "QUIESCENT"
+            control_scope.quiescent.set()
+            _executing_control_scope.reset(token)
         try:
             record["complete"](outcome)
         except Exception:
@@ -534,6 +555,7 @@ def drain_live_saves(scope, *, seal=False):
             # client makes socketio.emit raise); it must never stop the
             # drain or block the terminal's quiescence guarantee.
             pass
+        drained = True
 
 
 def finish_live_turn_scope(scope):
@@ -559,12 +581,13 @@ def service_live_input_boundary():
     """
     scope = get_live_turn_scope()
     if scope is None:
-        return
+        return False
     if scope.is_superseded():
         raise LiveProviderSuperseded("input boundary was superseded")
-    drain_live_saves(scope, seal=False)
+    drained = drain_live_saves(scope, seal=False)
     if scope.is_superseded():
         raise LiveProviderSuperseded("input boundary was superseded")
+    return drained
 
 
 def abort_live_turn_scope(
@@ -851,7 +874,7 @@ def call_live_provider(
         raise ValueError(
             "%s is classified %s, not %s" % (task_id, expected_policy, policy)
         )
-    scope = scope if scope is not None else get_live_turn_scope()
+    scope = scope if scope is not None else get_live_provider_scope()
     emit = status_emit if status_emit is not None else _emit_working
     completion_required = bool(
         isinstance(scope, AdvisoryProviderScope)

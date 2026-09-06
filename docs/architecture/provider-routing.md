@@ -6,6 +6,21 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 
 Branch delta: voices `8f51bef3ee39e8f86b9bff635816c2dd6a520082` adds T105/T107/T108/T112/T113 registry profiles and task-owned advisory child scopes; it does not change the router, capture writer, API logger, or provider clients described here.
 
+## Safety worktree delta (2026-09-05; live acceptance pending)
+
+T038/T039, T040-T044, T082 and T096/T097 select the existing required child
+transport. Typed transient failures structurally reissue after reap; completed
+deterministic errors still reach their existing caller handling. Backoff saturates
+before exponentiation. Missing or mismatched child envelopes are unavailable
+transport, not accepted semantic responses. T097's ratified completed-invalid
+policy and all model bindings remain unchanged.
+
+Completion may supply a parent-only epoch check: it is never part of the provider
+request or capture payload. Accepted queued controls borrow their own execution
+context, not the cancelled gameplay scope, and children stop before control
+completion. This does not add a second ordinary-turn registry. Live P/S transport
+and quiescence acceptance is still pending; see the safety execution ledger.
+
 ## Authority table
 
 | Datum | Source of truth | Explicit non-authority |

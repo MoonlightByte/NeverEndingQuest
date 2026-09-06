@@ -7,6 +7,49 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 - Branch delta: voices `8f51bef3` adds exact headless Reset identity/status, advisory
   child-scope reaping, and companion-memory manifest/restore handling.
 
+## Safety worktree delta (2026-09-05; live acceptance partial)
+
+Save drains/settles completion outside its snapshot locks, then takes party,
+combat, module-refresh and campaign locks and rechecks both intents and work.
+New work at that boundary releases the locks and retries. Managed-save operations
+resolve native owned paths, including receipt replay and junction containment.
+
+Restore returns `selected_applied`, `previous_restored`, `unchanged`, or
+`recovery_required`; only a verified clean disposition permits gameplay restart.
+Original bytes/membership are frozen in memory and backed up before replacement.
+Rollback verifies that inventory rather than re-globbing mutated state. Load
+retires old generation authority but preserves ready intents and committed receipts in its rollback
+preimage; the new lifecycle epoch is never restored from an old save. Reset
+retains backup-before-wipe. Both Reset entrants reconcile canonical pending work
+under the existing party/module-refresh/campaign boundary; temporary read faults
+release those locks and retry. The subsequent backup/epoch/wipe body is not
+replayed by that retry. Neither operation treats active work alone as refusal.
+
+Recovery-required retains control access, not a normal gameplay prompt. The
+headless stdin reader receives and queues commands while the existing runner
+dispatches them serially. A received Quit can cancel outer read-only Load
+preflight at its guarded final check; it cannot retroactively cancel completed
+preflight. Received is not accepted or applied. Previously queued Saves still
+precede actual Quit supersession. Seven native preflight-control variants and
+ordinary Reset are recorded in the execution ledger; these do not prove every
+possible race or authentic pending-record contention. Later-Quit versus
+already-applying-Load priority remains owner-open #270. Full live controls/I/O
+acceptance is not claimed.
+
+Selected absence matters: if a save has no primary combat transcript, Load
+removes only that optional live transcript after verifying its backup, then
+verifies selected absence. Saved-present transcripts use the normal copy and
+verification path. Native OpenAI acceptance proves both fresh combat activation
+after absent-history Load and saved-present combat resume without HP/XP changes.
+
+Native fault acceptance also proves that a preparation-cleanup failure after
+epoch advancement retains recovery controls: list remains usable, a subsequent
+clean Load applies in the same controller, and a real next turn completes after
+restart. This does not prove pending-commit partial roll-forward recovery.
+Detailed receipts and remaining gates are indexed in local
+`validation_evidence/safety_acceptance_remaining.md`; the absent-history and
+Load-preparation verdicts there preserve exact protocol and disk evidence.
+
 ## Authority table
 
 | Datum | Single source of truth | Commit or acceptance point |

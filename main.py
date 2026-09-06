@@ -680,6 +680,9 @@ def _apply_welcome(lifecycle):
             lifecycle.location_data,
             history,
         )
+        if _is_restore_request(process_result):
+            _finish_welcome(lifecycle, 'RESTORE_REQUESTED')
+            return None if lifecycle.scope.is_superseded() else process_result
         (
             process_result,
             lifecycle.party_tracker_data,
@@ -691,6 +694,12 @@ def _apply_welcome(lifecycle):
             lifecycle.location_data,
             history,
         )
+        if _is_restore_request(process_result):
+            _finish_welcome(lifecycle, 'RESTORE_REQUESTED')
+            return None if lifecycle.scope.is_superseded() else process_result
+        if isinstance(process_result, dict) and process_result.get("status") == "superseded_invocation":
+            _finish_welcome(lifecycle, "SUPERSEDED")
+            return
         if (
             isinstance(process_result, dict)
             and (
@@ -796,8 +805,9 @@ def service_welcome_lifecycle():
                 lifecycle.phase = "APPLY_PENDING"
             elif lifecycle.phase != "APPLY_PENDING":
                 return
+        restore_request = None
         try:
-            _apply_welcome(lifecycle)
+            restore_request = _apply_welcome(lifecycle)
         except BaseException as exc:
             # A handback fault must never wedge the lifecycle invisibly (the
             # input-poll pump swallows exceptions, so a repeating fault here
@@ -829,6 +839,10 @@ def service_welcome_lifecycle():
             except Exception:
                 pass
             _finish_welcome(lifecycle, "FAILED")
+        if _is_restore_request(restore_request):
+            # The blocking input adapters cannot return a control object as
+            # player text. Unwind to main_game_loop after welcome quiescence.
+            raise _RestoreControlTransfer(restore_request)
 
 
 def finalize_welcome_before_player_turn():
@@ -1030,6 +1044,8 @@ def _run_startup_kickoff_once(
             location_data,
             conversation_history,
         )
+        if _is_restore_request(process_result):
+            return process_result
         (
             process_result,
             party_tracker_data,
@@ -1041,6 +1057,10 @@ def _run_startup_kickoff_once(
             location_data,
             conversation_history,
         )
+        if _is_restore_request(process_result):
+            return process_result
+        if isinstance(process_result, dict) and process_result.get("status") == "superseded_invocation":
+            return "stale_discarded"
         if (
             isinstance(process_result, dict)
             and (
@@ -1107,6 +1127,8 @@ def run_startup_kickoff_with_recovery(
         startup_state=startup_state,
         precomputed_response=precomputed_response,
     )
+    if _is_restore_request(result):
+        return result
     if result == "done":
         return {"status": "done"}
 
@@ -1142,6 +1164,8 @@ def run_startup_kickoff_with_recovery(
         source="watchdog",
         startup_state=load_startup_state(),
     )
+    if _is_restore_request(retry_result):
+        return retry_result
     return {"status": "done" if retry_result == "done" else "failed", "reason": retry_result}
 
 
@@ -1175,6 +1199,8 @@ def recover_startup_handoff():
         attempt_count=startup_state.get("attempt_count"),
     )
     result = run_startup_kickoff_with_recovery(conversation_history, party_tracker_data, location_data)
+    if _is_restore_request(result):
+        return result
     if result.get("status") == "done":
         return {"status": "recovered"}
     if result.get("status") == "pending":
@@ -1281,6 +1307,7 @@ def generate_transition_narration(transition_prompt, party_tracker_data):
     chain into a static location description when enforcing the single-turn
     gameplay boundary.
     """
+    from utils.capture.live_provider_call import LiveProviderSuperseded
     destination = party_tracker_data["worldConditions"]["currentLocation"]
     messages = [
         {
@@ -1342,6 +1369,8 @@ def generate_transition_narration(transition_prompt, party_tracker_data):
         if not narration:
             raise ValueError("T013 returned empty narration")
         return narration
+    except LiveProviderSuperseded:
+        raise
     except Exception as narration_error:
         warning(
             "T013 unavailable; retaining deterministic committed-arrival prose: %s"
@@ -1354,6 +1383,7 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
     """
     Run layer 2/3 (T063) from T013 plus the committed target/roster projection.
     """
+    from utils.capture.live_provider_call import LiveProviderSuperseded
     debug("STATE_CHANGE: Generating cinematic arrival narration...", category="narrative_generation")
     
     # Get details for the new location from the (now updated) party tracker
@@ -1465,6 +1495,8 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
         if not sanitized_arrival:
             raise ValueError("T063 narration was empty after sanitization")
         return sanitized_arrival
+    except LiveProviderSuperseded:
+        raise
     except Exception as e:
         error(f"FAILURE: Failed to generate arrival narration", exception=e, category="narrative_generation")
         return f"You arrive at {new_location_name}."  # Deterministic fallback.
@@ -1475,6 +1507,7 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
     """
     Run layer 3/3 (T064), preserving both accepted layers as one seamless turn.
     """
+    from utils.capture.live_provider_call import LiveProviderSuperseded
     debug("STATE_CHANGE: Blending departure and arrival narrations into a seamless whole...", category="narrative_generation")
 
     # If either part is empty, just return the other part to avoid weird API calls.
@@ -1557,6 +1590,8 @@ Now, provide the rewritten, seamless narration.
         if not sanitized_narration:
             raise ValueError("T064 narration was empty after sanitization")
         return sanitized_narration
+    except LiveProviderSuperseded:
+        raise
     except Exception as e:
         error(f"FAILURE: Failed to generate seamless transition narration", exception=e, category="narrative_generation")
         # Fallback to simple concatenation if the API call fails
@@ -4218,17 +4253,28 @@ def retry_staged_module_completions(
 ):
     """Drain durable transition intents; failures remain queued for retry."""
     from core.managers.campaign_manager import CampaignManager
+    from utils.transient_filesystem import is_transient_filesystem_error
+    from utils.capture.live_provider_call import (
+        _interruptible_wait, get_live_provider_scope,
+    )
 
-    manager = CampaignManager()
-    targeted_result = None
-    if pending_archive_info:
-        targeted_result = manager.complete_staged_module_completion(
-            pending_archive_info["from_module"],
-            pending_archive_info["completion_id"],
-            conversation_history=conversation_history,
-        )
-    outcome = manager.drain_module_completion_intents()
-    return targeted_result, outcome
+    scope = get_live_provider_scope()
+    while True:
+        try:
+            manager = CampaignManager()
+            targeted_result = None
+            if pending_archive_info:
+                targeted_result = manager.complete_staged_module_completion(
+                    pending_archive_info["from_module"],
+                    pending_archive_info["completion_id"],
+                    conversation_history=conversation_history,
+                )
+            outcome = manager.drain_module_completion_intents()
+            return targeted_result, outcome
+        except OSError as exc:
+            if not is_transient_filesystem_error(exc):
+                raise
+            _interruptible_wait(0.25, scope, "Checking the campaign record...")
 
 
 def require_staged_module_completions_drained():
@@ -4564,22 +4610,35 @@ def _complete_committed_module_followup(
     result,
     response,
     conversation_history,
+    *,
+    invocation_claim=None,
 ):
-    """Serialize publication follow-up persistence against restore/reset."""
-    from core.managers.campaign_manager import _party_module_transition_lock
+    """Borrow the caller's authority without holding locks across generation."""
+    from utils.capture.live_provider_call import (
+        _executing_control_scope, get_active_welcome_scope,
+        get_live_provider_scope,
+    )
 
-    with _party_module_transition_lock():
-        return _complete_committed_module_followup_locked(
+    scope = get_live_provider_scope() or get_active_welcome_scope()
+    token = _executing_control_scope.set(scope)
+    try:
+        return _complete_committed_module_followup_in_scope(
             result,
             response,
             conversation_history,
+            scope,
+            invocation_claim,
         )
+    finally:
+        _executing_control_scope.reset(token)
 
 
-def _complete_committed_module_followup_locked(
+def _complete_committed_module_followup_in_scope(
     result,
     response,
     conversation_history,
+    scope,
+    invocation_claim,
 ):
     """Generate + deliver the creation narration for a just-published module.
 
@@ -4589,33 +4648,54 @@ def _complete_committed_module_followup_locked(
     playing -- the player may simply not see the creation narration this turn
     (cosmetic, fail-forward; never hangs or corrupts).
     """
-    from core.combat.invocation import InvocationSupersededError
-    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from core.combat.invocation import (
+        InvocationSupersededError, require_current_invocation,
+    )
+    from core.managers.campaign_manager import _party_module_transition_lock
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded, _check_live_authority,
+    )
 
     response_data = result.get("response_data", {})
     module_name = response_data.get("module_name")
     try:
-        accepted_message = {"role": "assistant", "content": response}
-        if not (
-            conversation_history
-            and conversation_history[-1] == accepted_message
-        ):
-            conversation_history.append(accepted_message)
-        dm_note = response_data.get("dm_note")
-        if isinstance(dm_note, str) and dm_note.strip():
-            conversation_history.append(
-                {"role": "user", "content": dm_note.strip()}
-            )
-        if _strictly_persist_conversation_history(conversation_history) is not True:
-            raise OSError("Accepted publication history did not persist")
+        with _party_module_transition_lock():
+            _check_live_authority(scope)
+            if invocation_claim is not None:
+                require_current_invocation(invocation_claim)
+            accepted_message = {"role": "assistant", "content": response}
+            if not (
+                conversation_history
+                and conversation_history[-1] == accepted_message
+            ):
+                conversation_history.append(accepted_message)
+            dm_note = response_data.get("dm_note")
+            if isinstance(dm_note, str) and dm_note.strip():
+                conversation_history.append(
+                    {"role": "user", "content": dm_note.strip()}
+                )
+            if _strictly_persist_conversation_history(conversation_history) is not True:
+                raise OSError("Accepted publication history did not persist")
 
-        followup_history = list(conversation_history)
-        followup_history, party_data = rebuild_conversation_for_current_party(
-            followup_history,
-            return_party=True,
+            followup_history = list(conversation_history)
+            followup_history, party_data = rebuild_conversation_for_current_party(
+                followup_history,
+                return_party=True,
+            )
+            get_location_data_from_party_tracker(party_data)
+
+        # Preparation can wait for T038/T039 or temporary file contention.
+        # Only its history-writing rebuild belongs inside a mutation fence.
+        completion = require_staged_module_completions_drained()
+        with _party_module_transition_lock():
+            _check_live_authority(scope)
+            if invocation_claim is not None:
+                require_current_invocation(invocation_claim)
+            if completion["completed"] or completion["cancelled"]:
+                rebuild_conversation_for_current_party(followup_history)
+        ai_response = _get_ai_response_impl(
+            followup_history, prepare_history=False, live_selected=None,
         )
-        get_location_data_from_party_tracker(party_data)
-        ai_response = get_ai_response(followup_history)
         parsed = json.loads(extract_json_from_codeblock(ai_response))
         narration = parsed.get("narration") if isinstance(parsed, dict) else None
         actions = parsed.get("actions") if isinstance(parsed, dict) else None
@@ -4642,16 +4722,20 @@ def _complete_committed_module_followup_locked(
             for message in followup_history
         ):
             followup_history.append(followup_message)
-        saved = save_conversation_history(
-            followup_history,
-            strict=True,
-            allow_compression=False,
-        )
-        if saved is not True:
-            raise OSError("Module follow-up history did not report success")
+        with _party_module_transition_lock():
+            _check_live_authority(scope)
+            if invocation_claim is not None:
+                require_current_invocation(invocation_claim)
+            saved = save_conversation_history(
+                followup_history,
+                strict=True,
+                allow_compression=False,
+            )
+            if saved is not True:
+                raise OSError("Module follow-up history did not report success")
 
-        conversation_history[:] = followup_history
-        _emit_committed_module_message(narration, followup_id)
+            conversation_history[:] = followup_history
+            _emit_committed_module_message(narration, followup_id)
 
         completed = dict(result)
         completed["status"] = "published"
@@ -4737,6 +4821,19 @@ def _record_agentic_post_combat_updates_dropped(count):
     )
 
 
+def _is_restore_request(value):
+    from updates.save_game_manager import RestoreRequest
+    return isinstance(value, RestoreRequest)
+
+
+class _RestoreControlTransfer(BaseException):
+    """Unwind a blocking input pump, not an error or a new gameplay action."""
+
+    def __init__(self, request):
+        self.request = request
+        super().__init__('Load requested at the welcome input boundary')
+
+
 def process_ai_response(
     response,
     party_tracker_data,
@@ -4770,6 +4867,7 @@ def process_ai_response(
     )
 
     response_fences = ExitStack()
+    from utils.capture.live_provider_call import LiveProviderSuperseded
 
     try:
         from core.combat.invocation import (
@@ -4829,7 +4927,9 @@ def process_ai_response(
         # Intents carry their own bounded history snapshot, so this cannot mix
         # later-module conversation into the archived visit.
         try:
-            _targeted, drain_outcome = retry_staged_module_completions()
+            _targeted, drain_outcome = run_outside_response_fence(
+                retry_staged_module_completions,
+            )
             if drain_outcome["failed"] or drain_outcome["blocked"]:
                 error(
                     "FAILURE: Refusing to process a new response while an "
@@ -4850,6 +4950,8 @@ def process_ai_response(
                     "retryable": True,
                     "completion_outcome": drain_outcome,
                 }
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
         except Exception as drain_exc:
             error(
                 "FAILURE: Could not retry staged module completions",
@@ -5082,6 +5184,8 @@ def process_ai_response(
                     ),
                     invocation_claim=invocation_claim,
                 )
+                if _is_restore_request(result):
+                    return result
                 actions_processed = True
                 if isinstance(result, dict):
                     response_data = result.get("response_data", {})
@@ -5675,7 +5779,8 @@ def process_ai_response(
 
             if pending_archive_info:
                 try:
-                    _targeted, completion_outcome = retry_staged_module_completions(
+                    _targeted, completion_outcome = run_outside_response_fence(
+                        retry_staged_module_completions,
                         pending_archive_info,
                         fresh_conversation_history,
                     )
@@ -5709,6 +5814,8 @@ def process_ai_response(
                             ),
                             "completion_outcome": completion_outcome,
                         }
+                except (LiveProviderSuperseded, InvocationSupersededError):
+                    raise
                 except Exception as completion_exc:
                     error(
                         "FAILURE: Cross-module completion remains queued",
@@ -5790,6 +5897,8 @@ def process_ai_response(
                     fresh_conversation_history,
                     invocation_claim=invocation_claim,
                 )
+                if _is_restore_request(result):
+                    return result
                 if isinstance(result, dict):
                     if result.get("needs_update"):
                         needs_conversation_history_update = True
@@ -5814,11 +5923,14 @@ def process_ai_response(
                         )
                         try:
                             deferred_targeted, deferred_outcome = (
-                                retry_staged_module_completions(
+                                run_outside_response_fence(
+                                    retry_staged_module_completions,
                                     deferred_pending,
                                     latest_history,
                                 )
                             )
+                        except (LiveProviderSuperseded, InvocationSupersededError):
+                            raise
                         except Exception as deferred_completion_exc:
                             return {
                                 "status": "module_completion_pending",
@@ -6085,7 +6197,7 @@ def process_ai_response(
                         conversation_history,
                         invocation_claim=invocation_claim,
                     )
-                except InvocationSupersededError:
+                except (LiveProviderSuperseded, InvocationSupersededError):
                     return {
                         "status": "superseded_invocation",
                         "retryable": False,
@@ -6132,7 +6244,7 @@ def process_ai_response(
                     conversation_history,
                     invocation_claim=invocation_claim,
                 )
-            except InvocationSupersededError:
+            except (LiveProviderSuperseded, InvocationSupersededError):
                 return {
                     "status": "superseded_invocation",
                     "retryable": False,
@@ -6144,6 +6256,8 @@ def process_ai_response(
                     category="action_processing",
                 )
                 result = {"status": "error", "success": False}
+            if _is_restore_request(result):
+                return result
             actions_processed = True
 
             # Standard action failures are terminal for this response. The
@@ -6159,10 +6273,12 @@ def process_ai_response(
                 return safe_result
 
             if isinstance(result, dict) and result.get("needs_dm_response"):
-                return _complete_committed_module_followup(
+                return run_outside_response_fence(
+                    _complete_committed_module_followup,
                     result,
                     response,
                     conversation_history,
+                    invocation_claim=invocation_claim,
                 )
             if isinstance(result, dict) and result.get("status") == "published":
                 # Module publication is an irreversible terminal action for
@@ -6183,7 +6299,8 @@ def process_ai_response(
                     {"role": "assistant", "content": response}
                 )
                 try:
-                    _targeted, completion_outcome = retry_staged_module_completions(
+                    _targeted, completion_outcome = run_outside_response_fence(
+                        retry_staged_module_completions,
                         pending_archive_info,
                         completion_history,
                     )
@@ -6210,6 +6327,8 @@ def process_ai_response(
                             ),
                             "completion_outcome": completion_outcome,
                         }
+                except (LiveProviderSuperseded, InvocationSupersededError):
+                    raise
                 except Exception as completion_exc:
                     error(
                         "FAILURE: Module completion remains queued before "
@@ -6340,7 +6459,8 @@ def process_ai_response(
                 
                 # The durable intent owns archive creation, T038/T039, visit
                 # tracking, campaign merge, and crash recovery.
-                summary, _outcome = retry_staged_module_completions(
+                summary, _outcome = run_outside_response_fence(
+                    retry_staged_module_completions,
                     pending_archive_info,
                     fresh_conversation_history,
                 )
@@ -6351,6 +6471,8 @@ def process_ai_response(
                     category="module_management",
                 )
                     
+            except (LiveProviderSuperseded, InvocationSupersededError):
+                raise
             except Exception as e:
                 print(f"ERROR: Failed to process delayed archive: {str(e)}")
                 print(f"ERROR: Module name was: {pending_archive_info.get('from_module', 'UNKNOWN')}")
@@ -6361,7 +6483,7 @@ def process_ai_response(
         
         return assistant_message
 
-    except InvocationSupersededError:
+    except (LiveProviderSuperseded, InvocationSupersededError):
         return {
             "status": "superseded_invocation",
             "retryable": False,
@@ -7074,6 +7196,58 @@ def check_all_modules_plot_completion():
     
     return all_modules_data
 
+def _run_terminal_restore(request):
+    """Control-only recovery after gameplay unwinds; never call a DM on mixed state."""
+    from updates.save_game_manager import RestoreOutcome
+    from utils.reset_campaign import perform_reset_logic
+
+    manager = request.manager
+    folder = request.save_folder
+    previous_clean = True
+    while True:
+        try:
+            outcome = manager.restore_save_game_outcome(folder, previous_clean=previous_clean)
+        except Exception as exc:
+            outcome = RestoreOutcome('recovery_required', str(exc))
+        print('[SYSTEM] ' + outcome.message)
+        if outcome.can_resume:
+            return True
+        previous_clean = False
+        # The original manager retains the managed-save root even if a failed
+        # copy changed party_tracker. No backup discovery or saved trust flag.
+        while True:
+            try:
+                saves = manager.list_save_games()
+            except Exception as exc:
+                print('[SYSTEM] Could not list saves: ' + str(exc))
+                saves = []
+            choices = {
+                str(index): save['save_folder']
+                for index, save in enumerate(saves, 1) if save.get('save_folder')
+            }
+            print('Gameplay is paused. Choose a saved game, Reset, or Quit.')
+            for index, saved_folder in choices.items():
+                print(index + ': ' + saved_folder)
+            try:
+                choice = input('Save number / reset / quit: ').strip()
+                if choice.lower() == 'quit':
+                    return False
+                if choice.lower() == 'reset':
+                    if input('Reset the campaign? Type RESET to confirm: ').strip() != 'RESET':
+                        continue
+                    try:
+                        perform_reset_logic()
+                    except Exception as exc:
+                        print('[SYSTEM] Reset did not finish: ' + str(exc))
+                        continue
+                    return True
+                if choice in choices:
+                    folder = choices[choice]
+                    break
+            except (EOFError, KeyboardInterrupt):
+                return False
+
+
 def main_game_loop():
     """Keep startup/turn cleanup outside the single game-loop implementation."""
     from contextlib import ExitStack
@@ -7087,7 +7261,19 @@ def main_game_loop():
 
     try:
         with ExitStack() as startup_authority, ExitStack() as turn_authority:
-            return _main_game_loop(startup_authority, turn_authority)
+            try:
+                result = _main_game_loop(startup_authority, turn_authority)
+            except _RestoreControlTransfer as transfer:
+                # Convert the input-pump transfer to a normal return BEFORE
+                # owned contexts close, so accepted Saves drain, not abort.
+                result = transfer.request
+            scope = get_live_turn_scope()
+        if _is_restore_request(result) and scope is not None:
+            finish_live_turn_scope(scope)
+            scope.quiescent.wait()
+            if scope.is_superseded():
+                return None
+        return result
     except (LiveProviderSuperseded, InvocationSupersededError):
         scope = get_live_turn_scope()
         if scope is not None:
@@ -7254,6 +7440,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 f"STATE_CHANGE: Startup module-completion drain: {startup_drain}",
                 category="startup",
             )
+    except LiveProviderSuperseded:
+        raise
     except Exception as drain_exc:
         error(
             "FAILURE: Startup stopped before AI response because module "
@@ -7556,6 +7744,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 conversation_history,
                 invocation_claim=startup_claim,
             )
+            if _is_restore_request(post_combat_result):
+                return post_combat_result
             (
                 post_combat_result,
                 party_tracker_data,
@@ -7568,6 +7758,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 conversation_history,
                 invocation_claim=startup_claim,
             )
+            if _is_restore_request(post_combat_result):
+                return post_combat_result
             if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "superseded_invocation":
                 raise InvocationSupersededError("Post-combat handoff was superseded")
             require_current_invocation(startup_claim)
@@ -7736,6 +7928,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 party_tracker_data,
                 location_data,
             )
+            if _is_restore_request(kickoff_result):
+                return kickoff_result
             if kickoff_result.get("status") != "done":
                 warning(
                     f"INITIALIZATION: Startup kickoff did not complete cleanly: {kickoff_result}",
@@ -9234,6 +9428,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 finally:
                     turn_authority.close()
 
+                if _is_restore_request(final_result):
+                    return final_result
                 if (
                     isinstance(final_result, dict)
                     and final_result.get("retryable") is True
@@ -9275,8 +9471,7 @@ def _main_game_loop(startup_authority, turn_authority):
                     from utils.capture.live_provider_call import finish_live_turn_scope
                     finish_live_turn_scope(live_turn_scope)
                     print("\n[SYSTEM] Restarting game with restored save...\n")
-                    main_game_loop()
-                    return
+                    return main_game_loop()
                 elif isinstance(final_result, dict) and final_result.get("status") == "enter_levelup_mode":
                     # Enter the level up sub-loop
                     level_up_session = final_result["session"]
@@ -9614,7 +9809,10 @@ def main():
         print("DEBUG: [LocationGraph] WARNING - No nodes loaded! Check if modules are integrated.")
 
     # Continue with normal game loop
-    main_game_loop()
+    while True:
+        result = main_game_loop()
+        if not _is_restore_request(result) or not _run_terminal_restore(result):
+            break
 
 if __name__ == "__main__":
     main()

@@ -141,6 +141,14 @@ export const CLIENT_EVENT_ARITY = {
 } as const satisfies Record<keyof ClientEvents, 0 | 1>;
 
 // ---------- server -> client (56) ----------
+export interface RestoreResult {
+  message: string;
+  pending?: boolean;
+  restore_outcome?: 'selected_applied' | 'previous_restored' | 'unchanged' | 'recovery_required';
+  can_resume?: boolean;
+  restart_required?: boolean;
+}
+
 export interface ServerEvents {
   connected: {
     data: string;
@@ -152,7 +160,7 @@ export interface ServerEvents {
   game_resumed: { is_processing: boolean; message: string };
   game_output: GameMessage;
   debug_output: { type: 'debug'; content: string; timestamp: string };
-  status_update: { message: string; is_processing: boolean };
+  status_update: { message: string; is_processing: boolean; recovery_required?: boolean };
   startup_status: { status: 'in_progress' | 'ready' | 'failed'; phase: string; startupAttemptId?: string };
   game_started: { message: string };
   startup_recovery_response: { status: string; error?: string; retryAfterSeconds?: number; expectedStartupAttemptId?: string };
@@ -165,6 +173,7 @@ export interface ServerEvents {
     status_message: string;
     startup?: { status: 'idle' | 'in_progress' | 'ready' | 'failed'; phase: string; startupAttemptId?: string };
     operations?: {
+      restore?: RestoreResult | null;
       compression?: (Record<string, unknown> & { event?: string; status?: string }) | null;
       module?: ServerEvents['module_creation_progress'] | null;
       update?: { status: string; log: string[]; error?: string | null; complete?: string | null } | null;
@@ -173,7 +182,7 @@ export interface ServerEvents {
   system_message: { content: string };
   error: { message: string };
   save_list_response: Array<Record<string, unknown>>;
-  restore_complete: { message: string };
+  restore_complete: RestoreResult;
   reset_complete: { message: string };
   player_data_response: PlayerDataResponse;
   location_data_response: { data: { currentLocation: string; currentArea: string; currentLocationId: string; currentAreaId: string; time: string; day: number | string; month: string; year: number | string } | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };

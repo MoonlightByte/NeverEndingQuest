@@ -77,6 +77,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Any, Optional, Tuple
 from uuid import uuid4
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from contextlib import ExitStack, contextmanager
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.capture.live_provider_call import LiveProviderSuperseded
@@ -337,14 +338,38 @@ def _completion_work_matches(work: Any, expected: Dict[str, Any]) -> bool:
     )
 
 
+def _relinquish_completion_attempt(campaign_file, paths, module_name, operation,
+                                  expected_epoch, attempt_id):
+    """Release only the stopped producer's exact current work, if retained."""
+    with _campaign_transaction_lock(campaign_file):
+        work = _load_json_dict(paths["work"])
+        if work is None:
+            if os.path.exists(paths["work"]):
+                raise OSError("Unreadable completion work during relinquishment")
+            return
+        ownership = _completion_work_ownership(work)
+        producer = ownership.get("producer") if ownership else None
+        if (work.get("module_name") != module_name
+                or work.get("operation", "completion") != operation
+                or not producer or producer.get("attempt_id") != attempt_id
+                or ownership["epoch"] != expected_epoch
+                or _load_campaign_lifecycle_epoch(campaign_file) != expected_epoch):
+            return
+        authority = {**work, "work_path": paths["work"], "campaign_path": campaign_file}
+        current = _read_completion_work_for_pending(authority, copy.deepcopy(work))
+        if current is not None:
+            current["ownership"]["producer"] = None
+            _durable_write_json(paths["work"], current)
+
+
 def _await_completion_flight(completion, campaign_file, expected_epoch):
     """Join existing work without blocking cancellation or holding state locks."""
     from utils.capture.live_provider_call import (
         _check_live_authority, _interruptible_wait,
-        get_live_turn_scope,
+        get_live_provider_scope,
     )
 
-    scope = get_live_turn_scope()
+    scope = get_live_provider_scope()
 
     def current():
         return _load_campaign_lifecycle_epoch(campaign_file) == expected_epoch
@@ -362,6 +387,37 @@ def _await_completion_flight(completion, campaign_file, expected_epoch):
             0.25, scope, "Finishing the campaign record...",
             authority_check=current,
         )
+
+
+@contextmanager
+def _completion_execution_authority():
+    """Borrow the caller/control scope or own one complete unowned operation."""
+    from utils.capture.live_provider_call import (
+        get_live_provider_scope, open_live_turn_scope,
+        finish_live_turn_scope, abort_live_turn_scope,
+    )
+
+    scope = get_live_provider_scope()
+    owns_scope = scope is None
+    if owns_scope:
+        scope = open_live_turn_scope()
+    engine_fault = False
+    try:
+        if scope.is_superseded():
+            raise LiveProviderSuperseded("Completion entry was superseded")
+        yield scope
+    except LiveProviderSuperseded:
+        raise
+    except BaseException:
+        engine_fault = True
+        raise
+    finally:
+        if owns_scope:
+            if engine_fault:
+                abort_live_turn_scope(scope=scope)
+            else:
+                finish_live_turn_scope(scope)
+            scope.quiescent.wait()
 
 
 def _reset_module_completion_flights_after_fork() -> None:
@@ -408,12 +464,13 @@ def _campaign_lifecycle_epoch_path(campaign_file: str) -> str:
 
 
 def _load_campaign_lifecycle_epoch(campaign_file: str) -> Optional[str]:
+    from utils.transient_filesystem import read_bytes_preserving_errors
+
     path = _campaign_lifecycle_epoch_path(campaign_file)
     try:
         # One observation, no lock/retry here: provider polling must be able to
         # distinguish absence from a sharing/read failure and reap on the latter.
-        with open(path, "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
+        payload = json.loads(read_bytes_preserving_errors(path).decode("utf-8"))
     except FileNotFoundError:
         return None
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -443,11 +500,15 @@ def _bump_campaign_lifecycle_epoch(campaign_file: str) -> str:
     return epoch
 
 
+class _CampaignCompletionActive(OSError):
+    """A snapshot boundary must release its locks and settle completion work."""
+
+
 def _assert_no_active_campaign_completion(campaign_file: str) -> None:
     metadata_dir = _campaign_completion_metadata_dir(campaign_file)
     pending = os.path.join(metadata_dir, "pending.json")
     if os.path.exists(pending):
-        raise OSError("Campaign completion recovery is active; retry restore")
+        raise _CampaignCompletionActive("Campaign completion recovery is active; retry restore")
     if os.path.isdir(metadata_dir):
         active_work = [
             name
@@ -455,12 +516,12 @@ def _assert_no_active_campaign_completion(campaign_file: str) -> None:
             if name.endswith(".work.json")
         ]
         if active_work:
-            raise OSError("Campaign completion work is active; retry restore")
+            raise _CampaignCompletionActive("Campaign completion work is active; retry restore")
         intents_dir = os.path.join(metadata_dir, "intents")
         if os.path.isdir(intents_dir) and any(
             name.endswith(".json") for name in os.listdir(intents_dir)
         ):
-            raise OSError(
+            raise _CampaignCompletionActive(
                 "Campaign transition completion is queued; retry restore"
             )
 
@@ -487,6 +548,40 @@ def _party_module_transition_lock(
         suffix=".module-transition.lock",
         wait_callback=wait_callback,
     )
+
+
+def _claim_completion_flight(key, campaign_file, expected_epoch):
+    """Join current work, or claim after a superseded producer has stopped."""
+    from utils.capture.live_provider_call import (
+        _check_live_authority, _interruptible_wait, get_live_provider_scope,
+    )
+    scope = get_live_provider_scope()
+
+    def current():
+        return _load_campaign_lifecycle_epoch(campaign_file) == expected_epoch
+
+    while True:
+        try:
+            _check_live_authority(scope, current)
+        except OSError:
+            _interruptible_wait(0.25, scope, "Checking the campaign record...",
+                                authority_check=current)
+            continue
+        with _MODULE_COMPLETION_FLIGHTS_GUARD:
+            flight = _MODULE_COMPLETION_FLIGHTS.get(key)
+            if flight is None:
+                flight = {"future": Future(), "attempt_id": uuid4().hex}
+                _MODULE_COMPLETION_FLIGHTS[key] = flight
+                return flight, True, None
+        try:
+            result = _await_completion_flight(flight["future"], campaign_file, expected_epoch)
+            return flight, False, result
+        except LiveProviderSuperseded:
+            # This may be the OLD producer's cancellation, not the accepted
+            # Save's authority. Revalidate the caller before retrying. Never
+            # remove another flight: its finally is the stopped-work proof.
+            _interruptible_wait(0.25, scope, "Finishing the campaign record...",
+                                authority_check=current)
 
 
 def _module_completion_key(
@@ -815,10 +910,17 @@ def _validate_module_archive(
 
 
 def _load_json_dict(path: str) -> Optional[Dict[str, Any]]:
+    from utils.transient_filesystem import (
+        is_transient_filesystem_error, read_bytes_preserving_errors,
+    )
+
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+        payload = json.loads(read_bytes_preserving_errors(path).decode("utf-8"))
+    except OSError as exc:
+        if is_transient_filesystem_error(exc):
+            raise
+        return None
+    except (UnicodeError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
 
@@ -1261,7 +1363,8 @@ def _recover_module_work_locked(
     module_name = _normalize_module_name(module_name)
     if work.get("module_name") != module_name:
         raise OSError("Module-completion work marker identity mismatch")
-    if work.get("operation") != "completion":
+    operation = work.get("operation")
+    if operation not in {"completion", "regeneration"}:
         raise OSError("Module-completion work marker has invalid operation")
     if work.get("status") not in {"generating", "committed"}:
         raise OSError("Module-completion work marker has invalid status")
@@ -1287,6 +1390,12 @@ def _recover_module_work_locked(
         ) from exc
     archive_path = work.get("archive_path")
     archive_fingerprint = work.get("archive_fingerprint")
+    if operation == "regeneration" and (
+        completion_id is not None or archive_path is not None or archive_fingerprint is not None
+    ):
+        # Regeneration reads the original archive; it never owns, publishes,
+        # or removes that archive and cannot issue a new completion receipt.
+        raise OSError("Regeneration work may not publish an archive or receipt")
     if archive_path is not None:
         _validate_module_archive_path(
             archive_path,
@@ -1313,7 +1422,7 @@ def _recover_module_work_locked(
                 )
     elif archive_fingerprint is not None:
         raise OSError("Module-completion work marker has orphan fingerprint")
-    if work.get("status") == "committed" and archive_fingerprint is None:
+    if operation == "completion" and work.get("status") == "committed" and archive_fingerprint is None:
         raise OSError("Committed module-completion work has no archive proof")
 
     summary = _load_json_dict(paths["summary"])
@@ -1446,6 +1555,44 @@ def _campaign_state_directories(
     )
 
 
+def _settle_campaign_completion_work(campaign_file: str, *, wait_callback=None) -> bool:
+    """Follow live work; recover stopped work with existing transaction rules.
+
+    Caller owns no snapshot locks. False asks it to wait outside all locks and
+    try again. This never infers producer death from acquiring a short lock.
+    """
+    summaries, archives = _campaign_state_directories(campaign_file)
+    metadata = _campaign_completion_metadata_dir(campaign_file)
+    with _campaign_transaction_lock(campaign_file, wait_callback=wait_callback):
+        epoch = _load_campaign_lifecycle_epoch(campaign_file)
+        _recover_campaign_completion_transaction_locked(campaign_file, summaries, archives)
+        work_names = sorted(name for name in os.listdir(metadata)
+                            if name.endswith(".work.json")) if os.path.isdir(metadata) else []
+    for name in work_names:
+        work_path = os.path.join(metadata, name)
+        with _campaign_transaction_lock(campaign_file, wait_callback=wait_callback):
+            work = _load_json_dict(work_path)
+            if work is None:
+                if os.path.exists(work_path):
+                    raise OSError("Unreadable completion work at Save boundary")
+                continue
+            module = _normalize_module_name(work.get("module_name"))
+            paths = _module_completion_paths(campaign_file, summaries, module)
+            if os.path.abspath(work_path) != os.path.abspath(paths["work"]):
+                raise OSError("Completion work path does not match its module")
+        try:
+            with _party_module_transition_lock(wait_callback=wait_callback), path_transaction_lock(
+                paths["lock_target"], suffix=".completion.lock",
+                wait_callback=wait_callback,
+            ), _campaign_transaction_lock(campaign_file, wait_callback=wait_callback):
+                if _load_campaign_lifecycle_epoch(campaign_file) != epoch:
+                    raise LiveProviderSuperseded("Save completion settlement was superseded")
+                _recover_module_work_locked(paths, module, archives, campaign_file)
+        except _ModuleCompletionOwnerActive:
+            return False
+    return True
+
+
 def mutate_campaign_state(
     campaign_file: str,
     mutator: Callable[[Dict[str, Any]], bool],
@@ -1454,6 +1601,7 @@ def mutate_campaign_state(
     archives_dir: Optional[str] = None,
     fallback: Optional[Dict[str, Any]] = None,
     write_if_missing: bool = False,
+    wait_callback=None,
 ) -> Tuple[Dict[str, Any], bool]:
     """Recover, fresh-load, mutate, and atomically persist campaign state."""
     canonical_campaign = os.path.abspath(os.path.normpath(campaign_file))
@@ -1462,7 +1610,7 @@ def mutate_campaign_state(
         summaries_dir,
         archives_dir,
     )
-    with _campaign_transaction_lock(canonical_campaign):
+    with _campaign_transaction_lock(canonical_campaign, wait_callback=wait_callback):
         _recover_campaign_completion_transaction_locked(
             canonical_campaign,
             resolved_summaries,
@@ -1701,7 +1849,7 @@ def _ordered_completion_intents(
 class CampaignManager:
     """Manages campaign state and inter-module continuity"""
     
-    def __init__(self):
+    def __init__(self, *, wait_callback=None):
         """Initialize campaign manager"""
         self.campaign_file = "modules/campaign.json"
         self.summaries_dir = "modules/campaign_summaries"
@@ -1715,13 +1863,13 @@ class CampaignManager:
         os.makedirs(self.archives_dir, exist_ok=True)
         
         # Load or create campaign state
-        self.campaign_data = self._load_campaign_data()
+        self.campaign_data = self._load_campaign_data(wait_callback=wait_callback)
 
         # Callers may opt in to module refresh; construction only loads state
         # and resolves an interrupted campaign-completion journal when present.
         self.party_tracker_data = None
     
-    def _load_campaign_data(self) -> Dict[str, Any]:
+    def _load_campaign_data(self, *, wait_callback=None) -> Dict[str, Any]:
         """Recover an interrupted completion, then load or initialize state."""
         campaign, _changed = mutate_campaign_state(
             self.campaign_file,
@@ -1730,6 +1878,7 @@ class CampaignManager:
             archives_dir=self.archives_dir,
             fallback=_default_campaign_data(),
             write_if_missing=True,
+            wait_callback=wait_callback,
         )
         return campaign
     
@@ -2689,15 +2838,18 @@ class CampaignManager:
             _durable_remove(intent_path)
         return result
 
-    def drain_module_completion_intents(self) -> Dict[str, Any]:
+    def drain_module_completion_intents(self, *, wait_callback=None) -> Dict[str, Any]:
         """Drain transitions oldest-first; stop before any failed boundary."""
+        from utils.transient_filesystem import is_transient_filesystem_error
         outcome = {
             "completed": [],
             "cancelled": [],
             "blocked": [],
             "failed": [],
         }
-        with _party_module_transition_lock(), _campaign_transaction_lock(self.campaign_file):
+        with _party_module_transition_lock(wait_callback=wait_callback), _campaign_transaction_lock(
+            self.campaign_file, wait_callback=wait_callback,
+        ):
             try:
                 lifecycle_epoch = _load_campaign_lifecycle_epoch(self.campaign_file)
                 ordered_intents = _ordered_completion_intents(
@@ -2707,6 +2859,8 @@ class CampaignManager:
             except LiveProviderSuperseded:
                 raise
             except Exception as exc:
+                if is_transient_filesystem_error(exc):
+                    raise
                 outcome["failed"].append(
                     {
                         "path": os.path.join(
@@ -2744,6 +2898,8 @@ class CampaignManager:
             except LiveProviderSuperseded:
                 raise
             except Exception as exc:
+                if is_transient_filesystem_error(exc):
+                    raise
                 outcome["failed"].append({"path": intent_path, "error": str(exc)})
                 error(
                     "FAILURE: Could not drain module completion intent "
@@ -2754,6 +2910,7 @@ class CampaignManager:
                 break
         return outcome
 
+    @_completion_execution_authority()
     def complete_module(
         self,
         module_name: str,
@@ -2797,20 +2954,13 @@ class CampaignManager:
             party_snapshot = copy.deepcopy(party_tracker_data)
             history_snapshot = copy.deepcopy(conversation_history)
             plot_snapshot = copy.deepcopy(self._load_module_plot_data(module_name))
-        with _MODULE_COMPLETION_FLIGHTS_GUARD:
-            flight = _MODULE_COMPLETION_FLIGHTS.get(key)
-            if flight is None:
-                flight = {"future": Future(), "attempt_id": uuid4().hex}
-                _MODULE_COMPLETION_FLIGHTS[key] = flight
-                is_leader = True
-            else:
-                is_leader = False
-            completion = flight["future"]
+        flight, is_leader, joined_result = _claim_completion_flight(
+            key, self.campaign_file, expected_lifecycle_epoch,
+        )
+        completion = flight["future"]
 
         if not is_leader:
-            result = copy.deepcopy(_await_completion_flight(
-                completion, self.campaign_file, expected_lifecycle_epoch,
-            ))
+            result = copy.deepcopy(joined_result)
             # The leader can finish immediately before a restore/reset wins
             # the lifecycle boundary. A joined caller must re-linearize its
             # own return rather than blindly returning the Future payload from
@@ -2850,16 +3000,39 @@ class CampaignManager:
                 return result
 
         try:
-            result = self._complete_module_once(
-                module_name,
-                party_snapshot,
-                history_snapshot,
-                completion_paths=completion_paths,
-                pre_lock_snapshot=pre_lock_snapshot,
-                completion_id=completion_id,
-                expected_lifecycle_epoch=expected_lifecycle_epoch,
-                _plot_data=plot_snapshot,
+            from utils.capture.live_provider_call import (
+                _check_live_authority, _interruptible_wait, get_live_provider_scope,
             )
+            scope = get_live_provider_scope()
+
+            def current():
+                return _load_campaign_lifecycle_epoch(self.campaign_file) == expected_lifecycle_epoch
+
+            while True:
+                try:
+                    _check_live_authority(scope, current)
+                except OSError:
+                    _interruptible_wait(0.25, scope, "Checking the campaign record...",
+                                        authority_check=current)
+                    continue
+                try:
+                    result = self._complete_module_once(
+                        module_name,
+                        party_snapshot,
+                        history_snapshot,
+                        completion_paths=completion_paths,
+                        pre_lock_snapshot=pre_lock_snapshot,
+                        completion_id=completion_id,
+                        expected_lifecycle_epoch=expected_lifecycle_epoch,
+                        _plot_data=plot_snapshot,
+                        _producer_attempt=flight["attempt_id"],
+                    )
+                    break
+                except _ModuleCompletionOwnerActive:
+                    # _complete_module_once unwinds its short locks before
+                    # this wait. Live/unknown work is followed, never stolen.
+                    _interruptible_wait(0.25, scope, "Finishing the campaign record...",
+                                        authority_check=current)
         except BaseException as exc:
             completion.set_exception(exc)
             raise
@@ -2867,6 +3040,16 @@ class CampaignManager:
             completion.set_result(copy.deepcopy(result))
             return result
         finally:
+            try:
+                _relinquish_completion_attempt(
+                    self.campaign_file, completion_paths, module_name, "completion",
+                    expected_lifecycle_epoch, flight["attempt_id"],
+                )
+            except Exception as exc:
+                # Registry removal still proves this process's attempt stopped.
+                # A locked/unreadable record is retained for normal recovery.
+                warning(f"Could not relinquish module completion work: {exc}",
+                        category="summary_building")
             with _MODULE_COMPLETION_FLIGHTS_GUARD:
                 if _MODULE_COMPLETION_FLIGHTS.get(key) is flight:
                     del _MODULE_COMPLETION_FLIGHTS[key]
@@ -2881,6 +3064,7 @@ class CampaignManager:
         completion_id: Optional[str] = None,
         expected_lifecycle_epoch: Optional[str] = None,
         _plot_data: Any = _SUMMARY_PLOT_UNSET,
+        _producer_attempt: Optional[str] = None,
     ) -> Dict[str, Any]:
         module_name = _normalize_module_name(module_name)
         completion_id = _normalize_completion_id(completion_id)
@@ -2891,10 +3075,18 @@ class CampaignManager:
         )
         if pre_lock_snapshot is None:
             pre_lock_snapshot = _completion_snapshot(paths, module_name)
-        with path_transaction_lock(
-            paths["lock_target"],
-            suffix=".completion.lock",
-        ):
+        producer = _completion_process_observation(os.getpid())
+        if producer is None or not producer["alive"]:
+            raise _ModuleCompletionOwnerActive()
+        if not _producer_attempt:
+            raise ValueError("Completion generation requires a registered attempt")
+        producer = {**{key: producer[key] for key in ("backend", "pid", "created")},
+                    "attempt_id": _producer_attempt}
+        with ExitStack() as phase_locks:
+            phase_locks.enter_context(_party_module_transition_lock())
+            phase_locks.enter_context(path_transaction_lock(
+                paths["lock_target"], suffix=".completion.lock",
+            ))
             # A worker for any module can recover a process that died while
             # holding the campaign-wide commit lock.  The per-module work
             # marker then distinguishes an orphan archive from a completed
@@ -3038,16 +3230,22 @@ class CampaignManager:
                     "archive_fingerprint": None,
                     "started_at": datetime.now().isoformat(),
                 }
-                with _campaign_transaction_lock(self.campaign_file):
-                    current_lifecycle_epoch = _load_campaign_lifecycle_epoch(
-                        self.campaign_file
-                    )
-                    if current_lifecycle_epoch != expected_lifecycle_epoch:
-                        raise LiveProviderSuperseded(
-                            "Campaign timeline changed before module completion began"
-                        )
-                    _durable_write_json(paths["work"], work)
                 archive_path = None
+            with _campaign_transaction_lock(self.campaign_file):
+                if _load_campaign_lifecycle_epoch(self.campaign_file) != expected_lifecycle_epoch:
+                    raise LiveProviderSuperseded(
+                        "Campaign timeline changed before module completion began"
+                    )
+                if isinstance(resumed_work, dict):
+                    if _read_completion_work_for_pending(
+                        {**work, "work_path": paths["work"], "campaign_path": self.campaign_file},
+                        work,
+                    ) is None:
+                        raise LiveProviderSuperseded("Completion resume lost its work record")
+                work["ownership"] = {
+                    "version": 1, "epoch": expected_lifecycle_epoch, "producer": producer,
+                }
+                _durable_write_json(paths["work"], work)
             try:
                 if not isinstance(resumed_work, dict):
                     archive_result = self._archive_conversation_history(
@@ -3067,6 +3265,7 @@ class CampaignManager:
                         work["archive_path"] = archive_path
                         _checkpoint_completion_work(self.campaign_file, paths["work"], work)
 
+                phase_locks.close()
                 if not isinstance(summary, dict):
                     resume_t038_summary_text = work.get("t038_summary_text")
 
@@ -3085,6 +3284,7 @@ class CampaignManager:
                         _resume_t038_summary_text=resume_t038_summary_text,
                         _t038_checkpoint=checkpoint_t038,
                         _plot_data=_plot_data,
+                        _expected_lifecycle_epoch=expected_lifecycle_epoch,
                     )
                     # Persist the combined T038/T039 output immediately. A
                     # same-ID retry can resume locally after a crash; the
@@ -3096,6 +3296,10 @@ class CampaignManager:
                     )
                     _checkpoint_completion_work(self.campaign_file, paths["work"], work)
 
+                phase_locks.enter_context(_party_module_transition_lock())
+                phase_locks.enter_context(path_transaction_lock(
+                    paths["lock_target"], suffix=".completion.lock",
+                ))
                 with _campaign_transaction_lock(self.campaign_file):
                     if _load_campaign_lifecycle_epoch(
                         self.campaign_file
@@ -3460,6 +3664,7 @@ class CampaignManager:
                 category="file_operations",
             )
     
+    @_completion_execution_authority()
     def _generate_module_summary(
         self,
         module_name: str,
@@ -3469,8 +3674,14 @@ class CampaignManager:
         _resume_t038_summary_text: Optional[str] = None,
         _t038_checkpoint: Optional[Callable[[str], None]] = None,
         _plot_data: Any = _SUMMARY_PLOT_UNSET,
+        _expected_lifecycle_epoch: Any = _LIFECYCLE_EPOCH_UNSET,
     ) -> Dict[str, Any]:
         """Generate AI-powered module summary"""
+        if _expected_lifecycle_epoch is _LIFECYCLE_EPOCH_UNSET:
+            authority_check = None
+        else:
+            def authority_check():
+                return _load_campaign_lifecycle_epoch(self.campaign_file) == _expected_lifecycle_epoch
         # Archive full conversation history before summarization (unless skipped for delayed archiving)
         if not skip_archiving:
             if not self._archive_conversation_history(
@@ -3642,6 +3853,8 @@ Focus on story outcomes, character development, and decisions that will matter i
 
             if _resume_t038_summary_text is None:
                 response = capture_and_fanout("T038", api_client.create_completion,
+                    _live_selected="required",
+                    _live_authority_check=authority_check,
                     _request_provider=MODEL_PROVIDER,
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -3663,6 +3876,10 @@ Focus on story outcomes, character development, and decisions that will matter i
                 except LiveProviderSuperseded:
                     raise
                 except Exception as checkpoint_exc:
+                    from utils.transient_filesystem import is_transient_filesystem_error
+
+                    if is_transient_filesystem_error(checkpoint_exc):
+                        raise
                     raise _ModuleCompletionCheckpointError(
                         "Could not durably checkpoint T038 output"
                     ) from checkpoint_exc
@@ -3697,6 +3914,8 @@ Focus on story outcomes, character development, and decisions that will matter i
             export_source = "provider"
             try:
                 export_response = capture_and_fanout("T039", api_client.create_completion,
+                    _live_selected="required",
+                    _live_authority_check=authority_check,
                     _request_provider=MODEL_PROVIDER,
                     messages=[
                         {"role": "system", "content": "Extract campaign-relevant data from module completion summary. Be concise and factual."},
@@ -3750,6 +3969,10 @@ Focus on story outcomes, character development, and decisions that will matter i
         except (LiveProviderSuperseded, _ModuleCompletionCheckpointError):
             raise
         except Exception as e:
+            from utils.transient_filesystem import is_transient_filesystem_error
+
+            if is_transient_filesystem_error(e):
+                raise
             error(f"FAILURE: Error generating module summary", exception=e, category="summary_building")
             # Fallback summary -- INT-H6: persist summary_failed sentinel so
             # downstream callers (and operators) can detect the gap and
@@ -3775,8 +3998,15 @@ Focus on story outcomes, character development, and decisions that will matter i
                 "importantNPCs": {}
             }
 
+    @_completion_execution_authority()
     def regenerate_failed_summary(self, module_name: str) -> bool:
-        """Serialize one regeneration with completions for the same module."""
+        """Repair a summary with short mutation phases and owned generation."""
+        from utils.transient_filesystem import is_transient_filesystem_error
+        from utils.capture.live_provider_call import (
+            _interruptible_wait, get_live_provider_scope,
+        )
+
+        scope = get_live_provider_scope()
         campaign_file = getattr(self, "campaign_file", None)
         if not campaign_file or not hasattr(self, "campaign_data"):
             return self._regenerate_failed_summary_locked(module_name)
@@ -3786,34 +4016,84 @@ Focus on story outcomes, character development, and decisions that will matter i
             self.summaries_dir,
             module_name,
         )
-        try:
-            with path_transaction_lock(
-                paths["lock_target"],
-                suffix=".completion.lock",
-            ):
+        module_name = _normalize_module_name(module_name)
+        while True:
+            try:
                 with _campaign_transaction_lock(campaign_file):
-                    _recover_campaign_completion_transaction_locked(
-                        campaign_file,
-                        self.summaries_dir,
-                        self.archives_dir,
-                    )
-                    persisted_campaign = _load_json_dict(campaign_file)
-                    if persisted_campaign is not None:
-                        self.campaign_data = persisted_campaign
-                    expected_lifecycle_epoch = _load_campaign_lifecycle_epoch(
-                        campaign_file
-                    )
-                    _recover_module_work_locked(
-                        paths,
-                        module_name,
-                        self.archives_dir,
-                        campaign_file,
-                    )
-                return self._regenerate_failed_summary_locked(
-                    module_name,
-                    expected_lifecycle_epoch=expected_lifecycle_epoch,
-                )
-        except LiveProviderSuperseded:
+                    expected_lifecycle_epoch = _load_campaign_lifecycle_epoch(campaign_file)
+                break
+            except OSError as exc:
+                if not is_transient_filesystem_error(exc):
+                    raise
+                _interruptible_wait(0.25, scope, "Checking the campaign record...")
+        # Distinct operation in the existing registry; the same on-disk module
+        # work record still serializes completion against regeneration.
+        key = (*_module_completion_key(campaign_file, module_name), "regeneration")
+        flight, leader, joined_result = _claim_completion_flight(
+            key, campaign_file, expected_lifecycle_epoch,
+        )
+        if not leader:
+            return joined_result
+        try:
+            from utils.capture.live_provider_call import (
+                _check_live_authority, _interruptible_wait, get_live_provider_scope,
+            )
+            scope = get_live_provider_scope()
+
+            def current():
+                return _load_campaign_lifecycle_epoch(campaign_file) == expected_lifecycle_epoch
+
+            while True:
+                try:
+                    _check_live_authority(scope, current)
+                except OSError:
+                    _interruptible_wait(0.25, scope, "Checking the campaign record...",
+                                        authority_check=current)
+                    continue
+                producer_attempt = flight["attempt_id"]
+                try:
+                    with ExitStack() as phase_locks:
+                        phase_locks.enter_context(_party_module_transition_lock())
+                        phase_locks.enter_context(path_transaction_lock(
+                            paths["lock_target"], suffix=".completion.lock",
+                        ))
+                        with _campaign_transaction_lock(campaign_file):
+                            _check_live_authority(scope, current)
+                            _recover_campaign_completion_transaction_locked(
+                                campaign_file, self.summaries_dir, self.archives_dir,
+                            )
+                            persisted_campaign = _load_json_dict(campaign_file)
+                            if persisted_campaign is not None:
+                                self.campaign_data = persisted_campaign
+                            _recover_module_work_locked(
+                                paths, module_name, self.archives_dir, campaign_file,
+                            )
+                        result = self._regenerate_failed_summary_locked(
+                            module_name,
+                            expected_lifecycle_epoch=expected_lifecycle_epoch,
+                            _phase_locks=phase_locks,
+                            _work_paths=paths,
+                            _producer_attempt=producer_attempt,
+                        )
+                    break
+                except _ModuleCompletionOwnerActive:
+                    _interruptible_wait(0.25, scope, "Finishing the campaign record...",
+                                        authority_check=current)
+                except OSError as exc:
+                    if not is_transient_filesystem_error(exc):
+                        raise
+                    # The producer body and its reap-finally have returned.
+                    # Retire this stopped attempt even if file contention
+                    # prevented clearing its on-disk owner. Keep the logical
+                    # flight and its Future so existing joiners stay attached.
+                    with _MODULE_COMPLETION_FLIGHTS_GUARD:
+                        if (_MODULE_COMPLETION_FLIGHTS.get(key) is flight
+                                and flight["attempt_id"] == producer_attempt):
+                            flight["attempt_id"] = uuid4().hex
+                    _interruptible_wait(0.25, scope, "Checking the campaign record...",
+                                        authority_check=current)
+        except LiveProviderSuperseded as exc:
+            flight["future"].set_exception(exc)
             raise
         except Exception as exc:
             error(
@@ -3821,12 +4101,26 @@ Focus on story outcomes, character development, and decisions that will matter i
                 exception=exc,
                 category="summary_building",
             )
+            flight["future"].set_result(False)
             return False
+        except BaseException as exc:
+            flight["future"].set_exception(exc)
+            raise
+        else:
+            flight["future"].set_result(result)
+            return result
+        finally:
+            with _MODULE_COMPLETION_FLIGHTS_GUARD:
+                if _MODULE_COMPLETION_FLIGHTS.get(key) is flight:
+                    del _MODULE_COMPLETION_FLIGHTS[key]
 
     def _regenerate_failed_summary_locked(
         self,
         module_name: str,
         expected_lifecycle_epoch: Any = _LIFECYCLE_EPOCH_UNSET,
+        _phase_locks=None,
+        _work_paths=None,
+        _producer_attempt=None,
     ) -> bool:
         """Retry a failed T038 summary or a partial T039 export.
 
@@ -3847,6 +4141,7 @@ Focus on story outcomes, character development, and decisions that will matter i
             False if no failed summary exists, or if regeneration also
             failed (the on-disk file is left untouched on failure).
         """
+        work = None
         try:
             summary_file = os.path.join(
                 self.summaries_dir, f"{module_name}_summary_001.json"
@@ -3858,7 +4153,7 @@ Focus on story outcomes, character development, and decisions that will matter i
                 )
                 return False
 
-            existing = safe_json_load(summary_file)
+            existing = _load_json_dict(summary_file)
             if not existing:
                 warning(
                     f"FILE_OP: Could not load summary {summary_file} for regeneration",
@@ -3890,7 +4185,7 @@ Focus on story outcomes, character development, and decisions that will matter i
                 )
                 return False
 
-            archive_data = safe_json_load(archive_files[-1])
+            archive_data = _load_json_dict(archive_files[-1])
             if not archive_data:
                 error(
                     f"FAILURE: Could not load archive {archive_files[-1]} "
@@ -3904,12 +4199,42 @@ Focus on story outcomes, character development, and decisions that will matter i
             # so we fall back to the live root file if present.
             party_tracker_data = {}
             if os.path.exists("party_tracker.json"):
-                loaded = safe_json_load("party_tracker.json")
+                loaded = _load_json_dict("party_tracker.json")
                 if loaded:
                     party_tracker_data = loaded
 
             # Retry generation. skip_archiving=True because the original
             # completion already wrote the archive.
+            plot_snapshot = copy.deepcopy(self._load_module_plot_data(module_name))
+            if _phase_locks is not None:
+                producer = _completion_process_observation(os.getpid())
+                if producer is None or not producer["alive"]:
+                    raise _ModuleCompletionOwnerActive()
+                if not _producer_attempt:
+                    raise ValueError("Regeneration requires a registered attempt")
+                work = {
+                    "version": _CAMPAIGN_COMPLETION_TRANSACTION_VERSION,
+                    "transaction_id": uuid4().hex,
+                    "module_name": module_name,
+                    "operation": "regeneration",
+                    "status": "generating",
+                    "completion_id": None,
+                    "archive_path": None,
+                    "archive_fingerprint": None,
+                    "started_at": datetime.now().isoformat(),
+                    "ownership": {
+                        "version": 1, "epoch": expected_lifecycle_epoch,
+                        "producer": {
+                            **{key: producer[key] for key in ("backend", "pid", "created")},
+                            "attempt_id": _producer_attempt,
+                        },
+                    },
+                }
+                with _campaign_transaction_lock(self.campaign_file):
+                    if _load_campaign_lifecycle_epoch(self.campaign_file) != expected_lifecycle_epoch:
+                        raise LiveProviderSuperseded("Regeneration input capture was superseded")
+                    _durable_write_json(_work_paths["work"], work)
+                _phase_locks.close()
             info(
                 f"STATE_CHANGE: Retrying summary generation for {module_name}",
                 category="summary_building",
@@ -3919,6 +4244,8 @@ Focus on story outcomes, character development, and decisions that will matter i
                 party_tracker_data,
                 conversation_history,
                 skip_archiving=True,
+                _expected_lifecycle_epoch=expected_lifecycle_epoch,
+                _plot_data=plot_snapshot,
             )
 
             if new_summary.get("summary_failed") or new_summary.get(
@@ -3949,6 +4276,11 @@ Focus on story outcomes, character development, and decisions that will matter i
                 if not safe_write_json(summary_file, new_summary):
                     return False
             else:
+                if _phase_locks is not None:
+                    _phase_locks.enter_context(_party_module_transition_lock())
+                    _phase_locks.enter_context(path_transaction_lock(
+                        _work_paths["lock_target"], suffix=".completion.lock",
+                    ))
                 with _campaign_transaction_lock(campaign_file):
                     if (
                         expected_lifecycle_epoch
@@ -3959,7 +4291,7 @@ Focus on story outcomes, character development, and decisions that will matter i
                         raise LiveProviderSuperseded(
                             "Campaign timeline changed during summary regeneration",
                         )
-                    latest = safe_json_load(summary_file)
+                    latest = _load_json_dict(summary_file)
                     if not isinstance(latest, dict):
                         return False
                     if not (
@@ -3977,10 +4309,20 @@ Focus on story outcomes, character development, and decisions that will matter i
                     new_summary["regeneratedFromFingerprint"] = (
                         _json_fingerprint(latest)
                     )
+                    commit_work = {}
+                    if work is not None:
+                        work["summary_fingerprint"] = _json_fingerprint(new_summary)
+                        _checkpoint_completion_work(campaign_file, _work_paths["work"], work)
+                        commit_work = {
+                            "transaction_id": work["transaction_id"],
+                            "work_path": _work_paths["work"],
+                            "expected_work": copy.deepcopy(work),
+                        }
                     self._commit_module_summary_locked(
                         module_name,
                         new_summary,
                         operation="regeneration",
+                        **commit_work,
                     )
 
             info(
@@ -3988,14 +4330,35 @@ Focus on story outcomes, character development, and decisions that will matter i
                 category="summary_building",
             )
             return True
-        except LiveProviderSuperseded:
+        except (LiveProviderSuperseded, _ModuleCompletionOwnerActive):
             raise
         except Exception as e:
+            from utils.transient_filesystem import is_transient_filesystem_error
+
+            if is_transient_filesystem_error(e):
+                raise
             error(
                 f"FAILURE: regenerate_failed_summary error for {module_name}",
                 exception=e, category="summary_building",
             )
             return False
+        finally:
+            if work is not None:
+                # Provider execution has returned through its reap-finally.
+                # Relinquish only our record; never touch the original archive.
+                try:
+                    with _campaign_transaction_lock(self.campaign_file):
+                        authority = {**work, "work_path": _work_paths["work"],
+                                     "campaign_path": self.campaign_file}
+                        latest_work = _read_completion_work_for_pending(authority, work)
+                        if latest_work is not None:
+                            latest_work["ownership"]["producer"] = None
+                            _durable_write_json(_work_paths["work"], latest_work)
+                except LiveProviderSuperseded:
+                    raise
+                except Exception as exc:
+                    warning(f"Could not relinquish summary regeneration work: {exc}",
+                            category="summary_building")
 
     def _handle_module_completion_export(
         self,
@@ -4146,6 +4509,10 @@ Focus on story outcomes, character development, and decisions that will matter i
         except LiveProviderSuperseded:
             raise
         except Exception as e:
+            from utils.transient_filesystem import is_transient_filesystem_error
+
+            if is_transient_filesystem_error(e):
+                raise
             warning(
                 f"FAILURE: Failed to archive conversation history for "
                 f"{module_name}: {e}",

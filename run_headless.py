@@ -25,9 +25,11 @@ Exit codes: 0 clean (player_exit / engine_stop / restart), 2 engine error,
 import argparse
 import json
 import os
+import queue
 import sys
 import threading
 import time
+from uuid import uuid4
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if REPO_ROOT not in sys.path:
@@ -54,9 +56,13 @@ class ServeDriver:
     def __init__(self, real_stdin):
         self._real_stdin = real_stdin
         self._session = None
+        self._commands = queue.Queue()
+        self._closed = threading.Event()
 
     def on_event(self, event):
-        pass
+        if event.get("type") == "exit":
+            self._closed.set()
+            self._commands.put(None)
 
     def attach(self, session):
         self._session = session
@@ -74,14 +80,15 @@ class ServeDriver:
     def _read_loop(self):
         try:
             for line in self._real_stdin:
+                if self._closed.is_set():
+                    break
                 self._dispatch_line(line)
         except Exception:
             pass
-        # Agent closed our stdin: treat as quit.
-        try:
-            self._session.request_quit()
-        except Exception:
-            pass
+        finally:
+            # EOF follows the same FIFO as explicit Quit, never bypassing Save.
+            self._queue_message({"type": "command", "name": "quit",
+                                 "id": "headless-eof-" + uuid4().hex})
 
     def _dispatch_line(self, line):
         message, parse_error = parse_command_line(line)
@@ -91,13 +98,45 @@ class ServeDriver:
             return
         if message is None:
             return
+        self._queue_message(message)
+
+    def _queue_message(self, message):
+        if self._closed.is_set():
+            return
+        if message["type"] == "command":
+            identity = {}
+            if message["name"] == "quit":
+                supplied_id = message.get("id")
+                operation_id = str(supplied_id) if supplied_id is not None else ""
+                operation_id = operation_id or uuid4().hex
+                message["_quit_operation_id"] = operation_id
+                identity["operation_id"] = operation_id
+                self._session.note_received_quit(operation_id)
+            self._session.writer.emit(
+                "operation", id=message.get("id"), name=message["name"],
+                status="received", **identity,
+            )
+        self._commands.put(message)
+
+    def _dispatch_message(self, message):
         if message["type"] == "input":
             self._session.dispatch_input(message["content"])
         else:
             self._session.handle_command(message)
 
     def wait(self, done, last_activity, timeout_per_turn=None):
-        done.wait()
+        # Use this existing runner thread, not the stdin reader, for waits and
+        # mutation. Receipt remains live while one command is being executed.
+        while not done.is_set() and not self._closed.is_set():
+            message = self._commands.get()
+            if message is None or done.is_set() or self._closed.is_set():
+                break
+            try:
+                self._dispatch_message(message)
+            except Exception:
+                self._session.request_quit()
+                done.wait()
+                break
         return None  # exit code comes from the exit event reason
 
 
@@ -353,7 +392,21 @@ def cmd_saves(args):
         ok, message = manager.create_save_game(
             description=args.description, save_mode=args.save_mode)
     elif args.saves_action == "restore":
-        ok, message = manager.restore_save_game(args.save_folder)
+        outcome = manager.restore_save_game_outcome(args.save_folder)
+        ok = outcome.disposition == "selected_applied"
+        print(json.dumps({
+            "ok": ok,
+            "message": outcome.message,
+            "restore_outcome": outcome.disposition,
+            "can_resume": outcome.can_resume,
+            "session_running": False,
+            "next_action": (
+                "Start the game to resume the verified clean state."
+                if outcome.can_resume else
+                "Load an existing clean save or perform a confirmed Reset before starting gameplay."
+            ),
+        }))
+        return EXIT_OK if ok else EXIT_ENGINE_ERROR
     else:  # delete
         ok, message = manager.delete_save_game(args.save_folder)
     print(json.dumps({"ok": bool(ok), "message": message}))

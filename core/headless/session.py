@@ -24,6 +24,7 @@ the completed turn.
 import os
 import queue
 import threading
+import time
 import traceback
 from uuid import uuid4
 
@@ -66,6 +67,10 @@ class HeadlessSession:
         self._exit_lock = threading.Lock()
         self._exit_emitted = False
         self._restart_in_progress = threading.Event()
+        self._recovery_required = False
+        self._restore_manager = None
+        self._preflight_guard = threading.Lock()
+        self._received_quit_id = None
         self._engine_thread = None
         self._stdout_shim = None
         self._raw_log = None
@@ -197,7 +202,22 @@ class HeadlessSession:
         reason = "engine_stop"
         detail = None
         try:
-            self._dm_main.main_game_loop()
+            from updates.save_game_manager import RestoreRequest
+            handoff = self._dm_main.main_game_loop()
+            if isinstance(handoff, RestoreRequest):
+                self._restart_in_progress.set()
+                self._quitting = True
+                self.prompt_pending.clear()
+                self._restore_manager = handoff.manager
+
+                def publish_restore(_ok, data=None, error=None):
+                    self.writer.emit('system', content=data['message'],
+                                     restore_outcome=data['restore_outcome'],
+                                     can_resume=data['can_resume'])
+                    self._on_status(data['message'], False)
+
+                outcome = self._apply_restore(handoff.manager, handoff.save_folder)
+                self._finish_restore(outcome, handoff.manager, publish_restore)
         except (EOFError, SystemExit):
             reason = "player_exit"
         except BaseException as exc:
@@ -276,12 +296,15 @@ class HeadlessSession:
         # Raw text already went to the mirror log regardless.
 
     def _on_status(self, message, is_processing):
+        if self._recovery_required and not is_processing:
+            message = "Gameplay is paused. Choose a save to Load, Reset, or Quit."
         status_key = (str(message), bool(is_processing))
         if status_key == self._last_status:
             return
         self._last_status = status_key
         self.writer.emit("status", message=message,
-                         is_processing=bool(is_processing))
+                         is_processing=bool(is_processing),
+                         recovery_required=self._recovery_required)
 
     def _on_compression(self, event_type, data):
         try:
@@ -348,7 +371,7 @@ class HeadlessSession:
     def _on_prompt(self):
         # Runs on the engine thread from inside readline(), i.e. the engine
         # is idle and its post-turn saves are on disk.
-        if self._quitting:
+        if self._quitting or self._recovery_required:
             return
         pending = ""
         if self._stdout_shim is not None:
@@ -374,8 +397,55 @@ class HeadlessSession:
     # -- runner-side API ---------------------------------------------------
 
     def dispatch_input(self, content):
+        if self._recovery_required or self._restart_in_progress.is_set():
+            self.writer.emit(
+                "result", id=None, ok=False,
+                error=(
+                    "Choose a save to Load, Reset, or Quit before continuing play."
+                    if self._recovery_required else
+                    "Load or Reset is in progress; wait for its result before continuing."
+                ),
+            )
+            return
         self.prompt_pending.clear()
         self.input_queue.put(content)
+
+    def _finish_restore(self, outcome, manager, result):
+        """Publish verified disk truth without terminating recovery command intake."""
+        self._recovery_required = not outcome.can_resume
+        # Preserve the original save-root context even if failed copying changed
+        # party_tracker. This stays process-local; it is not a crash manifest.
+        self._restore_manager = manager if self._recovery_required else None
+        self._restart_in_progress.set()
+        self._quitting = True
+        self.prompt_pending.clear()
+        self.input_queue.put(EOF_SENTINEL)
+        selected = outcome.disposition == "selected_applied"
+        result(
+            selected,
+            data={
+                "message": outcome.message,
+                "restore_outcome": outcome.disposition,
+                "can_resume": outcome.can_resume,
+            },
+            error=None if selected else outcome.message,
+        )
+        if outcome.can_resume:
+            self.emit_exit("restart", "clean game state available; relaunch the session")
+        # No exit when recovery is required: ServeDriver remains able to accept
+        # list/Load/Reset/Quit. A welcome handback calls this on the engine thread,
+        # so it must return, never join or await its own quiescence.
+
+    def _apply_restore(self, manager, folder):
+        from updates.save_game_manager import RestoreOutcome
+
+        try:
+            return manager.restore_save_game_outcome(
+                folder, previous_clean=not self._recovery_required
+            )
+        except Exception as exc:
+            # Unexpected manager failure provides no verified disk outcome.
+            return RestoreOutcome("recovery_required", str(exc))
 
     def _wait_for_scope_quiescence(self, scopes, operation_name):
         """Wait without a deadline while one lifecycle status remains visible."""
@@ -451,29 +521,61 @@ class HeadlessSession:
             self._on_status("Quit complete", False)
         self.input_queue.put(EOF_SENTINEL)
 
+        if kind == "quit" and self._recovery_required:
+            if self._engine_thread is not None:
+                self._engine_thread.join()
+            self.emit_exit("player_exit", "player quit")
+
+    def note_received_quit(self, operation_id):
+        """Signal read-only preflight only; actual Quit still executes FIFO."""
+        with self._preflight_guard:
+            if self._received_quit_id is None:
+                self._received_quit_id = operation_id
+
+    def _check_preflight_quit(self):
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+
+        with self._preflight_guard:
+            cancelled = self._received_quit_id is not None
+        if cancelled:
+            raise LiveProviderSuperseded("Load validation cancelled by Quit")
+
     def handle_command(self, command):
         command_id = command.get("id")
         name = command.get("name")
         args = command.get("args") or {}
 
-        def result(ok, data=None, error=None):
+        def result(ok, data=None, error=None, terminal=None):
             payload = {"id": command_id, "ok": ok}
             if data is not None:
                 payload["data"] = data
             if error is not None:
                 payload["error"] = error
             self.writer.emit("result", **payload)
-            if name in ("restore", "reset"):
-                label = "Load" if name == "restore" else "Reset"
-                terminal = "complete" if ok else "failed"
-                self._on_status("%s %s" % (label, terminal), False)
+            if name in ("save", "restore", "reset"):
+                from utils.capture.live_provider_call import get_lifecycle_turn_scopes
+
+                label = {"save": "Save", "restore": "Load", "reset": "Reset"}[name]
+                terminal = terminal or ("complete" if ok else "failed")
+                still_working = any(
+                    not scope.quiescent.is_set()
+                    for scope in get_lifecycle_turn_scopes()
+                )
+                if name == "save":
+                    from utils.capture.live_provider_call import get_active_welcome_scope
+
+                    welcome = get_active_welcome_scope()
+                    still_working = still_working or not self.prompt_pending.is_set() or (
+                        welcome is not None and not welcome.quiescent.is_set()
+                    )
+                self._on_status("%s %s" % (label, terminal), still_working)
 
         if name == "state":
             result(True, data=build_snapshot())
             return
         if name == "quit":
             result(True)
-            self.request_quit()
+            self.request_quit(operation_id=command.get("_quit_operation_id", command_id))
             return
         if name == "reset":
             if args.get("confirmed") is not True:
@@ -490,8 +592,11 @@ class HeadlessSession:
                 if self._engine_thread is not None:
                     self._engine_thread.join()
                 from utils.reset_campaign import perform_reset_logic
+                from updates.save_game_manager import SaveGameManager
 
+                self._restore_manager = self._restore_manager or SaveGameManager()
                 backup_dir = perform_reset_logic()
+                self._recovery_required = False
                 result(
                     True,
                     data={
@@ -501,8 +606,12 @@ class HeadlessSession:
                 )
                 self.emit_exit("restart", "campaign reset; relaunch the session")
             except Exception as exc:
+                self._recovery_required = True
                 result(False, error="%s: %s" % (type(exc).__name__, exc))
-                self.emit_exit("error", "campaign reset failed")
+            return
+
+        if self._recovery_required and name not in ("list_saves", "restore"):
+            result(False, error="Choose a save to Load, Reset, or Quit before continuing play.")
             return
 
         from utils.capture.live_provider_call import (
@@ -518,18 +627,39 @@ class HeadlessSession:
         # (Reset needs no welcome branch: it quits+joins the engine first,
         # and request_quit already supersedes/quiesces a pending welcome.)
         welcome_scope = get_active_welcome_scope()
+        if name == "restore" and live_scope is None and welcome_scope is None:
+            # A scope can disappear before its engine publishes the next prompt
+            # (or exits). Keep this same command until one of those authoritative
+            # boundaries exists, rather than losing it to the old busy refusal.
+            wait_started = time.monotonic()
+            while (
+                not self._recovery_required
+                and not self.prompt_pending.is_set()
+                and self._engine_thread is not None
+                and self._engine_thread.is_alive()
+            ):
+                turn_scopes = get_lifecycle_turn_scopes()
+                live_scope = turn_scopes[0] if turn_scopes else None
+                welcome_scope = get_active_welcome_scope()
+                if live_scope is not None or welcome_scope is not None:
+                    break
+                self._on_status(
+                    "Load is waiting for the current game boundary (%ds)"
+                    % int(time.monotonic() - wait_started), True,
+                )
+                self._engine_thread.join(timeout=0.5)
         busy_persistence = (
             name == "delete_save"
-            or (name in ("save", "restore") and live_scope is None)
+            or (name == "save" and live_scope is None)
         )
-        if busy_persistence and not self.prompt_pending.is_set():
+        if busy_persistence and not self.prompt_pending.is_set() and not self._recovery_required:
             result(False, error="engine is busy; wait for the next prompt "
                                 "event before %s" % name)
             return
 
         try:
             from updates.save_game_manager import SaveGameManager
-            manager = SaveGameManager()
+            manager = self._restore_manager or SaveGameManager()
             if name == "list_saves":
                 result(True, data=manager.list_save_games())
             elif name == "save":
@@ -666,23 +796,31 @@ class HeadlessSession:
                 if not folder:
                     result(False, error="restore requires args.save_folder")
                     return
-                live_preflight_announced = False
-                if live_scope is not None and welcome_scope is None:
-                    self._on_status("Load is starting safely", True)
-                    live_preflight_announced = True
+                self._on_status("Load is starting safely", True)
+                from utils.capture.live_provider_call import LiveProviderSuperseded
+
+                try:
                     valid, validation_error = manager.validate_restore_target(
                         folder,
                         include_manifest=True,
+                        cancel_check=self._check_preflight_quit,
                     )
-                    if not valid:
-                        result(False, error=validation_error)
-                        return
-                    # Validation may overlap the exact turn boundary. Re-read
-                    # authority before reserving the restart terminal so a
-                    # completed scope follows the ordinary idle path.
-                    turn_scopes = get_lifecycle_turn_scopes()
-                    live_scope = turn_scopes[0] if turn_scopes else None
-                    welcome_scope = get_active_welcome_scope()
+                except LiveProviderSuperseded:
+                    result(False, data={
+                        "status": "cancelled",
+                        "cancelled_by_operation_id": self._received_quit_id,
+                        "state_changed": False,
+                        "message": "Load cancelled before changing the game; Quit is queued.",
+                    }, terminal="cancelled")
+                    return
+                if not valid:
+                    result(False, error=validation_error)
+                    return
+                # Validation is read-only and may overlap a turn boundary.
+                # Only now can the current scope reserve destructive work.
+                turn_scopes = get_lifecycle_turn_scopes()
+                live_scope = turn_scopes[0] if turn_scopes else None
+                welcome_scope = get_active_welcome_scope()
                 if live_scope is not None and welcome_scope is None:
                     from utils.capture.live_provider_call import (
                         request_live_turn_supersession,
@@ -718,18 +856,13 @@ class HeadlessSession:
                         )
                     else:
                         if operation is None:
-                            current_scopes = get_lifecycle_turn_scopes()
-                            with live_scope.lock:
-                                captured_closing = (
-                                    not live_scope.controls_open
-                                    or live_scope.quiescent.is_set()
-                                )
-                            if live_scope in current_scopes and captured_closing:
-                                may_apply_restore = True
-                            else:
-                                supersession_error = (
-                                    "the live turn changed before Load acquired it"
-                                )
+                            # No claim was accepted. The captured scope can
+                            # disappear while validation runs; wait for that
+                            # exact boundary and redispatch the original ID.
+                            self._wait_for_scope_quiescence((live_scope,), "Load")
+                            self._restart_in_progress.clear()
+                            self.handle_command(command)
+                            return
                         elif operation.get("kind") == "turn_complete":
                             may_apply_restore = True
                         elif operation.get("accepted"):
@@ -758,24 +891,9 @@ class HeadlessSession:
                         self.emit_exit("error", "state restore did not acquire authority")
                         return
                     self._on_status("Load is applying the selected save", True)
-                    try:
-                        ok, message = manager.restore_save_game(folder)
-                    except Exception as exc:
-                        result(False, error="%s: %s" % (type(exc).__name__, exc))
-                        self.emit_exit("error", "state restore failed")
-                        return
-                    if not ok:
-                        result(False, error=message)
-                        self.emit_exit("error", "state restore failed")
-                        return
-                    result(True, data={"message": message})
-                    self.emit_exit(
-                        "restart",
-                        "state restored; relaunch the session",
-                    )
+                    outcome = self._apply_restore(manager, folder)
+                    self._finish_restore(outcome, manager, result)
                     return
-                if not live_preflight_announced:
-                    self._on_status("Load is starting safely", True)
                 if live_scope is not None:
                     from utils.capture.live_provider_call import (
                         request_live_turn_supersession,
@@ -784,6 +902,10 @@ class HeadlessSession:
                     operation = request_live_turn_supersession(
                         "restore", str(command_id)
                     )
+                    if operation is None:
+                        self._wait_for_scope_quiescence(turn_scopes, "Load")
+                        self.handle_command(command)
+                        return
                     if operation["kind"] == "turn_complete":
                         self._wait_for_scope_quiescence(
                             turn_scopes, "Load"
@@ -816,28 +938,25 @@ class HeadlessSession:
                     )
 
                     def execute_welcome_restore():
-                        return manager.restore_save_game(folder)
+                        return self._apply_restore(manager, folder)
 
                     def complete_welcome_restore(outcome):
-                        ok2, message2 = outcome
-                        if not ok2:
-                            result(False, error=message2)
-                            return
-                        result(True, data={"message": message2})
-                        self.emit_exit(
-                            "restart",
-                            "state restored; relaunch the session")
+                        self._finish_restore(outcome, manager, result)
 
                     # Claim/promotion AND record insertion are ONE scope-
                     # lock transaction: an accepted destructive claim always
                     # has its executable record queued (seal cannot split
                     # them; never mutate from this control thread).
+                    already_reserved = self._restart_in_progress.is_set()
+                    self._restart_in_progress.set()
                     claim = claim_destructive_operation(
                         welcome_scope, "restore",
                         execute_welcome_restore, complete_welcome_restore,
                         operation_id=str(command_id),
                     )
                     if claim["status"] == "closed":
+                        if not already_reserved:
+                            self._restart_in_progress.clear()
                         # Closed before the claim: restore is NEVER refused
                         # (#193). Wait for the CAPTURED scope's quiescent
                         # (set only AFTER the registry is cleared), then
@@ -850,6 +969,8 @@ class HeadlessSession:
                         self.handle_command(command)
                         return
                     if claim["status"] == "conflict":
+                        if not already_reserved:
+                            self._restart_in_progress.clear()
                         result(
                             False,
                             error=(
@@ -866,16 +987,17 @@ class HeadlessSession:
                         operation_id=claim["operation_id"],
                     )
                     return
-                ok, message = manager.restore_save_game(folder)
-                if not ok:
-                    result(False, error=message)
-                    return
-                # In-memory engine state is now stale; the only safe move is
-                # a process restart (web mode uses os._exit; headless ends
-                # cleanly and lets the agent relaunch).
-                result(True, data={"message": message})
-                self.emit_exit("restart",
-                               "state restored; relaunch the session")
+                # Even an idle engine holds a projection of the old files.
+                # Stop it before application, then let verified disk truth
+                # determine restart versus continued recovery command intake.
+                self._restart_in_progress.set()
+                self._quitting = True
+                self.prompt_pending.clear()
+                self.input_queue.put(EOF_SENTINEL)
+                if self._engine_thread is not None:
+                    self._engine_thread.join()
+                outcome = self._apply_restore(manager, folder)
+                self._finish_restore(outcome, manager, result)
             else:
                 result(False, error="unhandled command %r" % name)
         except Exception as exc:

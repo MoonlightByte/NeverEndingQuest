@@ -32,6 +32,8 @@ export function HeaderBar() {
   const { mode } = useUiMode()
   const connected = useSession((s) => s.connected)
   const sessionMode = useSession((s) => s.mode)
+  const recoveryRequired = useSession((s) => s.restoreRecoveryRequired)
+  const restorePending = useSession((s) => s.restorePending)
   const version = useSession((s) => s.version)
   const location = useWorld((s) => s.location)
   const locationError = useWorld((s) => s.locationError)
@@ -39,7 +41,7 @@ export function HeaderBar() {
   const isLocalEdition = (import.meta.env.VITE_EDITION ?? 'local') === 'local'
 
   const handleStart = () => {
-    if (!connected) return
+    if (!connected || recoveryRequired || restorePending) return
     useSession.getState().startRequested()
     emitC('start_game', undefined)
   }
@@ -59,7 +61,8 @@ export function HeaderBar() {
     window.close()
     useDialogs.getState().setActionResult({ kind: 'exit', message: EXIT_SAFE_MESSAGE })
   }
-  const gameReady = sessionMode === 'play'
+  const gameReady = sessionMode === 'play' && !recoveryRequired && !restorePending
+  const recoveryControlsAvailable = gameReady || recoveryRequired || restorePending
   const isStarting = mode === 'starting' || sessionMode === 'starting'
   // Legacy changes the initial connected/pre-start label to "New Game" until
   // the first successful start records neq_hasPlayed. Subsequent fresh starts
@@ -91,7 +94,7 @@ export function HeaderBar() {
       <div className="neq-header-actions flex items-center gap-2">
         <ConnectionDot />
         <button type="button" className={buttonClass} onClick={handleStart}
-          disabled={isStarting || gameReady}
+          disabled={!connected || isStarting || gameReady || recoveryRequired || restorePending}
           style={{ backgroundColor: isStarting ? '#1976d2' : '#2196f3', borderRadius: '3px', color: 'white', fontWeight: 700 }}>
           {gameReady ? 'Game Running' : isStarting ? 'Starting...' : startLabel}
         </button>
@@ -99,11 +102,11 @@ export function HeaderBar() {
           style={{ backgroundColor: gameReady ? '#ff9800' : '#555', color: 'white' }}>
           Save
         </button>
-        <button type="button" className={buttonClass} onClick={handleLoad} disabled={resetPending || !connected || !gameReady}
+        <button type="button" className={buttonClass} onClick={handleLoad} disabled={resetPending || !connected || !recoveryControlsAvailable}
           style={{ backgroundColor: gameReady ? '#9c27b0' : '#555', color: 'white' }}>
           Load
         </button>
-        <button type="button" className={buttonClass} onClick={handleReset} disabled={resetPending || !connected || !gameReady}
+        <button type="button" className={buttonClass} onClick={handleReset} disabled={resetPending || !connected || !recoveryControlsAvailable}
           style={{ backgroundColor: gameReady ? '#f44336' : '#555', color: 'white' }}>
           Reset
         </button>

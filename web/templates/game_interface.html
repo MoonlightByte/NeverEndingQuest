@@ -4686,6 +4686,8 @@
         let connected = false;
         let gameStarted = false;
         let startupInputEnabled = false;
+        let restoreRecoveryRequired = false;
+        let restorePending = false;
         let serverRestartExpected = false;
         let restartProbeActive = false;
         let initiativeOrder = []; // Store the ordered list of combatants
@@ -5554,6 +5556,7 @@
             loadCharacterStats();
             requestPlotData(); // <--- ADD THIS
             requestPartyData(); // Load party display on connect
+            socket.emit('request_ui_snapshot');
             if (!gameStarted) {
                 addMessage('game-output', { type: 'system', content: 'Welcome to NeverEndingQuest. Press the button at the top right to begin. New here? Open Settings (gear icon) to pick your AI provider -- Legacy (GPT-4.1) is the recommended default.' });
                 if (!localStorage.getItem('neq_hasPlayed')) {
@@ -5893,10 +5896,11 @@
         });
         
         socket.on('status_update', (data) => {
+            if (typeof data.recovery_required === 'boolean') restoreRecoveryRequired = data.recovery_required;
             const input = document.getElementById('user-input');
             const sendButton = document.getElementById('send-button');
             applyNeqProcessingTransition(data.is_processing);
-            if (data.is_processing) {
+            if (data.is_processing || restoreRecoveryRequired || restorePending) {
                 input.placeholder = data.message;
                 input.disabled = true;
                 sendButton.disabled = true;
@@ -5908,6 +5912,27 @@
             }
             // This single call now handles all highlighting logic.
             highlightCurrentTurn();
+            if (restoreRecoveryRequired) applyRestoreRecovery(data);
+        });
+
+        function applyRestoreRecovery(data) {
+            restorePending = data.pending === true;
+            restoreRecoveryRequired = data.can_resume === false || data.restore_outcome === 'recovery_required' || data.recovery_required === true;
+            if (!restoreRecoveryRequired && !restorePending) return;
+            serverRestartExpected = false;
+            gameStarted = false;
+            startupInputEnabled = false;
+            document.getElementById('start-button').disabled = true;
+            document.getElementById('save-button').disabled = true;
+            document.getElementById('load-button').disabled = !connected;
+            document.getElementById('reset-button').disabled = !connected;
+            document.getElementById('user-input').disabled = true;
+            document.getElementById('send-button').disabled = true;
+            document.getElementById('user-input').placeholder = data.message || 'Gameplay is paused. Choose Load, Reset, or Exit.';
+        }
+
+        socket.on('ui_state_snapshot', (data) => {
+            if (data.operations && data.operations.restore) applyRestoreRecovery(data.operations.restore);
         });
 
         // #214 D-214-4=A: background startup-welcome liveness. Honest motion
@@ -5925,7 +5950,7 @@
         
         // User interaction functions
         function startGame() {
-            if (connected && !gameStarted) {
+            if (connected && !gameStarted && !restoreRecoveryRequired && !restorePending) {
                 socket.emit('start_game');
             }
         }
@@ -5933,7 +5958,7 @@
         function sendInput() {
             const input = document.getElementById('user-input');
             const value = input.value.trim();
-            if (value && connected && (gameStarted || startupInputEnabled)) {
+            if (value && connected && !restoreRecoveryRequired && !restorePending && (gameStarted || startupInputEnabled)) {
                 socket.emit('user_input', { input: value });
                 input.value = '';
                 input.focus();
@@ -8211,7 +8236,7 @@
         function updateLoadButtons() {
             const disabled = !selectedSaveFolder;
             document.getElementById('load-save-button').disabled = disabled;
-            document.getElementById('delete-save-button').disabled = disabled;
+            document.getElementById('delete-save-button').disabled = disabled || restoreRecoveryRequired || restorePending;
         }
         function performSave() {
             const description = document.getElementById('save-description').value;
@@ -8636,9 +8661,11 @@
         }
 
         socket.on('restore_complete', (data) => {
+            applyRestoreRecovery(data);
+            addMessage('game-output', { type: 'system', content: data.message });
+            if (restoreRecoveryRequired || data.restart_required === false) return;
             serverRestartExpected = true;
             console.log('Restore complete signal received:', data.message);
-            addMessage('game-output', { type: 'system', content: 'Game restored successfully. The page will now reload to sync with the new state.' });
             
             // The server intentionally exits one second after this event and
             // the launcher waits before restarting it. Poll after that gap so

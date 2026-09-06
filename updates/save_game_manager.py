@@ -67,6 +67,7 @@ import shutil
 import zipfile
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
@@ -107,6 +108,29 @@ APPLICATION_OWNED_REFERENCE_FILES = frozenset(
         "data/srd_common_rules.json",
     )
 )
+
+
+@dataclass(frozen=True)
+class RestoreRequest:
+    """In-memory handoff: stop the old gameplay stack before applying a Load."""
+
+    manager: "SaveGameManager"
+    save_folder: str
+
+
+@dataclass(frozen=True)
+class RestoreOutcome:
+    """One Load's verified result; never a shared mutable last-result flag."""
+
+    disposition: str
+    message: str
+
+    @property
+    def can_resume(self) -> bool:
+        return self.disposition in {"selected_applied", "previous_restored", "unchanged"}
+
+    def as_legacy_tuple(self) -> Tuple[bool, str]:
+        return self.disposition == "selected_applied", self.message
 
 
 @contextmanager
@@ -159,7 +183,25 @@ class SaveGameManager:
             self.path_manager = ModulePathManager()
 
     @staticmethod
-    def _clear_campaign_completion_metadata() -> None:
+    def _restore_io(operation, *args, cancel_check=None, **kwargs):
+        """Retry a restore stage on typed temporary I/O, never permission prose."""
+        from utils.path_transaction_lock import _wait_to_retry
+        from utils.transient_filesystem import is_transient_filesystem_error
+
+        started = time.monotonic()
+        report = _lifecycle_wait_reporter('Load')
+        while True:
+            if cancel_check is not None:
+                cancel_check()
+            try:
+                return operation(*args, **kwargs)
+            except OSError as exc:
+                if not is_transient_filesystem_error(exc):
+                    raise
+                _wait_to_retry(None, 0.05, report, started)
+
+    @staticmethod
+    def _clear_campaign_completion_metadata(*, generation_only=False) -> None:
         """Discard runtime WAL/receipts after restoring older campaign state."""
         campaign_file = os.path.abspath(
             os.path.normpath(os.path.join("modules", "campaign.json"))
@@ -168,8 +210,17 @@ class SaveGameManager:
             os.path.dirname(campaign_file),
             f".{os.path.basename(campaign_file)}.completion",
         )
-        if os.path.isdir(metadata_dir):
-            shutil.rmtree(metadata_dir)
+        if generation_only:
+            # Retire only producer work before backup. Ready intents belong to
+            # already-published transitions and must survive with receipts in
+            # the rollback preimage. Successful replacement clears both below.
+            if os.path.isdir(metadata_dir):
+                for name in os.listdir(metadata_dir):
+                    path = os.path.join(metadata_dir, name)
+                    if name.endswith(".work.json"):
+                        os.remove(path)
+            return
+        SaveGameManager._clear_restore_directory(metadata_dir)
 
     @staticmethod
     def _clear_location_transition_runtime_marker() -> None:
@@ -184,41 +235,228 @@ class SaveGameManager:
         except FileNotFoundError:
             pass
 
-    def _restore_essential_backup(self, backup_dir: str) -> None:
-        """Restore the complete pre-restore projection after any copy failure."""
+    @staticmethod
+    def _restore_path_value(path):
+        """Read a restore-owned node without following links out of the game."""
+        if os.path.islink(path) or (hasattr(os.path, "isjunction") and os.path.isjunction(path)):
+            raise ValueError("A restore path is a link, not owned campaign data")
+        try:
+            mode = os.stat(path).st_mode
+        except FileNotFoundError:
+            return ("absent", None)
+        import stat
+
+        if stat.S_ISDIR(mode):
+            return ("directory", None)
+        if stat.S_ISREG(mode):
+            from utils.transient_filesystem import read_bytes_preserving_errors
+
+            return ("file", read_bytes_preserving_errors(path))
+        raise ValueError("A restore path is not a regular campaign file")
+
+    @staticmethod
+    def _restore_preserves_file(filename):
+        return filename.endswith((".lock", "_BU.json")) or filename in {".gitkeep", ".gitignore"}
+
+    @staticmethod
+    def _clear_restore_directory(directory):
+        """Remove replaceable contents; propagate failures and retain held locks."""
+        if not os.path.exists(directory):
+            return
+
+        def walk_error(exc):
+            raise exc
+
+        for root, directories, files in os.walk(directory, topdown=False, onerror=walk_error):
+            for filename in files:
+                if SaveGameManager._restore_preserves_file(filename):
+                    continue
+                os.remove(os.path.join(root, filename))
+            for name in directories:
+                child = os.path.join(root, name)
+                if not os.listdir(child):
+                    os.rmdir(child)
+
+    def _freeze_restore_inventory(self, save_path):
+        """Freeze original membership/values before cleanup can change its inputs.
+
+        Task 9: get_essential_files includes live globs and cannot be called
+        again to reconstruct a preimage after failed multi-file application.
+        This inventory lives only in this Load call, never in a new manifest.
+        """
         import glob
 
+        inventory = {}
+        source_files = {}
+        directory_roots = set()
+
+        def record(path, *, recursive=False):
+            path = os.path.normpath(path)
+            if path in ("", "."):
+                return
+            if os.path.isabs(path) or ntpath.splitdrive(path)[0] or path.split(os.sep)[0] == "..":
+                raise ValueError("A restore path is outside campaign data")
+            parent = os.path.dirname(path)
+            if parent:
+                record(parent)
+            if path not in inventory:
+                inventory[path] = self._restore_path_value(path)
+            if recursive and inventory[path][0] == "directory":
+                directory_roots.add(path)
+                with os.scandir(path) as entries:
+                    for entry in entries:
+                        # Lock identities are live authority, not snapshot data.
+                        if not entry.name.endswith(".lock"):
+                            record(entry.path, recursive=True)
+
         for essential in self.get_essential_files():
-            if essential.endswith("/"):
-                live_path = essential.rstrip("/")
-                backup_path = os.path.join(backup_dir, live_path)
-                if os.path.isdir(live_path):
-                    shutil.rmtree(live_path)
-                if os.path.isdir(backup_path):
-                    parent = os.path.dirname(live_path)
-                    if parent:
-                        os.makedirs(parent, exist_ok=True)
-                    shutil.copytree(backup_path, live_path)
-            elif essential.endswith("*"):
-                for live_match in glob.glob(essential):
-                    if os.path.isfile(live_match):
-                        os.remove(live_match)
-                backup_pattern = os.path.join(backup_dir, essential)
-                for backup_match in glob.glob(backup_pattern):
-                    relative = os.path.relpath(backup_match, backup_dir)
-                    parent = os.path.dirname(relative)
-                    if parent:
-                        os.makedirs(parent, exist_ok=True)
-                    shutil.copy2(backup_match, relative)
-            else:
-                backup_path = os.path.join(backup_dir, essential)
-                if os.path.isfile(backup_path):
-                    parent = os.path.dirname(essential)
-                    if parent:
-                        os.makedirs(parent, exist_ok=True)
-                    shutil.copy2(backup_path, essential)
-                elif os.path.isfile(essential):
-                    os.remove(essential)
+            for path in glob.glob(essential) if glob.has_magic(essential) else [essential]:
+                record(path.rstrip("/"), recursive=True)
+        for path in (
+            "modules/encounters", "modules/.campaign.json.completion",
+            "modules/conversation_history/pending_location_transition.json",
+        ):
+            record(path, recursive=True)
+
+        def walk_error(exc):
+            raise exc
+
+        for root, directories, files in os.walk(save_path, onerror=walk_error):
+            for directory in directories:
+                source = os.path.join(root, directory)
+                if os.path.islink(source) or (hasattr(os.path, "isjunction") and os.path.isjunction(source)):
+                    raise ValueError("A saved directory is a link, not campaign data")
+            for filename in files:
+                relative = os.path.relpath(os.path.join(root, filename), save_path)
+                normalized = relative.replace("\\", "/")
+                if (
+                    filename == "save_metadata.json"
+                    or filename.endswith(".lock")
+                    or normalized in APPLICATION_OWNED_REFERENCE_FILES
+                    or normalized == "modules/.campaign.json.completion-epoch.json"
+                    or normalized.startswith("modules/.campaign.json.completion/")
+                    or normalized == "modules/conversation_history/pending_location_transition.json"
+                ):
+                    continue
+                record(relative, recursive=True)
+                source_files[relative] = self._restore_path_value(
+                    os.path.join(save_path, relative)
+                )
+                if source_files[relative][0] != "file":
+                    raise OSError("A selected save file changed during validation")
+        # A top-level frozen tree already covers its descendants. Avoid
+        # rescanning every nested directory during postcondition verification.
+        roots = set(directory_roots)
+        for path in directory_roots:
+            parent = os.path.dirname(path)
+            while parent:
+                if parent in directory_roots:
+                    roots.discard(path)
+                    break
+                parent = os.path.dirname(parent)
+        return inventory, source_files, frozenset(roots)
+
+    def _backup_restore_inventory(self, backup_dir, inventory):
+        """Back up and verify every original node before any live mutation."""
+        for relative, value in inventory.items():
+            destination = os.path.join(backup_dir, relative)
+            if value[0] == "directory":
+                os.makedirs(destination, exist_ok=True)
+            elif value[0] == "file":
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                shutil.copy2(relative, destination)
+                if self._restore_path_value(destination) != value:
+                    raise OSError("The pre-restore backup did not match its source")
+
+    def _restore_essential_backup(self, backup_dir: str, inventory, directory_roots) -> None:
+        """Restore and verify the frozen preimage, never re-glob changed state."""
+        # Descendants first: only remove nodes known to this operation. Unknown
+        # new children make rmdir fail instead of silently deleting more data.
+        for relative in sorted(inventory, key=lambda path: path.count(os.sep), reverse=True):
+            wanted = inventory[relative]
+            current = self._restore_path_value(relative)
+            if current[0] != "absent" and current[0] != wanted[0]:
+                if current[0] == "directory":
+                    os.rmdir(relative)
+                else:
+                    os.remove(relative)
+        for relative in sorted(inventory, key=lambda path: path.count(os.sep)):
+            wanted = inventory[relative]
+            if wanted[0] == "directory":
+                os.makedirs(relative, exist_ok=True)
+            elif wanted[0] == "file":
+                source = os.path.join(backup_dir, relative)
+                if self._restore_path_value(source) != wanted:
+                    raise OSError("The rollback source no longer matches the original state")
+                parent = os.path.dirname(relative)
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+                shutil.copy2(source, relative)
+        if any(self._restore_path_value(path) != value for path, value in inventory.items()):
+            raise OSError("The previous game state could not be verified after rollback")
+        self._verify_restore_membership(inventory, directory_roots)
+
+    @staticmethod
+    def _verify_restore_membership(expected, directory_roots):
+        """Reject unexplained children in frozen owned trees, excluding live locks."""
+        def walk_error(exc):
+            raise exc
+
+        for directory in directory_roots:
+            if not os.path.isdir(directory):
+                continue  # Exact node-value verification owns absent/type checks.
+            for root, directories, files in os.walk(directory, onerror=walk_error):
+                for name in directories + files:
+                    if name.endswith('.lock') and name in files:
+                        continue
+                    path = os.path.normpath(os.path.join(root, name))
+                    if path not in expected or expected[path][0] == 'absent':
+                        raise OSError('Unexpected state remains in a restored campaign directory')
+
+    def _verify_selected_restore(self, original, source_files, directory_roots, clean_directories):
+        """Verify replacement and retained values, including removed file absence."""
+        clean = {os.path.normpath(path) for path in clean_directories}
+
+        def replaced(path):
+            return any(path == directory or path.startswith(directory + os.sep) for directory in clean)
+
+        expected = dict(original)
+        required_directories = {
+            path for path, value in original.items()
+            if value[0] == 'directory' and (path in clean or not replaced(path))
+        }
+        required_directories.update(map(os.path.normpath, (
+            'modules/campaign_archives', 'modules/campaign_summaries',
+        )))
+        for path, value in original.items():
+            if value[0] == 'file' and replaced(path) and not self._restore_preserves_file(os.path.basename(path)):
+                expected[path] = ('absent', None)
+        for path in ('modules/effects_state.json',
+                     'modules/conversation_history/combat_conversation_history.json',
+                     'modules/conversation_history/pending_location_transition.json'):
+            path = os.path.normpath(path)
+            if path not in source_files:
+                expected[path] = ('absent', None)
+        expected.update(source_files)
+        for path, value in expected.items():
+            if value[0] != 'file':
+                continue
+            parent = os.path.dirname(path)
+            while parent:
+                required_directories.add(parent)
+                parent = os.path.dirname(parent)
+        for directory in required_directories:
+            expected[directory] = ('directory', None)
+        for path, value in expected.items():
+            current = self._restore_path_value(path)
+            # Cleanup may remove an empty nested directory, but never a
+            # required parent, retained tree, or selected file's container.
+            if value[0] == 'directory' and replaced(path) and path not in required_directories:
+                if current[0] in {'directory', 'absent'}:
+                    continue
+            if current != value:
+                raise OSError('Selected save application could not be verified')
+        self._verify_restore_membership(expected, set(directory_roots) | clean)
     
     def get_essential_files(self) -> List[str]:
         """Get list of essential files that must be saved for game state"""
@@ -641,10 +879,59 @@ class SaveGameManager:
         *,
         save_folder: Optional[str] = None,
     ) -> Tuple[bool, str]:
-        """Drain committed transition intents, then snapshot under campaign lock."""
+        """Settle completion outside snapshot locks; recheck at the boundary."""
+        from core.managers.campaign_manager import (
+            CampaignManager, _CampaignCompletionActive, _settle_campaign_completion_work,
+        )
+        from utils.capture.live_provider_call import (
+            LiveProviderSuperseded, _interruptible_wait, get_live_provider_scope,
+        )
+        wait_reporter = _lifecycle_wait_reporter("Save")
+        from utils.transient_filesystem import is_transient_filesystem_error
+
+        try:
+            while True:
+                try:
+                    outcome = CampaignManager(wait_callback=wait_reporter).drain_module_completion_intents(
+                        wait_callback=wait_reporter,
+                    )
+                    if outcome["failed"]:
+                        return False, "Cannot save: module completion could not be reconciled"
+                    settled = _settle_campaign_completion_work(
+                        "modules/campaign.json", wait_callback=wait_reporter,
+                    )
+                    if settled and not outcome["blocked"]:
+                        return self._create_save_at_boundary(
+                            description, save_mode, save_folder=save_folder,
+                        )
+                except _CampaignCompletionActive:
+                    # New work appeared after settlement. Release and follow it.
+                    pass
+                except OSError as exc:
+                    if not is_transient_filesystem_error(exc):
+                        raise
+                    # Retry only after all preparation/snapshot locks unwind.
+                _interruptible_wait(0.25, get_live_provider_scope(),
+                                    "Finishing the campaign record before saving...")
+        except LiveProviderSuperseded:
+            raise
+        except Exception as exc:
+            error("FAILURE: Could not settle the save boundary", exception=exc,
+                  category="save_game")
+            return False, f"Failed to create save game: {exc}"
+
+    def _create_save_at_boundary(
+        self,
+        description: str = "",
+        save_mode: str = "essential",
+        *,
+        save_folder: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """Take one verified snapshot, or release its locks for settlement."""
+        from core.managers.campaign_manager import _CampaignCompletionActive
+        from utils.capture.live_provider_call import LiveProviderSuperseded
         try:
             from core.managers.campaign_manager import (
-                CampaignManager,
                 _assert_no_active_campaign_completion,
                 _campaign_transaction_lock,
                 _party_module_transition_lock,
@@ -653,18 +940,8 @@ class SaveGameManager:
             # Global lock order here is party transition -> active combat ->
             # module refresh -> campaign. Combat completion itself acquires
             # combat before module refresh, so this preserves that ordering.
-            # Hold the party lock while draining so no ready intent can appear
-            # between the drain and the snapshot.
             wait_reporter = _lifecycle_wait_reporter("Save")
             with _party_module_transition_lock(wait_callback=wait_reporter):
-                drain_outcome = (
-                    CampaignManager().drain_module_completion_intents()
-                )
-                if drain_outcome["failed"] or drain_outcome["blocked"]:
-                    return (
-                        False,
-                        "Cannot save while a module completion remains queued",
-                    )
                 # The manager may have been constructed before waiting for
                 # this lock. A transition can commit in that interval, so
                 # derive the save directory and metadata from the fresh party
@@ -698,7 +975,13 @@ class SaveGameManager:
                                 save_mode,
                                 save_folder=save_folder,
                             )
+        except (LiveProviderSuperseded, _CampaignCompletionActive):
+            raise
         except Exception as exc:
+            from utils.transient_filesystem import is_transient_filesystem_error
+
+            if is_transient_filesystem_error(exc):
+                raise
             error(
                 "FAILURE: Could not establish consistent save boundary",
                 exception=exc,
@@ -869,6 +1152,12 @@ class SaveGameManager:
         return save_games
     
     def restore_save_game(self, save_folder: str) -> Tuple[bool, str]:
+        """Compatibility API; all restore behavior lives in the typed operation."""
+        return self.restore_save_game_outcome(save_folder).as_legacy_tuple()
+
+    def restore_save_game_outcome(
+        self, save_folder: str, *, previous_clean: bool = True
+    ) -> RestoreOutcome:
         """Replace one save timeline under the shared campaign boundary."""
         from core.combat.invocation import (
             begin_invocation_supersession,
@@ -876,16 +1165,17 @@ class SaveGameManager:
         )
 
         invocation_barrier = begin_invocation_supersession("load")
+        restore_outcome = None
+        boundary_clean = previous_clean
         try:
             from core.managers.campaign_manager import (
-                _assert_no_active_campaign_completion,
                 _bump_campaign_lifecycle_epoch,
                 _campaign_transaction_lock,
                 _party_module_transition_lock,
+                _recover_campaign_completion_transaction_locked,
             )
             from utils.module_refresh_lock import module_refresh_lock
 
-            restore_outcome = None
             wait_reporter = _lifecycle_wait_reporter("Load")
             with _party_module_transition_lock(wait_callback=wait_reporter):
                 with _active_combat_snapshot_lease(
@@ -897,7 +1187,7 @@ class SaveGameManager:
                         wait_callback=wait_reporter,
                     ) as refresh_acquired:
                         if not refresh_acquired:
-                            return False, "Module refresh is active; retry restore"
+                            raise OSError("Module refresh acquisition did not complete")
                         # P2b: restore no longer consults the module-lifecycle
                         # store. Loading a save must NEVER be refused -- a
                         # published module is already live on disk regardless of
@@ -911,14 +1201,32 @@ class SaveGameManager:
                                 include_manifest=False,
                             )
                             if not valid:
-                                return False, validation_error
-                            _assert_no_active_campaign_completion(
-                                "modules/campaign.json"
+                                return RestoreOutcome(
+                                    "unchanged" if previous_clean else "recovery_required",
+                                    validation_error,
+                                )
+                            # Reconciliation can apply multiple canonical writes.
+                            # Until preparation finishes, failure cannot certify
+                            # that the original clean boundary still exists.
+                            boundary_clean = False
+                            self._restore_io(
+                                _recover_campaign_completion_transaction_locked,
+                                "modules/campaign.json", "modules/campaign_summaries",
+                                "modules/campaign_archives",
                             )
                             _bump_campaign_lifecycle_epoch("modules/campaign.json")
-                            restore_outcome = self._restore_save_game_locked(save_folder)
-            if restore_outcome is None or not restore_outcome[0]:
-                return restore_outcome or (False, "Save restore did not complete")
+                            # Generation records are retired authority, not
+                            # clean gameplay state. Clear them before freezing
+                            # the rollback preimage so failure cannot reinstall
+                            # old work under the newly fenced timeline.
+                            self._restore_io(self._clear_campaign_completion_metadata,
+                                             generation_only=True)
+                            boundary_clean = previous_clean
+                            restore_outcome = self._restore_save_game_locked(
+                                save_folder, previous_clean=previous_clean
+                            )
+            if restore_outcome.disposition != "selected_applied":
+                return restore_outcome
 
             from core.npc.episodic_upgrade import (
                 default_progress,
@@ -939,7 +1247,12 @@ class SaveGameManager:
                 exception=exc,
                 category="save_game",
             )
-            return False, f"Failed to restore save game: {exc}"
+            # Companion-memory repair runs outside snapshot locks. Its failure
+            # cannot erase an already verified disk disposition.
+            return restore_outcome or RestoreOutcome(
+                "unchanged" if boundary_clean else "recovery_required",
+                f"Failed to restore save game: {exc}",
+            )
         finally:
             end_invocation_supersession(invocation_barrier)
 
@@ -947,13 +1260,24 @@ class SaveGameManager:
         self,
         save_folder: str,
         include_manifest: bool = True,
+        *,
+        cancel_check=None,
     ) -> Tuple[bool, str]:
         """Validate one exact restore target without changing campaign state."""
         try:
-            save_path = self._resolve_save_target(save_folder)
+            save_path = self._restore_io(
+                self._resolve_save_target, save_folder, cancel_check=cancel_check,
+            )
         except (ValueError, FileNotFoundError) as exc:
             return False, str(exc)
-        metadata = safe_read_json(os.path.join(save_path, "save_metadata.json"))
+        metadata_path = os.path.join(save_path, 'save_metadata.json')
+        kind, value = self._restore_io(
+            self._restore_path_value, metadata_path, cancel_check=cancel_check,
+        )
+        try:
+            metadata = json.loads(value) if kind == 'file' else None
+        except (ValueError, UnicodeError):
+            metadata = None
         if not metadata:
             return False, "Could not read save game metadata"
         if include_manifest:
@@ -967,9 +1291,13 @@ class SaveGameManager:
                     f"with the selected save: {manifest_error}",
                     category="save_game",
                 )
+        if cancel_check is not None:
+            cancel_check()
         return True, ""
 
-    def _restore_save_game_locked(self, save_folder: str) -> Tuple[bool, str]:
+    def _restore_save_game_locked(
+        self, save_folder: str, *, previous_clean: bool = True
+    ) -> RestoreOutcome:
         """
         Restore a save game by copying files back to the main game directory.
         
@@ -977,19 +1305,26 @@ class SaveGameManager:
             save_folder: Name of the save folder to restore
             
         Returns:
-            Tuple of (success: bool, message: str)
+            Verified selected, previous, unchanged, or recovery-required outcome.
         """
         backup_complete = False
         restore_mutation_started = False
         try:
-            save_path = self._resolve_save_target(save_folder)
+            save_path = self._restore_io(self._resolve_save_target, save_folder)
             
             valid, validation_error = self.validate_restore_target(
                 save_folder,
                 include_manifest=True,
             )
             if not valid:
-                return False, validation_error
+                return RestoreOutcome(
+                    "unchanged" if previous_clean else "recovery_required",
+                    validation_error,
+                )
+
+            original_inventory, source_files, directory_roots = self._restore_io(
+                self._freeze_restore_inventory, save_path,
+            )
 
             # Create backup of current state before restoring
             backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -1000,52 +1335,23 @@ class SaveGameManager:
             
             info(f"FILE_OP: Creating backup before restore: {backup_dir}", category="save_game")
             
-            # Copy current essential files to backup
-            essential_files = self.get_essential_files()
-            backed_up_files = []
-            
-            for essential in essential_files:
-                if essential.endswith("/"):
-                    # Directory
-                    if os.path.exists(essential):
-                        backup_dest = f"{backup_dir}/{essential}"
-                        os.makedirs(os.path.dirname(backup_dest), exist_ok=True)
-                        shutil.copytree(essential, backup_dest, dirs_exist_ok=True)
-                        backed_up_files.append(essential)
-                elif essential.endswith("*"):
-                    # Wildcard pattern - find matching files
-                    import glob
-                    for match in glob.glob(essential):
-                        if os.path.exists(match):
-                            backup_dest = f"{backup_dir}/{match}"
-                            os.makedirs(os.path.dirname(backup_dest), exist_ok=True)
-                            shutil.copy2(match, backup_dest)
-                            backed_up_files.append(match)
-                else:
-                    # Single file
-                    if os.path.exists(essential):
-                        backup_dest = f"{backup_dir}/{essential}"
-                        os.makedirs(os.path.dirname(backup_dest), exist_ok=True)
-                        shutil.copy2(essential, backup_dest)
-                        backed_up_files.append(essential)
+            self._restore_io(self._backup_restore_inventory, backup_dir, original_inventory)
 
             backup_complete = True
             restore_mutation_started = True
 
-            # A pre-V2 save intentionally has no effects_state.json.  Remove
-            # the newer live stamp before copying so startup re-detects and
-            # converts that restored timeline.  The rollback backup above
-            # restores the stamp if any later restore step fails.
-            saved_effects_state = os.path.join(
-                save_path,
-                "modules",
-                "effects_state.json",
-            )
-            if not os.path.isfile(saved_effects_state):
-                try:
-                    os.remove("modules/effects_state.json")
-                except FileNotFoundError:
-                    pass
+            # Absence in an older save matters: re-detect effects migration,
+            # and never resume a later combat from its leftover transcript.
+            # The verified backup retains both files for a failed-Load rollback.
+            for optional_path in (
+                "modules/effects_state.json",
+                "modules/conversation_history/combat_conversation_history.json",
+            ):
+                if os.path.normpath(optional_path) not in source_files:
+                    try:
+                        self._restore_io(os.remove, optional_path)
+                    except FileNotFoundError:
+                        pass
             
             # IMPORTANT: Clean directories that need to be fully replaced
             # This prevents orphaned files from remaining after restore
@@ -1053,9 +1359,8 @@ class SaveGameManager:
                 "modules/campaign_archives",
                 "modules/campaign_summaries",
             ):
-                if os.path.isdir(campaign_directory):
-                    shutil.rmtree(campaign_directory)
-                os.makedirs(campaign_directory, exist_ok=True)
+                self._restore_io(self._clear_restore_directory, campaign_directory)
+                self._restore_io(os.makedirs, campaign_directory, exist_ok=True)
 
             directories_to_clean = [
                 "modules/encounters/",  # Global encounters directory
@@ -1077,93 +1382,44 @@ class SaveGameManager:
             for directory in directories_to_clean:
                 if os.path.exists(directory):
                     info(f"FILE_OP: Cleaning directory before restore: {directory}", category="save_game")
-                    try:
-                        # Remove all files in the directory EXCEPT BU files
-                        for file in os.listdir(directory):
-                            file_path = os.path.join(directory, file)
-                            if os.path.isfile(file_path):
-                                if directory == "data/companion_memories/":
-                                    if (
-                                        file not in {".gitkeep", ".gitignore"}
-                                        and not file.endswith(".lock")
-                                    ):
-                                        os.remove(file_path)
-                                        debug(f"FILE_OP: Removed: {file_path}", category="save_game")
-                                    continue
-                                # CRITICAL: Preserve BU files during restore
-                                if file.endswith("_BU.json"):
-                                    debug(f"FILE_OP: Preserving BU file: {file_path}", category="save_game")
-                                    continue
-                                os.remove(file_path)
-                                debug(f"FILE_OP: Removed: {file_path}", category="save_game")
-                    except Exception as e:
-                        warning(f"FILE_OP: Could not fully clean {directory}", category="save_game")
+                    self._restore_io(self._clear_restore_directory, directory)
             
             # Now restore files from save
-            restored_files = []
-            failed_files = []
-            
-            # Walk through save directory and copy files back
-            for root, dirs, files in os.walk(save_path):
-                # Skip metadata file
-                if "save_metadata.json" in files:
-                    files.remove("save_metadata.json")
-                
-                for file in files:
-                    source_file = os.path.join(root, file)
-                    # Calculate relative path from save directory
-                    rel_path = os.path.relpath(source_file, save_path)
-                    dest_file = rel_path.replace("\\", "/")
-                    if dest_file in APPLICATION_OWNED_REFERENCE_FILES:
-                        debug(
-                            "FILE_OP: Preserving installed reference data: "
-                            f"{dest_file}",
-                            category="save_game",
-                        )
-                        continue
-                    
-                    try:
-                        # Ensure destination directory exists
-                        dest_dir = os.path.dirname(dest_file)
-                        if dest_dir:
-                            os.makedirs(dest_dir, exist_ok=True)
-                        
-                        shutil.copy2(source_file, dest_file)
-                        restored_files.append(dest_file)
-                        debug(f"FILE_OP: Restored: {dest_file}", category="save_game")
-                    except Exception as e:
-                        error(f"FAILURE: Failed to restore {dest_file}", exception=e, category="save_game")
-                        failed_files.append(dest_file)
-
-            if failed_files:
-                # Restore the pre-restore continuity projection before
-                # releasing the lifecycle locks. Existing WAL/intents/
-                # receipts were retained, so they still describe this fully
-                # rolled-back timeline.
-                self._restore_essential_backup(backup_dir)
-                return (
-                    False,
-                    "Save restore failed; previous game state was restored",
-                )
+            for relative, expected in source_files.items():
+                source_file = os.path.join(save_path, relative)
+                parent = os.path.dirname(relative)
+                if parent:
+                    self._restore_io(os.makedirs, parent, exist_ok=True)
+                self._restore_io(shutil.copy2, source_file, relative)
+                if self._restore_io(self._restore_path_value, relative) != expected:
+                    raise OSError("A restored file differs from the selected save")
 
             # Completion receipts describe the state that existed before this
             # restore.  Keeping them could suppress a valid transition from the
             # restored timeline, while a pending WAL could resurrect newer
             # campaign data on the next CampaignManager construction.
-            self._clear_campaign_completion_metadata()
-            self._clear_location_transition_runtime_marker()
+            self._restore_io(self._clear_campaign_completion_metadata)
+            self._restore_io(self._clear_location_transition_runtime_marker)
+            self._restore_io(self._verify_selected_restore,
+                original_inventory, source_files, directory_roots,
+                directories_to_clean + [
+                    'modules/campaign_archives', 'modules/campaign_summaries',
+                    'modules/.campaign.json.completion',
+                ],
+            )
             
             success_msg = f"Save game restored successfully from: {save_folder}"
-            success_msg += f"\nRestored {len(restored_files)} files"
+            success_msg += f"\nRestored {len(source_files)} files"
             success_msg += f"\nBackup created: {backup_dir}"
             
-            if failed_files:
-                success_msg += f"\nFailed to restore {len(failed_files)} files"
-            
             info(f"SUCCESS: {success_msg}", category="save_game")
-            return True, success_msg
+            return RestoreOutcome("selected_applied", success_msg)
             
         except Exception as e:
+            disposition = (
+                "unchanged" if previous_clean and not restore_mutation_started
+                else "recovery_required"
+            )
             backup_path = locals().get("backup_dir")
             if (
                 backup_complete
@@ -1171,8 +1427,11 @@ class SaveGameManager:
                 and isinstance(backup_path, str)
                 and os.path.isdir(backup_path)
             ):
+                disposition = "recovery_required"
                 try:
-                    self._restore_essential_backup(backup_path)
+                    self._restore_io(self._restore_essential_backup, backup_path, original_inventory, directory_roots)
+                    if previous_clean:
+                        disposition = "previous_restored"
                 except Exception as rollback_exc:
                     error(
                         "FAILURE: Could not roll back campaign continuity after restore error",
@@ -1181,7 +1440,9 @@ class SaveGameManager:
                     )
             error_msg = f"Failed to restore save game: {str(e)}"
             error(f"FAILURE: {error_msg}", category="save_game")
-            return False, error_msg
+            if disposition == "previous_restored":
+                error_msg += "; previous game state was restored and verified"
+            return RestoreOutcome(disposition, error_msg)
     
     def delete_save_game(self, save_folder: str) -> Tuple[bool, str]:
         """Delete a save game"""

@@ -18,6 +18,8 @@ and the complete fresh campaign startup process.
 import os
 import json
 import shutil
+import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -213,27 +215,51 @@ def reset_module(module_name):
     if os.path.exists(npc_codex):
         os.remove(npc_codex)
 
-def reset_global_state():
-    """Reset global files without interleaving a party module publication."""
+@contextmanager
+def _reset_reconciled_boundary():
+    """Retry reconciliation before entering the non-replayable Reset body."""
     from core.managers.campaign_manager import (
         _campaign_transaction_lock,
         _party_module_transition_lock,
+        _recover_campaign_completion_transaction_locked,
     )
     from utils.module_refresh_lock import module_refresh_lock
+    from utils.path_transaction_lock import _wait_to_retry
+    from utils.transient_filesystem import is_transient_filesystem_error
 
-    # Global lock order: party transition -> module (when needed) -> campaign.
     wait_reporter = _reset_wait_reporter()
-    with _party_module_transition_lock(wait_callback=wait_reporter):
-        with module_refresh_lock(
-            max_wait_seconds=None,
-            wait_callback=wait_reporter,
-        ) as refresh_acquired:
-            if not refresh_acquired:
-                raise TimeoutError("Module refresh is active; retry reset")
-            with _campaign_transaction_lock(
-                "modules/campaign.json", wait_callback=wait_reporter
-            ):
-                return _reset_global_state_locked()
+    started = time.monotonic()
+    while True:
+        # Preserve the global party -> module -> campaign lock order.
+        with _party_module_transition_lock(wait_callback=wait_reporter):
+            with module_refresh_lock(
+                max_wait_seconds=None, wait_callback=wait_reporter,
+            ) as refresh_acquired:
+                if not refresh_acquired:
+                    raise TimeoutError("Module refresh is active; retry reset")
+                with _campaign_transaction_lock(
+                    "modules/campaign.json", wait_callback=wait_reporter,
+                ):
+                    try:
+                        _recover_campaign_completion_transaction_locked(
+                            "modules/campaign.json", "modules/campaign_summaries",
+                            "modules/campaign_archives",
+                        )
+                    except OSError as exc:
+                        if not is_transient_filesystem_error(exc):
+                            raise
+                    else:
+                        # Body faults must propagate, never replay backup/wipe.
+                        yield
+                        return
+        # Release every lifecycle lock before reporting or waiting to retry.
+        _wait_to_retry(None, 0.05, wait_reporter, started)
+
+
+def reset_global_state():
+    """Reset global files without interleaving a party module publication."""
+    with _reset_reconciled_boundary():
+        return _reset_global_state_locked()
 
 
 def _reset_global_state_locked(*, reset_prepared=False):
@@ -242,7 +268,6 @@ def _reset_global_state_locked(*, reset_prepared=False):
 
     campaign_file = os.path.join("modules", "campaign.json")
     from core.managers.campaign_manager import (
-        _assert_no_active_campaign_completion,
         _bump_campaign_lifecycle_epoch,
     )
 
@@ -250,7 +275,6 @@ def _reset_global_state_locked(*, reset_prepared=False):
         # P2b: reset no longer touches the module-lifecycle store or invalidates
         # publication receipts (that subsystem is gone). Only the separate
         # campaign-completion timeline needs guarding before the wipe begins.
-        _assert_no_active_campaign_completion(campaign_file)
         _bump_campaign_lifecycle_epoch(campaign_file)
     
     # Reset party tracker to empty object (matches installer behavior)
@@ -437,28 +461,10 @@ def perform_reset_logic():
         begin_invocation_supersession,
         end_invocation_supersession,
     )
-    from core.managers.campaign_manager import (
-        _assert_no_active_campaign_completion,
-        _campaign_transaction_lock,
-        _party_module_transition_lock,
-    )
-    from utils.module_refresh_lock import module_refresh_lock
-
     invocation_barrier = begin_invocation_supersession("reset")
     try:
-        wait_reporter = _reset_wait_reporter()
-        with _party_module_transition_lock(wait_callback=wait_reporter):
-            with module_refresh_lock(
-                max_wait_seconds=None,
-                wait_callback=wait_reporter,
-            ) as refresh_acquired:
-                if not refresh_acquired:
-                    raise TimeoutError("Module refresh is active; retry reset")
-                with _campaign_transaction_lock(
-                    "modules/campaign.json", wait_callback=wait_reporter
-                ):
-                    _assert_no_active_campaign_completion("modules/campaign.json")
-                    return _perform_reset_logic_locked()
+        with _reset_reconciled_boundary():
+            return _perform_reset_logic_locked()
     finally:
         end_invocation_supersession(invocation_barrier)
 

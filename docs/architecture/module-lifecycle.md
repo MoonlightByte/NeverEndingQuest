@@ -4,6 +4,42 @@ Purpose: build and validate a complete hidden module, publish it through one dir
 
 Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.
 
+## Safety worktree delta (2026-09-05; live acceptance partial)
+
+The approved combat/persistence safety implementation changes completion, not
+module authorship or publication. `complete_module` and regeneration register an
+attempt in the existing flight registry and stamp the existing work record with
+producer identity and lifecycle epoch. Preparation and commit take short locks;
+T038/T039 generation runs outside party/completion/campaign locks. Checkpoints,
+commit and cleanup revalidate the exact work identity. A live or unobservable
+producer is followed, never declared dead because its filesystem lock is free.
+
+Regeneration reads the original archive without owning/removing it or incrementing
+visits. Save settles work outside snapshot locks and rechecks at the snapshot.
+Load/Reset reconcile canonical pending commits before replacing the epoch. Lost
+unfinished work is allowed; no new crash snapshot or replay store is introduced.
+Source and primitive checks are recorded in the execution ledger. Native live
+completion has reached T038/T039, preserved the existing invalid-export fallback,
+committed one archive/chronicle, and resumed at the destination. This is not a
+successful structured-export verdict. Clean-save recovery after process loss is
+also observed. Direct startup reclaimed the same interrupted T039 work/epoch,
+reused stored T038, and committed once. A deliberate native same-campaign
+competitor followed the live producer without another provider child or commit.
+Native primitive tests separately cover unknown/mismatched/relinquished owners;
+these are not claimed as live gameplay variants. The local
+`validation_evidence/safety_acceptance_remaining.md` records exact S5-S7 limits.
+
+T013/T063/T064 retain their successful departure/arrival/combined narration chain
+and genuine-error fallback. Typed cancellation now unwinds instead of publishing
+fallback travel prose after Quit. Actual T013 Quit and clean three-call resume
+are recorded in `validation_evidence/safety_transition_cancellation_verdict.md`.
+
+Creation narration borrows the existing turn or welcome authority. Its accepted
+history and refreshed context are persisted under short checked party-lock
+phases; completion draining and the shared DM request run outside the response
+and party fences. Final history publication rechecks that same authority.
+This does not add a provider call, change the request mode, or own a new scope.
+
 ## Authority table
 
 | Datum | Source of truth | Acceptance or commit point |

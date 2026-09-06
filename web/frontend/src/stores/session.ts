@@ -27,6 +27,9 @@ export interface SessionState {
   startupAttemptId: string
   /** Last startup_recovery_response payload. */
   recovery: ServerEvents['startup_recovery_response'] | null
+  /** In-process restore trust, separate from startup handoff recovery. */
+  restoreRecoveryRequired: boolean
+  restorePending: boolean
   /** Last version_status payload. */
   version: ServerEvents['version_status'] | null
   snapshotRevision: number
@@ -38,7 +41,8 @@ export interface SessionState {
   startRequested: () => void
   gameStarted: (message: string) => void
   gameResumed: (isProcessing: boolean) => void
-  setStatus: (status: { message: string; is_processing: boolean }) => void
+  setStatus: (status: ServerEvents['status_update']) => void
+  setRestoreResult: (result: ServerEvents['restore_complete']) => void
   setWelcome: (message: string) => void
   setStartup: (status: 'in_progress' | 'ready' | 'failed', phase: string, startupAttemptId?: string) => void
   setRecovery: (recovery: ServerEvents['startup_recovery_response']) => void
@@ -58,6 +62,8 @@ export const useSession = create<SessionState>((set) => ({
   startupPhase: '',
   startupAttemptId: '',
   recovery: null,
+  restoreRecoveryRequired: false,
+  restorePending: false,
   version: null,
   snapshotRevision: -1,
   serverInstanceId: null,
@@ -74,6 +80,7 @@ export const useSession = create<SessionState>((set) => ({
     set((s) => ({
       statusMessage: status.message,
       isProcessing: status.is_processing,
+      restoreRecoveryRequired: status.recovery_required ?? s.restoreRecoveryRequired,
       startupInputReady: s.mode === 'starting' && s.startupStatus === 'in_progress' && !status.is_processing
         ? true
         : s.startupInputReady,
@@ -86,6 +93,13 @@ export const useSession = create<SessionState>((set) => ({
     startupInputReady: status === 'in_progress' ? false : s.startupInputReady,
   })),
   setRecovery: (recovery) => set({ recovery }),
+  setRestoreResult: (result) => set((s) => ({
+    restorePending: result.pending === true,
+    restoreRecoveryRequired: result.can_resume === false || result.restore_outcome === 'recovery_required',
+    statusMessage: result.message,
+    inputAuthorized: result.restart_required === false && result.can_resume !== false ? s.inputAuthorized : false,
+    startupInputReady: result.restart_required === false && result.can_resume !== false ? s.startupInputReady : false,
+  })),
   setVersion: (version) => set({ version }),
   applySnapshot: (snapshot) =>
     set((s) => {
@@ -96,6 +110,9 @@ export const useSession = create<SessionState>((set) => ({
         mode: snapshot.game_running ? 'play' : 'disconnected',
         isProcessing: snapshot.is_processing,
         statusMessage: snapshot.status_message,
+        restorePending: snapshot.operations?.restore?.pending === true,
+        restoreRecoveryRequired: snapshot.operations?.restore?.can_resume === false
+          || snapshot.operations?.restore?.restore_outcome === 'recovery_required',
         startupStatus: snapshot.startup?.status ?? s.startupStatus,
         startupPhase: snapshot.startup?.phase ?? s.startupPhase,
         startupAttemptId: snapshot.startup?.startupAttemptId ?? s.startupAttemptId,

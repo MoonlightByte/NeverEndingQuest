@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import errno
+import os
+from pathlib import Path
 import time
 from typing import Callable, TypeVar
 
@@ -46,6 +48,33 @@ def is_transient_filesystem_error(
 
 
 ResultT = TypeVar("ResultT")
+
+
+def read_bytes_preserving_errors(path) -> bytes:
+    """Read complete bytes without collapsing native Windows lock errors.
+
+    No retry or ownership policy lives here. Callers retain their existing
+    path validation, cancellation and transient-error handling.
+    """
+    if os.name != "nt":
+        return Path(path).read_bytes()
+    import _winapi
+    import ctypes
+
+    handle = _winapi.CreateFile(
+        os.fsdecode(path), 0x80000000, 3, 0, 3, 0x80, 0,
+    )  # read-only, share read/write, non-inherited, OPEN_EXISTING
+    try:
+        chunks = []
+        while True:
+            chunk, error_code = _winapi.ReadFile(handle, 64 * 1024)
+            if error_code:
+                raise ctypes.WinError(error_code)
+            if not chunk:
+                return b"".join(chunks)
+            chunks.append(chunk)
+    finally:
+        _winapi.CloseHandle(handle)
 
 
 def retry_transient_filesystem(

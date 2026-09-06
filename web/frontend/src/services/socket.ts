@@ -169,6 +169,7 @@ on('ui_state_snapshot', (p) => {
     () => session.applySnapshot(p),
   )
   if (p.operations) {
+    if (p.operations.restore?.can_resume === false || p.operations.restore?.restart_required === false) cancelPendingRestart()
     useDialogs.getState().applyOperationSnapshot(p.operations)
     const module = p.operations.module
     const currentModule = useDialogs.getState().moduleOperation
@@ -222,8 +223,10 @@ on('npc_inventory_response', (p) => usePlayer.getState().setNpcInventory(p))
 on('save_list_response', (list) => useDialogs.getState().setSaveList(list))
 on('module_list_response', (list) => useDialogs.getState().setModuleList(list))
 on('restore_complete', (p) => {
-  useDialogs.getState().setActionResult({ kind: 'restore', message: p.message })
-  useLog.getState().append({ type: 'system', content: 'Game restored successfully. The page will now reload to sync with the new state.' })
+  if (p.can_resume === false || p.restart_required === false) cancelPendingRestart()
+  useSession.getState().setRestoreResult(p)
+  useDialogs.getState().setActionResult({ kind: 'restore', ...p })
+  useLog.getState().append({ type: 'system', content: p.message })
 })
 on('reset_complete', (p) => {
   useDialogs.getState().setActionResult({ kind: 'reset', message: p.message })

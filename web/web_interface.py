@@ -237,7 +237,10 @@ _ui_protocol_capabilities = {
     "request_metadata": True,
 }
 _ui_operation_lock = threading.Lock()
-_ui_operations = {"compression": None, "module": None, "update": None}
+_ui_operations = {"compression": None, "module": None, "update": None, "restore": None}
+# Preserve the original managed-save root while an in-process Load needs recovery.
+# This is not a persisted recovery record and does not claim crash reconstruction.
+_restore_manager = None
 original_stdout = sys.stdout
 original_stderr = sys.stderr
 original_stdin = sys.stdin
@@ -275,6 +278,95 @@ def _remember_ui_operation(kind, payload):
     """Keep the latest operation state so reconnect snapshots can self-heal."""
     with _ui_operation_lock:
         _ui_operations[kind] = dict(payload) if isinstance(payload, dict) else None
+
+
+def _web_restore_state():
+    with _ui_operation_lock:
+        return dict(_ui_operations.get('restore') or {})
+
+
+def _web_gameplay_paused():
+    state = _web_restore_state()
+    return bool(state.get('pending') or state.get('restart_required')
+                or state.get('can_resume') is False)
+
+
+def _web_save_manager():
+    from updates.save_game_manager import SaveGameManager
+    with _ui_operation_lock:
+        retained = _restore_manager
+    return retained if retained is not None else SaveGameManager()
+
+
+def _begin_web_restore(manager, message, previous_clean=True):
+    global _restore_manager
+    with _ui_operation_lock:
+        _restore_manager = manager
+        _ui_operations['restore'] = {
+            'pending': True, 'message': message, 'can_resume': previous_clean,
+        }
+
+
+def _apply_web_restore(manager, save_folder, previous_clean):
+    from updates.save_game_manager import RestoreOutcome
+    try:
+        _begin_web_restore(manager, 'Restoring the selected save.', previous_clean)
+        return manager.restore_save_game_outcome(save_folder, previous_clean=previous_clean)
+    except Exception as exc:
+        # An exception outside the manager's verified outcome cannot prove a
+        # clean directory. Keep the same control surface and original root.
+        return RestoreOutcome('recovery_required', f'Load could not verify a clean state: {exc}')
+
+
+def _finish_web_restore(manager, outcome):
+    global _restore_manager
+    payload = {
+        'message': outcome.message,
+        'restore_outcome': outcome.disposition,
+        'can_resume': outcome.can_resume,
+        'restart_required': outcome.can_resume,
+    }
+    if not outcome.can_resume:
+        payload['message'] += ' Gameplay is paused. Choose Load, Reset, or Exit.'
+    with _ui_operation_lock:
+        _restore_manager = None if outcome.can_resume else manager
+        _ui_operations['restore'] = payload
+    # All attached clients must see the same admission/result, not only the
+    # requesting tab. The welcome callback may run on the game thread: no join.
+    try:
+        socketio.emit('restore_complete', payload)
+    finally:
+        try:
+            emit_status_update(payload['message'], False)
+        finally:
+            # A disconnected browser cannot veto the verified disk terminal.
+            # Reconnect can obtain the stored operation if no restart is safe.
+            if outcome.can_resume:
+                try:
+                    socketio.sleep(1)
+                finally:
+                    os._exit(0)
+
+
+def _stop_web_game_reader():
+    """Unwind stale in-memory gameplay before an idle controller replaces disk."""
+    if game_thread and game_thread.is_alive():
+        if game_thread is threading.current_thread():
+            raise RuntimeError('A welcome restore must use its game-thread terminal')
+        user_input_queue.put(None)
+        started = time.monotonic()
+        while game_thread.is_alive():
+            game_thread.join(0.5)
+            if game_thread.is_alive():
+                try:
+                    emit_status_update(
+                        'Waiting for the previous game to stop safely (%d seconds)...'
+                        % int(time.monotonic() - started), True,
+                    )
+                except Exception:
+                    # Presentation failure is not permission to leave the
+                    # reader running while Load replaces its state.
+                    pass
 
 
 @app.get('/api/server-instance')
@@ -462,9 +554,17 @@ def log_web_audit(event_name, **fields):
 # Status callback function
 def emit_status_update(status_message, is_processing):
     """Emit status updates to the frontend"""
+    restore = _web_restore_state()
+    recovery_required = restore.get('can_resume') is False
+    if restore.get('pending') and not is_processing:
+        status_message = restore.get('message', 'The lifecycle operation is finishing safely.')
+        is_processing = True
+    if recovery_required and not is_processing:
+        status_message = restore.get('message', 'Gameplay is paused. Choose Load, Reset, or Exit.')
     socketio.emit('status_update', {
         'message': status_message,
-        'is_processing': is_processing
+        'is_processing': is_processing,
+        'recovery_required': recovery_required,
     })
 
 # Set the status callback
@@ -845,9 +945,13 @@ class WebInput:
         self.queue = queue
     
     def readline(self):
-        from utils.capture.live_provider_call import service_live_input_boundary
+        from utils.capture.live_provider_call import (
+            LiveProviderSuperseded, service_live_input_boundary,
+        )
 
         service_live_input_boundary()
+        if _web_gameplay_paused():
+            raise LiveProviderSuperseded('An accepted lifecycle control stopped gameplay')
         # Signal that we're ready for input (with error handling)
         try:
             from core.managers.status_manager import status_ready
@@ -863,7 +967,16 @@ class WebInput:
         # (Previously this capped at 1000 * 0.1s = 100s and then returned '\n',
         # which made the combat loop busy-spin on empty input -- see issue #122.)
         while True:
-            service_live_input_boundary()
+            drained = service_live_input_boundary()
+            if _web_gameplay_paused():
+                raise LiveProviderSuperseded('An accepted lifecycle control stopped gameplay')
+            if drained:
+                # Re-open only the game thread's existing parked input boundary.
+                try:
+                    from core.managers.status_manager import status_ready
+                    status_ready(at_input_boundary=True)
+                except Exception:
+                    pass
             try:
                 user_input = self.queue.get(timeout=0.5)
             except queue.Empty:
@@ -885,6 +998,10 @@ class WebInput:
                 # looping forever on empty input.
                 return ''
             service_live_input_boundary()
+            if _web_gameplay_paused():
+                raise LiveProviderSuperseded('An accepted lifecycle control stopped gameplay')
+            if user_input is None:
+                return ''
             if isinstance(user_input, str):
                 return user_input + '\n'
             return str(user_input) + '\n'
@@ -2519,12 +2636,16 @@ def handle_ui_snapshot_request(data=None):
         status_message, is_processing = status_manager.get_status()
     except Exception:
         status_message, is_processing = '', False
-    running = bool(game_thread and game_thread.is_alive())
+    running = bool(game_thread and game_thread.is_alive() and not _web_gameplay_paused())
     with _ui_operation_lock:
         operations = {
             key: dict(value) if isinstance(value, dict) else None
             for key, value in _ui_operations.items()
         }
+    restore = operations.get('restore') or {}
+    if restore.get('pending') or restore.get('can_resume') is False:
+        status_message = restore.get('message', status_message)
+        is_processing = bool(restore.get('pending'))
     emit('ui_state_snapshot', _ui_response(data, {
         'game_running': running,
         'is_processing': bool(is_processing),
@@ -2554,7 +2675,7 @@ def handle_connect():
     # Load the durable player ledger before any stable-ID recovery writes.
     # Otherwise a first recovered message could overwrite an older on-disk
     # cache from an empty process-local deque.
-    cached_messages = load_message_cache()
+    cached_messages = load_message_cache() if not _web_gameplay_paused() else []
 
     # Claim the player-output sink before any reconnect replay below (e.g. combat
     # output recovery) so replayed prose reaches web clients rather than falling
@@ -2569,7 +2690,8 @@ def handle_connect():
     try:
         from core.managers.combat_manager import recover_pending_combat_output
 
-        recover_pending_combat_output()
+        if not _web_gameplay_paused():
+            recover_pending_combat_output()
     except Exception as combat_receipt_error:
         error(
             f"Pending combat delivery recovery deferred: {combat_receipt_error}",
@@ -2598,7 +2720,7 @@ def handle_connect():
         print(f"[MESSAGE_CACHE] Sent {len(cached_messages)} cached messages to client")
 
     # If a game is already running, tell THIS client to reattach (issue #122).
-    if game_thread and game_thread.is_alive():
+    if game_thread and game_thread.is_alive() and not _web_gameplay_paused():
         _emit_game_resumed()
 
     # Send any queued messages
@@ -2617,6 +2739,9 @@ def handle_connect():
 @socketio.on('user_input')
 def handle_user_input(data):
     """Handle input from the user"""
+    if _web_gameplay_paused():
+        emit('error', {'message': 'Gameplay is paused. Choose Load, Reset, or Exit.'})
+        return
     user_input = data.get('input', '')
     if not isinstance(user_input, str) or not user_input.strip():
         return
@@ -2641,9 +2766,11 @@ def handle_user_input(data):
     user_input_queue.put(user_input)
 
 @socketio.on('action')
-def handle_action(data):
+def handle_action(data, _operation_id=None):
     """Handle direct action requests from the UI (save, load, reset)."""
     action_type = data.get('action')
+    if action_type in {'restoreGame', 'nuclearReset'} and _operation_id is None:
+        _operation_id = str(uuid4())
     parameters = data.get('parameters', {})
     from utils.capture.live_provider_call import (
         get_lifecycle_turn_scopes,
@@ -2658,7 +2785,11 @@ def handle_action(data):
     welcome_scope = get_active_welcome_scope()
     debug(f"WEB_REQUEST: Received direct action from client: {action_type}", category="web_interface")
 
-    if action_type in {'saveGame', 'restoreGame', 'nuclearReset'}:
+    if _web_gameplay_paused() and action_type in {'saveGame', 'deleteSave', 'recover_startup_handoff'}:
+        emit('error', {'message': 'Gameplay is paused. Choose Load, Reset, or Exit.'})
+        return
+
+    if action_type in {'saveGame', 'nuclearReset'}:
         try:
             from core.managers.status_manager import status_manager
 
@@ -2666,6 +2797,7 @@ def handle_action(data):
                 status_manager.is_processing()
                 and live_scope is None
                 and welcome_scope is None
+                and not _web_gameplay_paused()
             ):
                 emit('error', {
                     'message': (
@@ -2681,8 +2813,7 @@ def handle_action(data):
 
     if action_type == 'listSaves':
         try:
-            from updates.save_game_manager import SaveGameManager
-            manager = SaveGameManager()
+            manager = _web_save_manager()
             saves = manager.list_save_games()
             emit('save_list_response', saves)
         except Exception as e:
@@ -2782,17 +2913,43 @@ def handle_action(data):
                 emit('error', {'message': f"Save failed: {message}"})
         except Exception as e:
             emit('error', {'message': f"Save failed: {str(e)}"})
+        finally:
+            # An idle Save can have published a filesystem-wait status. Its
+            # terminal must release that status, but a queued Save does not
+            # own its still-running turn/welcome's input boundary.
+            if (not get_lifecycle_turn_scopes()
+                    and get_active_welcome_scope() is None
+                    and not _web_gameplay_paused()):
+                from core.managers.status_manager import status_ready
+
+                status_ready()
 
     elif action_type == 'restoreGame':
         try:
-            from updates.save_game_manager import SaveGameManager
-            manager = SaveGameManager()
+            manager = _web_save_manager()
             save_folder = parameters.get("saveFolder")
+            valid, validation_message = manager.validate_restore_target(save_folder)
+            if not valid:
+                clean = _web_restore_state().get('can_resume') is not False
+                emit('restore_complete', {
+                    'message': validation_message,
+                    'restore_outcome': 'unchanged' if clean else 'recovery_required',
+                    'can_resume': clean,
+                    'restart_required': False,
+                })
+                return
+            previous_clean = _web_restore_state().get('can_resume') is not False
             if live_scope is not None:
-                operation_id = str(uuid4())
+                operation_id = _operation_id
                 turn_scopes, operations = request_lifecycle_turn_supersession(
                     "restore", operation_id
                 )
+                if not turn_scopes:
+                    # The captured scope left the registry before the claim.
+                    # Follow its exact terminal and redispatch this control,
+                    # not an unowned replacement operation or player retry.
+                    live_scope.quiescent.wait()
+                    return handle_action(data, _operation_id)
                 conflict = next(
                     (
                         operation for operation in operations
@@ -2826,20 +2983,11 @@ def handle_action(data):
                     claim_destructive_operation,
                 )
 
-                session_id = getattr(request, 'sid', None) or 'unknown-session'
-
                 def execute_welcome_restore():
-                    return manager.restore_save_game(save_folder)
+                    return _apply_web_restore(manager, save_folder, previous_clean)
 
                 def complete_welcome_restore(outcome):
-                    success, message = outcome
-                    if success:
-                        socketio.emit('restore_complete', {'message': 'Game restored successfully. Server restarting...'}, to=session_id)
-                        socketio.sleep(1)
-                        print("INFO: Game restore successful. Server is shutting down for restart.")
-                        os._exit(0)
-                    else:
-                        socketio.emit('error', {'message': f"Restore failed: {message}"}, to=session_id)
+                    _finish_web_restore(manager, outcome)
 
                 # Claim/promotion AND record insertion are ONE scope-lock
                 # transaction: an accepted destructive claim always has its
@@ -2847,6 +2995,7 @@ def handle_action(data):
                 claim = claim_destructive_operation(
                     welcome_scope, "restore",
                     execute_welcome_restore, complete_welcome_restore,
+                    operation_id=_operation_id,
                 )
                 if claim['status'] == 'closed':
                     # Closed before the claim: Load is NEVER refused (#193).
@@ -2856,7 +3005,7 @@ def handle_action(data):
                     # stale scope, never a player resubmit, and never tight
                     # recursion on the seal-before-clear window.
                     welcome_scope.quiescent.wait()
-                    return handle_action(data)
+                    return handle_action(data, _operation_id)
                 if claim['status'] == 'conflict':
                     emit('error', {
                         'message': (
@@ -2870,14 +3019,9 @@ def handle_action(data):
                     'operation_id': claim['operation_id'],
                 })
                 return
-            success, message = manager.restore_save_game(save_folder)
-            if success:
-                emit('restore_complete', {'message': 'Game restored successfully. Server restarting...'})
-                socketio.sleep(1)
-                print("INFO: Game restore successful. Server is shutting down for restart.")
-                os._exit(0)
-            else:
-                emit('error', {'message': f"Restore failed: {message}"})
+            _begin_web_restore(manager, 'Load is stopping the previous game safely.', previous_clean)
+            _stop_web_game_reader()
+            _finish_web_restore(manager, _apply_web_restore(manager, save_folder, previous_clean))
         except Exception as e:
             emit('error', {'message': f"Restore failed: {str(e)}"})
     
@@ -2895,12 +3039,17 @@ def handle_action(data):
             emit('error', {'message': f"Delete failed: {str(e)}"})
 
     elif action_type == 'nuclearReset':
+        manager = None
         try:
+            manager = _web_save_manager()
             if live_scope is not None:
-                operation_id = str(uuid4())
+                operation_id = _operation_id
                 turn_scopes, operations = request_lifecycle_turn_supersession(
                     "reset", operation_id
                 )
+                if not turn_scopes:
+                    live_scope.quiescent.wait()
+                    return handle_action(data, _operation_id)
                 conflict = next(
                     (
                         operation for operation in operations
@@ -2935,10 +3084,14 @@ def handle_action(data):
                 session_id = getattr(request, 'sid', None) or 'unknown-session'
 
                 def execute_welcome_reset():
-                    reset_campaign.perform_reset_logic()
-                    message_cache.clear()
-                    save_message_cache()
-                    return (True, 'reset')
+                    try:
+                        _begin_web_restore(manager, 'Resetting the campaign.')
+                        reset_campaign.perform_reset_logic()
+                        message_cache.clear()
+                        save_message_cache()
+                        return (True, 'reset')
+                    except Exception as exc:
+                        return (False, str(exc))
 
                 def complete_welcome_reset(outcome):
                     success, message = outcome
@@ -2948,18 +3101,20 @@ def handle_action(data):
                         print("INFO: Campaign reset complete. Server is shutting down for restart.")
                         os._exit(0)
                     else:
-                        socketio.emit('error', {'message': f'Campaign reset failed: {message}'}, to=session_id)
+                        from updates.save_game_manager import RestoreOutcome
+                        _finish_web_restore(manager, RestoreOutcome('recovery_required', f'Campaign reset failed: {message}'))
 
                 # One atomic claim+record transaction (same as Load).
                 claim = claim_destructive_operation(
                     welcome_scope, "reset",
                     execute_welcome_reset, complete_welcome_reset,
+                    operation_id=_operation_id,
                 )
                 if claim['status'] == 'closed':
                     # Same rule as Load: wait for the captured scope's
                     # quiescent, then re-dispatch.
                     welcome_scope.quiescent.wait()
-                    return handle_action(data)
+                    return handle_action(data, _operation_id)
                 if claim['status'] == 'conflict':
                     emit('error', {
                         'message': (
@@ -2973,6 +3128,8 @@ def handle_action(data):
                     'operation_id': claim['operation_id'],
                 })
                 return
+            _begin_web_restore(manager, 'Resetting the campaign.')
+            _stop_web_game_reader()
             reset_campaign.perform_reset_logic()
             # Clear the message cache on campaign reset
             global message_cache
@@ -2983,7 +3140,11 @@ def handle_action(data):
             print("INFO: Campaign reset complete. Server is shutting down for restart.")
             os._exit(0)
         except Exception as e:
-            emit('error', {'message': f'Campaign reset failed: {str(e)}'})
+            if manager is None:
+                emit('error', {'message': f'Campaign reset could not start: {e}'})
+                return
+            from updates.save_game_manager import RestoreOutcome
+            _finish_web_restore(manager, RestoreOutcome('recovery_required', f'Campaign reset failed: {e}'))
 
     elif action_type == 'recover_startup_handoff':
         session_id = getattr(request, 'sid', None) or 'unknown-session'
@@ -3070,6 +3231,12 @@ def handle_action(data):
                 result='attempting',
             )
             recovery_result = dm_main.recover_startup_handoff() or {}
+            from updates.save_game_manager import RestoreRequest
+            if isinstance(recovery_result, RestoreRequest):
+                return handle_action({
+                    'action': 'restoreGame',
+                    'parameters': {'saveFolder': recovery_result.save_folder},
+                })
             status = recovery_result.get('status', 'failed')
             if status not in {'recovered', 'already_ready', 'failed', 'in_progress', 'not_recoverable'}:
                 status = 'failed'
@@ -3107,6 +3274,9 @@ def handle_action(data):
 def handle_start_game():
     """Start the game in a separate thread"""
     global game_thread, startup_handoff_active, startup_ready_emitted, message_cache
+    if _web_gameplay_paused():
+        emit('error', {'message': 'Gameplay is paused. Choose Load, Reset, or Exit.'})
+        return
     
     if game_thread and game_thread.is_alive():
         # Browser reopened on a live game: reconnect this client instead of
@@ -4619,7 +4789,14 @@ def run_game_loop():
         output_thread.start()
         
         # Run the main game
-        dm_main.main_game_loop()
+        from updates.save_game_manager import RestoreRequest
+        handoff = dm_main.main_game_loop()
+        if isinstance(handoff, RestoreRequest):
+            previous_clean = _web_restore_state().get('can_resume') is not False
+            _finish_web_restore(
+                handoff.manager,
+                _apply_web_restore(handoff.manager, handoff.save_folder, previous_clean),
+            )
     except (BrokenPipeError, OSError) as e:
         # Handle broken pipe errors specifically
         try:

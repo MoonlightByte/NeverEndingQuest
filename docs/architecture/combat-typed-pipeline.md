@@ -5,6 +5,19 @@ restart-safe delivery, and player-facing narration.
 
 Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.
 
+## Safety worktree delta (2026-09-05; live acceptance pending)
+
+Combat provider calls use required transport and preserve typed supersession
+through validators, orchestrator, manager and main handoff. Cancellation is not a
+player-roll pause or a retryable semantic failure. Genuinely unowned combat entry
+owns a scope/invocation lifetime; ordinary and recursive callers lend theirs.
+Post-combat T082/T067 work remains fenced until the actual next input boundary.
+
+Dice, actors, actions, reactions, HP/resources, XP, voice maps and encounter
+schemas are unchanged by this harness repair. Ratified T097 completed-invalid
+handling remains distinct from transport retry. Development checks are not proof
+of P1-P9 live combat acceptance, which remains outstanding.
+
 ## Authority table
 
 | Datum | Single source of truth | Commit or acceptance point |

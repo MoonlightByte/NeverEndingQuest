@@ -108,14 +108,27 @@ and `ts` (unix seconds).
 {"type": "command", "id": "c6", "name": "quit"}
 ```
 
-Rules:
+Rules (safety-worktree implementation; live acceptance still pending):
 
-- Send one `input` per `prompt` event. Inputs sent early are buffered FIFO.
-- `save`, `restore`, `delete_save` are only accepted while a prompt is
-  pending (the engine is idle); otherwise the `result` is `ok: false`.
-- `restore` replies with `result`, then emits `exit {reason: "restart"}` and
-  ends the process (exit code 0) because in-memory engine state is stale
-  after a restore. Relaunch the session to continue from the restored save.
+- Send one `input` per `prompt` event; do not batch future gameplay turns.
+- Save can queue at a live/welcome safe boundary. Load and confirmed Reset
+  coordinate supersession/quiescence; delete-save still requires idle state.
+- Restore results include `restore_outcome` and `can_resume`. A verified clean
+  result emits `exit {reason: "restart"}`; relaunch to use the clean state.
+  `recovery_required` does not start gameplay or advertise a normal prompt:
+  command intake remains for list-saves, Load, Reset or Quit.
+- `operation {status: "received"}` acknowledges command transport only. The
+  existing runner executes commands FIFO; wait for the correlated `result`.
+  Receipt alone never proves execution or success. Input retains its existing
+  prompt/narration/state contract, not command-style receipts.
+- Quit can cancel Load's outer read-only preflight before any restore claim.
+  That result says `status: "cancelled"`, identifies the Quit operation, and
+  means this Load changed no state. Earlier accepted Saves still drain normally.
+  Cancellation does not extend to applying/rolling-back Load; that priority is
+  still owner-open. Native control acceptance remains in the execution ledger.
+- Restart ends this process's ephemeral queue. A command known to be undispatched
+  must be resubmitted; a missing result alone is not proof it never executed.
+  Never blindly resend gameplay input merely because it had no command result.
 - Wizard turns work over the same channel: if no character is seeded, the
   startup wizard's questions surface as `prompt {kind: "wizard"}` events and
   free-text answers drive the AI character-creation interview.
@@ -175,8 +188,9 @@ python run_headless.py serve --game-dir /tmp/neq-test \
 Then, per turn: wait for `{"type": "prompt"}`, read the `state` event that
 follows it, decide, and write `{"type": "input", "content": "..."}` to the
 process's stdin. A provider call in flight shows up as `status` events with
-`is_processing: true`; prolonged total silence means a hung provider call --
-script mode enforces `--timeout-per-turn` for exactly that case.
+`is_processing: true`. Silence alone does not identify the cause: inspect the
+same live process/children and protocol before diagnosing provider versus local
+blocking. Observation timeout is not permission to abandon gameplay work.
 
 ## Limitations
 

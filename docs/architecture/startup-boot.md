@@ -4,6 +4,19 @@ Purpose: create or repair the minimum durable game state, resume durable work, b
 
 Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.
 
+## Safety worktree delta (2026-09-05; live acceptance pending)
+
+The shared loop wrapper owns genuinely unowned startup/combat work and borrows an
+existing scope when present. Its scope extends through recovery and post-combat
+handoff, then closes at the input boundary. Nested work never closes its caller's
+scope. Module-completion generation likewise owns an unowned entry or borrows the
+current/accepted-control context. Typed supersession bypasses startup completion
+failure narration. Existing wizard/welcome ownership remains distinct.
+
+No extra startup scanner, autosave or crash manifest is added: existing clean
+state and subsystem receipts are the resume authority. Native live startup and
+saved-combat cancellation acceptance is still pending.
+
 ## Authority table
 
 | Datum | Source of truth | Acceptance or commit point |

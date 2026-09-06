@@ -131,9 +131,17 @@ class HeadlessInput:
             except Exception:
                 pass
         while True:
-            service_live_input_boundary()
+            drained = service_live_input_boundary()
             if self._quit_requested():
                 return ""
+            if drained:
+                # This game thread is still parked, not processing a new input.
+                # A queued Save may have published a busy wait/terminal status.
+                try:
+                    from core.managers.status_manager import status_ready
+                    status_ready(at_input_boundary=True)
+                except Exception:
+                    pass
             try:
                 user_input = self.queue.get(timeout=0.5)
             except queue_module.Empty:
