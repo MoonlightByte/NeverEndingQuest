@@ -8,8 +8,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, useSession } from '../../stores'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { EmberIcon } from '../layout/EmberIcon'
 
 export function InputBar() {
+  const ember = useEmberDesktop()
   const isProcessing = useSession((s) => s.isProcessing)
   const connected = useSession((s) => s.connected)
   const mode = useSession((s) => s.mode)
@@ -76,7 +79,7 @@ export function InputBar() {
           disabled={locked}
           className="neq-send-button cursor-pointer rounded border-0 bg-[#4caf50] px-5 py-2 font-chrome text-sm font-bold text-white hover:bg-[#45a049] disabled:cursor-not-allowed disabled:bg-[#555]"
         >
-          Send
+          {ember && <EmberIcon name="send" />}Send
         </button>
       </div>
     </div>

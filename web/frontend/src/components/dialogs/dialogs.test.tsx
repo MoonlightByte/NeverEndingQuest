@@ -8,11 +8,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 vi.mock('../../services/socket', () => ({ emitC: vi.fn() }))
-vi.mock('../../services/restart', () => ({ prepareForServerRestart: vi.fn(async () => 'server-a'), reloadWhenServerReady: vi.fn(async () => undefined) }))
+vi.mock('../../services/restart', () => ({ prepareForServerRestart: vi.fn(async () => 'server-a'), cancelPendingRestart: vi.fn(), reloadWhenServerReady: vi.fn(async () => undefined) }))
 
 import { emitC } from '../../services/socket'
 import { prepareForServerRestart } from '../../services/restart'
-import { useDialogs, useLog, useWorld } from '../../stores'
+import { useDialogs, useLog, useWorld, useSession } from '../../stores'
 import { SaveDialog } from './SaveDialog'
 import { LoadDialog } from './LoadDialog'
 import { ResetDialog, generateResetCode } from './ResetDialog'
@@ -32,6 +32,7 @@ beforeEach(() => {
   useDialogs.setState(dialogsInitial, true)
   useWorld.setState(worldInitial, true)
   useLog.setState(logInitial, true)
+  useSession.setState({ connected: true })
 })
 
 describe('SaveDialog', () => {
@@ -54,6 +55,15 @@ describe('SaveDialog', () => {
 })
 
 describe('LoadDialog', () => {
+  it('moves focus inside without a primary input and handles Escape', () => {
+    useDialogs.getState().openDialog('load')
+    render(<LoadDialog />)
+    const dialog = screen.getByRole('dialog', { name: 'Load Saved Game' })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    expect(useDialogs.getState().open).toBeNull()
+  })
+
   it('requests the save list on open and emits restoreGame for the selected save', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     useDialogs.getState().openDialog('load')

@@ -1,8 +1,26 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
-import { cancelPendingRestart, hasServerRestarted } from './restart'
+import { describe, expect, it, vi } from 'vitest'
+import { cancelPendingRestart, hasServerRestarted, prepareForServerRestart } from './restart'
 
 describe('restart process identity', () => {
+  it('does not overwrite a newer restart marker when canceled preparation resolves late', async () => {
+    let resolveOld!: (response: Response) => void
+    let current = true
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ server_instance_id: 'newer-server' })))
+    try {
+      const old = prepareForServerRestart(() => current)
+      current = false
+      await prepareForServerRestart()
+      resolveOld(new Response(JSON.stringify({ server_instance_id: 'older-server' })))
+      await old
+      expect(sessionStorage.getItem('neq_restart_server_instance')).toBe('newer-server')
+    } finally {
+      fetchMock.mockRestore()
+      sessionStorage.clear()
+    }
+  })
   it('does not mistake the still-running old process for the replacement', () => {
     expect(hasServerRestarted('server-a', 'server-a')).toBe(false)
   })

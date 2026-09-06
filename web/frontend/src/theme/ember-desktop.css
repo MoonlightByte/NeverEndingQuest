@@ -1,0 +1,240 @@
+/* Approved 05-ember-inline-stacked.png. Deliberately desktop-root scoped:
+ * small-screen and legacy surfaces keep their existing tokens.
+ * !important is limited to replacing inline legacy presentation styles. */
+.ember-desktop {
+  --accent: #426d3d;
+  --font-log: 'Crimson Text', Georgia, serif;
+  --font-chrome: 'Crimson Text', Georgia, serif;
+  --font-body: 'Crimson Text', Georgia, serif;
+  --text-primary: var(--ember-text);
+  --text-secondary: var(--ember-muted);
+  color: var(--ember-text);
+  font-family: var(--font-body);
+  background: radial-gradient(ellipse at 48% 45%, #10171744, transparent 72%), var(--ember-page);
+  grid-template-columns: minmax(330px, 29.7fr) minmax(0, 51.3fr) minmax(220px, 19fr);
+  grid-template-rows: 62px minmax(0, 1fr);
+  grid-template-areas: 'header header header' 'rail main people';
+  gap: 0;
+  padding: 0 0 64px;
+  height: 100dvh;
+  font-size: 17px;
+  line-height: 1.3;
+  color-scheme: dark;
+}
+.ember-desktop *, .ember-desktop *::before, .ember-desktop *::after { box-sizing: border-box; }
+.ember-desktop :focus-visible { outline: 2px solid #d9bb88; outline-offset: 3px; }
+.ember-desktop button { cursor: pointer; }
+.ember-desktop button:disabled { cursor: not-allowed; opacity: .5; }
+.ember-desktop :is(button, a) { -webkit-tap-highlight-color: transparent; }
+.ember-desktop * { scrollbar-width: thin; scrollbar-color: #938574 transparent; }
+.ember-desktop .ember-icon { flex-shrink: 0; display: inline-block; vertical-align: middle; }
+.ember-desktop .neq-header {
+  height: 62px; min-height: 62px; padding: 0 20px; gap: 28px;
+  background: transparent; border: 0; border-bottom: 1px solid var(--ember-rule);
+  box-shadow: 0 1px #85704c22; flex-wrap: nowrap;
+}
+.ember-desktop .neq-header-brand { padding-right: 28px; border-right: 1px solid var(--ember-rule); flex-shrink: 0; }
+.ember-desktop .neq-shimmer-title {
+  position: relative; margin: 0; font: 400 clamp(20px, 1.64vw, 27px)/1.1 'Cinzel', Georgia, serif;
+  letter-spacing: -.9px; color: #e3c79b; background: none;
+  -webkit-text-fill-color: currentColor; animation: none; filter: none; text-shadow: 0 2px 2px #000;
+}
+.ember-desktop .neq-shimmer-title span { color: inherit; background: none; -webkit-text-fill-color: currentColor; animation: none; }
+.ember-desktop .neq-version { position: absolute; right: 0; bottom: -9px; font-size: 8px; letter-spacing: 0; color: var(--ember-muted); }
+.ember-desktop .neq-header-location { text-align: left; font-family: var(--font-body); margin: 0; padding: 0; }
+.ember-desktop .neq-location-name { font: 400 18px/1.2 var(--font-body); color: var(--ember-text); }
+.ember-desktop .neq-location-details { font: 400 16px/1.2 var(--font-body); color: var(--ember-text); }
+.ember-desktop .neq-header-adventure { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.ember-desktop .neq-header-actions { gap: 0; flex-shrink: 0; }
+.ember-desktop .neq-header-actions > :is(button, a), .ember-desktop .neq-header-actions > div > button {
+  background: transparent !important; color: var(--ember-text) !important; box-shadow: none;
+  border: 0; border-left: 1px solid var(--ember-rule); border-radius: 0 !important;
+  padding: 4px 18px; font: 400 17px/1.2 var(--font-body) !important; display: inline-flex; align-items: center; gap: 8px;
+}
+.ember-desktop .neq-header-actions > :is(button, a):hover { color: #f5dfb5 !important; background: #c5a06d0a !important; }
+.ember-desktop .neq-connection { flex-direction: row-reverse; gap: 9px; margin: 0; padding: 0 22px 0 0; font: 400 17px/1.2 var(--font-body); }
+.ember-desktop .neq-connection > [aria-label] { width: 12px; height: 12px; box-shadow: 0 0 6px #426d3d33; }
+.ember-desktop .neq-rail-area { margin: 0; padding: 18px 8px 0 28px; border-right: 1px solid var(--ember-frame); }
+.ember-desktop .neq-main-area { margin: 0; padding: 16px 8px 14px; }
+.ember-desktop .neq-main-panel { height: 100%; padding: 0; margin: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+.ember-desktop .neq-rail-panel { background: transparent; border: 0; border-radius: 0; }
+.ember-desktop .neq-tabs { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 4px; height: 76px; min-height: 76px; background: none; border: 0; margin-bottom: 8px; }
+.ember-desktop .neq-tabs .neq-tab-button {
+  grid-column: span 2; margin: 0; padding: 5px 2px; border: 1px solid var(--ember-frame); border-radius: 2px;
+  font: 400 17px/1.15 var(--font-body); letter-spacing: 0; color: var(--ember-brass); background: linear-gradient(135deg,#141b1933, transparent);
+  white-space: normal; overflow: visible; min-width: 0;
+}
+.ember-desktop .neq-tabs .neq-tab-button:nth-child(n+4) { grid-column: span 3; }
+.ember-desktop .neq-tabs .neq-tab-button[aria-selected='true'] { border-color: #81643b; color: #f0e7d9; box-shadow: inset 0 0 0 2px #0006; }
+.ember-desktop .neq-tab-button:hover { background: #c5a06d12; }
+.ember-desktop .ember-sheet-footer { order: 3; display: flex; gap: 16px; padding: 8px 6px 0; margin-top: auto; flex-shrink: 0; }
+.ember-desktop .ember-sheet-footer button { display: flex; align-items: center; justify-content: center; gap: 14px; width: 36%; min-height: 42px; border: 1px solid var(--ember-rule); border-radius: 2px; background: linear-gradient(135deg,#17201b44,transparent); color: var(--ember-text); font: 400 17px var(--font-body); }
+.ember-desktop .ember-sheet-footer .ember-icon { width: 24px; height: 24px; color: var(--ember-muted); }
+.ember-desktop .neq-character-tab { background: none; padding: 0; }
+.ember-desktop .neq-character-sheet { display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 0; background: none; white-space: normal; }
+.ember-desktop .neq-character-sheet-top { order: 0; align-items: flex-start; gap: 16px; margin: 0 0 8px; padding: 0; border: 0; }
+.ember-desktop .neq-character-portrait { width: 35%; height: auto; aspect-ratio: .94; border: 1px solid #725b39; border-radius: 2px; box-shadow: inset 0 0 0 2px #000; }
+.ember-desktop .neq-character-header { height: auto; border: 0; border-radius: 0; background: none; padding: 4px 10px 0 0; }
+.ember-desktop .neq-character-name { margin: 0 0 8px; padding: 0; border: 0; color: var(--ember-text); font: 400 25px/1.05 var(--font-body); letter-spacing: 0; text-transform: none; }
+.ember-desktop .neq-character-details { display: block; color: var(--ember-text); font: 400 16px/1.3 var(--font-body); }
+.ember-desktop .neq-character-details .text-accent { color: var(--ember-brass); font-weight: 400; }
+.ember-desktop .neq-character-details > div:first-child .text-primary { color: var(--ember-brass); }
+.ember-desktop .ember-profession, .ember-desktop .ember-alignment { display: inline; color: var(--ember-muted); }
+.ember-desktop .ember-profession > span, .ember-desktop .ember-alignment > span { display: none; }
+.ember-desktop .ember-profession::after { content: ' · '; }
+.ember-desktop .ember-xp-track { height: 7px; margin: 3px 0 7px !important; border: 1px solid #665336; padding: 1px; border-radius: 2px; }
+.ember-desktop .ember-xp-track > span { height: 100%; display: block; background: var(--ember-brass); }
+.ember-desktop .neq-combat-stats { order: 1; grid-template-columns: 1.7fr .8fr .95fr; gap: 5px; margin: 0 0 8px; }
+.ember-desktop .neq-combat-stat { flex-direction: row; gap: 7px; justify-content: flex-start; min-height: 48px; padding: 8px 12px; background: none; border: 1px solid var(--ember-frame); border-radius: 2px; }
+.ember-desktop .neq-combat-label { display: flex; align-items: center; gap: 9px; color: var(--ember-brass); font: 400 16px/1 var(--font-body); }
+.ember-desktop .neq-combat-value { font: 400 16px/1 var(--font-body); color: var(--ember-text); margin: 0; white-space: nowrap; }
+.ember-desktop .neq-combat-stat:first-child { padding-bottom: 14px; }
+.ember-desktop .neq-hp-bar { position: absolute; left: 14px; right: 14px; bottom: 6px; width: auto; border: 0; background: #162319; height: 6px; border-radius: 2px; }
+.ember-desktop .neq-abilities-row { order: 2; gap: 5px; margin: 0 0 8px; }
+.ember-desktop .neq-ability-score { padding: 8px 2px 5px; min-height: 81px; border: 1px solid var(--ember-rule); border-radius: 2px; background: linear-gradient(130deg,#141b1922,transparent); box-shadow: none; }
+.ember-desktop .neq-ability-name { color: var(--ember-brass); letter-spacing: 0; font: 400 16px/1.2 var(--font-body); }
+.ember-desktop .neq-ability-value { color: var(--ember-text); font: 400 23px/1.1 var(--font-body); }
+.ember-desktop .neq-ability-modifier { width: auto; height: auto; margin-top: 3px; border: 0; border-radius: 0; background: none; color: var(--ember-text); font: 400 17px/1.1 var(--font-body); }
+.ember-desktop .neq-weapons-grid { order: 3; display: block; margin: 0; }
+.ember-desktop .neq-saving-throws { order: 4; }
+.ember-desktop .neq-abilities-grid { order: 5; display: block; margin: 0; }
+.ember-desktop .neq-sheet-section, .ember-desktop .neq-saving-throws { margin: 0 10px 4px; padding: 0; border: 0; border-radius: 0; background: none; min-height: 0; }
+.ember-desktop .neq-weapons-grid .neq-sheet-section { min-height: 0; }
+.ember-desktop .neq-sheet-section h4, .ember-desktop .neq-saving-throws h4 { display: flex; align-items: center; gap: 10px; padding: 0; margin: 0; border: 0; color: var(--ember-brass); font: 400 17px/1.3 var(--font-body); text-transform: none; letter-spacing: 0; }
+.ember-desktop .neq-sheet-section h4::after, .ember-desktop .neq-saving-throws h4::after { content: ''; height: 1px; background: var(--ember-rule); flex: 1; }
+.ember-desktop .neq-sheet-section-content { padding: 0; }
+.ember-desktop .neq-sheet-section-content > div, .ember-desktop .neq-feature-item { padding: 0; font: 400 17px/1.3 var(--font-body); color: var(--ember-text); min-height: 0; flex-wrap: wrap; }
+.ember-desktop .neq-feature-item > span, .ember-desktop .neq-weapons-grid .neq-feature-item > span { color: var(--ember-text) !important; font-weight: 400; }
+.ember-desktop .neq-usage-counter { padding: 0; margin-left: 5px; font: inherit; background: none; border-radius: 0; }
+.ember-desktop .neq-feature-refresh { font-size: 14px; }
+.ember-desktop .neq-saving-throws-grid { display: flex; gap: 7px; justify-content: space-between; flex-wrap: wrap; }
+.ember-desktop .neq-saving-throws-grid > div { display: flex; gap: 6px; padding: 0; border: 0; background: none; border-radius: 0; min-height: 0; font: 400 16px/1.4 var(--font-body); }
+.ember-desktop .neq-saving-throws-grid > div > span { color: var(--ember-text); font-weight: 400; }
+.ember-desktop .ember-currency-row { order: 6; display: flex; justify-content: space-around; margin-top: 10px; padding: 9px 0; border-block: 1px solid var(--ember-frame); }
+.ember-desktop .ember-currency-row > div, body[data-ember-desktop='true'] .ember-npc-full-card .ember-currency-row > div { display: flex; align-items: center; gap: 7px; }
+.ember-desktop .ember-currency-row > div > span:nth-child(2), body[data-ember-desktop='true'] .ember-npc-full-card .ember-currency-row > div > span:nth-child(2) { color: var(--ember-brass); }
+.ember-desktop .ember-coin, body[data-ember-desktop='true'] .ember-npc-full-card .ember-coin { width: 18px; height: 18px; border: 2px solid #b88a42; outline: 1px solid #52341b; outline-offset: -4px; border-radius: 50%; background: radial-gradient(circle at 30% 20%,#fff0c8,#b57b30 50%,#40260e); box-shadow: inset 0 0 2px #fff9; }
+.ember-desktop .ember-coin-SP, body[data-ember-desktop='true'] .ember-npc-full-card .ember-coin-SP { filter: grayscale(1); }
+.ember-desktop .ember-coin-CP, body[data-ember-desktop='true'] .ember-npc-full-card .ember-coin-CP { background: radial-gradient(circle at 30% 20%,#f5c49f,#a96034 50%,#40200e); }
+.ember-desktop .neq-game-log { padding: 0 14px 12px; background: linear-gradient(120deg,#0e1515,#0b1010); border: 1px solid var(--ember-frame); border-radius: 3px; }
+.ember-desktop .neq-session-divider { display: flex; align-items: center; gap: 12px; max-width: none; margin: 5px 18px 0 54px; padding: 0; border: 0; border-radius: 0; background: none; color: var(--ember-muted); font: 400 17px/1.15 var(--font-body); }
+.ember-desktop .neq-session-divider::before, .ember-desktop .neq-session-divider::after { content: ''; height: 1px; background: var(--ember-rule); flex: 1; }
+.ember-desktop .neq-message { gap: 16px; margin: 0; padding: 14px 0 20px; font-family: var(--font-body); }
+.ember-desktop .neq-message-user { padding: 0 0 16px; border-bottom: 1px solid var(--ember-rule); }
+.ember-desktop .neq-message-avatar { width: 38px; height: 38px; background: none !important; margin: 0; border: 0; color: var(--ember-muted) !important; display: flex; align-items: center; justify-content: center; }
+.ember-desktop .neq-message-user .neq-message-avatar { height: 26px; }
+.ember-desktop .neq-message-header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 0 12px 14px 0; }
+.ember-desktop .neq-message-user .neq-message-header { margin: 0 0 2px; }
+.ember-desktop .neq-message-author { font: 400 20px/1.4 var(--font-body); color: #e96738 !important; }
+.ember-desktop .neq-message-text { max-width: 75ch; margin-right: 20px; font: 400 21px/1.32 var(--font-body); color: var(--ember-text) !important; letter-spacing: -.15px; }
+.ember-desktop .neq-message-user .neq-message-text { font-size: 19px; color: var(--ember-brass) !important; }
+.ember-desktop .ember-message-action { display: inline-flex; align-items: center; gap: 7px; background: none; border: 0; padding: 0; color: var(--ember-muted); font: 400 17px/1.3 var(--font-body); white-space: nowrap; }
+.ember-desktop .ember-message-action:first-of-type { margin-left: auto; }
+.ember-desktop .ember-message-action:hover { color: #f0dbb5; }
+.ember-desktop .neq-inline-images { margin: 16px 28px 18px -30px; gap: 6px; }
+.ember-desktop .neq-inline-images img { width: 100%; max-height: 270px; object-fit: contain; border: 1px solid #6b5331; border-radius: 3px; background: #060909; }
+.ember-desktop .neq-weapons-grid .neq-feature-item > span + span { margin-left: 4px; }
+.ember-desktop .ember-image-caption { margin: 0 5px; color: var(--ember-muted); font: italic 16px/1.3 var(--font-body); }
+.ember-desktop .ember-image-error { padding: 12px; border: 1px solid var(--ember-rule); color: var(--ember-muted); font: 400 17px/1.4 var(--font-body); }
+.ember-desktop .ember-image-error button { color: var(--ember-brass); text-decoration: underline; }
+.ember-desktop [data-message-type='system'] > div, .ember-desktop [data-message-type='info'] > div, .ember-desktop [data-message-type='startup'] > div { background: #141915 !important; border-color: var(--ember-frame) !important; border-radius: 2px; }
+.ember-desktop [data-message-type='error'] > div { background: #321c16 !important; border-color: #784930 !important; border-radius: 2px; }
+.ember-desktop :is([data-message-type='system'],[data-message-type='info'],[data-message-type='startup'],[data-message-type='error']) > div > div { font-size: 16px; }
+.ember-desktop .ember-narration-continuation { margin-right: 18px; }
+.ember-desktop .ember-dice-dock { flex-shrink: 0; margin-top: 6px; padding: 7px 9px; border: 1px solid var(--ember-frame); border-radius: 3px; }
+.ember-desktop .neq-dice-strip { width: 100%; display: flex; flex-direction: row; justify-content: space-between; gap: 12px; margin: 0; padding: 0; }
+.ember-desktop .neq-dice-label { width: auto; display: flex; align-items: center; gap: 12px; white-space: nowrap; margin: 0; }
+.ember-desktop .neq-dice-label::before { display: none; }
+.ember-desktop .neq-dice-label-text { background: none; padding: 0; border: 0; color: var(--ember-text); font: 400 16px/1.1 var(--font-body); letter-spacing: 0; text-transform: none; }
+.ember-desktop .ember-dice-disclaimer { color: var(--ember-muted); font: 400 12px/1.2 var(--font-body); }
+.ember-desktop .neq-dice-buttons { flex: 1; gap: 6px; justify-content: flex-end; }
+.ember-desktop .neq-dice-buttons button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; padding: 7px; border: 1px solid var(--ember-frame); border-radius: 2px; background: linear-gradient(130deg,#1b1e1733,transparent); box-shadow: none; color: var(--ember-brass); font: 400 16px/1 var(--font-body); }
+.ember-desktop .neq-dice-buttons button:last-child { margin-left: auto; color: var(--ember-text); }
+.ember-desktop .neq-dice-results { padding: 8px 0 0; max-height: 90px; overflow-y: auto; color: var(--ember-text); font: 400 16px/1.3 var(--font-body); }
+.ember-desktop .neq-input-container { margin-top: 10px; padding: 0; border: 0; background: none; }
+.ember-desktop .neq-input-container > div { gap: 10px; }
+.ember-desktop .neq-input-field { height: 55px; padding: 9px 16px; border: 1px solid #625033; border-radius: 2px; background: linear-gradient(120deg,#111919,#0b1010); color: var(--ember-text); font: 400 23px/1.3 var(--font-body); }
+.ember-desktop .neq-input-field::placeholder { color: #a89c88; }
+.ember-desktop .neq-send-button { display: flex; align-items: center; justify-content: center; gap: 8px; height: 55px; min-width: 126px; margin: 0; padding: 10px 20px; border: 1px solid #906038; border-radius: 2px; background: linear-gradient(120deg,#4b190c,#662610 50%,#46180d); box-shadow: inset 0 0 0 2px #0005; color: #f0e2ce; font: 400 20px/1.2 var(--font-body); }
+.ember-desktop .neq-send-button:hover:not(:disabled) { background: #783019; }
+.ember-desktop .ember-people { display: flex; flex-direction: column; min-height: 0; padding: 20px 28px 30px 20px; border-left: 1px solid var(--ember-frame); }
+.ember-desktop .ember-people > h2 { display: flex; gap: 10px; align-items: center; flex-shrink: 0; margin: 0 0 10px; padding: 0 0 10px; border-bottom: 1px solid var(--ember-rule); color: var(--ember-brass); font: 400 20px/1.2 var(--font-body); }
+.ember-desktop .ember-people > h2 .ember-icon { color: var(--ember-muted); }
+.ember-desktop .ember-people > h2 .neq-adventure-box { width: 24px; height: 24px; margin-left: auto; }
+.ember-desktop .neq-message-text { overflow-wrap: anywhere; }
+.ember-desktop .neq-chip-scroller-wrapper { flex: 1; min-height: 0; width: 100%; overflow: hidden; }
+.ember-desktop .neq-chip-scroller { display: flex; flex-direction: column; gap: 14px; align-items: stretch; height: 100%; max-height: none; max-width: none; margin: 0; padding: 0 8px 20px 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
+.ember-desktop .neq-chip-scroller::-webkit-scrollbar { display: block; }
+.ember-desktop .neq-character-chip {
+  display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; height: auto; min-height: 101px; padding: 0;
+  border: 0 !important; border-radius: 0; box-shadow: none !important; background: transparent !important;
+  opacity: 1 !important; transform: none !important; text-align: left; color: var(--ember-text) !important; overflow: visible;
+}
+.ember-desktop .ember-chip-portrait { width: 96px; height: 102px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background-color: #121b19; background-size: cover; background-position: center; border: 1px solid #705736; border-radius: 2px; box-shadow: inset 0 0 0 2px #0006; font: 400 28px var(--font-body); color: var(--ember-muted); }
+.ember-desktop .neq-character-chip > span:last-child { min-width: 0; color: var(--ember-text); font: 400 20px/1.2 var(--font-body) !important; text-shadow: none !important; margin: 0 !important; overflow-wrap: anywhere; }
+.ember-desktop .neq-character-chip:hover > .ember-chip-portrait, .ember-desktop .neq-character-chip[data-active='true'] > .ember-chip-portrait { border-color: #d3a456; box-shadow: 0 0 8px #d78b3033; }
+.ember-desktop .neq-character-chip[data-active='true'] > span:last-child { color: #f2bd79; }
+.ember-desktop .ember-turn-label { display: block; margin-top: 5px; font: 400 14px/1.2 var(--font-body); color: var(--ember-brass); }
+.ember-desktop .neq-character-chip[data-chip='init-enemy'] > .ember-chip-portrait { border-color: #87452d; }
+.ember-desktop .ember-nearby-label { color: var(--ember-muted); font-size: 14px; padding-top: 6px; border-top: 1px solid var(--ember-frame); }
+.ember-desktop .neq-combat-box { flex-direction: row; gap: 8px; width: 100%; height: 36px; margin: 0 0 12px; border: 1px solid var(--ember-rule) !important; background: none !important; }
+.ember-desktop .neq-combat-box > div:nth-child(2) { display: none; }
+.ember-desktop .ember-combat-caption { color: var(--ember-brass) !important; font: 400 14px/1.1 var(--font-body) !important; letter-spacing: .5px !important; }
+.ember-desktop .ember-round-label { color: var(--ember-muted) !important; font: 400 14px/1.1 var(--font-body) !important; }
+.ember-desktop .ember-round-value { color: var(--ember-text) !important; font: 400 18px/1.1 var(--font-body) !important; }
+.ember-desktop :is(.neq-ability-score, .neq-combat-stat, .neq-tab-button, .ember-sheet-footer button, .neq-dice-buttons button) { box-shadow: inset 0 0 0 2px #060a0977, inset 0 1px 0 #c9ab7044; }
+.ember-desktop .neq-tab-button[aria-selected='true'] { position: relative; }
+.ember-desktop .neq-tab-button[aria-selected='true']::after { content: ''; position: absolute; right: 5px; top: 50%; width: 4px; height: 4px; background: #a3814c; transform: rotate(45deg); }
+@media (max-height: 850px) {
+  .ember-desktop { padding-bottom: 20px; }
+}
+@media (max-width: 1450px) {
+  .ember-desktop { grid-template-columns: minmax(330px,29.7fr) minmax(0,51.3fr) minmax(215px,19fr); }
+  .ember-desktop .neq-header { gap: 16px; padding-inline: 16px; }
+  .ember-desktop .neq-header-brand { padding-right: 16px; }
+  .ember-desktop .neq-header-actions > :is(button,a), .ember-desktop .neq-header-actions > div > button { padding-inline: 10px; }
+  .ember-desktop .neq-rail-area { padding-left: 18px; }
+  .ember-desktop .ember-people { padding-inline: 16px; }
+  .ember-desktop .ember-chip-portrait { width: 78px; height: 90px; }
+  .ember-desktop .neq-character-chip { min-height: 90px; }
+  .ember-desktop .neq-character-chip > span:last-child { font-size: 18px !important; }
+  .ember-desktop .ember-dice-disclaimer { display: none; }
+  .ember-desktop .neq-dice-buttons button { padding-inline: 6px; }
+  .ember-desktop .neq-message-text { font-size: 20px; }
+}
+@media (max-width: 1150px) {
+  .ember-desktop { grid-template-columns: 310px minmax(0,1fr) 175px; grid-template-rows: auto minmax(0,1fr); }
+  .ember-desktop .neq-header { height: auto; min-height: 62px; flex-wrap: wrap; gap: 8px; padding-block: 8px; }
+  .ember-desktop .neq-header-actions { margin-left: auto; }
+  .ember-desktop .neq-rail-area { padding-left: 10px; }
+  .ember-desktop .neq-character-header { padding-right: 0; }
+  .ember-desktop .neq-character-name { font-size: 22px; }
+  .ember-desktop .neq-combat-stat { padding-inline: 6px; }
+  .ember-desktop .neq-combat-label { gap: 4px; }
+  .ember-desktop .neq-combat-label .ember-icon { width: 15px; }
+  .ember-desktop .ember-people { padding-inline: 10px; }
+  .ember-desktop .ember-chip-portrait { width: 54px; height: 68px; }
+  .ember-desktop .neq-character-chip { min-height: 68px; gap: 8px; }
+  .ember-desktop .ember-people > h2 { font-size: 17px; }
+  .ember-desktop .neq-message { gap: 8px; }
+  .ember-desktop .neq-message-avatar { width: 24px; height: 24px; }
+  .ember-desktop .neq-message-header { gap: 8px; }
+  .ember-desktop .ember-message-action { font-size: 15px; }
+  .ember-desktop .neq-dice-strip { flex-wrap: wrap; gap: 6px; }
+  .ember-desktop .neq-dice-buttons { flex-wrap: wrap; }
+  .ember-desktop .neq-send-button { min-width: 78px; padding-inline: 10px; }
+  .ember-desktop .neq-inline-images { margin-left: 0; margin-right: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ember-desktop *, .ember-desktop *::before, .ember-desktop *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* Compatibility repair below the Ember breakpoint: the legacy desktop rules
+   force one unbroken header row and clip the last sheet tabs at tablet widths.
+   Keep the existing layout and phone styles; make its controls reachable. */
+@media (min-width: 761px) and (max-width: 1023px) {
+  .neq-app-grid:not(.ember-desktop) .neq-header-actions { flex-wrap: wrap; max-width: 100%; }
+  .neq-app-grid:not(.ember-desktop) .neq-tabs { overflow-x: auto; }
+  .neq-app-grid:not(.ember-desktop) .neq-tab-button { flex-shrink: 0; }
+  .neq-app-grid:not(.ember-desktop) .neq-game-panel-header { overflow-x: auto; }
+}

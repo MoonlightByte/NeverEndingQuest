@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeverEndingQuest Developer Toolkit</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
     <style>
         /* === 1. Foundational Styles & Resets === */
         * {
@@ -2097,8 +2096,9 @@
         }
 
     </style>
+    <link href="{{ url_for('static', filename='css/ember-toolkit.css') }}" rel="stylesheet">
 </head>
-<body>
+<body class="ember-theme ember-workbench ember-toolkit">
     <div class="container">
         <div class="header">
             <h1>NeverEndingQuest Developer Toolkit</h1>
@@ -2106,18 +2106,18 @@
             <div class="header-divider-line"></div>
         </div>
         
-        <div class="tabs">
-            <button class="tab active" onclick="switchTab('packs')">Graphic Pack Management</button>
-            <button class="tab" onclick="switchTab('generator')">Monster Management & Generator</button>
-            <button class="tab" onclick="switchTab('npcs')">NPC Management & Generator</button>
-            <button class="tab" onclick="switchTab('videos')">Video Processor</button>
-            <button class="tab" onclick="switchTab('builder')">Module Builder</button>
-            <button class="tab" onclick="switchTab('media-gen')">Module Media Generator</button>
+        <div class="tabs" role="tablist" aria-label="Developer toolkit">
+            <button type="button" id="packs-tab-trigger" role="tab" aria-controls="packs-tab" aria-selected="true" tabindex="0" class="tab active" onclick="switchTab('packs')">Graphic Pack Management</button>
+            <button type="button" id="generator-tab-trigger" role="tab" aria-controls="generator-tab" aria-selected="false" tabindex="-1" class="tab" onclick="switchTab('generator')">Monster Management & Generator</button>
+            <button type="button" id="npcs-tab-trigger" role="tab" aria-controls="npcs-tab" aria-selected="false" tabindex="-1" class="tab" onclick="switchTab('npcs')">NPC Management & Generator</button>
+            <button type="button" id="videos-tab-trigger" role="tab" aria-controls="videos-tab" aria-selected="false" tabindex="-1" class="tab" onclick="switchTab('videos')">Video Processor</button>
+            <button type="button" id="builder-tab-trigger" role="tab" aria-controls="builder-tab" aria-selected="false" tabindex="-1" class="tab" onclick="switchTab('builder')">Module Builder</button>
+            <button type="button" id="media-gen-tab-trigger" role="tab" aria-controls="media-gen-tab" aria-selected="false" tabindex="-1" class="tab" onclick="switchTab('media-gen')">Module Media Generator</button>
         </div>
         
         <div class="content">
             <!-- Graphic Pack Management Tab - SINGLE COLUMN LAYOUT -->
-            <div id="packs-tab" class="tab-content active">
+            <div id="packs-tab" role="tabpanel" aria-labelledby="packs-tab-trigger" tabindex="0" class="tab-content active">
                 <!-- NEW COMPACT TOP ROW LAYOUT -->
                 <div class="section">
                     <div class="pack-management-top-row">
@@ -2182,7 +2182,8 @@
                 </div>
 
                 <div class="section">
-                    <h2>Available Asset Packs<span class="tooltip-trigger" data-tooltip="Manage all installed graphic packs. The 'Active' pack is used by the game. 'Merge' copies assets from an inactive pack into the active one, overwriting any duplicates.">?</span></h2>
+                    <h2>Available Asset Packs<span class="tooltip-trigger" data-tooltip="Manage all installed graphic packs. The 'Active' pack is used by the game. Pack merging is not available in this public release.">?</span></h2>
+                    <p id="pack-merge-unavailable">Pack merging is not available in this public release.</p>
                     <div class="pack-list-container">
                         <!-- The Header for our table will go here -->
                         <div class="pack-list-header">
@@ -2201,7 +2202,7 @@
             </div>
             
             <!-- Monster Management & Generator Tab - UPDATED LAYOUT -->
-            <div id="generator-tab" class="tab-content">
+            <div id="generator-tab" role="tabpanel" aria-labelledby="generator-tab-trigger" tabindex="0" hidden class="tab-content">
                 <div class="section">
                     <h2>Generate Monster Images<span class="tooltip-trigger" data-tooltip="This is the main workspace for creating monster art. Select a pack, style, and monsters, then generate images.">?</span></h2>
                     <!-- REPLACE the old .form-column-layout with this new .generator-controls block -->
@@ -2356,7 +2357,7 @@
             </div>
             
             <!-- NPC Management & Generator Tab -->
-            <div id="npcs-tab" class="tab-content">
+            <div id="npcs-tab" role="tabpanel" aria-labelledby="npcs-tab-trigger" tabindex="0" hidden class="tab-content">
                 <div class="section">
                     <h2>Generate NPC Portraits<span class="tooltip-trigger" data-tooltip="Generate portrait images for NPCs found in adventure modules. NPCs are module-specific and stored separately from monsters.">?</span></h2>
                     <p style="color: #ff6b35; font-size: 0.85em; margin-top: -10px; margin-bottom: 15px;">
@@ -2483,7 +2484,7 @@
             </div>
             
             <!-- Video Processor Tab - UPDATED LAYOUT -->
-            <div id="videos-tab" class="tab-content">
+            <div id="videos-tab" role="tabpanel" aria-labelledby="videos-tab-trigger" tabindex="0" hidden class="tab-content">
                 <div class="two-column-layout balanced">
                     <!-- Left Column -->
                     <div class="column-left">
@@ -2550,7 +2551,7 @@
             </div>
             
             <!-- Module Builder Tab -->
-            <div id="builder-tab" class="tab-content">
+            <div id="builder-tab" role="tabpanel" aria-labelledby="builder-tab-trigger" tabindex="0" hidden class="tab-content">
                 <div id="main-container">
                     <!-- Left Panel: Builder -->
                     <div class="panel builder-panel">
@@ -2644,7 +2645,7 @@
             </div>
             
             <!-- Module Media Generator Tab -->
-            <div id="media-gen-tab" class="tab-content">
+            <div id="media-gen-tab" role="tabpanel" aria-labelledby="media-gen-tab-trigger" tabindex="0" hidden class="tab-content">
                 <div class="media-gen-container">
                     <!-- Top Configuration Section -->
                     <div class="section">
@@ -2709,7 +2710,7 @@
                             <button class="btn btn-primary" id="scan-module-btn" onclick="scanModuleAssets()">Scan Module<span class="tooltip-trigger" data-tooltip="Analyze the selected module to find all NPCs and monsters that need assets.">?</span></button>
                         </div>
                         
-                        <div id="asset-table-container" style="display: none;">
+                        <div id="asset-table-container" role="region" aria-label="Module assets (scroll horizontally for all columns)" tabindex="0" onkeydown="if (event.target === this && ['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) { event.preventDefault(); this.scrollTo({ left: event.key === 'Home' ? 0 : event.key === 'End' ? this.scrollWidth : this.scrollLeft + (event.key === 'ArrowLeft' ? -80 : 80), behavior: 'auto' }); }" style="display: none;">
                             <table id="asset-table" class="asset-table">
                                 <thead>
                                     <tr>
@@ -2746,7 +2747,7 @@
                                     <div class="progress-bar" id="media-gen-progress-bar" style="width: 0%;"></div>
                                     <span class="progress-text" id="media-gen-progress-text">0%</span>
                                 </div>
-                                <p id="media-gen-status-message">Initializing...</p>
+                                <p id="media-gen-status-message" role="status">Initializing...</p>
                                 
                                 <!-- Generation Log -->
                                 <div class="section" style="margin-top: 20px;">
@@ -2817,11 +2818,17 @@
         
         // Tab switching
         function switchTab(tab) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            
-            event.target.classList.add('active');
-            document.getElementById(`${tab}-tab`).classList.add('active');
+            document.querySelectorAll('.tabs [role="tab"]').forEach(trigger => {
+                const selected = trigger.getAttribute('aria-controls') === `${tab}-tab`;
+                trigger.classList.toggle('active', selected);
+                trigger.setAttribute('aria-selected', String(selected));
+                trigger.tabIndex = selected ? 0 : -1;
+            });
+            document.querySelectorAll('.tab-content').forEach(panel => {
+                const selected = panel.id === `${tab}-tab`;
+                panel.classList.toggle('active', selected);
+                panel.hidden = !selected;
+            });
             currentTab = tab;
             
             // Load styles when switching to generator tab
@@ -2913,7 +2920,7 @@
                             <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
                         </button>
                         ${(!pack.is_active) 
-                            ? `<button class="btn-icon btn-primary" onclick="showMergeConfirmation('${pack.name}')" title="Merge into Active Pack">
+                            ? `<button class="btn-icon btn-primary" disabled aria-label="Merge into Active Pack" aria-describedby="pack-merge-unavailable">
                                     <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
                                 </button>` 
                             : ''
@@ -2968,13 +2975,13 @@
             const description = document.getElementById('new-pack-description').value.trim();
 
             if (!name || !displayName) {
-                alert('Pack Name and Display Name are required.');
+                await window.EmberDialogs.alert('Pack Name and Display Name are required.');
                 return;
             }
 
             // Basic validation for the internal ID
             if (/\s/.test(name) || name !== name.toLowerCase()) {
-                alert('Pack Name (Internal ID) must be all lowercase with no spaces.');
+                await window.EmberDialogs.alert('Pack Name (Internal ID) must be all lowercase with no spaces.');
                 return;
             }
 
@@ -3001,11 +3008,11 @@
                     // Refresh the list of available packs
                     loadPacks();
                 } else {
-                    alert(`Failed to create pack: ${result.error}`);
+                    await window.EmberDialogs.alert(`Failed to create pack: ${result.error}`);
                 }
             } catch (error) {
                 console.error('Error creating pack:', error);
-                alert('An error occurred while creating the pack.');
+                await window.EmberDialogs.alert('An error occurred while creating the pack.');
             }
         }
         
@@ -3067,16 +3074,18 @@
                 const result = await response.json();
                 if (result.success) {
                     addLog('genLog', `Activated pack: ${packName}`, 'success');
+                    // Notify already-open public player tabs; no backend contract change.
+                    try { localStorage.setItem('neq_media_revision', `${Date.now()}:${packName}`); } catch (_) { /* storage may be unavailable */ }
                     if (result.backup_created) {
                         addLog('genLog', `Backup created: ${result.backup_name}`, 'info');
                     }
                     loadPacks();
                 } else {
-                    alert(`Failed to activate pack: ${result.error}`);
+                    await window.EmberDialogs.alert(`Failed to activate pack: ${result.error}`);
                 }
             } catch (error) {
                 console.error('Failed to activate pack:', error);
-                alert('Failed to activate pack. Please check the console for details.');
+                await window.EmberDialogs.alert('Failed to activate pack. Please check the console for details.');
             }
             
             pendingPackActivation = null;
@@ -3087,10 +3096,11 @@
                 // Show export notification
                 const notification = document.createElement('div');
                 notification.className = 'export-notification';
+                notification.setAttribute('data-ember-modal', '');
                 notification.innerHTML = `
                     <div class="notification-content">
-                        <h4>Exporting Pack...</h4>
-                        <p>Preparing ${packName} for download...</p>
+                        <h4>Requesting Download...</h4>
+                        <p>Requesting ${packName}.zip from the server...</p>
                     </div>
                 `;
                 document.body.appendChild(notification);
@@ -3098,13 +3108,14 @@
                 // Trigger the download
                 window.location.href = `/api/toolkit/packs/${packName}/export`;
                 
-                // Update notification after a short delay
+                // Navigation hands the response to the browser. This page has
+                // no evidence that a download completed or where it was saved.
                 setTimeout(() => {
                     notification.innerHTML = `
-                        <div class="notification-content success">
-                            <h4>✓ Export Complete</h4>
-                            <p>${packName}.zip has been downloaded to your default Downloads folder</p>
-                            <button onclick="this.parentElement.parentElement.remove()">OK</button>
+                        <div class="notification-content">
+                            <h4>Download Requested</h4>
+                            <p>${packName}.zip was requested. Check your browser's downloads for status or errors.</p>
+                            <button data-ember-dismiss onclick="this.parentElement.parentElement.remove()">OK</button>
                         </div>
                     `;
                     
@@ -3122,9 +3133,23 @@
             }
         }
         
+        // Each asynchronous prompt retains one owner and revalidates its target.
+        // The shared API keeps native prompts on the preserved phone interface.
+        const toolkitPendingPrompts = new Set();
+        async function confirmToolkitPrompt(key, message, isCurrent = () => true) {
+            if (toolkitPendingPrompts.has(key)) return false;
+            toolkitPendingPrompts.add(key);
+            try {
+                return await window.EmberDialogs.confirm(message) && isCurrent();
+            } finally {
+                toolkitPendingPrompts.delete(key);
+            }
+        }
+
         async function deletePack(packName) {
-            // This uses the standard browser confirmation dialog, which is guaranteed to work.
-            if (confirm(`Are you sure you want to permanently delete the pack "${packName}"? This action cannot be undone.`)) {
+            const target = availablePacks.find(pack => pack.name === packName);
+            if (await confirmToolkitPrompt(`delete-pack:${packName}`, `Are you sure you want to permanently delete the pack "${packName}"? This action cannot be undone.`,
+                () => !!target && availablePacks.includes(target) && !target.is_active)) {
                 try {
                     const response = await fetch(`/api/toolkit/packs/${packName}`, {
                         method: 'DELETE'
@@ -3135,11 +3160,11 @@
                         addLog('genLog', `Deleted pack: ${packName}`, 'success');
                         loadPacks();
                     } else {
-                        alert(`Failed to delete pack: ${result.error}`);
+                        await window.EmberDialogs.alert(`Failed to delete pack: ${result.error}`);
                     }
                 } catch (error) {
                     console.error('Failed to delete pack:', error);
-                    alert('An error occurred while trying to delete the pack.');
+                    await window.EmberDialogs.alert('An error occurred while trying to delete the pack.');
                 }
             }
         }
@@ -3147,10 +3172,10 @@
         // Merge Pack Functions
         let pendingPackMerge = null;
 
-        function showMergeConfirmation(sourcePackName) {
+        async function showMergeConfirmation(sourcePackName) {
             const destPack = availablePacks.find(p => p.is_active);
             if (!destPack) {
-                alert('Cannot merge because there is no active pack to merge into.');
+                await window.EmberDialogs.alert('Cannot merge because there is no active pack to merge into.');
                 return;
             }
 
@@ -3186,28 +3211,28 @@
                     await loadPacks(); 
                 } else {
                     addLog('genLog', `Merge failed: ${result.error}`, 'error');
-                    alert(`Merge failed: ${result.error}`);
+                    await window.EmberDialogs.alert(`Merge failed: ${result.error}`);
                 }
             } catch (error) {
                 addLog('genLog', `Merge failed with a network error: ${error}`, 'error');
-                alert(`An error occurred during the merge process.`);
+                await window.EmberDialogs.alert(`An error occurred during the merge process.`);
             }
         }
         
         // Export to Pack Functions
-        function showExportToPackModal() {
+        async function showExportToPackModal() {
             const selectedMonsters = Array.from(document.querySelectorAll('input[name="monster"]:checked'))
                 .map(cb => cb.value);
             
             if (selectedMonsters.length === 0) {
-                alert('Please select at least one monster to export.');
+                await window.EmberDialogs.alert('Please select at least one monster to export.');
                 return;
             }
             
             // Get current pack name to use as source
             const currentPack = document.getElementById('genPack').value;
             if (!currentPack || currentPack === '__new__') {
-                alert('Please select a valid source pack first.');
+                await window.EmberDialogs.alert('Please select a valid source pack first.');
                 return;
             }
             
@@ -3251,17 +3276,17 @@
             
             // Validate pack name
             if (!packName || !/^[a-z0-9_]+$/.test(packName)) {
-                alert('Pack name must contain only lowercase letters, numbers, and underscores.');
+                await window.EmberDialogs.alert('Pack name must contain only lowercase letters, numbers, and underscores.');
                 return;
             }
             
             if (!displayName) {
-                alert('Please provide a display name for the pack.');
+                await window.EmberDialogs.alert('Please provide a display name for the pack.');
                 return;
             }
             
             if (!author) {
-                alert('Please provide an author name.');
+                await window.EmberDialogs.alert('Please provide an author name.');
                 return;
             }
             
@@ -3296,7 +3321,6 @@
                 });
                 
                 const result = await response.json();
-                if (activeBestiaryJobId !== jobId) return;
                 
                 if (result.success) {
                     addLog('genLog', `Successfully created pack: ${displayName}`, 'success');
@@ -3309,16 +3333,17 @@
                     await loadPacks();
                     
                     // Option to download the pack
-                    if (confirm(`Pack created successfully! Would you like to download it as a ZIP file?`)) {
+                    if (await confirmToolkitPrompt(`download-pack:${packName}`, `Pack created successfully! Would you like to download it as a ZIP file?`,
+                        () => availablePacks.some(pack => pack.name === packName))) {
                         window.location.href = `/api/toolkit/packs/${packName}/export`;
                     }
                 } else {
                     addLog('genLog', `Failed to create pack: ${result.error}`, 'error');
-                    alert(`Failed to create pack: ${result.error}`);
+                    await window.EmberDialogs.alert(`Failed to create pack: ${result.error}`);
                 }
             } catch (error) {
                 addLog('genLog', `Error creating pack: ${error}`, 'error');
-                alert(`An error occurred while creating the pack.`);
+                await window.EmberDialogs.alert(`An error occurred while creating the pack.`);
             }
         }
         
@@ -3389,10 +3414,10 @@
             }
         }
 
-        function confirmImport() {
+        async function confirmImport() {
             const targetFolderName = document.getElementById('target-folder-name').value;
             if (!targetFolderName) {
-                alert('Destination folder name cannot be empty.');
+                await window.EmberDialogs.alert('Destination folder name cannot be empty.');
                 return;
             }
             
@@ -3400,7 +3425,7 @@
             const importNpcs = document.getElementById('import-npcs').checked;
             
             if (!importMonsters && !importNpcs) {
-                alert('Please select at least one asset type to import.');
+                await window.EmberDialogs.alert('Please select at least one asset type to import.');
                 return;
             }
 
@@ -3412,7 +3437,7 @@
                 document.getElementById('importFile').value = '';
                 fileToImport = null;
             } else {
-                alert('No file selected for import.');
+                await window.EmberDialogs.alert('No file selected for import.');
             }
         }
 
@@ -3446,7 +3471,7 @@
                     addLog('genLog', `Imported pack: ${result.pack_name} (${importSummary.join(', ')})`, 'success');
                     loadPacks();
                 } else {
-                    alert(`Failed to import pack: ${result.error}`);
+                    await window.EmberDialogs.alert(`Failed to import pack: ${result.error}`);
                 }
             } catch (error) {
                 console.error('Failed to import pack:', error);
@@ -3802,6 +3827,7 @@
         }
         
         // This new function replaces the old generateMonsters()
+        let monsterGenerationAttempt = 0;
         async function startGeneration() {
             const packName = document.getElementById('genPack').value;
             const style = document.getElementById('genStyle').value;
@@ -3811,17 +3837,18 @@
                 .map(cb => cb.value);
 
             if (!packName || packName === '__new__') {
-                alert('Please select a valid Target Pack.');
+                await window.EmberDialogs.alert('Please select a valid Target Pack.');
                 return;
             }
 
             if (selectedMonsters.length === 0) {
-                alert('Please select at least one monster to generate.');
+                await window.EmberDialogs.alert('Please select at least one monster to generate.');
                 return;
             }
 
             // Show confirmation popup with generation settings
             const confirmationDiv = document.createElement('div');
+            confirmationDiv.setAttribute('data-ember-modal', '');
             confirmationDiv.style.cssText = `
                 position: fixed;
                 top: 50%;
@@ -3853,7 +3880,7 @@
                 </div>
                 <div style="text-align: center;">
                     <button onclick="proceedWithGeneration()" style="padding: 8px 20px; margin-right: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">Proceed</button>
-                    <button onclick="cancelGeneration()" style="padding: 8px 20px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button data-ember-dismiss onclick="cancelGeneration()" style="padding: 8px 20px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
                 </div>
             `;
             
@@ -3861,6 +3888,8 @@
             
             // Store settings for proceedWithGeneration
             window.generationSettings = {
+                attempt: ++monsterGenerationAttempt,
+                moduleName: document.getElementById('genModule').value,
                 packName,
                 style,
                 model,
@@ -3870,6 +3899,7 @@
         }
 
         function cancelGeneration() {
+            monsterGenerationAttempt++;
             if (window.generationSettings && window.generationSettings.confirmationDiv) {
                 window.generationSettings.confirmationDiv.remove();
                 delete window.generationSettings;
@@ -3879,13 +3909,20 @@
         async function proceedWithGeneration() {
             if (!window.generationSettings) return;
             
-            const { packName, style, model, selectedMonsters, confirmationDiv } = window.generationSettings;
+            const { packName, style, model, selectedMonsters, confirmationDiv, attempt, moduleName } = window.generationSettings;
+            const isCurrent = () => monsterGenerationAttempt === attempt
+                && document.getElementById('genPack').value === packName
+                && document.getElementById('genModule').value === moduleName
+                && document.getElementById('genStyle').value === style
+                && document.getElementById('genModel').value === model
+                && JSON.stringify(Array.from(document.querySelectorAll('input[name="monster"]:checked')).map(cb => cb.value)) === JSON.stringify(selectedMonsters);
             
             // Remove confirmation dialog
             confirmationDiv.remove();
             delete window.generationSettings;
 
             // Check if any of the selected monsters already have images in the pack
+            let overwriteMessage = null;
             try {
                 const checkResponse = await fetch('/api/toolkit/check_existing_images', {
                     method: 'POST',
@@ -3902,15 +3939,16 @@
                         const existingList = checkResult.existing.join(', ');
                         const confirmMessage = `The following monsters already have images in the ${packName} pack:\n\n${existingList}\n\nDo you want to overwrite them?`;
                         
-                        if (!confirm(confirmMessage)) {
-                            return; // User cancelled
-                        }
+                        overwriteMessage = confirmMessage;
                     }
                 }
             } catch (error) {
                 console.warn('Could not check for existing images:', error);
                 // Continue anyway if check fails
             }
+            if (!isCurrent()) return;
+            if (overwriteMessage && !await confirmToolkitPrompt('monster-overwrite', overwriteMessage, isCurrent)) return;
+            if (!isCurrent()) return;
 
             const progressContainer = document.getElementById('genProgress');
             const logContainer = document.getElementById('genLog');
@@ -4025,7 +4063,7 @@
             });
             
             if (videos.length === 0) {
-                alert('Please add videos and specify monster IDs');
+                await window.EmberDialogs.alert('Please add videos and specify monster IDs');
                 return;
             }
             
@@ -4083,9 +4121,9 @@
                 
                 const result = await response.json();
                 if (result.success) {
-                    alert('Settings saved successfully');
+                    await window.EmberDialogs.alert('Settings saved successfully');
                 } else {
-                    alert(`Failed to save settings: ${result.error}`);
+                    await window.EmberDialogs.alert(`Failed to save settings: ${result.error}`);
                 }
             } catch (error) {
                 console.error('Failed to save settings:', error);
@@ -4101,6 +4139,7 @@
             
             socket.on('disconnect', () => {
                 document.getElementById('connectionStatus')?.classList.remove('online');
+                builderGeneration++;
             });
             
             socket.on('generation_progress', (data) => {
@@ -4111,6 +4150,9 @@
             });
             
             socket.on('generation_complete', (data) => {
+                if (data.successful?.length > 0) {
+                    try { localStorage.setItem('neq_media_revision', `${Date.now()}:monster-generation`); } catch (_) { /* storage may be unavailable */ }
+                }
                 document.getElementById('genProgress').style.display = 'none'; // Use style.display
                 addLog('genLog', `Generation complete: ${data.successful.length} successful, ${data.failed.length} failed`, 'info');
                 
@@ -4264,6 +4306,7 @@
                 const failed = data.failed || [];
                 
                 if (successful.length > 0) {
+                    try { localStorage.setItem('neq_media_revision', `${Date.now()}:npc-generation`); } catch (_) { /* storage may be unavailable */ }
                     addLog('npcGenLog', `Successfully generated ${successful.length} portrait(s)!`, 'success');
                     successful.forEach(item => {
                         addLog('npcGenLog', `[OK] ${item.npc_name} portrait saved`, 'success');
@@ -4295,7 +4338,7 @@
                 loadNpcsForModule();
             });
             
-            socket.on('bestiary_update_error', (data) => {
+            socket.on('bestiary_update_error', async (data) => {
                 if (!activeBestiaryJobId || data.job_id !== activeBestiaryJobId) return;
                 activeBestiaryJobId = null;
                 console.error('[Bestiary Update Error]', data);
@@ -4307,7 +4350,7 @@
                         <button onclick="this.parentElement.remove()" style="margin-top: 10px; padding: 5px 10px; background: #444; border: none; color: white; cursor: pointer; border-radius: 3px;">Close</button>
                     `;
                 }
-                alert(`Bestiary update failed: ${data.error}`);
+                await window.EmberDialogs.alert(`Bestiary update failed: ${data.error}`);
             });
             
             socket.on('video_progress', (data) => {
@@ -4645,8 +4688,8 @@
             if (isMissingMode) {
                 const moduleName = document.getElementById('genModule').value;
                 if (!moduleName) {
-                    alert('Please select a module from the "Module Cross-Reference" dropdown first to use this feature.');
-                    document.getElementById('filter-missing-bestiary').checked = false;
+                    await window.EmberDialogs.alert('Please select a module from the "Module Cross-Reference" dropdown first to use this feature.');
+                    if (!document.getElementById('genModule').value) document.getElementById('filter-missing-bestiary').checked = false;
                     return;
                 }
                 
@@ -4714,17 +4757,19 @@
             const selectedMonsterIds = Array.from(selectedCheckboxes).map(cb => cb.value);
             
             if (selectedMonsterIds.length === 0) {
-                alert('Please select one or more monsters to add to the bestiary.');
+                await window.EmberDialogs.alert('Please select one or more monsters to add to the bestiary.');
                 return;
             }
             
             const moduleName = document.getElementById('genModule').value;
             if (!moduleName) {
-                alert('A module must be selected to provide context for the new bestiary entries.');
+                await window.EmberDialogs.alert('A module must be selected to provide context for the new bestiary entries.');
                 return;
             }
             
-            if (!confirm(`This will use AI to generate bestiary entries for ${selectedMonsterIds.length} monster(s). Proceed?`)) {
+            if (!await confirmToolkitPrompt('bestiary-generation', `This will use AI to generate bestiary entries for ${selectedMonsterIds.length} monster(s). Proceed?`,
+                () => !activeBestiaryJobId && document.getElementById('genModule').value === moduleName
+                    && JSON.stringify(Array.from(document.querySelectorAll('.monster-item input[name="monster"]:checked')).map(cb => cb.value)) === JSON.stringify(selectedMonsterIds))) {
                 return;
             }
             
@@ -4760,11 +4805,11 @@
                     progressDiv.style.display = 'block';
                 } else {
                     if (activeBestiaryJobId === jobId) activeBestiaryJobId = null;
-                    alert(`Error: ${result.error}`);
+                    await window.EmberDialogs.alert(`Error: ${result.error}`);
                 }
             } catch (error) {
                 if (activeBestiaryJobId === jobId) activeBestiaryJobId = null;
-                alert(`Failed to start bestiary update: ${error}`);
+                await window.EmberDialogs.alert(`Failed to start bestiary update: ${error}`);
             } finally {
                 // Re-enable button
                 button.disabled = false;
@@ -4815,12 +4860,12 @@
         }
         
         // Save the edited style prompt back to the current style
-        function saveStylePrompt() {
+        async function saveStylePrompt() {
             const styleSelect = document.getElementById('genStyle');
             const stylePrompt = document.getElementById('stylePromptBox').value;
             
             if (!stylePrompt) {
-                alert('Please enter a style prompt');
+                await window.EmberDialogs.alert('Please enter a style prompt');
                 return;
             }
             
@@ -4833,31 +4878,31 @@
                 })
             })
             .then(response => response.json())
-            .then(data => {
+            .then(async data => {
                 if (data.success) {
-                    alert('Style prompt updated successfully!');
+                    await window.EmberDialogs.alert('Style prompt updated successfully!');
                 } else {
-                    alert('Failed to update style: ' + (data.error || 'Unknown error'));
+                    await window.EmberDialogs.alert('Failed to update style: ' + (data.error || 'Unknown error'));
                 }
             })
-            .catch(error => {
+            .catch(async error => {
                 console.error('Error updating style:', error);
-                alert('Failed to update style prompt');
+                await window.EmberDialogs.alert('Failed to update style prompt');
             });
         }
         
         // Save as a new custom style
-        function saveAsNewStyle() {
+        async function saveAsNewStyle() {
             const styleName = document.getElementById('newStyleName').value;
             const stylePrompt = document.getElementById('stylePromptBox').value;
             
             if (!styleName) {
-                alert('Please enter a name for the custom style');
+                await window.EmberDialogs.alert('Please enter a name for the custom style');
                 return;
             }
             
             if (!stylePrompt) {
-                alert('Please enter a prompt for the custom style');
+                await window.EmberDialogs.alert('Please enter a prompt for the custom style');
                 return;
             }
             
@@ -4870,27 +4915,27 @@
                 })
             })
             .then(response => response.json())
-            .then(data => {
+            .then(async data => {
                 if (data.success) {
-                    alert('Custom style saved successfully!');
-                    document.getElementById('newStyleName').value = '';
+                    await window.EmberDialogs.alert('Custom style saved successfully!');
+                    if (document.getElementById('newStyleName').value === styleName) document.getElementById('newStyleName').value = '';
                     // Reload style dropdown to include new style
                     loadStyles();
                 } else {
-                    alert('Failed to save style: ' + (data.error || 'Unknown error'));
+                    await window.EmberDialogs.alert('Failed to save style: ' + (data.error || 'Unknown error'));
                 }
             })
-            .catch(error => {
+            .catch(async error => {
                 console.error('Error saving style:', error);
-                alert('Failed to save custom style');
+                await window.EmberDialogs.alert('Failed to save custom style');
             });
         }
         
         // Save monster description
-        function saveMonsterDescription() {
+        async function saveMonsterDescription() {
             const selectedMonsters = Array.from(document.querySelectorAll('input[name="monster"]:checked'));
             if (selectedMonsters.length === 0) {
-                alert('Please select a monster first');
+                await window.EmberDialogs.alert('Please select a monster first');
                 return;
             }
             
@@ -4906,16 +4951,16 @@
                 })
             })
             .then(response => response.json())
-            .then(data => {
+            .then(async data => {
                 if (data.success) {
-                    alert('Monster description updated!');
+                    await window.EmberDialogs.alert('Monster description updated!');
                 } else {
-                    alert('Failed to update description: ' + (data.error || 'Unknown error'));
+                    await window.EmberDialogs.alert('Failed to update description: ' + (data.error || 'Unknown error'));
                 }
             })
-            .catch(error => {
+            .catch(async error => {
                 console.error('Error updating description:', error);
-                alert('Failed to update monster description');
+                await window.EmberDialogs.alert('Failed to update monster description');
             });
         }
         
@@ -4985,32 +5030,32 @@
         }
         
         // Monster edit functions
-        function editMonster(monsterId) {
+        async function editMonster(monsterId) {
             // TODO: Implement monster editing
-            alert('Monster editing coming soon!');
+            await window.EmberDialogs.alert('Monster editing coming soon!');
         }
         
-        function regenerateMonster(monsterId) {
+        async function regenerateMonster(monsterId) {
             const packSelect = document.getElementById('genPack');
             const styleSelect = document.getElementById('genStyle');
             const modelSelect = document.getElementById('genModel');
             
             if (packSelect.value === '__new__') {
-                alert('Please select or create a pack first');
+                await window.EmberDialogs.alert('Please select or create a pack first');
                 return;
             }
             
             // TODO: Implement monster regeneration
-            alert('Monster regeneration coming soon!');
+            await window.EmberDialogs.alert('Monster regeneration coming soon!');
         }
         
-        function deleteMonster(monsterId) {
-            if (!confirm(`Are you sure you want to delete ${monsterId}?`)) {
+        async function deleteMonster(monsterId) {
+            if (!await window.EmberDialogs.confirm(`Are you sure you want to delete ${monsterId}?`)) {
                 return;
             }
             
             // TODO: Implement monster deletion
-            alert('Monster deletion coming soon!');
+            await window.EmberDialogs.alert('Monster deletion coming soon!');
         }
         
         // Load styles and initialize on page load
@@ -5286,7 +5331,7 @@
         async function fetchNpcDescriptions() {
             const moduleName = document.getElementById('npcModuleSelect').value;
             if (!moduleName) {
-                alert('Please select a module first.');
+                await window.EmberDialogs.alert('Please select a module first.');
                 return;
             }
             
@@ -5298,7 +5343,7 @@
             }));
 
             if (npcs.length === 0) {
-                alert('Please select at least one NPC to fetch descriptions for.');
+                await window.EmberDialogs.alert('Please select at least one NPC to fetch descriptions for.');
                 return;
             }
 
@@ -5377,7 +5422,7 @@
         async function saveNpcDescription() {
             const moduleName = document.getElementById('npcModuleSelect').value;
             if (!moduleName || !currentSelectedNpc) {
-                alert('Please select a module and an NPC to save a description for.');
+                await window.EmberDialogs.alert('Please select a module and an NPC to save a description for.');
                 return;
             }
             
@@ -5396,12 +5441,12 @@
                 });
                 const result = await response.json();
                 if (result.success) {
-                    alert('Description saved successfully!');
+                    await window.EmberDialogs.alert('Description saved successfully!');
                 } else {
-                    alert(`Error saving description: ${result.error}`);
+                    await window.EmberDialogs.alert(`Error saving description: ${result.error}`);
                 }
             } catch (error) {
-                alert(`Failed to save description: ${error}`);
+                await window.EmberDialogs.alert(`Failed to save description: ${error}`);
             }
         }
 
@@ -5473,17 +5518,17 @@
             });
         }
 
-        function saveNpcStylePrompt() {
+        async function saveNpcStylePrompt() {
             const styleSelect = document.getElementById('npcStyleSelect');
             const stylePrompt = document.getElementById('npcStylePromptBox').value;
             
             if (!styleSelect.value) {
-                alert('Please select a style to save.');
+                await window.EmberDialogs.alert('Please select a style to save.');
                 return;
             }
             
             if (!stylePrompt.trim()) {
-                alert('Style prompt cannot be empty.');
+                await window.EmberDialogs.alert('Style prompt cannot be empty.');
                 return;
             }
             
@@ -5497,30 +5542,31 @@
                 })
             })
             .then(response => response.json())
-            .then(data => {
+            .then(async data => {
                 if (data.success) {
-                    alert('Style prompt updated successfully!');
+                    await window.EmberDialogs.alert('Style prompt updated successfully!');
                 } else {
-                    alert('Failed to update style: ' + (data.error || 'Unknown error'));
+                    await window.EmberDialogs.alert('Failed to update style: ' + (data.error || 'Unknown error'));
                 }
             })
-            .catch(error => {
+            .catch(async error => {
                 console.error('Error updating style:', error);
-                alert('Failed to update style prompt');
+                await window.EmberDialogs.alert('Failed to update style prompt');
             });
         }
 
-        function saveAsNewNpcStyle() {
+        async function saveAsNewNpcStyle() {
             const styleName = document.getElementById('newNpcStyleName').value;
             const stylePrompt = document.getElementById('npcStylePromptBox').value;
+            const previousStyle = document.getElementById('npcStyleSelect').value;
             
             if (!styleName.trim()) {
-                alert('Please enter a name for the new style.');
+                await window.EmberDialogs.alert('Please enter a name for the new style.');
                 return;
             }
             
             if (!stylePrompt.trim()) {
-                alert('Style prompt cannot be empty.');
+                await window.EmberDialogs.alert('Style prompt cannot be empty.');
                 return;
             }
             
@@ -5534,9 +5580,9 @@
                 })
             })
             .then(response => response.json())
-            .then(data => {
+            .then(async data => {
                 if (data.success) {
-                    alert('New style saved successfully!');
+                    await window.EmberDialogs.alert('New style saved successfully!');
                     
                     // Add to both dropdowns
                     const styleSelect = document.getElementById('npcStyleSelect');
@@ -5544,7 +5590,7 @@
                     option.value = data.style_id || styleName;
                     option.textContent = styleName + ' (Custom)';
                     styleSelect.appendChild(option);
-                    styleSelect.value = data.style_id || styleName;
+                    if (styleSelect.value === previousStyle) styleSelect.value = data.style_id || styleName;
                     
                     // Also add to monster dropdown
                     const monsterStyleSelect = document.getElementById('genStyle');
@@ -5556,14 +5602,14 @@
                     }
                     
                     // Clear the new style name input
-                    document.getElementById('newNpcStyleName').value = '';
+                    if (document.getElementById('newNpcStyleName').value === styleName) document.getElementById('newNpcStyleName').value = '';
                 } else {
-                    alert('Failed to save style: ' + (data.error || 'Unknown error'));
+                    await window.EmberDialogs.alert('Failed to save style: ' + (data.error || 'Unknown error'));
                 }
             })
-            .catch(error => {
+            .catch(async error => {
                 console.error('Error saving new style:', error);
-                alert('Failed to save new style');
+                await window.EmberDialogs.alert('Failed to save new style');
             });
         }
 
@@ -5576,17 +5622,17 @@
             const stylePrompt = document.getElementById('npcStylePromptBox').value;
             
             if (selectedNpcs.length === 0) {
-                alert('Please select at least one NPC to generate.');
+                await window.EmberDialogs.alert('Please select at least one NPC to generate.');
                 return;
             }
             
             if (!packName || !moduleName) {
-                alert('Please select both a module and target pack.');
+                await window.EmberDialogs.alert('Please select both a module and target pack.');
                 return;
             }
             
             if (!styleSelect.value || !stylePrompt) {
-                alert('Please select a style template.');
+                await window.EmberDialogs.alert('Please select a style template.');
                 return;
             }
             
@@ -5598,6 +5644,7 @@
             // Show confirmation popup with generation settings
             const confirmationDiv = document.createElement('div');
             confirmationDiv.id = 'npc-confirmation-popup';
+            confirmationDiv.setAttribute('data-ember-modal', '');
             confirmationDiv.style.cssText = `
                 position: fixed;
                 top: 50%;
@@ -5635,7 +5682,7 @@
                 </div>
                 <div style="text-align: center;">
                     <button onclick="proceedWithNpcGeneration()" style="padding: 8px 20px; margin-right: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">Proceed</button>
-                    <button onclick="cancelNpcGeneration()" style="padding: 8px 20px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button data-ember-dismiss onclick="cancelNpcGeneration()" style="padding: 8px 20px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
                 </div>
             `;
             
@@ -5707,16 +5754,17 @@
         }
 
         // Export NPCs to Pack functionality
-        function exportNpcsToPack() {
+        async function exportNpcsToPack() {
+            const moduleName = document.getElementById('npcModuleSelect').value;
             const selectedNpcs = document.querySelectorAll('input[name="npc-select"]:checked');
             const packName = document.getElementById('npcPackSelect').value;
 
             if (selectedNpcs.length === 0) {
-                alert('Please select one or more NPCs to export.');
+                await window.EmberDialogs.alert('Please select one or more NPCs to export.');
                 return;
             }
             if (!packName) {
-                alert('Please select a destination pack.');
+                await window.EmberDialogs.alert('Please select a destination pack.');
                 return;
             }
 
@@ -5724,8 +5772,10 @@
             
             const message = `You are about to copy the portraits for ${npcIdsToExport.length} NPC(s) into the '${packName}' graphic pack.\n\nThis is useful for creating a distributable pack for a module. Any existing portraits in the destination pack with the same name will be overwritten.\n\nProceed?`;
 
-            if (confirm(message)) {
-                performNpcExport(packName, npcIdsToExport);
+            if (await confirmToolkitPrompt('npc-export', message, () => document.getElementById('npcPackSelect').value === packName
+                && document.getElementById('npcModuleSelect').value === moduleName
+                && JSON.stringify(Array.from(document.querySelectorAll('input[name="npc-select"]:checked')).map(cb => cb.dataset.npcId)) === JSON.stringify(npcIdsToExport))) {
+                await performNpcExport(packName, npcIdsToExport);
             }
         }
 
@@ -5748,11 +5798,11 @@
                     loadNpcsForModule();
                 } else {
                     addLog('genLog', `Export failed: ${result.error}`, 'error');
-                    alert(`Export failed: ${result.error}`);
+                    await window.EmberDialogs.alert(`Export failed: ${result.error}`);
                 }
             } catch (error) {
                 addLog('genLog', `An error occurred during export: ${error}`, 'error');
-                alert('An error occurred during the export process.');
+                await window.EmberDialogs.alert('An error occurred during the export process.');
             }
         }
 
@@ -5760,6 +5810,8 @@
 
         // DOM Elements for Module Builder - Initialize as null, will be set after DOM loads
         let moduleForm = null;
+        let builderGeneration = 0;
+        let builderRunning = false;
         let generateBtn = null;
         let cancelBtn = null;
         let newModuleBtn = null;
@@ -5864,6 +5916,8 @@
                         return;
                     }
                     
+                    builderGeneration++;
+                    builderRunning = true;
                     socket.emit('start_build', {
                         module_name: moduleName,
                         num_areas: numAreas,
@@ -5880,8 +5934,11 @@
             }
 
             if (cancelBtn) {
-                cancelBtn.addEventListener('click', () => {
-                    if (confirm('Are you sure you want to cancel the module generation?')) {
+                cancelBtn.addEventListener('click', async () => {
+                    const generation = builderGeneration;
+                    if (!builderRunning || socket.connected === false) return;
+                    if (await confirmToolkitPrompt('builder-cancel', 'Are you sure you want to cancel the module generation?',
+                        () => builderRunning && builderGeneration === generation && socket.connected !== false)) {
                         socket.emit('cancel_build');
                     }
                 });
@@ -5944,6 +6001,8 @@
         });
 
         socket.on('build_started', (data) => {
+            builderGeneration++;
+            builderRunning = true;
             if (statusMessage) statusMessage.textContent = data.message;
         });
         
@@ -5965,6 +6024,8 @@
         });
         
         socket.on('module_complete', (data) => {
+            builderGeneration++;
+            builderRunning = false;
             if (progressSection) progressSection.style.display = 'none';
             if (resultsSection) resultsSection.style.display = 'block';
             const output = `Module Name: ${data.module_name}\n\n${data.message}\n\nThe module has been created successfully and is ready to use!`;
@@ -5974,11 +6035,15 @@
         });
         
         socket.on('module_error', (data) => {
+            builderGeneration++;
+            builderRunning = false;
             showError(data.error);
             if (progressSection) progressSection.style.display = 'none';
         });
         
         socket.on('build_cancelled', (data) => {
+            builderGeneration++;
+            builderRunning = false;
             if (statusMessage) statusMessage.textContent = data.message;
             setTimeout(() => {
                 resetBuilderUI();
@@ -5993,6 +6058,8 @@
         }
         
         function resetBuilderUI() {
+            builderGeneration++;
+            builderRunning = false;
             if(moduleForm) {
                 moduleForm.style.display = 'block';
                 if (progressSection) progressSection.style.display = 'none';
@@ -6048,11 +6115,20 @@
             
             notification.textContent = message;
             
-            // Add to page
-            document.body.appendChild(notification);
+            // Keep concurrent notices readable and inside the viewport.
+            let notificationHost = document.getElementById('ember-notifications');
+            if (!notificationHost) {
+                notificationHost = document.createElement('div');
+                notificationHost.id = 'ember-notifications';
+                notificationHost.setAttribute('role', 'status');
+                notificationHost.setAttribute('aria-live', 'polite');
+                document.body.appendChild(notificationHost);
+            }
+            notificationHost.appendChild(notification);
             
             // Auto-remove after delay
             setTimeout(() => {
+                notification.classList.add('ember-notification-exiting');
                 notification.style.animation = 'slideOut 0.3s ease';
                 setTimeout(() => notification.remove(), 300);
             }, 5000);
@@ -6304,6 +6380,7 @@
             // Show styled confirmation popup
             const confirmationDiv = document.createElement('div');
             confirmationDiv.id = 'media-gen-confirmation-popup';
+            confirmationDiv.setAttribute('data-ember-modal', '');
             confirmationDiv.style.cssText = `
                 position: fixed;
                 top: 50%;
@@ -6361,7 +6438,7 @@
                     <button id="media-gen-proceed-btn" style="padding: 10px 30px; margin-right: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
                         Proceed with Generation
                     </button>
-                    <button id="media-gen-cancel-btn" style="padding: 10px 30px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
+                    <button data-ember-dismiss id="media-gen-cancel-btn" style="padding: 10px 30px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
                         Cancel
                     </button>
                 </div>
@@ -6477,7 +6554,26 @@
             }
         });
 
+        function showMediaGenerationFailure(data) {
+            const message = data.error || data.message || 'Asset generation failed.';
+            showNotification('Generation error: ' + message, 'error');
+            addLog('mediaGenLog', `Error: ${message}`, 'error');
+            // Keep the last reported progress and selected assets for a retry.
+            // A failure is not 100% completion and must not clear the selection.
+            updateGenerateButton();
+            document.getElementById('generate-assets-btn').style.display = 'block';
+            const statusMessage = document.getElementById('media-gen-status-message');
+            if (statusMessage) statusMessage.textContent = 'Generation Failed - See log for details';
+        }
+
         socket.on('unified_generation_complete', (data) => {
+            // Older HTTP generation reports completion without a success field;
+            // the Socket.IO owner explicitly reports success:false on failure.
+            if (data.success === false || data.error) {
+                showMediaGenerationFailure(data);
+                return;
+            }
+            try { localStorage.setItem('neq_media_revision', `${Date.now()}:module-media-generation`); } catch (_) { /* storage may be unavailable */ }
             showNotification('Asset generation complete!', 'success');
             addLog('mediaGenLog', 'Generation completed successfully!', 'success');
             
@@ -6515,18 +6611,7 @@
         });
 
         socket.on('unified_generation_error', (data) => {
-            showNotification('Generation error: ' + data.error, 'error');
-            addLog('mediaGenLog', `Error: ${data.error}`, 'error');
-            
-            // Re-enable generate button
-            document.getElementById('generate-assets-btn').style.display = 'block';
-            
-            // Update status message but keep log visible
-            const statusMessage = document.getElementById('media-gen-status-message');
-            if (statusMessage) statusMessage.textContent = 'Generation Failed - See log for details';
-            
-            // Don't hide the container - keep log visible
-            // document.getElementById('generation-progress-container').style.display = 'none';
+            showMediaGenerationFailure(data);
         });
 
         // Update tab switching to load modules for media generator
@@ -6540,11 +6625,11 @@
     </script>
 
     <!-- Media Popup Modal -->
-    <div class="modal" id="media-modal">
+    <div class="modal" id="media-modal" data-ember-modal>
         <div class="media-modal-content">
             <div class="media-modal-header">
                 <h3 id="media-modal-title">Monster Preview</h3>
-                <span class="media-modal-close" onclick="closeMediaPopup()">&times;</span>
+                <button type="button" class="media-modal-close" data-ember-dismiss aria-label="Close media" onclick="closeMediaPopup()" style="background: transparent; border: 0;">&times;</button>
             </div>
             <div class="media-modal-body" id="media-modal-body">
                 <!-- Image or Video will be loaded here by JavaScript -->
@@ -6553,7 +6638,7 @@
     </div>
 
     <!-- Pack Activation Confirmation Modal -->
-    <div id="pack-confirm-modal" class="modal" style="display: none;">
+    <div id="pack-confirm-modal" class="modal" data-ember-modal style="display: none;">
         <div class="modal-content pack-confirm-content">
             <h3>Confirm Pack Activation</h3>
             <div class="modal-warning">
@@ -6568,13 +6653,13 @@
             </div>
             <div class="modal-buttons">
                 <button class="btn btn-danger" onclick="confirmPackActivation()">Activate Pack</button>
-                <button class="btn btn-secondary" onclick="cancelPackActivation()">Cancel</button>
+                <button class="btn btn-secondary" data-ember-dismiss onclick="cancelPackActivation()">Cancel</button>
             </div>
         </div>
     </div>
 
     <!-- Merge Pack Confirmation Modal -->
-    <div id="merge-confirm-modal" class="modal" style="display: none;">
+    <div id="merge-confirm-modal" class="modal" data-ember-modal style="display: none;">
         <div class="modal-content pack-confirm-content">
             <h3>Confirm Pack Merge</h3>
             <div class="modal-warning">
@@ -6587,13 +6672,13 @@
             </div>
             <div class="modal-buttons">
                 <button class="btn btn-primary" onclick="confirmMerge()">Confirm Merge</button>
-                <button class="btn btn-secondary" onclick="cancelMerge()">Cancel</button>
+                <button class="btn btn-secondary" data-ember-dismiss onclick="cancelMerge()">Cancel</button>
             </div>
         </div>
     </div>
 
     <!-- Export to Pack Modal -->
-    <div id="export-to-pack-modal" class="modal" style="display: none;">
+    <div id="export-to-pack-modal" class="modal" data-ember-modal style="display: none;">
         <div class="modal-content pack-confirm-content" style="min-width: 500px;">
             <h3 style="color: #4CAF50;">Export Monsters to New Pack</h3>
             <div class="modal-pack-info">
@@ -6630,7 +6715,7 @@
             
             <div class="modal-buttons">
                 <button class="btn btn-success" onclick="confirmExportToPack()">Create Pack</button>
-                <button class="btn btn-secondary" onclick="cancelExportToPack()">Cancel</button>
+                <button class="btn btn-secondary" data-ember-dismiss onclick="cancelExportToPack()">Cancel</button>
             </div>
         </div>
     </div>
@@ -6641,5 +6726,6 @@
         <p id="npc-status-message">Initializing process...</p>
         <button onclick="this.parentElement.style.display='none'">Close</button>
     </div>
+    <script src="{{ url_for('static', filename='js/ember-dialogs.js') }}"></script>
 </body>
 </html>

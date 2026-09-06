@@ -1,6 +1,9 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './theme/tokens.css'
+import './theme/fonts.css'
+import '../../static/css/ember-tokens.css'
+import './theme/ember-surfaces.css'
 // Side-effect import: connects the socket and registers all server-event
 // handlers (services/socket.ts is the sole socket.io-client owner).
 import './services/socket'

@@ -9,6 +9,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useLog } from '../../stores'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { EmberIcon } from '../layout/EmberIcon'
 
 const buttonClass =
   'inline-flex h-[22px] cursor-pointer items-center justify-center rounded border-0 bg-[#4caf50] px-2 ' +
@@ -17,6 +19,7 @@ const buttonClass =
 const buildImagePrompt = (content: string) => `Epic fantasy RPG scene: ${content}. Medieval style, darker lighting, highly detailed fantasy art style, professional digital painting, atmospheric depth.`
 
 export function GenerateImageButton({ content, messageId }: { content: string; messageId?: string }) {
+  const ember = useEmberDesktop()
   const [pending, setPending] = useState(false)
   const requestIdRef = useRef<string | undefined>(undefined)
   const images = useLog((s) => s.images)
@@ -43,9 +46,9 @@ export function GenerateImageButton({ content, messageId }: { content: string; m
       onClick={request}
       disabled={pending}
       title={pending ? 'Image generation in progress' : 'Generate an image for this scene'}
-      className={buttonClass}
+      className={ember ? 'ember-message-action' : buttonClass}
     >
-      {pending ? 'Generating...' : 'Generate Image'}
+      {ember && <EmberIcon name="image" />}{pending ? 'Generating...' : ember ? 'Generate image' : 'Generate Image'}
     </button>
   )
 }

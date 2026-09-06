@@ -1,0 +1,29 @@
+/* Shared public desktop surfaces, including siblings and body portals. */
+body[data-ember-desktop='true'] { background: var(--ember-page); color: var(--ember-text); color-scheme: dark; }
+body[data-ember-desktop='true'] :is(.neq-map-tab,.neq-debug-tab) { background: transparent; color: var(--ember-text); }
+body[data-ember-desktop='true'] .neq-map-toolbar { background: var(--ember-panel); border-color: var(--ember-rule); flex-wrap: wrap; padding: 8px; gap: 5px; }
+body[data-ember-desktop='true'] .neq-map-btn { background: var(--ember-panel); color: var(--ember-brass); border: 1px solid var(--ember-rule); border-radius: 2px; padding: 6px 8px; font: 15px/1.2 var(--ember-font-body); }
+body[data-ember-desktop='true'] .neq-map-zoom { color: var(--ember-muted); font: 14px/1.2 var(--ember-font-body); }
+body[data-ember-desktop='true'] .neq-map-btn:hover { border-color: var(--ember-brass); }
+body[data-ember-desktop='true'] .neq-notes-card { border-color: var(--ember-rule); }
+body[data-ember-desktop='true'] .neq-notes-header { border-color: var(--ember-rule); }
+body[data-ember-desktop='true'] .neq-notes-title { color: var(--ember-brass); font-family: var(--ember-font-body); font-weight: 600; }
+body[data-ember-desktop='true'] .neq-notes-progress { color: var(--ember-muted); }
+/* Map artwork/palette stays governed by its existing parchment/night choice. */
+body[data-ember-desktop='true'] .neq-token-usage-header { border-color: var(--ember-rule); background: var(--ember-panel); box-shadow: none; }
+body[data-ember-desktop='true'] .neq-token-stats { flex-wrap: wrap; gap: 8px; font-size: 13px; }
+body[data-ember-desktop='true'] .neq-token-label { color: var(--ember-muted); font-weight: 400; }
+body[data-ember-desktop='true'] .neq-token-value { color: var(--ember-brass); }
+body[data-ember-desktop='true'] .neq-debug-message-content { background: var(--ember-panel); color: var(--ember-text); border-color: var(--ember-frame); }
+body[data-ember-desktop='true'] .neq-debug-scrollable { color: var(--ember-text); font-size: 14px; }
+body[data-ember-desktop='true'] :is(.ember-welcome-banner,.ember-exit-overlay) { border: 1px solid var(--ember-rule); color: var(--ember-text); background: var(--ember-panel); font-family: var(--ember-font-body); }
+body[data-ember-desktop='true'] .ember-welcome-banner button { color: var(--ember-text); background: #56220f; border: 1px solid var(--ember-brass); }
+.ember-desktop .ember-sheet-status { margin: 12px 0; padding: 16px; min-height: 0; border: 1px solid var(--ember-rule); background: var(--ember-panel); color: var(--ember-text); text-align: left; font: 400 18px/1.5 var(--ember-font-body); }
+.ember-desktop .ember-sheet-status[data-state='loading'] { font-style: italic; }
+.ember-desktop .ember-sheet-status[data-state='error'] { color: #efaa94; border-color: #805040; }
+.ember-desktop .neq-no-spells.ember-sheet-status { border-radius: 2px; }
+.ember-desktop .neq-consumable { background: var(--ember-panel); color: var(--ember-brass); border: 1px solid var(--ember-rule); border-radius: 2px; }
+body[data-ember-desktop='true'] .ember-exit-overlay h2 { color: var(--ember-brass); }
+.ember-desktop .ember-die-rolling { animation: ember-die-roll 260ms ease-out; }
+@keyframes ember-die-roll { 35% { transform: rotate(-15deg) scale(1.16); } 70% { transform: rotate(12deg); } }
+@media (prefers-reduced-motion: reduce) { .ember-desktop .ember-die-rolling { animation: none; } }

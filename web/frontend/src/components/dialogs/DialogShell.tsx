@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef } from 'react'
 import type { KeyboardEvent, ReactNode, RefObject } from 'react'
 import './dialog-parity.css'
+import '../../theme/ember-dialogs.css'
+import { useModalLayer } from './useModalLayer'
 
 /** Shared button styles for dialog footers (matches the HeaderBar chrome). */
 const buttonBase = 'neq-dialog-button-parity'
@@ -30,6 +32,7 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem', lega
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const topmost = useModalLayer(dialogRef, onClose)
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement
@@ -37,6 +40,14 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem', lega
       : null
     if (initialFocusRef?.current) initialFocusRef.current.focus()
     else if (!legacy) closeButtonRef.current?.focus()
+    else {
+      // Legacy dialogs without a primary input (notably Load) must still move
+      // focus inside the overlay, otherwise Escape/Tab never reach this handler.
+      const firstAction = dialogRef.current?.querySelector<HTMLElement>(
+        '.neq-dialog-body-parity button:not([disabled]), .neq-dialog-body-parity input:not([disabled])',
+      )
+      ;(firstAction ?? dialogRef.current)?.focus()
+    }
     return () => previousFocus?.focus()
   }, [initialFocusRef, legacy])
 
@@ -69,10 +80,10 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem', lega
 
   return (
     <div
-      className={legacy ? 'neq-dialog-overlay-parity' : 'fixed inset-0 z-50 flex items-center justify-center p-4'}
+      className={legacy ? 'neq-dialog-overlay-parity ember-dialog-overlay' : 'ember-dialog-overlay fixed inset-0 z-50 flex items-center justify-center p-4'}
       style={legacy ? undefined : { backgroundColor: 'rgba(0, 0, 0, 0.75)' }}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
+        if (e.target === e.currentTarget && topmost()) onClose()
       }}
       role="dialog"
       aria-modal="true"
@@ -81,17 +92,18 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem', lega
     >
       <div
         ref={dialogRef}
-        className={legacy ? `neq-save-dialog-parity ${className}` : `neq-card flex max-h-[85vh] w-full flex-col overflow-hidden ${className}`}
+        tabIndex={-1}
+        className={legacy ? `neq-save-dialog-parity ember-dialog-card ${className}` : `neq-card ember-dialog-card flex max-h-[85vh] w-full flex-col overflow-hidden ${className}`}
         style={{ maxWidth }}
       >
-        <div className={legacy ? 'neq-dialog-heading-parity' : 'flex items-center justify-between border-b-2 border-card px-4 py-3'}>
+        <div className={legacy ? 'neq-dialog-heading-parity ember-dialog-heading' : 'ember-dialog-heading flex items-center justify-between border-b-2 border-card px-4 py-3'}>
           <h3 id={titleId} className={legacy ? '' : 'font-display text-lg text-primary'}>{title}</h3>
           <button
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className={legacy ? 'sr-only' : 'cursor-pointer border-0 bg-transparent font-chrome text-xl leading-none text-secondary hover:text-primary'}
+            className={legacy ? 'sr-only ember-dialog-close' : 'ember-dialog-close cursor-pointer border-0 bg-transparent font-chrome text-xl leading-none text-secondary hover:text-primary'}
           >
             &times;
           </button>

@@ -4,12 +4,22 @@
  * Renders player_data_response{inventory} (full character file) from the
  * player store; field names ported from the legacy displayInventory renderer.
  */
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, usePlayer } from '../../stores'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { EmberInspection } from './EmberInspection'
+import { EquipmentDetails } from './EquipmentDetails'
+import { EmberCurrency } from './EmberCurrency'
+import { useInventoryView } from './InventoryViewState'
+import { useSpellReference } from './useSpellReference'
+import { SpellDetails } from './spellDetails'
+import { spellKey } from './spellKey'
+import { useModalLayer } from '../dialogs/useModalLayer'
 import '../dialogs/dialog-parity.css'
 import {
   equipmentList,
+  currencyOf,
   filterEquipment,
   sortEquipment,
   type InventorySort,
@@ -22,14 +32,31 @@ const SORT_OPTIONS: ReadonlyArray<{ value: InventorySort; label: string }> = [
   { value: 'quantity', label: 'Sort: Quantity' },
 ]
 
+function InventorySearch({ query, onQuery, onClose }: { query: string; onQuery: (query: string) => void; onClose: () => void }) {
+  const panel = useRef<HTMLDivElement>(null)
+  useModalLayer(panel, onClose)
+  return <div className="neq-search-overlay-parity" onClick={onClose}>
+    <div ref={panel} role="dialog" aria-modal="true" aria-label="Search Inventory" tabIndex={-1} className="neq-search-popup-parity" onClick={event => event.stopPropagation()}>
+      <div className="neq-search-header-parity"><h3 className="neq-search-title-parity">Search Inventory</h3><button type="button" aria-label="Close" onClick={onClose} className="neq-search-close-parity">×</button></div>
+      <input value={query} onChange={event => onQuery(event.target.value)} placeholder="Search items..." aria-label="Search items" className="neq-search-input-parity" />
+    </div>
+  </div>
+}
+
 export function InventoryTab() {
+  const ember = useEmberDesktop()
   const inventory = usePlayer((s) => s.inventory)
   const error = usePlayer((s) => s.dataErrors.inventory)
   const notice = usePlayer((s) => s.dataNotices.inventory)
-  const [sort, setSort] = useState<InventorySort>('name-asc')
-  const [sortTouched, setSortTouched] = useState(false)
-  const [query, setQuery] = useState('')
-  const [category, setCategory] = useState('')
+  const { view, setView } = useInventoryView()
+  const { sort, sortTouched, query, category } = view
+  const setSort = (sort: InventorySort) => setView(previous => ({ ...previous, sort }))
+  const setSortTouched = (sortTouched: boolean) => setView(previous => ({ ...previous, sortTouched }))
+  const setQuery = (query: string) => setView(previous => ({ ...previous, query }))
+  const setCategory = (category: string) => setView(previous => ({ ...previous, category }))
+  const section = useRef<HTMLElement>(null)
+  const { data: reference } = useSpellReference()
+  useLayoutEffect(() => { if (section.current) section.current.scrollTop = view.scrollTop }, [inventory, view.scrollTop])
   const [searchOpen, setSearchOpen] = useState(false)
 
   const items = useMemo(() => (inventory ? equipmentList(inventory) : []), [inventory])
@@ -47,13 +74,13 @@ export function InventoryTab() {
   }, [items, query, category, sort, sortTouched])
 
   if (error) {
-    return <p className="p-4 font-body text-sm text-red-400">{error}</p>
+    return <p role={ember ? 'alert' : undefined} data-state="error" className="ember-sheet-status p-4 font-body text-sm text-red-400">{error}</p>
   }
   if (notice) {
-    return <p className="p-4 font-body text-sm text-secondary">{notice}</p>
+    return <p role={ember ? 'status' : undefined} data-state="notice" className="ember-sheet-status p-4 font-body text-sm text-secondary">{notice}</p>
   }
   if (!inventory) {
-    return <p className="p-4 font-body text-sm text-secondary">Loading inventory...</p>
+    return <p role={ember ? 'status' : undefined} data-state="loading" className="ember-sheet-status p-4 font-body text-sm text-secondary">Loading inventory...</p>
   }
 
   const openStorage = () => {
@@ -92,7 +119,7 @@ export function InventoryTab() {
       </div>
 
       {/* equipment list */}
-      <section className="neq-equipment-section">
+      <section ref={section} className="neq-equipment-section" onScroll={event => { const scrollTop = event.currentTarget.scrollTop; setView(previous => ({ ...previous, scrollTop })) }}>
         <h4>Equipment</h4>
         <div>
           {visible.length === 0 ? (
@@ -104,9 +131,10 @@ export function InventoryTab() {
                 className="neq-inventory-item group relative"
               >
                 <span className="neq-feature-bullet">{'\u25CF'}</span>
-                <span className="neq-item-name">{`${item.name}${item.quantity > 1 ? ` \u00D7${item.quantity}` : ''}`}</span>
+                <span className="neq-item-name">{ember ? <EmberInspection label={`${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`}><EquipmentDetails item={item} />{(item.subtype === 'scroll' || /scroll/i.test(item.type)) && <SpellDetails detail={reference[spellKey(item.name.replace(/^scroll\s+(of\s+)?/i, ''))]} fallbackName={item.name} />}</EmberInspection> : `${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`}</span>
                 <span className="neq-item-type">{` (${item.type.toLowerCase()})`}</span>
-                {item.description !== '' && (
+                {ember && item.equipped && <span className="neq-item-type"> · Equipped</span>}
+                {!ember && item.description !== '' && (
                   <div className="pointer-events-none absolute left-2 top-full z-20 hidden w-64 rounded border-2 border-card bg-panel p-2 shadow-lg group-hover:block">
                     <div className="font-display text-xs text-accent">{item.name}</div>
                     <div className="mt-1 text-xs text-secondary">{item.description}</div>
@@ -117,7 +145,8 @@ export function InventoryTab() {
           )}
         </div>
       </section>
-      {searchOpen && <div className="neq-search-overlay-parity" onClick={() => setSearchOpen(false)}><div role="dialog" aria-label="Search Inventory" className="neq-search-popup-parity" onClick={(event) => event.stopPropagation()}><div className="neq-search-header-parity"><h3 className="neq-search-title-parity">Search Inventory</h3><button type="button" aria-label="Close" onClick={() => setSearchOpen(false)} className="neq-search-close-parity">×</button></div><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false) }} placeholder="Search items..." className="neq-search-input-parity" /></div></div>}
+      {ember && <EmberCurrency currency={currencyOf(inventory)} />}
+      {searchOpen && <InventorySearch query={query} onQuery={setQuery} onClose={() => setSearchOpen(false)} />}
     </div>
   )
 }

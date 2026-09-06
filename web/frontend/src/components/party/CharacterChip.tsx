@@ -8,9 +8,12 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { StatsTooltip } from './StatsTooltip'
-import { chipFontSize, probeImage, resolveClickMedia, resolveFirstImage } from './media'
+import { chipFontSize, probeImage, resolveClickMedia, resolveFirstImage, uploadedPortraitCandidates, useMediaRevision } from './media'
 import type { ClickMedia, MediaSource } from './media'
 import './party-parity.css'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { EmberInspection } from '../sheet/EmberInspection'
+import { PartyVitals } from './PartyVitals'
 
 export type ChipVariant =
   | 'party-player'
@@ -65,6 +68,8 @@ export interface CharacterChipProps {
   /** Current-turn highlight (initiative tracker only). */
   active?: boolean | undefined
   onOpenMedia: (media: MediaSource) => void
+  onOpenDetails?: (() => void) | undefined
+  showVitals?: boolean
 }
 
 export function CharacterChip({
@@ -77,18 +82,28 @@ export function CharacterChip({
   clickMedia,
   active,
   onOpenMedia,
+  onOpenDetails,
+  showVitals = false,
 }: CharacterChipProps) {
+  const ember = useEmberDesktop()
+  const mediaRevision = useMediaRevision()
+  const requestId = useRef(0)
   const chipRef = useRef<HTMLButtonElement>(null)
   const showTimer = useRef<number | null>(null)
   const hideTimer = useRef<number | null>(null)
   const [thumb, setThumb] = useState<string | null>(null)
   const [hovered, setHovered] = useState(false)
+  const [mediaPending, setMediaPending] = useState(false)
+  const [mediaMissing, setMediaMissing] = useState(false)
 
   const thumbKey = thumbCandidates.join('|')
   useEffect(() => {
     let alive = true
+    setThumb(null)
+    setMediaPending(false); setMediaMissing(false)
     void (async () => {
-      const resolved = await resolveFirstImage(thumbCandidates)
+      const candidates = variant === 'party-player' || variant === 'init-player' ? uploadedPortraitCandidates(name, thumbCandidates) : thumbCandidates
+      const resolved = await resolveFirstImage(candidates)
       if (!alive) return
       if (resolved) {
         setThumb(resolved)
@@ -100,10 +115,11 @@ export function CharacterChip({
     })()
     return () => {
       alive = false
+      requestId.current++
     }
     // thumbKey stands in for the candidates array identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [thumbKey, thumbFallback])
+  }, [thumbKey, thumbFallback, mediaRevision, name, variant])
 
   useEffect(
     () => () => {
@@ -125,16 +141,33 @@ export function CharacterChip({
 
   const handleClick = () => {
     if (!clickMedia) return
+    setHovered(false)
+    if (showTimer.current !== null) window.clearTimeout(showTimer.current)
+    window.dispatchEvent(new CustomEvent('neq:media-request'))
+    const id = ++requestId.current
+    setMediaPending(true); setMediaMissing(false)
     void resolveClickMedia(clickMedia, thumb).then((media) => {
-      if (media) {
+      if (id !== requestId.current || !chipRef.current?.isConnected) return
+      setMediaPending(false); setMediaMissing(!media)
+      if (media && id === requestId.current && chipRef.current?.isConnected) {
         const rect = chipRef.current?.getBoundingClientRect()
+        const selection = { name, recipe: clickMedia, thumbnail: thumb }
         onOpenMedia(rect ? {
           ...media,
+          selection,
           anchor: { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width },
-        } : media)
+        } : { ...media, selection })
       }
     })
   }
+
+  useEffect(() => {
+    const cancel = () => { requestId.current++; setHovered(false); setMediaPending(false); setMediaMissing(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') cancel() }
+    window.addEventListener('keydown', escape)
+    window.addEventListener('neq:media-request', cancel)
+    return () => { window.removeEventListener('keydown', escape); window.removeEventListener('neq:media-request', cancel) }
+  }, [])
 
   const variantStyle = VARIANT_STYLE[variant]
   const isActive = active === true
@@ -151,11 +184,13 @@ export function CharacterChip({
       : undefined
 
   return (
-    <>
+    <div className={ember ? 'ember-person-entry' : 'contents'}>
       <button
         ref={chipRef}
         type="button"
         aria-label={displayName}
+        aria-busy={mediaPending}
+        aria-current={ember && isActive ? 'step' : undefined}
         data-chip={variant}
         data-name={name}
         data-active={isActive ? 'true' : 'false'}
@@ -178,7 +213,7 @@ export function CharacterChip({
             ? '0 0 15px rgba(255, 165, 0, 0.7)'
             : hoverShadow ?? variantStyle.glow,
           cursor: clickMedia ? 'pointer' : 'default',
-          ...(thumb ? { backgroundImage: `url('${thumb}')` } : {}),
+          ...(thumb && !ember ? { backgroundImage: `url('${thumb}')` } : {}),
           ...(variantStyle.opacity !== undefined
             ? { opacity: isLocationHover ? 1 : variantStyle.opacity }
             : isEnemyMediaHover
@@ -191,6 +226,7 @@ export function CharacterChip({
               : {}),
         }}
       >
+        {ember && <span className="ember-chip-portrait" aria-hidden="true" style={thumb ? { backgroundImage: `url('${thumb}')` } : undefined}>{!thumb && displayName.slice(0, 1)}</span>}
         <span
           className="w-full break-words"
           style={{
@@ -201,9 +237,14 @@ export function CharacterChip({
           }}
         >
           {displayName}
+          {ember && showVitals && <PartyVitals stats={stats} />}
+          {ember && isActive && <small className="ember-turn-label">Your turn</small>}
+          {mediaPending && <small className="ember-turn-label" role="status">Loading media…</small>}
+          {mediaMissing && <small className="ember-turn-label" role="status">No media available</small>}
         </span>
       </button>
+      {ember && (onOpenDetails ? <button type="button" className="ember-person-details" aria-label={`${displayName} full character details`} onClick={() => { window.dispatchEvent(new CustomEvent('neq:media-request')); setHovered(false); if (showTimer.current !== null) window.clearTimeout(showTimer.current); onOpenDetails() }}>Details</button> : <EmberInspection label={`${displayName} statistics`} triggerContent="Details" className="ember-person-details"><StatsTooltip stats={stats} anchor={null} inline /></EmberInspection>)}
       {hovered && <StatsTooltip stats={stats} anchor={chipRef.current} />}
-    </>
+    </div>
   )
 }

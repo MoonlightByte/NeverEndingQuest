@@ -1,0 +1,71 @@
+.ember-media-viewer img,.ember-media-viewer video { display:block; width:100%; max-height:70dvh; object-fit:contain; }
+.ember-person-entry { position:relative; flex-shrink:0; }
+.ember-person-entry > .ember-person-details { position:absolute; right:2px; bottom:3px; font-size:12px; color:var(--ember-muted); }
+.neq-npc-header .ember-person-details { display:none; }
+.ember-people .ember-person-entry { padding-bottom:20px; border-bottom:1px solid var(--ember-rule); }
+.ember-people .ember-person-entry > .ember-person-details { right:0; bottom:3px; padding:0; background:transparent; border:0; border-bottom:1px solid var(--ember-rule); color:var(--ember-brass); font:400 13px var(--ember-font-body); cursor:pointer; }
+.ember-desktop .ember-people .neq-character-chip { display:grid; grid-template-columns:80px minmax(0,1fr); gap:12px; align-items:start; min-height:104px; }
+.ember-desktop .ember-people .ember-chip-portrait { width:80px; height:100px; }
+.ember-desktop .ember-people .neq-character-chip > span:last-child { font-size:18px!important; padding-top:2px; }
+.ember-party-vitals { display:grid; gap:4px; margin-top:5px; color:var(--ember-text); font:400 14px/1.25 var(--ember-font-body); text-shadow:none; }
+.ember-party-level,.ember-party-xp { color:var(--ember-muted); font-size:12px; }
+.ember-party-combat { display:flex; gap:10px; flex-wrap:wrap; }
+.ember-vital-label { color:var(--ember-brass); }
+.ember-party-hp { display:block; height:4px; background:#243326; overflow:hidden; }
+.ember-party-hp > span { display:block; height:100%; background:#719365; }
+.ember-party-hp > span[data-low='true'] { background:#bf7551; }
+.ember-party-condition { color:#efaa94; font-size:12px; }
+body[data-ember-desktop='true'] .ember-npc-full-card .neq-npcs-content { padding:0; height:auto; }
+body[data-ember-desktop='true'] .ember-npc-full-card .neq-npc-character-sheet { margin:0; }
+body[data-ember-desktop='true'] .ember-npc-full-card .neq-npc-abilities { grid-template-columns:repeat(9,minmax(0,1fr)); }
+body[data-ember-desktop='true'] .ember-npc-full-card .neq-npc-detail-buttons { grid-template-columns:repeat(4,minmax(0,1fr)); }
+@media (max-width:1180px) {
+  .ember-desktop .ember-people .neq-character-chip { grid-template-columns:52px minmax(0,1fr); gap:8px; }
+  .ember-desktop .ember-people .ember-chip-portrait { width:52px; height:70px; }
+  .ember-desktop .ember-people .neq-character-chip > span:last-child { font-size:16px!important; }
+  .ember-party-combat { gap:4px 8px; }
+}
+.ember-inspection .ember-stats-inline { position:static; transform:none; width:auto; max-width:none; max-height:none; box-shadow:none; border:0; pointer-events:auto; opacity:1; visibility:visible; }
+.ember-inspection .ember-stats-inline [style*='font-size'] { font-size:16px!important; }
+body[data-ember-desktop='true'] .neq-npc-character-sheet { background:var(--ember-panel); border:1px solid var(--ember-frame); color:var(--ember-text); margin:0 0 16px; border-radius:2px; }
+body[data-ember-desktop='true'] .neq-npcs-content { padding:18px; font-family:var(--ember-font-body); }
+body[data-ember-desktop='true'] .neq-npc-header { padding:12px; gap:12px; flex-wrap:wrap; border-color:var(--ember-rule); background:transparent; }
+body[data-ember-desktop='true'] .neq-npc-header .neq-character-chip { display:block; width:72px!important; height:88px!important; padding:0; border:1px solid #725b39!important; background:transparent!important; box-shadow:none!important; }
+body[data-ember-desktop='true'] .neq-npc-header .ember-chip-portrait { display:block; width:100%; height:100%; background-size:cover; background-position:center; }
+body[data-ember-desktop='true'] .neq-npc-header .neq-character-chip > span:last-child { display:none; }
+body[data-ember-desktop='true'] .neq-npc-name { color:var(--ember-brass); font-family:var(--ember-font-title); font-size:21px; }
+body[data-ember-desktop='true'] .neq-npc-details,body[data-ember-desktop='true'] .neq-npc-ability-name { color:var(--ember-muted); }
+body[data-ember-desktop='true'] .neq-npc-abilities { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; padding:10px; }
+body[data-ember-desktop='true'] .neq-npc-ability-score { background:transparent; border:1px solid var(--ember-rule); color:var(--ember-text); }
+body[data-ember-desktop='true'] .neq-npc-ability-value,body[data-ember-desktop='true'] .neq-npc-ability-modifier { color:var(--ember-text); }
+body[data-ember-desktop='true'] .neq-npc-detail-buttons { padding:10px; gap:6px; }
+body[data-ember-desktop='true'] .neq-npc-detail-button { background:#101716; color:var(--ember-brass); border:1px solid var(--ember-rule); padding:9px; font:inherit; }
+body[data-ember-desktop='true'] .neq-npc-detail-button:hover { background:#251b13; }
+body[data-ember-desktop='true'] .neq-npc-detail-button:focus-visible { outline:2px solid var(--ember-brass); outline-offset:2px; }
+body[data-ember-desktop='true'] .neq-npc-detail-spacer { display:none; }
+body[data-ember-desktop='true'] :is(.neq-npcs-content,.neq-npc-header-main,.neq-npc-header-xp,.neq-npc-abilities,.neq-npc-status) { background:transparent; border-radius:0; }
+body[data-ember-desktop='true'] .neq-npc-header-main { border:0; padding:0; }
+body[data-ember-desktop='true'] .neq-npc-header-xp { color:var(--ember-muted); border:0; padding:0; }
+body[data-ember-desktop='true'] .neq-npc-header-xp .neq-xp-value { color:var(--ember-text); }
+body[data-ember-desktop='true'] .neq-npc-ability-value { font-size:22px; }
+body[data-ember-desktop='true'] .neq-npc-ability-modifier { border:0; background:transparent; border-radius:0; }
+body[data-ember-desktop='true'] .neq-npc-detail-buttons { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+body[data-ember-desktop='true'] .neq-npc-detail-button { min-height:38px; width:auto; font-size:16px; }
+body[data-ember-desktop='true'] .neq-npc-status { border-top:1px solid var(--ember-rule); font-size:14px; }
+body[data-ember-desktop='true'] .neq-npc-condition-value { color:var(--ember-brass); }
+body[data-ember-desktop='true'] :is(.neq-npc-modal-spellcasting,.neq-npc-modal-spell-stats,.neq-npc-modal-spell-item) { background:transparent; border-color:var(--ember-rule); border-radius:0; }
+body[data-ember-desktop='true'] .neq-npc-modal-spell-stats span { color:var(--ember-brass); font-size:17px; }
+body[data-ember-desktop='true'] .neq-npc-modal-spell-header { border-color:var(--ember-rule); }
+body[data-ember-desktop='true'] .neq-npc-inventory-item-description { font-size:16px; line-height:1.5; color:var(--ember-text); }
+body[data-ember-desktop='true'] .neq-npc-inventory-item-details { font-size:14px; color:var(--ember-muted); }
+body[data-ember-desktop='true'] .neq-npc-header .ember-currency-row { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:8px 0; margin:0; font-size:16px; }
+body[data-ember-desktop='true'] .neq-npc-details-item,body[data-ember-desktop='true'] .neq-npc-inventory-item,body[data-ember-desktop='true'] .neq-npc-modal-spell-level { background:transparent; color:var(--ember-text); border-color:var(--ember-rule); }
+body[data-ember-desktop='true'] .neq-npc-details-name,body[data-ember-desktop='true'] .neq-npc-details-bonus,body[data-ember-desktop='true'] .neq-npc-modal-spell-name { color:var(--ember-brass); }
+.ember-npc-description { margin-top:6px; white-space:pre-wrap; line-height:1.5; font-weight:normal; }
+.ember-npc-prepared { color:var(--ember-muted,#aaa); font-size:12px; margin-left:8px; }
+.ember-npc-biography { padding:12px; white-space:pre-wrap; }
+.ember-npc-biography dt { color:var(--ember-brass); margin-top:8px; }
+.ember-npc-biography dd { margin:0; }
+body[data-ember-desktop='true'] :is(.neq-stats-tooltip-parity,.neq-skill-tooltip-parity,.neq-generic-tooltip-parity) { background:#101716; border:1px solid var(--ember-rule); color:var(--ember-text); box-shadow:0 12px 40px #000b; font-family:var(--ember-font-body); max-width:calc(100vw - 24px); max-height:calc(100dvh - 24px); overflow-y:auto; }
+body[data-ember-desktop='true'] :is(.neq-stats-tooltip-header-parity,.neq-skill-tooltip-header-parity,.neq-generic-tooltip-header-parity) { color:var(--ember-brass); border-color:var(--ember-rule); }
+@media(prefers-reduced-motion:reduce) { body[data-ember-desktop='true'] :is(.neq-character-chip,.neq-stats-tooltip-parity,.neq-skill-tooltip-parity,.neq-generic-tooltip-parity) { transition:none!important; animation:none!important; } }

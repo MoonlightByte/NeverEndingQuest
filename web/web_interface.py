@@ -1236,7 +1236,7 @@ def upload_portrait():
                         if current_module:
                             from utils.module_path_manager import ModulePathManager
                             manager = ModulePathManager(current_module)
-                            module_portraits_dir = os.path.join(manager.get_module_dir(), 'portraits')
+                            module_portraits_dir = os.path.join(manager.module_dir, 'portraits')
                             os.makedirs(module_portraits_dir, exist_ok=True)
                             module_save_path = os.path.join(module_portraits_dir, save_filename)
                             img.save(module_save_path, 'PNG')
@@ -4214,18 +4214,27 @@ def handle_get_provider():
         emit('provider_changed', {'provider': 'legacy'})  # Safe fallback
 
 
+_provider_selection_lock = threading.Lock()
+
+
 @socketio.on('set_model_provider')
 def handle_set_provider(data):
     """Handle provider selection from web UI settings dropdown."""
     try:
         import model_config
         provider = data.get('provider', 'legacy')
-        model_config.set_provider(provider)
-        model_config.persist_provider(provider)
+        # Validate before persistence, but do not switch live model bindings
+        # until the durable write succeeds. A rejected save must not silently
+        # change the provider used by the running game.
+        with _provider_selection_lock:
+            if provider not in model_config.PROVIDER_MODELS:
+                raise ValueError(f"Unknown provider: {provider}. Valid: {list(model_config.PROVIDER_MODELS.keys())}")
+            model_config.persist_provider(provider)
+            model_config.set_provider(provider)
 
-        debug(f"Model provider set to: {provider}", category="web_interface")
+            debug(f"Model provider set to: {provider}", category="web_interface")
 
-        emit('provider_changed', {'provider': provider}, broadcast=True)
+            emit('provider_changed', {'provider': provider}, broadcast=True)
 
     except ValueError as e:
         error(f"Invalid provider: {e}", category="web_interface")

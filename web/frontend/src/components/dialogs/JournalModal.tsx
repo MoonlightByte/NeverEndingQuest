@@ -1,9 +1,14 @@
 import { useEffect } from 'react'
+import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { emitC } from '../../services/socket'
 import { useDialogs, useWorld } from '../../stores'
 import type { PlotData } from '../../stores'
 import { useId, useRef } from 'react'
 import './dialog-parity.css'
+import { useModalLayer } from './useModalLayer'
+import { useEmberViewport } from '../layout/useEmberViewport'
+import './journal.css'
 
 type PlotPoint = PlotData['plotPoints'][number]
 
@@ -52,17 +57,38 @@ function QuestItem({ quest }: { quest: PlotPoint }) {
 function JournalPage({
   heading,
   quests,
+  children,
+  keyboardScrollable = false,
 }: {
   heading: string
   quests: PlotPoint[]
+  children?: ReactNode
+  keyboardScrollable?: boolean
 }) {
   return (
-    <section aria-label={heading} className="neq-journal-page">
+    <section aria-label={heading} className="neq-journal-page" tabIndex={keyboardScrollable ? 0 : undefined}>
       <div className="neq-journal-page-content">
       <h2>{heading}</h2>
+      {children}
       {quests.map((quest) => <QuestItem key={quest.id} quest={quest} />)}
       </div>
     </section>
+  )
+}
+
+/** Keep the original parchment book, with the shared modal ownership contract. */
+function DesktopJournal({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  const titleId = useId()
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const topmost = useModalLayer(overlayRef, onClose)
+  return createPortal(
+    <div ref={overlayRef} className="neq-journal-overlay neq-journal-overlay-parity neq-journal-desktop"
+      role="dialog" aria-modal="true" aria-labelledby={titleId}
+      onMouseDown={event => { if (event.target === event.currentTarget && topmost()) onClose() }}>
+      <h1 id={titleId} className="sr-only">Adventure Journal</h1>
+      <button type="button" className="neq-journal-close" onClick={onClose} aria-label="Close">×</button>
+      <div className="neq-journal-book">{children}</div>
+    </div>, document.body,
   )
 }
 
@@ -87,6 +113,7 @@ function BlankJournalPages({ error = false }: { error?: boolean }) {
 }
 
 function JournalModalBody() {
+  const ember = useEmberViewport()
   const closeDialog = useDialogs((s) => s.closeDialog)
   const plot = useWorld((s) => s.plot)
   const plotError = useWorld((s) => s.plotError)
@@ -104,17 +131,25 @@ function JournalModalBody() {
   const completedQuests = discovered.filter((q) => q.status === 'completed')
 
   useEffect(() => {
+    if (ember) return
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeDialog()
+      if (event.key === 'Escape' && !event.defaultPrevented) closeDialog()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       previousFocus?.focus()
     }
-  }, [closeDialog])
+  }, [closeDialog, ember])
 
+  const unavailable = !!plotError || plot === null
+  if (ember) return <DesktopJournal onClose={closeDialog}>
+    <JournalPage heading="Current Objectives" quests={unavailable ? [] : activeQuests} keyboardScrollable>
+      {plotError ? <p role="alert">Could not load quest data. Close and reopen the journal to retry.</p> : plot === null ? <p role="status">Fetching your journal…</p> : discovered.length === 0 ? <p>No discovered quests have been recorded yet.</p> : null}
+    </JournalPage>
+    <JournalPage heading="A Chronicle of Deeds" quests={unavailable ? [] : completedQuests} keyboardScrollable />
+  </DesktopJournal>
   return (
     <div
       className="neq-journal-overlay neq-journal-overlay-parity"

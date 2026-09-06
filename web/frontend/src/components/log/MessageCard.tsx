@@ -12,6 +12,9 @@ import type { GeneratedImage } from '../../stores'
 import { TtsButton } from './TtsButton'
 import { GenerateImageButton } from './GenerateImageButton'
 import { useSettings } from '../../stores'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { EmberIcon } from '../layout/EmberIcon'
+import { useState } from 'react'
 
 export interface MessageCardProps {
   message: GameMessage
@@ -19,11 +22,17 @@ export interface MessageCardProps {
   images?: GeneratedImage[] | undefined
 }
 
+function EmberSceneImage({ image }: { image: GeneratedImage }) {
+  const [failed, setFailed] = useState(false)
+  return failed ? <div className="ember-image-error" role="status">Scene image unavailable. <button type="button" onClick={() => setFailed(false)}>Retry image</button></div> : <img src={image.image_url} alt={`Generated scene: ${image.prompt.slice(0, 80)}`} onError={() => setFailed(true)} />
+}
+
 function InlineImages({ images }: { images: GeneratedImage[] }) {
+  const ember = useEmberDesktop()
   if (images.length === 0) return null
   return (
-    <div className="mt-3 flex flex-col gap-2">
-      {images.map((image, index) => (
+    <div className="neq-inline-images mt-3 flex flex-col gap-2">
+      {images.map((image, index) => ember ? <EmberSceneImage key={`${image.image_url}-${index}`} image={image} /> : (
         <img
           key={`${image.image_url}-${index}`}
           src={image.image_url}
@@ -31,13 +40,19 @@ function InlineImages({ images }: { images: GeneratedImage[] }) {
           className="max-w-full rounded-lg border-2 border-card"
         />
       ))}
+      {ember && <span className="ember-image-caption">Generated image · attached to this message</span>}
     </div>
   )
 }
 
 export function MessageCard({ message, images = [] }: MessageCardProps) {
+  const ember = useEmberDesktop()
   const aiImages = useSettings((s) => s.aiImages)
   const autoplay = useSettings((s) => s.autoplay)
+  // A presentation split only: the original complete text still goes to voice
+  // and image generation. Mobile retains the existing append-only placement.
+  const paragraphEnd = ember && images.length ? /\n\s*\n/.exec(message.content) : null
+  const splitAt = paragraphEnd ? paragraphEnd.index + paragraphEnd[0].length : message.content.length
   switch (message.type) {
     case 'narration':
       return (
@@ -50,12 +65,12 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
               <span className="neq-message-author text-base font-bold" style={{ color: '#ffb347' }}>
                 Dungeon Master
               </span>
-              <span
+              {!ember && <span
                 className="inline-flex h-[22px] items-center rounded px-1.5 font-chrome text-[11px] font-bold text-white"
                 style={{ backgroundColor: '#4a90e2' }}
               >
                 DM
-              </span>
+              </span>}
               <TtsButton content={message.content} autoplay={autoplay} />
               {aiImages && <GenerateImageButton content={message.content} messageId={message.message_id} />}
             </div>
@@ -63,9 +78,10 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
               className="neq-message-text whitespace-pre-wrap font-log text-[17px] leading-snug"
               style={{ color: '#ffa500' }}
             >
-              {message.content}
+              {message.content.slice(0, paragraphEnd?.index ?? splitAt)}
             </div>
             <InlineImages images={images} />
+            {splitAt < message.content.length && <div className="neq-message-text ember-narration-continuation whitespace-pre-wrap">{message.content.slice(splitAt)}</div>}
           </div>
         </div>
       )
@@ -78,7 +94,7 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
             style={{ backgroundColor: '#4a90e2' }}
             aria-hidden="true"
           >
-            {'⚔️'}
+            {ember ? <EmberIcon name="person" /> : '⚔️'}
           </div>
           <div className="neq-message-content min-w-0 flex-1">
             <div className="neq-message-header mb-1">

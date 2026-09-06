@@ -1,0 +1,11 @@
+# Reviewed synthetic public captures only; keep unrelated generated images ignored.
+!05-ember-inline-stacked.png
+!captures/inventory-inspection.png
+!captures/spell-inspection.png
+!captures/review-main.png
+!captures/review-npc.png
+!captures/review-settings.png
+!captures/review-save.png
+!captures/review-map.png
+!captures/review-toolkit-phone.png
+!captures/review-provider-error.png

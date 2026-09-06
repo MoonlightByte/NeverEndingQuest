@@ -1,0 +1,15 @@
+/* Canonical Ember palette. Shared by the React build and both Flask workbenches. */
+.ember-theme, .ember-desktop, [data-ember-desktop='true'] {
+  --ember-page: #080d0d;
+  --ember-panel: #0c1111;
+  --ember-text: #ddd6c8;
+  --ember-muted: #a89c88;
+  --ember-brass: #c5a06d;
+  --ember-rule: #493b27;
+  --ember-frame: #302b20;
+  --ember-status-ok: #a9c88e;
+  --ember-status-fail: #ec9c87;
+  --ember-status-pending: #a89c88;
+  --ember-font-body: 'Crimson Text', Georgia, serif;
+  --ember-font-title: 'Cinzel', Georgia, serif;
+}

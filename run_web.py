@@ -56,6 +56,9 @@ def _react_build_is_current(frontend_dir):
         frontend_dir / "tsconfig.json",
         frontend_dir / "tsconfig.app.json",
         frontend_dir / "tsconfig.node.json",
+        # main.tsx imports this shared presentation source from outside src.
+        # Watch the exact build dependency, not static media/toolkit-only files.
+        frontend_dir.parent / "static" / "css" / "ember-tokens.css",
     ]
     for input_path in input_paths:
         files = input_path.rglob("*") if input_path.is_dir() else [input_path]

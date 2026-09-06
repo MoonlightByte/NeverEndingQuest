@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, useWorld } from '../../stores'
 import './dialog-parity.css'
+import { DialogShell } from './DialogShell'
+import { useEmberViewport } from '../layout/useEmberViewport'
 
 interface StorageItem {
   name: string
@@ -31,6 +33,7 @@ function toContainer(raw: unknown): StorageContainer {
 }
 
 function StorageModalBody() {
+  const ember = useEmberViewport()
   const closeDialog = useDialogs((s) => s.closeDialog)
   const storage = useWorld((s) => s.storage)
   const storageError = useWorld((s) => s.storageError)
@@ -42,9 +45,9 @@ function StorageModalBody() {
 
   let body
   if (storageError) {
-    body = <p className="p-8 text-center font-body text-secondary">No player storage found.</p>
+    body = <p role={ember ? 'alert' : undefined} className="p-8 text-center font-body text-secondary">{ember ? 'Could not load storage data. Close and reopen storage to retry.' : 'No player storage found.'}</p>
   } else if (storage === null) {
-    body = <p className="p-8 text-center font-body italic text-secondary">Fetching storage data...</p>
+    body = <p role={ember ? 'status' : undefined} className="p-8 text-center font-body italic text-secondary">Fetching storage data...</p>
   } else {
     const success = storage['success'] === true
     const containers = (Array.isArray(storage['storage']) ? (storage['storage'] as unknown[]) : []).map(
@@ -84,6 +87,7 @@ function StorageModalBody() {
     }
   }
 
+  if (ember) return <DialogShell title="Player Storage" onClose={closeDialog} maxWidth="760px">{body}</DialogShell>
   return (
     <div
       className="neq-storage-overlay-parity"

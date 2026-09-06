@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, useLog, useSession } from '../../stores'
+import { ConfirmDialog } from './ConfirmDialog'
 import { prepareForServerRestart, reloadWhenServerReady } from '../../services/restart'
+import { useEmberViewport } from '../layout/useEmberViewport'
 import {
   DialogShell,
   dialogButtonDanger,
@@ -39,52 +41,94 @@ function toSaveEntry(raw: Record<string, unknown>): SaveEntry {
   }
 }
 
+const saveExists = (folder: string) => useDialogs.getState().saveList?.some(entry => asString(entry['save_folder']) === folder) === true
+
 function LoadDialogBody() {
+  const ember = useEmberViewport()
   const closeDialog = useDialogs((s) => s.closeDialog)
   const saveList = useDialogs((s) => s.saveList)
   const recoveryRequired = useSession((s) => s.restoreRecoveryRequired)
   const [selected, setSelected] = useState<string | null>(null)
   const [restoring, setRestoring] = useState(false)
+  const [restoreError, setRestoreError] = useState('')
+  const connected = useSession((s) => s.connected)
+  const [confirmation, setConfirmation] = useState<{ kind: 'load' | 'delete'; folder: string } | null>(null)
+  const operation = useRef(0)
+  const busy = useRef(false)
+  const cancelConfirmation = () => {
+    operation.current++
+    busy.current = false
+    setRestoring(false)
+    setConfirmation(null)
+  }
+  useEffect(() => {
+    if (!connected) cancelConfirmation()
+    return () => { operation.current++; busy.current = false }
+  }, [connected])
+  useEffect(() => {
+    if (selected && !saveExists(selected)) setSelected(null)
+    if (confirmation && !saveExists(confirmation.folder)) cancelConfirmation()
+  }, [saveList, selected, confirmation])
   const refreshTimer = useRef<number | null>(null)
 
   // Ask for the current list every time the dialog opens (body mounts).
   useEffect(() => {
-    emitC('action', { action: 'listSaves' })
+    if (useSession.getState().connected) emitC('action', { action: 'listSaves' })
     return () => {
       if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current)
     }
   }, [])
 
-  const performLoad = async () => {
-    if (!selected || restoring) return
-    if (!window.confirm('This will restore the selected save and restart the server. Your current progress will be lost. Continue?')) return
+  const performLoad = async (folder: string) => {
+    if (busy.current || !useSession.getState().connected || !saveExists(folder)) return
+    const ticket = ++operation.current
+    busy.current = true
     setRestoring(true)
+    setRestoreError('')
     try {
-      await prepareForServerRestart()
-      emitC('action', { action: 'restoreGame', parameters: { saveFolder: selected } })
+      await prepareForServerRestart(() => ticket === operation.current && useSession.getState().connected && saveExists(folder))
+      if (ticket !== operation.current || !useSession.getState().connected || !saveExists(folder)) {
+        return
+      }
+      emitC('action', { action: 'restoreGame', parameters: { saveFolder: folder } })
       closeDialog()
       // restore_complete triggers the page reload (see LoadDialog effect below).
     } catch (error) {
+      if (ticket !== operation.current) return
+      setRestoreError(`Game restore could not start: ${error instanceof Error ? error.message : String(error)}`)
       useLog.getState().append({
         type: 'error',
         content: `Game restore could not start: ${error instanceof Error ? error.message : String(error)}`,
       })
       setRestoring(false)
+      busy.current = false
     }
   }
 
-  const deleteSelected = () => {
-    if (!selected || restoring || recoveryRequired) return
-    if (!window.confirm('Delete this save? This cannot be undone.')) return
-    emitC('action', { action: 'deleteSave', parameters: { saveFolder: selected } })
+  const deleteSelected = (folder: string) => {
+    if (busy.current || restoring || useSession.getState().restoreRecoveryRequired
+      || !useSession.getState().connected || !saveExists(folder)) return
+    busy.current = true
+    emitC('action', { action: 'deleteSave', parameters: { saveFolder: folder } })
+    setConfirmation(null)
     setSelected(null)
     // Legacy parity: refresh the list shortly after the delete lands.
     refreshTimer.current = window.setTimeout(() => {
-      emitC('action', { action: 'listSaves' })
+      busy.current = false
+      if (useSession.getState().connected) emitC('action', { action: 'listSaves' })
     }, 500)
   }
 
   const entries = (saveList ?? []).map(toSaveEntry).filter((e) => e.folder !== '')
+  const requestConfirmation = (kind: 'load' | 'delete') => {
+    if (!selected || busy.current || !useSession.getState().connected || !saveExists(selected)) return
+    setRestoreError('')
+    if (ember) setConfirmation({ kind, folder: selected })
+    else if (window.confirm(kind === 'load' ? 'This will restore the selected save and restart the server. Your current progress will be lost. Continue?' : 'Delete this save? This cannot be undone.')) {
+      if (kind === 'load') void performLoad(selected)
+      else deleteSelected(selected)
+    }
+  }
 
   return (
     <DialogShell title="Load Saved Game" onClose={closeDialog} maxWidth="700px" legacy>
@@ -140,20 +184,27 @@ function LoadDialogBody() {
           <button
             type="button"
             className={dialogButtonDanger}
-            onClick={deleteSelected}
-            disabled={!selected || restoring || recoveryRequired}
+            onClick={() => requestConfirmation('delete')}
+            disabled={!selected || restoring || recoveryRequired || !connected}
           >
             Delete
           </button>
           <button
             type="button"
             className={dialogButtonPrimary}
-            onClick={() => void performLoad()}
-            disabled={!selected || restoring}
+            onClick={() => requestConfirmation('load')}
+            disabled={!selected || restoring || !connected}
           >
             Load Game
           </button>
         </div>
+        {confirmation && <ConfirmDialog
+          title={confirmation.kind === 'load' ? 'Restore Saved Game' : 'Delete Saved Game'}
+          message={confirmation.kind === 'load' ? 'This will restore the selected save and restart the server. Your current progress will be lost. Continue?' : 'Delete this save? This cannot be undone.'}
+          confirmLabel={confirmation.kind === 'load' ? 'Restore Game' : 'Delete Save'}
+          pending={restoring} error={restoreError} disabled={!connected} onCancel={cancelConfirmation}
+          onConfirm={() => confirmation.kind === 'load' ? void performLoad(confirmation.folder) : deleteSelected(confirmation.folder)}
+        />}
       </div>
     </DialogShell>
   )

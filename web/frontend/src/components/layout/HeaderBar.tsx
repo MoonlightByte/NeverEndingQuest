@@ -1,4 +1,7 @@
+import { useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
+import { ConfirmDialog } from '../dialogs/ConfirmDialog'
+import { useEmberViewport } from './useEmberViewport'
 import { useSession, useWorld, useDialogs } from '../../stores'
 import { SettingsMenu } from '../settings/SettingsMenu'
 import { useUiMode } from '../../modes/useUiMode'
@@ -29,6 +32,9 @@ const buttonClass =
 export const EXIT_SAFE_MESSAGE = 'You can now safely close this browser tab.'
 
 export function HeaderBar() {
+  const ember = useEmberViewport()
+  const [confirmExit, setConfirmExit] = useState(false)
+  const exitSubmitted = useRef(false)
   const { mode } = useUiMode()
   const connected = useSession((s) => s.connected)
   const sessionMode = useSession((s) => s.mode)
@@ -54,11 +60,13 @@ export function HeaderBar() {
     window.open('/toolkit', 'ModuleToolkit', 'width=1400,height=900')
   }
   const handleExit = () => {
-    if (!window.confirm('Are you sure you want to exit the game?')) return
+    if (exitSubmitted.current) return
+    exitSubmitted.current = true
+    setConfirmExit(false)
     // Socket.IO queues emits made while offline. Do not enqueue a stale exit
     // that could be delivered after an automatic reconnect; the legacy client
     // only notifies the server when it is connected.
-    if (connected) emitC('user_exit', undefined)
+    if (useSession.getState().connected) emitC('user_exit', undefined)
     window.close()
     useDialogs.getState().setActionResult({ kind: 'exit', message: EXIT_SAFE_MESSAGE })
   }
@@ -118,10 +126,15 @@ export function HeaderBar() {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22,2V8H20V4H17V2H22M2,8V2H7V4H4V8H2M20,13.09A2.5,2.5 0 0,0 22.5,15.59C22.5,16.9 21.4,18 20,18H4C2.6,18 1.5,16.9 1.5,15.59C1.5,14.09 2.59,12.83 4,12.5V10H20V13.09M20,16H4A1,1 0 0,1 3,15A1,1 0 0,1 4,14H20A1,1 0 0,1 21,15A1,1 0 0,1 20,16Z" /></svg>
           <span>Toolkit</span>
         </button>
-        <button type="button" className={`${buttonClass} neq-exit-button`} onClick={handleExit} style={{ color: 'white', fontWeight: 700 }}>
+        <button type="button" className={`${buttonClass} neq-exit-button`} onClick={() => {
+          exitSubmitted.current = false
+          if (ember) setConfirmExit(true)
+          else if (window.confirm('Are you sure you want to exit the game?')) handleExit()
+        }} style={{ color: 'white', fontWeight: 700 }}>
           × Exit
         </button>
       </div>
+      {confirmExit && <ConfirmDialog title="Exit Game" message="Are you sure you want to exit the game?" confirmLabel="Exit Game" onCancel={() => setConfirmExit(false)} onConfirm={handleExit} />}
     </div>
   )
 }

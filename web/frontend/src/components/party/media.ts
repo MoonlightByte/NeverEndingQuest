@@ -7,15 +7,20 @@
  * /static). Pure logic + DOM probing only -- no store or socket access.
  */
 
+import { useSyncExternalStore } from 'react'
+
 export interface MediaSource {
   kind: 'video' | 'image'
   src: string
+  fallback?: string | null
   anchor?: { top: number; bottom: number; left: number; width: number }
+  selection?: { name: string; recipe: ClickMedia; thumbnail: string | null }
 }
 
 export interface ClickMedia {
   videoUrl: string
   imageCandidates: string[]
+  portraitName?: string
 }
 
 export type ChipKind = 'player' | 'npc' | 'enemy'
@@ -52,6 +57,11 @@ export function strictFileName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '_')
 }
 
+/** Exact filename accepted by the existing portrait-upload endpoint. */
+export function uploadedPortraitPath(name: string): string {
+  return `/static/portraits/${name.toLowerCase().replace(/\s+/g, '_')}.png`
+}
+
 /** Monster type -> media file stem (e.g. "Dire Wolf" -> "dire_wolf"). */
 export function monsterFileName(monsterType: string): string {
   return monsterType.toLowerCase().replace(/\s+/g, '_')
@@ -69,12 +79,12 @@ export function playerThumbCandidates(name: string): string[] {
   const strict = strictFileName(name)
   const candidates = [`/static/portraits/${loose}.png`]
   if (strict !== loose) candidates.push(`/static/portraits/${strict}.png`)
-  return candidates
+  return [...new Set([...candidates, uploadedPortraitPath(name)])]
 }
 
-/** Legacy combat players use exactly one strictly-normalized portrait URL. */
+/** Keep the legacy first choice; uploads may retain apostrophes or hyphens. */
 export function initiativePlayerThumbCandidates(name: string): string[] {
-  return [`/static/portraits/${strictFileName(name)}.png`]
+  return [...new Set([`/static/portraits/${strictFileName(name)}.png`, uploadedPortraitPath(name)])]
 }
 
 export function npcThumbCandidates(name: string): string[] {
@@ -113,7 +123,8 @@ export function partyClickMedia(name: string, kind: 'player' | 'npc'): ClickMedi
       : `/media/npcs/${looseFileName(name)}`
   return {
     videoUrl: `${base}_video.mp4`,
-    imageCandidates: [`${base}.jpg`, `${base}.png`],
+    imageCandidates: [...new Set([`${base}.jpg`, `${base}.png`, ...(kind === 'player' ? [uploadedPortraitPath(name)] : [])])],
+    ...(kind === 'player' ? { portraitName: name } : {}),
   }
 }
 
@@ -187,6 +198,70 @@ export function chipFontSize(displayName: string): number {
 // ---------- existence probing (results cached per session) ----------
 
 const imageProbeCache = new Map<string, Promise<boolean>>()
+let revision = 0
+let globalRevision = 0
+const revisions = new Map<string, { version: number; aliases: string[]; uploaded?: string }>()
+const listeners = new Set<() => void>()
+const entityKey = (name: string) => name.toLowerCase().replace(/\s+/g, '_')
+export function mediaVersion(name?: string) {
+  return { global: globalRevision, entity: name ? revisions.get(entityKey(name))?.version ?? 0 : 0 }
+}
+/** Explicit successful upload takes precedence over old aliases/video for this
+ * session. Ordinary candidate order/video precedence is otherwise unchanged. */
+export function uploadedPortraitCandidates(name: string, candidates: string[]) {
+  const uploaded = revisions.get(entityKey(name))?.uploaded
+  return uploaded ? [uploaded] : candidates
+}
+export function invalidateMediaCaches(name?: string, uploadedPortrait = false) {
+  imageProbeCache.clear(); videoProbeCache.clear()
+  if (name) {
+    if (revisions.size >= 256 && !revisions.has(entityKey(name))) { revisions.clear(); globalRevision = ++revision }
+    const previous = revisions.get(entityKey(name))
+    revisions.set(entityKey(name), {
+      version: ++revision,
+      aliases: [...new Set([entityKey(name), looseFileName(name), strictFileName(name)])],
+      ...(uploadedPortrait ? { uploaded: uploadedPortraitPath(name) } : previous?.uploaded ? { uploaded: previous.uploaded } : {}),
+    })
+  }
+  else { revisions.clear(); globalRevision = ++revision }
+  for (const listener of listeners) listener()
+}
+export function useMediaRevision() {
+  return useSyncExternalStore((listener) => {
+    listeners.add(listener)
+    return () => { listeners.delete(listener) }
+  }, () => revision, () => 0)
+}
+if (typeof window !== 'undefined') window.addEventListener('neq:portrait-updated', (event) => {
+  invalidateMediaCaches((event as CustomEvent<{ name?: string }>).detail?.name)
+})
+function freshUrl(src: string) {
+  const [path, query = ''] = src.split('?')
+  let stem = path!.split('/').at(-1) ?? ''
+  try { stem = decodeURIComponent(stem) } catch { /* Legacy names may contain a literal %. */ }
+  const extension = stem.match(/\.[^.]+$/)?.[0].toLowerCase()
+  stem = stem.replace(/\.[^.]+$/, '')
+  const stems = [stem]
+  // Player PNG/JPG filenames are the canonical name, including names such as
+  // "Tom Thumb" or "Hero Video". Only generated media routes use image suffixes.
+  if (extension === '.mp4') stem = stem.replace(/_video$/, '')
+  else if (/^\/media\/(npcs|monsters)\//.test(path!) && (extension === '.jpg' || extension === '.png')) {
+    stem = stem.replace(/_thumb$/, '')
+  }
+  // A full-size NPC named Tom Thumb and Tom's generated thumbnail can share
+  // a physical path. Either entity changing must refresh that path.
+  if (!stems.includes(stem)) stems.push(stem)
+  // Exact stems prevent Ann's revision from shadowing Ann Marie's revision.
+  const matches = [...revisions.values()].filter(entry => entry.aliases.some(alias => stems.includes(alias)))
+  const version = Math.max(globalRevision, ...matches.map(entry => entry.version))
+  if (!version) return src
+  const params = new URLSearchParams(query); params.set('neq_media', String(version))
+  return `${path}?${params}`
+}
+function boundedSet(cache: Map<string, Promise<boolean>>, src: string, probe: Promise<boolean>) {
+  if (cache.size >= 256) cache.delete(cache.keys().next().value!)
+  cache.set(src, probe)
+}
 
 export function probeImage(src: string): Promise<boolean> {
   const cached = imageProbeCache.get(src)
@@ -197,11 +272,13 @@ export function probeImage(src: string): Promise<boolean> {
       return
     }
     const img = new Image()
-    img.onload = () => resolve(true)
-    img.onerror = () => resolve(false)
-    img.src = src
+    const finish = (ok: boolean) => { clearTimeout(timer); img.onload = null; img.onerror = null; resolve(ok) }
+    const timer = setTimeout(() => { finish(false); img.src = '' }, 4000)
+    img.onload = () => finish(true)
+    img.onerror = () => finish(false)
+    img.src = freshUrl(src)
   })
-  imageProbeCache.set(src, probe)
+  boundedSet(imageProbeCache, src, probe)
   return probe
 }
 
@@ -217,18 +294,23 @@ export function probeVideo(src: string): Promise<boolean> {
     }
     const video = document.createElement('video')
     video.preload = 'metadata'
-    video.onloadedmetadata = () => resolve(true)
-    video.onerror = () => resolve(false)
-    video.src = src
+    const finish = (ok: boolean) => {
+      clearTimeout(timer); video.onloadedmetadata = null; video.onerror = null
+      video.removeAttribute?.('src'); video.load?.(); resolve(ok)
+    }
+    const timer = setTimeout(() => finish(false), 4000)
+    video.onloadedmetadata = () => finish(true)
+    video.onerror = () => finish(false)
+    video.src = freshUrl(src)
   })
-  videoProbeCache.set(src, probe)
+  boundedSet(videoProbeCache, src, probe)
   return probe
 }
 
 /** First image candidate that actually loads, or null. */
 export async function resolveFirstImage(candidates: string[]): Promise<string | null> {
   for (const candidate of candidates) {
-    if (await probeImage(candidate)) return candidate
+    if (await probeImage(candidate)) return freshUrl(candidate)
   }
   return null
 }
@@ -241,8 +323,13 @@ export async function resolveClickMedia(
   media: ClickMedia,
   thumbFallback: string | null,
 ): Promise<MediaSource | null> {
+  const uploaded = media.portraitName ? revisions.get(entityKey(media.portraitName))?.uploaded : undefined
+  if (uploaded) {
+    const image = await resolveFirstImage([uploaded])
+    return image ? { kind: 'image', src: image } : null
+  }
   if (await probeVideo(media.videoUrl)) {
-    return { kind: 'video', src: media.videoUrl }
+    return { kind: 'video', src: freshUrl(media.videoUrl), fallback: await resolveFirstImage(media.imageCandidates) ?? thumbFallback }
   }
   const image = await resolveFirstImage(media.imageCandidates)
   if (image) return { kind: 'image', src: image }
