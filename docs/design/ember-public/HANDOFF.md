@@ -50,7 +50,7 @@ and `TRANSITION-GATES.md` for acceptance requirements.
 ## Verification receipts
 
 - Clean `npm ci` and production build passed in an isolated committed export.
-  Full suite with the final startup-test correction: **31 files / 287 tests pass**.
+  Full suite with the final startup/provider-test corrections: **31 files / 291 tests pass**.
   The correction verifies coalesced startup hydration and trailing refreshes;
   it does not change production socket behavior.
 - Lint exits successfully with **16 warnings**, not a warning-free claim.
@@ -62,13 +62,26 @@ and `TRANSITION-GATES.md` for acceptance requirements.
 - Public shell/responsive: **13 pass**, plus **2 additional viewport checks**
   at 390×460 and 793×496. These approximate keyboard space and 200%-equivalent
   CSS space, not a real OS keyboard or native browser zoom test.
-- Populated map: **2 pass**. Provider UI: **3 pass**; real provider handler,
-  persistence and routing contract tests with synthetic credentials: **11 pass**.
+- Populated map: **2 pass**. Provider UI: **6 pass**, plus **1 desktop contrast /
+  phone fallback check**; real provider handler, persistence, overlapping-write,
+  routing and SDK/local-stub contract tests: **25 pass**. No paid inference.
 - Toolkit/builder: **6 browser tests pass**, with intercepted networks and no
   authoring jobs. Actual standalone Flask route and **14 CSS/font assets** pass
   in a disposable export; the missing Flask-Cors dependency is now declared.
+- Additional actual-entry-point probe verifies missing-build 503s while legacy
+  and toolkit remain usable, built React/legacy coexistence, 15 shared assets
+  through each Flask app, 3 React entry assets and 11 bundled fonts. Launcher
+  defaults/options are unchanged; **9 launcher tests pass**. Shared-token-only
+  changes now correctly invalidate the React build.
 - Final focused checks include **4 audio ownership tests** and **2 phone settings
   browser tests**, including visible keyboard focus.
+
+Final provider fixes: `c957f93` validates and durably saves a provider choice
+before applying it live, serializing simultaneous selections. The new failure
+test reproduced the pre-existing public-main bug before the fix. A reopened
+idle Settings panel also no longer displays cached/late endpoint-test results.
+Desktop PASS/FAIL text has measured 9.79:1 / 8.35:1 contrast against the lighter
+modal background stop; existing phone colors are retained.
 
 The primary agent personally inspected the locked reference against the main
 render/diff, laptop/large desktop captures, NPC details, settings and save, map,
@@ -89,7 +102,16 @@ loading state, native zoom/keyboard/safe-area behavior, Firefox/WebKit and nativ
 Windows/macOS rendering, and formal performance profiling. Intermediate widths
 retain the existing responsive ownership with containment tests; a separate
 tablet side-panel prototype was not implemented. Legacy fallback selection is
-preserved, but missing-build fallback was not exhaustively retested.
+preserved and actual missing-build/route/launcher behavior has been tested.
+
+The existing endpoint probe protocol has no request identity. If probe A times
+out, probe B starts, then A replies late, the UI cannot distinguish that reply
+from B. Closing/reopening an idle panel is now safe, but complete correlation
+would require a separately reviewed contract change. Broader pre-existing
+settings-file concurrency outside provider selection is also not solved here.
+
+See [ACCEPTANCE-MATRIX.md](ACCEPTANCE-MATRIX.md) for screen-level evidence and
+remaining gaps; this checklist does not turn partial coverage into full approval.
 
 `npm audit` reports three development dependency findings (nanoid, postcss,
 undici: two high, one moderate); `npm audit --omit=dev` reports zero. Dependencies

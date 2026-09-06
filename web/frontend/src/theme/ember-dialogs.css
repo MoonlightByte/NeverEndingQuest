@@ -25,6 +25,7 @@ body[data-ember-desktop='true'] .ember-settings-content .neq-settings-item :is(l
 body[data-ember-desktop='true'] .ember-settings-content .neq-settings-provider-row-parity { align-items: stretch; flex-direction: column; }
 body[data-ember-desktop='true'] .ember-settings-content :is(.neq-settings-select-parity,.neq-settings-provider-row-parity .neq-settings-select-parity) { width: 100%; min-width: 0; }
 body[data-ember-desktop='true'] .ember-settings-content .neq-settings-help-parity { color: #b1a590; font: 15px/1.5 'Crimson Text',Georgia,serif; }
+body[data-ember-desktop='true'] .ember-settings-content .neq-settings-status-parity { font: 16px/1.5 var(--ember-font-body); }
 body[data-ember-desktop='true'] .ember-settings-content .neq-settings-button-small-parity { color: #e3c99f; background: #20251f; border-color: #715737; padding: 9px 16px; font: 16px 'Crimson Text',Georgia,serif; }
 body[data-ember-desktop='true'] .ember-settings-content .neq-settings-stack-parity { gap: 10px; }
 body[data-ember-desktop='true'] .ember-settings-content .neq-voice-controls-parity { width: 70%; }

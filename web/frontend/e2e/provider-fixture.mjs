@@ -1,21 +1,24 @@
 // Test-only settings protocol. Real persistence is covered by the Python suite.
 // Store presence flags only: never retain keys entered into this mock process.
 export function createProviderFixture() {
-  let provider, endpoint, openai, gemini, rejectNext
+  let provider, endpoint, openai, gemini, rejectNext, disconnectNext
   const reset = () => {
     provider = 'legacy'
     endpoint = { base_url: 'http://localhost:1234/v1', model: '', has_key: false }
     openai = false
     gemini = false
     rejectNext = false
+    disconnectNext = false
   }
   reset()
   return {
     reset,
     reject: () => { rejectNext = true },
+    disconnectNext: () => { disconnectNext = true },
     attach(socket) {
       socket.on('get_model_provider', () => socket.emit('provider_changed', { provider }))
       socket.on('set_model_provider', data => {
+        if (disconnectNext) { disconnectNext = false; socket.conn.close(); return }
         if (rejectNext) { rejectNext = false; socket.emit('error', { message: 'Fixture: settings write rejected' }); return }
         if (!['legacy', 'openai', 'gemini', 'lmstudio'].includes(data.provider)) {
           socket.emit('error', { message: 'Fixture: invalid provider' }); return
@@ -33,6 +36,11 @@ export function createProviderFixture() {
       socket.on('get_gemini_key', () => socket.emit('gemini_key_status', { has_key: gemini }))
       socket.on('set_gemini_key', data => { gemini ||= Boolean(data.api_key?.trim()); socket.emit('gemini_key_status', { has_key: gemini }) })
       socket.on('test_local_endpoint', data => {
+        if (data.base_url === 'http://127.0.0.1:9997/v1') return // Deliberately no acknowledgement.
+        if (data.base_url === 'http://127.0.0.1:9996/v1') {
+          setTimeout(() => { if (socket.connected) socket.emit('local_endpoint_test_result', { ok: true, detail: 'Delayed closed-panel result.' }) }, 1500)
+          return
+        }
         const ok = data.base_url === 'http://127.0.0.1:9999/v1'
         socket.emit('local_endpoint_test_result', { ok, detail: ok ? 'Fixture endpoint responded.' : 'Fixture endpoint unavailable.' })
       })

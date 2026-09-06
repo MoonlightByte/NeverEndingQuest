@@ -1,7 +1,8 @@
 # Ember public visual review — 2026-09-05
 
-Status: initial main-screen review only; not complete-plan acceptance or owner
-sign-off. Four Chromium/Linux browser goldens are regression targets, not evidence
+Status: main and additional-screen review receipts are now in HANDOFF.md and
+ACCEPTANCE-MATRIX.md; neither complete-plan acceptance nor owner sign-off is
+claimed. Four Chromium/Linux browser goldens are regression targets, not evidence
 of pixel equality with the approved concept.
 
 Personally inspected populated renders at 1586×992, 1920×1080, 1440×900 and
@@ -45,6 +46,15 @@ background feature, story continuation and final nearby character while checking
 that the composer and Journal remain in the viewport.
 Do not update snapshots merely to accept a regression.
 
-Additional-screen mockups in the review gallery remain drafts pending explicit
-owner approval. Actual additional-screen implementations and their screenshot
-comparisons, full runtime journeys and final owner review are still outstanding.
+Additional-screen mockups in the review gallery remain subject to explicit owner
+approval. Actual panels, dialogs and workbenches are now implemented; personally
+inspected captures and the remaining full-state/live/platform gates are listed
+in HANDOFF.md and ACCEPTANCE-MATRIX.md.
+
+The final provider status pass corrected inherited low-contrast dark green/red
+to muted sage/peach on Ember desktop (9.79:1 / 8.35:1 against the lighter modal
+gradient stop) and increased status text to 16px. The browser verifies PASS/FAIL
+contrast and preserved phone fallback; this is not whole-product accessibility
+certification. [Reviewed error state](captures/review-provider-error.png).
+Main goldens passed again unchanged after this correction. The exact locked
+reference and documentation provenance now live alongside this file.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs } from '../../stores'
 import type { ClientEvents } from '../../contract/events'
@@ -89,10 +89,12 @@ function LocalProviderPanelBody() {
 
   // ---- endpoint test probe ----
   const [testing, setTesting] = useState(false)
+  const awaitingTest = useRef(false)
   const [testStatus, setTestStatus] = useState<{ text: string; tone: TestTone } | null>(null)
   useEffect(() => {
     if (!testing) return
     const timer = window.setTimeout(() => {
+      awaitingTest.current = false
       setTesting(false)
       setTestStatus({ text: 'No test response received. Check your connection and try again.', tone: 'fail' })
     }, 30000)
@@ -100,7 +102,8 @@ function LocalProviderPanelBody() {
   }, [testing])
   useEffect(() => {
     const res = settings.endpointTest
-    if (!res) return
+    if (!res || !awaitingTest.current) return
+    awaitingTest.current = false
     setTesting(false)
     setTestStatus({ text: `${res.ok ? 'PASS' : 'FAIL'}: ${res.detail}`, tone: res.ok ? 'ok' : 'fail' })
   }, [settings.endpointTest])
@@ -111,6 +114,7 @@ function LocalProviderPanelBody() {
       return
     }
     setTesting(true)
+    awaitingTest.current = true
     setTestStatus({ text: 'Testing connection...', tone: 'pending' })
     emitC('test_local_endpoint', { base_url: baseUrl, model, api_key: localApiKey })
   }
@@ -218,7 +222,8 @@ function LocalProviderPanelBody() {
           {testStatus && (
             <p
               className="neq-settings-status-parity"
-              style={{ color: TONE_COLORS[testStatus.tone] }}
+              data-tone={testStatus.tone}
+              style={{ color: `var(--ember-status-${testStatus.tone}, ${TONE_COLORS[testStatus.tone]})` }}
               role="status"
             >
               {testStatus.text}

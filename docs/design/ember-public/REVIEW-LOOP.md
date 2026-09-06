@@ -119,3 +119,27 @@ is clean; the complete unit rerun is 31 files / 287 passing tests.
 
 These statements close specific reported findings only. They are not owner
 approval, comprehensive production validation or a claim of raster pixel parity.
+
+## Post-handoff acceptance loop
+
+Feature testing found cached/late endpoint statuses reappearing on reopening an
+idle Settings panel. A pending-owner guard fixed that narrow behavior; six browser
+and ten settings unit tests pass. Architecture review confirmed the fix and
+explicitly retained the existing no-request-ID correlation limitation.
+
+Real provider tests exposed a public-main bug where a failed durable save still
+changed the live provider. The first fix was independently reviewed and expanded
+with a provider-selection lock and deterministic overlapping-selection test.
+The re-review found no remaining blocker for this bounded defect; all 25 handler
+tests pass. Broader unrelated settings-file concurrency is not claimed solved.
+
+The independent entry-point probe verified actual Flask and launcher behavior and
+then reproduced stale build detection when only shared Ember tokens changed. The
+minimal exact-input watch fix passed the probe and nine existing launcher tests;
+a second agent reviewed its scope and isolation cleanly.
+
+Primary-agent contrast review corrected desktop endpoint status colors/type and
+personally inspected both browser captures. A browser check verifies PASS/FAIL
+contrast and the existing phone fallback; independent source review is clean.
+Main goldens and interactive preview tests still pass without baseline updates.
+These receipts do not close every acceptance-matrix row or owner approval.

@@ -92,8 +92,9 @@ const server = http.createServer((request, response) => {
     streamFile(file, response, file.endsWith('.png') ? 'image/png' : 'image/jpeg')
     return
   }
-  if (request.method === 'POST' && ['/__e2e__/providers/reset', '/__e2e__/providers/reject'].includes(requestPath)) {
+  if (request.method === 'POST' && ['/__e2e__/providers/reset', '/__e2e__/providers/reject', '/__e2e__/providers/disconnect-next'].includes(requestPath)) {
     if (requestPath.endsWith('/reset')) providerFixture.reset()
+    else if (requestPath.endsWith('/disconnect-next')) providerFixture.disconnectNext()
     else providerFixture.reject()
     response.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}')
     return

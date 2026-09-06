@@ -1,5 +1,22 @@
 # Public Ember implementation ledger
 
+## Additional acceptance fixes — 2026-09-05
+
+The post-handoff audit made further concrete progress rather than treating owner
+inspection readiness as release completion. Provider persistence failure now
+leaves live settings unchanged (`c957f93`); simultaneous selections preserve
+write/apply/broadcast order. Real handlers/SDK/local-stub suite: 25 pass. Browser
+provider suite: six pass, plus desktop contrast/phone fallback check. Reopening
+an idle Settings panel no longer displays old endpoint-test results.
+
+Actual missing-build/legacy/coexisting React and both Flask static entry points
+passed a disposable probe. The probe exposed a shared-token-only build freshness
+gap; the launcher now watches that exact imported file. Nine launcher tests pass.
+Final unit rerun: 31 files / 291 tests; build/lint pass (16 lint warnings remain).
+Ten main visual/interactive preview checks pass with no golden changes. Primary
+agent personally inspected provider PASS/FAIL captures after contrast correction.
+See HANDOFF.md and ACCEPTANCE-MATRIX.md for exact scope and unverified gates.
+
 ## Owner inspection checkpoint — 2026-09-05
 
 Full implementation checkpoint `e6f83c5` is saved on the inspection branch.

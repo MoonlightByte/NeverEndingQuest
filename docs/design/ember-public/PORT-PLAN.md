@@ -76,6 +76,8 @@ baseline screens; source inventory is not proof that every workflow works today.
    During implementation, place a distribution-approved copy in this design
    directory and record its provenance. Do not copy private fixture portraits,
    account/campaign code, server documentation, credentials or runtime data.
+   Implementation artifact: [locked reference](05-ember-inline-stacked.png) and
+   [provenance](ASSETS.md). Public release remains subject to owner approval.
 6. Audit every added file and its history/assets before a public push. Font and
    icon licenses must accompany reusable assets. No production saves or provider
    responses containing personal information in screenshot fixtures.
