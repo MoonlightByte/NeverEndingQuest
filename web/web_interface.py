@@ -1116,7 +1116,7 @@ def upload_portrait():
                         if current_module:
                             from utils.module_path_manager import ModulePathManager
                             manager = ModulePathManager(current_module)
-                            module_portraits_dir = os.path.join(manager.get_module_dir(), 'portraits')
+                            module_portraits_dir = os.path.join(manager.module_dir, 'portraits')
                             os.makedirs(module_portraits_dir, exist_ok=True)
                             module_save_path = os.path.join(module_portraits_dir, save_filename)
                             img.save(module_save_path, 'PNG')
