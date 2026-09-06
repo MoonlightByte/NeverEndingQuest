@@ -30,7 +30,7 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 5. The boundary snapshots the provider once so an in-flight UI setting change cannot redirect the call.
 6. It resolves the registered ladder at `min(attempt,last)`, replaces only registry-owned model/reasoning/thinking/token-profile fields, and deep-copies the effective request.
 7. For the standard adapter it injects the provider snapshot, task ID, and usage invocation UUID. Raw SDK-compatible functions do not receive private metadata.
-8. A live-selected T-ID freezes request bytes and starts one provider child per generation. Polling checks supersession, fully terminates and reaps a stale child, and accepts only an envelope matching operation ID and generation.
+8. A live-selected T-ID freezes request bytes and starts one provider child per generation with a per-generation transport deadline set for every provider (the OpenAI-compatible client applies it as a request option with SDK retries zeroed; Gemini applies it as a per-request `http_options` timeout in milliseconds with no retry options). Polling checks supersession, fully terminates and reaps a stale child, and accepts only an envelope matching operation ID and generation. A child reaped without a reply yields a synthesized retryable envelope for every task (#284).
 9. Outside live transport, primary retry makes up to three physical calls only for typed empty response. Other provider and transport errors propagate immediately.
 10. `create_completion` enforces API compatibility and routes OpenAI, Legacy, and LM Studio through the OpenAI-compatible client; Gemini uses `google.genai` and its conversion layer.
 11. Unexpected provider exceptions become correlated `ProviderCallError`; empty or non-text output is rejected; success is normalized to one OpenAI-shaped response.
@@ -40,7 +40,7 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 15. Capture task overrides select variants only. The sole production override is the registered attempt ladder, except the constrained OpenAI evaluation-primary mode available only while capture is enabled.
 16. Callsite schema/format/temperature overlays survive registry resolution. The adapter removes unsupported combinations per provider, including `top_p` and incompatible temperature/effort/schema forms.
 17. Local/Custom may replace only the LM Studio model from persisted settings and omits unsupported `json_object` while preserving explicit JSON schema.
-18. Required live tasks structurally reissue after a fully reaped unavailable generation. Advisory tasks terminate for that beat. The live policy, not capture, owns this distinction.
+18. Required live tasks structurally reissue after a fully reaped unavailable generation, and keep reissuing transient transport/HTTP failures with capped jittered backoff until the provider answers or the player supersedes the turn (Load/Reset); only deterministic errors and a bounded run of empty replies hand off to the caller (#284, #193 B2-vii). The player sees a changing status line (attempt, elapsed) and one plain-words card per failure class naming the provider (local: connection lost; OpenAI/Gemini: named, out-of-funds when the structured error code says so). Advisory tasks terminate for that beat. The live policy, not capture, owns this distinction.
 19. Startup supplies a private reactive message-repair callback when a provider rejects request ordering. The live transport invokes it only after the correlated failed child is reaped, then freezes the repaired messages for the next generation. It does not fabricate a response or change provider selection.
 20. Capture removes that callback before serialization/API dispatch and records the actual repaired message sequence. Independent startup review uses the existing T092 binding; no parallel startup router or model-specific gameplay branch is introduced.
 
@@ -53,8 +53,8 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 - Multi-model capture uses `NEQ_MODEL_CAPTURE_DIR` and `NEQ_MODEL_CAPTURE_CONFIG`; enablement also requires `NEQ_MULTI_MODEL_CAPTURE` or the configured flag and literal JSON `capture_enabled`.
 - Capture records use an in-process lock, native file locking, fsync, and same-filesystem replace; corrupt files are quarantined.
 - API master JSONL serializes before an in-process append lock and does not claim cross-process locking.
-- At this pin, per-T-ID primary capture lacks actual `response.model`, provider response ID, and usage invocation ID. The API master has actual model but lacks response ID/shared correlation, so neither store alone proves exact request-to-response identity.
-- Source-revision capture hashes runtime Python and prompt/schema inputs, but its Git subprocess probes have no bound; issue #250 tracks that evidence-path liveness gap.
+- At this pin, per-T-ID primary capture lacks actual `response.model`, provider response ID, and usage invocation ID. The API master carries operation ID, generation, disposition, cause class, error code, retry-after and a billing marker for every error or reaped live-child generation (`metadata.source=live_provider_parent`, #284); success rows from callers still lack response ID/shared correlation, so neither store alone proves exact request-to-response identity for successes.
+- Source-revision capture hashes runtime Python and prompt/schema bytes with no subprocess (primed at import); the earlier Git probe hang (#250, #278) is resolved on main.
 
 ## Load-bearing seams
 
@@ -83,6 +83,6 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 
 ## Open items
 
-- Routing and liveness: #186, #204, #239, #240, and #250.
+- Routing and liveness: #186, #204, #239 (in-process and no-scope callers; the live child path is covered by #284). #240 and #250 resolved.
 - Player-visible provider failures: #170, #179, #232, and #233.
 - Provider/schema/platform debt: #148 and #166.
