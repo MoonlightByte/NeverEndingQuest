@@ -104,7 +104,7 @@ Do not delete lock files to reclaim ownership or stop unrelated installations.
 ## Load-bearing seams
 
 1. `utils/capture/live_provider_call.py:96-333` - live/welcome scope authority, promotion, queues, and quiescence.
-2. `utils/capture/live_provider_call.py:603-714` - child polling, reaping, and correlation gate.
+2. `utils/capture/live_provider_call.py` `call_live_provider` (generation loop; anchors moved by #284) - child polling, reaping, universal backstop envelope, and correlation gate.
 3. `main.py:298-378` - welcome ownership and generation-only worker.
 4. `main.py:392-530` - handback ordering, attempt/lease receipt, and reconciliation.
 5. `main.py:753-924` - input pump, teardown, welcome registration, and worker start.

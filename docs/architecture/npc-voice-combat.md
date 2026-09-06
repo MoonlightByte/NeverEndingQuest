@@ -84,7 +84,7 @@ object identity is the current-authority check.
 
 ## Load-bearing seams
 
-1. `utils/capture/live_provider_call.py:113-169` - parent scope and supersession.
+1. `utils/capture/live_provider_call.py` `LiveTurnScope` (anchors moved by #284) - parent scope and supersession.
 2. `utils/capture/live_provider_call.py:173-226` - child scopes and complete-set registration.
 3. `core/npc/voice_context.py:1257-1266` - exact combat beat ID.
 4. `core/npc/voice_service.py:720-727` - batch dispatch entry.
