@@ -9388,7 +9388,10 @@ def main_game_loop():
             # The provider ended this turn (bad key, out of funds, malformed
             # request). The player was told what to do; the game stays
             # playable so they can do it (#284: returning here ended the
-            # engine, so "try that action again" was impossible).
+            # engine, so "try that action again" was impossible). Release
+            # this turn's invocation claim first, or the next input blocks
+            # in begin_invocation (post-implementation audit F-AUD-1).
+            complete_invocation(t067_claim)
             continue
 
         # This block now only runs if a response was NOT held
