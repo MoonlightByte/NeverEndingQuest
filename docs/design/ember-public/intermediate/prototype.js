@@ -33,7 +33,7 @@ document.querySelectorAll('.drawer').forEach(dialog => {
     const first = controls[0]
     const last = controls.at(-1)
     if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
-      event.preventDefault(); (event.shiftKey ? last : first).focus({ preventScroll: true })
+      event.preventDefault(); (event.shiftKey ? last : first).focus()
     }
   })
   dialog.addEventListener('click', event => {
@@ -41,6 +41,11 @@ document.querySelectorAll('.drawer').forEach(dialog => {
     if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) closeDrawer(dialog)
   })
 })
+document.querySelectorAll('[data-sample-action]').forEach(button => button.addEventListener('click', () => {
+  const dialog = button.closest('dialog')
+  if (dialog) closeDrawer(dialog)
+  document.getElementById('input-status').textContent = `Layout study: ${button.dataset.sampleAction} selected. No game action, provider call or saved-data change occurred.`
+}))
 const sheetScroll = document.getElementById('sheet-scroll')
 const tabScroll = new Map()
 document.querySelectorAll('[role=tab]').forEach(tab => tab.addEventListener('click', () => {

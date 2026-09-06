@@ -19,11 +19,36 @@ Ranger Marcus asset; this is an illustrative alias, not a production assignment.
 The optional Elen portrait belongs inline to a sample narration; it is not a
 mandatory header image. Toggle it off to review text-only play.
 
-Only the sample drawers, character tabs/filter, exploration/combat mode, optional
-image and local input form are interactive. Dice are labelled visual specimens,
+Only the sample drawers, header overflow menu, character tabs/filter,
+exploration/combat mode, optional image and local input form are interactive. Dice are labelled visual specimens,
 not new gameplay controls. Lifecycle actions, detailed tooltips, authoring tools
 and full game logic remain in the actual React implementation. No network/API
 writes, inference, local storage or game events occur here.
+
+### Secondary-action menu proposal
+
+The header now proposes keeping Save directly visible while collecting Load,
+Settings, Toolkit, conditional Update, Reset and Exit in a labelled Menu. The
+running-state entry is disabled; Start / New Game would replace it before play,
+using the existing public availability rules. Reset and Exit would still require
+their current confirmations; opening the menu never performs either operation.
+The connection state would remain visible in production; this disconnected
+study labels its status as sample state instead of claiming a live connection.
+
+The menu uses a compact right-side modal with native inertness, close/Escape,
+Tab containment and focus return. Sample action clicks only update the visible
+local status. This is the section 5 header proposal, not approval to change the
+production header. The tradeoff is one extra click for secondary actions in
+exchange for keeping location and reading space at intermediate widths.
+
+Reviewed menu captures: [1024×768](captures/1024-header-menu.png) and
+[1180×768](captures/1180-header-menu.png). Five browser cases pass, retaining
+the original three drawer checks and adding both menu widths. Independent
+keyboard review caught clipped focused Exit on wrapping; allowing focus to
+scroll and tightening the menu's padding corrected it. Tests now assert Exit
+is fully visible both at rest and after Shift+Tab. No production navigation or
+backend action changed. The ten original drawer captures below predate this
+header proposal; they remain historical evidence for the side-panel study.
 
 Run separately from the existing gallery if it is already running:
 

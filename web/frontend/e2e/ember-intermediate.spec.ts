@@ -1,6 +1,57 @@
 import { expect, test } from '@playwright/test'
 
 test.skip(process.env.NEQ_E2E_INTERMEDIATE !== '1', 'Review-only drawer prototype, never a production layout')
+for (const width of [1024, 1180]) {
+  test(`header menu proposal ${width}: complete local controls, focus and no game writes`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 768 })
+    const requests: string[] = []
+    const errors: string[] = []
+    page.on('request', request => requests.push(`${request.method()} ${new URL(request.url()).pathname}`))
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto('/intermediate')
+    await page.evaluate(() => document.fonts.ready)
+    const draft = page.getByRole('textbox', { name: 'Enter your command', exact: true })
+    await draft.fill('Keep this unsent draft.')
+    const opener = page.getByRole('button', { name: 'Menu', exact: false })
+    await expect(opener).toBeInViewport()
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeInViewport()
+    await opener.click()
+    const menu = page.getByRole('dialog', { name: 'Game menu', exact: true })
+    await expect(menu.getByRole('button', { name: 'Close game menu' })).toBeFocused()
+    await expect(menu.getByRole('button', { name: 'Exit', exact: true })).toBeInViewport({ ratio: 1 })
+    await page.keyboard.press('Shift+Tab')
+    const exit = menu.getByRole('button', { name: 'Exit', exact: true })
+    await expect(exit).toBeFocused()
+    expect(await exit.evaluate(node => {
+      const item = node.getBoundingClientRect()
+      const clip = node.closest('.drawer-scroll')!.getBoundingClientRect()
+      return item.top >= clip.top && item.bottom <= clip.bottom
+    })).toBe(true)
+    await expect(menu.getByRole('button', { name: 'Game Running', exact: true })).toBeDisabled()
+    for (const name of ['Load saved game', 'Settings', 'Developer Toolkit', 'Update available', 'Reset game', 'Exit']) {
+      await expect(menu.getByRole('button', { name, exact: false })).toBeVisible()
+    }
+    expect(await draft.evaluate(node => { (node as HTMLElement).focus(); return document.activeElement === node })).toBe(false)
+    await menu.getByRole('button', { name: 'Exit', exact: true }).focus()
+    await page.keyboard.press('Tab')
+    await expect(menu.getByRole('button', { name: 'Close game menu' })).toBeFocused()
+    await menu.locator('.drawer-scroll').evaluate(node => { node.scrollTop = 0 })
+    await page.screenshot({ path: info.outputPath(`${width}-header-menu.png`) })
+    await menu.getByRole('button', { name: 'Settings', exact: true }).click()
+    await expect(menu).not.toBeVisible()
+    await expect(opener).toBeFocused()
+    await expect(page.getByRole('status')).toContainText('Settings selected. No game action')
+    await expect(draft).toHaveValue('Keep this unsent draft.')
+    await opener.click()
+    await page.keyboard.press('Escape')
+    await expect(menu).not.toBeVisible()
+    await expect(opener).toBeFocused()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    expect(requests.every(request => request.startsWith('GET '))).toBe(true)
+    expect(requests.some(request => /\/(api|socket\.io)(\/|\?)/.test(request))).toBe(false)
+    expect(errors).toEqual([])
+  })
+}
 test('touch opens drawers and native modal inertness blocks background focus', async ({ browser }) => {
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 1024, height: 768 } })
   try {

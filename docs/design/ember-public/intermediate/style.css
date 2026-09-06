@@ -19,6 +19,10 @@ button:hover { background-color: #c5a06d12; }
 .location { font-size: 18px; line-height: 1.2; }
 .location small { display: block; color: var(--ember-muted); font-size: 15px; margin-top: 4px; }
 .sample-status { margin-left: auto; color: var(--ember-muted); font-size: 15px; white-space: nowrap; }
+.header-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.header-actions button { font-size: 16px; }
+.game-header .location { min-width: 0; }
+@media (min-width: 801px) and (max-width: 1100px) { .game-header { gap: 16px; } .header-actions .sample-status { display: none; } }
 .workspace { display: grid; grid-template-columns: 82px minmax(0,1fr) 82px; flex: 1; min-height: 0; }
 .collapsed-rail { padding: 16px 9px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
 .left-rail { border-right: 1px solid var(--ember-frame); }
@@ -65,6 +69,16 @@ figcaption { color: var(--ember-muted); font-size: 15px; font-style: italic; pad
 .drawer::backdrop { background: #0008; }
 .sheet-drawer { left: 0; right: auto; width: 410px; border-right: 1px solid #78603c; }
 .people-drawer { left: auto; right: 0; width: 350px; border-left: 1px solid #78603c; }
+.actions-drawer { left: auto; right: 16px; top: 104px; bottom: auto; width: 340px; height: auto; max-height: calc(100dvh - 120px); border: 1px solid #78603c; border-radius: 3px; }
+.actions-drawer .drawer-heading { padding: 14px 20px; }
+.actions-drawer .drawer-scroll { padding: 8px 20px 16px; }
+.actions-drawer .drawer-scroll > p { margin: 8px 0 12px; font-size: 16px; }
+.action-list { display: flex; flex-direction: column; gap: 6px; }
+.action-list button { text-align: left; padding: 7px 10px; }
+.action-list button:disabled { cursor: default; color: var(--ember-muted); }
+.action-list p { font-size: 15px; margin: 0 0 8px; }
+.action-list small { float: right; color: var(--ember-muted); }
+.action-list hr { width: 100%; border: 0; border-top: 1px solid var(--ember-rule); margin: 8px 0; }
 .drawer-heading { display: flex; align-items: center; justify-content: space-between; padding: 20px 22px 16px; border-bottom: 1px solid var(--ember-rule); flex-shrink: 0; }
 .drawer-heading small { color: var(--ember-muted); font: 10px/1.4 system-ui,sans-serif; letter-spacing: .1em; }
 .drawer h2 { margin: 4px 0 0; font: 400 23px/1.3 var(--ember-font-title); color: #d7b67d; }
