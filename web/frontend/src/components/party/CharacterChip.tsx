@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { StatsTooltip } from './StatsTooltip'
-import { chipFontSize, probeImage, resolveClickMedia, resolveFirstImage, useMediaRevision } from './media'
+import { chipFontSize, probeImage, resolveClickMedia, resolveFirstImage, uploadedPortraitCandidates, useMediaRevision } from './media'
 import type { ClickMedia, MediaSource } from './media'
 import './party-parity.css'
 import { useEmberDesktop } from '../layout/EmberPresentation'
@@ -97,7 +97,8 @@ export function CharacterChip({
     setThumb(null)
     setMediaPending(false); setMediaMissing(false)
     void (async () => {
-      const resolved = await resolveFirstImage(thumbCandidates)
+      const candidates = variant === 'party-player' || variant === 'init-player' ? uploadedPortraitCandidates(name, thumbCandidates) : thumbCandidates
+      const resolved = await resolveFirstImage(candidates)
       if (!alive) return
       if (resolved) {
         setThumb(resolved)
@@ -113,7 +114,7 @@ export function CharacterChip({
     }
     // thumbKey stands in for the candidates array identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [thumbKey, thumbFallback, mediaRevision])
+  }, [thumbKey, thumbFallback, mediaRevision, name, variant])
 
   useEffect(
     () => () => {
@@ -145,10 +146,12 @@ export function CharacterChip({
       setMediaPending(false); setMediaMissing(!media)
       if (media && id === requestId.current && chipRef.current?.isConnected) {
         const rect = chipRef.current?.getBoundingClientRect()
+        const selection = { name, recipe: clickMedia, thumbnail: thumb }
         onOpenMedia(rect ? {
           ...media,
+          selection,
           anchor: { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width },
-        } : media)
+        } : { ...media, selection })
       }
     })
   }

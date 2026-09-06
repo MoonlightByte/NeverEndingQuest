@@ -44,8 +44,9 @@ def main():
         shutil.copy2(repo / relative, export / relative)
         overlay = {'path': str(relative), 'sha256': hashlib.sha256((export / relative).read_bytes()).hexdigest()}
     shutil.copytree(dist, export / 'web/frontend/dist')
-    frontend_manifest = {str(path.relative_to(dist)): hashlib.sha256(path.read_bytes()).hexdigest()
-                         for path in sorted(dist.rglob('*')) if path.is_file()}
+    exported_dist = export / 'web/frontend/dist'
+    frontend_manifest = {str(path.relative_to(exported_dist)): hashlib.sha256(path.read_bytes()).hexdigest()
+                         for path in sorted(exported_dist.rglob('*')) if path.is_file()}
     for name in tuple(os.environ):
         if any(part in name.upper() for part in ('API_KEY','TOKEN','SECRET','CREDENTIAL','PROXY')):
             os.environ.pop(name, None)

@@ -1,0 +1,101 @@
+import { createHash } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
+import { expect, test } from '@playwright/test'
+
+test.skip(process.env.NEQ_E2E_PORTRAIT_RUNTIME !== '1', 'Requires a fresh disposable ember_portrait_runtime.py server')
+
+// This test intentionally requires missing initial media. Restart the disposable
+// runtime for a repeat; never remove portraits from a real campaign to run it.
+test('actual upload persists and refreshes desktop, viewer, initiative and phone without reload', async ({ page, request }, testInfo) => {
+  test.setTimeout(90_000)
+  const state = async () => (await request.get('/__portrait__/state')).json()
+  const initial = await state()
+  expect(initial.static.exists).toBe(false)
+  expect(initial.module.exists).toBe(false)
+  expect((await request.get('/static/portraits/arden_vale.png')).status()).toBe(404)
+  await request.post('/__parity__/scenario/exploration')
+  await page.setViewportSize({ width: 1586, height: 992 })
+  await page.goto('/play/')
+  await expect(page.locator('.neq-character-name')).toHaveText('Arden Vale')
+  const sheet = page.getByRole('img', { name: 'Portrait of Arden Vale', exact: true })
+  const player = page.locator('[data-chip="party-player"][data-name="Arden Vale"]')
+  const thumb = player.locator('.ember-chip-portrait')
+  await expect(sheet).toHaveAttribute('src', '/static/icons/default_portrait.png')
+  await expect(thumb).toHaveCSS('background-image', 'none')
+  // The failed network probes above establish the previously stale negative cache.
+  const source = fileURLToPath(new URL('../../../graphic_packs/photorealistic/npcs/ranger_marcus.jpg', import.meta.url))
+  const replacement = fileURLToPath(new URL('../../../graphic_packs/photorealistic/npcs/ranger_elen.jpg', import.meta.url))
+  const uploadResponse = page.waitForResponse(response => response.url().endsWith('/upload-portrait') && response.request().method() === 'POST')
+  await page.getByLabel('Choose portrait image').setInputFiles(source)
+  expect(await (await uploadResponse).json()).toMatchObject({ success: true })
+  await expect(sheet).toHaveAttribute('src', /\/arden_vale\.png\?/)
+  await expect.poll(() => sheet.evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth)).toBe(256)
+  await expect(thumb).toHaveCSS('background-image', /arden_vale\.png\?neq_media=/)
+  const uploaded = await state()
+  expect(uploaded.static).toEqual(uploaded.module)
+  expect(uploaded.static).toMatchObject({ exists: true, dimensions: [256, 256] })
+  const servedHash = createHash('sha256').update(await (await request.get('/static/portraits/arden_vale.png')).body()).digest('hex')
+  expect(servedHash).toBe(uploaded.static.sha256)
+  await page.screenshot({ path: testInfo.outputPath('upload-desktop.png') })
+
+  await player.click()
+  const viewer = page.getByRole('dialog', { name: 'Character media' })
+  await expect(viewer).toBeVisible()
+  const portrait = viewer.getByRole('img', { name: 'Character portrait' })
+  await expect(portrait).toHaveAttribute('src', /arden_vale\.png\?neq_media=/)
+  await expect.poll(() => portrait.evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth)).toBe(256)
+  const priorViewerSrc = await portrait.getAttribute('src')
+
+  // A second successful upload while a viewer is open exercises the existing
+  // named invalidation event. The request is real; the event is explicit test
+  // integration because the normal upload button is inert behind this modal.
+  const replacementBytes = await import('node:fs/promises').then(fs => fs.readFile(replacement))
+  const replaceResponse = await request.post('/upload-portrait', { multipart: {
+    characterName: 'arden_vale', portrait: { name: 'ranger_elen.jpg', mimeType: 'image/jpeg', buffer: replacementBytes },
+  } })
+  expect(await replaceResponse.json()).toMatchObject({ success: true })
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('neq:portrait-updated', { detail: { name: 'Arden Vale' } })))
+  await expect(viewer).toBeVisible()
+  await expect(portrait).not.toHaveAttribute('src', priorViewerSrc!)
+  await expect.poll(() => portrait.evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth)).toBe(256)
+  const replaced = await state()
+  expect(replaced.static).toEqual(replaced.module)
+  expect(replaced.static.sha256).not.toBe(uploaded.static.sha256)
+  await page.screenshot({ path: testInfo.outputPath('upload-viewer-refreshed.png') })
+  await page.keyboard.press('Escape')
+  await expect(viewer).toHaveCount(0)
+  await expect(player).toBeFocused()
+
+  const rejectedResponse = page.waitForResponse(response => response.url().endsWith('/upload-portrait') && response.request().method() === 'POST')
+  await page.getByLabel('Choose portrait image').setInputFiles({ name: 'invalid.png', mimeType: 'image/png', buffer: Buffer.from('not a PNG image') })
+  expect(await (await rejectedResponse).json()).toMatchObject({ success: false })
+  await expect(page.locator('.neq-game-log')).toContainText('Upload failed:')
+  expect(await state()).toEqual(replaced)
+  await expect(sheet).toHaveAttribute('src', /arden_vale\.png\?/)
+  await expect(thumb).toHaveCSS('background-image', /arden_vale\.png\?neq_media=/)
+
+  await request.post('/__parity__/scenario/combat')
+  await expect(page.getByLabel('Combat, round 2')).toBeVisible()
+  await expect(page.locator('[data-chip="init-player"] .ember-chip-portrait')).toHaveCSS('background-image', /arden_vale\.png\?neq_media=/)
+  await page.mouse.move(0, 0)
+  await page.screenshot({ path: testInfo.outputPath('upload-combat.png') })
+
+  await request.post('/__parity__/scenario/exploration')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.locator('.ember-desktop')).toHaveCount(0)
+  await sheet.evaluate(image => (image as HTMLImageElement).decode())
+  const priorPhoneSrc = await sheet.getAttribute('src')
+  const phoneImageResponse = page.waitForResponse(response => response.url().includes('/static/portraits/arden_vale.png?') && response.request().resourceType() === 'image')
+  const phoneUpload = page.waitForResponse(response => response.url().endsWith('/upload-portrait') && response.request().method() === 'POST')
+  await page.getByLabel('Choose portrait image').setInputFiles(source)
+  expect(await (await phoneUpload).json()).toMatchObject({ success: true })
+  await expect(sheet).not.toHaveAttribute('src', priorPhoneSrc!)
+  const phoneImageHash = createHash('sha256').update(await (await phoneImageResponse).body()).digest('hex')
+  expect(phoneImageHash).toBe(uploaded.static.sha256)
+  await expect.poll(() => sheet.evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth)).toBe(256)
+  expect((await state()).static).toEqual(uploaded.static)
+  expect((await state()).module).toEqual(uploaded.module)
+  await sheet.scrollIntoViewIfNeeded()
+  await expect(sheet).toBeInViewport()
+  await page.screenshot({ path: testInfo.outputPath('upload-phone.png') })
+})

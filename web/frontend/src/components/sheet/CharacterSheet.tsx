@@ -90,7 +90,7 @@ function Portrait({ name }: { name: string }) {
       const result = await response.json() as { success?: boolean; message?: string }
       if (!response.ok || !result.success) throw new Error(result.message || 'Upload failed')
       setFailed(false); setCacheBust(`?v=${Date.now()}`)
-      invalidateMediaCaches(name)
+      invalidateMediaCaches(name, true)
       useLog.getState().append({ type: 'system', content: 'Portrait updated successfully!' })
     } catch (error) {
       useLog.getState().append({ type: 'error', content: `Upload failed: ${error instanceof Error ? error.message : String(error)}` })

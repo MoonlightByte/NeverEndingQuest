@@ -4,7 +4,7 @@
  * 4.4c). services/socket is mocked -- no socket connection is made.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { usePlayer, useSession, useWorld } from '../../stores'
 import { PartyStrip } from './PartyStrip'
 import { InitiativeTracker } from './InitiativeTracker'
@@ -27,6 +27,8 @@ import {
   resolveClickMedia,
   invalidateMediaCaches,
   resolveFirstImage,
+  uploadedPortraitCandidates,
+  uploadedPortraitPath,
 } from './media'
 
 const initialSession = useSession.getState()
@@ -80,9 +82,10 @@ describe('media url helpers', () => {
     })
   })
 
-  it('uses the stricter legacy initiative filenames without party-strip fallbacks', () => {
+  it('keeps the strict initiative filename first and appends the canonical upload fallback', () => {
     expect(initiativePlayerThumbCandidates("O'Malley Prime")).toEqual([
       '/static/portraits/o_malley_prime.png',
+      "/static/portraits/o'malley_prime.png",
     ])
     expect(initiativeNpcThumbCandidates("Scout O'Malley")).toEqual([
       "/media/npcs/scout_o'malley_thumb.jpg",
@@ -173,6 +176,195 @@ describe('MediaPopup', () => {
     render(<MediaPopup media={{ kind: 'image', src: '/media/npcs/kira.jpg' }} onClose={close} />)
     expect(screen.getByRole('dialog', { name: 'Character media' }).querySelector('img')?.getAttribute('src')).toBe('/media/npcs/kira.jpg')
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(close).toHaveBeenCalledOnce()
+  })
+})
+
+describe('scoped portrait upload freshness', () => {
+  beforeEach(() => { invalidateMediaCaches() })
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+  function images(available: (src: string) => boolean = () => true) {
+    const requested: string[] = []
+    class ImageDouble {
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      set src(value: string) {
+        requested.push(value)
+        queueMicrotask(() => available(value.split('?')[0]!) ? this.onload?.() : this.onerror?.())
+      }
+    }
+    vi.stubGlobal('Image', ImageDouble)
+    return requested
+  }
+
+  function selection(name: string) {
+    return { kind: 'image' as const, src: '/old-portrait.png', selection: { name, recipe: partyClickMedia(name, 'player'), thumbnail: '/old-thumb.png' } }
+  }
+
+  for (const name of ["O'Brien", 'Arden-Vale']) {
+    it(`discovers canonical ${name} uploads after negative probes and replaces older aliases`, async () => {
+      let present = false
+      images(src => present && src === uploadedPortraitPath(name))
+      const candidates = playerThumbCandidates(name)
+      expect(await resolveFirstImage(candidates)).toBeNull()
+      present = true
+      invalidateMediaCaches(name, true)
+      const selected = uploadedPortraitCandidates(name, candidates)
+      expect(selected).toEqual([uploadedPortraitPath(name)])
+      expect(await resolveFirstImage(selected)).toContain(`${uploadedPortraitPath(name)}?neq_media=`)
+      // Even if all old aliases now exist, explicit successful upload wins.
+      images()
+      invalidateMediaCaches(name, true)
+      expect(await resolveFirstImage(uploadedPortraitCandidates(name, initiativePlayerThumbCandidates(name)))).toContain(`${uploadedPortraitPath(name)}?neq_media=`)
+      expect((await resolveClickMedia(partyClickMedia(name, 'player'), '/old-thumb.png'))?.src).toContain(`${uploadedPortraitPath(name)}?neq_media=`)
+      invalidateMediaCaches()
+      expect(uploadedPortraitCandidates(name, candidates)).toEqual(candidates)
+    })
+  }
+
+  it('cache-busts exact normalization aliases without prefix revision collisions', async () => {
+    images()
+    invalidateMediaCaches("O'Brien")
+    for (const path of ["/static/portraits/o'brien.png", '/static/portraits/obrien.png', '/static/portraits/o_brien.png']) {
+      expect(await resolveFirstImage([path])).toContain('?neq_media=')
+    }
+    invalidateMediaCaches('Ann')
+    const ann = await resolveFirstImage(['/static/portraits/ann.png'])
+    invalidateMediaCaches('Ann Marie')
+    const marie = await resolveFirstImage(['/static/portraits/ann_marie.png'])
+    expect(ann?.split('?')[1]).not.toBe(marie?.split('?')[1])
+    expect(await resolveFirstImage(['/static/portraits/ann.png'])).toBe(ann)
+  })
+
+  it('keeps legacy literal-percent names probeable without URI decoding errors', async () => {
+    images()
+    invalidateMediaCaches('Hero 100%')
+    expect(await resolveFirstImage(['/static/portraits/hero_100%.png'])).toContain('/hero_100%.png?neq_media=')
+  })
+
+  it('versions repeated uploads for player names ending in Thumb or Video without stripping their name', async () => {
+    images()
+    for (const name of ['Tom Thumb', 'Hero Video']) {
+      const path = uploadedPortraitPath(name)
+      invalidateMediaCaches(name, true)
+      const first = await resolveFirstImage([path])
+      invalidateMediaCaches(name, true)
+      const second = await resolveFirstImage([path])
+      expect(first).toContain(`${path}?neq_media=`)
+      expect(second).toContain(`${path}?neq_media=`)
+      expect(second).not.toBe(first)
+    }
+  })
+
+  it('still versions generated NPC thumbnail and animation suffixes together', async () => {
+    images()
+    const requested: string[] = []
+    const create = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation((tag, options) => {
+      if (tag !== 'video') return create(tag, options)
+      const video = { onloadedmetadata: null as (() => void) | null, onerror: null as (() => void) | null,
+        removeAttribute: vi.fn(), load: vi.fn(),
+        set src(src: string) { requested.push(src); queueMicrotask(() => video.onloadedmetadata?.()) } }
+      return video as unknown as HTMLVideoElement
+    })
+    invalidateMediaCaches('Scout Kira')
+    const thumb = await resolveFirstImage(npcThumbCandidates('Scout Kira'))
+    const first = await resolveClickMedia(partyClickMedia('Scout Kira', 'npc'), null)
+    expect(first?.kind).toBe('video')
+    expect(first?.src.split('?')[1]).toBe(thumb?.split('?')[1])
+    invalidateMediaCaches('Scout Kira')
+    const second = await resolveClickMedia(partyClickMedia('Scout Kira', 'npc'), null)
+    expect(second?.src).not.toBe(first?.src)
+    expect(requested[1]).toBe(second?.src)
+  })
+
+  it('refreshes both full-size and generated thumbnail images for NPC Tom Thumb', async () => {
+    images()
+    const full = partyClickMedia('Tom Thumb', 'npc').imageCandidates[0]!
+    const thumb = npcThumbCandidates('Tom Thumb')[0]!
+    invalidateMediaCaches('Tom Thumb')
+    const firstFull = await resolveFirstImage([full])
+    const firstThumb = await resolveFirstImage([thumb])
+    invalidateMediaCaches('Tom Thumb')
+    const secondFull = await resolveFirstImage([full])
+    const secondThumb = await resolveFirstImage([thumb])
+    expect(secondFull).not.toBe(firstFull)
+    expect(secondThumb).not.toBe(firstThumb)
+    expect(secondFull?.split('?')[1]).toBe(secondThumb?.split('?')[1])
+    // That full-size filename can also be Tom's generated thumbnail: either
+    // identity changing must invalidate the one physical resource.
+    invalidateMediaCaches('Tom')
+    expect(await resolveFirstImage([full])).not.toBe(secondFull)
+  })
+
+  it('keeps video-first behavior unless an explicit uploaded photo overrides it, and restores it on session change', async () => {
+    images()
+    const create = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation((tag, options) => {
+      if (tag !== 'video') return create(tag, options)
+      const video = { onloadedmetadata: null as (() => void) | null, onerror: null as (() => void) | null,
+        removeAttribute: vi.fn(), load: vi.fn(),
+        set src(_src: string) { queueMicrotask(() => video.onloadedmetadata?.()) } }
+      return video as unknown as HTMLVideoElement
+    })
+    const recipe = partyClickMedia('Video Hero', 'player')
+    expect((await resolveClickMedia(recipe, null))?.kind).toBe('video')
+    invalidateMediaCaches('Video Hero', true)
+    expect((await resolveClickMedia(recipe, null))?.kind).toBe('image')
+    invalidateMediaCaches()
+    expect((await resolveClickMedia(recipe, null))?.kind).toBe('video')
+  })
+
+  it('refreshes the same open viewer, preserves focus, ignores unrelated updates, and closes on global change', async () => {
+    images()
+    const close = vi.fn()
+    render(<MediaPopup media={selection("O'Brien")} onClose={close} />)
+    const button = screen.getByRole('button', { name: 'Close' }); button.focus()
+    await act(async () => { invalidateMediaCaches("O'Brien", true) })
+    await waitFor(() => expect(screen.getByAltText('Character portrait').getAttribute('src')).toContain("/o'brien.png?neq_media="))
+    expect(document.activeElement).toBe(button)
+    const src = screen.getByAltText('Character portrait').getAttribute('src')
+    await act(async () => { invalidateMediaCaches('Other Hero', true) })
+    expect(screen.getByAltText('Character portrait').getAttribute('src')).toBe(src)
+    expect(close).not.toHaveBeenCalled()
+    act(() => { invalidateMediaCaches() })
+    expect(close).toHaveBeenCalledOnce()
+    expect(screen.queryByAltText('Character portrait')).toBeNull()
+  })
+
+  it('shows refresh failure without stale art and can recover on a later successful update', async () => {
+    let available = false
+    images(() => available)
+    render(<MediaPopup media={selection('Hero')} onClose={vi.fn()} />)
+    await act(async () => { invalidateMediaCaches('Hero', true) })
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('could not be loaded'))
+    expect(screen.queryByAltText('Character portrait')).toBeNull()
+    available = true
+    await act(async () => { invalidateMediaCaches('Hero', true) })
+    await waitFor(() => expect(screen.getByAltText('Character portrait').getAttribute('src')).toContain('/hero.png?neq_media='))
+  })
+
+  it('does not let delayed A refresh replace B or return after dismissal', async () => {
+    const pending: Array<{ onload: (() => void) | null; onerror: (() => void) | null }> = []
+    class DelayedImage {
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      set src(_value: string) { pending.push(this) }
+    }
+    vi.stubGlobal('Image', DelayedImage)
+    const close = vi.fn()
+    const { rerender } = render(<MediaPopup media={selection('A')} onClose={close} />)
+    act(() => { invalidateMediaCaches('A', true) })
+    expect(screen.getByRole('status').textContent).toContain('Refreshing')
+    rerender(<MediaPopup media={{ ...selection('B'), src: '/B.png' }} onClose={close} />)
+    await act(async () => { pending[0]!.onload?.() })
+    expect(screen.getByAltText('Character portrait').getAttribute('src')).toBe('/B.png')
+    act(() => { invalidateMediaCaches('B', true) })
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    rerender(<MediaPopup media={null} onClose={close} />)
+    await act(async () => { pending[1]!.onload?.() })
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(close).toHaveBeenCalledOnce()
   })
 })
