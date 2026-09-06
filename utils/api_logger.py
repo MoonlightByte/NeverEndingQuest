@@ -96,7 +96,14 @@ def log_live_provider_envelope(task_id, messages, envelope, *, latency_seconds=0
                 "kind": str(value.get("kind") or "unknown"),
                 "disposition": str(value.get("disposition") or "success"),
                 "errorClass": str(value.get("error_class") or ""),
+                "causeClass": str(value.get("cause_class") or ""),
+                "errorCode": str(value.get("error_code") or ""),
                 "httpStatus": value.get("http_status"),
+                "retryAfter": value.get("retry_after"),
+                # "possible": the parent reaped a child that had already sent
+                # the request, so the provider may have billed a generation
+                # the game never used (#284 cost visibility).
+                "billing": str(value.get("billing") or ""),
                 "provider": str(value.get("provider") or ""),
                 "finishReason": str(value.get("finish_reason") or ""),
                 "latencySeconds": max(0.0, float(latency_seconds)),

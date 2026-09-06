@@ -73,6 +73,9 @@ _WIZARD_READ_INACTIVITY_SECONDS = 40.0
 _WIZARD_BACKSTOP_SECONDS = 180.0
 _WIZARD_TASK_IDS = frozenset({"T092", "T093"})
 _NO_WATCHDOG_ADVISORY_TASK_IDS = frozenset({"T105", "T112"})
+# Tasks whose SUCCESS envelopes are also written to the master log by the
+# parent (their callers do not log_api_call themselves).
+_SUCCESS_LOG_TASK_IDS = frozenset({"T105", "T108", "T113"})
 _MAX_BACKOFF_SECONDS = 8.0
 _PERMANENT_ERROR_SECONDS = 60.0
 
@@ -716,6 +719,48 @@ def _delay_for_error(envelope, failure_count):
     return random.uniform(base * 0.75, base)
 
 
+def _synthesized_envelope(error_class, task_id, request_kwargs, operation_id,
+                          generation):
+    """Envelope for a generation the parent reaped without a child reply.
+
+    The request may already have reached the provider, so the generation is
+    marked billing=possible for the master log (#284 cost visibility).
+    """
+    return {
+        "kind": "error",
+        "error_class": error_class,
+        "cause_class": None,
+        "error_code": None,
+        "disposition": "retryable_transport",
+        "provider": str(request_kwargs.get("_request_provider", "") or ""),
+        "model": str(request_kwargs.get("model", "") or ""),
+        "task_id": task_id,
+        "http_status": None,
+        "retry_after": None,
+        "billing": "possible",
+        "correlation": {
+            "operation_id": operation_id,
+            "generation": generation,
+        },
+    }
+
+
+def _log_generation(task_id, frozen_messages, envelope, started):
+    """Evidence only: one master-log line per terminal envelope (#284)."""
+    try:
+        from utils.api_logger import log_live_provider_envelope
+
+        log_live_provider_envelope(
+            task_id,
+            frozen_messages,
+            envelope,
+            latency_seconds=time.monotonic() - started,
+        )
+    except Exception:
+        # Evidence loss only; api_logger counts its own append failures.
+        pass
+
+
 def _reconstruct_response(envelope):
     from core.ai.api_client import _NormalizedResponse
 
@@ -827,6 +872,18 @@ def call_live_provider(
                 cwd=os.getcwd(),
             )
         except BaseException:
+            _log_generation(
+                task_id,
+                frozen_messages,
+                _synthesized_envelope(
+                    "process_setup_unavailable",
+                    task_id,
+                    frozen_kwargs,
+                    operation_id,
+                    generation,
+                ),
+                time.monotonic(),
+            )
             if policy == "advisory" and not completion_required:
                 raise LiveProviderUnavailable(
                     task_id, {"error_class": "process_setup_unavailable"}
@@ -900,22 +957,17 @@ def call_live_provider(
             or completion_required
             or task_id in {"T105", "T108", "T113"}
         ) and not isinstance(envelope, dict):
-            envelope = {
-                "kind": "error",
-                "error_class": (
+            envelope = _synthesized_envelope(
+                (
                     "ProviderChildGenerationBackstop"
                     if backstop_exhausted
                     else "ProviderChildUnavailable"
                 ),
-                "cause_class": None,
-                "disposition": "retryable_transport",
-                "http_status": None,
-                "retry_after": None,
-                "correlation": {
-                    "operation_id": operation_id,
-                    "generation": generation,
-                },
-            }
+                task_id,
+                frozen_kwargs,
+                operation_id,
+                generation,
+            )
         expected_correlation = {
             "operation_id": operation_id,
             "generation": generation,
@@ -926,18 +978,16 @@ def call_live_provider(
         )
         if isinstance(envelope, dict):
             envelope["correlation_accepted"] = correlation_accepted
-            if wizard_task or task_id in {"T105", "T108", "T113"}:
-                try:
-                    from utils.api_logger import log_live_provider_envelope
-
-                    log_live_provider_envelope(
-                        task_id,
-                        frozen_messages,
-                        envelope,
-                        latency_seconds=time.monotonic() - started,
-                    )
-                except Exception:
-                    pass
+            # Every error or reaped generation of every task is evidence
+            # (#284 F6); success rows keep the existing gate because those
+            # callers already log their own successes.
+            if (
+                envelope.get("kind") != "success"
+                or not correlation_accepted
+                or wizard_task
+                or task_id in _SUCCESS_LOG_TASK_IDS
+            ):
+                _log_generation(task_id, frozen_messages, envelope, started)
         if (
             isinstance(envelope, dict)
             and envelope.get("kind") == "success"
