@@ -519,9 +519,8 @@ def resolve_cross_module_target_projection(target_module, parameters):
     any checkpoint or gameplay mutation exists.
     """
     parameters = parameters if isinstance(parameters, dict) else {}
-    default_location_id, default_location_name, default_area_id, default_area_name = (
-        get_module_starting_location(target_module)
-    )
+    from utils.path_encounter_analyzer import build_active_module_snapshot
+    snapshot = build_active_module_snapshot(target_module)
     supplied = {
         key: str(parameters.get(key) or "").strip()
         for key in (
@@ -532,11 +531,20 @@ def resolve_cross_module_target_projection(target_module, parameters):
         )
     }
     if not any(supplied.values()):
-        return {
+        if not snapshot["nodes"]:
+            if snapshot.get("read_errors"):
+                import errno
+                busy = any(item["kind"] == "busy" for item in snapshot["read_errors"])
+                raise OSError(errno.EAGAIN if busy else errno.EIO, "Target module records could not be verified")
+            raise ValueError("Target module has no live destination records")
+        default_location_id, default_location_name, default_area_id, default_area_name = (
+            get_module_starting_location(target_module)
+        )
+        supplied = {
             "currentAreaId": str(default_area_id),
-            "currentArea": str(default_area_name),
+            "currentArea": "",
             "currentLocationId": str(default_location_id),
-            "currentLocation": str(default_location_name),
+            "currentLocation": "",
         }
     if not supplied["currentAreaId"] or not supplied["currentLocationId"]:
         raise ValueError(
@@ -544,27 +552,24 @@ def resolve_cross_module_target_projection(target_module, parameters):
             "currentLocationId"
         )
 
-    path_manager = ModulePathManager(str(target_module))
+    node = snapshot["nodes"].get(supplied["currentLocationId"])
     matched = None
-    for candidate_area_id in path_manager.get_area_ids() or []:
-        area_data = safe_json_load(path_manager.get_area_path(candidate_area_id))
-        if not isinstance(area_data, dict):
-            continue
-        for location in area_data.get("locations") or []:
-            if (
-                isinstance(location, dict)
-                and str(location.get("locationId") or "")
-                == supplied["currentLocationId"]
-            ):
-                matched = (
-                    str(area_data.get("areaId") or candidate_area_id),
-                    str(area_data.get("areaName") or ""),
-                    str(location.get("locationId") or ""),
-                    str(location.get("name") or ""),
-                )
-                break
-        if matched is not None:
-            break
+    if node is not None and supplied["currentLocationId"] not in snapshot["invalid_location_ids"]:
+        matched = (
+            node["area_id"], node["area_name"],
+            node["location_id"], node["location_name"],
+        )
+    if matched is None and snapshot.get("read_errors"):
+        read_error = next(
+            (item for item in snapshot["read_errors"] if item["kind"] == "busy"),
+            snapshot["read_errors"][0],
+        )
+        import errno
+        raise OSError(
+            errno.EAGAIN if read_error["kind"] == "busy" else errno.EIO,
+            "Target module records could not be verified",
+            read_error["source_file"],
+        )
     if matched is None:
         raise ValueError(
             "currentLocationId %s does not exist in module %s"
@@ -769,27 +774,10 @@ def prepare_current_transition_actions(operation_id):
             target_module = str(parameters.get("module") or "")
             if not target_module or target_module == source_module:
                 raise ValueError("post-local module handoff requires another module")
-            location_id, location_name, area_id, area_name = (
-                get_module_starting_location(target_module)
-            )
-            supplied_area = str(parameters.get("currentAreaId") or "").strip()
-            supplied_location = str(
-                parameters.get("currentLocationId") or ""
-            ).strip()
-            if supplied_area and supplied_area != str(area_id):
-                raise ValueError("module handoff area ID is not canonical")
-            if supplied_location and supplied_location != str(location_id):
-                raise ValueError("module handoff location ID is not canonical")
+            projection = resolve_cross_module_target_projection(target_module, parameters)
             exact_parameters = copy.deepcopy(parameters)
-            exact_parameters.update(
-                {
-                    "module": target_module,
-                    "currentAreaId": str(area_id),
-                    "currentArea": str(area_name),
-                    "currentLocationId": str(location_id),
-                    "currentLocation": str(location_name),
-                }
-            )
+            exact_parameters.update(projection)
+            exact_parameters["module"] = target_module
             receipt = {
                 "kind": "updatePartyTracker",
                 "operation_id": record["operation_id"],
@@ -809,10 +797,7 @@ def prepare_current_transition_actions(operation_id):
                 },
                 "target_projection": {
                     "module": target_module,
-                    "currentAreaId": str(area_id),
-                    "currentArea": str(area_name),
-                    "currentLocationId": str(location_id),
-                    "currentLocation": str(location_name),
+                    **projection,
                 },
             }
         receipt.update(
@@ -1879,6 +1864,7 @@ def pre_validate_transition(
     *,
     return_plan=False,
     invocation_claim=None,
+    module_snapshot=None,
 ):
     """
     Pre-validate a transitionLocation action using the transition intelligence agent.
@@ -1955,7 +1941,9 @@ def pre_validate_transition(
         current_area_name = party_tracker_data["worldConditions"]["currentArea"]
 
         current_module = party_tracker_data.get("module", "").replace(" ", "_")
-        snapshot = build_active_module_snapshot(current_module)
+        snapshot = module_snapshot
+        if snapshot is None or snapshot["module_name"] != current_module:
+            snapshot = build_active_module_snapshot(current_module)
         route = find_path_in_snapshot(
             snapshot, current_location_id, new_location_id
         )
@@ -1966,7 +1954,14 @@ def pre_validate_transition(
         if not success:
             nodes = snapshot.get("nodes", {})
             invalid_ids = set(snapshot.get("invalid_location_ids", []))
-            if new_location_id not in nodes:
+            read_errors = [item for item in snapshot.get("read_errors", []) if item["kind"] != "absent"]
+            if any(item["kind"] == "busy" for item in read_errors):
+                reason_code = "travel_content_busy"
+                path_message = "The travel records are temporarily busy; retry the read."
+            elif read_errors:
+                reason_code = "travel_content_unavailable"
+                path_message = "The relevant travel records could not be read; destination absence is not established."
+            elif new_location_id not in nodes:
                 reason_code = "destination_absent"
             elif new_location_id in invalid_ids:
                 reason_code = "destination_invalid"
@@ -1980,6 +1975,7 @@ def pre_validate_transition(
                     "requested_destination_id": str(new_location_id),
                     "route_reason": path_message or "No fully valid route exists.",
                     "must_not_move": True,
+                    "read_errors": read_errors,
                 },
             )
 
@@ -2122,10 +2118,18 @@ def pre_validate_transition(
             "",
             plan,
             reason_code="approved",
-            facts={"destination_location_id": str(new_location_id)},
+            facts={
+                "module": current_module,
+                "destination_location_id": str(new_location_id),
+                "destination_location_name": snapshot["nodes"][new_location_id]["location_name"],
+                "destination_area_id": snapshot["nodes"][new_location_id]["area_id"],
+                "destination_area_name": snapshot["nodes"][new_location_id]["area_name"],
+                "path": list(path),
+                "provisional_until_semantic_validation": True,
+            },
         )
 
-    except InvocationSupersededError:
+    except (InvocationSupersededError, LiveProviderSuperseded):
         raise
     except Exception as e:
         debug(f"Transition pre-validation error: {e}", category="location_transitions")
@@ -2177,6 +2181,11 @@ def verify_approved_transition_plan(
     )
 
     snapshot = build_active_module_snapshot(current_module)
+    if any(item["kind"] == "busy" for item in snapshot.get("read_errors", [])):
+        # Preserve the typed temporary-read outcome for the caller's unlocked
+        # reread; it is not evidence that the candidate route changed.
+        import errno
+        raise OSError(errno.EAGAIN, "Travel records are temporarily busy")
     route = find_path_in_snapshot(
         snapshot, current_location_id, destination_location_id
     )
@@ -3394,16 +3403,29 @@ def process_action(
         # planning. The legacy global graph remains available for names and
         # cross-module compatibility, but it is no longer a second authority
         # for an approved within-module route.
-        authoritative_party = safe_json_load("party_tracker.json")
-        if not isinstance(authoritative_party, dict):
-            authoritative_party = party_tracker_data
-        plan_valid, plan_error, verified_transition_context = verify_approved_transition_plan(
-            approved_transition_plan,
-            party_tracker_data=authoritative_party,
-            destination_location_id=new_location_name_or_id,
-            location_graph=location_graph,
-            return_context=True,
+        from utils.transient_filesystem import is_transient_filesystem_error
+        from utils.capture.live_provider_call import (
+            _interruptible_wait, get_live_provider_scope,
         )
+
+        transition_scope = get_live_provider_scope()
+        while True:
+            try:
+                authoritative_party = safe_json_load("party_tracker.json")
+                if not isinstance(authoritative_party, dict):
+                    authoritative_party = party_tracker_data
+                plan_valid, plan_error, verified_transition_context = verify_approved_transition_plan(
+                    approved_transition_plan,
+                    party_tracker_data=authoritative_party,
+                    destination_location_id=new_location_name_or_id,
+                    location_graph=location_graph,
+                    return_context=True,
+                )
+                break
+            except OSError as exc:
+                if not is_transient_filesystem_error(exc):
+                    raise
+            _interruptible_wait(0.25, transition_scope, "Checking the travel map...")
         if plan_valid:
             origin_node = verified_transition_context.get("origin") or {}
             destination_node = verified_transition_context.get("destination") or {}
@@ -3600,31 +3622,43 @@ def process_action(
                 _party_module_transition_lock,
             )
 
-            with _party_module_transition_lock():
-                locked_party = safe_json_load("party_tracker.json")
-                locked_valid, locked_error, _locked_context = (
-                    verify_approved_transition_plan(
-                        approved_transition_plan,
-                        party_tracker_data=locked_party,
-                        destination_location_id=new_location_name_or_id,
-                        location_graph=None,
-                        return_context=True,
-                    )
+            while True:
+                with _party_module_transition_lock():
+                    try:
+                        locked_party = safe_json_load("party_tracker.json")
+                        locked_valid, locked_error, _locked_context = (
+                            verify_approved_transition_plan(
+                                approved_transition_plan,
+                                party_tracker_data=locked_party,
+                                destination_location_id=new_location_name_or_id,
+                                location_graph=None,
+                                return_context=True,
+                            )
+                        )
+                    except OSError as exc:
+                        if not is_transient_filesystem_error(exc):
+                            raise
+                    else:
+                        if not locked_valid:
+                            pending = load_current_transition_checkpoint(transition_id)
+                            if pending is not None and pending.get("phase") == "planned":
+                                _remove_location_transition_checkpoint()
+                            return create_return(
+                                status="error",
+                                needs_update=False,
+                                response_data={
+                                    "error_message": locked_error,
+                                    "retryable": True,
+                                    "error_code": "transition_plan_stale",
+                                },
+                            )
+                        # Never retry movement here: only the pre-commit reads
+                        # above may wait and reacquire this lock.
+                        transition_result = run_location_transition()
+                        break
+                _interruptible_wait(
+                    0.25, transition_scope, "Checking the travel map..."
                 )
-                if not locked_valid:
-                    pending = load_current_transition_checkpoint(transition_id)
-                    if pending is not None and pending.get("phase") == "planned":
-                        _remove_location_transition_checkpoint()
-                    return create_return(
-                        status="error",
-                        needs_update=False,
-                        response_data={
-                            "error_message": locked_error,
-                            "retryable": True,
-                            "error_code": "transition_plan_stale",
-                        },
-                    )
-                transition_result = run_location_transition()
             transition_context = (
                 transition_result if isinstance(transition_result, dict) else None
             )
@@ -4416,6 +4450,20 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 current_party_data = party_tracker_data.copy() if party_tracker_data else {}
             
             current_module = current_party_data.get("module", "Unknown")
+
+            # A direct tool caller must use the same transition executor and
+            # its route authorization, never a raw tracker location write.
+            if parameters.get("module") in (None, "", current_module) and (
+                ("module" in parameters and parameters["module"] != current_module)
+                or any(
+                    key in parameters and parameters[key] != current_party_data.get("worldConditions", {}).get(key)
+                    for key in ("currentLocationId", "currentLocation", "currentAreaId", "currentArea")
+                )
+            ):
+                return create_return(status="error", needs_update=False, response_data={
+                    "error_code": "transition_plan_stale", "retryable": True,
+                    "error_message": "Within-module movement requires transitionLocation and fresh route preflight; no tracker fields were changed.",
+                })
             
             # Check if module is being changed
             new_module = parameters.get("module")
@@ -4477,24 +4525,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 # the full field shape with empty strings; treating those keys
                 # as "provided" publishes a module with a blank world
                 # projection and strands the player at "()" in the web UI.
-                destination_area_id = str(
-                    parameters.get("currentAreaId") or ""
-                ).strip()
-                destination_location_id = str(
-                    parameters.get("currentLocationId") or ""
-                ).strip()
-                if not destination_area_id or not destination_location_id:
-                    try:
-                        location_id, location_name, area_id, area_name = get_module_starting_location(new_module)
-                        info(f"STATE_CHANGE: Auto-setting starting location for {new_module}: {location_name} [{location_id}] in {area_name} [{area_id}]", category="module_management")
-                        
-                        # Add starting location to parameters for processing below
-                        parameters["currentLocationId"] = location_id
-                        parameters["currentLocation"] = location_name
-                        parameters["currentAreaId"] = area_id
-                        parameters["currentArea"] = area_name
-                    except Exception as e:
-                        print(f"WARNING: Could not auto-set starting location for {new_module}: {e}")
+                parameters.update(
+                    resolve_cross_module_target_projection(new_module, parameters)
+                )
             
             # Update party tracker with all provided parameters
             for key, value in parameters.items():

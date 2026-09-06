@@ -24,11 +24,13 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 ### Within-module travel
 
 1. T067 returns the structured response.
-2. The response must contain one immediate travel action envelope.
-3. T065 validates semantic intent and the single-beat boundary.
-4. Disk snapshot/path analysis builds the request-bound route plan; T021 is used only when
-   route evidence needs semantic review.
-5. Accepted history is persisted and a v2 transition checkpoint is staged.
+2. Normalize the supported action envelope, retaining nonmovement tracker fields.
+3. The shared current-module snapshot supplies identity labels and route preflight;
+   T021 is used only for the existing ambiguous intermediate-encounter class.
+4. T065 validates semantic intent and the single-beat boundary against those
+   provisional route facts. Every corrected candidate passes these checks again.
+5. The existing transition publisher stages its v2 checkpoint. The draft is not
+   independently published as accepted history before movement freshness succeeds.
 6. Travel-owned sibling receipts are prepared outside the mutation lock.
 7. Under the lock, code rederives plan identity and commits `party_tracker.json` to the
    destination first.
@@ -57,13 +59,39 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 
 ### Atlas and gate
 
-- `build_atlas_for_module` reads current module area files; conversation rebuild replaces stale
-  atlas blocks with one fresh advisory block for T067.
+- `build_active_module_snapshot` supplies detached source records to the atlas,
+  validator and route preflight. `areas/*.json` retains structurally valid non-regex
+  filenames; existing legacy-root precedence remains. Backup-only labels are
+  separately marked reference-only and never enter live routes.
+- Ordinary DM request preparation replaces the atlas even when no module completion
+  was drained. The resulting request-local snapshot is shared with T065/preflight.
+  Compression retains this separate system block; actual payload acceptance is required.
+- The same preparation renders installed foreign-module identity references once
+  for both T067 and T065. Registry module keys nominate candidates; canonical area
+  files supply module-qualified labels and source diagnostics, never foreign edges
+  in the local route graph. Missing references do not establish global absence.
+  Actual cross-module movement still requires target lookup and commit checks.
+- Area descriptions and eligible NPC-name lists are not truncated. Source diagnostics
+  stay visible to the model; the atlas itself never grants movement or disclosure.
 - `build_active_module_snapshot` keeps duplicate and dangling-link problems explicit and gives
   each source an identity.
 - Path finding and encounter analysis derive the route plan from that snapshot.
 - `pre_validate_transition` deliberately does not build a second legacy global atlas.
 - The plan is rederived and identity-compared immediately before mutation.
+- Both default and explicit cross-module targets must match actual live records;
+  a cached starting pair is a proposal, not authority. Starting-location inference
+  itself is unchanged (separate #308).
+- Precommit travel freshness rejection returns to the same detached correction loop,
+  retaining semantic constraints and revising the latest candidate. It does not use
+  the bounded generic regeneration shortcut or retain rejected narration/voice effects.
+- Temporary read contention waits outside the party lock and remains cancellable.
+  D-303-2 permits only an unverified move to be refused for permanent unreadability:
+  preserve files/position, explain truthfully without a fictional obstacle, and
+  return control for another action or Load. Committed travel still resumes its
+  existing receipts; no new crash store or movement replay is introduced.
+
+These #303/#307 changes are an implementation-worktree description, not a native
+acceptance verdict. The verification pin above describes the historical baseline.
 
 ## State and atomicity
 

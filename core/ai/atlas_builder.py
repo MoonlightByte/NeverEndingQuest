@@ -7,58 +7,89 @@ Atlas Builder - Assembles all area files into a complete world atlas for AI navi
 Production version that uses area files (not map files) for complete connectivity
 """
 
-import os
-import json
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any
 from pathlib import Path
 
-def safe_load_json(path: str) -> Optional[Dict[str, Any]]:
-    """Safely load JSON file"""
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        # Silent fail for production
-        return None
+from utils.path_encounter_analyzer import build_active_module_snapshot, _id_list, _read_json_object
 
-def list_area_files(module_root: str) -> List[str]:
-    """Find all area JSON files in a module's areas directory"""
-    areas_dir = os.path.join(module_root, "areas")
-    if not os.path.exists(areas_dir):
-        return []
-    
-    area_files = []
-    for fn in os.listdir(areas_dir):
-        if fn.endswith(".json") and not fn.endswith("_BU.json") and not fn.endswith(".bak"):
-            # Skip backup files
-            if "_backup" not in fn and ".backup" not in fn:
-                area_files.append(os.path.join(areas_dir, fn))
-    return sorted(area_files)
+
+def format_installed_module_references(current_module: str, modules_root: str = "modules") -> str:
+    """Share foreign identities with T067 and T065 without pooling route graphs (#307 A2)."""
+    lines = [
+        "=== INSTALLED MODULE REFERENCES ===",
+        "Advisory identities only, not routes, travel permission, or player knowledge.",
+        "The current-module atlas is not the whole world. Missing references are not proof of global absence.",
+        "Any proposed destination still requires live target lookup and travel preflight.",
+    ]
+    try:
+        registry = _read_json_object(Path(modules_root) / "world_registry.json")
+        modules = registry.get("modules")
+        if not isinstance(modules, dict):
+            raise ValueError("registry modules must be an object")
+    except (OSError, ValueError) as exc:
+        lines.append(f"Registry references unavailable ({type(exc).__name__}); no absence conclusion is supported.")
+        return "\n".join(lines)
+    for module in sorted(modules):
+        if module.replace(" ", "_") == current_module.replace(" ", "_"):
+            continue
+        try:
+            snapshot = build_active_module_snapshot(module, modules_root)
+        except (OSError, ValueError, TypeError) as exc:
+            lines.append(f"Module: {module}; SOURCE READ unavailable ({type(exc).__name__}); target lookup still required.")
+            continue
+        lines.append(f"Module: {snapshot['module_name']}")
+        for kind, records in (
+            ("LIVE SOURCE LABELS", snapshot["source_records"]),
+            ("PRISTINE REFERENCE ONLY, NOT LIVE", snapshot["reference_records"]),
+        ):
+            for source in records:
+                area = source.get("area")
+                if not isinstance(area, dict):
+                    continue
+                lines.append(f"  {kind}: area {area.get('areaId', '')} ({area.get('areaName', '')})")
+                locations = area.get("locations")
+                for location in locations if isinstance(locations, list) else []:
+                    if isinstance(location, dict):
+                        lines.append(f"    {location.get('locationId', '')} ({location.get('name', '')})")
+        for issue in snapshot["validation_errors"]:
+            lines.append(f"  SOURCE DIAGNOSTIC: {issue['code']}: {issue['message']}")
+        for issue in snapshot["read_errors"]:
+            lines.append(f"  SOURCE READ: {issue['kind']}: {issue['source_file']}")
+    return "\n".join(lines)
 
 def extract_location_info(location: Dict[str, Any]) -> Dict[str, Any]:
     """Extract key information from a location"""
+    npcs = location.get("npcs", [])
+    npcs = npcs if isinstance(npcs, list) else []
     return {
         "id": location.get("locationId"),
         "name": location.get("name", "Unknown"),
         "type": location.get("type", "unknown"),
-        "connectivity": location.get("connectivity", []),
-        "areaConnectivity": location.get("areaConnectivity", []),
-        "areaConnectivityId": location.get("areaConnectivityId", []),
-        "npcs": [npc.get("name", "Unknown") for npc in location.get("npcs", [])],
+        "connectivity": _id_list(location.get("connectivity")),
+        "areaConnectivity": _id_list(location.get("areaConnectivity")),
+        "areaConnectivityId": _id_list(location.get("areaConnectivityId")),
+        "npcs": [npc["name"] for npc in npcs if isinstance(npc, dict) and isinstance(npc.get("name"), str)],
         "dangerLevel": location.get("dangerLevel", "unknown"),
-        "hasTraps": len(location.get("traps", [])) > 0,
-        "hasMonsters": len(location.get("monsters", [])) > 0,
-        "hasTreasure": len(location.get("treasures", [])) > 0 or len(location.get("lootTable", [])) > 0
+        "hasTraps": bool(location.get("traps")),
+        "hasMonsters": bool(location.get("monsters")),
+        "hasTreasure": bool(location.get("treasures")) or bool(location.get("lootTable"))
     }
 
-def build_atlas_for_module(module_name: str, modules_root: str = "modules") -> Dict[str, Any]:
-    """Build a complete atlas from area files for a single module"""
-    module_root = os.path.join(modules_root, module_name)
-    area_files = list_area_files(module_root)
+def build_atlas_for_module(
+    module_name: str, modules_root: str = "modules", *, snapshot=None,
+) -> Dict[str, Any]:
+    """Render the same detached source records used by travel preflight (#303)."""
+    if snapshot is None:
+        snapshot = build_active_module_snapshot(module_name, modules_root)
+    if snapshot["module_name"] != module_name.replace(" ", "_"):
+        raise ValueError("atlas snapshot belongs to a different module")
     
     atlas = {
         "atlas_version": "2.0",
-        "module": module_name,
+        "module": snapshot["module_name"],
+        "validation_errors": list(snapshot["validation_errors"]),
+        "read_errors": snapshot.get("read_errors", []),
+        "reference_records": snapshot.get("reference_records", []),
         "areas": {},
         "inter_area_connections": [],
         "statistics": {
@@ -70,20 +101,17 @@ def build_atlas_for_module(module_name: str, modules_root: str = "modules") -> D
     }
     
     # First pass: Load all areas and their locations
-    for area_path in area_files:
-        area_data = safe_load_json(area_path)
+    for source in snapshot["source_records"]:
+        area_data = source.get("area")
         if not area_data:
             continue
         
         area_id = area_data.get("areaId")
-        if not area_id:
+        if not isinstance(area_id, str) or not area_id or area_id in atlas["areas"]:
             continue
             
         # Extract area information
-        # Get description and safely truncate
         desc = area_data.get("areaDescription", "")
-        if len(desc) > 200:
-            desc = desc[:197] + "..."
         
         area_entry = {
             "name": area_data.get("areaName", "Unknown Area"),
@@ -95,9 +123,21 @@ def build_atlas_for_module(module_name: str, modules_root: str = "modules") -> D
         }
         
         # Extract all locations in this area
-        for location in area_data.get("locations", []):
+        locations = area_data.get("locations", [])
+        for location in locations if isinstance(locations, list) else []:
+            if not isinstance(location, dict):
+                continue
             loc_id = location.get("locationId")
-            if loc_id:
+            if isinstance(loc_id, str) and loc_id and loc_id not in area_entry["locations"]:
+                npcs = location.get("npcs", [])
+                if not isinstance(npcs, list) or any(
+                    not isinstance(npc, dict) or not isinstance(npc.get("name"), str)
+                    for npc in npcs
+                ):
+                    atlas["validation_errors"].append({
+                        "code": "invalid_npc_labels",
+                        "message": f"Area {area_id} location {loc_id} has malformed NPC labels; usable location identities remain listed.",
+                    })
                 loc_info = extract_location_info(location)
                 area_entry["locations"][loc_id] = loc_info
                 
@@ -176,7 +216,7 @@ def format_atlas_for_conversation(atlas: Dict[str, Any]) -> str:
                 # Add special markers
                 markers = []
                 if loc_data.get("npcs"):
-                    markers.append(f"NPCs: {', '.join(loc_data['npcs'][:3])}")  # First 3 NPCs
+                    markers.append(f"NPCs: {', '.join(loc_data['npcs'])}")
                 if loc_data.get("hasTraps"):
                     markers.append("TRAPPED")
                 if loc_data.get("hasMonsters"):
@@ -225,5 +265,20 @@ def format_atlas_for_conversation(atlas: Dict[str, Any]) -> str:
     lines.append("NAVIGATION SUMMARY:")
     lines.append(f"  Total Connections: {atlas['statistics']['total_connections']}")
     lines.append(f"  Inter-Area Transitions: {len(atlas.get('inter_area_connections', []))}")
+    lines.append("This atlas identifies places; it does not authorize movement or reveal facts to the player.")
+    if atlas.get("reference_records"):
+        lines.append("PRISTINE REFERENCE LABELS ONLY (not live destinations or route permission):")
+        for source in atlas["reference_records"]:
+            area = source["area"]
+            lines.append(f"  AREA {area['areaId']}: {area.get('areaName', '')}")
+            for location in area["locations"]:
+                if isinstance(location, dict):
+                    lines.append(f"    {location.get('locationId', '')}: {location.get('name', '')}")
+    if atlas.get("validation_errors") or atlas.get("read_errors"):
+        lines.append("SOURCE DIAGNOSTICS (do not interpret unreadable content as absence):")
+        for issue in atlas.get("validation_errors", []):
+            lines.append(f"  {issue['code']}: {issue['message']}")
+        for issue in atlas.get("read_errors", []):
+            lines.append(f"  {issue['kind']}: {issue['source_file']}")
     
     return "\n".join(lines)

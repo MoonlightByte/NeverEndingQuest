@@ -869,12 +869,12 @@ def update_conversation_history(
     if current_module_name:
         try:
             atlas = build_atlas_for_module(current_module_name)
-            if atlas and atlas.get("areas"):
+            if atlas:
                 atlas_message = format_atlas_for_conversation(atlas)
                 new_history.append({"role": "system", "content": atlas_message})
                 debug(f"Inserted atlas with {atlas['statistics']['total_areas']} areas")
         except Exception as e:
-            debug(f"Could not build atlas for {current_module_name}: {e}")
+            warning(f"Could not build atlas for {current_module_name}: {e}")
 
     # DEPRECATED: Individual map data now replaced by comprehensive world atlas above
     # The atlas provides complete module connectivity in a more readable format

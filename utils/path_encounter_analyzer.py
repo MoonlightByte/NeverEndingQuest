@@ -22,6 +22,10 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
 
 from utils.enhanced_logger import debug, warning
+from utils.transient_filesystem import (
+    is_transient_filesystem_error,
+    read_bytes_preserving_errors,
+)
 
 
 _AREA_FILE_RE = re.compile(r"^[A-Za-z]+\d+\.json$")
@@ -42,8 +46,7 @@ def _canonical_hash(value: Any) -> str:
 
 def _read_json_object(path: Path) -> Dict[str, Any]:
     """Read JSON without locks, recovery, repairs, backups, or writes."""
-    with path.open("r", encoding="utf-8") as handle:
-        value = json.load(handle)
+    value = json.loads(read_bytes_preserving_errors(path).decode("utf-8"))
     if not isinstance(value, dict):
         raise ValueError("area JSON root must be an object")
     return value
@@ -57,8 +60,10 @@ def _area_files(module_dir: Path) -> List[Path]:
         for path in sorted(areas_dir.iterdir(), key=lambda item: item.name):
             if (
                 path.is_file()
-                and _AREA_FILE_RE.match(path.name)
+                and path.suffix == ".json"
                 and not path.name.endswith(_BACKUP_SUFFIXES)
+                and "_backup" not in path.name
+                and ".backup" not in path.name
             ):
                 selected[path.name] = path
 
@@ -176,8 +181,18 @@ def build_active_module_snapshot(
     invalid_location_ids: set[str] = set()
     duplicate_area_ids: set[str] = set()
     canonical_sources: List[Dict[str, Any]] = []
+    read_errors: List[Dict[str, Any]] = []
 
-    files = _area_files(module_dir)
+    try:
+        files = _area_files(module_dir)
+    except OSError as exc:
+        files = []
+        read_errors.append({
+            "source_file": normalized_module,
+            "kind": "busy" if is_transient_filesystem_error(exc) else "unreadable",
+            "errno": exc.errno,
+            "winerror": getattr(exc, "winerror", None),
+        })
     if not files:
         issues.append(
             _issue(
@@ -192,6 +207,17 @@ def build_active_module_snapshot(
         try:
             area = _read_json_object(path)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
+            read_errors.append({
+                "source_file": relative_source,
+                "kind": (
+                    "busy" if is_transient_filesystem_error(exc)
+                    else "absent" if isinstance(exc, FileNotFoundError)
+                    else "unreadable" if isinstance(exc, OSError)
+                    else "malformed"
+                ),
+                "errno": getattr(exc, "errno", None),
+                "winerror": getattr(exc, "winerror", None),
+            })
             try:
                 source_digest = hashlib.sha256(path.read_bytes()).hexdigest()
             except OSError:
@@ -217,6 +243,7 @@ def build_active_module_snapshot(
 
         area_id = area.get("areaId")
         if not isinstance(area_id, str) or not area_id:
+            read_errors.append({"source_file": relative_source, "kind": "malformed"})
             issues.append(
                 _issue(
                     "missing_area_id",
@@ -233,7 +260,7 @@ def build_active_module_snapshot(
             issues.append(
                 _issue(
                     "duplicate_area_id",
-                    f"Area ID {area_id} is defined more than once",
+                    f"Area ID {area_id} is defined more than once; conflicting label {area.get('areaName', '')!r} in {relative_source}",
                     area_id=area_id,
                     source_file=relative_source,
                 )
@@ -248,6 +275,7 @@ def build_active_module_snapshot(
         }
         locations = area.get("locations", [])
         if not isinstance(locations, list):
+            read_errors.append({"source_file": relative_source, "kind": "malformed", "area_id": area_id})
             issues.append(
                 _issue(
                     "invalid_locations",
@@ -290,7 +318,7 @@ def build_active_module_snapshot(
                 issues.append(
                     _issue(
                         "duplicate_location_id",
-                        f"Location ID {location_id} is defined more than once",
+                        f"Location ID {location_id} is defined more than once; conflicting label {location.get('name', '')!r} in area {area_id}",
                         location_id=location_id,
                         area_id=area_id,
                         source_file=relative_source,
@@ -539,8 +567,38 @@ def build_active_module_snapshot(
             ],
         }
     )
+    # Pristine labels are advisory only. They never enter nodes, routes, or
+    # snapshot identity, and are useful only when no live location view exists.
+    reference_records = []
+    if not nodes:
+        for directory in (module_dir / "areas", module_dir):
+            try:
+                candidates = sorted(directory.iterdir())
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                read_errors.append({
+                    "source_file": directory.as_posix(),
+                    "kind": "busy" if is_transient_filesystem_error(exc) else "unreadable",
+                })
+                continue
+            for candidate in candidates:
+                if not candidate.name.endswith("_BU.json"):
+                    continue
+                try:
+                    reference = _read_json_object(candidate)
+                except (OSError, ValueError):
+                    continue
+                if isinstance(reference.get("areaId"), str) and isinstance(reference.get("locations"), list):
+                    reference_records.append({
+                        "source_file": candidate.relative_to(Path(modules_root)).as_posix(),
+                        "area": reference,
+                    })
     return {
         "module_name": normalized_module,
+        "source_records": canonical_sources,
+        "read_errors": read_errors,
+        "reference_records": reference_records,
         "areas": areas,
         "nodes": nodes,
         "edges": edges,

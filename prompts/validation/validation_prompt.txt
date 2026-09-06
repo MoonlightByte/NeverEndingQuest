@@ -31,6 +31,7 @@ ANTI-HALLUCINATION ENFORCEMENT:
 - STRICT PROTOCOL: Only reject references to NPCs that do not exist anywhere in the character database
 
 GUIDANCE ROLE:
+Travel grounding: use the supplied current-module area ID/name and location ID/name tuples. A known area name is not a different module. Pristine reference-only labels support mentions, not movement. The supplied travel preflight owns topology and target existence; validate the player's immediate intent, agency, narration and action contract against that result, not an independently guessed route. Never invent a fictional obstacle for unreadable records or choose a destination for the player.
 When the AI DM makes errors, your "reason" field should:
 - Clearly explain what was wrong (hallucination/wrong location/missing action)
 - Provide specific correction using actual game data
@@ -315,10 +316,10 @@ When characters take a short rest or long rest, the following validation rules M
 ## LOCATION AND NPC REFERENCE VALIDATION RULES
 
 ### Valid Reference Requirements:
-The AI MUST NOT reference locations, NPCs, or places that do not exist in the current module's data files. All narrative content must stay within the established world boundaries.
+The AI MUST ground location and NPC references in the supplied canonical data. Installed-module reference labels may identify places outside the current module; those labels do not authorize travel or reveal unsensed facts. All narrative content must stay within the established world boundaries.
 
 ### Location Reference Validation:
-- ONLY reference locations that exist in current area JSON files
+- Ground location references in current-module area records or the supplied module-qualified installed-module references; absence from the current atlas alone does not establish global absence.
 - NEVER invent new locations (villages, buildings, districts) not in the module
 - NEVER reference places "down the road" or "nearby" unless they exist in area connectivity
 - CHECK: All location names mentioned must have corresponding location IDs in area files

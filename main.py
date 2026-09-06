@@ -2458,12 +2458,16 @@ def _parse_dm_validation_verdict(response_text):
         )
     return verdict["valid"], verdict["reason"].strip()
 
-def create_module_validation_context(party_tracker_data, path_manager):
+def create_module_validation_context(party_tracker_data, path_manager, *, module_snapshot=None):
     """Create module data context for validation system to check location/NPC references"""
     try:
         current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
         current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
         current_module = party_tracker_data.get("module", "Unknown")
+        from utils.path_encounter_analyzer import build_active_module_snapshot
+        snapshot = module_snapshot
+        if snapshot is None or snapshot["module_name"] != str(current_module).replace(" ", "_"):
+            snapshot = build_active_module_snapshot(current_module)
         
         validation_context = f"MODULE VALIDATION DATA:\nCurrent Module: {current_module}\nCurrent Area: {current_area_id}\nCurrent Location: {current_location_id}\n\n"
         
@@ -2471,16 +2475,23 @@ def create_module_validation_context(party_tracker_data, path_manager):
         # No longer loading static NPC compendium here
         
         # Get all valid locations in current area and location-specific NPCs
-        area_file = path_manager.get_area_path(current_area_id)
         current_location_npcs = []
         area_locations_with_npcs = {}
         
         try:
-            with open(area_file, "r", encoding="utf-8") as file:
-                area_data = json.load(file)
+            area_data = next(
+                (source["area"] for source in snapshot["source_records"]
+                 if isinstance(source.get("area"), dict)
+                 and source["area"].get("areaId") == current_area_id),
+                None,
+            )
+            if area_data is None or not isinstance(area_data.get("locations"), list):
+                raise FileNotFoundError("Current area has no readable location list")
 
             valid_location_ids = []
             for location in area_data.get("locations", []):
+                if not isinstance(location, dict):
+                    continue
                 loc_id = location.get("locationId", "")
                 loc_name = location.get("name", "")
                 if loc_id:
@@ -2489,7 +2500,11 @@ def create_module_validation_context(party_tracker_data, path_manager):
                     )
                     
                     # Track NPCs by location
-                    location_npcs = [npc.get("name") for npc in location.get("npcs", []) if npc.get("name")]
+                    npc_records = location.get("npcs", [])
+                    location_npcs = [
+                        npc["name"] for npc in (npc_records if isinstance(npc_records, list) else [])
+                        if isinstance(npc, dict) and isinstance(npc.get("name"), str) and npc["name"]
+                    ]
                     if location_npcs:
                         area_locations_with_npcs[loc_id] = location_npcs
                     
@@ -2517,92 +2532,34 @@ def create_module_validation_context(party_tracker_data, path_manager):
         except (FileNotFoundError, json.JSONDecodeError):
             validation_context += f"ERROR: Could not load area data for {current_area_id}\n\n"
         
-        # Add ALL accessible locations from the entire module using LocationGraph
-        try:
-            all_accessible_locations = []
-            areas_included = set()
-
-            graph = location_graph
-            if graph is not None and not getattr(graph, "nodes", None):
-                # A booted-but-empty graph has been observed live (0 nodes in
-                # a hosted world); one reload attempt is cheap.
-                try:
-                    graph.reload()
-                except Exception:
-                    pass
-
-            if graph is not None:
-                for loc_id, node_info in graph.nodes.items():
-                    area_id = node_info.get('area_id', '')
-                    location_name = node_info.get('location_name', '')
-                    if area_id and location_name:
-                        areas_included.add(area_id)
-                        all_accessible_locations.append(f"{loc_id} ({location_name}) in area {area_id}")
-
-            if not all_accessible_locations:
-                # NEVER hand the validator a context without the module-wide
-                # location list: it treats the current-area list as the whole
-                # world and auto-rejects every legitimate cross-area
-                # reference. Scan the module's area files directly (live
-                # first, pristine _BU as last resort).
-                warning(
-                    "VALIDATION: location graph unavailable/empty; building "
-                    "validator location list from area files",
-                    category="ai_validation",
-                )
-                seen_fallback = set()
-                safe_module = str(current_module or "").replace(" ", "_")
-                patterns = [
-                    os.path.join("modules", safe_module, "areas", "*.json"),
-                    os.path.join("modules", safe_module, "*.json"),
-                ]
-                candidate_files = []
-                for pattern in patterns:
-                    candidate_files.extend(glob.glob(pattern))
-                live_files = [f for f in candidate_files
-                              if not f.endswith(("_BU.json", "_backup.json"))]
-                bu_files = [f for f in candidate_files if f.endswith("_BU.json")]
-                for scan in (live_files, bu_files):
-                    if all_accessible_locations:
-                        break
-                    for area_path in scan:
-                        try:
-                            area_data = safe_json_load(area_path)
-                        except Exception:
-                            continue
-                        if not isinstance(area_data, dict):
-                            continue
-                        scanned_area_id = str(
-                            area_data.get("areaId")
-                            or os.path.splitext(os.path.basename(area_path))[0]
-                            .replace("_BU", "")
-                        )
-                        for location in area_data.get("locations", []):
-                            if not isinstance(location, dict):
-                                continue
-                            loc_id = str(location.get("locationId") or "").strip()
-                            loc_name = str(location.get("name") or "").strip()
-                            if not loc_id or loc_id.upper() in seen_fallback:
-                                continue
-                            seen_fallback.add(loc_id.upper())
-                            areas_included.add(scanned_area_id)
-                            all_accessible_locations.append(
-                                f"{loc_id} ({loc_name}) in area {scanned_area_id}"
-                            )
-
-            validation_context += f"ALL ACCESSIBLE LOCATIONS (across {len(areas_included)} areas):\n"
-            if all_accessible_locations:
-                # Sort by area for clarity
-                all_accessible_locations.sort()
-                # Include all locations since we only have ~78 total which is manageable
-                validation_context += "\n".join([f"- {loc}" for loc in all_accessible_locations])
-            else:
-                validation_context += "- No locations found in location graph"
-            validation_context += "\n\n"
-            validation_context += "MULTI-AREA TRAVEL NOTE: transitionLocation can target ANY accessible location above, not just those in the current area. Mentioning, revealing, or discussing ANY location above in narration is always valid and is NOT a hallucination.\n\n"
-                
-        except Exception as e:
-            validation_context += f"ERROR: Could not load location graph data: {str(e)}\n\n"
+        # The atlas and route preflight share this read-only module projection.
+        # LocationGraph remains an unrelated consumer, never validation authority.
+        validation_context += "CURRENT MODULE IDENTITIES (labels, not movement permission):\n"
+        for source in snapshot["source_records"]:
+            area = source.get("area")
+            if not isinstance(area, dict):
+                continue
+            area_id = area.get("areaId")
+            validation_context += f"- Module {snapshot['module_name']}, area {area_id} ({area.get('areaName', '')})\n"
+            locations = area.get("locations")
+            for location in locations if isinstance(locations, list) else []:
+                if isinstance(location, dict):
+                    validation_context += f"  - {location.get('locationId', '')} ({location.get('name', '')})\n"
+        for source in snapshot.get("reference_records", []):
+            area = source["area"]
+            validation_context += f"PRISTINE REFERENCE ONLY, NOT LIVE: area {area['areaId']} ({area.get('areaName', '')})\n"
+            for location in area["locations"]:
+                if isinstance(location, dict):
+                    validation_context += f"  - {location.get('locationId', '')} ({location.get('name', '')})\n"
+        validation_context += "SOURCE DIAGNOSTICS: " + json.dumps(
+            snapshot["validation_errors"] + snapshot.get("read_errors", []),
+            ensure_ascii=False,
+        ) + "\n"
+        validation_context += (
+            "A known area name is not a different module. Mention is not movement. "
+            "Travel requires the supplied route/target preflight; these labels alone "
+            "do not authorize movement or disclosure of unsensed facts.\n\n"
+        )
         
         # Get all valid NPCs from ALL module codexes
         try:
@@ -2811,7 +2768,7 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
     # No changes needed
     return response_text, "All NPC names valid"
 
-def validate_json_structure(response_text):
+def validate_json_structure(response_text, *, party_tracker_data=None):
     """
     Pre-validate JSON structure before sending to AI validator.
     Returns tuple: (is_valid, fixed_response, error_message)
@@ -2886,6 +2843,34 @@ def validate_json_structure(response_text):
             )
         elif structure_issues:
             return False, None, f"Structure errors: {'; '.join(structure_issues)}"
+
+        if party_tracker_data is not None:
+            world = party_tracker_data.get("worldConditions", {})
+            current_module = party_tracker_data.get("module", "")
+            for action in parsed["actions"]:
+                if action.get("action") != "updatePartyTracker":
+                    continue
+                parameters = action["parameters"]
+                if parameters.get("module") not in (None, "", current_module):
+                    continue
+                destination = parameters.get("currentLocationId")
+                if destination is None or destination == world.get("currentLocationId"):
+                    # An unchanged location does not turn roster/weather/etc.
+                    # updates into travel, nor license dropping those fields.
+                    if "module" in parameters and parameters["module"] != current_module:
+                        return False, None, "Omit an unchanged module field rather than clearing it."
+                    for key in ("currentLocationId", "currentLocation", "currentAreaId", "currentArea"):
+                        if key in parameters and parameters[key] != world.get(key):
+                            return False, None, f"Nonmovement tracker update conflicts with canonical {key}={world.get(key)!r}; preserve that projection and the other requested fields."
+                    continue
+                if not isinstance(destination, str) or not destination:
+                    return False, None, "A location change requires a non-empty canonical location ID."
+                extra = set(parameters) - {"module", "currentLocationId", "currentLocation", "currentAreaId", "currentArea"}
+                if extra:
+                    return False, None, "Within-module movement must use transitionLocation, without silently discarding these mixed tracker fields: " + ", ".join(sorted(extra))
+                action.clear()
+                action.update({"action": "transitionLocation", "parameters": {"newLocation": destination}})
+                validated_response = json.dumps(parsed, ensure_ascii=True)
 
         try:
             from core.ai.module_creation_contract import (
@@ -3042,6 +3027,8 @@ def validate_ai_response(
     npc_voice_batch=None,
     transition_facts=None,
     invocation_claim=None,
+    module_snapshot=None,
+    installed_module_references="",
 ):
     from core.combat.invocation import (
         InvocationSupersededError,
@@ -3161,7 +3148,10 @@ def validate_ai_response(
             location_details += f"\n\nPath Validation ERROR: Failed to validate path - {str(e)}"
 
     # Create module data context for location/NPC validation
-    module_data_context = create_module_validation_context(party_tracker_data, path_manager)
+    module_data_context = create_module_validation_context(
+        party_tracker_data, path_manager, module_snapshot=module_snapshot,
+    )
+    module_data_context += "\n" + installed_module_references
     
     # Extract character names from updateCharacterInfo actions and load their inventories
     character_inventory_context = ""
@@ -4409,10 +4399,52 @@ def prepare_conversation_for_ai_request(conversation_history):
     recover here.
     """
     outcome = require_staged_module_completions_drained()
-    if not (outcome["completed"] or outcome["cancelled"]):
-        return outcome
-    rebuild_conversation_for_current_party(conversation_history)
-    return outcome
+    if outcome["completed"] or outcome["cancelled"]:
+        rebuild_conversation_for_current_party(conversation_history)
+    # Ordinary turns do not drain a completion. Refresh the advisory atlas
+    # here too, before compression, rather than retaining the previous area's
+    # labels. The returned snapshot is request-local, not persisted authority.
+    from core.managers.campaign_manager import _party_module_transition_lock
+    from core.ai.atlas_builder import (
+        build_atlas_for_module, format_atlas_for_conversation,
+        format_installed_module_references,
+    )
+    from utils.path_encounter_analyzer import build_active_module_snapshot
+    from utils.capture.live_provider_call import _interruptible_wait, get_live_provider_scope
+
+    while True:
+        try:
+            with _party_module_transition_lock():
+                party = load_json_file("party_tracker.json")
+                module_name = party.get("module", "")
+                snapshot = build_active_module_snapshot(module_name)
+                busy = any(item["kind"] == "busy" for item in snapshot["read_errors"])
+                if not busy:
+                    atlas = build_atlas_for_module(module_name, snapshot=snapshot)
+                    installed_references = format_installed_module_references(module_name)
+                    conversation_history[:] = [
+                        message for message in conversation_history
+                        if not (message.get("role") == "system" and
+                                ("COMPLETE MODULE WORLD ATLAS" in message.get("content", "") or
+                                 "=== INSTALLED MODULE REFERENCES ===" in message.get("content", "")))
+                    ]
+                    conversation_history.append({
+                        "role": "system", "content": format_atlas_for_conversation(atlas),
+                    })
+                    conversation_history.append({
+                        "role": "system", "content": installed_references,
+                    })
+                    outcome["module_snapshot"] = snapshot
+                    outcome["installed_module_references"] = installed_references
+                    outcome["party_tracker_data"] = party
+                    return outcome
+        except OSError as exc:
+            from utils.transient_filesystem import is_transient_filesystem_error
+            if not is_transient_filesystem_error(exc):
+                raise
+        # Never wait while holding the party lock, and never turn repeated
+        # sharing violations into an absent/corrupt destination.
+        _interruptible_wait(0.25, get_live_provider_scope(), "Checking the travel map...")
 
 
 def _strictly_persist_conversation_history(conversation_history):
@@ -4847,6 +4879,13 @@ def process_ai_response(
     from contextlib import ExitStack
 
     json_content = extract_json_from_codeblock(response)
+    structure_ok, normalized_content, structure_error = validate_json_structure(
+        json_content, party_tracker_data=party_tracker_data,
+    )
+    if not structure_ok:
+        return {"status": "invalid_transition_actions", "retryable": True, "error": structure_error}
+    response = normalized_content
+    json_content = normalized_content
     parsed_response = json.loads(json_content)
     actions = parsed_response.get("actions", [])
     if not isinstance(actions, list):
@@ -4856,6 +4895,15 @@ def process_ai_response(
     if not isinstance(first_parameters, dict):
         first_parameters = {}
     current_module = str((party_tracker_data or {}).get("module", ""))
+    cross_module_indexes = [
+        index for index, item in enumerate(actions)
+        if isinstance(item, dict) and item.get("action") == "updatePartyTracker"
+        and isinstance(item.get("parameters"), dict)
+        and item["parameters"].get("module") not in (None, "", current_module)
+    ]
+    if cross_module_indexes and cross_module_indexes != [0]:
+        return {"status": "invalid_transition_actions", "retryable": True,
+                "error": "Cross-module movement must appear once and first."}
     requested_module = str(first_parameters.get("module", ""))
     is_travel_workflow = any(
         isinstance(action, dict) and action.get("action") == "transitionLocation"
@@ -5044,13 +5092,16 @@ def process_ai_response(
                 }
             accepted_history = list(conversation_history)
             accepted_history.append({"role": "assistant", "content": response})
-            checkpoint = action_handler.stage_cross_module_root_checkpoint(
-                first_action,
-                actions[1],
-                accepted_history,
-                load_json_file("party_tracker.json") or party_tracker_data,
-                parsed_response.get("narration", ""),
-            )
+            try:
+                checkpoint = action_handler.stage_cross_module_root_checkpoint(
+                    first_action,
+                    actions[1],
+                    accepted_history,
+                    load_json_file("party_tracker.json") or party_tracker_data,
+                    parsed_response.get("narration", ""),
+                )
+            except (ValueError, OSError) as exc:
+                return {"status": "transition_plan_stale", "retryable": True, "error": str(exc)}
             resumed = _resume_v2_location_transition(
                 checkpoint["operation_id"], publish=True
             )
@@ -8702,6 +8753,7 @@ def _main_game_loop(startup_authority, turn_authority):
         approved_transition_plan = None
         rejected_candidate = None
         retry_correction = None
+        semantic_corrections = []
         planner_projection = None
         previous_semantic_rejection = None
         consecutive_semantic_rejections = 0
@@ -8710,6 +8762,7 @@ def _main_game_loop(startup_authority, turn_authority):
         provider_failures = 0
         provider_failure_message = None
         provider_retry_notice_shown = False
+        travel_content_handback = False
         while not valid_response_received and not invocation_superseded:
             if live_turn_scope.is_superseded():
                 # Release the T067 invocation claim through the superseded
@@ -8727,8 +8780,19 @@ def _main_game_loop(startup_authority, turn_authority):
             approved_transition_plan = None
             # Durable completion/rebuild work sees authoritative accepted
             # history only. Retry material is appended to a detached view.
-            prepare_conversation_for_ai_request(conversation_history)
+            prepared_context = prepare_conversation_for_ai_request(conversation_history)
+            module_snapshot = prepared_context["module_snapshot"]
+            party_tracker_data = prepared_context["party_tracker_data"]
+            path_manager = ModulePathManager(module_snapshot["module_name"])
+            current_node = module_snapshot["nodes"].get(party_tracker_data.get("worldConditions", {}).get("currentLocationId"))
+            if current_node is not None:
+                location_data = copy.deepcopy(current_node["location_data"])
             request_history = copy.deepcopy(conversation_history)
+            if semantic_corrections:
+                request_history.append({
+                    "role": "system",
+                    "content": "Earlier semantic feedback for this same player request. Preserve still-applicable agency and intent constraints; refreshed canonical facts supersede stale factual claims. This is review context, not fictional history: " + json.dumps(semantic_corrections),
+                })
             if rejected_candidate:
                 request_history.append(
                     {"role": "assistant", "content": rejected_candidate}
@@ -8738,7 +8802,7 @@ def _main_game_loop(startup_authority, turn_authority):
                     {
                         "role": "system",
                         "content": (
-                            "Accepted Travel Agent facts for this turn (JSON): "
+                            "Previous candidate's Travel Agent feedback, not authorization for a new candidate (JSON): "
                             + json.dumps(
                                 planner_projection,
                                 ensure_ascii=False,
@@ -8827,65 +8891,22 @@ def _main_game_loop(startup_authority, turn_authority):
                     invocation_superseded = True
                     break
 
-            # PRE-PROCESSING: Fix incorrect updatePartyTracker usage for within-module travel
-            # This must happen BEFORE any validation to prevent wrong action from being checked
-            try:
-                import json
-                response_data = json.loads(ai_response_content)
-                actions = response_data.get("actions", [])
+            # Prior facts were supplied as detached correction context above.
+            # Only this new candidate's preflight may authorize its movement.
+            planner_projection = None
+            # Normalize the supported envelope before any action-specific check.
+            structure_ok, normalized_candidate, structure_reason = validate_json_structure(
+                ai_response_content, party_tracker_data=party_tracker_data,
+            )
+            if not structure_ok:
+                rejected_candidate = ai_response_content
+                retry_correction = structure_reason
+                retry_count += 1
+                continue
+            ai_response_content = normalized_candidate
 
-                # Debug: Show what actions AI sent before any processing
-                if actions:
-                    action_list = [a.get("action") if isinstance(a, dict) else str(a) for a in actions]
-                    print(f"DEBUG: [AI RESPONSE] Actions received: {action_list}")
-                else:
-                    print(f"DEBUG: [AI RESPONSE] No actions in response")
-
-                current_module = party_tracker_data.get("module", "")
-                actions_modified = False
-
-                # Check for updatePartyTracker being used for within-module location changes
-                for i, action in enumerate(actions):
-                    if isinstance(action, dict) and action.get("action") == "updatePartyTracker":
-                        params = action.get("parameters", {})
-
-                        # Check if this is a location transition (has currentLocationId) vs party composition change
-                        has_location_id = "currentLocationId" in params
-                        has_module = "module" in params
-
-                        if has_location_id and has_module:
-                            # Check if module is the SAME as current module (within-module travel)
-                            target_module = params.get("module", "")
-
-                            if target_module == current_module:
-                                # WRONG ACTION: Using updatePartyTracker for within-module travel
-                                # Convert to transitionLocation
-                                new_location_id = params.get("currentLocationId", "")
-
-                                print(f"DEBUG: [ACTION FIX] Converting updatePartyTracker to transitionLocation({new_location_id}) - same module")
-                                info(f"ACTION FIX: Converted updatePartyTracker to transitionLocation for within-module travel", category="action_preprocessing")
-
-                                # Replace with transitionLocation
-                                actions[i] = {
-                                    "action": "transitionLocation",
-                                    "parameters": {
-                                        "newLocation": new_location_id
-                                    }
-                                }
-                                actions_modified = True
-
-                # Update response if we modified actions
-                if actions_modified:
-                    response_data['actions'] = actions
-                    ai_response_content = json.dumps(response_data)
-                    info(f"ACTION FIX: Updated response with corrected action types", category="action_preprocessing")
-
-            except (json.JSONDecodeError, Exception) as e:
-                debug(f"Could not pre-process actions: {e}", category="action_preprocessing")
-
-            # Structural transition checks precede semantic validation. Route
-            # authority follows T065, so mechanically safe but semantically
-            # wrong candidates never consume T021 or atlas work.
+            # Normalize and preflight before T065. Route approval remains
+            # provisional until semantic validation accepts this exact draft.
             transition_check_passed = True
             transition_action = None
             try:
@@ -8923,7 +8944,10 @@ def _main_game_loop(startup_authority, turn_authority):
                         new_location = action.get("parameters", {}).get("newLocation", "")
                         current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
 
-                        if new_location == current_location_id:
+                        if new_location == current_location_id or (
+                            isinstance(planner_projection, dict)
+                            and planner_projection.get("reason_code") == "roster_change_in_place"
+                        ):
                             # Same location transition - STRIP the action instead of retrying
                             info(f"VALIDATION: Same-location transition detected ({current_location_id}), stripping action", category="location_transitions")
                             print(f"DEBUG: [SAME-LOCATION] Stripping transitionLocation({current_location_id}) from response")
@@ -8956,6 +8980,17 @@ def _main_game_loop(startup_authority, turn_authority):
                     else {}
                 )
                 candidate_module = str(first_candidate_params.get("module") or "")
+                cross_module_indexes = [
+                    index for index, item in enumerate(actions)
+                    if isinstance(item, dict) and item.get("action") == "updatePartyTracker"
+                    and (item.get("parameters") or {}).get("module")
+                    and (item.get("parameters") or {}).get("module") != party_tracker_data.get("module")
+                ]
+                if cross_module_indexes and cross_module_indexes != [0]:
+                    rejected_candidate = ai_response_content
+                    retry_correction = "Cross-module movement must appear once and first, followed only by its updateTime. Return corrected JSON."
+                    retry_count += 1
+                    continue
                 if (
                     transition_check_passed
                     and first_candidate.get("action") == "updatePartyTracker"
@@ -8988,9 +9023,24 @@ def _main_game_loop(startup_authority, turn_authority):
                     != str(party_tracker_data.get("module") or "")
                 ):
                     try:
-                        action_handler.resolve_cross_module_target_projection(
-                            candidate_module, first_candidate_params
-                        )
+                        while True:
+                            try:
+                                target_projection = action_handler.resolve_cross_module_target_projection(
+                                    candidate_module, first_candidate_params
+                                )
+                                break
+                            except OSError as exc:
+                                from utils.transient_filesystem import is_transient_filesystem_error
+                                if not is_transient_filesystem_error(exc):
+                                    raise
+                                from utils.capture.live_provider_call import _interruptible_wait
+                                _interruptible_wait(0.25, live_turn_scope, "Checking the travel map...")
+                        first_candidate_params.update(target_projection)
+                        ai_response_content = json.dumps(response_data)
+                        planner_projection = {"module": candidate_module, **target_projection}
+                    except OSError as exc:
+                        travel_content_handback = True
+                        break
                     except ValueError as exc:
                         retry_count += 1
                         transition_check_passed = False
@@ -9120,7 +9170,7 @@ def _main_game_loop(startup_authority, turn_authority):
             except json.JSONDecodeError as e:
                 # Structural validation below owns malformed provider JSON.
                 debug(f"Could not parse response for transition planning: {e}", category="location_transitions")
-            except InvocationSupersededError:
+            except (InvocationSupersededError, LiveProviderSuperseded):
                 invocation_superseded = True
                 transition_check_passed = False
             except Exception as e:
@@ -9139,6 +9189,90 @@ def _main_game_loop(startup_authority, turn_authority):
 
             if not transition_check_passed:
                 continue  # Skip to next retry iteration
+
+            transition_action = next(
+                (action for action in json.loads(ai_response_content).get("actions", [])
+                 if isinstance(action, dict) and action.get("action") == "transitionLocation"),
+                None,
+            )
+            if transition_action is not None:
+                from core.ai.action_handler import pre_validate_transition
+
+                try:
+                    route_outcome = pre_validate_transition(
+                        transition_action.get("parameters", {}),
+                        party_tracker_data,
+                        conversation_history,
+                        location_graph,
+                        path_manager,
+                        return_plan=True,
+                        invocation_claim=t067_claim,
+                        module_snapshot=module_snapshot,
+                    )
+                except LiveProviderSuperseded:
+                    # Release the T067 invocation claim through the superseded
+                    # terminal (merge review: a scope-superseded exit must not
+                    # leak the claim and starve the next begin_invocation).
+                    invocation_superseded = True
+                    conversation_history[:] = pre_turn_accepted_history
+                    break
+                if not route_outcome.approved:
+                    if route_outcome.reason_code == "travel_content_unavailable":
+                        travel_content_handback = True
+                        break
+                    rejected_candidate = ai_response_content
+                    planner_projection = {
+                        "reason_code": route_outcome.reason_code,
+                        **dict(route_outcome.facts or {}),
+                    }
+                    if route_outcome.reason_code == "intermediate_stop":
+                        retry_correction = (
+                            "Revise the complete response using the accepted "
+                            "Travel Agent facts. Narrate movement toward the "
+                            "player's original goal, but transition only to "
+                            f"{route_outcome.intermediate_destination_id} "
+                            f"({route_outcome.intermediate_destination_name}). "
+                            "Use that transitionLocation first and do not "
+                            "transition to the original final destination in "
+                            "this turn."
+                        )
+                    elif route_outcome.reason_code in {
+                        "no_valid_route",
+                        "active_combat",
+                    }:
+                        retry_correction = (
+                            "Revise the complete response from the accepted "
+                            "Travel Agent facts. Do not include "
+                            "transitionLocation or invent another destination. "
+                            "Give one honest in-fiction explanation and leave "
+                            "the next choice to the player."
+                        )
+                    elif route_outcome.reason_code in {
+                        "destination_absent",
+                        "destination_invalid",
+                    }:
+                        retry_correction = (
+                            "The proposed destination is not a usable canonical "
+                            "destination. Do not move the party or describe it "
+                            "as an impassable known route. Ask the player one "
+                            "focused clarification in the complete JSON response."
+                        )
+                    else:
+                        retry_correction = (
+                            "Travel planning did not produce an accepted route. "
+                            "Keep the party in place and regenerate the complete "
+                            "response from the supplied structured facts."
+                        )
+                    retry_count += 1
+                    status_retrying(retry_count)
+                    info(
+                        "VALIDATION: Transition outcome %s; retry %s"
+                        % (route_outcome.reason_code, retry_count),
+                        category="location_transitions",
+                    )
+                    continue
+                approved_transition_plan = route_outcome.plan
+                planner_projection = {"reason_code": "approved", **dict(route_outcome.facts or {})}
 
             if live_turn_scope.is_superseded():
                 # Release the T067 invocation claim through the superseded
@@ -9163,6 +9297,8 @@ def _main_game_loop(startup_authority, turn_authority):
                     npc_voice_batch=npc_voice_batch,
                     transition_facts=planner_projection,
                     invocation_claim=t067_claim,
+                    module_snapshot=module_snapshot,
+                    installed_module_references=prepared_context["installed_module_references"],
                 )
             except LiveProviderSuperseded:
                 # Release the T067 invocation claim through the superseded
@@ -9204,9 +9340,9 @@ def _main_game_loop(startup_authority, turn_authority):
                 break
             
             if is_valid:
-                # Semantic agreement is established before route authority.
-                # Reparse after T065 because structural normalization may have
-                # returned corrected candidate content.
+                # Reparse normalized content returned by T065. Movement must
+                # still match the preflighted candidate; NPC-name normalization
+                # cannot grant approval for a different destination.
                 validated_data = json.loads(ai_response_content)
                 validated_actions = validated_data.get("actions", [])
                 validated_transition_indexes = [
@@ -9243,106 +9379,11 @@ def _main_game_loop(startup_authority, turn_authority):
                             "newLocation", ""
                         )
                     )
-                    current_location = str(
-                        party_tracker_data.get("worldConditions", {}).get(
-                            "currentLocationId", ""
-                        )
-                    )
-                    roster_ruling_in_force = (
-                        isinstance(planner_projection, dict)
-                        and planner_projection.get("reason_code")
-                        == "roster_change_in_place"
-                    )
-                    if proposed_location == current_location or roster_ruling_in_force:
-                        # A transition that survives T065 while a roster-change
-                        # ruling is in force is the same spurious party travel
-                        # the gate already cancelled: strip it deterministically
-                        # (no retry) so the ruling cannot be lost to route
-                        # planning or a later planner_projection overwrite.
-                        if roster_ruling_in_force:
-                            info(
-                                "VALIDATION: roster_change_in_place ruling in force; "
-                                "stripping a re-emitted transitionLocation before "
-                                "route planning.",
-                                category="location_transitions",
-                            )
-                        validated_actions.remove(transition_action)
-                        validated_data["actions"] = validated_actions
-                        ai_response_content = json.dumps(validated_data)
-                        transition_action = None
-                if transition_action is not None:
-                    from core.ai.action_handler import pre_validate_transition
-
-                    try:
-                        route_outcome = pre_validate_transition(
-                            transition_action.get("parameters", {}),
-                            party_tracker_data,
-                            conversation_history,
-                            location_graph,
-                            path_manager,
-                            return_plan=True,
-                            invocation_claim=t067_claim,
-                        )
-                    except LiveProviderSuperseded:
-                        # Release the T067 invocation claim through the superseded
-                        # terminal (merge review: a scope-superseded exit must not
-                        # leak the claim and starve the next begin_invocation).
-                        invocation_superseded = True
-                        conversation_history[:] = pre_turn_accepted_history
-                        break
-                    if not route_outcome.approved:
+                    if approved_transition_plan is None or proposed_location != approved_transition_plan.destination_location_id:
                         rejected_candidate = ai_response_content
-                        planner_projection = {
-                            "reason_code": route_outcome.reason_code,
-                            **dict(route_outcome.facts or {}),
-                        }
-                        if route_outcome.reason_code == "intermediate_stop":
-                            retry_correction = (
-                                "Revise the complete response using the accepted "
-                                "Travel Agent facts. Narrate movement toward the "
-                                "player's original goal, but transition only to "
-                                f"{route_outcome.intermediate_destination_id} "
-                                f"({route_outcome.intermediate_destination_name}). "
-                                "Use that transitionLocation first and do not "
-                                "transition to the original final destination in "
-                                "this turn."
-                            )
-                        elif route_outcome.reason_code in {
-                            "no_valid_route",
-                            "active_combat",
-                        }:
-                            retry_correction = (
-                                "Revise the complete response from the accepted "
-                                "Travel Agent facts. Do not include "
-                                "transitionLocation or invent another destination. "
-                                "Give one honest in-fiction explanation and leave "
-                                "the next choice to the player."
-                            )
-                        elif route_outcome.reason_code in {
-                            "destination_absent",
-                            "destination_invalid",
-                        }:
-                            retry_correction = (
-                                "The proposed destination is not a usable canonical "
-                                "destination. Do not move the party or describe it "
-                                "as an impassable known route. Ask the player one "
-                                "focused clarification in the complete JSON response."
-                            )
-                        else:
-                            retry_correction = (
-                                "Travel planning did not produce an accepted route. "
-                                "Keep the party in place and regenerate the complete "
-                                "response from the supplied structured facts."
-                            )
+                        retry_correction = "This normalized movement differs from its provisional route. Return the complete candidate for fresh preflight."
                         retry_count += 1
-                        status_retrying(retry_count)
-                        info(
-                            "VALIDATION: Transition outcome %s; retry %s"
-                            % (route_outcome.reason_code, retry_count),
-                            category="location_transitions",
-                        )
                         continue
-                    approved_transition_plan = route_outcome.plan
 
                 if live_turn_scope.is_superseded():
                     # Release the T067 invocation claim through the superseded
@@ -9356,25 +9397,30 @@ def _main_game_loop(startup_authority, turn_authority):
                 live_turn_scope.phase = "MUTATING"
                 debug(f"SUCCESS: Valid response generated on attempt {retry_count + 1}", category="ai_validation")
 
+                travel_candidate = approved_transition_plan is not None or (
+                    bool(validated_actions)
+                    and validated_actions[0].get("action") == "updatePartyTracker"
+                    and (validated_actions[0].get("parameters") or {}).get("module")
+                    not in (None, "", party_tracker_data.get("module"))
+                )
                 # Failed candidates and validator feedback are retry context,
                 # not durable game history. Only the accepted candidate may
                 # cross into process_ai_response and its state handlers.
-                conversation_history, ai_response_content = (
-                    _finalize_main_response_validation(
+                if not travel_candidate:
+                    conversation_history, ai_response_content = _finalize_main_response_validation(
                         conversation_history,
                         validation_prefix_length,
                         ai_response_content,
                         candidate_valid=True,
                     )
-                )
-                if not persist_t067_history_if_current(conversation_history):
+                if not travel_candidate and not persist_t067_history_if_current(conversation_history):
                     invocation_superseded = True
                     valid_response_received = False
                     break
 
                 # Commit T105 sidecar effects only after this exact T067
                 # response and its durable history are accepted.
-                if npc_voice_batch is not None:
+                if npc_voice_batch is not None and not travel_candidate:
                     try:
                         from core.npc.voice_context import (
                             commit_accepted_ooc_voice_batch,
@@ -9399,6 +9445,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 # - Level-up sessions (returned as enter_levelup_mode signal)
                 # - All conversation history updates
                 # The main loop is now just a thin orchestration layer.
+                retrying_transition = False
                 try:
                     final_result = process_ai_response(
                         ai_response_content,
@@ -9410,6 +9457,21 @@ def _main_game_loop(startup_authority, turn_authority):
                     )
                     if isinstance(final_result, dict) and final_result.get("status") == "superseded_invocation":
                         raise InvocationSupersededError("Turn processing was superseded")
+                    if isinstance(final_result, dict) and (
+                        final_result.get("status") == "transition_plan_stale"
+                        or (travel_candidate and final_result.get("status") == "stale_response_context")
+                    ):
+                        # Nothing has moved. The transition publisher removes
+                        # its transient draft; preserve the same live scope and
+                        # revise the actual latest candidate, not a nested turn.
+                        retrying_transition = True
+                        valid_response_received = False
+                        live_turn_scope.phase = "VALIDATING"
+                        rejected_candidate = ai_response_content
+                        planner_projection = None
+                        retry_correction = "The travel records changed before movement. Nothing moved. Reconcile this latest draft against the refreshed atlas. " + str(final_result.get("error") or "")
+                        retry_count += 1
+                        continue
                     (
                         final_result,
                         party_tracker_data,
@@ -9426,7 +9488,18 @@ def _main_game_loop(startup_authority, turn_authority):
                         raise InvocationSupersededError("Regenerated turn was superseded")
                     require_current_invocation(t067_claim)
                 finally:
-                    turn_authority.close()
+                    if not retrying_transition:
+                        turn_authority.close()
+
+                if travel_candidate and npc_voice_batch is not None and not (
+                    isinstance(final_result, dict) and
+                    (final_result.get("retryable") or final_result.get("status") == "error")
+                ):
+                    try:
+                        from core.npc.voice_context import commit_accepted_ooc_voice_batch
+                        commit_accepted_ooc_voice_batch(npc_voice_batch, party_tracker_data)
+                    except Exception as voice_commit_error:
+                        warning("T105 accepted travel event skipped: %s" % type(voice_commit_error).__name__, category="ai_routing")
 
                 if _is_restore_request(final_result):
                     return final_result
@@ -9597,6 +9670,7 @@ def _main_game_loop(startup_authority, turn_authority):
                     "\n\n%s" % turn_srd_context if turn_srd_context else ""
                 )
                 rejected_candidate = ai_response_content
+                semantic_corrections.append(validation_reason)
                 retry_correction = (
                     "Your previous response failed semantic validation. "
                     f"Reason: {validation_reason}. Return the complete corrected "
@@ -9611,6 +9685,27 @@ def _main_game_loop(startup_authority, turn_authority):
                     "complete corrected JSON response for the player's action."
                 )
                 retry_count += 1
+
+        if travel_content_handback and not invocation_superseded:
+            # D-303-2: no invented obstacle, no regeneration loop against a
+            # permanently unreadable source, and no mutation to repair it.
+            handback = (
+                "You remain where you are. I couldn't verify the destination's "
+                "travel records, so that move hasn't happened. You can take "
+                "another action here or Load a saved game."
+            )
+            conversation_history, _ = _finalize_main_response_validation(
+                conversation_history, validation_prefix_length,
+                json.dumps({"narration": handback, "actions": []}), candidate_valid=True,
+            )
+            if persist_t067_history_if_current(conversation_history):
+                display_dm_narration(handback)
+            turn_authority.close()
+            from utils.capture.live_provider_call import finish_live_turn_scope
+            finish_live_turn_scope(live_turn_scope)
+            complete_invocation(t067_claim)
+            status_ready()
+            continue
 
         if invocation_superseded:
             turn_authority.close()
