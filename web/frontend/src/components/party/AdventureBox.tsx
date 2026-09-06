@@ -43,7 +43,7 @@ export function AdventureBox() {
         style={recessedBox}
       >
         <div
-          className="font-display font-bold"
+          className="ember-combat-caption font-display font-bold"
           style={{ fontSize: 13, color: '#FFA500', letterSpacing: 1, lineHeight: 1 }}
         >
           COMBAT
@@ -51,11 +51,11 @@ export function AdventureBox() {
         <div
           style={{ width: '80%', height: 1, backgroundColor: 'var(--border-card)', margin: '2px 0' }}
         />
-        <div style={{ fontSize: 10, fontWeight: 700, color: '#888', lineHeight: 1 }}>
+        <div className="ember-round-label" style={{ fontSize: 10, fontWeight: 700, color: '#888', lineHeight: 1 }}>
           ROUND
         </div>
         <div
-          className="font-bold"
+          className="ember-round-value font-bold"
           style={{ fontSize: 20, color: 'var(--accent)', lineHeight: 1.1 }}
         >
           {round}

@@ -179,6 +179,9 @@
 .ember-desktop .ember-nearby-label { color: var(--ember-muted); font-size: 14px; padding-top: 6px; border-top: 1px solid var(--ember-frame); }
 .ember-desktop .neq-combat-box { flex-direction: row; gap: 8px; width: 100%; height: 36px; margin: 0 0 12px; border: 1px solid var(--ember-rule) !important; background: none !important; }
 .ember-desktop .neq-combat-box > div:nth-child(2) { display: none; }
+.ember-desktop .ember-combat-caption { color: var(--ember-brass) !important; font: 400 14px/1.1 var(--font-body) !important; letter-spacing: .5px !important; }
+.ember-desktop .ember-round-label { color: var(--ember-muted) !important; font: 400 14px/1.1 var(--font-body) !important; }
+.ember-desktop .ember-round-value { color: var(--ember-text) !important; font: 400 18px/1.1 var(--font-body) !important; }
 .ember-desktop :is(.neq-ability-score, .neq-combat-stat, .neq-tab-button, .ember-sheet-footer button, .neq-dice-buttons button) { box-shadow: inset 0 0 0 2px #060a0977, inset 0 1px 0 #c9ab7044; }
 .ember-desktop .neq-tab-button[aria-selected='true'] { position: relative; }
 .ember-desktop .neq-tab-button[aria-selected='true']::after { content: ''; position: absolute; right: 5px; top: 50%; width: 4px; height: 4px; background: #a3814c; transform: rotate(45deg); }
