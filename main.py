@@ -9382,7 +9382,14 @@ def main_game_loop():
                 )
             finish_live_turn_scope(live_turn_scope)
             status_ready()
-            return
+            if invocation_superseded:
+                # Load, Reset or exit own the restart; the engine ends here.
+                return
+            # The provider ended this turn (bad key, out of funds, malformed
+            # request). The player was told what to do; the game stays
+            # playable so they can do it (#284: returning here ended the
+            # engine, so "try that action again" was impossible).
+            continue
 
         # This block now only runs if a response was NOT held
         # CRITICAL: Reload party tracker to ensure we have the latest module information after any updates
