@@ -97,19 +97,20 @@ function MagicCategory({ title, items }: { title: string; items: EquipmentItem[]
 }
 
 export function SpellsTab() {
+  const ember = useEmberDesktop()
   const spells = usePlayer((s) => s.spells)
   const error = usePlayer((s) => s.dataErrors.spells)
   const notice = usePlayer((s) => s.dataNotices.spells)
   const { data: spellData, status: referenceStatus, retry } = useSpellReference()
 
   if (error) {
-    return <p className="p-4 font-body text-sm text-red-400">{error}</p>
+    return <p role={ember ? 'alert' : undefined} data-state="error" className="ember-sheet-status p-4 font-body text-sm text-red-400">{error}</p>
   }
   if (notice) {
-    return <p className="p-4 font-body text-sm text-secondary">{notice}</p>
+    return <p role={ember ? 'status' : undefined} data-state="notice" className="ember-sheet-status p-4 font-body text-sm text-secondary">{notice}</p>
   }
   if (!spells) {
-    return <p className="p-4 font-body text-sm text-secondary">Loading spells...</p>
+    return <p role={ember ? 'status' : undefined} data-state="loading" className="ember-sheet-status p-4 font-body text-sm text-secondary">Loading spells...</p>
   }
 
   const view = spellcastingView(spells)

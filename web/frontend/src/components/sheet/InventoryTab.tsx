@@ -74,13 +74,13 @@ export function InventoryTab() {
   }, [items, query, category, sort, sortTouched])
 
   if (error) {
-    return <p className="p-4 font-body text-sm text-red-400">{error}</p>
+    return <p role={ember ? 'alert' : undefined} data-state="error" className="ember-sheet-status p-4 font-body text-sm text-red-400">{error}</p>
   }
   if (notice) {
-    return <p className="p-4 font-body text-sm text-secondary">{notice}</p>
+    return <p role={ember ? 'status' : undefined} data-state="notice" className="ember-sheet-status p-4 font-body text-sm text-secondary">{notice}</p>
   }
   if (!inventory) {
-    return <p className="p-4 font-body text-sm text-secondary">Loading inventory...</p>
+    return <p role={ember ? 'status' : undefined} data-state="loading" className="ember-sheet-status p-4 font-body text-sm text-secondary">Loading inventory...</p>
   }
 
   const openStorage = () => {

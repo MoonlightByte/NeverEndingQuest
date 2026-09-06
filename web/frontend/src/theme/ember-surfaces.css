@@ -18,6 +18,9 @@ body[data-ember-desktop='true'] .neq-debug-message-content { background: var(--e
 body[data-ember-desktop='true'] .neq-debug-scrollable { color: var(--ember-text); font-size: 14px; }
 body[data-ember-desktop='true'] :is(.ember-welcome-banner,.ember-exit-overlay) { border: 1px solid var(--ember-rule); color: var(--ember-text); background: var(--ember-panel); font-family: var(--ember-font-body); }
 body[data-ember-desktop='true'] .ember-welcome-banner button { color: var(--ember-text); background: #56220f; border: 1px solid var(--ember-brass); }
+.ember-desktop .ember-sheet-status { margin: 12px 0; padding: 16px; min-height: 0; border: 1px solid var(--ember-rule); background: var(--ember-panel); color: var(--ember-text); text-align: left; font: 400 18px/1.5 var(--ember-font-body); }
+.ember-desktop .ember-sheet-status[data-state='loading'] { font-style: italic; }
+.ember-desktop .ember-sheet-status[data-state='error'] { color: #efaa94; border-color: #805040; }
 body[data-ember-desktop='true'] .ember-exit-overlay h2 { color: var(--ember-brass); }
 .ember-desktop .ember-die-rolling { animation: ember-die-roll 260ms ease-out; }
 @keyframes ember-die-roll { 35% { transform: rotate(-15deg) scale(1.16); } 70% { transform: rotate(12deg); } }

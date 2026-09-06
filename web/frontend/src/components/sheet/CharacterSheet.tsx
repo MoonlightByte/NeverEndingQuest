@@ -115,13 +115,13 @@ export function CharacterSheet() {
   const [skillHover, setSkillHover] = useState<{ ability: AbilityName; anchor: HTMLElement } | null>(null)
 
   if (error) {
-    return <p className="p-4 font-body text-sm text-red-400">{error}</p>
+    return <p role={ember ? 'alert' : undefined} data-state="error" className="ember-sheet-status p-4 font-body text-sm text-red-400">{error}</p>
   }
   if (notice) {
-    return <p className="p-4 font-body text-sm text-secondary">{notice}</p>
+    return <p role={ember ? 'status' : undefined} data-state="notice" className="ember-sheet-status p-4 font-body text-sm text-secondary">{notice}</p>
   }
   if (!stats) {
-    return <p className="neq-character-loading-parity">Loading character stats...</p>
+    return <p role={ember ? 'status' : undefined} data-state="loading" className="ember-sheet-status neq-character-loading-parity">Loading character stats...</p>
   }
 
   const name = str(stats['name'], 'Unknown Adventurer')

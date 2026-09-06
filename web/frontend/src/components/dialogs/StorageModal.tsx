@@ -45,9 +45,9 @@ function StorageModalBody() {
 
   let body
   if (storageError) {
-    body = <p className="p-8 text-center font-body text-secondary">No player storage found.</p>
+    body = <p role={ember ? 'alert' : undefined} className="p-8 text-center font-body text-secondary">{ember ? 'Could not load storage data. Close and reopen storage to retry.' : 'No player storage found.'}</p>
   } else if (storage === null) {
-    body = <p className="p-8 text-center font-body italic text-secondary">Fetching storage data...</p>
+    body = <p role={ember ? 'status' : undefined} className="p-8 text-center font-body italic text-secondary">Fetching storage data...</p>
   } else {
     const success = storage['success'] === true
     const containers = (Array.isArray(storage['storage']) ? (storage['storage'] as unknown[]) : []).map(
