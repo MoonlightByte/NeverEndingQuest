@@ -64,6 +64,11 @@ body.ember-workbench {
 .ember-workbench :is(.modal-warning,.modal-pack-info,.media-modal-header) { background: transparent; border-color: var(--ember-rule); color: var(--ember-text); }
 .ember-workbench .pack-confirm-content { width: min(720px,calc(100vw - 32px)); }
 .ember-workbench .modal { background: #000b; }
+.ember-workbench .ember-prompt { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; }
+.ember-workbench .ember-prompt-card { width: 520px; margin: 0; padding: 24px; box-sizing: border-box; background: radial-gradient(ellipse at top,#17201d55,transparent 80%),var(--ember-panel); }
+.ember-workbench .ember-prompt-card h2 { margin: 0 0 18px; padding-bottom: 14px; border-bottom: 1px solid var(--ember-rule); font: 400 24px/1.3 var(--ember-font-title); }
+.ember-workbench .ember-prompt-message { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 18px/1.5 var(--ember-font-body); }
+.ember-workbench .ember-prompt-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 .ember-workbench .modal-pack-info strong { color: var(--ember-brass); }
 .ember-workbench .backup-name { display: block; max-width: 100%; overflow-wrap: anywhere; white-space: normal; background: var(--ember-page); color: var(--ember-muted); font-size: 14px; }
 /* Generated confirmation markup retains its original operation handlers and
@@ -89,6 +94,9 @@ body.ember-workbench {
 .ember-workbench [style*="color: #FFA500"],.ember-workbench [style*="color: #ff9800"] { color: var(--ember-brass) !important; }
 .ember-workbench .tooltip-trigger { color: var(--ember-brass); border-color: var(--ember-rule); }
 .ember-workbench .tooltip-trigger::after { background: var(--ember-panel); color: var(--ember-text); border: 1px solid var(--ember-rule); max-width: min(320px,80vw); }
+.ember-workbench .tooltip-trigger { padding: 0; flex-shrink: 0; font-size: 14px; font-weight: 700; font-family: var(--ember-font-body); }
+.ember-workbench .tooltip-trigger::after,.ember-workbench .tooltip-trigger:hover::after { display: none; content: none; }
+.ember-workbench .ember-help-popup { position: fixed; z-index: 13000; width: 280px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 10px 15px; color: var(--ember-text); background: var(--ember-panel); border: 1px solid var(--ember-rule); border-radius: 2px; font: 400 16px/1.4 var(--ember-font-body); overflow-wrap: anywhere; pointer-events: auto; }
 .ember-builder #main-container { padding: 24px; gap: 20px; min-height: 0; }
 .ember-builder .panel { min-width: 0; }
 .ember-builder .panel-content { padding: 24px; }

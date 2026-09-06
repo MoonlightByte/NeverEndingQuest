@@ -579,6 +579,7 @@
         });
         
         socket.on('disconnect', () => {
+            builderGeneration++;
             console.log('Disconnected from server');
             connectionStatus.className = 'disconnected';
             statusDot.className = 'status-dot disconnected';
@@ -643,6 +644,8 @@
             }
             
             // Start build
+            builderGeneration++;
+            builderRunning = true;
             socket.emit('start_build', {
                 module_name: moduleName,
                 num_areas: numAreas,
@@ -657,10 +660,21 @@
             resultsSection.style.display = 'none';
         });
         
+        let builderGeneration = 0;
+        let builderRunning = false;
+        let builderCancelPromptPending = false;
         // Cancel button
-        cancelBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to cancel the module generation?')) {
-                socket.emit('cancel_build');
+        cancelBtn.addEventListener('click', async () => {
+            if (!builderRunning || builderCancelPromptPending || socket.connected === false) return;
+            const generation = builderGeneration;
+            builderCancelPromptPending = true;
+            try {
+                if (await window.EmberDialogs.confirm('Are you sure you want to cancel the module generation?')
+                    && builderRunning && builderGeneration === generation && socket.connected !== false) {
+                    socket.emit('cancel_build');
+                }
+            } finally {
+                builderCancelPromptPending = false;
             }
         });
         
@@ -671,6 +685,8 @@
         
         // Socket event handlers
         socket.on('build_started', (data) => {
+            builderGeneration++;
+            builderRunning = true;
             console.log('Build started:', data.message);
             statusMessage.textContent = data.message;
         });
@@ -702,12 +718,16 @@
             
             // Handle errors
             if (data.error) {
+                builderGeneration++;
+                builderRunning = false;
                 showError(data.error);
                 progressSection.style.display = 'none';
             }
         });
         
         socket.on('module_complete', (data) => {
+            builderGeneration++;
+            builderRunning = false;
             console.log('Module complete:', data);
             
             // Show results
@@ -723,12 +743,16 @@
         });
         
         socket.on('module_error', (data) => {
+            builderGeneration++;
+            builderRunning = false;
             console.error('Module error:', data);
             showError(data.error);
             progressSection.style.display = 'none';
         });
         
         socket.on('build_cancelled', (data) => {
+            builderGeneration++;
+            builderRunning = false;
             console.log('Build cancelled:', data.message);
             statusMessage.textContent = data.message;
             setTimeout(() => {
@@ -743,6 +767,8 @@
         }
         
         function resetUI() {
+            builderGeneration++;
+            builderRunning = false;
             moduleForm.style.display = 'block';
             progressSection.style.display = 'none';
             resultsSection.style.display = 'none';
@@ -767,5 +793,6 @@
             }
         }, 30000);
     </script>
+    <script defer src="{{ url_for('static', filename='js/ember-dialogs.js') }}"></script>
 </body>
 </html>

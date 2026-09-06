@@ -191,6 +191,12 @@ def worker(export: Path) -> None:
     builder_client = standalone["app"].test_client()
     builder = builder_client.get("/")
     assert builder.status_code == 200 and b"ember-builder" in builder.data
+    # Serving the helper URL alone is not enough: each actual HTML entry must
+    # include it before the newly themed prompts can work in the browser.
+    for page in (toolkit, builder):
+        workbench_links = AssetLinks()
+        workbench_links.feed(page.get_data(as_text=True))
+        assert workbench_links.urls.count("/static/js/ember-dialogs.js") == 1
     for route in static_paths:
         response = builder_client.get(route)
         assert response.status_code == 200 and response.data, route
@@ -205,6 +211,7 @@ def worker(export: Path) -> None:
         "launch_selection": launches, "missing_build": missing,
         "legacy_with_and_without_build": 200, "react_with_build": 200,
         "toolkit_with_and_without_build": 200, "standalone_builder": 200,
+        "workbench_prompt_helper_included_once_per_entry": True,
         "shared_assets_per_flask_app": len(static_paths), "built_entry_assets": len(assets),
         "built_fonts": len(bundled_fonts), "engine_and_builder_jobs_started": 0,
         "outbound_network": "disabled", "retained_export": True,

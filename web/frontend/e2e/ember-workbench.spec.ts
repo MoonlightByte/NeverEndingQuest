@@ -150,12 +150,15 @@ for (const width of [1586, 390]) {
     await expect(activate).toBeFocused()
     await expect(page.locator('body > .container')).not.toHaveAttribute('inert', '')
 
-    const merge = page.getByTitle('Merge into Active Pack', { exact: true })
-    await merge.click()
-    const merging = page.getByRole('dialog', { name: 'Confirm Pack Merge' })
-    await expect(merging).toBeVisible()
-    await merging.getByRole('button', { name: 'Cancel', exact: true }).click()
-    await expect(merge).toBeFocused()
+    // Public backend Merge is an existing no-op placeholder. The reachable UI
+    // now explains its unavailability instead of offering a false-success flow.
+    const merge = page.getByRole('button', { name: 'Merge into Active Pack', exact: true })
+    await expect(merge).toBeDisabled()
+    await expect(merge).toHaveAttribute('aria-describedby', 'pack-merge-unavailable')
+    await expect(page.locator('#pack-merge-unavailable')).toHaveText('Pack merging is not available in this public release.')
+    await merge.evaluate(node => (node as HTMLButtonElement).click())
+    await expect(page.getByRole('dialog', { name: 'Confirm Pack Merge' })).toHaveCount(0)
+    expect(writes).toEqual([])
 
     // A navigation request is not completion evidence, including while the
     // browser is still waiting for a slow download response.
