@@ -730,8 +730,10 @@ def _interruptible_wait(seconds, scope, message, emit=None):
         time.sleep(min(_HEARTBEAT_SECONDS, remaining))
 
 
-# Non-wizard reissue budget per call: after this many failed attempts the
-# child hands the completed error to the caller instead of looping (#240).
+# Non-wizard EMPTY-response budget per call: after this many empty replies
+# the child hands the completed error to the caller instead of looping
+# (#240). Transient transport/HTTP failures are NOT counted (#284, B2-vii):
+# they reissue until the provider answers or the player supersedes the turn.
 _NON_WIZARD_MAX_FAILURES = 6
 
 
@@ -742,7 +744,12 @@ def _delay_for_error(envelope, failure_count):
     status = envelope.get("http_status")
     if isinstance(status, int) and 400 <= status < 500:
         return _PERMANENT_ERROR_SECONDS
-    base = min(_MAX_BACKOFF_SECONDS, 0.5 * (2 ** max(0, failure_count - 1)))
+    # Exponent capped at 4: 0.5 * 2**4 already equals _MAX_BACKOFF_SECONDS,
+    # and an unbounded count overflows float at 2**1024 (#284 review C3-1).
+    base = min(
+        _MAX_BACKOFF_SECONDS,
+        0.5 * (2 ** max(0, min(failure_count - 1, 4))),
+    )
     return random.uniform(base * 0.75, base)
 
 
@@ -863,6 +870,7 @@ def call_live_provider(
     elif task_id not in _NO_WATCHDOG_ADVISORY_TASK_IDS:
         frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
     failure_count = 0
+    empty_count = 0
     logical_started = time.monotonic()
     notices_shown = set()
     player_turn = scope is not None and scope is get_live_turn_scope()
@@ -1103,8 +1111,10 @@ def call_live_provider(
             disposition = envelope.get("disposition")
             if disposition not in {"retryable_http", "retryable_transport", "empty"}:
                 raise LiveProviderCompletedError(task_id, envelope)
-            if failure_count >= _NON_WIZARD_MAX_FAILURES:
-                raise LiveProviderCompletedError(task_id, envelope)
+            if disposition == "empty":
+                empty_count += 1
+                if empty_count >= _NON_WIZARD_MAX_FAILURES:
+                    raise LiveProviderCompletedError(task_id, envelope)
             try:
                 # Diagnostics stay in the debug log; in headless the console
                 # warning handler landed in the narration stream (#233).
