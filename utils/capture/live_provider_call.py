@@ -541,6 +541,25 @@ def _success_envelope(response, request_kwargs):
     }
 
 
+def _http_status_of(original):
+    """One coalescing HTTP-status read across provider SDK error shapes.
+
+    openai: ``status_code`` (int) and a str ``code``; google.genai: an int
+    ``code`` and no ``status_code``. Order: status_code, then the response's
+    status_code, then ``code`` only when it is an int. No provider branch.
+    """
+    if original is None:
+        return None
+    for value in (
+        getattr(original, "status_code", None),
+        getattr(getattr(original, "response", None), "status_code", None),
+        getattr(original, "code", None),
+    ):
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    return None
+
+
 def _structured_error_code(exc, original):
     """Provider error CODE from structured fields (never the message text)."""
     for item in (original, exc):
@@ -591,7 +610,7 @@ def _error_disposition(exc, original, status, error_code=None):
 
 def _primitive_error(exc, request_kwargs):
     original = getattr(exc, "original_error", None)
-    status = getattr(original, "status_code", None)
+    status = _http_status_of(original)
     error_code = _structured_error_code(exc, original)
     headers = getattr(getattr(original, "response", None), "headers", None)
     retry_after = None
