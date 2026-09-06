@@ -73,8 +73,13 @@ export const useSession = create<SessionState>((set) => ({
   // mode still becomes disconnected and locks input until transport returns.
   setConnected: (connected) => set(connected ? { connected } : { connected, inputAuthorized: false, startupInputReady: false }),
   startRequested: () => set({ mode: 'starting', inputAuthorized: false, startupInputReady: false }),
-  gameStarted: (message) => set({ mode: 'play', statusMessage: message, inputAuthorized: true, startupInputReady: false }),
-  gameResumed: (isProcessing) => set({ mode: 'play', isProcessing, inputAuthorized: true, startupInputReady: false }),
+  gameStarted: (message) => set({ mode: 'play', startupStatus: 'ready', statusMessage: message, inputAuthorized: true, startupInputReady: false }),
+  gameResumed: (isProcessing) => set((s) => ({
+    mode: s.startupStatus === 'ready' ? 'play' : 'starting',
+    isProcessing,
+    inputAuthorized: s.startupStatus === 'ready' || s.startupStatus === 'in_progress',
+    startupInputReady: s.startupStatus === 'in_progress' && !isProcessing,
+  })),
   setWelcome: (message) => set({ welcomeMessage: message }),
   setStatus: (status) =>
     set((s) => ({
@@ -89,8 +94,9 @@ export const useSession = create<SessionState>((set) => ({
     startupStatus: status,
     startupPhase: phase,
     startupAttemptId: startupAttemptId ?? s.startupAttemptId,
-    inputAuthorized: status === 'in_progress' ? true : status === 'failed' ? false : s.inputAuthorized,
-    startupInputReady: status === 'in_progress' ? false : s.startupInputReady,
+    mode: status === 'ready' ? 'play' : 'starting',
+    inputAuthorized: status !== 'failed',
+    startupInputReady: false,
   })),
   setRecovery: (recovery) => set({ recovery }),
   setRestoreResult: (result) => set((s) => ({
@@ -104,16 +110,19 @@ export const useSession = create<SessionState>((set) => ({
   applySnapshot: (snapshot) =>
     set((s) => {
       if (!shouldAcceptSnapshot(s, snapshot)) return {}
+      const startupStatus = snapshot.startup?.status ?? s.startupStatus
       return {
         serverInstanceId: snapshot.server_instance_id,
         snapshotRevision: snapshot.revision,
-        mode: snapshot.game_running ? 'play' : 'disconnected',
+        mode: snapshot.game_running ? (startupStatus === 'ready' ? 'play' : 'starting') : 'disconnected',
+        inputAuthorized: snapshot.game_running && (startupStatus === 'ready' || startupStatus === 'in_progress'),
+        startupInputReady: snapshot.game_running && startupStatus === 'in_progress' && !snapshot.is_processing,
         isProcessing: snapshot.is_processing,
         statusMessage: snapshot.status_message,
         restorePending: snapshot.operations?.restore?.pending === true,
         restoreRecoveryRequired: snapshot.operations?.restore?.can_resume === false
           || snapshot.operations?.restore?.restore_outcome === 'recovery_required',
-        startupStatus: snapshot.startup?.status ?? s.startupStatus,
+        startupStatus,
         startupPhase: snapshot.startup?.phase ?? s.startupPhase,
         startupAttemptId: snapshot.startup?.startupAttemptId ?? s.startupAttemptId,
       }

@@ -170,17 +170,27 @@ class SaveGameManager:
         self._initialize_module_context()
     
     def _initialize_module_context(self):
-        """Initialize the current module context from party tracker"""
+        """Use the current party or the validated pending adventure selection."""
+        self.current_module = None
+        self.path_manager = None
         try:
             party_tracker = safe_json_load("party_tracker.json")
             if party_tracker:
-                self.current_module = party_tracker.get("module", "").replace(" ", "_")
+                self.current_module = party_tracker.get("module", "").replace(" ", "_") or None
+            if not self.current_module:
+                from utils.startup_contract import parse_startup_checkpoint
+                history = safe_json_load("modules/conversation_history/startup_conversation.json")
+                progress = parse_startup_checkpoint(history or [])
+                selected = progress.get("module") if progress else None
+                # The catalog's exact installed-directory identity, not a path
+                # supplied by arbitrary old history or the default module.
+                if selected and os.path.isdir("modules") and selected in os.listdir("modules"):
+                    if os.path.isdir(os.path.join("modules", selected)):
+                        self.current_module = selected
+            if self.current_module:
                 self.path_manager = ModulePathManager(self.current_module)
-            else:
-                self.path_manager = ModulePathManager()
         except Exception as e:
-            warning(f"INITIALIZATION: Could not initialize module context", category="save_game")
-            self.path_manager = ModulePathManager()
+            warning(f"INITIALIZATION: Module context remains unselected: {e}", category="save_game")
 
     @staticmethod
     def _restore_io(operation, *args, cancel_check=None, **kwargs):
@@ -433,6 +443,7 @@ class SaveGameManager:
                 expected[path] = ('absent', None)
         for path in ('modules/effects_state.json',
                      'modules/conversation_history/combat_conversation_history.json',
+                     'modules/conversation_history/startup_conversation.json',
                      'modules/conversation_history/pending_location_transition.json'):
             path = os.path.normpath(path)
             if path not in source_files:
@@ -476,6 +487,7 @@ class SaveGameManager:
             # Conversation and chat history (critical for game continuity)
             "modules/conversation_history/conversation_history.json",
             "modules/conversation_history/chat_history.json",
+            "modules/conversation_history/startup_conversation.json",
             
             # Character data
             "characters/",
@@ -1341,11 +1353,12 @@ class SaveGameManager:
             restore_mutation_started = True
 
             # Absence in an older save matters: re-detect effects migration,
-            # and never resume a later combat from its leftover transcript.
-            # The verified backup retains both files for a failed-Load rollback.
+            # never resume a later combat or an unrelated startup interview.
+            # The verified backup retains these files for a failed-Load rollback.
             for optional_path in (
                 "modules/effects_state.json",
                 "modules/conversation_history/combat_conversation_history.json",
+                "modules/conversation_history/startup_conversation.json",
             ):
                 if os.path.normpath(optional_path) not in source_files:
                     try:

@@ -35,10 +35,10 @@ Cross-platform compatible (Windows/Unix).
 # 5. Backup creation before overwriting existing files
 # 
 # FILE LOCKING MECHANISM:
-# - .lock files prevent concurrent modification
-# - Automatic stale lock cleanup after timeout
+# - Installation-owned runtime locks prevent concurrent modification
+# - OS ownership releases automatically when a process exits
 # - Platform-specific locking strategies
-# - Graceful degradation when locking fails
+# - Cancellable ownership polling without abandoning pending writes
 # 
 # ARCHITECTURAL INTEGRATION:
 # - Used by all modules requiring file persistence
@@ -56,12 +56,19 @@ Cross-platform compatible (Windows/Unix).
 # ============================================================================
 
 import json
+import hashlib
 import os
 import shutil
 import time
+import threading
 import logging
 from typing import Any, Dict, Optional
 from pathlib import Path
+from contextlib import nullcontext
+from utils.capture.live_provider_call import LiveProviderSuperseded
+from utils.module_refresh_lock import RUNTIME_LOCKS_DIR
+from utils.path_transaction_lock import path_transaction_lock
+from utils.transient_filesystem import is_transient_filesystem_error
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -71,6 +78,8 @@ class FileLockError(Exception):
     """Raised when unable to acquire file lock"""
     pass
 
+
+
 class AtomicFileWriter:
     """Handles atomic file writing with automatic backups and locking"""
     
@@ -79,55 +88,54 @@ class AtomicFileWriter:
         self.retry_delay = retry_delay
         self.lock_files = {}
     
-    def acquire_lock(self, filepath: str, timeout: float = 5.0) -> Optional[int]:
-        """Acquire exclusive lock on file for writing using lock files"""
-        lock_path = f"{filepath}.lock"
-        start_time = time.time()
-        
-        while time.time() - start_time < timeout:
+    def acquire_lock(self, filepath: str, timeout=None, *, commit_guard=None) -> Optional[int]:
+        """Wait for OS ownership; timeout is retained only for API compatibility."""
+        canonical = os.path.normcase(os.path.abspath(os.path.normpath(os.fspath(filepath))))
+        runtime_lock_target = os.path.join(
+            RUNTIME_LOCKS_DIR, "atomic", hashlib.sha256(os.fsencode(canonical)).hexdigest()
+        )
+        key = (os.getpid(), threading.get_ident(), canonical)
+        while True:
+            if commit_guard is not None:
+                with commit_guard():
+                    pass
+            ownership = path_transaction_lock(
+                runtime_lock_target, suffix=".lock",
+                timeout_seconds=self.retry_delay, poll_seconds=self.retry_delay,
+            )
             try:
-                # Try to create lock file exclusively
-                # Using low-level os.open for cross-platform exclusive creation
-                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                # Write PID to lock file for debugging
-                os.write(fd, str(os.getpid()).encode())
-                os.close(fd)
-                self.lock_files[filepath] = lock_path
-                logger.debug(f"Acquired lock for {filepath}")
-                return 1  # Return non-None to indicate success
-            except FileExistsError:
-                # Lock file exists, check if it's stale
-                if os.path.exists(lock_path):
-                    try:
-                        # Check if lock file is old (stale)
-                        lock_age = time.time() - os.path.getmtime(lock_path)
-                        if lock_age > 60:  # Lock older than 60 seconds is considered stale
-                            logger.warning(f"Removing stale lock file: {lock_path}")
-                            try:
-                                os.unlink(lock_path)
-                            except:
-                                pass
-                    except:
-                        pass
-                # Wait and retry
+                acquired = ownership.__enter__()
+            except OSError as exc:
+                if not is_transient_filesystem_error(exc):
+                    raise
                 time.sleep(self.retry_delay)
-            except Exception as e:
-                logger.error(f"Error acquiring lock for {filepath}: {e}")
-                raise
-        
-        raise FileLockError(f"Could not acquire lock for {filepath} within {timeout} seconds")
-    
-    def release_lock(self, filepath: str):
-        """Release file lock"""
-        if filepath in self.lock_files:
-            lock_path = self.lock_files[filepath]
+                continue
+            if acquired is None:
+                ownership.__exit__(None, None, None)
+                continue
             try:
-                if os.path.exists(lock_path):
-                    os.unlink(lock_path)
-                del self.lock_files[filepath]
-                logger.debug(f"Released lock for {filepath}")
-            except Exception as e:
-                logger.error(f"Error releasing lock for {filepath}: {e}")
+                if commit_guard is not None:
+                    with commit_guard():
+                        pass
+                self.lock_files.setdefault(key, []).append(ownership)
+            except BaseException:
+                ownership.__exit__(None, None, None)
+                raise
+            logger.debug("Acquired lock for %s", canonical)
+            return 1
+
+    def release_lock(self, filepath: str):
+        """Release only this thread's ownership, retaining the advisory inode."""
+        canonical = os.path.normcase(os.path.abspath(os.path.normpath(os.fspath(filepath))))
+        key = (os.getpid(), threading.get_ident(), canonical)
+        stack = self.lock_files.get(key)
+        if not stack:
+            return
+        ownership = stack.pop()
+        if not stack:
+            del self.lock_files[key]
+        ownership.__exit__(None, None, None)
+        logger.debug("Released lock for %s", canonical)
     
     def create_backup(self, filepath: str) -> Optional[str]:
         """Create backup of existing file"""
@@ -144,7 +152,8 @@ class AtomicFileWriter:
             raise
     
     def write_json(self, filepath: str, data: Dict[str, Any], 
-                   create_backup: bool = True, acquire_lock: bool = True) -> bool:
+                   create_backup: bool = True, acquire_lock: bool = True,
+                   *, commit_guard=None) -> bool:
         """
         Atomically write JSON data to file with optional backup and locking.
         
@@ -163,10 +172,13 @@ class AtomicFileWriter:
         lock_acquired = False
         
         try:
+            dir_path = os.path.dirname(filepath)
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
             # Acquire lock if requested
             if acquire_lock:
                 print(f"DEBUG: [FILE_OPS] Attempting to acquire lock for {filepath}")
-                self.acquire_lock(filepath)
+                self.acquire_lock(filepath, commit_guard=commit_guard)
                 lock_acquired = True
                 print(f"DEBUG: [FILE_OPS] Lock acquired successfully")
             
@@ -198,16 +210,17 @@ class AtomicFileWriter:
             # an antivirus scan, indexer, or reader briefly holds the
             # destination. One such blip must not fail the write - a live
             # acceptance run lost an entire combat to a single WinError 5
-            # here. Retry patiently; genuine persistent locks still fail
-            # through the existing error path below.
+            # here. Retry sharing contention patiently; nonretryable errors
+            # still follow the existing error path below.
             _replace_attempt = 0
             while True:
                 try:
-                    os.replace(temp_path, filepath)
+                    with commit_guard() if commit_guard is not None else nullcontext():
+                        os.replace(temp_path, filepath)
                     break
                 except (PermissionError, OSError) as replace_error:
                     winerror = getattr(replace_error, "winerror", None)
-                    if winerror not in (5, 32) or _replace_attempt >= 100:
+                    if winerror not in (5, 32):
                         raise
                     _replace_attempt += 1
                     if _replace_attempt % 20 == 0:
@@ -222,15 +235,10 @@ class AtomicFileWriter:
             
             return True
             
+        except LiveProviderSuperseded:
+            raise
         except Exception as e:
             logger.error(f"Error writing {filepath}: {e}")
-            
-            # Clean up temp file if it exists
-            if os.path.exists(temp_path):
-                try:
-                    os.unlink(temp_path)
-                except:
-                    pass
             
             # Atomic replace leaves the original authoritative on every
             # pre-commit failure. Re-copying the backup over that intact file
@@ -239,6 +247,11 @@ class AtomicFileWriter:
             return False
             
         finally:
+            if os.path.exists(temp_path) and (lock_acquired or not acquire_lock):
+                try:
+                    os.unlink(temp_path)
+                except OSError as exc:
+                    logger.warning("Could not clean temporary file %s: %s", temp_path, exc)
             # Always release lock
             if lock_acquired:
                 self.release_lock(filepath)
@@ -284,18 +297,23 @@ class AtomicFileWriter:
                 self.release_lock(filepath)
     
     def cleanup_lock_files(self):
-        """Clean up any remaining lock files (call on exit)"""
-        for filepath in list(self.lock_files.keys()):
-            self.release_lock(filepath)
+        """Drain only contexts owned by the calling process and thread."""
+        owner = (os.getpid(), threading.get_ident())
+        for key in list(self.lock_files):
+            if key[:2] == owner:
+                while key in self.lock_files:
+                    self.release_lock(key[2])
 
 # Global instance for convenience
 atomic_writer = AtomicFileWriter()
 
 # Convenience functions
 def safe_write_json(filepath: str, data: Dict[str, Any], 
-                   create_backup: bool = True, acquire_lock: bool = True) -> bool:
+                   create_backup: bool = True, acquire_lock: bool = True,
+                   *, commit_guard=None) -> bool:
     """Atomically write JSON data to file"""
-    return atomic_writer.write_json(filepath, data, create_backup, acquire_lock)
+    return atomic_writer.write_json(filepath, data, create_backup, acquire_lock,
+                                    commit_guard=commit_guard)
 
 def safe_read_json(filepath: str, acquire_lock: bool = False) -> Optional[Dict[str, Any]]:
     """Safely read JSON file"""

@@ -19,6 +19,8 @@ import json
 import os
 import re
 import shutil
+from contextlib import contextmanager
+from uuid import uuid4
 from datetime import datetime
 from pathlib import Path
 from core.ai import api_client
@@ -28,6 +30,10 @@ register_callsite("T093", "utils/startup_wizard.py", 1665)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
+from utils.startup_prompt_builder import build_startup_review_prompt
+from utils.startup_contract import (
+    parse_startup_response, parse_startup_review, parse_startup_checkpoint,
+)
 from utils.character_sheet_contract import (
     extract_json_object,
     repair_required_ammunition_field,
@@ -105,7 +111,6 @@ if not web_mode:
 # Conversation file for character creation (separate from main game)
 STARTUP_CONVERSATION_FILE = "modules/conversation_history/startup_conversation.json"
 
-STARTUP_AI_MAX_ATTEMPTS = 3
 STARTING_LOCATION_FIELDS = (
     "areaId",
     "areaName",
@@ -115,9 +120,6 @@ STARTING_LOCATION_FIELDS = (
     "politicalClimate",
 )
 
-
-class StartupAIResponseError(RuntimeError):
-    """Raised when a startup interview turn has no usable provider response."""
 
 # ===== MAIN ORCHESTRATION =====
 
@@ -170,54 +172,52 @@ def initialize_game_files_from_bu():
     return initialized_count
 
 def run_startup_sequence():
-    """Main entry point for startup wizard"""
+    """Resume the shared setup, publishing success only from verified files."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
 
-    print("\nDungeon Master: Welcome to your 5th Edition Adventure!")
-    print("Dungeon Master: Let's set up your character and choose your adventure...\n")
-    
-    # Initialize game files from BU templates first
+    print("\nDungeon Master: Welcome! Choose your adventure, then build your character.")
     initialize_game_files_from_bu()
-    
     try:
-        # Initialize startup conversation
         conversation = initialize_startup_conversation()
-        
-        # Step 1: Select module
-        selected_module = select_module(conversation)
-        if not selected_module:
-            print("Setup cancelled. Exiting...")
+        module = select_module(conversation)
+        if not module:
             return False
-        
-        print(f"\nDungeon Master: Great choice! You've selected: {selected_module['display_name']}")
-        
-        # Step 2: Character selection/creation
-        character_name = select_or_create_character(conversation, selected_module)
-        if not character_name:
-            print("Character setup cancelled. Exiting...")
-            return False
-        
-        # Step 3: Update party tracker
-        update_party_tracker(selected_module['name'], character_name)
-        
-        # Cleanup
+        progress = _startup_progress(conversation) or {}
+        if progress.get("candidate") and progress.get("phase") in {"approved", "character_saved", "ready"}:
+            with _startup_operation() as scope:
+                _commit_startup_build(conversation, module, progress["candidate"],
+                                      live_scope=scope, preserve_existing=True)
+            character = progress["candidate"]
+        else:
+            name = (create_new_character(conversation, module)
+                    if _startup_interview_started(conversation)
+                    else select_or_create_character(conversation, module))
+            if not name:
+                return False
+            character = safe_json_load(ModulePathManager(module["name"]).get_character_unified_path(name))
+        if not _startup_build_ready(module["name"], character):
+            raise LiveProviderSuperseded("Startup state changed before handoff")
         cleanup_startup_conversation()
-        
-        print(f"\nDungeon Master: Setup complete! Welcome, {character_name}!")
-        print(f"Dungeon Master: Your adventure in {selected_module['display_name']} is about to begin...\n")
-        
+        print(f"\nDungeon Master: Your character setup is saved and verified. Welcome, {character['name']}!")
         return True
-        
     except LiveProviderSuperseded:
         raise
-    except Exception as e:
-        print(f"Error: Error during setup: {e}")
-        cleanup_startup_conversation()
+    except (KeyboardInterrupt, EOFError):
+        print("Dungeon Master: Setup paused. Your choices are retained.")
         return False
+
 
 def startup_required(party_file="party_tracker.json"):
     """Check if player character or module is missing"""
     try:
+        history = safe_json_load(STARTUP_CONVERSATION_FILE)
+        if isinstance(history, list):
+            progress = _startup_progress(history)
+            if progress and progress["phase"] != "ready":
+                return True
+            # A ready checkpoint already passed commit/read-back. If archiving
+            # failed, it is history, not authority over subsequent HP, XP or
+            # travel. Resume from the current campaign below, not its old build.
         party_data = safe_json_load(party_file)
         if not party_data:
             return True
@@ -263,18 +263,32 @@ def scan_available_modules():
 
     The module_refresh_lock is kept (benign single-writer; guarantees any
     downstream lock-ownership assertions pass and serializes against a
-    concurrent build) and returns a VISIBLE error on the rare contention case.
+    concurrent build). Contention retains the scan and remains cancellable;
+    a busy catalog is not an empty catalog.
     """
     from utils.module_refresh_lock import module_refresh_lock
+    from utils.capture.live_provider_call import _interruptible_wait, drain_live_saves
+    from utils.transient_filesystem import is_transient_filesystem_error
 
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            print(
-                "Error: Module scan could not acquire the module refresh lock; "
-                "another operation is in progress. Restart and try again."
+    with _startup_operation() as scope:
+        while True:
+            with _startup_commit_guard(scope):
+                pass
+            try:
+                with module_refresh_lock(max_wait_seconds=0.1) as acquired:
+                    if acquired:
+                        with _startup_commit_guard(scope):
+                            pass
+                        return _scan_available_modules_locked()
+            except OSError as exc:
+                if not is_transient_filesystem_error(exc):
+                    raise
+            drain_live_saves(scope)
+            _interruptible_wait(
+                0.2, scope,
+                "Waiting for the module catalog; your startup choices are retained.",
+                display_status,
             )
-            return []
-        return _scan_available_modules_locked()
 
 
 def _scan_available_modules_locked():
@@ -335,12 +349,14 @@ def _scan_available_modules_locked():
                 
                 if detected_data and detected_data.get('areas'):
                     # Calculate actual level range from area data
-                    levels = []
-                    for area_data in detected_data['areas'].values():
-                        if 'recommendedLevel' in area_data:
-                            levels.append(area_data['recommendedLevel'])
+                    # The analyzer fills absent levels with 1; use actual data
+                    # rather than treating that default as a recommendation.
+                    actual_data = load_module_for_ai_analysis(item) or {}
+                    levels = [area['recommendedLevel']
+                              for area in actual_data.get('areas', {}).values()
+                              if type(area.get('recommendedLevel')) is int]
                     
-                    level_range = {'min': 1, 'max': 1}
+                    level_range = {}
                     if levels:
                         level_range = {'min': min(levels), 'max': max(levels)}
                     
@@ -362,7 +378,7 @@ def _scan_available_modules_locked():
                     'name': item,
                     'display_name': module_data.get('moduleName', item),
                     'description': module_data.get('moduleDescription', 'No description available'),
-                    'level_range': module_data.get('moduleMetadata', {}).get('levelRange', {'min': 1, 'max': 3}),
+                    'level_range': module_data.get('moduleMetadata', {}).get('levelRange', {}),
                     'play_time': module_data.get('moduleMetadata', {}).get('estimatedPlayTime', 'Unknown'),
                     'path': module_path
                 })
@@ -372,6 +388,28 @@ def _scan_available_modules_locked():
     
     status_ready()
     return modules
+
+def _present_startup_menu(conversation, prompt, *, phase="startup_interview"):
+    """Keep catalog presentation separate from retained interview instructions."""
+    request = [
+        {"role": "system", "content": (
+            "Present only the supplied startup menu in plain ASCII prose. "
+            "Preserve every supplied option and its exact number. Do not choose "
+            "for the player, create a character, or claim anything was saved. "
+            "This is menu presentation, not a character interview; do not emit JSON."
+        )},
+        {"role": "user", "content": prompt},
+    ]
+    with _startup_operation() as scope:
+        response = get_ai_response(request, persist_response=False,
+                                   live_scope=scope, startup_phase=phase)
+        conversation.extend([
+            {"role": "system", "content": prompt},
+            {"role": "assistant", "content": response},
+        ])
+        save_startup_conversation(conversation, live_scope=scope)
+        print(f"Dungeon Master: {response}")
+
 
 def present_module_options(conversation, modules):
     """Show available modules to player using AI"""
@@ -383,8 +421,10 @@ def present_module_options(conversation, modules):
     module_list = []
     for i, module in enumerate(modules, 1):
         level_range = module['level_range']
+        level_label = (f"Levels {level_range['min']}-{level_range['max']}"
+                       if 'min' in level_range and 'max' in level_range else 'Level range unknown')
         module_list.append(
-            f"{i}. **{module['display_name']}** (Levels {level_range.get('min', 1)}-{level_range.get('max', 3)})\n"
+            f"{i}. **{module['display_name']}** ({level_label})\n"
             f"   {module['description']}\n"
             f"   Estimated play time: {module['play_time']}"
         )
@@ -397,25 +437,23 @@ def present_module_options(conversation, modules):
 Start with: "Welcome to NeverEndingQuest! This adventure game uses the SRD 5.2.1 rules (based on the world's most popular 5th edition roleplaying game) to bring you an immersive text-based fantasy experience."
 
 Then mention these key features:
-• AI-powered storytelling that adapts to your choices
-• Turn-based tactical combat with dice rolling
-• Character progression from level 1 to 20
-• Inventory management and magical items
-• Multiple adventure modules with interconnected stories
-• Save/load system to continue your adventures
+- AI-powered storytelling that adapts to your choices
+- Turn-based tactical combat with dice rolling
+- Character progression from level 1 to 20
+- Inventory management and magical items
+- Multiple adventure modules with interconnected stories
+- Save/load system to continue your adventures
 
 Available Modules:
 {modules_text}
 
-Note that new players should start with the lowest level module (usually 1-2) to experience the full story and character progression.
+Present EVERY listed module with its exact menu number. Recommend an adventure
+only from its actual known level metadata; unknown is not level 1. Never choose
+for the player. Even a sole installed module needs the player's confirmation.
 
 Ask the player which module they'd like to play, and explain that they can just tell you the number (1, 2, etc.) or the name of the module they prefer."""
     
-    conversation.append({"role": "system", "content": ai_prompt})
-    
-    # Get AI response
-    response = get_ai_response(conversation)
-    print(f"Dungeon Master: {response}")
+    _present_startup_menu(conversation, ai_prompt, phase="startup_module_selection")
     
     return modules
 
@@ -427,22 +465,19 @@ def select_module(conversation):
         print("Error: No modules available. Please add modules to the modules/ directory.")
         return None
     
-    if len(modules) == 1:
-        print(f"Dungeon Master: Only one module available: {modules[0]['display_name']}")
-        print(f"Dungeon Master: {modules[0]['description']}")
-        return modules[0]
-    
-    # For fresh installations, auto-select lowest level module
-    lowest_level_module = find_lowest_level_module()
-    if lowest_level_module:
-        module_name = lowest_level_module.get('moduleName')
-        # Find matching module in scanned modules
+    checkpoint = _startup_progress(conversation)
+    if checkpoint and checkpoint.get('module'):
         for module in modules:
-            if module['name'] == module_name:
-                print(f"Dungeon Master: Auto-selected starting module: {module['display_name']}")
-                print(f"Dungeon Master: {module['description']}")
-                print(f"Dungeon Master: Level Range: {lowest_level_module.get('levelRange', {})}")
+            if module['name'] == checkpoint['module']:
                 return module
+        print("Dungeon Master: Your selected adventure is no longer installed. Please choose an available adventure; your character choices are retained.")
+
+    # Module replacement invalidates location readiness, not player approval.
+    # Resume the existing commit/read-back path for an already approved build.
+    selection_phase = 'approved' if (
+        checkpoint and checkpoint.get('candidate') and checkpoint.get('phase') in
+        {'approved', 'character_saved', 'ready'}
+    ) else 'interview'
     
     # Present options to player
     presented_modules = present_module_options(conversation, modules)
@@ -464,7 +499,10 @@ def select_module(conversation):
             try:
                 choice_num = int(user_input)
                 if 1 <= choice_num <= len(modules):
-                    return modules[choice_num - 1]
+                    selected = modules[choice_num - 1]
+                    _set_startup_progress(conversation, module=selected['name'],
+                                          phase=selection_phase, location=None)
+                    return selected
                 else:
                     print(f"Dungeon Master: Please choose a number between 1 and {len(modules)}")
                     continue
@@ -473,10 +511,17 @@ def select_module(conversation):
             
             # Try to match by name
             user_lower = user_input.lower()
-            for module in modules:
-                if (user_lower in module['display_name'].lower() or 
-                    user_lower in module['name'].lower()):
-                    return module
+            matches = [module for module in modules
+                       if user_lower in module['display_name'].lower()
+                       or user_lower in module['name'].lower()]
+            if len(matches) == 1:
+                selected = matches[0]
+                _set_startup_progress(conversation, module=selected['name'],
+                                      phase=selection_phase, location=None)
+                return selected
+            if len(matches) > 1:
+                print("Dungeon Master: That name matches more than one adventure. Please choose its displayed number.")
+                continue
             
             print("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or name of the module.")
             
@@ -486,30 +531,34 @@ def select_module(conversation):
 # ===== CHARACTER MANAGEMENT =====
 
 def scan_existing_characters(module_name):
-    """Find existing player characters in module"""
+    """List player identities, with canonical root files taking precedence."""
     characters = []
     path_manager = ModulePathManager(module_name)
-    char_dir = os.path.join(path_manager.module_dir, "characters")
-    
-    if not os.path.exists(char_dir):
-        return characters
-    
-    for filename in os.listdir(char_dir):
-        if filename.endswith('.json') and not filename.endswith('.bak'):
-            char_path = f"{char_dir}/{filename}"
+    identities = set()
+    for char_dir in ("characters", os.path.join(path_manager.module_dir, "characters")):
+        if not os.path.isdir(char_dir):
+            continue
+        for filename in sorted(os.listdir(char_dir)):
+            if not filename.endswith('.json') or filename.endswith('_BU.json'):
+                continue
+            char_path = os.path.join(char_dir, filename)
             try:
                 char_data = safe_json_load(char_path)
                 if char_data and char_data.get('character_role') == 'player':
+                    identity = path_manager.format_filename(char_data.get('name') or filename[:-5])
+                    if identity in identities:
+                        continue
+                    identities.add(identity)
                     characters.append({
                         'name': char_data.get('name', filename[:-5]),
                         'level': char_data.get('level', 1),
                         'race': char_data.get('race', 'Unknown'),
                         'class': char_data.get('class', 'Unknown'),
-                        'filename': filename[:-5],  # Remove .json
+                        'filename': identity,
                         'path': char_path
                     })
             except Exception as e:
-                print(f"Warning: Warning: Could not load character {filename}: {e}")
+                print(f"Warning: Could not load character {filename}: {e}")
     
     return characters
 
@@ -519,9 +568,7 @@ def present_character_options(conversation, characters, module_name):
         # No existing characters
         ai_prompt = f"""The player has chosen a module but there are no existing player characters. Let them know they'll need to create a new character for this adventure. Be encouraging and exciting about the character creation process!"""
         
-        conversation.append({"role": "system", "content": ai_prompt})
-        response = get_ai_response(conversation)
-        print(f"Dungeon Master: {response}")
+        _present_startup_menu(conversation, ai_prompt)
         return "create_new"
     
     # Build character list
@@ -544,9 +591,7 @@ You can also mention option: "new" or "create" to make a new character.
 
 Be helpful and explain that they can type the character number, character name, or "new" to create a fresh character."""
     
-    conversation.append({"role": "system", "content": ai_prompt})
-    response = get_ai_response(conversation)
-    print(f"Dungeon Master: {response}")
+    _present_startup_menu(conversation, ai_prompt)
     
     return characters
 
@@ -583,7 +628,7 @@ def select_or_create_character(conversation, module):
                 if 1 <= choice_num <= len(characters):
                     selected_char = characters[choice_num - 1]
                     print(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
-                    return selected_char['filename']
+                    return _use_existing_startup_character(conversation, module, selected_char)
                 else:
                     print(f"Dungeon Master: Please choose a number between 1 and {len(characters)}, or 'new' to create a character")
                     continue
@@ -595,7 +640,7 @@ def select_or_create_character(conversation, module):
             for char in characters:
                 if user_lower in char['name'].lower():
                     print(f"Dungeon Master: Excellent! You've selected {char['name']}!")
-                    return char['filename']
+                    return _use_existing_startup_character(conversation, module, char)
             
             print("Dungeon Master: I didn't understand that. Please enter the character number, character name, or 'new' to create a new character.")
             
@@ -605,229 +650,193 @@ def select_or_create_character(conversation, module):
 # ===== CHARACTER CREATION =====
 
 def create_new_character(conversation, module):
-    """Main character creation flow using AI interview with error recovery"""
-    print("\nDungeon Master: Let's create your character!")
+    """The shared interview owns validation and durable finalization."""
+    character = ai_character_interview(conversation, module)
+    return character["name"] if character else None
 
-    # The interview flow owns its own validation/requery loop.
-    character_data = ai_character_interview(conversation, module)
-    if not character_data:
-        print("Error: Character creation failed.")
+
+def _use_existing_startup_character(conversation, module, selected):
+    character = safe_json_load(selected["path"])
+    if not character:
+        print("Dungeon Master: That character file is unavailable. Please choose again.")
         return None
-
-    # Final deterministic repair/validation pass before persistence.
-    character_data, _ = repair_startup_character_sheet(character_data)
-    valid, error = validate_character_with_recovery(character_data)
-    if not valid:
-        print(f"Error: Character validation failed after final repair: {error}")
-        return None
-
-    character_name = character_data['name']
-    success = save_character_to_module(character_data, module['name'])
-    if success:
-        print(f"Dungeon Master: Character {character_name} created successfully!")
-        from updates.update_character_info import normalize_character_name
-        return normalize_character_name(character_name)
-
-    print(f"Error: Failed to save character {character_name}")
-    return None
+    with _startup_operation() as scope:
+        _set_startup_progress(conversation, live_scope=scope, phase="approved",
+                              candidate=character, character_path=selected["path"])
+        _commit_startup_build(conversation, module, character,
+                              live_scope=scope, preserve_existing=True)
+    return character["name"]
 
 def build_character_creation_system_prompt():
     """Build and return the startup wizard character-creation system prompt."""
     return _build_character_creation_system_prompt()
 
-def _is_confirmation_trigger(user_input):
-    if not isinstance(user_input, str):
-        return False
+def _latest_player_index(conversation):
+    return next((i for i in range(len(conversation) - 1, -1, -1)
+                 if conversation[i].get("role") == "user"), None)
 
-    normalized = re.sub(r"\s+", " ", user_input.strip().lower())
-    if not normalized:
-        return False
 
-    explicit_phrases = {
-        "yes",
-        "confirm",
-        "confirmed",
-        "looks good",
-        "this looks good",
-        "yes this looks good",
-        "yes, this looks good",
-        "please finalize",
-        "finalize",
-        "approved",
-        "approve",
-    }
-    if normalized in explicit_phrases:
-        return True
-
-    if re.search(r"\b(confirm|finalize|approved?)\b", normalized):
-        return True
-
-    if re.fullmatch(r"yes[!. ]*", normalized):
-        return True
-
-    if re.search(r"\b(looks good|all looks good)\b", normalized):
-        return True
-
+def _startup_interview_started(conversation):
+    """Recognize the existing code-authored task record, never approval prose."""
+    for message in conversation:
+        if message.get("role") != "system":
+            continue
+        try:
+            record = json.loads(message.get("content", ""))
+        except (ValueError, TypeError):
+            continue
+        if isinstance(record, dict) and record.get("task_purpose") == "startup_character_interview":
+            return True
     return False
 
 
-def _build_json_retry_message(error_text):
-    return (
-        "INTERNAL SYSTEM STEP: Previous character JSON failed validation: "
-        f"{error_text}. Return only a single valid JSON object that matches the "
-        "character schema exactly. Include top-level \"ammunition\" as an array."
-    )
+def _startup_progress(conversation):
+    try:
+        return parse_startup_checkpoint(conversation)
+    except ValueError as exc:
+        warning(f"Startup progress needs reconciliation: {exc}", category="startup")
+        return None
+
+
+def _set_startup_progress(conversation, *, live_scope=None, **changes):
+    record = copy.deepcopy(_startup_progress(conversation)) or {
+        "startup_checkpoint_version": 1, "startup_id": str(uuid4()),
+        "phase": "module_selection", "module": None, "latest_user_index": None,
+        "candidate": None, "location": None, "character_path": None,
+    }
+    record.update(changes)
+    record["latest_user_index"] = _latest_player_index(conversation)
+    conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=True)})
+    save_startup_conversation(conversation, live_scope=live_scope)
+    return record
+
+
+def _review_startup_response(conversation, proposal, committed_facts, *, live_scope):
+    review_messages = [
+        {"role": "system", "content": build_startup_review_prompt()},
+        {"role": "user", "content": json.dumps({
+            "task_purpose": "startup_semantic_review",
+            "interview": conversation, "proposal": proposal,
+            "latest_user_index": _latest_player_index(conversation),
+            "committed_facts": committed_facts,
+        }, ensure_ascii=True)},
+    ]
+    while True:
+        raw = get_ai_response(review_messages, {"type": "json_object"},
+                              persist_response=False, live_scope=live_scope,
+                              startup_phase="startup_review")
+        try:
+            return parse_startup_review(raw)
+        except ValueError as exc:
+            review_messages.append({"role": "system", "content": (
+                f"The rejected review has invalid structure: {exc}. "
+                "Return the complete corrected review object."
+            )})
 
 
 def ai_character_interview(conversation, module):
-    """AI-powered character creation interview using agentic approach"""
-    
-    try:
-        enhanced_system_prompt = build_character_creation_system_prompt()
+    """One agent-authored, independently reviewed startup turn at a time."""
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded, open_live_turn_scope, finish_live_turn_scope,
+    )
 
-        # Continue on the active startup conversation so retries and confirmations
-        # are preserved in the same history object the rest of startup uses.
-        creation_conversation = conversation if isinstance(conversation, list) else []
-        creation_conversation.append({"role": "system", "content": enhanced_system_prompt})
-        creation_conversation.append({
-            "role": "user",
-            "content": (
-                f"You are helping a new player create their first level 1 character for the "
-                f"{module['display_name']} adventure. Welcome them to the adventure, set an "
-                "immersive tone that brings them into the game world, and begin the character "
-                "creation process. Start by finding out what kind of hero they want to become. "
-                "Use phrases like 'Let's get you started by finding out a little bit about you' "
-                "to engage them in the process."
-            )
-        })
-        
-        print("\nDungeon Master: Starting character creation with AI assistant...")
-        print("=" * 50)
-        
-        awaiting_final_json = False
-        final_json_attempts = 0
-        nonfinal_json_attempts = 0
-
-        # Interactive conversation loop
-        while True:
-            try:
-                # Get AI response
-                response = get_ai_response(
-                    creation_conversation,
-                    response_format={"type": "json_object"} if awaiting_final_json else None,
-                )
-
-                json_blob = extract_json_object(response)
-                if json_blob:
-                    nonfinal_json_attempts = 0
-                    if not awaiting_final_json:
-                        creation_conversation.append({
-                            "role": "system",
-                            "content": (
-                                "INTERNAL SYSTEM STEP: You emitted machine-readable JSON during interview mode. "
-                                "Do not expose JSON to the player. Continue in normal in-world prose and ask "
-                                "for the next character-creation choice."
-                            ),
-                        })
-                        continue
-
-                    print("\nDungeon Master: Finalizing your hero...")
+    conversation.append({"role": "system", "content": build_character_creation_system_prompt()})
+    conversation.append({"role": "system", "content": json.dumps({
+        "task_purpose": "startup_character_interview",
+        "selected_adventure": module,
+        "instruction": "Continue the actual interview or begin with an identity question. "
+                       "Old history is context, not proof of approval or saved state. "
+                       "Follow the current startup response contract.",
+    }, ensure_ascii=True)})
+    print("\nDungeon Master: Let's build your character together.")
+    while True:
+        scope = open_live_turn_scope()
+        try:
+            save_startup_conversation(conversation, live_scope=scope)
+            correction_context = copy.deepcopy(conversation)
+            while True:
+                current_index = _latest_player_index(conversation)
+                facts = {
+                    "selected_module": module["name"],
+                    "phase": (_startup_progress(conversation) or {}).get("phase", "interview"),
+                    "character_saved": False, "adventure_ready": False,
+                }
+                request = correction_context + [{"role": "system", "content": json.dumps({
+                    "latest_user_index": current_index, "committed_facts": facts,
+                    "instruction": "Return the complete startup response object, not a bare sheet.",
+                }, ensure_ascii=True)}]
+                raw = get_ai_response(request, {"type": "json_object"},
+                                      persist_response=False, live_scope=scope)
+                try:
+                    proposal = parse_startup_response(raw, latest_user_index=current_index)
+                    if proposal["decision"] == "finalize_character":
+                        # Preserve the existing narrow repairs before schema and
+                        # semantic review so the reviewer sees the actual candidate.
+                        character = sanitize_character_data(proposal["character"])
+                        character, _ = repair_required_ammunition_field(character)
+                        character, _ = repair_startup_character_sheet(character)
+                        valid, detail = validate_character_with_recovery(character)
+                        if not valid:
+                            raise ValueError(detail)
+                        try:
+                            validate(character, safe_json_load("schemas/char_schema.json"))
+                        except ValidationError as exc:
+                            raise ValueError(exc.message) from exc
+                        proposal["character"] = character
+                    review = _review_startup_response(request, proposal, facts, live_scope=scope)
+                except ValueError as exc:
+                    correction_context.append({"role": "system", "content": (
+                        f"Rejected startup proposal (not approved): {exc}. "
+                        f"Correct this response using the retained player choices: {raw}"
+                    )})
+                    continue
+                if not review["accepted"]:
+                    correction_context.append({"role": "system", "content": json.dumps({
+                        "rejected_proposal": proposal, "review_feedback": review["feedback"],
+                        "needs_player_clarification": review["needs_player_clarification"],
+                        "instruction": ("Propose a continue_interview question; do not finalize."
+                                        if review["needs_player_clarification"]
+                                        else "Correct the proposal without inventing a new player choice."),
+                    }, ensure_ascii=True)})
+                    continue
+                if scope.is_superseded():
+                    raise LiveProviderSuperseded("startup review superseded")
+                conversation.append({"role": "assistant", "content": json.dumps(proposal, ensure_ascii=True)})
+                if proposal["decision"] == "finalize_character":
+                    _set_startup_progress(conversation, live_scope=scope, phase="approved",
+                                          candidate=proposal["character"], character_path=None)
                     try:
-                        # Additional JSON sanitization for safe character data
-                        cleaned_response = sanitize_json_string(json_blob)
-
-                        character_data = json.loads(cleaned_response)
-
-                        # Further sanitize the loaded character data
-                        character_data = sanitize_character_data(character_data)
-                        character_data, _ = repair_required_ammunition_field(character_data)
-                        character_data, _ = repair_startup_character_sheet(character_data)
-                        valid, error = validate_character_with_recovery(character_data)
-                        if valid:
-                            print("\nDungeon Master: Character data received! Finalizing your hero...")
-                            return character_data
-
-                        final_json_attempts += 1
-                        creation_conversation.append({
-                            "role": "system",
-                            "content": _build_json_retry_message(error),
-                        })
-                        awaiting_final_json = True
-                        if final_json_attempts >= 3:
-                            print(f"\nError: Unable to validate finalized character JSON after retries: {error}")
-                            return None
+                        _commit_startup_build(conversation, module, proposal["character"],
+                                              live_scope=scope)
+                    except FileExistsError as exc:
+                        _set_startup_progress(conversation, live_scope=scope, phase="interview",
+                                              candidate=None, character_path=None)
+                        correction_context.append({"role": "system", "content": (
+                            f"Character identity conflict: {exc}. Ask the player for a distinct "
+                            "name, retaining the rest of the build. Nothing was overwritten."
+                        )})
                         continue
-                    except json.JSONDecodeError as e:
-                        print(f"\nError: Invalid JSON received: {e}")
-                        print("Asking AI to try again...")
-                        final_json_attempts += 1
-                        creation_conversation.append({
-                            "role": "system",
-                            "content": _build_json_retry_message(
-                                f"Invalid JSON: {e}"
-                            ),
-                        })
-                        awaiting_final_json = True
-                        if final_json_attempts >= 3:
-                            return None
-                        continue
-                    except Exception as e:
-                        print(f"\nError: Error processing character data: {e}")
-                        final_json_attempts += 1
-                        creation_conversation.append({
-                            "role": "system",
-                            "content": _build_json_retry_message(f"Processing error: {e}"),
-                        })
-                        awaiting_final_json = True
-                        if final_json_attempts >= 3:
-                            return None
-                        continue
+                    return proposal["character"]
+                _set_startup_progress(conversation, live_scope=scope, phase="interview")
+                print(f"\nDungeon Master: {proposal['narration']}")
+                break
+        except LiveProviderSuperseded:
+            raise
+        finally:
+            finish_live_turn_scope(scope)
 
-                if awaiting_final_json:
-                    final_json_attempts += 1
-                    creation_conversation.append({
-                        "role": "system",
-                        "content": _build_json_retry_message(
-                            "The assistant returned prose instead of JSON."
-                        ),
-                    })
-                    if final_json_attempts >= 3:
-                        return None
-                    continue
-                else:
-                    nonfinal_json_attempts = 0
-
-                print(f"\nDungeon Master: {response}")
-
-                # Get user input - empty input handled by outer loop
+        # No active provider scope while waiting for the next player answer.
+        try:
+            while True:
                 user_input = input("\nYour response: ").strip()
-                if not user_input:
-                    # Empty input: continue outer loop without adding to conversation
-                    continue
-                
-                if user_input.lower() in ['quit', 'exit', 'cancel']:
-                    print("Error: Character creation cancelled.")
-                    return None
-                
-                # Add valid user input to conversation
-                creation_conversation.append({"role": "user", "content": user_input})
-                if _is_confirmation_trigger(user_input):
-                    creation_conversation.append({
-                        "role": "system",
-                        "content": "INTERNAL SYSTEM STEP: The player has confirmed the character. Return only the finalized character JSON object. Use valid JSON only and include top-level \"ammunition\" as an array.",
-                    })
-                    awaiting_final_json = True
-                    final_json_attempts = 0
-                else:
-                    awaiting_final_json = False
-                
-            except KeyboardInterrupt:
-                print("\nError: Character creation cancelled.")
-                return None
-                
-    except Exception as e:
-        print(f"Error: Error during character creation: {e}")
-        return None
+                if user_input:
+                    break
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if user_input.lower() in {"quit", "exit", "cancel"}:
+            print("Dungeon Master: Character creation paused. Your choices are retained.")
+            return None
+        conversation.append({"role": "user", "content": user_input})
 
 def load_text_file(filename):
     """Load text file content"""
@@ -1482,150 +1491,200 @@ def auto_fix_character_data(character_data):
 
 # ===== FILE OPERATIONS =====
 
-def save_character_to_module(character_data, module_name):
-    """Save character file to module directory"""
-    try:
-        status_saving()
-        character_data, _ = repair_startup_character_sheet(character_data)
-        # Use ModulePathManager for proper path handling
-        path_manager = ModulePathManager(module_name)
-        from updates.update_character_info import normalize_character_name
-        char_name = normalize_character_name(character_data['name'])
-        char_file = path_manager.get_character_unified_path(char_name)
-        
-        # Create character directory if it doesn't exist
-        char_dir = os.path.dirname(char_file)
-        os.makedirs(char_dir, exist_ok=True)
-        
-        # Save character file atomically
-        if not safe_write_json(char_file, character_data):
-            status_ready()
-            return False
+def _emit_startup_phase(phase):
+    """Use the shared marker stream without importing main or a web surface."""
+    print("STARTUP_MARKER: " + json.dumps({"phase": phase}, ensure_ascii=True))
 
-        # Check if file was created successfully
-        if os.path.exists(char_file):
-            status_ready()
-            return True
-        else:
-            status_ready()
-            return False
-        
-    except Exception as e:
-        print(f"Error: Error saving character: {e}")
-        return False
 
-def update_party_tracker(module_name, character_name):
-    """Update party_tracker.json with module and character selections"""
+@contextmanager
+def _startup_commit_guard(scope):
+    with scope.lock:
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+        if scope.is_superseded():
+            raise LiveProviderSuperseded("startup publication superseded")
+        yield
+
+
+@contextmanager
+def _startup_operation(live_scope=None):
     from utils.capture.live_provider_call import (
-        LiveProviderSuperseded,
-        abort_live_turn_scope,
-        finish_live_turn_scope,
-        open_live_turn_scope,
+        get_live_turn_scope, open_live_turn_scope, finish_live_turn_scope,
     )
-
-    live_scope = None
+    scope = live_scope or get_live_turn_scope()
+    owned = scope is None
+    if owned:
+        scope = open_live_turn_scope()
     try:
-        # Load existing party tracker or create new one
-        party_data = safe_json_load("party_tracker.json") or {}
-        
-        # Update module
-        party_data["module"] = module_name
-        
-        # Update party members - store display name
-        party_data["partyMembers"] = [character_name]
-        
-        # Initialize other required fields if they don't exist
-        if "partyNPCs" not in party_data:
-            party_data["partyNPCs"] = []
-        
-        if "worldConditions" not in party_data:
-            from model_config import MODEL_PROVIDER
-
-            request_provider = MODEL_PROVIDER
-            if request_provider == "openai":
-                live_scope = open_live_turn_scope()
-            # Get AI-determined starting location for the selected module
-            starting_location = get_ai_starting_location(
-                {'moduleName': module_name},
-                request_provider=request_provider,
-            )
-            starting_location = (
-                _validate_starting_location(starting_location)
-                or get_fallback_starting_location()
-            )
-            
-            party_data["worldConditions"] = {
-                "year": 1492,
-                "month": "Springmonth", 
-                "day": 1,
-                "time": "09:00:00",
-                "weather": starting_location.get("weather", "Clear skies"),
-                "season": "Spring",
-                "dayNightCycle": "Day",
-                "moonPhase": "New Moon",
-                "currentLocation": starting_location.get("locationName", ""),
-                "currentLocationId": starting_location.get("locationId", ""),
-                "currentArea": starting_location.get("areaName", ""),
-                "currentAreaId": starting_location.get("areaId", ""),
-                "majorEventsUnderway": [],
-                "politicalClimate": starting_location.get("politicalClimate", ""),
-                "activeEncounter": "",
-                "activeCombatEncounter": "",
-                # Required by party_schema.json; the location's own detail
-                # text when it has one (#271).
-                "weatherConditions": starting_location.get("weatherConditions", ""),
-            }
-        
-        # DEPRECATED: activeQuests is no longer used - module_plot.json is the single source of truth for quest data
-        # if "activeQuests" not in party_data:
-        #     party_data["activeQuests"] = []
-        
-        # Save updated party tracker
-        if live_scope is not None:
-            with live_scope.lock:
-                if live_scope.is_superseded():
-                    raise LiveProviderSuperseded("startup location turn superseded")
-                success = safe_write_json("party_tracker.json", party_data)
-        else:
-            success = safe_write_json("party_tracker.json", party_data)
-        if live_scope is not None and success:
-            finish_live_turn_scope(live_scope)
-            live_scope = None
-        return success
-
-    except LiveProviderSuperseded:
-        if live_scope is not None:
-            finish_live_turn_scope(live_scope)
-            live_scope = None
-        raise
-    except Exception as e:
-        print(f"Error: Error updating party tracker: {e}")
-        return False
+        yield scope
     finally:
-        if live_scope is not None:
-            abort_live_turn_scope(
-                "startup wizard stopped before party state was durable",
-                scope=live_scope,
-            )
+        if owned:
+            finish_live_turn_scope(scope)
+
+
+def _startup_write_wait(scope, detail):
+    from utils.capture.live_provider_call import _interruptible_wait, drain_live_saves
+    # A completed per-file boundary can service Save without ending the build.
+    drain_live_saves(scope)
+    warning(f"Startup write remains pending: {detail}", category="startup")
+    _interruptible_wait(1.0, scope,
+                        "Still saving your character setup; your choices are retained.",
+                        display_status)
+
+
+def save_character_to_module(character_data, module_name, *, live_scope=None, preserve_existing=False):
+    """Publish one canonical root sheet, never replace a different identity."""
+    from utils.file_operations import atomic_writer
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    with _startup_operation(live_scope) as scope:
+        _emit_startup_phase("startup_character_commit")
+        data = copy.deepcopy(character_data)
+        if not preserve_existing:
+            data, _ = repair_startup_character_sheet(data)
+            validate(data, safe_json_load("schemas/char_schema.json"))
+        path_manager = ModulePathManager(module_name)
+        char_file = path_manager.get_character_unified_path(data['name'])
+        os.makedirs(os.path.dirname(char_file), exist_ok=True)
+        guard = lambda: _startup_commit_guard(scope)
+        acquired = False
+        try:
+            atomic_writer.acquire_lock(char_file, commit_guard=guard)
+            acquired = True
+            if os.path.exists(char_file):
+                # Equality is values, not prose or a digest. Existing sheets do
+                # not receive defaults; an interrupted equal write just resumes.
+                if safe_json_load(char_file) != data:
+                    raise FileExistsError(f"A different character already exists at {char_file}")
+                return True
+            if not safe_write_json(char_file, data, acquire_lock=False, commit_guard=guard):
+                return False
+            return safe_json_load(char_file) == data
+        except (LiveProviderSuperseded, FileExistsError):
+            raise
+        except Exception as exc:
+            warning(f"Character publication pending: {exc}", category="startup")
+            return False
+        finally:
+            if acquired:
+                atomic_writer.release_lock(char_file)
+
+
+def _resolve_startup_location(module_name, candidate):
+    """Resolve exact area/location IDs from this installed adventure."""
+    if not isinstance(candidate, dict):
+        return None
+    module_data = load_module_for_ai_analysis(module_name) or {}
+    area = module_data.get("areas", {}).get(candidate.get("areaId"))
+    if not isinstance(area, dict):
+        return None
+    locations = area.get("locations", [])
+    if isinstance(locations, dict):
+        locations = list(locations.values())
+    location = next((item for item in locations if isinstance(item, dict)
+                     and item.get("locationId") == candidate.get("locationId")), None)
+    if location is None or not area.get("areaName") or not location.get("name"):
+        return None
+    return dict(candidate, areaName=area["areaName"], locationName=location["name"])
+
+
+def update_party_tracker(module_name, character_name, *, live_scope=None, starting_location=None):
+    """Commit the selected identity and a real location through the shared writer."""
+    with _startup_operation(live_scope) as scope:
+        _emit_startup_phase("startup_party_commit")
+        party_data = safe_json_load("party_tracker.json") or {}
+        same_module = party_data.get("module") == module_name
+        world = copy.deepcopy(party_data.get("worldConditions") or {})
+        current = {
+            "areaId": world.get("currentAreaId"), "locationId": world.get("currentLocationId"),
+            "areaName": world.get("currentArea"), "locationName": world.get("currentLocation"),
+            "weather": world.get("weather"), "politicalClimate": world.get("politicalClimate"),
+        }
+        location = _resolve_startup_location(module_name, starting_location)
+        if location is None and same_module:
+            location = _resolve_startup_location(module_name, current)
+        if location is None:
+            location = get_ai_starting_location({"moduleName": module_name}, live_scope=scope)
+
+        defaults = {
+            "year": 1492, "month": "Springmonth", "day": 1, "time": "09:00:00",
+            "season": "Spring", "dayNightCycle": "Day", "moonPhase": "New Moon",
+            "majorEventsUnderway": [], "activeEncounter": "", "activeCombatEncounter": "",
+            "weatherConditions": "",
+        }
+        for key, value in defaults.items():
+            world.setdefault(key, value)
+        world.update({
+            "currentLocation": location["locationName"], "currentLocationId": location["locationId"],
+            "currentArea": location["areaName"], "currentAreaId": location["areaId"],
+        })
+        for key in ("weather", "politicalClimate"):
+            if location.get(key):
+                world[key] = location[key]
+        party_data["module"] = module_name
+        party_data["partyMembers"] = [character_name]
+        party_data.setdefault("partyNPCs", [])
+        party_data["worldConditions"] = world
+        validate(party_data, safe_json_load("schemas/party_schema.json"))
+        success = safe_write_json("party_tracker.json", party_data,
+                                  commit_guard=lambda: _startup_commit_guard(scope))
+        return success and safe_json_load("party_tracker.json") == party_data
+
+
+def _startup_build_ready(module_name, character):
+    if not isinstance(character, dict) or not character.get("name"):
+        return False
+    path = ModulePathManager(module_name).get_character_unified_path(character["name"])
+    sheet = safe_json_load(path)
+    party = safe_json_load("party_tracker.json") or {}
+    if sheet != character or party.get("module") != module_name:
+        return False
+    if party.get("partyMembers") != [character["name"]]:
+        return False
+    world = party.get("worldConditions") or {}
+    if _resolve_startup_location(module_name, {
+        "areaId": world.get("currentAreaId"), "locationId": world.get("currentLocationId"),
+    }) is None:
+        return False
+    try:
+        validate(party, safe_json_load("schemas/party_schema.json"))
+    except ValidationError:
+        return False
+    return True
+
+
+def _commit_startup_build(conversation, module, character, *, live_scope, preserve_existing=False):
+    """Resume approved per-file work; no scene is narrated before disk is ready."""
+    module_name = module["name"]
+    while not save_character_to_module(character, module_name, live_scope=live_scope,
+                                       preserve_existing=preserve_existing):
+        _startup_write_wait(live_scope, "character file")
+    path = ModulePathManager(module_name).get_character_unified_path(character["name"])
+    _set_startup_progress(conversation, live_scope=live_scope, phase="character_saved",
+                          candidate=character, character_path=path)
+    progress = _startup_progress(conversation)
+    location = _resolve_startup_location(module_name, progress.get("location"))
+    if location is None:
+        location = get_ai_starting_location({"moduleName": module_name}, live_scope=live_scope)
+        _set_startup_progress(conversation, live_scope=live_scope, location=location)
+    while True:
+        if update_party_tracker(module_name, character["name"], live_scope=live_scope,
+                                starting_location=location) and _startup_build_ready(module_name, character):
+            break
+        _startup_write_wait(live_scope, "party tracker and starting location")
+    _set_startup_progress(conversation, live_scope=live_scope, phase="ready")
 
 # ===== CONVERSATION MANAGEMENT =====
 
 def initialize_startup_conversation():
-    """Create startup conversation file"""
-    # Ensure conversation history directory exists
-    import os
-    conv_dir = os.path.dirname(STARTUP_CONVERSATION_FILE)
-    if conv_dir and not os.path.exists(conv_dir):
-        os.makedirs(conv_dir, exist_ok=True)
-    
-    conversation = [
-        {
-            "role": "system",
-            "content": "You are a helpful 5th edition assistant guiding a new player through character creation and module selection. Be friendly, encouraging, and clear in your explanations. Keep responses concise but informative. Do not use emojis or special characters in your responses. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."
-        }
-    ]
-    
-    safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
+    """Retain old history and versioned progress across engine restarts."""
+    conversation = safe_json_load(STARTUP_CONVERSATION_FILE)
+    if isinstance(conversation, list):
+        return conversation
+    conversation = [{
+        "role": "system",
+        "content": "Guide the player through adventure selection and character creation. "
+                   "Use standard ASCII characters. Do not claim saved state without committed facts.",
+    }]
+    _set_startup_progress(conversation, phase="module_selection")
     return conversation
 
 def _ensure_local_provider_alternation(messages, provider):
@@ -1642,7 +1701,7 @@ def _ensure_local_provider_alternation(messages, provider):
       2. "System message must be at the beginning" -> only ONE system message,
          at the start (a second/mid/trailing system message is rejected).
 
-    This is applied REACTIVELY by get_ai_response -- only after a local-provider
+    This is applied REACTIVELY by startup transport -- only after a local-provider
     call fails -- so lenient models (e.g. Gemma 12B), which accept the raw shape
     and succeed on the first attempt, are never reshaped (byte-identical). Only a
     strict template that actually 500s triggers a normalized retry.
@@ -1659,7 +1718,7 @@ def _ensure_local_provider_alternation(messages, provider):
     An already-valid request (one leading system, turns ending on user) is
     reconstructed identically, so this cannot alter a currently-working call.
     OpenAI/Gemini/legacy are returned unchanged -- they accept the raw shape.
-    STARTUP-ONLY (utils/startup_wizard.get_ai_response); the main game loop and
+    STARTUP-ONLY (T092 interview/review and T093 location); the main game loop and
     every non-LM-Studio provider are untouched.
     """
     if provider != "lmstudio":
@@ -1680,135 +1739,88 @@ def _ensure_local_provider_alternation(messages, provider):
         )
     return normalized
 
-def get_ai_response(conversation, response_format=None):
-    """Return one persisted assistant turn, retrying provider failures safely.
-
-    Provider failures never become assistant prose. Each retry receives the same
-    message snapshot, and the live conversation is mutated only after a usable
-    response has been received.
-    """
+def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
+                    startup_phase="startup_interview"):
+    """Run T092 through shared cancellable transport; borrowed scope stays open."""
     from utils.capture.live_provider_call import (
-        LiveProviderSuperseded,
-        abort_live_turn_scope,
-        finish_live_turn_scope,
-        open_live_turn_scope,
+        LiveProviderSuperseded, finish_live_turn_scope, open_live_turn_scope,
+        _interruptible_wait, _delay_for_error,
     )
+    from model_config import MODEL_PROVIDER
 
-    live_scope = None
+    owned = live_scope is None
+    scope = open_live_turn_scope() if owned else live_scope
+    provider = MODEL_PROVIDER
+    main_cfg = {
+        "openai": config.DM_MAIN_GPT52_NONE,
+        "gemini": config.DM_MAIN_GEMINI_PRO_LOW,
+        "lmstudio": config.DM_MAIN_LMSTUDIO,
+        "legacy": config.DM_MAIN_LEGACY,
+    }[provider]
+
+    def repair_rejected_messages(messages, failure):
+        if provider == "lmstudio":
+            return _ensure_local_provider_alternation(messages, provider)
+        return messages
+
+    request_messages = copy.deepcopy(conversation)
+    _emit_startup_phase(startup_phase)
     status_processing_ai()
     try:
-        from model_config import MODEL_PROVIDER
-        if MODEL_PROVIDER == "openai":
-            main_cfg = config.DM_MAIN_GPT52_NONE
-        elif MODEL_PROVIDER == "gemini":
-            main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
-        elif MODEL_PROVIDER == "lmstudio":
-            main_cfg = config.DM_MAIN_LMSTUDIO
-        else:  # legacy
-            main_cfg = config.DM_MAIN_LEGACY
-        if MODEL_PROVIDER == "openai":
-            live_scope = open_live_turn_scope()
-
-        request_messages = copy.deepcopy(conversation)
-        last_error = None
-        content = None
-        for attempt in range(1, STARTUP_AI_MAX_ATTEMPTS + 1):
+        while True:
+            if scope.is_superseded():
+                raise LiveProviderSuperseded("startup request superseded")
             try:
-                response = capture_and_fanout("T092", api_client.create_completion,
-                    _request_provider=MODEL_PROVIDER,
-                    _live_selected=(
-                        "required" if MODEL_PROVIDER == "openai" else False
+                response = capture_and_fanout(
+                    "T092", api_client.create_completion,
+                    _request_provider=provider, _live_selected="required",
+                    _detached_scope=scope,
+                    _live_retry_message_repair=(
+                        repair_rejected_messages if provider == "lmstudio" else None
                     ),
                     messages=copy.deepcopy(request_messages),
-                    model=main_cfg["model"],
-                    temperature=0.7,
+                    model=main_cfg["model"], temperature=0.7,
                     response_format=response_format,
-                    **{k: v for k, v in main_cfg.items() if k != "model"})
-
-                raw_content = response.choices[0].message.content
-                if not isinstance(raw_content, str) or not raw_content.strip():
-                    raise ValueError("provider returned no usable text")
-                content = raw_content.strip()
-                break
+                    **{k: v for k, v in main_cfg.items() if k != "model"},
+                )
+                content = response.choices[0].message.content
+                if not isinstance(content, str) or not content.strip():
+                    raise ValueError("Provider returned no usable startup response")
+                content = content.strip()
+                if scope.is_superseded():
+                    raise LiveProviderSuperseded("startup response superseded")
+                if persist_response:
+                    conversation.append({"role": "assistant", "content": content})
+                    save_startup_conversation(conversation, live_scope=scope)
+                return content
             except LiveProviderSuperseded:
                 raise
             except Exception as exc:
-                last_error = exc
-                warning(
-                    f"Startup AI turn failed for provider {MODEL_PROVIDER} "
-                    f"(attempt {attempt}/{STARTUP_AI_MAX_ATTEMPTS}): {exc}",
-                    category="startup",
-                )
-                # Issue #179 (REACTIVE recovery): strict-alternation local
-                # templates (e.g. qwen via LM Studio) reject the wizard's
-                # system-only / trailing-system messages with a 500. After a
-                # local-provider failure, retry the remaining attempts with the
-                # alternation-normalized shape. Lenient models (e.g. Gemma) succeed
-                # on the first attempt and never reach here, so their successful
-                # requests are byte-identical -- no proactive reshape.
-                if MODEL_PROVIDER == "lmstudio":
-                    normalized = _ensure_local_provider_alternation(
-                        request_messages, MODEL_PROVIDER
-                    )
-                    if normalized != request_messages:
-                        request_messages = normalized
-
-        if content is None:
-            raise StartupAIResponseError(
-                f"Startup AI turn failed for provider {MODEL_PROVIDER} after "
-                f"{STARTUP_AI_MAX_ATTEMPTS} attempts"
-            ) from last_error
-
-        def persist_accepted_content():
-            conversation.append({"role": "assistant", "content": content})
-            status_saving()
-            history_error = None
-            try:
-                history_saved = safe_write_json(
-                    STARTUP_CONVERSATION_FILE,
-                    conversation,
-                )
-            except Exception as exc:
-                history_saved = False
-                history_error = exc
-            return history_saved, history_error
-
-        if live_scope is not None:
-            with live_scope.lock:
-                if live_scope.is_superseded():
-                    raise LiveProviderSuperseded("startup wizard turn superseded")
-                history_saved, history_error = persist_accepted_content()
-        else:
-            history_saved, history_error = persist_accepted_content()
-        if not history_saved:
-            detail = f": {history_error}" if history_error is not None else ""
-            warning(
-                "Could not persist startup conversation; continuing with in-memory history"
-                f"{detail}",
-                category="startup",
-            )
-
-        if live_scope is not None and history_saved:
-            finish_live_turn_scope(live_scope)
-            live_scope = None
-
-        return content
-    except LiveProviderSuperseded:
-        if live_scope is not None:
-            finish_live_turn_scope(live_scope)
-            live_scope = None
-        raise
+                warning(f"Startup provider correction remains pending: {exc}", category="startup")
+                # Transient requests reissue inside the shared transport. This
+                # handback retains completed-error context, without a count cap.
+                envelope = getattr(exc, "envelope", {"error_class": type(exc).__name__})
+                request_messages.append({"role": "system", "content": (
+                    f"The previous startup request did not complete correctly: {exc}. "
+                    "Retain the player choices and return the requested response."
+                )})
+                _interruptible_wait(_delay_for_error(envelope, 0), scope,
+                                    "Character setup is still pending; your choices are retained.",
+                                    display_status)
     finally:
-        if live_scope is not None:
-            abort_live_turn_scope(
-                "startup wizard stopped before its history was durable",
-                scope=live_scope,
-            )
+        if owned:
+            finish_live_turn_scope(scope)
         status_ready()
 
-def save_startup_conversation(conversation):
-    """Save startup conversation to file"""
-    safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
+
+def save_startup_conversation(conversation, *, live_scope=None):
+    """Persist accepted setup progress without abandoning it on contention."""
+    with _startup_operation(live_scope) as scope:
+        _emit_startup_phase("startup_checkpoint_commit")
+        while not safe_write_json(STARTUP_CONVERSATION_FILE, conversation,
+                                  commit_guard=lambda: _startup_commit_guard(scope)):
+            _startup_write_wait(scope, "startup conversation")
+    return True
 
 def cleanup_startup_conversation():
     """Remove startup conversation file after completion"""
@@ -1818,17 +1830,18 @@ def cleanup_startup_conversation():
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             archive_name = f"startup_conversation_archive_{timestamp}.json"
             shutil.move(STARTUP_CONVERSATION_FILE, archive_name)
-    except Exception:
-        pass  # Don't fail startup if cleanup fails
+    except Exception as exc:
+        warning(f"Completed startup history could not be archived: {exc}", category="startup")
 
 # ===== AI STARTING LOCATION DETECTION =====
 
 def _validate_starting_location(candidate):
-    """Return a clean, complete starting location or ``None``.
-
-    This is intentionally all-or-nothing: model fields are never merged into the
-    deterministic fallback that can be persisted to ``party_tracker.json``.
-    """
+    """Parse all six fields; membership is checked against the installed module."""
+    if isinstance(candidate, str):
+        try:
+            candidate = json.loads(candidate)
+        except ValueError:
+            return None
     if type(candidate) is not dict or set(candidate) != set(STARTING_LOCATION_FIELDS):
         return None
 
@@ -1841,79 +1854,78 @@ def _validate_starting_location(candidate):
     return validated
 
 
-def get_ai_starting_location(module, request_provider=None):
-    """Use AI to determine the best starting location for a module"""
-    from utils.capture.live_provider_call import LiveProviderSuperseded
+def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
+    """Have T093 choose an entry from the installed module; never invent IDs."""
+    from model_config import MODEL_PROVIDER
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded, _interruptible_wait, _delay_for_error,
+    )
 
-    try:
-        # Load module data
-        module_data = load_module_for_ai_analysis(module['moduleName'])
-        
-        if not module_data:
-            return get_fallback_starting_location()
-        
-        # Prepare AI prompt
-        prompt = f"""You are a 5th edition of the world's most popular roleplaying game campaign assistant. Analyze this module and determine the best starting location for new players.
-
-MODULE DATA:
-{json.dumps(module_data, indent=2)}
-
-Please analyze the module's plot, areas, and locations to determine:
-1. The most logical starting area (usually level 1, town type)
-2. The best starting location within that area (tavern, shop, or quest-giving location)
-3. Appropriate initial weather and political climate
-
-Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
-
-Respond with ONLY a JSON object in this exact format:
-{{
-  "areaId": "area_id",
-  "areaName": "area_name", 
-  "locationId": "location_id",
-  "locationName": "location_name",
-  "weather": "brief weather description",
-  "politicalClimate": "brief political situation"
-}}"""
-
-        from model_config import MODEL_PROVIDER
-        provider = request_provider or MODEL_PROVIDER
-        if provider == "openai":
-            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
-        elif provider == "gemini":
-            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
-        elif provider == "lmstudio":
-            mini_cfg = config.MINI_UTIL_LMSTUDIO
-        else:  # legacy
-            mini_cfg = config.MINI_UTIL_LEGACY
-
-        response = capture_and_fanout("T093", api_client.create_completion,
-            _request_provider=provider,
-            _live_selected=("required" if provider == "openai" else False),
-            messages=[{"role": "user", "content": prompt}],
-            model=mini_cfg["model"],
-            temperature=0.7,
-            response_format=None,
-            **{k: v for k, v in mini_cfg.items() if k != "model"})
-        
-        # Parse AI response
-        ai_response = response.choices[0].message.content.strip()
-        debug(f"AI_RESPONSE: Raw AI response: {ai_response}", category="startup_wizard")
-        
-        starting_location = _validate_starting_location(json.loads(ai_response))
-        if starting_location is None:
-            print("Warning: AI starting location was incomplete, using fallback")
-            debug(f"AI_RESPONSE: Full AI response: {ai_response}", category="startup_wizard")
-            return get_fallback_starting_location()
-
-        debug(f"JSON_PROCESSING: Parsed object: {starting_location}", category="startup_wizard")
-        print(f"AI selected starting location: {starting_location['areaName']} - {starting_location['locationName']}")
-        return starting_location
-
-    except LiveProviderSuperseded:
-        raise
-    except Exception as e:
-        print(f"Warning: AI starting location failed ({e}), using fallback")
-        return get_fallback_starting_location()
+    provider = request_provider or MODEL_PROVIDER
+    profiles = {
+        "openai": config.MINI_UTIL_GPT54MINI_NONE,
+        "gemini": config.MINI_UTIL_GEMINI_FLASH_LOW,
+        "lmstudio": config.MINI_UTIL_LMSTUDIO,
+    }
+    mini_cfg = profiles.get(provider, config.MINI_UTIL_LEGACY)
+    module_name = module["moduleName"]
+    with _startup_operation(live_scope) as scope:
+        _emit_startup_phase("startup_location")
+        module_data = load_module_for_ai_analysis(module_name)
+        messages = [{"role": "user", "content": (
+            "Analyze this installed adventure's plot and areas to choose its intended "
+            "starting location for the player's new adventure. Use actual areaId and "
+            "locationId values from this module only. Do not guess an ID or substitute "
+            "a generic starting area. Choose appropriate initial weather and political "
+            "climate. Use standard ASCII characters. Return only a JSON object with "
+            "exactly six nonempty string fields: areaId, areaName, locationId, "
+            "locationName, weather, politicalClimate. This is a location proposal, "
+            "not evidence that the party has arrived.\nMODULE DATA:\n"
+            + json.dumps(module_data, ensure_ascii=True)
+        )}]
+        while True:
+            try:
+                response = capture_and_fanout(
+                    "T093", api_client.create_completion,
+                    _request_provider=provider, _live_selected="required",
+                    _detached_scope=scope,
+                    _live_retry_message_repair=(
+                        (lambda rejected, failure: _ensure_local_provider_alternation(rejected, provider))
+                        if provider == "lmstudio" else None
+                    ),
+                    messages=copy.deepcopy(messages),
+                    model=mini_cfg["model"], temperature=0.7, response_format=None,
+                    **{key: value for key, value in mini_cfg.items() if key != "model"},
+                )
+                if scope.is_superseded():
+                    raise LiveProviderSuperseded("Startup location superseded")
+                raw = response.choices[0].message.content or ""
+                try:
+                    candidate = _validate_starting_location(extract_json_object(sanitize_json_string(raw)))
+                except (ValueError, TypeError):
+                    candidate = None
+                location = _resolve_startup_location(module_name, candidate)
+                if location is not None:
+                    return location
+                messages.append({"role": "system", "content": (
+                    "The rejected response is incomplete or its IDs do not resolve in "
+                    "the selected module. Correct all six fields using these actual "
+                    "module files. No location has been committed. Rejected response: "
+                    + raw + "\nCURRENT MODULE DATA:\n"
+                    + json.dumps(load_module_for_ai_analysis(module_name), ensure_ascii=True)
+                )})
+            except LiveProviderSuperseded:
+                raise
+            except Exception as exc:
+                warning(f"Startup location remains pending: {exc}", category="startup")
+                messages.append({"role": "system", "content": (
+                    f"The last location request failed: {exc}. Retain the task and "
+                    "return a complete grounded proposal."
+                )})
+                _interruptible_wait(
+                    _delay_for_error(getattr(exc, "envelope", {}) or {}, 0), scope,
+                    "Still determining the adventure's starting location.", display_status,
+                )
 
 def load_module_for_ai_analysis(module_name):
     """Load module data for AI analysis"""
@@ -1943,42 +1955,6 @@ def load_module_for_ai_analysis(module_name):
         print(f"Error loading module for AI analysis: {e}")
         return None
 
-def get_fallback_starting_location():
-    """Return the complete deterministic location persisted when T093 fails."""
-    return {
-        "areaId": "UNKNOWN", 
-        "areaName": "Starting Area",
-        "locationId": "START",
-        "locationName": "Starting Location", 
-        "weather": "Clear skies",
-        "politicalClimate": "Peaceful"
-    }
-
-def find_lowest_level_module():
-    """Find the module with the lowest minimum level requirement"""
-    try:
-        stitcher = ModuleStitcher()
-        available_modules = stitcher.get_available_modules()
-        
-        if not available_modules:
-            return None
-        
-        lowest_level_module = None
-        lowest_min_level = float('inf')
-        
-        for module in available_modules:
-            level_range = module.get('levelRange', {})
-            min_level = level_range.get('min', 1)
-            
-            if min_level < lowest_min_level:
-                lowest_min_level = min_level
-                lowest_level_module = module
-        
-        return lowest_level_module
-        
-    except Exception as e:
-        print(f"Error finding lowest level module: {e}")
-        return None
 
 # ===== MAIN EXECUTION =====
 

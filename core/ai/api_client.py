@@ -494,6 +494,16 @@ def _gemini_completion(messages, model, temperature, response_format=_UNSET, **k
     # Translate max_tokens -> max_output_tokens for Gemini
     max_tokens = kwargs.pop("max_tokens", None)
 
+    # Caller-supplied transport deadline (#284 T-C1): the live-provider child
+    # sets it as the reissue trigger for every provider. google.genai takes
+    # it in MILLISECONDS on per-request http_options; retry_options stays
+    # unset so the SDK makes exactly one physical attempt per generation.
+    request_timeout = kwargs.pop("timeout", None)
+    if request_timeout is not None and not isinstance(request_timeout, (int, float)):
+        request_timeout = getattr(request_timeout, "read", None) or getattr(
+            request_timeout, "timeout", None
+        )
+
     # --- Convert messages ---
     system_instruction, contents = convert_messages_to_gemini(messages)
 
@@ -528,6 +538,11 @@ def _gemini_completion(messages, model, temperature, response_format=_UNSET, **k
     # max_output_tokens (translated from max_tokens)
     if max_tokens is not None:
         config_kwargs["max_output_tokens"] = max_tokens
+
+    if isinstance(request_timeout, (int, float)) and request_timeout > 0:
+        config_kwargs["http_options"] = types.HttpOptions(
+            timeout=int(float(request_timeout) * 1000)
+        )
 
     gen_config = types.GenerateContentConfig(**config_kwargs)
 

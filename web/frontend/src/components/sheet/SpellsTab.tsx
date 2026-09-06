@@ -85,6 +85,7 @@ function MagicCategory({ title, items }: { title: string; items: EquipmentItem[]
 export function SpellsTab() {
   const spells = usePlayer((s) => s.spells)
   const error = usePlayer((s) => s.dataErrors.spells)
+  const notice = usePlayer((s) => s.dataNotices.spells)
   const [spellData, setSpellData] = useState<Record<string, Record<string, unknown>>>({})
 
   useEffect(() => {
@@ -95,6 +96,9 @@ export function SpellsTab() {
 
   if (error) {
     return <p className="p-4 font-body text-sm text-red-400">{error}</p>
+  }
+  if (notice) {
+    return <p className="p-4 font-body text-sm text-secondary">{notice}</p>
   }
   if (!spells) {
     return <p className="p-4 font-body text-sm text-secondary">Loading spells...</p>

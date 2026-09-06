@@ -50,6 +50,8 @@ Detailed receipts and remaining gates are indexed in local
 `validation_evidence/safety_acceptance_remaining.md`; the absent-history and
 Load-preparation verdicts there preserve exact protocol and disk evidence.
 
+Startup/locking delta verified 2026-09-05 against the `fix/issue-114-startup-repair` working candidate based on `3f521f70429cf9bef4e0a5688d11c4fce44f7596`. Changed seams below use that candidate; other anchors retain the earlier pin. Live #193 remains authoritative.
+
 ## Authority table
 
 | Datum | Single source of truth | Commit or acceptance point |
@@ -112,6 +114,12 @@ Load-preparation verdicts there preserve exact protocol and disk evidence.
 3. Reset quiesces where the surface implements it, begins invocation supersession, takes
    party/module/campaign authority, creates a durable backup, bumps epoch, resets modules/global
    state, and clears generated state.
+4. Before a party exists, Save resolves the validated startup checkpoint's installed module.
+   Startup conversation is essential snapshot state. Restore removes current unfinished
+   history if absent from the selected save; compensating rollback restores its backup on failure.
+5. Reset removes that exact unfinished startup record after backup, before best-effort
+   diagnostic cleanup. Windows deletion contention waits with status; it cannot silently
+   preserve an approved build and report success. Fixed reset console labels are ASCII.
 
 ## State and atomicity
 
@@ -122,11 +130,24 @@ Load-preparation verdicts there preserve exact protocol and disk evidence.
   written before and after copying, and individual skipped files can coexist with success.
 - Restore is multi-file with a unique essential backup and compensating rollback.
 - Reset is backup-before-wipe and multi-phase; this pin has no rollback after phase two begins.
+- Shared safe JSON writes now hold an OS advisory lock at an installation-local
+  `.runtime_locks/atomic/` identity derived from the canonical target path. Dead processes
+  release ownership through the OS; persistent lock files are not stale-owner evidence.
+- Windows sharing violations keep retrying while retaining original file bytes.
+  Startup's optional `commit_guard` checks supersession before a late replace; unguarded
+  callers and sibling `safe_json_dump` have no scope-aware cancellation check.
+
+## Deployment boundary
+
+Stop and restart every worker sharing the same game directory onto the same revision
+before using the new writer. Old PID-exclusive and new OS-advisory lock protocols must
+not run together. Workers must also share the same installation/runtime lock root.
+Do not delete lock files to reclaim ownership or stop unrelated installations.
 
 ## Load-bearing seams
 
 1. `utils/capture/live_provider_call.py:96-333` - live/welcome scope authority, promotion, queues, and quiescence.
-2. `utils/capture/live_provider_call.py:603-714` - child polling, reaping, and correlation gate.
+2. `utils/capture/live_provider_call.py` `call_live_provider` (generation loop; anchors moved by #284) - child polling, reaping, universal backstop envelope, and correlation gate.
 3. `main.py:298-378` - welcome ownership and generation-only worker.
 4. `main.py:392-530` - handback ordering, attempt/lease receipt, and reconciliation.
 5. `main.py:753-924` - input pump, teardown, welcome registration, and worker start.
@@ -135,8 +156,8 @@ Load-preparation verdicts there preserve exact protocol and disk evidence.
 8. `main.py:9122-9163` - superseded and normal turn terminals.
 9. `core/headless/session.py:379-693` - headless lifecycle commands (reset/quit at :379-466) and restart.
 10. `web/web_interface.py:2614-2959` - web input and Save/Load/Reset entrants.
-11. `updates/save_game_manager.py:465-519` - Save lock and snapshot sequence.
-12. `updates/save_game_manager.py:683-934` - restore validation, backup, copy, rollback, and cleanup.
+11. `updates/save_game_manager.py:147` and `updates/save_game_manager.py:232` - pending module context and essential startup history (startup candidate).
+12. `updates/save_game_manager.py:919` and `utils/file_operations.py:83` - restore rollback/absence semantics and guarded shared writer (startup candidate).
 13. `utils/reset_campaign.py:395-447` - reset backup-before-wipe ordering.
 
 ## Invariants

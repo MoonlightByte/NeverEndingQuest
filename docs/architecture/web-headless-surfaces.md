@@ -26,6 +26,8 @@ checks do not establish universal quiescence or automatic server restart.
 Legacy Reset's inherited cp1252 failure and Reset backup fidelity remain explicit
 owner ship decisions. Follow the safety execution ledger for exact P/S verdicts.
 
+Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` working candidate based on `3f521f70429cf9bef4e0a5688d11c4fce44f7596`. Changed startup seams below use that candidate; unchanged surface anchors retain the earlier pin. Live #193 controls on conflict.
+
 ## Authority table
 
 | Datum | Source of truth | Acceptance or commit point |
@@ -59,6 +61,8 @@ owner ship decisions. Follow the safety execution ledger for exact P/S verdicts.
 13. When the engine reaches `input`, headless emits a prompt followed immediately by a fresh disk state projection. Commands return correlated result events.
 14. Successful headless restore/reset quiesces or supersedes live work, commits through the lifecycle manager, and emits an exit/restart terminal so stale memory cannot continue.
 15. There is no surface-specific model-call order. Startup, combat, travel, module, and progression schematics own their T-order; this surface owns transport ordering around input, commit, delivery, and projection.
+16. A living web game thread is not proof of a playable character. Reconnect emits the startup projection before `game_resumed`; snapshots preserve `in_progress` versus `ready`. An idle wizard prompt permits interview input without enabling play mode.
+17. Both browsers keep Save/Load/Reset accessible during connected setup. React separates lifecycle availability from `gameReady`; legacy separately tracks startup input permission. A ready marker triggers fresh authoritative React projections for character and location.
 
 ## State and atomicity
 
@@ -79,10 +83,10 @@ owner ship decisions. Follow the safety execution ledger for exact P/S verdicts.
 4. `web/shared_state.py:33-67` - sink ownership and failure semantics.
 5. `web/web_interface.py:226-452` - queues, game thread, revisions, and durable cache.
 6. `web/web_interface.py:842-899` and `web/web_interface.py:5743-5776` - blocking web input and both routes.
-7. `web/web_interface.py:2493-2636` - snapshot, connect, replay, and input order.
+7. `web/web_interface.py:2506` - startup projection, ordered reconnect, and snapshot truth (startup candidate).
 8. `web/web_interface.py:2638-2961` - Save/Load/Reset dispatch and restart.
 9. `web/web_interface.py:3081-3111` and `web/web_interface.py:4589-4746` - one game thread and output pump.
-10. `web/frontend/src/contract/events.ts:1-30` and `web/frontend/src/services/socket.ts:94-208` - event contract and socket owner.
+10. `web/frontend/src/services/socket.ts:145`, `web/frontend/src/stores/session.ts:68`, and `web/frontend/src/components/layout/HeaderBar.tsx:63` - ready refresh, interview/play permissions, and lifecycle availability (startup candidate).
 11. `web/frontend/src/services/hydration.ts:51-187` - correlation, coalescing, and stale rejection.
 12. `core/headless/protocol.py:5-116` - NDJSON protocol and serialized writer.
 13. `core/headless/streams.py:30-151` - output capture and blocking queue input.

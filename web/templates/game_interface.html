@@ -5557,13 +5557,13 @@
             requestPlotData(); // <--- ADD THIS
             requestPartyData(); // Load party display on connect
             socket.emit('request_ui_snapshot');
-            if (!gameStarted) {
+            if (!gameStarted && !startupInputEnabled) {
                 addMessage('game-output', { type: 'system', content: 'Welcome to NeverEndingQuest. Press the button at the top right to begin. New here? Open Settings (gear icon) to pick your AI provider -- Legacy (GPT-4.1) is the recommended default.' });
                 if (!localStorage.getItem('neq_hasPlayed')) {
                     document.getElementById('start-button').textContent = 'New Game';
                 }
             }
-            if (!gameStarted && !localStorage.getItem('neq_bannerDismissed')) {
+            if (!gameStarted && !startupInputEnabled && !localStorage.getItem('neq_bannerDismissed')) {
                 var _frb = document.getElementById('first-run-banner');
                 if (_frb) { _frb.style.display = 'flex'; }
             }
@@ -5634,17 +5634,19 @@
             // gameStarted switch (without it, sendInput() silently drops input)
             // and re-enable controls. Only enable typing if the engine isn't busy;
             // otherwise the normal status_update flow enables it when it finishes.
-            gameStarted = true;
-            document.getElementById('start-button').textContent = 'Game Running';
+            // startup_status arrives first; input permission is independent of
+            // whether the character has actually entered the adventure.
+            document.getElementById('start-button').textContent = gameStarted ? 'Game Running' : 'Starting...';
             document.getElementById('start-button').disabled = true;
             document.getElementById('save-button').disabled = false;
             document.getElementById('load-button').disabled = false;
             document.getElementById('reset-button').disabled = false;
             const busy = !!(data && data.is_processing);
             applyNeqProcessingTransition(busy);
-            document.getElementById('user-input').disabled = busy;
-            document.getElementById('send-button').disabled = busy;
-            if (!busy) {
+            const canAnswer = gameStarted || startupInputEnabled;
+            document.getElementById('user-input').disabled = busy || !canAnswer;
+            document.getElementById('send-button').disabled = busy || !canAnswer;
+            if (!busy && canAnswer) {
                 document.getElementById('user-input').focus();
             }
             addMessage('game-output', {
@@ -5658,12 +5660,22 @@
 
         socket.on('startup_status', (data) => {
             if (data.status === 'in_progress') {
+                gameStarted = false;
                 startupInputEnabled = true;
                 document.getElementById('start-button').textContent = 'Starting...';
                 document.getElementById('start-button').disabled = true;
                 document.getElementById('user-input').disabled = true;
                 document.getElementById('send-button').disabled = true;
+                document.getElementById('save-button').disabled = false;
+                document.getElementById('load-button').disabled = false;
+                document.getElementById('reset-button').disabled = false;
+            } else if (data.status === 'ready') {
+                gameStarted = true;
+                startupInputEnabled = false;
+                loadCharacterStats();
+                loadLocationData();
             } else if (data.status === 'failed') {
+                gameStarted = false;
                 startupInputEnabled = false;
                 addMessage('game-output', { type: 'error', content: 'Startup handoff failed. You can use recovery from settings.' });
             }
@@ -6630,6 +6642,14 @@
         }
         
         socket.on('player_data_response', (response) => {
+            // Benign empty state (no character yet): show the server's notice
+            // in place of the generic 'no data' copy so it does not read as a bug.
+            if (response.notice && response.data == null) {
+                const tab = response.dataType === 'stats' ? document.getElementById('stats-tab')
+                    : response.dataType === 'inventory' ? document.getElementById('inventory-tab')
+                    : response.dataType === 'spells' ? document.getElementById('spells-content') : null;
+                if (tab) { tab.innerHTML = '<div class="loading">' + response.notice + '</div>'; return; }
+            }
             if (response.dataType === 'inventory') {
                 const activeTab = document.querySelector('.tab-button.active')?.textContent.toLowerCase();
                 if (activeTab === 'spells & magic') {

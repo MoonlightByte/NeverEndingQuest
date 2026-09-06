@@ -83,6 +83,9 @@ _WIZARD_READ_INACTIVITY_SECONDS = 40.0
 _WIZARD_BACKSTOP_SECONDS = 180.0
 _WIZARD_TASK_IDS = frozenset({"T092", "T093"})
 _NO_WATCHDOG_ADVISORY_TASK_IDS = frozenset({"T105", "T112"})
+# Tasks whose SUCCESS envelopes are also written to the master log by the
+# parent (their callers do not log_api_call themselves).
+_SUCCESS_LOG_TASK_IDS = frozenset({"T105", "T108", "T113"})
 _MAX_BACKOFF_SECONDS = 8.0
 _PERMANENT_ERROR_SECONDS = 60.0
 
@@ -634,10 +637,54 @@ def _success_envelope(response, request_kwargs):
     }
 
 
-def _error_disposition(exc, original, status):
-    """Classify from exception types/status only; provider prose is never authority."""
+def _http_status_of(original):
+    """One coalescing HTTP-status read across provider SDK error shapes.
+
+    openai: ``status_code`` (int) and a str ``code``; google.genai: an int
+    ``code`` and no ``status_code``. Order: status_code, then the response's
+    status_code, then ``code`` only when it is an int. No provider branch.
+    """
+    if original is None:
+        return None
+    for value in (
+        getattr(original, "status_code", None),
+        getattr(getattr(original, "response", None), "status_code", None),
+        getattr(original, "code", None),
+    ):
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    return None
+
+
+def _structured_error_code(exc, original):
+    """Provider error CODE from structured fields (never the message text)."""
+    for item in (original, exc):
+        if item is None:
+            continue
+        value = getattr(item, "code", None)
+        if isinstance(value, str) and value:
+            return value
+        body = getattr(item, "body", None)
+        if isinstance(body, dict):
+            detail = body.get("error")
+            detail = detail if isinstance(detail, dict) else body
+            value = detail.get("code")
+            if isinstance(value, str) and value:
+                return value
+    return None
+
+
+def _error_disposition(exc, original, status, error_code=None):
+    """Classify from exception types/status/codes only; provider prose is never authority."""
     if type(exc).__name__ == "ProviderEmptyResponse":
         return "empty"
+    if isinstance(error_code, str):
+        from utils.provider_errors import QUOTA_ERROR_CODES
+
+        if error_code.lower() in QUOTA_ERROR_CODES:
+            # Out of funds arrives as a 429 like a rate limit, but no reissue
+            # can pay the bill: hand it to the caller so the player is told.
+            return "deterministic"
     if status in {408, 409, 429} or (
         isinstance(status, int) and 500 <= status < 600
     ):
@@ -659,7 +706,8 @@ def _error_disposition(exc, original, status):
 
 def _primitive_error(exc, request_kwargs):
     original = getattr(exc, "original_error", None)
-    status = getattr(original, "status_code", None)
+    status = _http_status_of(original)
+    error_code = _structured_error_code(exc, original)
     headers = getattr(getattr(original, "response", None), "headers", None)
     retry_after = None
     if headers is not None:
@@ -678,7 +726,8 @@ def _primitive_error(exc, request_kwargs):
         "kind": "error",
         "error_class": type(exc).__name__,
         "cause_class": type(original).__name__ if original is not None else None,
-        "disposition": _error_disposition(exc, original, status),
+        "error_code": error_code,
+        "disposition": _error_disposition(exc, original, status, error_code),
         "provider": str(getattr(exc, "provider", "") or request_kwargs.get("_request_provider", "")),
         "model": str(getattr(exc, "model", "") or request_kwargs.get("model", "")),
         "task_id": getattr(exc, "task_id", None) or request_kwargs.get("task_id"),
@@ -823,9 +872,55 @@ def _delay_for_error(envelope, failure_count):
     status = envelope.get("http_status")
     if isinstance(status, int) and 400 <= status < 500:
         return _PERMANENT_ERROR_SECONDS
-    # Saturate the arithmetic, not the number of attempts in the logical call.
-    base = min(_MAX_BACKOFF_SECONDS, 0.5 * (2 ** min(4, max(0, failure_count - 1))))
+    # Exponent capped at 4: 0.5 * 2**4 already equals _MAX_BACKOFF_SECONDS,
+    # and an unbounded count overflows float at 2**1024 (#284 review C3-1).
+    base = min(
+        _MAX_BACKOFF_SECONDS,
+        0.5 * (2 ** max(0, min(failure_count - 1, 4))),
+    )
     return random.uniform(base * 0.75, base)
+
+
+def _synthesized_envelope(error_class, task_id, request_kwargs, operation_id,
+                          generation):
+    """Envelope for a generation the parent reaped without a child reply.
+
+    The request may already have reached the provider, so the generation is
+    marked billing=possible for the master log (#284 cost visibility).
+    """
+    return {
+        "kind": "error",
+        "error_class": error_class,
+        "cause_class": None,
+        "error_code": None,
+        "disposition": "retryable_transport",
+        "provider": str(request_kwargs.get("_request_provider", "") or ""),
+        "model": str(request_kwargs.get("model", "") or ""),
+        "task_id": task_id,
+        "http_status": None,
+        "retry_after": None,
+        "billing": "possible",
+        "correlation": {
+            "operation_id": operation_id,
+            "generation": generation,
+        },
+    }
+
+
+def _log_generation(task_id, frozen_messages, envelope, started):
+    """Evidence only: one master-log line per terminal envelope (#284)."""
+    try:
+        from utils.api_logger import log_live_provider_envelope
+
+        log_live_provider_envelope(
+            task_id,
+            frozen_messages,
+            envelope,
+            latency_seconds=time.monotonic() - started,
+        )
+    except Exception:
+        # Evidence loss only; api_logger counts its own append failures.
+        pass
 
 
 def _reconstruct_response(envelope):
@@ -853,6 +948,7 @@ def call_live_provider(
     scope=None,
     status_emit=None,
     authority_check=None,
+    retry_message_repair=None,
 ):
     """Run one frozen selected request under its required/advisory policy.
 
@@ -888,11 +984,12 @@ def call_live_provider(
     frozen_messages = copy.deepcopy(messages)
     frozen_kwargs = copy.deepcopy(request_kwargs)
     wizard_task = task_id in _WIZARD_TASK_IDS
-    if completion_required and frozen_kwargs.get("_request_provider") in {
-        "openai",
-        "legacy",
-        "lmstudio",
-    }:
+    # The per-generation transport deadline is the REISSUE TRIGGER, never a
+    # terminal (#193 B2-iii). It is set for every provider; each adapter
+    # translates it (OpenAI-compatible: request option with SDK retries
+    # zeroed; Gemini: http_options timeout). The task-level exclusion for
+    # plain-advisory T105/T112 is unchanged (D-VS-3).
+    if completion_required:
         frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
     elif wizard_task and frozen_kwargs.get("_request_provider") == "openai":
         import httpx
@@ -901,15 +998,41 @@ def call_live_provider(
             _WATCHDOG_SECONDS,
             read=_WIZARD_READ_INACTIVITY_SECONDS,
         )
-    elif task_id not in _NO_WATCHDOG_ADVISORY_TASK_IDS and frozen_kwargs.get("_request_provider") in {
-        "openai",
-        "legacy",
-        "lmstudio",
-    }:
+    elif task_id not in _NO_WATCHDOG_ADVISORY_TASK_IDS:
         frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
     failure_count = 0
-    empty_count = 0
     logical_started = time.monotonic()
+    notices_shown = set()
+    player_turn = scope is not None and scope is get_live_turn_scope()
+
+    def turn_heartbeat(_generation_number=None):
+        # Attempt = this call's own physical attempts (failure_count + 1), not
+        # the scope generation, which other tasks in the turn also consume.
+        attempt = failure_count + 1
+        elapsed = max(1, int(time.monotonic() - logical_started))
+        if elapsed >= 120:
+            shown = "%d min" % (elapsed // 60)
+        else:
+            shown = "%d s" % elapsed
+        return (
+            "Attempt %d, %s elapsed. Waiting for the AI provider. Your turn "
+            "is safe." % (attempt, shown)
+        )
+
+    def notify_player_once(key, text):
+        """One system-channel card per class per turn (never the status line)."""
+        if not player_turn or completion_required or key in notices_shown:
+            return
+        notices_shown.add(key)
+
+        def deliver(_message):
+            from web.shared_state import emit_player_output
+
+            emit_player_output(
+                {"type": "narration", "channel": "system", "content": text}
+            )
+
+        _safe_emit(deliver, text)
 
     def wizard_heartbeat():
         elapsed = max(1, int(time.monotonic() - logical_started))
@@ -950,6 +1073,18 @@ def call_live_provider(
                 cwd=os.getcwd(),
             )
         except BaseException:
+            _log_generation(
+                task_id,
+                frozen_messages,
+                _synthesized_envelope(
+                    "process_setup_unavailable",
+                    task_id,
+                    frozen_kwargs,
+                    operation_id,
+                    generation,
+                ),
+                time.monotonic(),
+            )
             if policy == "advisory" and not completion_required:
                 raise LiveProviderUnavailable(
                     task_id, {"error_class": "process_setup_unavailable"}
@@ -1005,7 +1140,7 @@ def call_live_provider(
                     _safe_emit(
                         emit,
                         wizard_heartbeat() if wizard_task else (
-                            "Still working on your adventure..."
+                            turn_heartbeat(generation)
                         ),
                     )
                     next_heartbeat = time.monotonic() + _HEARTBEAT_SECONDS
@@ -1052,36 +1187,29 @@ def call_live_provider(
             )
         )
         if not valid_envelope:
-            envelope = {
-                "kind": "error",
-                "error_class": (
+            envelope = _synthesized_envelope(
+                (
                     "ProviderChildGenerationBackstop"
                     if backstop_exhausted
                     else "ProviderChildUnavailable"
                 ),
-                "cause_class": None,
-                "disposition": "retryable_transport",
-                "http_status": None,
-                "retry_after": None,
-                "correlation": {
-                    "operation_id": operation_id,
-                    "generation": generation,
-                },
-            }
+                task_id,
+                frozen_kwargs,
+                operation_id,
+                generation,
+            )
         if isinstance(envelope, dict):
             envelope["correlation_accepted"] = correlation_accepted
-            if task_id in {"T105", "T108", "T113"}:
-                try:
-                    from utils.api_logger import log_live_provider_envelope
-
-                    log_live_provider_envelope(
-                        task_id,
-                        frozen_messages,
-                        envelope,
-                        latency_seconds=time.monotonic() - started,
-                    )
-                except Exception:
-                    pass
+            # Every error or reaped generation of every task is evidence
+            # (#284 F6); success rows keep the existing gate because those
+            # callers already log their own successes.
+            if (
+                envelope.get("kind") != "success"
+                or not correlation_accepted
+                or wizard_task
+                or task_id in _SUCCESS_LOG_TASK_IDS
+            ):
+                _log_generation(task_id, frozen_messages, envelope, started)
         if (
             isinstance(envelope, dict)
             and envelope.get("kind") == "success"
@@ -1128,15 +1256,23 @@ def call_live_provider(
             raise LiveProviderUnavailable(task_id, envelope)
         if wizard_task:
             disposition = envelope.get("disposition")
-            if disposition == "empty":
-                empty_count += 1
-                if task_id == "T093" and empty_count >= 3:
-                    raise LiveProviderCompletedError(task_id, envelope)
-            elif disposition not in {
+            if disposition not in {
+                "empty",
                 "retryable_http",
                 "retryable_transport",
             }:
                 raise LiveProviderCompletedError(task_id, envelope)
+            # #114/#179: a completed strict-template rejection must reach the
+            # startup-owned reactive adapter, even inside required reissue.
+            # The child was reaped above; private callbacks never enter kwargs.
+            http_status = envelope.get("http_status")
+            if (retry_message_repair is not None and correlation_accepted
+                    and type(http_status) is int and 500 <= http_status < 600):
+                if scope is not None and scope.is_superseded():
+                    raise LiveProviderSuperseded("startup request repair superseded")
+                frozen_messages = copy.deepcopy(retry_message_repair(
+                    copy.deepcopy(frozen_messages), dict(envelope)
+                ))
         error_class = envelope.get("error_class", "transport_unavailable")
         if not wizard_task:
             # A completed deterministic error (HTTP 400/401/403, a schema
@@ -1148,26 +1284,37 @@ def call_live_provider(
             if disposition not in {"retryable_http", "retryable_transport", "empty"}:
                 raise LiveProviderCompletedError(task_id, envelope)
             try:
-                from utils.enhanced_logger import warning
+                # Diagnostics stay in the debug log; in headless the console
+                # warning handler landed in the narration stream (#233).
+                from utils.enhanced_logger import debug
 
-                warning(
+                debug(
                     "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s "
-                    "remote_execution=unknown usage=unknown cost=unknown"
-                    % (task_id, error_class, envelope.get("http_status")),
+                    "generation=%d billing=%s"
+                    % (task_id, error_class, envelope.get("http_status"),
+                       generation, envelope.get("billing") or "n/a"),
                     category="ai_routing",
                 )
             except Exception:
                 pass
-            _safe_emit(
-                emit,
-                "The provider connection needs another attempt; your turn is safe "
-                "and still in progress.",
+            from utils.provider_errors import player_exits_notice, reissue_notice
+
+            reason = reissue_notice(
+                envelope.get("disposition"),
+                envelope.get("http_status"),
+                frozen_kwargs.get("_request_provider"),
+                envelope.get("error_code"),
             )
+            notify_player_once("exits", player_exits_notice())
+            notify_player_once(
+                "class:%s" % envelope.get("disposition"), reason
+            )
+            _safe_emit(emit, "%s %s" % (turn_heartbeat(generation), reason))
         _interruptible_wait(
             _delay_for_error(envelope, failure_count),
             scope,
             wizard_heartbeat if wizard_task else (
-                "Still retrying the provider connection (%s)..." % error_class
+                lambda: turn_heartbeat(generation)
             ),
             emit,
             authority_check,

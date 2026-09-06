@@ -7363,7 +7363,7 @@ def _main_game_loop(startup_authority, turn_authority):
             print("Let's get you ready for adventure!\n")
 
             success = run_startup_sequence()
-            if not success:
+            if not success or startup_required():
                 print("[ERROR] Setup was cancelled or failed. Cannot start game loop.")
                 return
             wizard_state = mark_wizard_complete().get("state", load_startup_state())
@@ -9631,14 +9631,28 @@ def _main_game_loop(startup_authority, turn_authority):
                     category="ai_validation",
                 )
                 display_dm_narration(
-                    provider_failure_message or SAFE_ACTION_FAILURE_MESSAGE
+                    provider_failure_message or (
+                        "Nothing in your game was changed. The AI provider "
+                        "call could not be completed. Try that action again; "
+                        "if it keeps happening, Load your last save."
+                    )
                 )
             finish_live_turn_scope(live_turn_scope)
             turn_authority.close()
             if live_turn_scope.is_superseded():
                 raise LiveProviderSuperseded("Player turn ended after supersession")
             status_ready()
-            return
+            if invocation_superseded:
+                # Load, Reset or exit own the restart; the engine ends here.
+                return
+            # The provider ended this turn (bad key, out of funds, malformed
+            # request). The player was told what to do; the game stays
+            # playable so they can do it (#284: returning here ended the
+            # engine, so "try that action again" was impossible). Release
+            # this turn's invocation claim first, or the next input blocks
+            # in begin_invocation (post-implementation audit F-AUD-1).
+            complete_invocation(t067_claim)
+            continue
 
         # This block now only runs if a response was NOT held
         # CRITICAL: Reload party tracker to ensure we have the latest module information after any updates
