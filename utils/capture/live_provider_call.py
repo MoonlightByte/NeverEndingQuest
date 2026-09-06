@@ -541,10 +541,35 @@ def _success_envelope(response, request_kwargs):
     }
 
 
-def _error_disposition(exc, original, status):
-    """Classify from exception types/status only; provider prose is never authority."""
+def _structured_error_code(exc, original):
+    """Provider error CODE from structured fields (never the message text)."""
+    for item in (original, exc):
+        if item is None:
+            continue
+        value = getattr(item, "code", None)
+        if isinstance(value, str) and value:
+            return value
+        body = getattr(item, "body", None)
+        if isinstance(body, dict):
+            detail = body.get("error")
+            detail = detail if isinstance(detail, dict) else body
+            value = detail.get("code")
+            if isinstance(value, str) and value:
+                return value
+    return None
+
+
+def _error_disposition(exc, original, status, error_code=None):
+    """Classify from exception types/status/codes only; provider prose is never authority."""
     if type(exc).__name__ == "ProviderEmptyResponse":
         return "empty"
+    if isinstance(error_code, str):
+        from utils.provider_errors import QUOTA_ERROR_CODES
+
+        if error_code.lower() in QUOTA_ERROR_CODES:
+            # Out of funds arrives as a 429 like a rate limit, but no reissue
+            # can pay the bill: hand it to the caller so the player is told.
+            return "deterministic"
     if status in {408, 409, 429} or (
         isinstance(status, int) and 500 <= status < 600
     ):
@@ -567,6 +592,7 @@ def _error_disposition(exc, original, status):
 def _primitive_error(exc, request_kwargs):
     original = getattr(exc, "original_error", None)
     status = getattr(original, "status_code", None)
+    error_code = _structured_error_code(exc, original)
     headers = getattr(getattr(original, "response", None), "headers", None)
     retry_after = None
     if headers is not None:
@@ -585,7 +611,8 @@ def _primitive_error(exc, request_kwargs):
         "kind": "error",
         "error_class": type(exc).__name__,
         "cause_class": type(original).__name__ if original is not None else None,
-        "disposition": _error_disposition(exc, original, status),
+        "error_code": error_code,
+        "disposition": _error_disposition(exc, original, status, error_code),
         "provider": str(getattr(exc, "provider", "") or request_kwargs.get("_request_provider", "")),
         "model": str(getattr(exc, "model", "") or request_kwargs.get("model", "")),
         "task_id": getattr(exc, "task_id", None) or request_kwargs.get("task_id"),
@@ -837,6 +864,34 @@ def call_live_provider(
         frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
     failure_count = 0
     logical_started = time.monotonic()
+    notices_shown = set()
+    player_turn = scope is not None and scope is get_live_turn_scope()
+
+    def turn_heartbeat(generation_number):
+        elapsed = max(1, int(time.monotonic() - logical_started))
+        if elapsed >= 120:
+            shown = "%d min" % (elapsed // 60)
+        else:
+            shown = "%d s" % elapsed
+        return (
+            "Attempt %d, %s elapsed. Waiting for the AI provider. Your turn "
+            "is safe." % (generation_number, shown)
+        )
+
+    def notify_player_once(key, text):
+        """One system-channel card per class per turn (never the status line)."""
+        if not player_turn or completion_required or key in notices_shown:
+            return
+        notices_shown.add(key)
+
+        def deliver(_message):
+            from web.shared_state import emit_player_output
+
+            emit_player_output(
+                {"type": "narration", "channel": "system", "content": text}
+            )
+
+        _safe_emit(deliver, text)
 
     def wizard_heartbeat():
         elapsed = max(1, int(time.monotonic() - logical_started))
@@ -929,7 +984,7 @@ def call_live_provider(
                     _safe_emit(
                         emit,
                         wizard_heartbeat() if wizard_task else (
-                            "Still working on your adventure..."
+                            turn_heartbeat(generation)
                         ),
                     )
                     next_heartbeat = time.monotonic() + _HEARTBEAT_SECONDS
@@ -1051,26 +1106,37 @@ def call_live_provider(
             if failure_count >= _NON_WIZARD_MAX_FAILURES:
                 raise LiveProviderCompletedError(task_id, envelope)
             try:
-                from utils.enhanced_logger import warning
+                # Diagnostics stay in the debug log; in headless the console
+                # warning handler landed in the narration stream (#233).
+                from utils.enhanced_logger import debug
 
-                warning(
+                debug(
                     "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s "
-                    "remote_execution=unknown usage=unknown cost=unknown"
-                    % (task_id, error_class, envelope.get("http_status")),
+                    "generation=%d billing=%s"
+                    % (task_id, error_class, envelope.get("http_status"),
+                       generation, envelope.get("billing") or "n/a"),
                     category="ai_routing",
                 )
             except Exception:
                 pass
-            _safe_emit(
-                emit,
-                "The provider connection needs another attempt; your turn is safe "
-                "and still in progress.",
+            from utils.provider_errors import player_exits_notice, reissue_notice
+
+            reason = reissue_notice(
+                envelope.get("disposition"),
+                envelope.get("http_status"),
+                frozen_kwargs.get("_request_provider"),
+                envelope.get("error_code"),
             )
+            notify_player_once("exits", player_exits_notice())
+            notify_player_once(
+                "class:%s" % envelope.get("disposition"), reason
+            )
+            _safe_emit(emit, "%s %s" % (turn_heartbeat(generation), reason))
         _interruptible_wait(
             _delay_for_error(envelope, failure_count),
             scope,
             wizard_heartbeat if wizard_task else (
-                "Still retrying the provider connection (%s)..." % error_class
+                lambda: turn_heartbeat(generation)
             ),
             emit,
         )

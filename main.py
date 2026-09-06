@@ -9374,7 +9374,11 @@ def main_game_loop():
                     category="ai_validation",
                 )
                 display_dm_narration(
-                    provider_failure_message or SAFE_ACTION_FAILURE_MESSAGE
+                    provider_failure_message or (
+                        "Nothing in your game was changed. The AI provider "
+                        "call could not be completed. Try that action again; "
+                        "if it keeps happening, Load your last save."
+                    )
                 )
             finish_live_turn_scope(live_turn_scope)
             status_ready()
