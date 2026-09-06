@@ -1,6 +1,6 @@
 .ember-inspection-trigger { font: inherit; color: inherit; padding: 0; text-align: left; background: none; border: 0; cursor: pointer; text-decoration: underline; text-decoration-color: #493b27; text-underline-offset: 3px; }
 .ember-inspection-trigger:hover { color: #e7be83; }
-.ember-desktop .ember-ability-inspection { display: block; width: 100%; text-align: center; text-decoration: none; }
+:is(.ember-desktop, .ember-player-full-card) .ember-ability-inspection { display: block; width: 100%; text-align: center; text-decoration: none; }
 .ember-inspection { position: fixed; z-index: 10010; width: min(390px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; color: #ddd6c8; background: #0c1111; border: 1px solid #8a6c42; border-radius: 3px; box-shadow: 0 12px 36px #000a, inset 0 0 0 3px #080d0d; font: 400 18px/1.45 'Crimson Text', serif; overflow: hidden; }
 .ember-inspection header { display: flex; align-items: flex-start; gap: 14px; padding: 14px 18px 10px; border-bottom: 1px solid #493b27; }
 .ember-inspection h3 { flex: 1; margin: 0; color: #c5a06d; font: 400 21px/1.25 'Crimson Text', serif; overflow-wrap: anywhere; }
@@ -17,19 +17,19 @@
 .ember-inspection :focus-visible, .ember-inspection-trigger:focus-visible { outline: 2px solid #d9bb88; outline-offset: 2px; }
 
 /* Match the inspection surfaces to their Ember sheet owners, desktop only. */
-.ember-desktop :is(.neq-inventory-tab,.neq-spells-tab,.neq-spells-sheet) { background: transparent; color: #ddd6c8; font: 400 17px/1.4 'Crimson Text',serif; border: 0; box-shadow: none; padding: 0; }
-.ember-desktop :is(.neq-equipment-section,.neq-spellcasting-section,.neq-magic-items-section,.neq-magic-category,.neq-spell-level-group) { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 8px 0; }
-.ember-desktop :is(.neq-equipment-section h4,.neq-spellcasting-section h3,.neq-magic-category h4) { font: 400 20px/1.3 'Crimson Text',serif; color: #c5a06d; text-transform: none; padding: 0 0 8px; margin: 0 0 8px; border-bottom: 1px solid #493b27; }
-.ember-desktop .neq-storage-view-button { color: #ddd6c8; background: #151d19; border: 1px solid #665336; border-radius: 2px; font: inherit; padding: 10px; }
-.ember-desktop .neq-inventory-controls { background: none; border: 0; padding: 10px 0; gap: 6px; flex-wrap: wrap; }
-.ember-desktop .neq-inventory-tab > .ember-currency-row { flex-shrink: 0; }
-.ember-desktop .neq-inventory-control { color: #c5a06d; background: #0c1111; border: 1px solid #493b27; border-radius: 2px; font: 400 15px/1.3 'Crimson Text',serif; }
-.ember-desktop :is(.neq-inventory-item,.neq-magic-item,.neq-spell-item) { background: transparent; padding: 9px 0; border: 0; border-bottom: 1px solid #302b20; font: inherit; border-radius: 0; }
-.ember-desktop :is(.neq-item-name,.neq-magic-item-name,.neq-spell-name) { color: #ddd6c8; font: inherit; }
-.ember-desktop :is(.neq-item-type,.neq-feature-bullet) { color: #a89c88; }
-.ember-desktop .neq-spell-stats { background: #101814; color: #c5a06d; font: inherit; padding: 8px; border: 1px solid #302b20; }
-.ember-desktop .neq-spell-stats span { color: #c5a06d; font: inherit; }
-.ember-desktop .neq-spell-level-header { background: none; border-bottom: 1px solid #493b27; padding: 8px 0; }
-.ember-desktop .neq-spell-level-name { color: #c5a06d; font: inherit; }
-.ember-desktop .neq-spell-list { display: block; }
-.ember-desktop :is(.neq-spell-slots,.neq-magic-item-charges,.neq-spell-badge) { font: 400 14px/1.3 'Crimson Text',serif; }
+:is(.ember-desktop, .ember-player-full-card) :is(.neq-inventory-tab,.neq-spells-tab,.neq-spells-sheet) { background: transparent; color: #ddd6c8; font: 400 17px/1.4 'Crimson Text',serif; border: 0; box-shadow: none; padding: 0; }
+:is(.ember-desktop, .ember-player-full-card) :is(.neq-equipment-section,.neq-spellcasting-section,.neq-magic-items-section,.neq-magic-category,.neq-spell-level-group) { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 8px 0; }
+:is(.ember-desktop, .ember-player-full-card) :is(.neq-equipment-section h4,.neq-spellcasting-section h3,.neq-magic-category h4) { font: 400 20px/1.3 'Crimson Text',serif; color: #c5a06d; text-transform: none; padding: 0 0 8px; margin: 0 0 8px; border-bottom: 1px solid #493b27; }
+:is(.ember-desktop, .ember-player-full-card) .neq-storage-view-button { color: #ddd6c8; background: #151d19; border: 1px solid #665336; border-radius: 2px; font: inherit; padding: 10px; }
+:is(.ember-desktop, .ember-player-full-card) .neq-inventory-controls { background: none; border: 0; padding: 10px 0; gap: 6px; flex-wrap: wrap; }
+:is(.ember-desktop, .ember-player-full-card) .neq-inventory-tab > .ember-currency-row { flex-shrink: 0; }
+:is(.ember-desktop, .ember-player-full-card) .neq-inventory-control { color: #c5a06d; background: #0c1111; border: 1px solid #493b27; border-radius: 2px; font: 400 15px/1.3 'Crimson Text',serif; }
+:is(.ember-desktop, .ember-player-full-card) :is(.neq-inventory-item,.neq-magic-item,.neq-spell-item) { background: transparent; padding: 9px 0; border: 0; border-bottom: 1px solid #302b20; font: inherit; border-radius: 0; }
+:is(.ember-desktop, .ember-player-full-card) :is(.neq-item-name,.neq-magic-item-name,.neq-spell-name) { color: #ddd6c8; font: inherit; }
+:is(.ember-desktop, .ember-player-full-card) :is(.neq-item-type,.neq-feature-bullet) { color: #a89c88; }
+:is(.ember-desktop, .ember-player-full-card) .neq-spell-stats { background: #101814; color: #c5a06d; font: inherit; padding: 8px; border: 1px solid #302b20; }
+:is(.ember-desktop, .ember-player-full-card) .neq-spell-stats span { color: #c5a06d; font: inherit; }
+:is(.ember-desktop, .ember-player-full-card) .neq-spell-level-header { background: none; border-bottom: 1px solid #493b27; padding: 8px 0; }
+:is(.ember-desktop, .ember-player-full-card) .neq-spell-level-name { color: #c5a06d; font: inherit; }
+:is(.ember-desktop, .ember-player-full-card) .neq-spell-list { display: block; }
+:is(.ember-desktop, .ember-player-full-card) :is(.neq-spell-slots,.neq-magic-item-charges,.neq-spell-badge) { font: 400 14px/1.3 'Crimson Text',serif; }

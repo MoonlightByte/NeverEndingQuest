@@ -1,0 +1,87 @@
+/* Desktop NPC sheet, scoped to its portal. Shared NPC menus keep their behavior. */
+body[data-ember-desktop='true'] .ember-npc-full-card {
+  --ember-text:#eae2d2; --ember-muted:#b2a995; --ember-brass:#d5b47b; --ember-rule:#594c35;
+  border:1px solid #85704a; border-radius:9px; overflow:hidden;
+  background:radial-gradient(ellipse at top left,#64503228,transparent 65%),#191d17;
+}
+body[data-ember-desktop='true'] .ember-npc-full-card > .ember-dialog-heading { flex-shrink:0; padding:12px 22px; background:#171a14; }
+body[data-ember-desktop='true'] .ember-npc-full-card > .ember-dialog-heading h3 { font:500 12px/1.5 'Segoe UI',sans-serif; letter-spacing:1.3px; text-transform:uppercase; }
+body[data-ember-desktop='true'] .ember-npc-full-card > .ember-dialog-heading + div { padding:22px; }
+.tavern-character-sheet { display:grid; grid-template-columns:112px minmax(0,1fr) minmax(0,1.05fr); gap:20px; color:#eae2d2; }
+.tavern-character-sheet h4 { margin:0 0 12px; color:#d5b47b; font:600 11px/1.3 'Segoe UI',sans-serif; text-transform:uppercase; letter-spacing:1.3px; }
+.tavern-character-sheet .tcs-label,.tcs-identity-fields dt { color:#c5b797; font:600 10px/1.3 'Segoe UI',sans-serif; text-transform:uppercase; letter-spacing:.6px; }
+.tcs-identity { grid-column:1/-1; display:grid; grid-template-columns:112px minmax(0,1fr) auto; gap:20px; align-items:center; border-bottom:1px solid #aa8c504d; padding-bottom:20px; }
+.tcs-portrait .ember-person-details { display:none; }
+body[data-ember-desktop='true'] .tcs-portrait .neq-character-chip { width:112px!important; height:112px!important; display:block; padding:0; border:1px solid #8c764d!important; border-radius:5px; background:transparent!important; }
+.tcs-portrait .ember-chip-portrait { display:block; width:100%; height:100%; background-size:cover; background-position:center 25%; }
+.tcs-portrait .neq-character-chip > span:last-child { display:none; }
+.tcs-name h3 { margin:0 0 18px; font:400 34px/1.1 'Crimson Text',Georgia,serif; color:#f1e4cd; }
+.tcs-identity-fields { display:flex; flex-wrap:wrap; gap:10px 22px; margin:0; }
+.tcs-identity-fields dd { margin:5px 0 0; font:400 14px/1.3 'Segoe UI',sans-serif; }
+.tcs-progression { align-self:stretch; display:flex; flex-direction:column; justify-content:center; gap:16px; }
+.tcs-progression strong { display:block; margin-top:7px; font:500 15px/1.3 'Segoe UI',sans-serif; }
+.tcs-progression .ember-currency-row { display:flex; gap:12px; padding:0; margin:0; font:400 12px/1.5 'Segoe UI',sans-serif; }
+.tcs-abilities { display:flex; flex-direction:column; align-self:start; gap:9px; padding:13px 9px; border:1px solid #a38a5655; border-radius:7px; background:#0e140e; }
+.tcs-abilities h4 { text-align:center; margin:0 0 2px; }
+.tcs-ability { position:relative; display:grid; grid-template-columns:1fr 32px; align-items:center; gap:5px; min-height:65px; padding:8px; border:1px solid #a38a5680; border-radius:8px 8px 15px 15px; background:linear-gradient(#353529,#22281c); }
+.tcs-ability .tcs-label { grid-column:1/-1; font-size:9px; letter-spacing:0; text-align:center; }
+.tcs-ability strong { font:400 28px/1 'Crimson Text',Georgia,serif; text-align:center; color:#f3e8d0; }
+.tcs-score { display:flex; align-items:center; justify-content:center; height:26px; border:1px solid #ab935b99; border-radius:50%; color:#d7c69f; background:#12180f; font:500 12px/1 'Segoe UI',sans-serif; }
+.tcs-mechanics,.tcs-story { display:flex; flex-direction:column; gap:18px; min-width:0; }
+.tcs-defense { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.tcs-defense > div { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; min-height:78px; padding:9px; }
+.tcs-ac { background:#c4b07a; color:#242619; clip-path:polygon(0 0,100% 0,100% 72%,50% 100%,0 72%); }
+body[data-ember-desktop='true'] .ember-npc-full-card .tcs-ac strong { color:#242619; }
+.tavern-character-sheet .tcs-ac .tcs-label { color:#343521; }
+.tcs-initiative { border:1px solid #ad945d66; border-radius:4px; background:#272c21; }
+.tcs-defense strong { font:400 32px/1 'Crimson Text',Georgia,serif; }
+.tcs-hp { display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; margin-top:12px; padding:13px 15px; border:1px solid #83936688; border-radius:4px; background:#33452b66; }
+.tcs-hp strong { font:400 30px/1 'Crimson Text',Georgia,serif; }
+.tcs-hp small { font-size:19px; color:#b7bea8; }
+.tcs-hp-track { grid-column:1/-1; height:4px; background:#10160d; }
+.tcs-hp-track span { display:block; height:100%; background:#9cac78; }
+.tcs-hp-track span[data-low='true'] { background:#c67b52; }
+.tcs-condition { margin:8px 0 0; color:#efbb96; font:500 13px/1.4 'Segoe UI',sans-serif; }
+.tcs-checks,.tcs-equipment,.tcs-features { padding-top:14px; border-top:1px solid #aa8c504d; }
+.tcs-saves { display:grid; grid-template-columns:1fr 1fr; gap:7px 20px; margin:0 0 12px; }
+.tcs-saves > div { display:flex; justify-content:space-between; gap:10px; font:400 12px/1.3 'Segoe UI',sans-serif; }
+.tcs-saves dt { color:#b9ae93; }
+.tcs-saves dt span { color:#d5b47b; }
+.tcs-saves dd { margin:0; color:#eae2d2; font-weight:600; }
+.tcs-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.tcs-actions button { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; min-height:40px; border:1px solid #ab925965; border-radius:4px; background:#303226; color:#e5cfaa; text-align:left; font:500 12px/1.3 'Segoe UI',sans-serif; }
+.tcs-actions button span { color:#ba9c65; font-size:18px; }
+.tcs-actions button:hover { background:#3d4030; }
+.tcs-features .tcs-actions { grid-template-columns:1fr; }
+.tcs-biography dl { display:grid; gap:10px; margin:0; }
+.tcs-biography dl > div { border:1px solid #a38a564a; border-radius:4px; padding:12px 14px; background:#b59f6610; }
+.tcs-biography dt { color:#d5b47b; font:600 10px/1.3 'Segoe UI',sans-serif; text-transform:uppercase; letter-spacing:.7px; margin-bottom:6px; }
+.tcs-biography dd { margin:0; color:#e7decb; font:400 18px/1.35 'Crimson Text',Georgia,serif; overflow-wrap:anywhere; white-space:pre-wrap; }
+@media (min-width:761px) and (max-height:850px) {
+  body[data-ember-desktop='true'] .ember-npc-full-card > .ember-dialog-heading + div { padding:16px 22px; }
+  .tavern-character-sheet { gap:16px 20px; }
+  .tcs-identity { grid-template-columns:96px minmax(0,1fr) auto; padding-bottom:16px; }
+  body[data-ember-desktop='true'] .tcs-portrait .neq-character-chip { width:96px!important; height:96px!important; }
+  .tcs-name h3 { font-size:30px; margin-bottom:12px; }
+  .tcs-abilities { gap:6px; padding:10px 9px; }
+  .tcs-ability { min-height:55px; padding:6px; gap:3px; }
+  .tcs-ability strong { font-size:25px; }
+  .tcs-mechanics,.tcs-story { gap:12px; }
+  .tcs-defense > div { min-height:64px; padding:7px; gap:5px; }
+  .tcs-hp { margin-top:9px; padding:10px 12px; gap:8px; }
+  .tcs-checks,.tcs-equipment,.tcs-features { padding-top:10px; }
+  .tcs-biography dl { gap:8px; }
+  .tcs-biography dl > div { padding:9px 12px; }
+  .tcs-biography dd { font-size:17px; }
+  .tavern-character-sheet h4 { margin-bottom:9px; }
+  .tcs-actions button { min-height:36px; padding:8px 10px; }
+}
+@media (max-width:760px) {
+  .tavern-character-sheet { grid-template-columns:100px minmax(0,1fr); gap:16px; }
+  .tcs-identity { grid-template-columns:100px minmax(0,1fr); }
+  .tcs-progression { grid-column:1/-1; flex-direction:row; justify-content:space-between; flex-wrap:wrap; }
+  .tcs-story { grid-column:1/-1; }
+  .tcs-features .tcs-actions { grid-template-columns:1fr 1fr; }
+  .tcs-name h3 { font-size:28px; }
+  body[data-ember-desktop='true'] .tcs-portrait .neq-character-chip { width:100px!important; height:100px!important; }
+}

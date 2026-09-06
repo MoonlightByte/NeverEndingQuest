@@ -1,0 +1,165 @@
+/* Desktop design review. Preserve the existing components and game contracts.
+ * Kept separate until visual approval; every rule is scoped to the desktop root. */
+.ember-desktop {
+  --ember-page: #100f0c;
+  --ember-panel: #191a15;
+  --ember-text: #eae2d2;
+  --ember-muted: #aca596;
+  --ember-brass: #d5b47b;
+  --ember-rule: #4b4131;
+  --ember-frame: #34352a;
+  --accent: #8caa79;
+  --font-chrome: 'Segoe UI', system-ui, sans-serif;
+  grid-template-columns: 312px minmax(0, 1fr) 284px;
+  grid-template-rows: 64px minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 20px 20px;
+  background: radial-gradient(ellipse at 15% 0, #64442729, transparent 50%),
+    radial-gradient(ellipse at 85% 90%, #30432d21, transparent 55%), var(--ember-page);
+}
+.ember-desktop > header { margin-inline: -20px; }
+.ember-desktop .neq-header { height:64px; min-height:64px; padding:0 24px; gap:20px; background:#131410ed; border-bottom:1px solid #a6814533; }
+.ember-desktop .neq-header-brand { padding-right:20px; }
+.ember-desktop .neq-shimmer-title { font-size:21px; letter-spacing:-.7px; color:#f0ddba; }
+.ember-desktop .neq-location-name { font:500 12px/1.5 var(--font-chrome); }
+.ember-desktop .neq-location-details { font:400 11px/1.5 var(--font-chrome); color:var(--ember-muted); }
+.ember-desktop .neq-header-actions { gap:3px; }
+.ember-desktop .neq-header-actions > :is(button,a), .ember-desktop .neq-header-actions > div > button {
+  padding:9px 10px; border:0; border-radius:5px!important; font:500 12px/1.2 var(--font-chrome)!important;
+}
+.ember-desktop .neq-header-actions .ember-icon { width:16px; height:16px; }
+.ember-desktop .neq-connection { padding-right:12px; gap:6px; font:400 11px/1.2 var(--font-chrome); color:var(--ember-muted); }
+.ember-desktop .neq-connection > [aria-label] { width:6px; height:6px; }
+.ember-desktop .neq-rail-area { padding:0; border:1px solid var(--ember-frame); border-radius:10px; overflow:hidden; background:linear-gradient(155deg,#25241c88,#171a15 45%); }
+.ember-desktop .neq-rail-panel { padding:12px; }
+.ember-desktop .neq-main-area { padding:0; }
+.ember-desktop .neq-main-panel { overflow:hidden; border:1px solid #a9884940; border-radius:10px; background:linear-gradient(145deg,#21241c,#191d17 65%); box-shadow:0 12px 36px #0003; }
+.ember-desktop .tavern-story-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-shrink:0; padding:20px 26px 17px; border-bottom:1px solid #d5b47b20; }
+.ember-desktop .tavern-eyebrow { display:block; font:600 10px/1.5 var(--font-chrome); letter-spacing:2px; text-transform:uppercase; color:var(--ember-brass); }
+.ember-desktop .tavern-story-heading h2 { margin:3px 0 0; font:400 27px/1.15 'Crimson Text',Georgia,serif; color:#f2e7d0; }
+.ember-desktop .tavern-story-heading button { flex-shrink:0; border:1px solid #b49a6138; padding:8px 10px; border-radius:5px; background:#171b16; color:var(--ember-brass); font:500 11px/1.2 var(--font-chrome); }
+.ember-desktop .tavern-story-heading button:hover { border-color:var(--ember-brass); }
+.ember-desktop .neq-game-log { border:0; border-radius:0; padding:16px 26px; background:transparent; }
+.ember-desktop .neq-session-divider { margin:0 0 20px; font:500 10px/1.4 var(--font-chrome); letter-spacing:1.3px; text-transform:uppercase; opacity:.75; }
+.ember-desktop .neq-message { gap:12px; padding:8px 0 24px; }
+.ember-desktop .neq-message-avatar { width:28px; height:28px; }
+.ember-desktop .neq-message-user { margin-bottom:22px; padding:0 0 15px; border-color:#d5b47b1c; }
+.ember-desktop .neq-message-header { margin:0 0 12px; gap:12px; }
+.ember-desktop .neq-message-author { color:var(--ember-brass)!important; font:600 11px/1.5 var(--font-chrome); letter-spacing:1.2px; text-transform:uppercase; }
+.ember-desktop .neq-message-text { margin-right:0; max-width:72ch; font:400 22px/1.55 'Crimson Text',Georgia,serif; color:#e7e2d3!important; letter-spacing:0; }
+.ember-desktop .neq-message-user .neq-message-text { font-size:19px; }
+.ember-desktop .ember-message-action { font:500 10px/1.4 var(--font-chrome); gap:5px; }
+.ember-desktop .ember-message-action .ember-icon { width:15px; height:15px; }
+.ember-desktop .neq-inline-images { margin:22px 0; }
+.ember-desktop .neq-inline-images img { width:auto; max-width:100%; max-height:300px; margin-inline:auto; border:1px solid #af955235; border-radius:6px; background:transparent; }
+.ember-desktop .ember-image-caption { text-align:center; font:400 10px/1.5 var(--font-chrome); margin-top:8px; color:var(--ember-muted); }
+.ember-desktop .ember-narration-continuation { margin-right:0; }
+.ember-desktop .ember-dice-dock { margin:0 20px; padding:11px 0; border:0; border-top:1px solid #d5b47b25; border-radius:0; }
+.ember-desktop .neq-dice-strip { align-items:center; gap:12px; }
+.ember-desktop .neq-dice-label-text { font:500 10px/1.3 var(--font-chrome); text-transform:uppercase; letter-spacing:1px; color:var(--ember-muted); }
+.ember-desktop .neq-dice-label { gap:6px; }
+.ember-desktop .ember-dice-disclaimer { display:none; }
+.ember-desktop .neq-dice-buttons { gap:5px; }
+.ember-desktop .neq-dice-buttons button { min-height:32px; padding:5px 8px; border:1px solid #d5b47b26; border-radius:5px; box-shadow:none; font:500 11px/1 var(--font-chrome); }
+.ember-desktop .neq-dice-buttons button:hover { background:#d5b47b16; border-color:var(--ember-brass); }
+.ember-desktop .neq-dice-results { font-size:15px; max-height:70px; }
+.ember-desktop .neq-input-container { margin:0; padding:0 20px 20px; }
+.ember-desktop .neq-input-container > div { gap:8px; }
+.ember-desktop .neq-input-field { height:56px; border:1px solid #d5b47b60; border-radius:7px; padding:12px 16px; background:#11150f; font:400 19px/1.4 'Crimson Text',Georgia,serif; }
+.ember-desktop .neq-send-button { height:56px; min-width:88px; padding:12px 16px; border:1px solid #e0c08b; border-radius:7px; background:linear-gradient(130deg,#e6ca93,#c5a26c); color:#241b10; font:600 13px/1 var(--font-chrome); box-shadow:0 3px 12px #0003; }
+.ember-desktop .neq-send-button:hover:not(:disabled) { background:#edcf94; }
+.ember-desktop .neq-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; height:70px; min-height:70px; margin-bottom:18px; }
+.ember-desktop .neq-tabs .neq-tab-button:nth-child(n) { grid-column:auto; }
+.ember-desktop .neq-tabs .neq-tab-button { padding:9px 3px; border:0; border-radius:5px; font:500 11px/1.1 var(--font-chrome); color:var(--ember-muted); background:transparent; box-shadow:none; }
+.ember-desktop .neq-tabs .neq-tab-button[aria-selected='true'] { background:#d5b47b18; color:#eed4a8; border:1px solid #d5b47b44; box-shadow:none; }
+.ember-desktop .neq-tab-button[aria-selected='true']::after { display:none; }
+.ember-desktop .neq-character-sheet-top { align-items:center; gap:12px; padding:0 0 16px; margin:0 0 14px; border-bottom:1px solid #d5b47b22; }
+.ember-desktop .neq-character-portrait { width:88px; height:88px; aspect-ratio:1; border-radius:6px; border-color:#bda36b66; }
+.ember-desktop .neq-character-header { padding:0; }
+.ember-desktop .neq-character-name { font-size:26px; margin-bottom:6px; line-height:1; }
+.ember-desktop .neq-character-details { font:400 11px/1.6 var(--font-chrome); }
+.ember-desktop .ember-xp-track { height:4px; border:0; padding:0; background:#333626; margin:5px 0!important; }
+.ember-desktop .neq-combat-stats { grid-template-columns:1.5fr 1fr 1fr; gap:5px; margin:0 0 12px; }
+.ember-desktop .neq-combat-stat { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; min-height:64px; padding:8px 4px; border:1px solid #d5b47b27; border-radius:6px; box-shadow:none; background:#10160e55; }
+.ember-desktop .neq-combat-label { gap:4px; font:600 10px/1 var(--font-chrome); letter-spacing:.6px; }
+.ember-desktop .neq-combat-label .ember-icon { width:13px; height:13px; }
+.ember-desktop .neq-combat-value { font:400 19px/1 'Crimson Text',Georgia,serif; }
+.ember-desktop .neq-hp-bar { left:8px; right:8px; bottom:5px; height:3px; }
+.ember-desktop .neq-abilities-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin-bottom:16px; }
+.ember-desktop .neq-ability-score { display:grid; grid-template-columns:1fr 1fr; align-items:center; min-height:57px; gap:2px; padding:8px; border:1px solid #d5b47b22; border-radius:6px; box-shadow:none; background:#151a12; }
+.ember-desktop .neq-ability-score:has(.ember-ability-inspection) { padding:0; }
+.ember-desktop .neq-ability-score .ember-ability-inspection { display:grid; grid-column:1/-1; grid-template-columns:1fr 1fr; align-items:center; gap:2px; width:100%; height:100%; min-height:57px; padding:8px; text-decoration:none; }
+.ember-desktop .neq-ability-name { grid-column:1/-1; font:600 9px/1.2 var(--font-chrome); letter-spacing:1px; text-align:left; color:var(--ember-muted); }
+.ember-desktop .neq-ability-value { font-size:24px; text-align:left; }
+.ember-desktop .neq-ability-modifier { justify-self:end; margin:0; padding:3px 5px; border-radius:4px; color:#c2d3a9; background:#8caa7917; font:600 12px/1 var(--font-chrome); }
+.ember-desktop .neq-sheet-section,.ember-desktop .neq-saving-throws { margin:0 0 14px; }
+.ember-desktop .neq-sheet-section h4,.ember-desktop .neq-saving-throws h4 { gap:8px; margin-bottom:6px; font:600 10px/1.3 var(--font-chrome); letter-spacing:.6px; color:var(--ember-brass); }
+.ember-desktop .neq-sheet-section-content > div,.ember-desktop .neq-feature-item { font-size:16px; line-height:1.5; }
+.ember-desktop .neq-saving-throws-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
+.ember-desktop .neq-saving-throws-grid > div { justify-content:space-between; font:400 11px/1.5 var(--font-chrome); background:#d5b47b07; padding:4px; border-radius:3px; }
+.ember-desktop .ember-currency-row { padding:10px 0; margin:0; font:500 12px/1.4 var(--font-chrome); }
+.ember-desktop .ember-sheet-footer { gap:6px; padding:12px 0 0; }
+.ember-desktop .ember-sheet-footer button { flex:1; gap:8px; min-height:38px; border:1px solid #d5b47b2e; border-radius:5px; box-shadow:none; font:500 11px/1.2 var(--font-chrome); }
+.ember-desktop .ember-sheet-footer .ember-icon { width:17px; height:17px; }
+.ember-desktop .ember-people { padding:0; border:0; }
+.ember-desktop .ember-people > h2 { padding:12px 2px 16px; margin:0 0 10px; border-color:#d5b47b2e; font:400 23px/1.1 'Crimson Text',Georgia,serif; }
+.ember-desktop .neq-chip-scroller { gap:10px; padding:0 3px 12px 0; }
+.ember-desktop .ember-people .ember-person-entry { padding:12px 12px 35px; background:linear-gradient(125deg,#27291f,#1a1d16); border:1px solid #ad91532b; border-radius:8px; }
+.ember-desktop .ember-people .neq-character-chip { grid-template-columns:84px minmax(0,1fr); gap:12px; min-height:88px; align-items:center; }
+.ember-desktop .ember-people .ember-chip-portrait { width:84px; height:84px; border-radius:5px; border-color:#c8ac6966; background-position:center 25%; }
+.ember-desktop .ember-people .neq-character-chip > span:last-child { font:400 20px/1.1 'Crimson Text',Georgia,serif!important; padding-top:0; }
+.ember-desktop .ember-party-vitals { gap:5px; margin-top:7px; font:400 11px/1.3 var(--font-chrome); }
+.ember-desktop .ember-party-level,.ember-desktop .ember-party-xp { font-size:10px; }
+.ember-desktop .ember-party-combat { gap:8px; }
+.ember-desktop .ember-party-hp { height:3px; border-radius:2px; }
+.ember-desktop .ember-people .ember-person-entry > .ember-person-details { bottom:9px; right:12px; padding:4px 6px; border:0; border-radius:3px; font:500 10px/1.3 var(--font-chrome); }
+.ember-desktop .ember-person-details:hover { background:#d5b47b16; }
+.ember-desktop .ember-people .ember-person-card { padding-bottom:12px; }
+.ember-desktop .ember-person-card .ember-card-bio { position:absolute; inset:0; z-index:1; width:100%; height:100%; padding:0; border:0; border-radius:inherit; background:transparent; cursor:pointer; }
+.ember-desktop .ember-person-card .neq-character-chip { pointer-events:none; }
+.ember-desktop .ember-person-card .ember-card-portrait { position:relative; z-index:2; pointer-events:auto; padding:0; border:0; border-radius:5px; background:none; width:fit-content; }
+.ember-desktop .ember-person-card .ember-card-summary { pointer-events:none; }
+.ember-desktop .ember-person-card:has(.ember-card-bio:hover) { border-color:#b99a5b88; background:linear-gradient(125deg,#303024,#1c2119); }
+.ember-desktop .ember-person-card .ember-card-portrait:hover .ember-chip-portrait { border-color:#dec28a; }
+.ember-desktop .ember-person-card .ember-card-bio:focus-visible { outline-offset:2px; }
+.ember-desktop .ember-nearby-label { padding:12px 2px 2px; font:600 10px/1.4 var(--font-chrome); letter-spacing:1.5px; text-transform:uppercase; }
+.ember-desktop.tavern-story-focused { grid-template-columns:minmax(0,1fr); grid-template-areas:'header' 'main'; }
+.ember-desktop.tavern-story-focused :is(.neq-rail-area,.ember-people) { display:none; }
+.ember-desktop.tavern-story-focused .neq-main-area { width:min(100%,1080px); margin-inline:auto; }
+@media (min-width:1700px) {
+  .ember-desktop { grid-template-columns:340px minmax(0,1fr) 320px; padding-inline:28px; gap:22px; }
+  .ember-desktop > header { margin-inline:-28px; }
+  .ember-desktop .neq-game-log { padding-inline:40px; }
+  .ember-desktop .ember-people .neq-character-chip { grid-template-columns:96px minmax(0,1fr); }
+  .ember-desktop .ember-people .ember-chip-portrait { width:96px; height:96px; }
+}
+@media (max-width:1250px) {
+  .ember-desktop { grid-template-columns:280px minmax(0,1fr) 252px; padding:0 12px 12px; gap:10px; }
+  .ember-desktop > header { margin-inline:-12px; }
+  .ember-desktop .neq-header { padding-inline:14px; gap:12px; }
+  .ember-desktop .neq-header-actions > :is(button,a),.ember-desktop .neq-header-actions > div > button { padding-inline:7px; }
+  .ember-desktop .neq-header-brand { padding-right:12px; }
+  .ember-desktop .neq-shimmer-title { font-size:18px; }
+  .ember-desktop .neq-game-log { padding:14px 18px; }
+  .ember-desktop .tavern-story-heading { padding:16px 18px; }
+  .ember-desktop .tavern-story-heading h2 { font-size:23px; }
+  .ember-desktop .neq-message-text { font-size:20px; }
+  .ember-desktop .ember-people .neq-character-chip { grid-template-columns:70px minmax(0,1fr); gap:10px; }
+  .ember-desktop .ember-people .ember-chip-portrait { width:70px; height:70px; }
+  .ember-desktop .neq-dice-strip { flex-wrap:wrap; gap:7px; }
+}
+@media (max-width:1000px) {
+  .ember-desktop { grid-template-columns:208px minmax(0,1fr) 212px; grid-template-rows:auto minmax(0,1fr); }
+  .ember-desktop .neq-header { height:auto; min-height:64px; flex-wrap:wrap; padding-block:10px; }
+  .ember-desktop .neq-character-sheet-top { flex-direction:column; align-items:flex-start; }
+  .ember-desktop .neq-character-portrait { width:72px; height:72px; }
+  .ember-desktop .neq-character-name { font-size:23px; }
+  .ember-desktop .neq-header-actions { margin-left:auto; }
+  .ember-desktop .ember-people .neq-character-chip { grid-template-columns:52px minmax(0,1fr); gap:8px; }
+  .ember-desktop .ember-people .ember-chip-portrait { width:52px; height:52px; }
+  .ember-desktop .tavern-story-heading { flex-wrap:wrap; gap:8px; }
+  .ember-desktop .neq-message { gap:6px; }
+  .ember-desktop .neq-message-avatar { width:20px; height:20px; }
+  .ember-desktop .neq-message-header { gap:8px; flex-wrap:wrap; }
+  .ember-desktop .neq-message-text { font-size:19px; }
+}

@@ -40,6 +40,7 @@ import { useEmberViewport } from './useEmberViewport'
 import { invalidateMediaCaches } from '../party/media'
 import { resetNarrationAudio } from '../log/TtsButton'
 import '../../theme/ember-desktop.css'
+import '../../theme/tavern-desktop-review.css'
 
 function FirstRunBanner() {
   const sessionMode = useSession((s) => s.mode)
@@ -51,15 +52,17 @@ function FirstRunBanner() {
   return <div className="ember-welcome-banner m-2 flex items-center gap-3 rounded-md border border-[#4a6da7] bg-[#2b3a55] px-3.5 py-2.5 text-[13px] leading-snug text-[#dde6f5]"><span className="flex-1">Welcome to NeverEndingQuest! Before you start, open <strong>Settings</strong> (gear icon, top right) to choose your AI provider. Want local/zero-cost or a custom server? Pick <strong>Local / Custom Server</strong>, paste your endpoint URL, then click <strong>Test Connection</strong>. You can also set your OpenAI API key there -- no file editing needed.</span><button type="button" onClick={() => { localStorage.setItem('neq_bannerDismissed', 'true'); setDismissed(true) }} className="rounded bg-[#4a6da7] px-3 py-1 text-xs text-white">Dismiss</button></div>
 }
 
+
 function ExitOverlay() {
   const result = useDialogs((s) => s.actionResult)
   if (result?.kind !== 'exit') return null
   return <div className="ember-exit-overlay fixed left-1/2 top-1/2 z-[10000] -translate-x-1/2 -translate-y-1/2 rounded-[10px] border-2 border-[#8b0000] bg-[#2c2c2c] p-[30px] text-center shadow-[0_0_20px_rgba(0,0,0,.5)]"><h2 className="mb-5 text-2xl font-bold text-accent" style={{ lineHeight: 'normal' }}>Thank you for playing!</h2><p className="mb-5" style={{ lineHeight: 'normal' }}>{EXIT_SAFE_MESSAGE}</p><p className="text-sm text-[#888]" style={{ lineHeight: 'normal' }}>Due to browser security, we cannot close this tab automatically.</p></div>
 }
 
-/** Center column: party/initiative rail above the log, then input + dice. */
-function CenterColumn() {
+/** Center column: transcript, dice and command; compact mode retains its party rail. */
+function CenterColumn({ focused, onToggleFocus }: { focused: boolean; onToggleFocus: () => void }) {
   const ember = useEmberDesktop()
+  const location = useWorld(state => state.location)
   const dice = useDiceRolls()
   const instance = useSession(state => state.serverInstanceId)
   const previous = useRef(instance)
@@ -85,6 +88,10 @@ function CenterColumn() {
       <div className="neq-header-divider" /></>}
       {!ember && <div id="neq-dice-results-host" />}
       <FirstRunBanner />
+      {ember && <div className="tavern-story-heading">
+        <div><span className="tavern-eyebrow">Your adventure</span><h2>{location?.currentLocation || 'The next chapter awaits'}</h2></div>
+        <button type="button" aria-pressed={focused} onClick={onToggleFocus}>{focused ? 'Show character & party' : 'Focus story'}<span aria-hidden="true">{focused ? ' ↙' : ' ↗'}</span></button>
+      </div>}
       <div className="min-h-0 flex-1">
         <GameLog />
       </div>
@@ -96,7 +103,9 @@ function CenterColumn() {
 
 /** App shell: CSS grid of header / center column / right panel rail. */
 export function AppShell() {
+  const [focused, setFocused] = useState(false)
   const ember = useEmberViewport()
+  useEffect(() => { if (!ember) setFocused(false) }, [ember])
   const connected = useSession(state => state.connected)
   const instance = useSession(state => state.serverInstanceId)
   const previousInstance = useRef(instance)
@@ -137,13 +146,14 @@ export function AppShell() {
       <CoreHydrationOwner />
       <StartingPanel />
       <div
-        className={`neq-app-grid${ember ? ' ember-desktop' : ''}`}
+        className={`neq-app-grid${ember ? ' ember-desktop' : ''}${focused ? ' tavern-story-focused' : ''}`}
+        data-desktop-design="tavern-review"
       >
         <header style={{ gridArea: 'header' }}>
           <HeaderBar />
         </header>
         <main className="neq-main-area min-h-0" style={{ gridArea: 'main' }}>
-          <CenterColumn />
+          <CenterColumn focused={focused} onToggleFocus={() => setFocused(value => !value)} />
         </main>
         <aside className="neq-rail-area min-h-0" style={{ gridArea: 'rail' }}>
           <RightPanelTabs />
