@@ -519,3 +519,15 @@ aliases, explicit upload precedence, scoped viewer refresh/cancellation and
 ambiguous thumbnail suffixes. No new artwork, game mechanics or hosted-only
 runtime dependencies were introduced. The owner preview still uses scripted
 state; actual upload tests run separately in disposable campaigns.
+
+## Final independent interaction and browser review
+
+The next full-plan review reproduced and fixed stale Reset/Update preparation
+and queued offline Save behavior without sending any diagnostic mutation to a
+backend. Independent source re-review is clean; 35 unit files / 333 tests pass.
+Desktop non-caster/NPC empty-state panels and scroll quantity badges now use
+Ember's existing palette, with narrow-layout styles retained. Thirteen final
+Chromium cases pass, including unchanged main-screen goldens. Firefox and the
+available frozen WebKit runtime were also exercised; evidence and explicit
+platform limitations are recorded in BROWSER-REVIEW.md. Owner sign-off and
+public-main integration remain separate gates.

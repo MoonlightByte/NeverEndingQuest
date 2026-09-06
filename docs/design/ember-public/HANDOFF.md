@@ -167,8 +167,17 @@ and re-review. These are bounded reviews, not blanket approval of every state.
 
 ## Differences and remaining release gates
 
-Current desktop confirmation receipt: [DIALOG-REVIEW.md](DIALOG-REVIEW.md).
-All 315 unit tests and ten focused confirmation/main browser cases pass.
+Latest [browser and interaction review](BROWSER-REVIEW.md): all 333 unit tests,
+13 final Chromium visual/interaction cases and 48 Firefox cases pass; the four desktop goldens
+are unchanged. The rebuilt UI includes independent-review corrections for
+Reset/Save/Update operation ownership and desktop empty-state/badge styling.
+Four additional intercepted operation cases pass in each browser; no real reset
+or updater ran. Refresh the owner preview to load this rebuilt application.
+Firefox has bounded functional evidence; the frozen WebKit runtime has a
+documented viewport-emulation limitation, not a visual acceptance pass.
+
+Earlier desktop confirmation checkpoint: [DIALOG-REVIEW.md](DIALOG-REVIEW.md).
+That checkpoint passed 315 unit tests and ten focused confirmation/main browser cases.
 The [workbench dialog/accessibility review](WORKBENCH-DIALOG-REVIEW.md) adds
 13 prompt checks and retains ten workbench/tab/help checks, including actual
 standalone helper delivery and Builder reconnect/cancel ownership.
@@ -189,8 +198,9 @@ from the concept. No mockup-only footer or mandatory hero image was added.
 
 Still unverified: paid/live provider turns, full real new-game-to-save/restore
 journey, real generation/export/update jobs and reset process restart, every possible error or
-loading state, native zoom/keyboard/safe-area behavior, Firefox/WebKit and native
-Windows/macOS rendering, and formal performance profiling. Intermediate widths
+loading state, native zoom/keyboard/safe-area behavior, current Safari/WebKit
+visual acceptance and native Windows/macOS rendering, and formal performance
+profiling. See BROWSER-REVIEW.md for bounded Firefox coverage. Intermediate widths
 retain the existing responsive ownership with containment tests; the separate
 side-panel prototype is delivered for owner review, not integrated. Legacy fallback selection is
 preserved and actual missing-build/route/launcher behavior has been tested.

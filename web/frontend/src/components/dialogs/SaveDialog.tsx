@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
-import { useDialogs } from '../../stores'
+import { useDialogs, useSession } from '../../stores'
 import { DialogShell, dialogButtonPrimary, dialogButtonSecondary } from './DialogShell'
 import { useEmberViewport } from '../layout/useEmberViewport'
 import { EmberIcon } from '../layout/EmberIcon'
@@ -48,8 +48,14 @@ function SaveDialogBody() {
   const [saveMode, setSaveMode] = useState<SaveMode>('essential')
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const closeDialog = useDialogs((s) => s.closeDialog)
+  const connected = useSession((s) => s.connected)
+  const submitted = useRef(false)
 
   const performSave = () => {
+    // Socket.IO buffers disconnected writes. Keep the draft open instead of
+    // scheduling a save against whichever campaign reconnects later.
+    if (submitted.current || !useSession.getState().connected) return
+    submitted.current = true
     emitC('action', {
       action: 'saveGame',
       parameters: { description: description.trim(), saveMode },
@@ -109,11 +115,12 @@ function SaveDialogBody() {
           </div>
         </div>
 
+        {!connected && <p role="status">Disconnected. Your draft is kept here; reconnect before saving.</p>}
         <div className="neq-dialog-buttons-parity">
           <button type="button" className={dialogButtonSecondary} onClick={closeDialog}>
             Cancel
           </button>
-          <button type="button" aria-label="Save Game" className={dialogButtonPrimary} onClick={performSave}>
+          <button type="button" aria-label="Save Game" className={dialogButtonPrimary} onClick={performSave} disabled={!connected}>
             {!ember && <span className="neq-button-icon-parity">💾</span>} Save Game
           </button>
         </div>

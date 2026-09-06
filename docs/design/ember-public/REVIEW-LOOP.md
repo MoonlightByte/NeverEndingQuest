@@ -256,3 +256,30 @@ Root's older workbench suite expected a clickable Merge placeholder. It now
 asserts the intentional disabled button, readable associated explanation and
 zero action instead; all other workflow assertions remain. All ten existing
 workbench/accessibility checks pass. See WORKBENCH-DIALOG-REVIEW.md for scope.
+
+## Final browser and operation-ownership loop
+
+Independent test review strengthened font loading, roster-image decoding,
+header/composer reachability and touch inspection's outgoing Socket.IO evidence
+(both polling POSTs and WebSocket frames). The obsolete Settings test now closes
+through Escape with focus-return assertions, not an inert background opener.
+
+A fresh plan-versus-code review reproduced three inherited public-main issues
+with every mutation packet intercepted: late Reset after dismissal, offline Save
+queued for reconnect and duplicate/late Update after cancellation. Scoped dialog
+fixes preserve public payloads and received clean independent source re-review.
+All 18 new ownership unit cases and the full 333-test suite pass. Root's visual
+pass also found the gray non-caster notice; that notice, NPC empty/error surfaces
+and quantity badges now follow Ember while retaining phone styles. The targeted
+styling tests and independent visual re-review pass.
+
+Post-fix browser reproduction passes all four operation cases in Chromium and
+Firefox, intercepting both polling and WebSocket commands before the backend.
+Root reviewed the test source and actual Save/Reset/Update captures. The final
+13-case Chromium and 48-case Firefox rebuilt-app runs also pass. Reported
+implementation findings are closed; remaining approval/environment limits are
+explicitly retained rather than silently marked complete.
+
+See BROWSER-REVIEW.md for exact execution scope, personally inspected captures
+and the frozen WebKit runtime's measured viewport-emulation problem. None of
+these bounded checks substitutes for owner approval or live-provider acceptance.

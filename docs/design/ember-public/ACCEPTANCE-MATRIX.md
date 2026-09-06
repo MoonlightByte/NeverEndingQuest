@@ -7,8 +7,10 @@ complete. Earlier ledger entries describe historical scope, not current omission
 
 Sources of truth: `PORT-PLAN.md`, `TRANSITION-GATES.md`, actual source owners,
 colocated tests, browser captures and test output. The full unit suite currently
-passes 32 files / 315 tests. Browser receipt counts are in `HANDOFF.md`; test
-existence alone is not a pass. Browser tests use Chromium and synthetic campaigns.
+passes 35 files / 333 tests. Browser receipt counts are in `HANDOFF.md` and
+[BROWSER-REVIEW.md](BROWSER-REVIEW.md); test existence alone is not a pass.
+Chromium/Firefox evidence uses synthetic campaigns. The available frozen WebKit
+runtime has partial semantic evidence but fails accurate viewport emulation.
 
 ## Screen coverage
 
@@ -25,16 +27,16 @@ intentional compatibility exception, not a second Ember game. `e2e/` below means
 | Party / town / combat | Server-shaped combat hydration, `ember-runtime.spec.ts`, `ember-npc-media.spec.ts`, populated rail captures | Every dead/absent/long-list state has not received a final owner visual pass |
 | Character / abilities | Character/tooltip units, long pinned feature browser test, main captures; reviewed loading/no-character/error bootstrap states | All optional character-field combinations not screenshot-audited |
 | Inventory / search | `InventoryViewState.test.tsx`, `ember-inspection.spec.ts`, `ember-preview.spec.ts` | Full live campaign/reset journey unverified; tests use synthetic updates |
-| Spells / magic | `spellDetails.test.tsx`, shared reference timeout/retry test, player/NPC/alias-scroll browser tests | All long/absent combinations not visually signed off; no casting actions invented |
+| Spells / magic | `spellDetails.test.tsx`, shared reference timeout/retry test, player/NPC/alias-scroll browser tests; non-caster notice and quantity-badge desktop/phone styling checks | All long/absent combinations not visually signed off; no casting actions invented |
 | NPC information | All seven detail actions, live quantity/usage/slot updates, nested focus and original portrait browser checks | Full live removal/load journey and each missing-data capture unverified |
 | Maps | `MapTab*.test.tsx`, `MapModal.test.tsx`, `useMapPanZoom.test.ts`, two populated browser map tests, expanded/empty captures | Real-device touch and every error presentation not owner-approved |
 | Journal | Reviewed loading/empty/error/populated browser captures and units; independent close/reopen retry and hidden-quest checks | Full live quest/reset transition and owner sign-off unverified |
 | Storage | Reviewed 4-state browser captures, actual request bindings and units; truthful desktop read-failure message, phone preservation, independent retry | Real storage refresh during a live campaign unverified |
 | Settings / providers | Seven browser checks; 25 real handler/SDK/stub tests; 10 settings unit tests; reviewed provider/voice/error captures | Paid inference unverified; old-response-after-new-probe correlation needs a contract decision |
-| Save | Browser dialog/intent/full-mode checks; exact payload unit tests; actual essential/full handler-and-file probe | Full live browser journey and active-turn save queue unverified; owner preview is simulated |
+| Save | Browser dialog/intent/full-mode checks; exact payload and offline draft/reconnect ownership unit tests; actual essential/full handler-and-file probe | Full live browser journey and active-turn save queue unverified; owner preview is simulated |
 | Load / delete | Selection/hover styling, themed nested confirmations, duplicate/stale/cancel/restart-marker tests; actual valid/corrupt restore and delete/reconnect file probe; [current dialog receipt](DIALOG-REVIEW.md) | Actual process restart and every unavailable state unverified; probe intercepts exit |
-| Reset | Exact five-digit confirmation, pending/duplicate protection, browser cancel-without-reset; actual disposable reset and retained-backup probe | No production reset; actual restart and recovery from reset backup unverified |
-| Update / exit | Unit callbacks/restart failures/offline exit; browser version/progress surfaces | Actual updating process and platform browser-close behavior unverified |
+| Reset | Exact five-digit confirmation; all pending dismissal paths, duplicate/disconnect/unmount/marker ownership unit checks; browser cancel-without-reset; actual disposable reset and retained-backup probe | No production reset; actual restart and recovery from reset backup unverified |
+| Update / exit | Unit callbacks/restart failures/offline exit; Update pending duplicate/cancel/disconnect/unmount/marker ownership tests; browser version/progress surfaces | Actual updating process and platform browser-close behavior unverified |
 | Long-running work | `operations.test.tsx`, blocking-overlay/reconnect browser checks; reviewed module failure/blocking and compression failure/nonblocking captures | Real compression/module jobs and every terminal screenshot unverified |
 | Media / narration | Original viewer, real upload/static+module persistence, desktop/open-viewer/combat/phone refresh, rejected-upload byte preservation, cache/race/audio tests | No paid image/TTS calls; native file-picker activation and every campaign interleaving unverified; see MEDIA-REVIEW.md |
 | Debug | `DebugTab.test.tsx`, populated 64-line browser surface and capture | No formal large-log performance profile |
@@ -58,6 +60,12 @@ intentional compatibility exception, not a second Ember game. `e2e/` below means
 Independent feature and architecture agents have closed the concrete findings
 reported during these implementation batches. That does not close the unverified
 items above or substitute for owner approval.
+
+The final operation-ownership suite adds four passing cases in each of Chromium
+and Firefox, with all owned Save/Reset/Update packets intercepted. It checks
+offline draft preservation, consistent pending Reset dismissal, Reset
+disconnect/reconfirmation and Update duplicate/cancel/retry. This is frontend
+delivery evidence, not a claim that an actual updater or server restart ran.
 
 ## Provider matrix and reproduction
 

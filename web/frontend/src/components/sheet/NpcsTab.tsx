@@ -36,12 +36,12 @@ export function NpcsTab() {
   const selectedNpc = selected ? npcs.find((npc) => npcIdentity(npc) === selected.identity) : undefined
   useEffect(() => { if (selected && !selectedNpc) setSelected(null) }, [selected, selectedNpc])
 
-  if (error) return <p className="p-4 font-body text-sm text-red-400">{error}</p>
+  if (error) return <p role={ember ? 'alert' : undefined} data-state="error" className="ember-sheet-status p-4 font-body text-sm text-red-400">{error}</p>
 
   return (
     <div className="neq-npcs-content h-full overflow-y-auto">
       {npcs.length === 0 ? (
-        <p className="text-sm italic text-secondary">No NPC data available</p>
+        <p role={ember ? 'status' : undefined} data-state="empty" className="ember-sheet-status text-sm italic text-secondary">No NPC data available</p>
       ) : npcs.map((npc) => {
         const name = str(npc['name'], 'Unknown NPC')
         const hp = num(npc['hitPoints'])

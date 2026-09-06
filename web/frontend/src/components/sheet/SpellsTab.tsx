@@ -149,7 +149,7 @@ export function SpellsTab() {
           </div>
         </div>
       ))}
-      </div> : <div className="neq-no-spells">This character does not have spellcasting abilities.</div>}
+      </div> : <div role={ember ? 'status' : undefined} data-state="empty" className="neq-no-spells ember-sheet-status">This character does not have spellcasting abilities.</div>}
       <div className="neq-magic-items-section">
         <MagicCategory title="Scrolls" items={scrolls} />
         <MagicCategory title="Potions" items={potions} />
