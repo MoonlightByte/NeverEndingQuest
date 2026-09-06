@@ -39,6 +39,11 @@ def provider_display_name(provider):
     return _PROVIDER_NAMES.get(str(provider or "").lower(), "the AI provider")
 
 
+def _sentence(text):
+    """Capitalize the first letter (names like 'your local model server' start sentences)."""
+    return text[:1].upper() + text[1:] if text else text
+
+
 def _provider_of(exc):
     """Provider id carried by a provider exception or a child envelope, or ''."""
     for item in _provider_error_chain(exc):
@@ -61,18 +66,18 @@ def reissue_notice(disposition, http_status, provider, error_code=None):
     name = provider_display_name(provider)
     local = str(provider or "").lower() == "lmstudio"
     if isinstance(error_code, str) and error_code.lower() in QUOTA_ERROR_CODES:
-        return (
+        return _sentence(
             "%s reports your account is out of funds or quota. Retrying will "
             "not help; add credit or raise your quota, then try again." % name
         )
     if http_status == 429:
-        return (
+        return _sentence(
             "%s is rate limiting your key (or its quota is exhausted). "
             "Slowing down and retrying; if this keeps happening, check your "
             "provider account's usage and billing." % name
         )
     if isinstance(http_status, int) and http_status >= 500:
-        return (
+        return _sentence(
             "%s answered with a server error. Retrying with a fresh "
             "connection." % name
         )
@@ -81,7 +86,7 @@ def reissue_notice(disposition, http_status, provider, error_code=None):
             "Connection to your local model server was lost. Reconnecting; "
             "check that it is still running."
         )
-    return (
+    return _sentence(
         "%s did not answer. The connection was dropped; trying a fresh "
         "connection." % name
     )
@@ -197,7 +202,7 @@ def classify_provider_error(exc):
         return {
             "category": "insufficient_quota",
             "retryable": False,
-            "player_message": (
+            "player_message": _sentence(
                 "%s refused the request: your account is out of funds or "
                 "quota. Nothing in your game was changed. Add credit or raise "
                 "the quota on that account, then try that action again."
@@ -219,7 +224,7 @@ def classify_provider_error(exc):
         return {
             "category": "authentication_failed",
             "retryable": False,
-            "player_message": (
+            "player_message": _sentence(
                 "%s rejected your API key. Nothing in your game was changed. "
                 "Check that the key is correct and still active, update it in "
                 "Settings (the gear icon), then try that action again." % name
@@ -249,7 +254,7 @@ def classify_provider_error(exc):
         return {
             "category": "bad_request",
             "retryable": False,
-            "player_message": (
+            "player_message": _sentence(
                 "%s refused that request as malformed. Nothing in your game "
                 "was changed. Try rephrasing the action; if it keeps "
                 "happening, Load your last save." % name
@@ -265,7 +270,7 @@ def classify_provider_error(exc):
         return {
             "category": "rate_limited",
             "retryable": True,
-            "player_message": (
+            "player_message": _sentence(
                 "%s is rate limiting your key and did not answer in time. "
                 "Nothing in your game was changed. Wait a moment and try that "
                 "action again; if it keeps happening, check that account's "
@@ -301,7 +306,7 @@ def classify_provider_error(exc):
                     "that it is running, then try that action again."
                 )
                 if local
-                else (
+                else _sentence(
                     "%s did not answer (connection dropped or server error). "
                     "Nothing in your game was changed. Try that action again "
                     "in a moment." % name
