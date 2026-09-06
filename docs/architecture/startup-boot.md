@@ -1,5 +1,11 @@
 # Startup and Boot
 
+## #248 implementation candidate (2026-09-06; acceptance pending)
+
+Pending travel owns or borrows the existing live scope before module-completion draining and retains it through effects/graph initialization and travel recovery. Safe completion closes owned scope before welcome/combat readiness and rechecks captured authority after Save draining. Only an arrival actually published during this logical recovery substitutes for welcome; legacy history repair and cleanup-only recovery retain normal welcome. Publication observation is process-local across transient retries.
+
+These statements describe the working implementation, not verified live acceptance.
+
 Purpose: create or repair the minimum durable game state, resume durable work, build canonical context, and expose the first player prompt.
 
 Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.

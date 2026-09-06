@@ -11,6 +11,8 @@ This module adds chunked compression checks after location transitions.
 
 import json
 import os
+from core.combat.invocation import InvocationSupersededError
+from utils.capture.live_provider_call import LiveProviderSuperseded
 from .chunked_compression import chunked_compression
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from .chunked_compression_config import (
@@ -106,6 +108,8 @@ def check_and_perform_chunked_compression(conversation_file="modules/conversatio
             debug(f"COMPRESSION_CHECK: No compression needed yet ({location_summary_count} < {COMPRESSION_TRIGGER})", category="compression")
             return False
             
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
     except Exception as e:
         error(f"FAILURE: Failed to check/perform chunked compression: {e}", exception=e, category="compression")
         return False

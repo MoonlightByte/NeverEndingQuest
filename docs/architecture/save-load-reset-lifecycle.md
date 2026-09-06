@@ -1,5 +1,11 @@
 # Save, Load, and Reset Lifecycle
 
+## #248 implementation candidate (2026-09-06; acceptance pending)
+
+Recovery-scoped Saves remain queued on fault alone and drain at safe completion. Accepted Load/Reset/Quit cancels only unstarted recovery Saves with their Save/control identities before quiescence; a started Save finishes normally. Admission against a sealed cancelled recovery scope returns cancellation, never a snapshot of replacement state. Ordinary turn/welcome semantics are unchanged. Raw terminal shares its existing numbered-save/reset/quit menu after recovery scope quiescence.
+
+These statements describe the working implementation, not verified live acceptance.
+
 Purpose: Serialize player turns and lifecycle controls so snapshots are consistent,
 destructive operations quiesce live work, and session restart follows durable state.
 

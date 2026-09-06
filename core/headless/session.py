@@ -409,6 +409,11 @@ class HeadlessSession:
             return
         self.prompt_pending.clear()
         self.input_queue.put(content)
+        from utils.capture.live_provider_call import get_live_turn_scope
+        scope = get_live_turn_scope()
+        if scope is not None and scope.purpose == "travel_recovery":
+            self.writer.emit("operation", name="input", status="accepted_deferred",
+                             message="Your action is queued for after travel recovery.")
 
     def _finish_restore(self, outcome, manager, result):
         """Publish verified disk truth without terminating recovery command intake."""
@@ -663,6 +668,16 @@ class HeadlessSession:
             if name == "list_saves":
                 result(True, data=manager.list_save_games())
             elif name == "save":
+                save_cancelled = False
+                def cancel_save(save_id, cause):
+                    nonlocal save_cancelled
+                    save_cancelled = True
+                    self.writer.emit(
+                        "result", id=save_id, ok=False,
+                        data={"status": "cancelled", "superseding_operation_id": cause["operation_id"]},
+                        error="Waiting Save cancelled by %s." % cause["kind"],
+                    )
+
                 if live_scope is not None:
                     from utils.capture.live_provider_call import queue_live_save
 
@@ -688,7 +703,8 @@ class HeadlessSession:
                         )
 
                     queued_id = queue_live_save(
-                        execute_save, complete_save, command_id
+                        execute_save, complete_save, command_id,
+                        scope=live_scope, cancel=cancel_save,
                     )
                     if queued_id is None:
                         live_scope.quiescent.wait()
@@ -750,17 +766,20 @@ class HeadlessSession:
 
                     queued = queue_live_save(
                         execute_welcome_save, complete_welcome_save,
-                        command_id, scope=welcome_scope,
+                        command_id, scope=welcome_scope, cancel=cancel_save,
                     )
                     if queued is None:
                         # The welcome sealed before the enqueue: no welcome
                         # remains. Re-resolve authoritative state - queue
                         # against a now-live player turn, else honest retry
                         # (lands on the plain no-welcome path).
-                        queued = queue_live_save(
-                            execute_welcome_save, complete_welcome_save,
-                            command_id,
-                        )
+                        from utils.capture.live_provider_call import get_live_turn_scope
+                        replacement_scope = get_live_turn_scope()
+                        if replacement_scope is not None:
+                            queued = queue_live_save(
+                                execute_welcome_save, complete_welcome_save,
+                                command_id, scope=replacement_scope, cancel=cancel_save,
+                            )
                     if queued is None:
                         # Sealed scope: wait for ITS quiescent (set only
                         # AFTER the registry is cleared), then re-dispatch
@@ -771,6 +790,8 @@ class HeadlessSession:
                         self.handle_command(command)
                         return
                     # Acceptance only once a queue holds the record.
+                    if save_cancelled:
+                        return
                     self.writer.emit(
                         "operation",
                         id=command_id,

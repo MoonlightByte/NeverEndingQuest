@@ -1,5 +1,11 @@
 # Web, Headless, and Terminal Surfaces
 
+## #248 implementation candidate (2026-09-06; acceptance pending)
+
+During pre-input travel recovery the existing processing surface shows progress or a control-required reason; lifecycle commands remain available. Early input remains in the existing queue with explicit deferred acknowledgment. Recovery Save cancellations are distinct correlated result/system-message terminals, never successful saves or generic failure narration. No new frontend event type or gameplay authority is introduced.
+
+These statements describe the working implementation, not verified live acceptance.
+
 Purpose: expose one authoritative game loop through terminal, legacy/React web, and headless NDJSON while keeping frontend stores and narration non-authoritative.
 
 Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.

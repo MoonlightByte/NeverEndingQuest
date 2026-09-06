@@ -17,6 +17,8 @@ Compresses conversation history in manageable 8-transition chunks:
 
 import json
 import shutil
+from core.combat.invocation import InvocationSupersededError
+from utils.capture.live_provider_call import LiveProviderSuperseded
 from ..generators.location_summarizer import LocationSummarizer
 from datetime import datetime
 from .chunked_compression_config import COMPRESSION_TRIGGER, CHUNK_SIZE
@@ -268,6 +270,8 @@ The compression created a new chronicle chapter covering {CHUNK_SIZE} transition
         
         return True
         
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
     except Exception as e:
         error(f"COMPRESSION_ERROR: Error during compression: {e}", category="compression")
         import traceback

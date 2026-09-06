@@ -81,6 +81,7 @@ from contextlib import ExitStack, contextmanager
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.capture.live_provider_call import LiveProviderSuperseded
+from core.combat.invocation import InvocationSupersededError
 register_callsite("T038", "core/managers/campaign_manager.py", 3192)
 register_callsite("T039", "core/managers/campaign_manager.py", 3245)
 import config
@@ -3617,6 +3618,8 @@ class CampaignManager:
                 path_manager=ModulePathManager(module_name),
                 player_name=(party_tracker_data.get("partyMembers") or [""])[0],
             )
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
         except Exception:
             pass
 

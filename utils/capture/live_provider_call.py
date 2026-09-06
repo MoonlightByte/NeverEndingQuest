@@ -463,7 +463,7 @@ def clear_welcome_scope(scope):
             _welcome_scope = None
 
 
-def queue_live_save(execute, complete, operation_id=None, scope=None):
+def queue_live_save(execute, complete, operation_id=None, scope=None, cancel=None):
     """Queue one already-acknowledged Save for the game-thread boundary.
 
     Default scope stays the live player-turn singleton; #214 passes the
@@ -477,15 +477,63 @@ def queue_live_save(execute, complete, operation_id=None, scope=None):
         "operation_id": requested_id,
         "execute": execute,
         "complete": complete,
+        "cancel": cancel,
     }
+    cancelled_by = None
     with scope.lock:
         if not scope.controls_open:
-            return None
-        for pending in scope.pending_saves:
-            if pending["operation_id"] == requested_id:
-                return requested_id
-        scope.pending_saves.append(record)
+            if (
+                scope.purpose == "travel_recovery" and scope.supersession
+                and scope.supersession.get("kind") in {"restore", "reset", "quit", "web_exit"}
+            ):
+                cancelled_by = dict(scope.supersession)
+            else:
+                return None
+        else:
+            for pending in scope.pending_saves:
+                if pending["operation_id"] == requested_id:
+                    return requested_id
+            scope.pending_saves.append(record)
+    if cancelled_by is not None:
+        _complete_cancelled_recovery_save(record, cancelled_by)
     return record["operation_id"]
+
+
+def _complete_cancelled_recovery_save(record, cause):
+    try:
+        if record.get("cancel") is not None:
+            record["cancel"](record["operation_id"], cause)
+        else:
+            record["complete"]((False, "Waiting Save cancelled by %s (%s)." % (
+                cause["kind"], cause["operation_id"],
+            )))
+    except Exception:
+        # Delivery failure cannot revive this Save or block quiescence.
+        pass
+
+
+def cancel_recovery_saves(scope):
+    """Cancel only unstarted recovery Saves after an accepted lifecycle choice.
+
+    #248 / D-248-1: a fault or elapsed wait cannot cancel a Save. Admission is
+    sealed before callbacks and before quiescence; no snapshot of partial or
+    replacement state is taken. Started records have already left this deque.
+    """
+    with scope.lock:
+        supersession = scope.supersession
+        if (
+            scope.purpose != "travel_recovery"
+            or not supersession
+            or supersession.get("kind") not in {"restore", "reset", "quit", "web_exit"}
+        ):
+            return False
+        scope.controls_open = False
+        pending = list(scope.pending_saves)
+        scope.pending_saves.clear()
+        cause = dict(supersession)
+    for record in pending:
+        _complete_cancelled_recovery_save(record, cause)
+    return True
 
 
 def claim_destructive_operation(scope, kind, execute, complete,
@@ -529,11 +577,18 @@ def drain_live_saves(scope, *, seal=False):
     drained = False
     while True:
         with scope.lock:
+            cancelled = (
+                scope.purpose == "travel_recovery" and scope.supersession
+                and scope.supersession.get("kind") in {"restore", "reset", "quit", "web_exit"}
+            )
             if not scope.pending_saves:
                 if seal:
                     scope.controls_open = False
                 return drained
-            record = scope.pending_saves.popleft()
+            record = None if cancelled else scope.pending_saves.popleft()
+        if cancelled:
+            cancel_recovery_saves(scope)
+            return drained
         control_scope = LiveTurnScope(
             operation_id=record["operation_id"], purpose="accepted_control",
             controls_open=False,

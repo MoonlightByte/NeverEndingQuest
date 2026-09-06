@@ -1,5 +1,11 @@
 # Travel and Transitions
 
+## #248 implementation candidate (2026-09-06; acceptance pending)
+
+Interrupted-travel recovery now runs through the same inspector and v2 continuation before gameplay input, not inside the next player turn. Startup ownership begins before the ordered module-completion drain. T013/T063/T064 and existing receipts remain unchanged; no new crash store or replacement arrival. A retained conflict keeps control-only recovery active. Normal route/atlas/guardian validation is unchanged.
+
+These statements describe the working implementation, not verified live acceptance.
+
 Purpose: Convert one accepted travel intent into a canonical destination commit,
 recoverable departure effects, and one destination-grounded narrated arrival.
 

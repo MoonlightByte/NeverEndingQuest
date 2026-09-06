@@ -2793,6 +2793,10 @@ def handle_user_input(data):
     add_to_message_cache(message)
     emit('game_output', message)
     user_input_queue.put(user_input)
+    from utils.capture.live_provider_call import get_live_turn_scope
+    scope = get_live_turn_scope()
+    if scope is not None and scope.purpose == "travel_recovery":
+        emit('system_message', {'content': 'Your action is queued for after travel recovery.'})
 
 @socketio.on('action')
 def handle_action(data, _operation_id=None):
@@ -2855,6 +2859,18 @@ def handle_action(data, _operation_id=None):
             manager = SaveGameManager()
             description = parameters.get("description", "")
             save_mode = parameters.get("saveMode", "essential")
+            session_id = getattr(request, 'sid', None) or 'unknown-session'
+
+            save_cancelled = False
+            def cancel_save(save_id, cause):
+                nonlocal save_cancelled
+                save_cancelled = True
+                socketio.emit('system_message', {
+                    'content': 'Waiting Save cancelled by %s.' % cause['kind'],
+                    'status': 'cancelled', 'operation_id': save_id,
+                    'superseding_operation_id': cause['operation_id'],
+                }, to=session_id)
+
             if live_scope is not None:
                 from utils.capture.live_provider_call import queue_live_save
 
@@ -2879,7 +2895,8 @@ def handle_action(data, _operation_id=None):
                         socketio.emit('error', {'message': f"Save failed: {message}"}, to=session_id)
 
                 queued_id = queue_live_save(
-                    execute_save, complete_save, operation_id
+                    execute_save, complete_save, operation_id,
+                    scope=live_scope, cancel=cancel_save,
                 )
                 if queued_id is None:
                     live_scope.quiescent.wait()
@@ -2907,17 +2924,21 @@ def handle_action(data, _operation_id=None):
                 queued_id = queue_live_save(
                     execute_welcome_save, complete_welcome_save,
                     "save:%s:%s:%s" % (session_id, description, save_mode),
-                    scope=welcome_scope,
+                    scope=welcome_scope, cancel=cancel_save,
                 )
                 if queued_id is None:
                     # The welcome sealed before the enqueue: no welcome
                     # remains. Re-resolve authoritative state - queue against
                     # a now-live player turn, else honest retry (the retry
                     # lands on the plain no-welcome path).
-                    queued_id = queue_live_save(
-                        execute_welcome_save, complete_welcome_save,
-                        "save:%s:%s:%s" % (session_id, description, save_mode),
-                    )
+                    from utils.capture.live_provider_call import get_live_turn_scope
+                    replacement_scope = get_live_turn_scope()
+                    if replacement_scope is not None:
+                        queued_id = queue_live_save(
+                            execute_welcome_save, complete_welcome_save,
+                            "save:%s:%s:%s" % (session_id, description, save_mode),
+                            scope=replacement_scope, cancel=cancel_save,
+                        )
                 if queued_id is None:
                     # Sealed scope: wait for ITS quiescent (set only AFTER
                     # the registry is cleared), then re-dispatch the SAME
@@ -2928,6 +2949,8 @@ def handle_action(data, _operation_id=None):
                     return handle_action(data)
                 # Acceptance is emitted only once a queue holds the record -
                 # never an accepted-then-retry contradiction.
+                if save_cancelled:
+                    return
                 emit('system_message', {
                     'content': (
                         'Save accepted and queued until the welcome-back '

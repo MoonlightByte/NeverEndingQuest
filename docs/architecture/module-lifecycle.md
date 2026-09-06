@@ -1,5 +1,11 @@
 # Module Lifecycle
 
+## #248 implementation candidate (2026-09-06; acceptance pending)
+
+For startup with pending travel, the existing ordered completion drain runs under travel recovery authority. Structured failed work requests lifecycle choice; blocked/transient work continues waiting. Typed cancellation bypasses module-final advisory catches before outcome-marker completion/removal; already committed module data is not rolled back. Existing final-episode missing-input defect #311 prevents that T108 call on this baseline and remains a separate repair, not an acceptance PASS.
+
+These statements describe the working implementation, not verified live acceptance.
+
 Purpose: build and validate a complete hidden module, publish it through one directory rename, and finish cross-module campaign history through restartable archive and summary receipts.
 
 Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.

@@ -24,6 +24,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from core.npc.episode_extraction import extract_episode, flatten_scene
+from core.combat.invocation import InvocationSupersededError
+from utils.capture.live_provider_call import LiveProviderSuperseded
 from core.npc.episode_store import EpisodeStore
 from core.npc.relationship_store import (
     RelationshipStore,
@@ -214,6 +216,8 @@ def capture_location_episode(
             path_manager=path_manager,
             json_loader=json_loader,
         )
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
     except Exception as error:  # noqa: BLE001 - fail-open; capture never breaks a turn
         _LOGGER.debug("location episode capture failed: %r", error)
         return None
@@ -528,6 +532,8 @@ def consolidate_module_episodes(
             episode_store=episode_store,
             rel_store=rel_store,
         )
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
     except Exception as error:  # noqa: BLE001 - fail-open; never break module completion
         _LOGGER.debug("module consolidation failed: %r", error)
         return None

@@ -23,6 +23,8 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 import model_config
 from core.ai import api_client
+from core.combat.invocation import InvocationSupersededError
+from utils.capture.live_provider_call import LiveProviderSuperseded
 from core.npc.episode_store import VALID_SALIENT_KINDS
 from utils.capture.multi_model_capture import register_callsite
 
@@ -169,6 +171,8 @@ def extract_episode(
             **_completion_kwargs(prov, config),
         )
         payload = json.loads(response.choices[0].message.content or "{}")
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
     except Exception as error:  # noqa: BLE001 - fail-open by design
         _LOGGER.debug("episode extraction failed: %r", error)
         return None

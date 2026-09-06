@@ -81,6 +81,7 @@ import glob
 import time
 import shutil
 import tempfile
+from contextlib import contextmanager
 from uuid import uuid4
 from pathlib import Path
 from core.ai import api_client
@@ -1732,8 +1733,12 @@ def _append_transition_outcomes(narration, checkpoint, party):
     return "%s\n\n%s" % (narration.rstrip(), " ".join(lines))
 
 
-def _resume_cross_module_root(operation_id, *, publish=True):
+def _resume_cross_module_root(operation_id, *, publish=True, publication=None):
     """Resume the random-ID module handoff, clock tail, and target narration."""
+    from utils.capture.live_provider_call import _check_live_authority, get_live_provider_scope
+
+    scope = get_live_provider_scope()
+    _check_live_authority(scope)
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
     if checkpoint is None:
         return {"status": "none"}
@@ -1789,7 +1794,9 @@ def _resume_cross_module_root(operation_id, *, publish=True):
         pending,
         load_json_file(json_file) or [],
     )
-    if completion["failed"] or completion["blocked"]:
+    if completion["failed"]:
+        return {"status": "blocked", "reason": "module completion requires recovery"}
+    if completion["blocked"]:
         return {"status": "pending", "reason": "module completion remains pending"}
     if targeted is None and handoff["completion_id"] not in completion["completed"]:
         return {"status": "pending", "reason": "module completion receipt is absent"}
@@ -1821,6 +1828,7 @@ def _resume_cross_module_root(operation_id, *, publish=True):
         )
         arrival = generate_arrival_narration(first, party, history)
         final_text = generate_seamless_transition_narration(first, arrival)
+        _check_live_authority(scope)
         final_text = _append_transition_outcomes(final_text, checkpoint, party)
         entry = {
             "role": "assistant",
@@ -1852,11 +1860,15 @@ def _resume_cross_module_root(operation_id, *, publish=True):
         elif history[existing] != entry:
             return {"status": "blocked", "reason": "handoff narration conflict"}
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
-    if publish and checkpoint["narration"].get("status") == "retained":
+    published_here = publish and checkpoint["narration"].get("status") == "retained"
+    if published_here:
+        _check_live_authority(scope)
         display_dm_narration(
             checkpoint["narration"]["text"],
             message_id=checkpoint["narration"]["message_id"],
         )
+        if publication is not None:
+            publication["published_here"] = True
         checkpoint["narration"]["status"] = "published"
         action_handler._write_location_transition_checkpoint(checkpoint)
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
@@ -1870,16 +1882,23 @@ def _resume_cross_module_root(operation_id, *, publish=True):
     action_handler._write_location_transition_checkpoint(checkpoint)
     final_text = checkpoint["narration"].get("text", "")
     action_handler.complete_location_transition_checkpoint(operation_id)
-    return {"status": "completed", "narration": final_text}
+    return {"status": "completed", "narration": final_text, "published_here": published_here}
 
 
-def _resume_v2_location_transition(operation_id, *, publish=True):
+def _resume_v2_location_transition(operation_id, *, publish=True, publication=None):
     """Resume one committed-movement v2 workflow from its durable receipts."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded, _check_live_authority, get_live_provider_scope,
+    )
+
+    scope = get_live_provider_scope()
+    _check_live_authority(scope)
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
     if checkpoint is None:
         return {"status": "none"}
     if checkpoint.get("movement_kind") == "cross_module_root":
-        return _resume_cross_module_root(operation_id, publish=publish)
+        return _resume_cross_module_root(operation_id, publish=publish, publication=publication)
     party = load_json_file("party_tracker.json") or {}
     world = party.get("worldConditions", {})
     handoff = checkpoint.get("module_handoff")
@@ -1938,6 +1957,7 @@ def _resume_v2_location_transition(operation_id, *, publish=True):
             first, party, load_json_file(json_file) or []
         )
         final_text = generate_seamless_transition_narration(first, arrival)
+        _check_live_authority(scope)
         final_text = _append_transition_outcomes(final_text, checkpoint, party)
         narration_entry = {
             "role": "assistant",
@@ -2005,8 +2025,11 @@ def _resume_v2_location_transition(operation_id, *, publish=True):
                 boundary_turn_id=boundary_turn_id,
                 player_name=(party.get("partyMembers") or [""])[0],
             )
+            _check_live_authority(scope)
             episode["episode_id"] = episode_id
             episode["status"] = "committed" if episode_id else "attempted_unavailable"
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
         except Exception as exc:
             episode["status"] = "attempted_unavailable"
             warning(
@@ -2014,6 +2037,7 @@ def _resume_v2_location_transition(operation_id, *, publish=True):
                 % type(exc).__name__,
                 category="conversation_management",
             )
+        _check_live_authority(scope)
         action_handler._write_location_transition_checkpoint(checkpoint)
 
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
@@ -2083,6 +2107,7 @@ def _resume_v2_location_transition(operation_id, *, publish=True):
         action_handler._write_location_transition_checkpoint(checkpoint)
         try:
             changed = check_and_perform_chunked_compression()
+            _check_live_authority(scope)
             history_after = load_json_file(json_file) or []
             checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
             checkpoint["chunked_chronicle"].update(
@@ -2091,6 +2116,8 @@ def _resume_v2_location_transition(operation_id, *, publish=True):
                     "result_entries_after": history_after,
                 }
             )
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
         except Exception as exc:
             checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
             checkpoint["chunked_chronicle"]["status"] = "attempted_unavailable"
@@ -2099,6 +2126,7 @@ def _resume_v2_location_transition(operation_id, *, publish=True):
                 % type(exc).__name__,
                 category="conversation_management",
             )
+        _check_live_authority(scope)
         action_handler._write_location_transition_checkpoint(checkpoint)
 
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
@@ -2222,10 +2250,14 @@ def _resume_v2_location_transition(operation_id, *, publish=True):
 
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
     narration_record = checkpoint["narration"]
-    if publish and narration_record.get("status") == "retained":
+    published_here = publish and narration_record.get("status") == "retained"
+    if published_here:
+        _check_live_authority(scope)
         display_dm_narration(
             narration_record["text"], message_id=narration_record["message_id"]
         )
+        if publication is not None:
+            publication["published_here"] = True
         checkpoint["narration"]["status"] = "published"
         action_handler._write_location_transition_checkpoint(checkpoint)
 
@@ -2268,6 +2300,7 @@ def _resume_v2_location_transition(operation_id, *, publish=True):
         "operation_id": operation_id,
         "narration": final_narration,
         "terminal_action": terminal_action,
+        "published_here": published_here,
     }
 
 
@@ -7247,6 +7280,181 @@ def check_all_modules_plot_completion():
     
     return all_modules_data
 
+class _TravelRecoveryControl(BaseException):
+    """A real terminal lifecycle choice, returned after recovery quiesces."""
+
+    def __init__(self, kind, manager, folder=None):
+        self.kind = kind
+        self.manager = manager
+        self.folder = folder
+        super().__init__(kind)
+
+
+def _terminal_recovery_menu(manager):
+    """Shared control-only menu for interrupted travel and failed Load."""
+    while True:
+        try:
+            saves = manager.list_save_games()
+        except Exception as exc:
+            print('[SYSTEM] Could not list saves: ' + str(exc))
+            saves = []
+        choices = {
+            str(index): save['save_folder']
+            for index, save in enumerate(saves, 1) if save.get('save_folder')
+        }
+        print('Gameplay is paused. Choose a saved game, Reset, or Quit.')
+        for index, saved_folder in choices.items():
+            print(index + ': ' + saved_folder)
+        try:
+            choice = input('Save number / reset / quit: ').strip()
+            if choice.lower() == 'quit':
+                return _TravelRecoveryControl('quit', manager)
+            if choice.lower() == 'reset':
+                if input('Reset the campaign? Type RESET to confirm: ').strip() == 'RESET':
+                    return _TravelRecoveryControl('reset', manager)
+            if choice in choices:
+                return _TravelRecoveryControl('restore', manager, choices[choice])
+        except (EOFError, KeyboardInterrupt):
+            return _TravelRecoveryControl('quit', manager)
+
+
+def _travel_recovery_pending():
+    """Read-only presence selection; unreadability is never clean absence."""
+    try:
+        Path(action_handler.PENDING_LOCATION_TRANSITION_FILE).stat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def _wait_for_travel_control(scope):
+    from utils.capture.live_provider_call import _interruptible_wait
+
+    scope.phase = "RECOVERY_REQUIRED"
+    message = (
+        "The interrupted journey needs attention. Choose Load, Reset, or Quit. "
+        "Saves wait until this journey finishes safely. Choosing Load, Reset, "
+        "or Quit cancels those waiting saves."
+    )
+    if not hasattr(sys.stdin, "queue"):
+        from updates.save_game_manager import SaveGameManager
+
+        print(message)
+        choice = _terminal_recovery_menu(SaveGameManager())
+        scope.request_supersession(choice.kind)
+        raise choice
+    started = time.monotonic()
+    while True:
+        _interruptible_wait(
+            0.5, scope,
+            lambda: message + " Waiting for your choice (%ds)." % int(time.monotonic() - started),
+        )
+
+
+@contextmanager
+def _travel_recovery_authority():
+    """#248: borrow or own the existing scope through the pre-input recovery."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded, _check_live_authority, cancel_recovery_saves,
+        finish_live_turn_scope, get_live_turn_scope, open_live_turn_scope,
+        _emit_working, _safe_emit,
+    )
+
+    if not _travel_recovery_pending():
+        yield None
+        return
+    scope = get_live_turn_scope()
+    owned = scope is None
+    if owned:
+        scope = open_live_turn_scope()
+    old_purpose, old_phase = scope.purpose, scope.phase
+    scope.purpose, scope.phase = "travel_recovery", "RECOVERING"
+    completed = False
+    try:
+        _check_live_authority(scope)
+        _safe_emit(_emit_working,
+                   "Finishing the interrupted journey. Saves wait until this journey "
+                   "finishes safely. Choosing Load, Reset, or Quit cancels those waiting saves.")
+        yield scope
+        _check_live_authority(scope)
+        # A prerequisite's early return must not drain Saves of partial travel.
+        if _travel_recovery_pending():
+            _wait_for_travel_control(scope)
+        completed = True
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        if not scope.is_superseded():
+            _wait_for_travel_control(scope)
+        raise
+    except _TravelRecoveryControl:
+        raise
+    except KeyboardInterrupt:
+        if hasattr(sys.stdin, "queue"):
+            raise
+        _wait_for_travel_control(scope)
+    except Exception as exc:
+        warning("Travel recovery needs a lifecycle choice: %s" % type(exc).__name__,
+                category="location_transitions")
+        _wait_for_travel_control(scope)
+    finally:
+        cancel_recovery_saves(scope)
+        if owned:
+            finish_live_turn_scope(scope)
+        elif not scope.is_superseded():
+            scope.purpose, scope.phase = old_purpose, old_phase
+        if completed:
+            _check_live_authority(scope)
+
+
+def _finish_pending_travel_before_input(scope):
+    """Use the existing inspector and continuation, never a replacement trip."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded, _check_live_authority, _interruptible_wait,
+    )
+    from utils.transient_filesystem import is_transient_filesystem_error
+
+    # This logical recovery may retry cleanup after publication. Retain that
+    # observation locally so a cleanup-only retry cannot generate another welcome.
+    publication = {}
+    while True:
+        _check_live_authority(scope)
+        try:
+            if _travel_recovery_pending() and not isinstance(
+                safe_json_load(action_handler.PENDING_LOCATION_TRANSITION_FILE), dict
+            ):
+                _wait_for_travel_control(scope)
+            outcome = action_handler.recover_pending_location_transition(
+                load_json_file("party_tracker.json") or {}, load_json_file(json_file) or [],
+            )
+            status = outcome.get("status")
+            if status == "resume_required":
+                if not outcome.get("operation_id"):
+                    _wait_for_travel_control(scope)
+                outcome = _resume_v2_location_transition(
+                    outcome["operation_id"], publish=True, publication=publication,
+                )
+                status = outcome.get("status")
+            _check_live_authority(scope)
+            if status == "pending":
+                _interruptible_wait(0.5, scope, "Finishing the interrupted journey...")
+                continue
+            if status in {"none", "blocked"} and _travel_recovery_pending():
+                _wait_for_travel_control(scope)
+            if status not in {"none", "blocked", "completed", "recovered", "replan_required"}:
+                _wait_for_travel_control(scope)
+            outcome["published_here"] = bool(publication.get("published_here"))
+            return outcome
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
+        except OSError as exc:
+            if not is_transient_filesystem_error(exc):
+                raise
+            _interruptible_wait(0.5, scope, "Finishing the interrupted journey...")
+
+
 def _run_terminal_restore(request):
     """Control-only recovery after gameplay unwinds; never call a DM on mixed state."""
     from updates.save_game_manager import RestoreOutcome
@@ -7264,39 +7472,20 @@ def _run_terminal_restore(request):
         if outcome.can_resume:
             return True
         previous_clean = False
-        # The original manager retains the managed-save root even if a failed
-        # copy changed party_tracker. No backup discovery or saved trust flag.
+        # Reuse the same real controls; this manager retains its save root.
         while True:
-            try:
-                saves = manager.list_save_games()
-            except Exception as exc:
-                print('[SYSTEM] Could not list saves: ' + str(exc))
-                saves = []
-            choices = {
-                str(index): save['save_folder']
-                for index, save in enumerate(saves, 1) if save.get('save_folder')
-            }
-            print('Gameplay is paused. Choose a saved game, Reset, or Quit.')
-            for index, saved_folder in choices.items():
-                print(index + ': ' + saved_folder)
-            try:
-                choice = input('Save number / reset / quit: ').strip()
-                if choice.lower() == 'quit':
-                    return False
-                if choice.lower() == 'reset':
-                    if input('Reset the campaign? Type RESET to confirm: ').strip() != 'RESET':
-                        continue
-                    try:
-                        perform_reset_logic()
-                    except Exception as exc:
-                        print('[SYSTEM] Reset did not finish: ' + str(exc))
-                        continue
-                    return True
-                if choice in choices:
-                    folder = choices[choice]
-                    break
-            except (EOFError, KeyboardInterrupt):
+            choice = _terminal_recovery_menu(manager)
+            if choice.kind == 'quit':
                 return False
+            if choice.kind == 'restore':
+                folder = choice.folder
+                break
+            try:
+                perform_reset_logic()
+            except Exception as exc:
+                print('[SYSTEM] Reset did not finish: ' + str(exc))
+                continue
+            return True
 
 
 def main_game_loop():
@@ -7325,6 +7514,8 @@ def main_game_loop():
             if scope.is_superseded():
                 return None
         return result
+    except _TravelRecoveryControl as choice:
+        return choice
     except (LiveProviderSuperseded, InvocationSupersededError):
         scope = get_live_turn_scope()
         if scope is not None:
@@ -7479,168 +7670,191 @@ def _main_game_loop(startup_authority, turn_authority):
         error(f"FAILURE: Startup wizard failed", exception=e, category="startup")
         return
 
-    # A cross-module party/location transition can be durable before its
-    # T038/T039 completion finishes. Resolve that intent before *any* startup
-    # narration or campaign-context construction (normal terminal and web both
-    # enter through this loop). If recovery cannot finish, fail closed instead
-    # of displaying a first response built from the stale campaign projection.
-    try:
-        startup_drain = require_staged_module_completions_drained()
-        if startup_drain["completed"] or startup_drain["cancelled"]:
-            debug(
-                f"STATE_CHANGE: Startup module-completion drain: {startup_drain}",
+    travel_was_recovered = False
+    travel_arrival_published = False
+    with _travel_recovery_authority() as recovery_scope:
+        # A cross-module party/location transition can be durable before its
+        # T038/T039 completion finishes. Resolve that intent before *any* startup
+        # narration or campaign-context construction (normal terminal and web both
+        # enter through this loop). If recovery cannot finish, fail closed instead
+        # of displaying a first response built from the stale campaign projection.
+        try:
+            if recovery_scope is None:
+                startup_drain = require_staged_module_completions_drained()
+            else:
+                from utils.capture.live_provider_call import _check_live_authority, _interruptible_wait
+                while True:
+                    _check_live_authority(recovery_scope)
+                    _, startup_drain = retry_staged_module_completions()
+                    if startup_drain["failed"]:
+                        _wait_for_travel_control(recovery_scope)
+                    if not startup_drain["blocked"]:
+                        break
+                    _interruptible_wait(0.5, recovery_scope, "Finishing the interrupted journey...")
+            if startup_drain["completed"] or startup_drain["cancelled"]:
+                debug(
+                    f"STATE_CHANGE: Startup module-completion drain: {startup_drain}",
+                    category="startup",
+                )
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
+        except Exception as drain_exc:
+            error(
+                "FAILURE: Startup stopped before AI response because module "
+                "completion recovery is unresolved",
+                exception=drain_exc,
                 category="startup",
             )
-    except LiveProviderSuperseded:
-        raise
-    except Exception as drain_exc:
-        error(
-            "FAILURE: Startup stopped before AI response because module "
-            "completion recovery is unresolved",
-            exception=drain_exc,
-            category="startup",
-        )
-        return
+            return
 
-    # --- START: COMBAT RESUMPTION LOGIC ---
-    party_tracker_data = load_json_file("party_tracker.json")
-    combat_was_resumed = False  # Track if we resumed from combat
+        # --- START: COMBAT RESUMPTION LOGIC ---
+        party_tracker_data = load_json_file("party_tracker.json")
+        combat_was_resumed = False  # Track if we resumed from combat
 
-    # Initialize variables needed in main loop for both paths (combat resume and normal startup)
-    module_name = party_tracker_data.get("module", "").replace(" ", "_") if party_tracker_data else ""
-    path_manager = ModulePathManager(module_name)
-    debug(f"INITIALIZATION: Path manager initialized for module: '{module_name}'", category="module_management")
+        # Initialize variables needed in main loop for both paths (combat resume and normal startup)
+        module_name = party_tracker_data.get("module", "").replace(" ", "_") if party_tracker_data else ""
+        path_manager = ModulePathManager(module_name)
+        debug(f"INITIALIZATION: Path manager initialized for module: '{module_name}'", category="module_management")
 
-    # Convert legacy effect bookkeeping once, before combat resume or any new
-    # model context is built. Active combat is a deliberate safe-boundary
-    # deferral; a partially applied journal must recover before play continues.
-    try:
-        from core.managers.effects_migration import run_effects_migration
-
-        effects_migration = run_effects_migration(create_backup=True)
-        if effects_migration.get("status") == "migrated":
-            print(
-                "[SYSTEM] Temporary effects were upgraded safely. "
-                "A pre-conversion save was created automatically."
-            )
-            debug(
-                f"EFFECTS: Effects V2 migration completed: {effects_migration}",
-                category="effects_tracking",
-            )
-        elif effects_migration.get("status") == "blocked":
-            warning(
-                f"EFFECTS: Automatic conversion was refused safely: {effects_migration}",
-                category="effects_tracking",
-            )
-            print(
-                "[SYSTEM] Temporary-effect conversion needs review. "
-                "The campaign remains on its legacy effect handling for this session."
-            )
-    except Exception as effects_migration_exc:
-        error(
-            "FAILURE: Effects conversion/recovery did not reach a safe boundary",
-            exception=effects_migration_exc,
-            category="effects_tracking",
-        )
-        backup_folder = None
+        # Convert legacy effect bookkeeping once, before combat resume or any new
+        # model context is built. Active combat is a deliberate safe-boundary
+        # deferral; a partially applied journal must recover before play continues.
         try:
-            from core.managers.effects_state import load_effects_state
+            from core.managers.effects_migration import run_effects_migration
 
-            backup_folder = (
-                (load_effects_state().get("migration") or {}).get("backupFolder")
-            )
-        except Exception:
-            pass
-        recovery = (
-            f" Restore save '{backup_folder}' before retrying."
-            if backup_folder
-            else " Retry startup; if it repeats, restore the automatic pre-conversion save."
-        )
-        print(
-            "[SYSTEM] Startup stopped because temporary-effect conversion "
-            "could not be recovered safely." + recovery
-        )
-        return
-
-    # Reload global location_graph to ensure it's current for the active module
-    global location_graph
-    print("DEBUG: [LocationGraph] Reloading location graph for current module...")
-    location_graph = LocationGraph()
-    location_graph.load_module_data()
-    print(f"DEBUG: [LocationGraph] Reload complete. Total nodes: {len(location_graph.nodes)}, Total edges: {sum(len(edges) for edges in location_graph.edges.values())}")
-    debug(f"INITIALIZATION: Location graph reloaded with {len(location_graph.nodes)} nodes", category="module_management")
-
-    # A within-module move can commit before its marker or T013 narration is
-    # saved. Close that gap before combat resumption, return narration, or any
-    # new provider request. Recovery is deterministic and never moves twice.
-    try:
-        pending_history = load_json_file(json_file) or []
-        pending_transition_recovery = (
-            action_handler.recover_pending_location_transition(
-                party_tracker_data, pending_history
-            )
-        )
-        if pending_transition_recovery.get("status") == "blocked":
-            # [travel #210] The interrupted transition is un-appliable (party
-            # state matches neither its origin/destination nor a staged module
-            # projection). recover() has already retired the residue. Startup is
-            # a play path (B1): never engine_stop here -- surface a player-facing
-            # notice and fall through to the playable loop at the authoritative
-            # party location, where the player can continue or load a save.
-            world = (party_tracker_data or {}).get("worldConditions", {}) or {}
-            here = (
-                world.get("currentLocation")
-                or world.get("currentLocationId")
-                or "where you are"
-            )
-            warning(
-                "Interrupted location transition could not be auto-completed; "
-                "the un-appliable record was discarded and startup continues "
-                "from the authoritative party location. reason=%s"
-                % pending_transition_recovery.get("reason"),
-                category="location_transitions",
-            )
-            # Player-visible in web + headless + terminal: the DM narration
-            # section is the only cross-mode player output surface (a bare
-            # "[SYSTEM]" line would route to the debug stream). Register is an
-            # owner decision (D-210-2); the out-of-fiction channel is issue #212.
-            print(
-                "Dungeon Master: A prior travel action didn't finish cleanly, "
-                "so you remain where the party actually stands - %s. You can "
-                "continue from here, or load an earlier save to redo that "
-                "journey." % here
-            )
-            # [travel #210] Flush so the DM-narration section is emitted and
-            # CLOSED before the next startup diagnostic line, which would
-            # otherwise be absorbed into this notice's narration block. Guarded
-            # like emit_startup_marker's flush so a broken/closed terminal pipe
-            # cannot raise into the boot except-branch and abort startup.
-            try:
-                sys.stdout.flush()
-            except (BrokenPipeError, OSError, ValueError):
-                pass
-            # fall through: boot into the normal playable loop (no engine_stop)
-        if pending_transition_recovery.get("status") == "recovered":
-            if pending_transition_recovery.get(
-                "deferred_actions_not_replayed"
-            ):
+            effects_migration = run_effects_migration(create_backup=True)
+            if effects_migration.get("status") == "migrated":
+                print(
+                    "[SYSTEM] Temporary effects were upgraded safely. "
+                    "A pre-conversion save was created automatically."
+                )
+                debug(
+                    f"EFFECTS: Effects V2 migration completed: {effects_migration}",
+                    category="effects_tracking",
+                )
+            elif effects_migration.get("status") == "blocked":
                 warning(
-                    "Startup recovered transition narration but did not "
-                    "replay non-idempotent deferred actions",
+                    f"EFFECTS: Automatic conversion was refused safely: {effects_migration}",
+                    category="effects_tracking",
+                )
+                print(
+                    "[SYSTEM] Temporary-effect conversion needs review. "
+                    "The campaign remains on its legacy effect handling for this session."
+                )
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
+        except Exception as effects_migration_exc:
+            error(
+                "FAILURE: Effects conversion/recovery did not reach a safe boundary",
+                exception=effects_migration_exc,
+                category="effects_tracking",
+            )
+            backup_folder = None
+            try:
+                from core.managers.effects_state import load_effects_state
+
+                backup_folder = (
+                    (load_effects_state().get("migration") or {}).get("backupFolder")
+                )
+            except Exception:
+                pass
+            recovery = (
+                f" Restore save '{backup_folder}' before retrying."
+                if backup_folder
+                else " Retry startup; if it repeats, restore the automatic pre-conversion save."
+            )
+            print(
+                "[SYSTEM] Startup stopped because temporary-effect conversion "
+                "could not be recovered safely." + recovery
+            )
+            return
+
+        # Reload global location_graph to ensure it's current for the active module
+        global location_graph
+        print("DEBUG: [LocationGraph] Reloading location graph for current module...")
+        location_graph = LocationGraph()
+        location_graph.load_module_data()
+        print(f"DEBUG: [LocationGraph] Reload complete. Total nodes: {len(location_graph.nodes)}, Total edges: {sum(len(edges) for edges in location_graph.edges.values())}")
+        debug(f"INITIALIZATION: Location graph reloaded with {len(location_graph.nodes)} nodes", category="module_management")
+
+        # A within-module move can commit before its marker or T013 narration is
+        # saved. Close that gap before combat resumption, return narration, or any
+        # new provider request. Recovery is deterministic and never moves twice.
+        try:
+            pending_transition_recovery = _finish_pending_travel_before_input(recovery_scope)
+            travel_arrival_published = bool(pending_transition_recovery.get("published_here"))
+            travel_was_recovered = travel_arrival_published or pending_transition_recovery.get("status") in {"completed", "recovered"}
+            if pending_transition_recovery.get("terminal_action") == "exit":
+                return
+            if travel_was_recovered:
+                party_tracker_data = load_json_file("party_tracker.json")
+                module_name = party_tracker_data.get("module", "").replace(" ", "_")
+                path_manager = ModulePathManager(module_name)
+                location_graph = LocationGraph()
+                location_graph.load_module_data()
+            if pending_transition_recovery.get("status") == "blocked":
+                # [travel #210] The interrupted transition is un-appliable (party
+                # state matches neither its origin/destination nor a staged module
+                # projection). recover() has already retired the residue. Startup is
+                # a play path (B1): never engine_stop here -- surface a player-facing
+                # notice and fall through to the playable loop at the authoritative
+                # party location, where the player can continue or load a save.
+                world = (party_tracker_data or {}).get("worldConditions", {}) or {}
+                here = (
+                    world.get("currentLocation")
+                    or world.get("currentLocationId")
+                    or "where you are"
+                )
+                warning(
+                    "Interrupted location transition could not be auto-completed; "
+                    "the un-appliable record was discarded and startup continues "
+                    "from the authoritative party location. reason=%s"
+                    % pending_transition_recovery.get("reason"),
                     category="location_transitions",
                 )
-            debug(
-                "STATE_CHANGE: Recovered interrupted within-module transition",
+                # Player-visible in web + headless + terminal: the DM narration
+                # section is the only cross-mode player output surface (a bare
+                # "[SYSTEM]" line would route to the debug stream). Register is an
+                # owner decision (D-210-2); the out-of-fiction channel is issue #212.
+                print(
+                    "Dungeon Master: A prior travel action didn't finish cleanly, "
+                    "so you remain where the party actually stands - %s. You can "
+                    "continue from here, or load an earlier save to redo that "
+                    "journey." % here
+                )
+                # [travel #210] Flush so the DM-narration section is emitted and
+                # CLOSED before the next startup diagnostic line, which would
+                # otherwise be absorbed into this notice's narration block. Guarded
+                # like emit_startup_marker's flush so a broken/closed terminal pipe
+                # cannot raise into the boot except-branch and abort startup.
+                try:
+                    sys.stdout.flush()
+                except (BrokenPipeError, OSError, ValueError):
+                    pass
+                # fall through: boot into the normal playable loop (no engine_stop)
+            if pending_transition_recovery.get("status") == "recovered":
+                if pending_transition_recovery.get(
+                    "deferred_actions_not_replayed"
+                ):
+                    warning(
+                        "Startup recovered transition narration but did not "
+                        "replay non-idempotent deferred actions",
+                        category="location_transitions",
+                    )
+                debug(
+                    "STATE_CHANGE: Recovered interrupted within-module transition",
+                    category="location_transitions",
+                )
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
+        except Exception as transition_recovery_exc:
+            error(
+                "FAILURE: Startup stopped before AI response because location "
+                "transition recovery is unresolved",
+                exception=transition_recovery_exc,
                 category="location_transitions",
             )
-    except Exception as transition_recovery_exc:
-        error(
-            "FAILURE: Startup stopped before AI response because location "
-            "transition recovery is unresolved",
-            exception=transition_recovery_exc,
-            category="location_transitions",
-        )
-        return
+            return
     
     # Load validation prompt for both paths - needed in main loop
     validation_prompt_text = load_validation_prompt()
@@ -7847,7 +8061,8 @@ def _main_game_loop(startup_authority, turn_authority):
         # CRITICAL: Check and inject return message BEFORE any processing
         # Don't inject if we already did it for combat resume
         was_injected = False  # Initialize to track if we generated a response for return message
-        if not combat_was_resumed:
+        resume_note_message = None
+        if not combat_was_resumed and not travel_arrival_published:
             # [travel #210] Name the authoritative current location in the resume
             # note so the welcome-back narrates THIS location, not a stale one
             # inferred from interrupted-turn history. Read the post-recovery
@@ -7957,7 +8172,13 @@ def _main_game_loop(startup_authority, turn_authority):
         # the lifecycle from the input poll and applies the result when it
         # arrives. Raw terminal (real stdin) keeps the synchronous kickoff
         # (owner-approved limited-mode difference) with no deadline.
-        if hasattr(sys.stdin, "queue"):
+        if travel_arrival_published:
+            # The retained travel arrival already supplied this boot's welcome.
+            claim = claim_kickoff_lease(source="travel_recovery")
+            if claim.get("status") == "claimed":
+                state = claim["state"]
+                mark_kickoff_done(state["startup_attempt_id"], state["lease_owner"])
+        elif hasattr(sys.stdin, "queue"):
             # Run the first-iteration normalizers BEFORE freezing the fence
             # snapshot so the loop-top normalize/dedup is a no-op against it
             # (both are idempotent).
@@ -8003,6 +8224,18 @@ def _main_game_loop(startup_authority, turn_authority):
         emit_startup_marker("startup_loop_ready", source="main_loop", result="ready")
     while True:
         print("[DEBUG] Top of main game loop iteration")
+        if _travel_recovery_pending():
+            with _travel_recovery_authority() as recovery_scope:
+                recovered = _finish_pending_travel_before_input(recovery_scope)
+                if recovered.get("terminal_action") == "exit":
+                    return
+                conversation_history, party_tracker_data = rebuild_conversation_for_current_party(
+                    load_json_file(json_file) or [], return_party=True,
+                )
+                path_manager = ModulePathManager(party_tracker_data.get("module", ""))
+                location_data = get_location_data_from_party_tracker(party_tracker_data)
+                location_graph = LocationGraph()
+                location_graph.load_module_data()
         conversation_history = normalize_persisted_dm_notes(conversation_history)
         conversation_history = remove_duplicate_messages(conversation_history)
 
@@ -8616,30 +8849,6 @@ def _main_game_loop(startup_authority, turn_authority):
 
         live_turn_scope = open_live_turn_scope()
 
-        pending_v2 = action_handler.recover_pending_location_transition(
-            party_tracker_data,
-            conversation_history,
-        )
-        if pending_v2.get("status") == "resume_required" and pending_v2.get(
-            "operation_id"
-        ):
-            live_turn_scope.phase = "MUTATING"
-            resumed_v2 = _resume_v2_location_transition(
-                pending_v2["operation_id"], publish=True
-            )
-            if resumed_v2.get("status") != "completed":
-                from utils.capture.live_provider_call import finish_live_turn_scope
-
-                finish_live_turn_scope(live_turn_scope)
-                print(
-                    "[SYSTEM] The prior travel turn remains safely paused for "
-                    "recovery; no new action was applied."
-                )
-                continue
-            party_tracker_data = load_json_file("party_tracker.json") or party_tracker_data
-            conversation_history = load_json_file(json_file) or conversation_history
-            location_data = get_location_data_from_party_tracker(party_tracker_data)
-            live_turn_scope.phase = "PRE_MUTATION"
 
         # Old-format repairs are advisory and may invoke T018/T019/T087/T027.
         # They run only after the real prompt/control surface exists and inside
@@ -9793,7 +10002,8 @@ def _main_game_loop(startup_authority, turn_authority):
         # ready signal must be re-sent AFTER the scope closes or the legacy
         # UI stays locked on 'Resolving combat intents...' until a reconnect.
         # Superseded turns never publish this readiness signal.
-        status_ready()
+        if not _travel_recovery_pending():
+            status_ready()
 
 def main():
     """Main entry point with startup wizard integration"""
@@ -9920,6 +10130,23 @@ def main():
     # Continue with normal game loop
     while True:
         result = main_game_loop()
+        if isinstance(result, _TravelRecoveryControl):
+            while result.kind == 'reset':
+                from utils.reset_campaign import perform_reset_logic
+                try:
+                    perform_reset_logic()
+                except Exception as exc:
+                    print('[SYSTEM] Reset did not finish: ' + str(exc))
+                    result = _terminal_recovery_menu(result.manager)
+                else:
+                    break
+            if result.kind == 'reset':
+                continue
+            if result.kind == 'quit':
+                break
+            if result.kind == 'restore':
+                from updates.save_game_manager import RestoreRequest
+                result = RestoreRequest(manager=result.manager, save_folder=result.folder)
         if not _is_restore_request(result) or not _run_terminal_restore(result):
             break
 
