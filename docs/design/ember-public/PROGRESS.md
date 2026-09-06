@@ -1,5 +1,29 @@
 # Public Ember implementation ledger
 
+## Desktop confirmations and workbench completion pass — 2026-09-05
+
+`8f17019` saves the shared desktop Restore/Delete/Exit dialogs with stale-save,
+disconnect/cancellation and restart-marker guards. Phone native prompts remain.
+Full source units: 32 files / 315 tests. Four confirmation plus six main visual
+cases pass without changing goldens; root personally inspected the captures.
+
+`9727a86` saves explicit Ember workbench prompts, six-tab keyboard semantics and
+focus/hover/touch help. Root reruns pass all 13 prompt and ten workbench/accessibility
+cases. Independent loops corrected Builder reconnect ownership and missing
+standalone helper delivery; exact-template tests verify both. The undefined-job-ID
+export guard is fixed, no-op Merge is honestly unavailable, and dead monster TODO
+fragments are documented rather than turned into invented mechanics.
+
+`0a33690` saves the missing secondary-action Menu proposal only in the unapproved
+intermediate study. Five cases and independent review pass; public React header
+and phone navigation stay unchanged. Bounded baseline/Ember performance evidence
+now records exact served artifacts and six 400-message/80-NPC samples, with its
+measurement limits in PERFORMANCE-REVIEW.md.
+
+The owner preview remains `http://localhost:4204/play/`: actual React UI with
+scripted data, not paid/live AI or persistent saves. No main push/merge. Final
+owner review and the explicit external/live acceptance limits remain open.
+
 ## Startup, ledger and safe authoring pass — 2026-09-05
 
 Six startup/bootstrap browser checks and nine Journal/Storage cases now pass.

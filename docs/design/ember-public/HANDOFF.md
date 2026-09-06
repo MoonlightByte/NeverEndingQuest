@@ -11,6 +11,44 @@ public implementation has been pushed or merged into public main.
 
 ## Open and test
 
+Two different modes are available. The preview below is an interactive mockup;
+the normal public launcher runs the real game. Do not treat preview responses
+as proof of provider inference, saved campaigns or completed generation jobs.
+
+### Real public game — deliberate live testing
+
+Use the game's configured Python environment, from this worktree (not the
+private server checkout):
+
+```sh
+cd /mnt/e/NEQ-ember-public
+git branch --show-current
+python run_web.py --ui react
+```
+
+The branch should be `feat/ember-public-complete`. The launcher builds stale or
+missing React assets and opens `/play/` at the port configured by this copy of
+`config.py` (`WEB_PORT`, default 8357). If that port is already running another
+game, stop and resolve the conflict; do not assume the existing tab serves this
+branch. A build failure deliberately falls back to legacy `/` and prints a
+warning; that is not the Ember screen.
+
+On a fresh installation the first run creates `config.py` from the public
+template and exits after a prompt. Run the command again, then use Settings →
+AI Provider. The real provider, key and endpoint controls belong to the public
+game; no hosted account or private server is required. Plain `python run_web.py`
+continues to launch legacy by default.
+
+**This mode is real:** game actions can call configured providers, spend credits,
+and write saves/settings/artwork in the game environment. Use a backed-up or
+disposable campaign and a deliberate provider choice. A separate worktree does
+not itself isolate OS credential storage or every user-level setting. Do not
+copy real keys into a screenshot or this documentation. This handoff does not
+claim that live-provider turns or a full new-game/save/restore journey have been
+verified, and the agent has not launched this mode against your real campaign.
+
+### Interactive preview — no real campaign or inference
+
 - Game: http://localhost:4204/play/
 - Toolkit: http://localhost:4204/toolkit
 - Standalone builder presentation: http://localhost:4204/builder
@@ -30,6 +68,9 @@ all seven NPC detail actions, original portrait viewers, inventory search and
 storage, journal, dice, settings, and save/load dialogs. Resize to inspect the
 preserved phone interface. The toolkit exposes all six tabs and builder controls;
 it does not run an authoring job.
+
+For a guided route through the implemented screens and their preview limits,
+see [OWNER-TEST-GUIDE.md](OWNER-TEST-GUIDE.md).
 
 To restart this preview after building the frontend:
 
@@ -126,6 +167,21 @@ and re-review. These are bounded reviews, not blanket approval of every state.
 
 ## Differences and remaining release gates
 
+Current desktop confirmation receipt: [DIALOG-REVIEW.md](DIALOG-REVIEW.md).
+All 315 unit tests and ten focused confirmation/main browser cases pass.
+The [workbench dialog/accessibility review](WORKBENCH-DIALOG-REVIEW.md) adds
+13 prompt checks and retains ten workbench/tab/help checks, including actual
+standalone helper delivery and Builder reconnect/cancel ownership.
+The post-commit actual-Flask probe passed on `9727a86`: both rendered workbench
+entries include the helper exactly once, all 15 shared assets per Flask app and
+all 11 built fonts resolve, React/legacy fallback and launcher selection remain
+correct, and no engine/Builder job started. Retained export:
+`/mnt/e/neq-ember-entrypoint-probes.CoTVdyp2/neq-ember-entrypoints-5upw2440/source`.
+This is actual route/static delivery evidence, not live model inference.
+The [bounded performance comparison](PERFORMANCE-REVIEW.md) now includes an
+exact public-main baseline, measured asset hashes and six 400-message/80-NPC
+samples; formal native-device profiling remains outside that evidence.
+
 No verified 100% raster-parity claim is made. Original public photorealistic
 artwork, public-only header actions, accessible Details/inspection affordances,
 authored SVG icons, actual fonts/antialiasing and content-driven wrapping differ
@@ -146,7 +202,12 @@ would require a separately reviewed contract change. Broader pre-existing
 settings-file concurrency outside provider selection is also not solved here.
 
 The toolkit's existing merge endpoint returns placeholder success without merging.
-That workflow is not implemented by this design port and is not accepted as working.
+Its visible Merge button is now disabled with an accessible explanation. That
+workflow is not implemented by this design port and is not accepted as working.
+Old monster edit/regenerate/delete coming-soon functions have no callers or
+rendered button bindings; they are catalogued as unreachable fragments, not new
+mechanics. The stray undefined-job-ID guard in successful monster-pack export
+has been reproduced and corrected, with exact-payload/ZIP-choice browser tests.
 Actual safe ZIP export/import now has backend evidence; live generation and the
 full browser-to-backend authoring journey remain unverified.
 

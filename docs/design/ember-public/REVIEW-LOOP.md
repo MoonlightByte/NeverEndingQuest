@@ -213,3 +213,46 @@ and exact copied-build manifest provenance were independently re-reviewed cleanl
 The primary agent inspected actual upload, viewer, combat and phone captures and
 re-compared the main reference render; ten main visual/interaction checks pass
 without golden updates. See MEDIA-REVIEW.md for exact evidence and limitations.
+
+## Desktop confirmations, workbench access and performance
+
+Independent confirmation review checked captured save identity, duplicate/cancel/
+disconnect/unmount handling, restart-marker ownership and native phone prompts.
+Four browser confirmation cases and six main visual/containment cases pass; the
+primary agent inspected final Restore, pending Restore and Exit captures. All
+315 current unit tests pass. See DIALOG-REVIEW.md for exact scope.
+
+Workbench tab/help review first found hover-only help and missing keyboard tab
+semantics. The shared enhancement retained original tab loaders. Independent
+review then caught the popup closing before the pointer could reach it; a short
+leave bridge fixed that. Four keyboard/pointer/touch cases pass, and the primary
+agent inspected desktop/phone help and tab captures.
+
+The performance reviewer rejected hardcoded local dependency paths and ambiguous
+pre-swap baseline provenance. The corrected probe verifies 127 Git baseline files,
+retained-build/copied-dist equality and actual browser response hashes in every
+round. Six 400-message/80-NPC runs pass. Independent review of the final evidence
+and PERFORMANCE-REVIEW.md is clean, retaining all synthetic-timing/font/network/
+listener limitations. These bounded results are not formal field profiling.
+
+The missing header overflow proposal was added only to the unapproved
+intermediate study. Independent browser review caught a clipped focused Exit
+when keyboard focus wrapping prevented scrolling. The correction allows scrolling;
+compact spacing also fits all controls at rest. Five cases now pass with explicit
+visibility/focus/no-write checks, and independent re-review is clean. Current
+production header and mobile navigation are unchanged.
+
+Native workbench prompt conversion received separate operation-owner review.
+It uncovered a pre-existing undefined-job-ID guard in successful monster export;
+root reproduced the baseline failure and both ZIP continuations now pass. A
+reviewer caught disconnect clearing Builder's known-running state, which would
+prevent cancellation after reconnect; both templates now preserve that state
+while invalidating old confirmations. Exact standalone-template browser tests
+also caught the missing shared helper script include. Six targeted Builder
+transition cases and seven other prompt cases pass after both fixes. Source
+re-review is clean; actual paid authoring jobs are not claimed tested.
+
+Root's older workbench suite expected a clickable Merge placeholder. It now
+asserts the intentional disabled button, readable associated explanation and
+zero action instead; all other workflow assertions remain. All ten existing
+workbench/accessibility checks pass. See WORKBENCH-DIALOG-REVIEW.md for scope.

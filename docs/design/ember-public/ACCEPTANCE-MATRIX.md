@@ -7,7 +7,7 @@ complete. Earlier ledger entries describe historical scope, not current omission
 
 Sources of truth: `PORT-PLAN.md`, `TRANSITION-GATES.md`, actual source owners,
 colocated tests, browser captures and test output. The full unit suite currently
-passes 31 files / 302 tests. Browser receipt counts are in `HANDOFF.md`; test
+passes 32 files / 315 tests. Browser receipt counts are in `HANDOFF.md`; test
 existence alone is not a pass. Browser tests use Chromium and synthetic campaigns.
 
 ## Screen coverage
@@ -19,7 +19,7 @@ intentional compatibility exception, not a second Ember game. `e2e/` below means
 | Plan surface | Inspected evidence | Remaining acceptance limit |
 | --- | --- | --- |
 | Entry / first-run | Header/startup/recovery units; 3 real-Flask startup browser cases plus 3 empty-bootstrap cases with reviewed captures and desktop/phone checks | Full live interview/new-game journey and actual operator recovery unverified |
-| Global header | `HeaderBar.test.tsx`, `e2e/ember-public.spec.ts`, reference captures | Owner approval of public-control adaptation; no new overflow-menu design approved |
+| Global header | `HeaderBar.test.tsx`, `e2e/ember-public.spec.ts`, reference captures; review-only [secondary-action Menu proposal](intermediate/README.md) with five drawer/menu tests | Owner approval of public-control adaptation; new overflow menu not approved or integrated |
 | Main story / composer | `log/log.test.tsx`, `e2e/player-shell.spec.ts`, `ember-runtime.spec.ts`, four reviewed visual goldens | Real AI turn and platform typography unverified; raster concept equality not claimed |
 | Dice | Distinct SVG dice and local-roll explanation; log tests, responsive draft/roll continuity, main captures | Owner visual approval; no new authoritative roll mechanics |
 | Party / town / combat | Server-shaped combat hydration, `ember-runtime.spec.ts`, `ember-npc-media.spec.ts`, populated rail captures | Every dead/absent/long-list state has not received a final owner visual pass |
@@ -32,14 +32,14 @@ intentional compatibility exception, not a second Ember game. `e2e/` below means
 | Storage | Reviewed 4-state browser captures, actual request bindings and units; truthful desktop read-failure message, phone preservation, independent retry | Real storage refresh during a live campaign unverified |
 | Settings / providers | Seven browser checks; 25 real handler/SDK/stub tests; 10 settings unit tests; reviewed provider/voice/error captures | Paid inference unverified; old-response-after-new-probe correlation needs a contract decision |
 | Save | Browser dialog/intent/full-mode checks; exact payload unit tests; actual essential/full handler-and-file probe | Full live browser journey and active-turn save queue unverified; owner preview is simulated |
-| Load / delete | Selection/hover styling, restore/delete/cancel/restart-preparation tests; actual valid/corrupt restore and delete/reconnect file probe | Actual process restart and every unavailable state unverified; probe intercepts exit |
+| Load / delete | Selection/hover styling, themed nested confirmations, duplicate/stale/cancel/restart-marker tests; actual valid/corrupt restore and delete/reconnect file probe; [current dialog receipt](DIALOG-REVIEW.md) | Actual process restart and every unavailable state unverified; probe intercepts exit |
 | Reset | Exact five-digit confirmation, pending/duplicate protection, browser cancel-without-reset; actual disposable reset and retained-backup probe | No production reset; actual restart and recovery from reset backup unverified |
 | Update / exit | Unit callbacks/restart failures/offline exit; browser version/progress surfaces | Actual updating process and platform browser-close behavior unverified |
 | Long-running work | `operations.test.tsx`, blocking-overlay/reconnect browser checks; reviewed module failure/blocking and compression failure/nonblocking captures | Real compression/module jobs and every terminal screenshot unverified |
 | Media / narration | Original viewer, real upload/static+module persistence, desktop/open-viewer/combat/phone refresh, rejected-upload byte preservation, cache/race/audio tests | No paid image/TTS calls; native file-picker activation and every campaign interleaving unverified; see MEDIA-REVIEW.md |
 | Debug | `DebugTab.test.tsx`, populated 64-line browser surface and capture | No formal large-log performance profile |
-| Toolkit — six tabs | Six browser workbench tests; actual safe create/export/preview/import/recoverable-delete probe with portrait-byte round trip | Live generation/activation and browser-to-backend authoring unverified; existing merge endpoint is a nonfunctional placeholder |
-| Standalone builder | Actual Flask `/` plus shared assets; builder controls/statuses; actual incomplete-input/idle-cancel/list probe without jobs | Real module build/completion journey unverified |
+| Toolkit — six tabs | Ten workbench/tab/help cases plus 13 shared prompt/Builder cases; [dialog review](WORKBENCH-DIALOG-REVIEW.md); actual safe create/export/preview/import/recoverable-delete probe with portrait-byte round trip | Live generation/activation and browser-to-backend authoring unverified; existing no-op Merge now visibly disabled |
+| Standalone builder | Actual Flask `/` plus shared assets; exact-template helper delivery and cancellation after reconnect/terminal/replacement; actual incomplete-input/idle-cancel/list probe without jobs | Real module build/completion journey unverified; no new server job-identity contract |
 | Legacy fallback / launcher | Actual disposable missing-build503/legacy200/toolkit200, built React coexistence, launcher options/default/freshness probe; nine launcher tests | No native-platform or whole-legacy offline guarantee; default remains legacy |
 
 ## Transition gates
@@ -89,7 +89,7 @@ was nearly full; the successful run used a dedicated directory on E: instead.
 - Inspect the running actual UI, not only gallery images. Additional-screen
   mockups and intentional public adaptations still need explicit owner sign-off.
 - Review the delivered [intermediate-width collapsible-panel prototype](intermediate/README.md).
-  Three bounded browser cases and independent review pass; it is not approved
+  Five bounded drawer/menu browser cases and independent review pass; it is not approved
   production navigation. The runtime retains public breakpoint ownership.
 - Approve any optional endpoint response-correlation contract change separately.
 - Approve credentials/cost for opt-in live-provider tests before calling those
@@ -97,6 +97,9 @@ was nearly full; the successful run used a dedicated directory on E: instead.
   now pass for handlers/files, but do not prove the full live browser journey.
   No paid/destructive
   production testing or public-main push is authorized by this goal.
+- [Bounded baseline/Ember performance comparison](PERFORMANCE-REVIEW.md) now
+  measures 400 messages / 80 NPCs with verified served-build provenance. It is
+  not field INP, a leak certification or real-device profiling.
 - Native platform/browser checks, formal performance and full state-by-state
   screenshot acceptance remain open. Three development-dependency audit findings
   are disclosed in HANDOFF.md; runtime-only npm audit reports zero.

@@ -53,7 +53,7 @@ fragments, not missing reachable screens. They remain unchanged in functionality
 - **10 existing workbench/accessibility cases pass**: six-tab/standalone desktop
   and phone presentation, shared fonts, nested modal lifecycle, actual registered
   generation-result handlers and keyboard/pointer/touch help.
-- Five inline scripts parse and shared helper syntax passes. Standalone's CRLF
+- Both inline application scripts parse and shared helper syntax passes. Standalone's CRLF
   format is retained; `git -c core.whitespace=cr-at-eol diff --check` passes.
 - Independent reviews closed hover-popup, Builder reconnect and standalone
   helper-delivery findings. Root personally inspected desktop/phone tabs/help,
@@ -64,7 +64,7 @@ stub that records emissions and invokes the registered handlers. They do not
 prove real generation or process cancellation. The standalone helper is **not**
 injected by the fixture. The separate actual-Flask entrypoint probe now checks
 both rendered pages include the helper once, as well as serving its exact bytes;
-its post-commit result is recorded in HANDOFF.md.
+its post-commit result passed on `9727a86` and is recorded in HANDOFF.md.
 
 From `web/frontend`:
 
