@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ember — intermediate-width drawer study</title>
+  <link rel="stylesheet" href="/static/css/ember-tokens.css">
+  <link rel="stylesheet" href="/static/css/ember-fonts.css">
+  <link rel="stylesheet" href="/intermediate.css">
+</head>
+<body class="ember-theme">
+  <div class="study-bar"><span><strong>EMBER / LAYOUT STUDY</strong> · Not approved · Sample state</span><div><label>Sample view <select id="sample-mode"><option value="exploration">Exploration</option><option value="combat">Combat</option></select></label><label><input id="show-art" type="checkbox" checked> Inline image</label></div></div>
+  <header class="game-header"><h1>NeverEndingQuest</h1><div class="location">Rangers’ Command Post <small>Rangers’ Outpost · 1 Springmonth 1492 · 09:00</small></div><span class="sample-status">Layout preview only</span></header>
+  <div class="workspace">
+    <aside class="collapsed-rail left-rail" aria-label="Character drawer controls"><button class="rail-opener" data-open="sheet-drawer" aria-haspopup="dialog" aria-controls="sheet-drawer" aria-expanded="false"><img src="/art/marcus" alt=""><span>Sheet</span></button><div class="rail-vital"><span>HP</span><strong>31/38</strong><i></i></div><div class="rail-vital"><span>AC</span><strong>16</strong></div><small>Sample<br>hero</small></aside>
+    <main class="story-column">
+      <div class="story-context"><span>At the command post</span><span>Panels open over the story</span></div>
+      <section id="story" class="story" tabindex="0" aria-label="Story transcript">
+        <div class="session-divider">Current session</div>
+        <article class="player-message"><header>You</header><p>I ask Elen what happened on the northern road.</p></article>
+        <article class="dm-message"><header><span class="dm-mark" aria-hidden="true">◇</span>Dungeon Master <small>Sample narration</small></header>
+          <p>Welcome back, traveler. The scent of woodsmoke and old parchment greets you as you enter the command post. Ranger Elen looks up from the patrol map, a small smile briefly breaking her tired expression.</p>
+          <figure id="inline-art"><img src="/art/elen" alt="Existing public photorealistic portrait of Ranger Elen"><figcaption>Optional image · attached to this sample message</figcaption></figure>
+          <p>“You are here. That is good.” She rests one hand beside a line of ink marking the northern road. “The last patrol returned before dawn. They heard movement beyond the old bridge, but saw no one.”</p>
+          <p>Across the room, Marcus folds his report. The rain has stopped; water still drips from the cloaks hanging by the door. Elen waits for your reply.</p>
+        </article>
+        <article class="player-message"><header>You</header><p>I look at the map and ask Marcus what his patrol found.</p></article>
+        <article class="dm-message"><header><span class="dm-mark" aria-hidden="true">◇</span>Dungeon Master <small>Sample history</small></header><p>Marcus turns the parchment toward you. A narrow track leaves the road at the bridge and follows the water into the trees. His report records the places his patrol searched, and the places they have yet to reach.</p><p>This longer sample transcript lets you test reading position while opening either side panel. The drawer does not replace or remount the story.</p></article>
+      </section>
+      <div class="dice-dock"><span>Quick rolls <small>Visual sample · no rolls generated</small></span><div aria-label="Dice controls outside this layout study"><span>⬡ D20</span><span>⬟ D12</span><span>◇ D10</span><span>◈ D8</span><span>▣ D6</span><span>△ D4</span></div></div>
+      <form id="composer"><label class="sr-only" for="command">Enter your command</label><textarea id="command" rows="2" placeholder="Enter your command…"></textarea><button type="submit">Try input <span aria-hidden="true">↗</span></button></form>
+      <p id="input-status" class="input-status" role="status">Interactive layout only. No game connection, provider calls or saved data.</p>
+    </main>
+    <aside class="collapsed-rail right-rail" aria-label="Party drawer controls"><button class="rail-opener" data-open="people-drawer" aria-haspopup="dialog" aria-controls="people-drawer" aria-expanded="false"><span class="people-symbol" aria-hidden="true">♧</span><span id="people-rail-label">Party</span><small id="people-count">6 nearby</small></button><div class="mini-portraits" aria-hidden="true"><img src="/art/elen" alt=""><img src="/art/kira" alt=""><img src="/art/rusk" alt=""></div><span id="combat-rail" hidden>Round 2<br>Sample order</span></aside>
+  </div>
+  <dialog id="sheet-drawer" class="drawer sheet-drawer" aria-labelledby="sheet-title"><div class="drawer-heading"><div><small>YOUR CHARACTER · SAMPLE</small><h2 id="sheet-title">Character sheet</h2></div><button class="close-drawer" aria-label="Close character sheet" autofocus>×</button></div>
+    <div class="sheet-tabs" role="tablist" aria-label="Sample character sections"><button id="tab-character" role="tab" aria-selected="true" aria-controls="panel-character" data-panel="character">Character</button><button id="tab-inventory" role="tab" aria-selected="false" aria-controls="panel-inventory" data-panel="inventory" tabindex="-1">Inventory</button><button id="tab-spells" role="tab" aria-selected="false" aria-controls="panel-spells" data-panel="spells" tabindex="-1">Spells &amp; Magic</button></div>
+    <div class="drawer-scroll" id="sheet-scroll" tabindex="0" aria-label="Character details">
+      <section id="panel-character" role="tabpanel" aria-labelledby="tab-character"><div class="identity"><img src="/art/marcus" alt="Existing public photorealistic artwork, used for this sample hero"><div><h3>Arden Vale</h3><p>Level 4 · Human Ranger</p><p>XP 2,700 / 6,500</p><div class="xp-track"><span></span></div><small>Outlander · Neutral good</small></div></div>
+        <div class="vitals"><span>♡ HP <strong>31 / 38</strong></span><span>♧ AC <strong>16</strong></span><span>INIT <strong>+4</strong></span></div>
+        <div class="abilities"><div>STR<strong>12</strong><small>+1</small></div><div>DEX<strong>18</strong><small>+4</small></div><div>CON<strong>14</strong><small>+2</small></div><div>INT<strong>11</strong><small>+0</small></div><div>WIS<strong>16</strong><small>+3</small></div><div>CHA<strong>10</strong><small>+0</small></div></div>
+        <section class="sheet-section"><h4>Weapons &amp; Attacks</h4><p>Longbow · 1d8 + 4<br>Shortsword · 1d6 + 4</p></section><section class="sheet-section"><h4>Ammunition</h4><p>Arrows × 34</p></section><section class="sheet-section"><h4>Saving Throws</h4><p>STR +3 &nbsp; DEX +6 &nbsp; CON +2<br>INT +0 &nbsp; WIS +3 &nbsp; CHA +0</p></section><section class="sheet-section"><h4>Class Features</h4><p>Favored Foe · 2 / 3 uses<br>Deft Explorer<br>Fighting Style: Archery</p></section><section class="sheet-section"><h4>Racial Traits</h4><p>Versatile training</p></section><section class="sheet-section"><h4>Background</h4><p>Wanderer</p><p>You remember the layout of terrain, settlements and other features around you. This supplied sample text is for testing a long sheet in a short viewport.</p></section><section class="sheet-section"><h4>Character notes</h4><p>Arden carries a weathered journal, a cloak repaired many times, and a letter from a friend at the outpost.</p></section>
+      </section>
+      <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" hidden><h3>Inventory</h3><p class="muted">Display-only sample · no equip or transfer actions</p><label class="search-label">Filter sample items <input id="inventory-filter" type="search" placeholder="Search inventory"></label><ul class="inventory-list"><li data-item="longbow"><strong>Longbow</strong><span>Equipped · Quantity 1</span></li><li data-item="shortsword"><strong>Shortsword</strong><span>Equipped · Quantity 1</span></li><li data-item="potion of healing"><strong>Potion of Healing</strong><span>Consumable · Quantity 2</span></li><li data-item="scroll of goodberry"><strong>Scroll of Goodberry</strong><span>Scroll · Quantity 1</span></li><li data-item="travelers cloak"><strong>Traveler’s cloak</strong><span>Equipment · Quantity 1</span></li><li data-item="rations"><strong>Rations</strong><span>Supplies · Quantity 6</span></li></ul><p id="empty-inventory" hidden>No sample items match.</p></section>
+      <section id="panel-spells" role="tabpanel" aria-labelledby="tab-spells" hidden><h3>Spells &amp; Magic</h3><p class="muted">Display-only sample · no casting controls</p><div class="vitals"><span>Save DC <strong>13</strong></span><span>Attack <strong>+5</strong></span></div><section class="sheet-section"><h4>1st Level <small>2 / 3 slots</small></h4><p>Goodberry <small>Prepared</small><br>Hunter’s Mark</p></section><section class="sheet-section"><h4>Magic items</h4><p>Moonlit Compass · 2 / 3 charges</p></section></section>
+    </div>
+    <footer class="drawer-footer currency"><span><i class="coin gold"></i> GP 42</span><span><i class="coin silver"></i> SP 7</span><span><i class="coin copper"></i> CP 3</span></footer>
+  </dialog>
+  <dialog id="people-drawer" class="drawer people-drawer" aria-labelledby="people-title"><div class="drawer-heading"><div><small>PEOPLE IN THE SCENE · SAMPLE</small><h2 id="people-title">Party &amp; nearby</h2></div><button class="close-drawer" aria-label="Close people panel" autofocus>×</button></div><div class="drawer-scroll" id="people-scroll" tabindex="0" aria-label="Party and initiative details"><p id="roster-note" class="muted">Your party, then people at this location.</p><div id="roster"></div></div><footer class="drawer-footer muted">Existing public artwork · illustrative sample identities</footer></dialog>
+  <script type="module" src="/intermediate.js"></script>
+</body>
+</html>
