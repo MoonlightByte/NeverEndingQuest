@@ -894,7 +894,10 @@ def call_live_provider(
     notices_shown = set()
     player_turn = scope is not None and scope is get_live_turn_scope()
 
-    def turn_heartbeat(generation_number):
+    def turn_heartbeat(_generation_number=None):
+        # Attempt = this call's own physical attempts (failure_count + 1), not
+        # the scope generation, which other tasks in the turn also consume.
+        attempt = failure_count + 1
         elapsed = max(1, int(time.monotonic() - logical_started))
         if elapsed >= 120:
             shown = "%d min" % (elapsed // 60)
@@ -902,7 +905,7 @@ def call_live_provider(
             shown = "%d s" % elapsed
         return (
             "Attempt %d, %s elapsed. Waiting for the AI provider. Your turn "
-            "is safe." % (generation_number, shown)
+            "is safe." % (attempt, shown)
         )
 
     def notify_player_once(key, text):
