@@ -4,6 +4,22 @@ Requested after reviewing `27c1173`. This is an intentional revision of the
 right rail and journal, not an unrequested departure from the locked direction.
 Existing photorealistic artwork, game mechanics and phone layout are retained.
 
+## Owner approval — locked for the build
+
+On 2026-09-05 the owner reviewed the updated preview and approved it:
+“This looks really good! Go ahead and lock it in for teh build”.
+Implementation commit `987f6c7` on `feat/ember-public-complete` is the approved
+build baseline for this revision: the Ember screen, full NPC Details cards,
+visible right-rail stats and restored parchment journal. Retain these choices
+in subsequent builds; further design changes require owner review.
+
+This supersedes the pending owner sign-off statements below for this revision.
+It does not certify untested live-provider/platform behavior or 100% raster
+parity, approve the separate intermediate-width study, change launcher defaults,
+or itself publish, push or merge the branch into public main.
+
+## Implementation and visual review
+
 - NPC **Details** in exploration and NPC initiative opens the same full live
   character card used by the NPC tab. It includes all seven existing conditional
   menus, supplied biography, abilities, XP/currency and portrait/media access.
@@ -28,8 +44,8 @@ positive/negative regressions pass, including nested-menu focus restoration.
 
 The four main-screen visual baselines are deliberately refreshed for the
 owner-requested right-rail change; the original concept reference remains
-untouched. This does not claim owner acceptance of the new captures or 100%
-raster parity. Root inspected all four updated desktop baselines; a subsequent
+untouched. At verification time owner acceptance was pending; it is now recorded
+above. No 100% raster-parity claim is made. Root inspected all four updated desktop baselines; a subsequent
 eight-case run passed without updating them again.
 
 ## Verification
@@ -54,8 +70,9 @@ Final main/full-card/book captures are under:
 `/mnt/e/neq-ember-entrypoint-probes.CoTVdyp2/owner-npc-journal-accepted/ember-owner-revisions-righ-d66be-nd-all-seven-original-menus/`
 (`ember-party-stats.png`, `npc-full-card.png`, `parchment-journal.png`).
 Firefox captures: `owner-npc-journal-all-npcs-firefox` under the same artifact root.
-These are agent-reviewed captures, not owner sign-off. Prior receipts describe
-earlier checkpoints; current live-provider/platform limitations remain unchanged.
+These are agent-reviewed captures of the subsequently owner-approved revision.
+Prior receipts describe earlier checkpoints; current live-provider/platform
+limitations remain unchanged.
 
 Interactive preview: http://localhost:4204/play/ (refresh an existing tab).
 It is the actual implemented UI with scripted data, not live AI or real saves.

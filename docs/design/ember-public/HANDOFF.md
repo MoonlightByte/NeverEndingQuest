@@ -1,6 +1,10 @@
 # Ember public: owner inspection handoff
 
 Branch: `feat/ember-public-complete` in `/mnt/e/NEQ-ember-public`.
+Approved build baseline: `987f6c7`. On 2026-09-05 the owner approved the updated
+Ember screen, full NPC cards, visible party stats and parchment journal and asked
+to lock them in for the build. See [the approval record](OWNER-REVISION-01.md).
+No public-main merge, push or launcher-default change accompanies this lock.
 Implementation checkpoint: `e6f83c5`; public main through `21702a7` is included.
 Additional visual fixes: `9d930df`; review-only drawer study: `074f8cc`.
 Portrait campaign-persistence correction: `1888181`; media refresh review and
@@ -234,6 +238,7 @@ undici: two high, one moderate); `npm audit --omit=dev` reports zero. Dependenci
 were not automatically upgraded during the design port. These findings require
 separate release triage, not a claim that the entire dependency tree is clean.
 
-**Owner visual and functional review remains required.** This is a reviewable
-implementation, not proof that every acceptance row in the plan is complete.
-Do not merge or push this work into public main until the owner approves it.
+**The latest screen revision is owner-approved and locked for the build.**
+This approval is not proof that every acceptance row in the plan is complete;
+the unverified release gates above remain explicit. Public-main integration and
+publication remain separate release decisions, not actions taken by this lock.
