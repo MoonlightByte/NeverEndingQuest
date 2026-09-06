@@ -480,3 +480,18 @@ All 25 focused dialog/operation unit tests pass; build and lint succeed with
 the 11 inherited warnings. Personally inspected the real-runtime Load capture;
 its existing dialog treatment is retained pending the additional-screen design
 review, with initial focus now inside the dialog.
+
+## Actual portrait upload and media refresh acceptance
+
+The post-handoff F2/A2 pass reproduced and repaired silent module-persistence
+failure in the actual upload handler (`1888181`). New browser coverage uploads
+existing public artwork through the file input, compares static/module bytes,
+checks sheet/rail/open-viewer/combat/phone refresh without reload and verifies a
+rejected upload preserves prior art. Full details, commands and remaining limits
+are in [MEDIA-REVIEW.md](MEDIA-REVIEW.md).
+
+Independent feature and architecture reviews also corrected canonical filename
+aliases, explicit upload precedence, scoped viewer refresh/cancellation and
+ambiguous thumbnail suffixes. No new artwork, game mechanics or hosted-only
+runtime dependencies were introduced. The owner preview still uses scripted
+state; actual upload tests run separately in disposable campaigns.

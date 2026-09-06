@@ -190,3 +190,26 @@ builder validation in a disposable tracked export. Another reviewer read the
 probe, real handlers and retained result and found no actionable probe flaw.
 The existing merge placeholder is excluded, not disguised as working. No agent
 executed generation, activation or a live browser-to-backend authoring journey.
+
+## Actual upload and media-identity loop
+
+The real-handler probe reproduced a pre-existing silent module-copy failure;
+the primary agent corrected the nonexistent accessor. Both persistence targets
+then matched, and rejected uploads preserved both files. Independent review
+verified the probe's actual-handler scope, credential stub and disposable-root
+containment; it is not described as an adversarial OS sandbox.
+
+Feature implementation and independent source review corrected canonical upload
+aliases, explicit upload precedence and stable open-viewer refresh/cancellation.
+Additional review caught literal-percent decoding and canonical names ending in
+Thumb/Video. A further NPC full-size/thumbnail ambiguity required matching the
+raw and context-valid generated suffix stems; re-review closed that finding.
+The final party suite has 38 passing tests; the full unit suite has 302.
+
+A separate test reviewer caught a weak phone assertion that could accept stale
+256px artwork. The browser now checks changed URL and actual image-response
+SHA256 as well as decoded dimensions and both persisted files. That correction
+and exact copied-build manifest provenance were independently re-reviewed cleanly.
+The primary agent inspected actual upload, viewer, combat and phone captures and
+re-compared the main reference render; ten main visual/interaction checks pass
+without golden updates. See MEDIA-REVIEW.md for exact evidence and limitations.

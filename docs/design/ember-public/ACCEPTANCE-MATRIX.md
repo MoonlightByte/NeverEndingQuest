@@ -7,7 +7,7 @@ complete. Earlier ledger entries describe historical scope, not current omission
 
 Sources of truth: `PORT-PLAN.md`, `TRANSITION-GATES.md`, actual source owners,
 colocated tests, browser captures and test output. The full unit suite currently
-passes 31 files / 291 tests. Browser receipt counts are in `HANDOFF.md`; test
+passes 31 files / 302 tests. Browser receipt counts are in `HANDOFF.md`; test
 existence alone is not a pass. Browser tests use Chromium and synthetic campaigns.
 
 ## Screen coverage
@@ -36,7 +36,7 @@ intentional compatibility exception, not a second Ember game. `e2e/` below means
 | Reset | Exact five-digit confirmation, pending/duplicate protection, browser cancel-without-reset; actual disposable reset and retained-backup probe | No production reset; actual restart and recovery from reset backup unverified |
 | Update / exit | Unit callbacks/restart failures/offline exit; browser version/progress surfaces | Actual updating process and platform browser-close behavior unverified |
 | Long-running work | `operations.test.tsx`, blocking-overlay/reconnect browser checks; reviewed module failure/blocking and compression failure/nonblocking captures | Real compression/module jobs and every terminal screenshot unverified |
-| Media / narration | Original portrait viewer, asset revision refresh, cache/race/audio tests and reduced-motion checks | No paid image/TTS calls; full real upload across every simultaneous consumer unverified |
+| Media / narration | Original viewer, real upload/static+module persistence, desktop/open-viewer/combat/phone refresh, rejected-upload byte preservation, cache/race/audio tests | No paid image/TTS calls; native file-picker activation and every campaign interleaving unverified; see MEDIA-REVIEW.md |
 | Debug | `DebugTab.test.tsx`, populated 64-line browser surface and capture | No formal large-log performance profile |
 | Toolkit — six tabs | Six browser workbench tests; actual safe create/export/preview/import/recoverable-delete probe with portrait-byte round trip | Live generation/activation and browser-to-backend authoring unverified; existing merge endpoint is a nonfunctional placeholder |
 | Standalone builder | Actual Flask `/` plus shared assets; builder controls/statuses; actual incomplete-input/idle-cancel/list probe without jobs | Real module build/completion journey unverified |
@@ -47,7 +47,7 @@ intentional compatibility exception, not a second Ember game. `e2e/` below means
 | Gate | Current evidence | Not proven by this evidence |
 | --- | --- | --- |
 | F1 inventory continuity | Query/filter/sort/scroll session owner, unit tab-unmount/server-identity checks, browser polling/tab/breakpoint continuity | Every live reset/load transition |
-| F2/A2 media freshness | Bounded/revision-keyed resolver, upload invalidation, identity/race tests, browser unchanged/changed pack revision and original viewer | End-to-end real upload updating sheet/exploration/initiative/open viewer together |
+| F2/A2 media freshness | Actual upload journey across sheet/exploration/open viewer/initiative/phone; matching persisted bytes; 38 party tests including alias/suffix/identity races and existing pack-revision browser checks | Open-viewer integration explicitly injects the named invalidation event; native keyboard/touch file picker and every live reset/load interleaving unverified |
 | F3 live NPC details | Stable identity selection and actual socket-listener browser updates to quantities, usage and slots | Every removal/load/reconnect interleaving |
 | A1 responsive ownership | Rolls/draft/tab continuity, public boundary browser suite, extra constrained viewports | Native zoom/OS keyboard/safe areas and every duplicated-listener assertion |
 | F5 spell identity | Shared resolver; actual Python compatibility-map comparison; player/NPC/scroll browser access; timeout/retry and metadata tests | Exhaustive screenshots of all repository entries |

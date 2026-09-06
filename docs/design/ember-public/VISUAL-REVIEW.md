@@ -91,3 +91,19 @@ three sheet owners to compact Ember status cards, then personally inspected all
 three final renders. Phone styles and game/recovery contracts are unchanged.
 Also personally inspected all eight final Journal/Storage state card captures.
 See WORKFLOW-REVIEW.md for curated captures, commands and bounded acceptance.
+
+## Portrait freshness pass
+
+Personally inspected the actual upload results in the desktop sheet/party rail,
+open viewer, combat and phone sheet. The same original public photo appears at
+each intended consumer; invalid input leaves it intact. Re-compared the main
+1586×992 render with the locked concept: this media fix changes neither layout
+nor typography/colors/controls. Existing intentional public/art/font differences
+remain documented, not labeled 100% raster parity.
+
+The large viewer exposes the public upload handler's existing 256px conversion;
+softness when enlarged is a source-resolution limitation, not newly generated
+artwork. Reviewed [desktop](captures/review-portrait-upload.png),
+[viewer](captures/review-portrait-viewer.png) and
+[phone sheet](captures/review-portrait-phone.png). See MEDIA-REVIEW.md for the
+explicit synthetic-state and injected-event limits of this verification.

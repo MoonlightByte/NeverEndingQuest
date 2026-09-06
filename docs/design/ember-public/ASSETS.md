@@ -25,6 +25,11 @@ empty-state/recovery browser captures. `review-storage-error.png` is a direct
 browser screenshot of the actual dialog element, excluding the sparse fixture
 background; no image retouching or replacement artwork is involved.
 
+`review-portrait-upload.png`, `review-portrait-viewer.png` and
+`review-portrait-phone.png` show actual upload-handler results in a disposable
+synthetic campaign. Inputs are existing public photorealistic NPC portraits;
+the game's unchanged crop/256px conversion is visible, not an artwork redesign.
+
 Runtime assets and licenses:
 
 - `web/frontend/src/theme/fonts/PROVENANCE.md` and `OFL.txt`: bundled fonts.

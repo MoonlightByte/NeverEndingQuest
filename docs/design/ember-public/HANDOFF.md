@@ -3,6 +3,9 @@
 Branch: `feat/ember-public-complete` in `/mnt/e/NEQ-ember-public`.
 Implementation checkpoint: `e6f83c5`; public main through `21702a7` is included.
 Additional visual fixes: `9d930df`; review-only drawer study: `074f8cc`.
+Portrait campaign-persistence correction: `1888181`; media refresh review and
+exact verification scope: [MEDIA-REVIEW.md](MEDIA-REVIEW.md).
+UI media-freshness correction and regression tests: `1a0765b`.
 The last upstream fetch found no additional main commits. Nothing from this
 public implementation has been pushed or merged into public main.
 
@@ -55,10 +58,12 @@ and `TRANSITION-GATES.md` for acceptance requirements.
 ## Verification receipts
 
 - Clean `npm ci` and production build passed in an isolated committed export.
-  Full suite with the final startup/provider-test corrections: **31 files / 291 tests pass**.
+  Latest full suite with the media-refresh corrections: **31 files / 302 tests pass**.
   The correction verifies coalesced startup hydration and trailing refreshes;
   it does not change production socket behavior.
-- Lint exits successfully with **16 warnings**, not a warning-free claim.
+- Lint exits successfully with **17 warnings**, not a warning-free claim. The
+  additional media-viewer warning concerns its intentional cancellation-generation
+  ref update during cleanup; stale completion is covered by focused tests.
 - Current-commit isolated real Flask route/hydration/reconnect, inspections,
   NPC/media and supplementary surfaces: **13 browser tests pass**. A preceding
   run timed out in browser teardown after assertions; the full rerun passed.
@@ -99,6 +104,12 @@ and `TRANSITION-GATES.md` for acceptance requirements.
 - Actual safe toolkit create/export/preview/import/delete and builder validation
   pass in a disposable export. A photorealistic portrait survives the ZIP round
   trip byte-for-byte. See [workflow evidence and limits](WORKFLOW-REVIEW.md).
+- Actual portrait upload now persists matching static/module PNGs and refreshes
+  desktop, the open viewer, combat initiative and the phone sheet without reload.
+  Invalid PNG input preserves both saved copies. Independent source/test reviews
+  closed filename/cache/identity findings; 38 party tests pass. The primary agent
+  inspected the captures and re-compared the main render to the locked reference.
+  See [the real-handler receipt and explicit test limits](MEDIA-REVIEW.md).
 
 Final provider fixes: `c957f93` validates and durably saves a provider choice
 before applying it live, serializing simultaneous selections. The new failure

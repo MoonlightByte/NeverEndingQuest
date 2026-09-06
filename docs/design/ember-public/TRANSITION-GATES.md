@@ -37,6 +37,12 @@ during resolution cannot reopen stale A. Bound probe timeouts/cache growth and
 release pending media resources/listeners. Simulate delayed/missing media in tests,
 not paid generation. Check pointer, keyboard and touch.
 
+Current bounded receipt: [MEDIA-REVIEW.md](MEDIA-REVIEW.md). Real upload and file
+persistence, rejected-upload preservation, desktop/open-viewer/combat/phone
+refresh and alias/selection regression tests pass. The open-viewer integration
+uses an explicitly injected named invalidation event; native file-picker
+keyboard/touch activation and every live campaign transition remain open.
+
 ## F3 — Live child-detail reconciliation
 
 Owner: `sheet/NpcsTab.tsx` currently stores a selected NPC object snapshot for
