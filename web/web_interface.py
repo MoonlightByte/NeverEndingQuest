@@ -246,6 +246,7 @@ startup_recovery_attempts = {}
 startup_recovery_attempts_lock = threading.Lock()
 startup_handoff_active = False
 startup_ready_emitted = False
+startup_phase = ""
 
 # Message cache for persistence across restarts
 MESSAGE_CACHE_FILE = "modules/conversation_history/game_interface_cache.json"
@@ -562,7 +563,7 @@ class WebOutputCapture:
         lines can leave it stuck on ``Starting...`` even though the engine is
         already blocked for the player's command.
         """
-        global startup_handoff_active, startup_ready_emitted
+        global startup_handoff_active, startup_ready_emitted, startup_phase
         if not (
             clean_line.startswith('[')
             and ('HP:' in clean_line or 'XP:' in clean_line)
@@ -571,6 +572,7 @@ class WebOutputCapture:
         if not startup_ready_emitted:
             startup_handoff_active = False
             startup_ready_emitted = True
+            startup_phase = "prompt_detected"
             debug_output_queue.put({
                 'type': 'debug',
                 'content': '[STARTUP_FALLBACK] game_started emitted via prompt detection - primary marker path may have failed',
@@ -585,7 +587,7 @@ class WebOutputCapture:
         return True
 
     def write(self, text):
-        global startup_handoff_active, startup_ready_emitted
+        global startup_handoff_active, startup_ready_emitted, startup_phase
         # Write to original stream for console visibility (with error handling)
         try:
             # Ensure text is a string and handle encoding issues
@@ -626,8 +628,16 @@ class WebOutputCapture:
                             "startup_wizard_complete",
                             "startup_context_built",
                             "startup_kickoff_attempted",
+                            "startup_module_selection",
+                            "startup_interview",
+                            "startup_review",
+                            "startup_location",
+                            "startup_character_commit",
+                            "startup_party_commit",
+                            "startup_checkpoint_commit",
                         }:
                             startup_handoff_active = True
+                            startup_phase = phase
                             socketio.emit("startup_status", {"status": "in_progress", "phase": phase})
                         if phase in {"startup_kickoff_done", "startup_loop_ready"}:
                             # #214: startup_loop_ready fires when the game
@@ -635,6 +645,7 @@ class WebOutputCapture:
                             # IMMEDIATELY while a background welcome may still
                             # be generating (D-214-1=B).
                             startup_handoff_active = False
+                            startup_phase = phase
                             socketio.emit("startup_status", {"status": "ready", "phase": phase})
                             # Marker is authoritative - emit immediately when detected
                             if not startup_ready_emitted:
@@ -643,12 +654,14 @@ class WebOutputCapture:
                         elif phase == "startup_kickoff_skipped":
                             if marker_data.get("result") == "already_done":
                                 startup_handoff_active = False
+                                startup_phase = phase
                                 socketio.emit("startup_status", {"status": "ready", "phase": phase})
                                 if not startup_ready_emitted:
                                     startup_ready_emitted = True
                                     socketio.emit('game_started', {'message': 'Game started successfully'})
                         elif phase in {"startup_kickoff_failed", "startup_kickoff_stale_discarded"}:
                             startup_handoff_active = False
+                            startup_phase = phase
                             startup_state = dm_main.load_startup_state() or {}
                             socketio.emit("startup_status", {
                                 "status": "failed",
@@ -2491,6 +2504,17 @@ def get_module_unified_assets(module_name):
         error(f"TOOLKIT: Failed to get unified assets for module {module_name}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def _startup_ui_projection(running):
+    """Project the observed engine handoff, never infer readiness from a thread."""
+    if startup_ready_emitted:
+        status = 'ready'
+    elif startup_phase in {'startup_kickoff_failed', 'startup_kickoff_stale_discarded'}:
+        status = 'failed'
+    else:
+        status = 'in_progress' if startup_handoff_active or running else 'idle'
+    return {'status': status, 'phase': startup_phase}
+
+
 def _emit_game_resumed():
     """Tell the currently-connecting client it is (re)attached to a live game.
 
@@ -2500,12 +2524,19 @@ def _emit_game_resumed():
     """
     from core.managers.status_manager import status_manager
     try:
-        _status_message, is_processing = status_manager.get_status()
+        status_message, is_processing = status_manager.get_status()
     except Exception:
-        is_processing = False
+        status_message, is_processing = '', False
+    startup = _startup_ui_projection(True)
+    emit('startup_status', startup)
     emit('game_resumed', {
         'is_processing': is_processing,
-        'message': 'Reconnected to your game in progress.'
+        'message': ('Reconnected to your character setup.'
+                    if startup['status'] == 'in_progress'
+                    else 'Reconnected to your game in progress.')
+    })
+    emit('status_update', {
+        'message': status_message or '', 'is_processing': bool(is_processing),
     })
 
 
@@ -2527,10 +2558,7 @@ def handle_ui_snapshot_request(data=None):
         'game_running': running,
         'is_processing': bool(is_processing),
         'status_message': status_message or '',
-        'startup': {
-            'status': 'ready' if startup_ready_emitted or running else ('in_progress' if startup_handoff_active else 'idle'),
-            'phase': status_message or '',
-        },
+        'startup': _startup_ui_projection(running),
         'operations': operations,
     }))
 
@@ -3104,7 +3132,7 @@ def handle_action(data):
 @socketio.on('start_game')
 def handle_start_game():
     """Start the game in a separate thread"""
-    global game_thread, startup_handoff_active, startup_ready_emitted, message_cache
+    global game_thread, startup_handoff_active, startup_ready_emitted, startup_phase, message_cache
     
     if game_thread and game_thread.is_alive():
         # Browser reopened on a live game: reconnect this client instead of
@@ -3126,6 +3154,7 @@ def handle_start_game():
     # Start the game in a separate thread
     startup_handoff_active = True
     startup_ready_emitted = False
+    startup_phase = "launching"
     message_cache.clear()
     save_message_cache()
     game_thread = threading.Thread(target=run_game_loop, daemon=True)

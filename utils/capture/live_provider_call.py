@@ -740,6 +740,7 @@ def call_live_provider(
     policy="required",
     scope=None,
     status_emit=None,
+    retry_message_repair=None,
 ):
     """Run one frozen selected request under its required/advisory policy.
 
@@ -793,7 +794,6 @@ def call_live_provider(
     }:
         frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
     failure_count = 0
-    empty_count = 0
     logical_started = time.monotonic()
 
     def wizard_heartbeat():
@@ -926,7 +926,7 @@ def call_live_provider(
         )
         if isinstance(envelope, dict):
             envelope["correlation_accepted"] = correlation_accepted
-            if task_id in {"T105", "T108", "T113"}:
+            if wizard_task or task_id in {"T105", "T108", "T113"}:
                 try:
                     from utils.api_logger import log_live_provider_envelope
 
@@ -972,15 +972,23 @@ def call_live_provider(
             raise LiveProviderUnavailable(task_id, envelope)
         if wizard_task:
             disposition = envelope.get("disposition")
-            if disposition == "empty":
-                empty_count += 1
-                if task_id == "T093" and empty_count >= 3:
-                    raise LiveProviderCompletedError(task_id, envelope)
-            elif disposition not in {
+            if disposition not in {
+                "empty",
                 "retryable_http",
                 "retryable_transport",
             }:
                 raise LiveProviderCompletedError(task_id, envelope)
+            # #114/#179: a completed strict-template rejection must reach the
+            # startup-owned reactive adapter, even inside required reissue.
+            # The child was reaped above; private callbacks never enter kwargs.
+            http_status = envelope.get("http_status")
+            if (retry_message_repair is not None and correlation_accepted
+                    and type(http_status) is int and 500 <= http_status < 600):
+                if scope is not None and scope.is_superseded():
+                    raise LiveProviderSuperseded("startup request repair superseded")
+                frozen_messages = copy.deepcopy(retry_message_repair(
+                    copy.deepcopy(frozen_messages), dict(envelope)
+                ))
         error_class = envelope.get("error_class", "transport_unavailable")
         if not wizard_task:
             # A completed deterministic error (HTTP 400/401/403, a schema

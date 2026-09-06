@@ -237,17 +237,15 @@ def safe_json_dump(data: Any, filepath: str, **kwargs) -> None:
         # while an antivirus scan, indexer, or reader briefly holds
         # the destination. One blip must not fail the write (a live
         # acceptance run lost a combat to this class in the sibling
-        # writer). Retry patiently; persistent locks still raise.
-        _replace_attempt = 0
+        # writer). Retain the write until the transient sharing lock clears.
         while True:
             try:
                 os.replace(temporary_path, filepath)
                 break
             except (PermissionError, OSError) as replace_error:
                 winerror = getattr(replace_error, 'winerror', None)
-                if winerror not in (5, 32) or _replace_attempt >= 100:
+                if winerror not in (5, 32):
                     raise
-                _replace_attempt += 1
                 time.sleep(0.1)
 
         # Persist the directory entry where the platform supports fsync on a

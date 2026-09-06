@@ -106,76 +106,6 @@ def _departure_transaction_lock(pending_path):
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
-def _process_is_alive(pid):
-    if pid == os.getpid():
-        return True
-    if os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-
-        process_query_limited_information = 0x1000
-        still_active = 259
-        error_invalid_parameter = 87
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenProcess.argtypes = (
-            wintypes.DWORD,
-            wintypes.BOOL,
-            wintypes.DWORD,
-        )
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        kernel32.GetExitCodeProcess.argtypes = (
-            wintypes.HANDLE,
-            ctypes.POINTER(wintypes.DWORD),
-        )
-        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
-        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-        kernel32.CloseHandle.restype = wintypes.BOOL
-
-        process_handle = kernel32.OpenProcess(
-            process_query_limited_information,
-            False,
-            pid,
-        )
-        if not process_handle:
-            # Access denied can describe a protected but live process. Only an
-            # invalid PID is sufficient evidence that this lock is abandoned.
-            return ctypes.get_last_error() != error_invalid_parameter
-        try:
-            exit_code = wintypes.DWORD()
-            if not kernel32.GetExitCodeProcess(
-                process_handle,
-                ctypes.byref(exit_code),
-            ):
-                return True
-            return exit_code.value == still_active
-        finally:
-            kernel32.CloseHandle(process_handle)
-
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return True
-    return True
-
-
-def _remove_abandoned_atomic_writer_lock(filepath):
-    """Reclaim a target lock left by a process that exited mid-transaction."""
-    lock_path = f"{filepath}.lock"
-    try:
-        with open(lock_path, "r", encoding="ascii") as lock_file:
-            owner_pid = int(lock_file.read().strip())
-    except (FileNotFoundError, OSError, ValueError):
-        return
-    if _process_is_alive(owner_pid):
-        return
-    try:
-        os.remove(lock_path)
-    except FileNotFoundError:
-        pass
 
 
 @contextmanager
@@ -205,7 +135,6 @@ def _departure_target_locks(area_path, journal_path, pending_path):
     acquired = []
     try:
         for filepath in canonical_targets:
-            _remove_abandoned_atomic_writer_lock(filepath)
             try:
                 atomic_writer.acquire_lock(filepath)
             except FileLockError as exc:
