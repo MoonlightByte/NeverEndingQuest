@@ -28,6 +28,14 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('startup parity', () => {
+  it.each(['in_progress', 'failed'] as const)('keeps recovery lifecycle actions available during %s startup', (startupStatus) => {
+    useSession.setState({ connected: true, mode: 'starting', startupStatus })
+    uiModeMock.mode = 'starting'
+    render(<HeaderBar />)
+    for (const name of ['Save', 'Load', 'Reset']) expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Load' }))
+    expect(useDialogs.getState().open).toBe('load')
+  })
   it('keeps the legacy loading label and Start Game button available while disconnected', () => {
     render(<HeaderBar />)
 

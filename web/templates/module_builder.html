@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Module Builder - NeverEndingQuest</title>
     
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600&family=Roboto:wght@400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <!-- Ember fonts are self-hosted by the shared workbench stylesheet. -->
     
     <!-- Socket.IO -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
@@ -444,8 +443,9 @@
         }
         
     </style>
+    <link href="{{ url_for('static', filename='css/ember-toolkit.css') }}" rel="stylesheet">
 </head>
-<body>
+<body class="ember-theme ember-workbench ember-builder">
     <!-- Header -->
     <div class="header">
         <h1>NeverEndingQuest Module Builder</h1>

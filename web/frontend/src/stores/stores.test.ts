@@ -168,6 +168,21 @@ describe('operation reducers', () => {
 })
 
 describe('session store', () => {
+  it('does not authorize an unknown resumed startup as a ready game', () => {
+    useSession.getState().gameResumed(false)
+    expect(useSession.getState()).toMatchObject({ mode: 'starting', inputAuthorized: false, startupInputReady: false })
+  })
+  it('resumes a nonbusy interview prompt but keeps failed startup locked', () => {
+    useSession.getState().setStartup('in_progress', 'interview', 'attempt-1')
+    useSession.getState().gameResumed(false)
+    expect(useSession.getState()).toMatchObject({ mode: 'starting', inputAuthorized: true, startupInputReady: true })
+    useSession.getState().setStartup('failed', 'handoff', 'attempt-1')
+    useSession.getState().gameResumed(false)
+    expect(useSession.getState()).toMatchObject({ mode: 'starting', inputAuthorized: false, startupInputReady: false })
+    useSession.getState().setStartup('ready', 'ready', 'attempt-1')
+    useSession.getState().gameResumed(false)
+    expect(useSession.getState()).toMatchObject({ mode: 'play', startupStatus: 'ready', inputAuthorized: true })
+  })
   it('status_update with is_processing true locks input', () => {
     useSession.getState().setStatus({ message: 'The DM is thinking...', is_processing: true })
     expect(useSession.getState().isProcessing).toBe(true)

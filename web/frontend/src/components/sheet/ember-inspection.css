@@ -1,5 +1,6 @@
 .ember-inspection-trigger { font: inherit; color: inherit; padding: 0; text-align: left; background: none; border: 0; cursor: pointer; text-decoration: underline; text-decoration-color: #493b27; text-underline-offset: 3px; }
 .ember-inspection-trigger:hover { color: #e7be83; }
+.ember-desktop .ember-ability-inspection { display: block; width: 100%; text-align: center; text-decoration: none; }
 .ember-inspection { position: fixed; z-index: 10010; width: min(390px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; color: #ddd6c8; background: #0c1111; border: 1px solid #8a6c42; border-radius: 3px; box-shadow: 0 12px 36px #000a, inset 0 0 0 3px #080d0d; font: 400 18px/1.45 'Crimson Text', serif; overflow: hidden; }
 .ember-inspection header { display: flex; align-items: flex-start; gap: 14px; padding: 14px 18px 10px; border-bottom: 1px solid #493b27; }
 .ember-inspection h3 { flex: 1; margin: 0; color: #c5a06d; font: 400 21px/1.25 'Crimson Text', serif; overflow-wrap: anywhere; }

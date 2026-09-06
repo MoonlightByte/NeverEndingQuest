@@ -2,13 +2,6 @@
  * small-screen and legacy surfaces keep their existing tokens.
  * !important is limited to replacing inline legacy presentation styles. */
 .ember-desktop {
-  --ember-page: #080d0d;
-  --ember-panel: #0c1111;
-  --ember-text: #ddd6c8;
-  --ember-muted: #a89c88;
-  --ember-brass: #c5a06d;
-  --ember-rule: #493b27;
-  --ember-frame: #302b20;
   --accent: #426d3d;
   --font-log: 'Crimson Text', Georgia, serif;
   --font-chrome: 'Crimson Text', Georgia, serif;

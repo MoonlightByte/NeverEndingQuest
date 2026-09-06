@@ -4,6 +4,8 @@ import { useDialogs, useWorld } from '../../stores'
 import type { PlotData } from '../../stores'
 import { useId, useRef } from 'react'
 import './dialog-parity.css'
+import { DialogShell } from './DialogShell'
+import { useEmberViewport } from '../layout/useEmberViewport'
 
 type PlotPoint = PlotData['plotPoints'][number]
 
@@ -87,6 +89,7 @@ function BlankJournalPages({ error = false }: { error?: boolean }) {
 }
 
 function JournalModalBody() {
+  const ember = useEmberViewport()
   const closeDialog = useDialogs((s) => s.closeDialog)
   const plot = useWorld((s) => s.plot)
   const plotError = useWorld((s) => s.plotError)
@@ -106,7 +109,7 @@ function JournalModalBody() {
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeDialog()
+      if (event.key === 'Escape' && !event.defaultPrevented) closeDialog()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => {
@@ -115,6 +118,8 @@ function JournalModalBody() {
     }
   }, [closeDialog])
 
+  const pages = plotError ? <p role="alert">Could not load quest data. Close and reopen the journal to retry.</p> : plot === null ? <p role="status">Fetching your journal…</p> : discovered.length === 0 ? <p>No discovered quests have been recorded yet.</p> : <><JournalPage heading="Current Objectives" quests={activeQuests} /><JournalPage heading="A Chronicle of Deeds" quests={completedQuests} /></>
+  if (ember) return <DialogShell title="Adventure Journal" onClose={closeDialog} maxWidth="1100px"><div className="neq-journal-book">{pages}</div></DialogShell>
   return (
     <div
       className="neq-journal-overlay neq-journal-overlay-parity"

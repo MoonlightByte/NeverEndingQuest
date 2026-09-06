@@ -21,7 +21,7 @@ import { expect, test } from '@playwright/test'
 
 const REDACTED_ROOM_REAL_NAME = 'Militia Barracks' // A04, deliberately unrevealed in the fixture
 
-test('Map tab renders a real fog-of-war SVG from a server-shaped payload', async ({ page }) => {
+test('Map tab renders a real fog-of-war SVG from a server-shaped payload', async ({ page }, info) => {
   await page.goto('/play/')
   await expect(page.getByLabel('Connected')).toBeVisible({ timeout: 15_000 })
 
@@ -41,9 +41,10 @@ test('Map tab renders a real fog-of-war SVG from a server-shaped payload', async
   // are unique in the shell, so a plain accessible-name match is unambiguous.
   await expect(page.getByRole('button', { name: '⊙ fit' })).toBeEnabled()
   await expect(page.getByRole('button', { name: '▭ whole' })).toBeEnabled()
+  await page.screenshot({ path: info.outputPath('map.png') })
 })
 
-test('theme toggle persists across reload and the expand view opens and closes', async ({ page }) => {
+test('theme toggle persists across reload and the expand view opens and closes', async ({ page }, info) => {
   await page.goto('/play/')
   await expect(page.getByLabel('Connected')).toBeVisible({ timeout: 15_000 })
   await page.getByRole('tab', { name: 'Map' }).click()
@@ -58,6 +59,7 @@ test('theme toggle persists across reload and the expand view opens and closes',
   const dialog = page.getByRole('dialog')
   await expect(dialog.locator('svg[data-mapper]')).toBeVisible()
   await expect(dialog.getByText(/places discovered/)).toBeVisible()
+  await page.screenshot({ path: info.outputPath('expanded-map.png') })
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('button', { name: '⤢ expand' })).toBeFocused()

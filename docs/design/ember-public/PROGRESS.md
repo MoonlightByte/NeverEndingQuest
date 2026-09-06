@@ -1,5 +1,62 @@
 # Public Ember implementation ledger
 
+## Full-screen integration checkpoint — 2026-09-05
+
+The implementation is now on `feat/ember-public-complete`, with public main
+through `21702a7` merged in `844d6b8`. Public main has not been modified or pushed.
+The previous entries below are historical snapshots, not the current scope limit.
+
+Implemented desktop surfaces now include character/ability/feature inspections,
+inventory/search/storage, player and NPC spell/scroll details, all seven NPC
+detail actions and original media, maps/debug, sectioned settings and startup
+recovery, save/load/reset/journal/update/operation chrome, and all six toolkit tabs
+plus standalone builder. Shared modal/audio ownership, active-pack artwork
+freshness, inventory view continuity and dice continuity received independent
+feature and architecture review and corrective browser tests.
+
+The actual React preview at `http://localhost:4204/play/` now includes populated
+NPCs, inventory, scroll aliases, journal/storage and scripted turns. `/toolkit`
+and `/builder` expose the actual themed templates with sample listings. This is
+explicitly not a live AI campaign: provider/save fixtures are simulated, and
+toolkit mutations or paid generation are rejected with a preview explanation.
+Never enter real credentials into these fixtures.
+
+Verified receipts from this integration checkpoint:
+
+- TypeScript/Vite build passed. Full Vitest run: 29 files / 281 tests passed;
+  additional reference-timeout/view-state/dice focused run: 26 tests passed.
+- Actual isolated Flask route/hydration/NPC/media/inspection/reconnect suite:
+  11 Playwright tests passed. Original artwork was retained in the media test.
+- Public shell and responsive boundaries (360, 390, landscape, 760, 761, 1023,
+  1024): 13 tests passed, including rolls/draft/tab continuity across resizing.
+- Expanded interactive preview: four tests passed for all NPC actions,
+  inventory view state, alias scroll metadata, journal/storage, long feature
+  scrolling, and unchanged-versus-changed media revision handling.
+- Provider UI fixtures: three tests passed; real Python provider-handler
+  contract suite: 11 passed. These do not prove paid inference.
+- Toolkit/builder: six browser tests passed at 1586 and 390, including real
+  open/cancel handlers, nested focus, truthful failure/download notices and
+  populated-table/toast containment. Network was intercepted; no jobs executed.
+- Actual standalone Flask `/` and 14 CSS/font assets returned successfully in
+  a disposable export. The probe exposed the existing missing `Flask-Cors`
+  dependency; it is now declared in public requirements. No job was started.
+- Reviewed main-screen goldens refreshed at 1586, 1920, 1440 and 1366; six visual
+  checks passed including optional-image and short-screen scrolling behavior.
+  Changed baseline pixels represent the distinct dice glyphs and explicit
+  keyboard-accessible party Details links, not an unreviewed tolerance increase.
+
+Primary-agent visual review included the locked reference, current 1586 main
+render/diff, 1366/1920 layouts, populated NPC sheet, settings/provider/voice and
+save surfaces. Additional map/operation captures and final integration review
+are still being completed. No 100% pixel-parity claim is made: original images,
+public controls, explicit accessibility affordances, browser font rendering and
+authored vector icons differ intentionally from the raster concept.
+
+Remaining before final handoff: finish the latest cross-screen visual pass and
+fresh independent feature audit, rerun against a fresh committed current-main
+runtime export, save the final review artifacts, and obtain owner review. All
+unproven acceptance rows remain open; no merge into public main is authorized.
+
 ## Inventory/spell inspection implementation — 2026-09-05
 
 First post-audit implementation batch adds desktop Ember inventory/spell panels

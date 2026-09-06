@@ -1,0 +1,20 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { claimAudio, finishAudio, ownsAudio, stopAudio } from './audioCoordinator'
+afterEach(() => stopAudio())
+it('hands narration to preview and rejects stale completion or cleanup', () => {
+  const narration = Symbol('narration')
+  const preview = Symbol('preview')
+  const stopNarration = vi.fn()
+  const stopPreview = vi.fn()
+  const idle = vi.fn()
+  claimAudio(narration, stopNarration)
+  claimAudio(preview, stopPreview)
+  expect(stopNarration).toHaveBeenCalledOnce()
+  finishAudio(narration, idle)
+  stopAudio(narration)
+  expect(idle).not.toHaveBeenCalled()
+  expect(ownsAudio(preview)).toBe(true)
+  claimAudio(narration, stopNarration)
+  expect(stopPreview).toHaveBeenCalledOnce()
+  expect(ownsAudio(narration)).toBe(true)
+})

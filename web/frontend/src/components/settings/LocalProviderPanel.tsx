@@ -91,6 +91,14 @@ function LocalProviderPanelBody() {
   const [testing, setTesting] = useState(false)
   const [testStatus, setTestStatus] = useState<{ text: string; tone: TestTone } | null>(null)
   useEffect(() => {
+    if (!testing) return
+    const timer = window.setTimeout(() => {
+      setTesting(false)
+      setTestStatus({ text: 'No test response received. Check your connection and try again.', tone: 'fail' })
+    }, 30000)
+    return () => window.clearTimeout(timer)
+  }, [testing])
+  useEffect(() => {
     const res = settings.endpointTest
     if (!res) return
     setTesting(false)

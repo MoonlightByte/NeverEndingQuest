@@ -24,6 +24,7 @@ export function SkillTooltip({ anchor, ability, rows }: SkillTooltipProps) {
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
 
   useLayoutEffect(() => {
+    const place = () => {
     const tooltip = ref.current
     if (!anchor || !tooltip) return
     const target = anchor.getBoundingClientRect()
@@ -33,7 +34,12 @@ export function SkillTooltip({ anchor, ability, rows }: SkillTooltipProps) {
     if (left + tip.width > window.innerWidth) left = target.left - tip.width - 10
     if (top < 0) top = 10
     else if (top + tip.height > window.innerHeight) top = window.innerHeight - tip.height - 10
-    setPosition({ top, left })
+    setPosition({ top: Math.max(8, top), left: Math.max(8, left) })
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
   }, [anchor, ability, rows])
 
   if (rows.length === 0) return null
@@ -70,6 +76,7 @@ export function GenericFeatureTooltip({ anchor, title, content }: GenericFeature
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
 
   useLayoutEffect(() => {
+    const place = () => {
     const tooltip = ref.current
     if (!anchor || !tooltip) return
     const target = anchor.getBoundingClientRect()
@@ -79,7 +86,12 @@ export function GenericFeatureTooltip({ anchor, title, content }: GenericFeature
     let left = target.left + target.width / 2 - tip.width / 2
     if (left < 8) left = 8
     else if (left + tip.width > window.innerWidth - 8) left = window.innerWidth - tip.width - 8
-    setPosition({ top, left })
+    setPosition({ top: Math.max(8, Math.min(top, window.innerHeight - tip.height - 8)), left: Math.max(8, left) })
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
   }, [anchor, title, content])
 
   return createPortal(

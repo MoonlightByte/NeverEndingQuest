@@ -80,3 +80,26 @@ text, which was corrected and recaptured. Both agents then personally inspected
 the final inventory/spell captures and closed this bounded review. The main agent
 also inspected the final captures. Results and remaining scope are in PROGRESS.
 This batch does not close all transition gates or the final owner review.
+# Full-screen implementation review checkpoint — 2026-09-05
+
+Independent architecture review corrected B1 nonmodal inspection/focus semantics,
+B2 nested portal/in-root inertness and visual stacking, B3 stale audio completion
+ownership, and B4 settings-only voice-disable cancellation. A subsequent review
+removed unnecessary artwork invalidation on unchanged tab visibility. The latest
+bounded architecture pass reports no remaining blocker in those inspected fixes.
+
+Independent feature review found unscrollable long feature/stat tooltips, missing
+NPC scroll metadata, absent asset-pack invalidation, unregistered inventory search,
+inaccessible toolkit confirmations, and incomplete preview fixtures. These now
+have implementation and targeted tests. Toolkit review additionally corrected
+false success on failed generation, unverified export-completion claims and
+populated phone table/toast overflow. Its bounded implementation check is clean;
+a fresh independent feature audit and primary-agent final visual pass remain open.
+
+Actual browser testing after source review also found and fixed inspection panels
+covering their own pointer target, dice results portaled into a removed breakpoint
+host, and the shared modal fallback referring to a nonexistent selected-tab class.
+The last fallback correction is undergoing its focused browser recheck.
+
+These statements close specific reported findings only. They are not owner
+approval, comprehensive production validation or a claim of raster pixel parity.

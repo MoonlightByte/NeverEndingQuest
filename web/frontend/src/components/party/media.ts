@@ -7,9 +7,12 @@
  * /static). Pure logic + DOM probing only -- no store or socket access.
  */
 
+import { useSyncExternalStore } from 'react'
+
 export interface MediaSource {
   kind: 'video' | 'image'
   src: string
+  fallback?: string | null
   anchor?: { top: number; bottom: number; left: number; width: number }
 }
 
@@ -187,6 +190,37 @@ export function chipFontSize(displayName: string): number {
 // ---------- existence probing (results cached per session) ----------
 
 const imageProbeCache = new Map<string, Promise<boolean>>()
+let revision = 0
+let globalRevision = 0
+const revisions = new Map<string, number>()
+const listeners = new Set<() => void>()
+export function invalidateMediaCaches(name?: string) {
+  imageProbeCache.clear(); videoProbeCache.clear()
+  if (name) {
+    if (revisions.size >= 256) { revisions.clear(); globalRevision = revision }
+    revisions.set(looseFileName(name), ++revision)
+  }
+  else { revisions.clear(); globalRevision = ++revision }
+  for (const listener of listeners) listener()
+}
+export function useMediaRevision() {
+  return useSyncExternalStore((listener) => {
+    listeners.add(listener)
+    return () => { listeners.delete(listener) }
+  }, () => revision, () => 0)
+}
+if (typeof window !== 'undefined') window.addEventListener('neq:portrait-updated', (event) => {
+  invalidateMediaCaches((event as CustomEvent<{ name?: string }>).detail?.name)
+})
+function freshUrl(src: string) {
+  const match = [...revisions].find(([name]) => src.includes(`/${name}.`) || src.includes(`/${name}_`))
+  const version = match?.[1] ?? globalRevision
+  return version ? `${src}${src.includes('?') ? '&' : '?'}neq_media=${version}` : src
+}
+function boundedSet(cache: Map<string, Promise<boolean>>, src: string, probe: Promise<boolean>) {
+  if (cache.size >= 256) cache.delete(cache.keys().next().value!)
+  cache.set(src, probe)
+}
 
 export function probeImage(src: string): Promise<boolean> {
   const cached = imageProbeCache.get(src)
@@ -197,11 +231,13 @@ export function probeImage(src: string): Promise<boolean> {
       return
     }
     const img = new Image()
-    img.onload = () => resolve(true)
-    img.onerror = () => resolve(false)
-    img.src = src
+    const finish = (ok: boolean) => { clearTimeout(timer); img.onload = null; img.onerror = null; resolve(ok) }
+    const timer = setTimeout(() => { finish(false); img.src = '' }, 4000)
+    img.onload = () => finish(true)
+    img.onerror = () => finish(false)
+    img.src = freshUrl(src)
   })
-  imageProbeCache.set(src, probe)
+  boundedSet(imageProbeCache, src, probe)
   return probe
 }
 
@@ -217,18 +253,23 @@ export function probeVideo(src: string): Promise<boolean> {
     }
     const video = document.createElement('video')
     video.preload = 'metadata'
-    video.onloadedmetadata = () => resolve(true)
-    video.onerror = () => resolve(false)
-    video.src = src
+    const finish = (ok: boolean) => {
+      clearTimeout(timer); video.onloadedmetadata = null; video.onerror = null
+      video.removeAttribute?.('src'); video.load?.(); resolve(ok)
+    }
+    const timer = setTimeout(() => finish(false), 4000)
+    video.onloadedmetadata = () => finish(true)
+    video.onerror = () => finish(false)
+    video.src = freshUrl(src)
   })
-  videoProbeCache.set(src, probe)
+  boundedSet(videoProbeCache, src, probe)
   return probe
 }
 
 /** First image candidate that actually loads, or null. */
 export async function resolveFirstImage(candidates: string[]): Promise<string | null> {
   for (const candidate of candidates) {
-    if (await probeImage(candidate)) return candidate
+    if (await probeImage(candidate)) return freshUrl(candidate)
   }
   return null
 }
@@ -242,7 +283,7 @@ export async function resolveClickMedia(
   thumbFallback: string | null,
 ): Promise<MediaSource | null> {
   if (await probeVideo(media.videoUrl)) {
-    return { kind: 'video', src: media.videoUrl }
+    return { kind: 'video', src: freshUrl(media.videoUrl), fallback: await resolveFirstImage(media.imageCandidates) ?? thumbFallback }
   }
   const image = await resolveFirstImage(media.imageCandidates)
   if (image) return { kind: 'image', src: image }

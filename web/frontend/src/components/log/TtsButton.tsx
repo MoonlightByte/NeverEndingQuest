@@ -2,27 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { useLog, useSettings } from '../../stores'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberIcon } from '../layout/EmberIcon'
+import { claimAudio, finishAudio as finishPlayback, ownsAudio, stopAudio as stopActive } from '../../services/audioCoordinator'
 
 const buttonClass =
   'mr-1.5 inline-flex h-[22px] w-[22px] min-w-[22px] cursor-pointer items-center justify-center rounded ' +
   'border-0 bg-[#4a4a4a] p-0 font-chrome text-xs leading-none hover:bg-[#666] disabled:cursor-not-allowed disabled:bg-[#666]'
 
-let activeStop: (() => void) | null = null
-let activeOwner: symbol | null = null
 const audioCache = new Map<string, string>()
-
-function stopActive(): void {
-  const stop = activeStop
-  activeStop = null
-  activeOwner = null
-  stop?.()
-}
-
-function finishPlayback(owner: symbol, setIdle: () => void): void {
-  if (activeOwner !== owner) return
-  activeOwner = null
-  activeStop = null
-  setIdle()
+export function resetNarrationAudio() {
+  stopActive()
+  for (const url of audioCache.values()) URL.revokeObjectURL(url)
+  audioCache.clear()
 }
 
 async function createOpenAiAudio(text: string, voice: string, engine: 'openai' | 'openai-hd', signal: AbortSignal): Promise<string> {
@@ -40,7 +30,13 @@ async function createOpenAiAudio(text: string, voice: string, engine: 'openai' |
     try { detail = (await response.json() as { error?: string }).error ?? detail } catch { /* non-JSON */ }
     throw new Error(detail)
   }
-  const url = URL.createObjectURL(await response.blob())
+  const blob = await response.blob()
+  if (signal.aborted) throw new DOMException('Cancelled', 'AbortError')
+  const url = URL.createObjectURL(blob)
+  if (audioCache.size >= 12) {
+    const first = audioCache.keys().next().value
+    if (first) { URL.revokeObjectURL(audioCache.get(first)!); audioCache.delete(first) }
+  }
   audioCache.set(key, url)
   return url
 }
@@ -53,6 +49,7 @@ export function TtsButton({ content, autoplay = false }: { content: string; auto
   const [state, setState] = useState<'idle' | 'loading' | 'playing'>('idle')
   const mounted = useRef(true)
   const playGeneration = useRef(0)
+  const ownerRef = useRef(Symbol('narration'))
 
   // React StrictMode intentionally runs an effect setup/cleanup/setup cycle in
   // development. Reset the flag in setup as well as clearing it in cleanup so
@@ -60,7 +57,7 @@ export function TtsButton({ content, autoplay = false }: { content: string; auto
   // and leave the control stuck in its loading/playing state.
   useEffect(() => {
     mounted.current = true
-    return () => { mounted.current = false }
+    return () => { mounted.current = false; stopActive(ownerRef.current) }
   }, [])
 
   // Match the legacy global DM Voice switch: turning the feature off stops
@@ -69,6 +66,9 @@ export function TtsButton({ content, autoplay = false }: { content: string; auto
   useEffect(() => {
     if (!enabled) stopActive()
   }, [enabled])
+  useEffect(() => {
+    return () => stopActive(ownerRef.current)
+  }, [engine, voice])
 
   const play = async () => {
     if (!enabled) {
@@ -77,9 +77,10 @@ export function TtsButton({ content, autoplay = false }: { content: string; auto
     }
     if (state === 'playing' || state === 'loading') { stopActive(); return }
     stopActive()
-    const owner = Symbol('tts-playback')
-    activeOwner = owner
+    const owner = Symbol('narration-play')
+    ownerRef.current = owner
     const generation = ++playGeneration.current
+    claimAudio(owner, () => { playGeneration.current += 1; if (mounted.current) setState('idle') })
     try {
       if (engine === 'browser') {
         if (!('speechSynthesis' in window)) throw new Error('Your browser does not support text-to-speech.')
@@ -88,27 +89,28 @@ export function TtsButton({ content, autoplay = false }: { content: string; auto
         if (selected) utterance.voice = selected
         utterance.onend = () => finishPlayback(owner, () => { if (mounted.current) setState('idle') })
         utterance.onerror = utterance.onend
-        activeStop = () => { window.speechSynthesis.cancel(); if (mounted.current) setState('idle') }
+        claimAudio(owner, () => { window.speechSynthesis.cancel(); if (mounted.current) setState('idle') })
         setState('playing')
         window.speechSynthesis.speak(utterance)
       } else {
         const controller = new AbortController()
-        activeStop = () => {
+        claimAudio(owner, () => {
           controller.abort()
           playGeneration.current += 1
           if (mounted.current) setState('idle')
-        }
+        })
         setState('loading')
         const url = await createOpenAiAudio(content, voice || 'fable', engine, controller.signal)
-        if (!mounted.current || controller.signal.aborted || generation !== playGeneration.current || activeOwner !== owner) return
+        if (!mounted.current || controller.signal.aborted || generation !== playGeneration.current || !ownsAudio(owner)) return
         const audio = new Audio(url)
         audio.onended = () => finishPlayback(owner, () => { if (mounted.current) setState('idle') })
         audio.onerror = () => finishPlayback(owner, () => { if (mounted.current) setState('idle') })
-        activeStop = () => { audio.pause(); audio.currentTime = 0; if (mounted.current) setState('idle') }
+        claimAudio(owner, () => { audio.onended = null; audio.onerror = null; audio.pause(); audio.currentTime = 0; if (mounted.current) setState('idle') })
         setState('playing')
         await audio.play()
       }
     } catch (error) {
+      if (generation !== playGeneration.current || !ownsAudio(owner)) return
       finishPlayback(owner, () => { if (mounted.current) setState('idle') })
       if (error instanceof DOMException && error.name === 'AbortError') return
       useLog.getState().append({ type: 'error', content: `Voice generation failed: ${error instanceof Error ? error.message : String(error)}` })

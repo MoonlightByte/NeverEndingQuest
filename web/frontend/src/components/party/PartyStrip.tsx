@@ -6,7 +6,7 @@
  * strip stays fresh as the DM narrates. Self-gating: renders nothing while
  * world.initiative.active -- InitiativeTracker replaces it during combat.
  */
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useWorld } from '../../stores'
 import { CharacterChip } from './CharacterChip'
@@ -79,6 +79,8 @@ export function PartyStrip() {
   const locationNpcs = useWorld((s) => s.locationNpcs)
   const combatActive = useWorld((s) => s.initiative.active)
   const [media, setMedia] = useState<MediaSource | null>(null)
+  const rosterIdentity = [...party, ...locationNpcs].map((entry) => asString(entry['name']) ?? '').sort().join('|')
+  useEffect(() => { setMedia(null) }, [combatActive, rosterIdentity])
 
   // InitiativeTracker replaces the strip while combat is active.
   if (combatActive) return null

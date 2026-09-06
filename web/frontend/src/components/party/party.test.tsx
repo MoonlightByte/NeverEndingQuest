@@ -25,6 +25,8 @@ import {
   partyClickMedia,
   playerThumbCandidates,
   resolveClickMedia,
+  invalidateMediaCaches,
+  resolveFirstImage,
 } from './media'
 
 const initialSession = useSession.getState()
@@ -147,36 +149,47 @@ describe('media url helpers', () => {
 })
 
 describe('MediaPopup', () => {
-  it('uses the legacy anchored preview treatment and waits for the fade before teardown', () => {
-    vi.useFakeTimers()
+  it('falls back after video playback fails and reports missing image without losing close', () => {
+    render(<MediaPopup media={{kind:'video', src:'/broken.mp4',fallback:'/portrait.jpg'}} onClose={vi.fn()} />)
+    fireEvent.error(document.querySelector('video')!)
+    expect(screen.getByAltText('Character portrait').getAttribute('src')).toBe('/portrait.jpg')
+    fireEvent.error(screen.getByAltText('Character portrait'))
+    expect(screen.getByRole('status').textContent).toContain('could not be loaded')
+    expect(screen.getByRole('button',{name:'Close'})).toBeTruthy()
+  })
+  it('provides a visible close action and native playback controls', () => {
     const close = vi.fn()
     render(<MediaPopup media={{ kind: 'video', src: '/media/npcs/kira_video.mp4', anchor: { top: 100, bottom: 160, left: 40, width: 60 } }} onClose={close} />)
     const dialog = screen.getByRole('dialog', { name: 'Character media' })
     const video = dialog.querySelector('video') as HTMLVideoElement
     expect(video.muted).toBe(true)
-    expect(video.controls).toBe(false)
-    expect(dialog.querySelector('[aria-label="Close media"]')).toBeNull()
-    fireEvent.click(dialog)
-    expect(close).not.toHaveBeenCalled()
-    act(() => vi.advanceTimersByTime(199))
-    expect(close).not.toHaveBeenCalled()
-    act(() => vi.advanceTimersByTime(1))
+    expect(video.controls).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(close).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('dialog', { name: 'Character media' })).toBeNull()
-    vi.useRealTimers()
   })
 
-  it('closes on Escape with the same delayed teardown', () => {
-    vi.useFakeTimers()
+  it('closes on Escape from the focused dialog', () => {
     const close = vi.fn()
     render(<MediaPopup media={{ kind: 'image', src: '/media/npcs/kira.jpg' }} onClose={close} />)
     expect(screen.getByRole('dialog', { name: 'Character media' }).querySelector('img')?.getAttribute('src')).toBe('/media/npcs/kira.jpg')
-    fireEvent.keyDown(window, { key: 'Escape' })
-    expect(close).not.toHaveBeenCalled()
-    act(() => vi.advanceTimersByTime(200))
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
     expect(close).toHaveBeenCalledOnce()
-    vi.useRealTimers()
   })
+})
+
+it('invalidates stale negative portrait probes after a successful upload', async () => {
+  let available = false
+  class ImageDouble {
+    onload: (() => void) | null = null
+    onerror: (() => void) | null = null
+    set src(_src: string) { queueMicrotask(() => available ? this.onload?.() : this.onerror?.()) }
+  }
+  vi.stubGlobal('Image', ImageDouble)
+  expect(await resolveFirstImage(['/static/portraits/new_hero.png'])).toBeNull()
+  available = true
+  invalidateMediaCaches('New Hero')
+  expect(await resolveFirstImage(['/static/portraits/new_hero.png'])).toMatch(/^\/static\/portraits\/new_hero.png\?neq_media=/)
+  vi.unstubAllGlobals()
 })
 
 describe('StatsTooltip', () => {

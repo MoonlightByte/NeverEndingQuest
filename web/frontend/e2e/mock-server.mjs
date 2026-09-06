@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Server } from 'socket.io'
 import { createProviderFixture } from './provider-fixture.mjs'
-import { applyEmberFixture, emberNarration, emberMediaFiles } from './ember-visual-fixture.mjs'
+import { applyEmberFixture, emberNarration, emberMediaFiles, emberEquipment, emberNpcs, emberPlot, emberStorage } from './ember-visual-fixture.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 // Canned map_data_response: a server-shaped, spoiler-safe map projection with
@@ -18,10 +18,16 @@ const mapDataMidReveal = JSON.parse(
   ),
 )
 const dist = path.resolve(here, '..', 'dist')
+const webRoot = path.resolve(here, '../..')
 const port = Number(process.env.NEQ_E2E_PORT ?? 4174)
 const providerFixture = createProviderFixture()
 const emberVisual = process.env.NEQ_E2E_EMBER_VISUAL === '1'
 let emberMedia = true
+const spellRepository = JSON.parse(fs.readFileSync(path.resolve(here, '../../../data/spell_repository.json'), 'utf8'))
+const previewSpells = Object.fromEntries(['goodberry', 'acid_arrow'].flatMap(key => {
+  const detail = spellRepository[key]
+  return [detail.name, ...(detail.aliases ?? [])].map(name => [name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), detail])
+}))
 const supportedHydrationModes = new Set(['legacy', 'correlated', 'mixed', 'delayed'])
 let hydrationMode = supportedHydrationModes.has(process.env.NEQ_E2E_HYDRATION_MODE)
   ? process.env.NEQ_E2E_HYDRATION_MODE
@@ -36,6 +42,34 @@ const contentTypes = {
 
 const server = http.createServer((request, response) => {
   const requestPath = new URL(request.url ?? '/', `http://${request.headers.host}`).pathname
+  if (emberVisual && ['/toolkit', '/builder'].includes(requestPath)) {
+    const template = fs.readFileSync(path.join(webRoot, 'templates', requestPath === '/toolkit' ? 'module_toolkit.html' : 'module_builder.html'), 'utf8')
+    const html = template.replace(/\{\{ url_for\('static', filename='((?:css|js)\/ember-[^']+)'\) \}\}/g, '/static/$1')
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(html)
+    return
+  }
+  if (emberVisual && /^\/static\/(?:css\/ember-[\w-]+\.css|js\/ember-[\w-]+\.js|fonts\/ember\/[\w.-]+)$/.test(requestPath)) {
+    const file = path.join(webRoot, requestPath)
+    if (!fs.existsSync(file)) { response.writeHead(404).end(); return }
+    response.writeHead(200, { 'content-type': contentTypes[path.extname(file)] ?? 'font/woff2' })
+    fs.createReadStream(file).pipe(response)
+    return
+  }
+  if (emberVisual && requestPath.startsWith('/api/toolkit/')) {
+    const data = request.method !== 'GET' ? { success: false, error: 'Interactive preview only: pack changes and generation are not connected to a live backend.' }
+      : requestPath === '/api/toolkit/packs' ? [{ name: 'photorealistic', display_name: 'Photorealistic', is_active: true }, { name: 'preview_pack', display_name: 'Preview Pack', is_active: false }]
+      : requestPath === '/api/toolkit/modules' ? [{ moduleName: 'preview_module', levelRange: { min: 1, max: 3 } }]
+      : requestPath === '/api/toolkit/monsters' ? [{ id: 'preview_wolf', name: 'Preview Wolf', source: 'bestiary' }]
+      : requestPath.endsWith('/npcs') ? [{ id: 'ranger_elen', name: 'Ranger Elen', has_portrait: true }]
+      : requestPath.endsWith('/unified-assets') ? { success: true, assets: [{ id: 'ranger_elen', name: 'Ranger Elen', type: 'npc', has_description: true, has_image: true }], summary: { total_assets: 1, total_npcs: 1, total_monsters: 0, with_descriptions: 1, with_images: 1 } }
+      : requestPath.includes('styles') ? { builtin: { photorealistic: { name: 'Photorealistic', prompt: 'Existing photorealistic treatment' } }, custom: {} } : []
+    response.writeHead(request.method === 'GET' ? 200 : 409, { 'content-type': 'application/json' }).end(JSON.stringify(data))
+    return
+  }
+  if (emberVisual && requestPath === '/spell-data') {
+    response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(previewSpells))
+    return
+  }
   if (emberVisual && request.method === 'POST' && ['/__e2e__/media/on', '/__e2e__/media/off'].includes(requestPath)) {
     emberMedia = requestPath.endsWith('/on')
     response.writeHead(200).end()
@@ -169,6 +203,7 @@ io.on('connection', (socket) => {
     if (emberMedia) socket.emit('image_generated', { image_url: '/__e2e__/scene.jpg', prompt: emberNarration, source_message_id: 'ember-dm' })
   } else {
     socket.emit('cached_messages', initialMessages)
+    socket.emit('startup_status', { status: 'ready', phase: 'complete', startupAttemptId: 'preview-ready' })
     socket.emit('game_resumed', { is_processing: false, message: 'Reconnected to your game.' })
   }
 
@@ -179,9 +214,18 @@ io.on('connection', (socket) => {
   }))
   socket.on('request_initiative_data', (requestPayload) => hydrate('initiative_data_response', requestPayload, initiative))
   socket.on('request_map_data', (requestPayload) => hydrate('map_data_response', requestPayload, { data: mapDataMidReveal }))
+  if (emberVisual) {
+    socket.on('request_plot_data', payload => hydrate('plot_data_response', payload, { data: emberPlot }))
+    socket.on('request_storage_data', payload => hydrate('storage_data_response', payload, { data: emberStorage }))
+    socket.on('request_module_list', () => socket.emit('module_list_response', [{ name: 'Preview Module', module_name: 'preview_module', moduleName: 'preview_module', levelRange: { min: 1, max: 3 } }]))
+    socket.on('start_build', () => socket.emit('module_error', { error: 'Preview only: no module build was started.' }))
+    socket.on('generate_unified_assets', () => socket.emit('unified_generation_error', { error: 'Preview only: no paid asset generation was started.' }))
+    socket.on('generate_image', payload => socket.emit('image_generation_error', { message: 'Preview only: no paid image generation was started.', request_id: payload.request_id, source_message_id: payload.source_message_id }))
+  }
   socket.on('request_player_data', (requestPayload) => {
     const { dataType } = requestPayload
     if (dataType === 'stats') socket.emit('player_data_response', { dataType, data: stats })
+    else if (emberVisual) socket.emit('player_data_response', { dataType, data: dataType === 'npcs' ? emberNpcs(stats) : { ...stats, equipment: emberEquipment } })
     else socket.emit('player_data_response', { dataType, data: {} })
   })
   providerFixture.attach(socket)

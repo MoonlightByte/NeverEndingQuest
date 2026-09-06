@@ -4,7 +4,7 @@
  * Renders player_data_response{stats} from the player store; field names
  * ported from the legacy displayCharacterStats renderer.
  */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLog, usePlayer } from '../../stores'
 import { GenericFeatureTooltip, SkillTooltip } from './CharacterTooltips'
 import {
@@ -29,6 +29,8 @@ import {
 import type { AbilityName } from './characterData'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberCurrency } from './EmberCurrency'
+import { invalidateMediaCaches, useMediaRevision } from '../party/media'
+import { EmberInspection } from './EmberInspection'
 import { EmberIcon } from '../layout/EmberIcon'
 
 // ASCII-only source: proficiency dots as escapes (filled / open circle).
@@ -46,14 +48,11 @@ function SheetSection({ title, items, empty, accentItems = false, rightSuffix = 
           <div
             key={`${item.name}-${index}`}
             data-has-tooltip={tooltips ? 'true' : 'false'}
-            tabIndex={ember && tooltips ? 0 : undefined}
-            onFocus={ember && tooltips ? (event) => setHovered({ item, anchor: event.currentTarget }) : undefined}
-            onBlur={ember && tooltips ? () => setHovered(null) : undefined}
-            onMouseEnter={tooltips ? (event) => setHovered({ item, anchor: event.currentTarget }) : undefined}
-            onMouseLeave={tooltips ? () => setHovered(null) : undefined}
+            onMouseEnter={!ember && tooltips ? (event) => setHovered({ item, anchor: event.currentTarget }) : undefined}
+            onMouseLeave={!ember && tooltips ? () => setHovered(null) : undefined}
             className={`neq-feature-item text-sm ${rightSuffix ? 'flex justify-between' : ''} ${accentItems ? 'text-accent' : 'text-[#aaa]'}`}
           >
-            <span className={splitSuffix ? 'neq-ammo-name' : ''}>{item.name}</span>{item.suffix && (() => {
+            <span className={splitSuffix ? 'neq-ammo-name' : ''}>{ember && tooltips ? <EmberInspection label={item.name}><p style={{ whiteSpace: 'pre-wrap' }}>{item.detail || 'No description available.'}</p></EmberInspection> : item.name}</span>{item.suffix && (() => {
               const usage = title === 'Class Features' ? item.suffix.match(/^\s*(\d+\/\d+)(?:\s+\((.+)\))?$/) : null
               if (usage) return <><span className="neq-usage-counter">{usage[1]}</span>{usage[2] && <span className="neq-feature-refresh">({usage[2]})</span>}</>
               return <span className={rightSuffix ? 'neq-feature-suffix' : splitSuffix ? 'neq-ammo-quantity' : ''}>{rightSuffix && <span className="sr-only"> — </span>}{rightSuffix ? item.suffix.replace(/^\s*—\s*/, '') : item.suffix}</span>
@@ -67,10 +66,12 @@ function SheetSection({ title, items, empty, accentItems = false, rightSuffix = 
 }
 
 function Portrait({ name }: { name: string }) {
+  const revision = useMediaRevision()
   const [failed, setFailed] = useState(false)
   const [cacheBust, setCacheBust] = useState('')
   const [uploading, setUploading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { setFailed(false); setCacheBust(revision ? `?media_revision=${revision}` : '') }, [revision])
   const slug = portraitSlug(name)
   const src = failed
     ? '/static/icons/default_portrait.png'
@@ -89,6 +90,7 @@ function Portrait({ name }: { name: string }) {
       const result = await response.json() as { success?: boolean; message?: string }
       if (!response.ok || !result.success) throw new Error(result.message || 'Upload failed')
       setFailed(false); setCacheBust(`?v=${Date.now()}`)
+      invalidateMediaCaches(name)
       useLog.getState().append({ type: 'system', content: 'Portrait updated successfully!' })
     } catch (error) {
       useLog.getState().append({ type: 'error', content: `Upload failed: ${error instanceof Error ? error.message : String(error)}` })
@@ -185,6 +187,16 @@ export function CharacterSheet() {
           const score = scores[ability]
           const abilityLabel = capitalize(ability)
           const abilitySkills = SKILL_MAP[abilityLabel] ?? []
+          if (ember && abilitySkills.length > 0) return <div key={ability} className="neq-ability-score relative rounded border-2 border-card bg-panel py-1 text-center">
+            <EmberInspection label={`${abilityLabel} ${score}, modifier ${formatModifier(abilityModifier(score))}`} className="ember-ability-inspection" triggerContent={<>
+              <span className="neq-ability-name block font-display text-[10px] text-secondary">{ability.slice(0, 3).toUpperCase()}</span>
+              <span className="neq-ability-value block text-base leading-tight text-primary">{score}</span>
+              <span className="neq-ability-modifier block text-xs text-accent">{formatModifier(abilityModifier(score))}</span>
+            </>}>
+              <h4>{abilityLabel} Skills</h4>
+              <dl>{abilitySkills.map(skill => <div className="ember-inspection-meta" key={skill}><dt>{skills.includes(skill) ? PROFICIENT_DOT : UNPROFICIENT_DOT} {skill}</dt><dd>{formatModifier(abilityModifier(score) + (skills.includes(skill) ? num(stats['proficiencyBonus'], 2) : 0))}</dd></div>)}</dl>
+            </EmberInspection>
+          </div>
           return (
             <div
               key={ability}

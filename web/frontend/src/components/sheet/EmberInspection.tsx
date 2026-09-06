@@ -1,24 +1,32 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import type { RefObject } from 'react'
+import { useModalLayer } from '../dialogs/useModalLayer'
 import './ember-inspection.css'
 
 const activationEvent = 'neq:inspection-open'
 let pinnedOwner: string | null = null
+function InspectionLayer({ target, onClose }: { target: RefObject<HTMLDivElement | null>; onClose: () => void }) {
+  useModalLayer(target, onClose, { modal: false, restoreFocus: false })
+  return null
+}
 
 /** Nonmodal inspection: hover/focus previews; activation pins scrollable details.
  * One inspection at a time. No game actions or data fetching are owned here. */
-export function EmberInspection({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
+export function EmberInspection({ label, children, className = '', triggerContent }: { label: string; children: ReactNode; className?: string; triggerContent?: ReactNode }) {
   const id = useId()
   const trigger = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suppressFocus = useRef(false)
+  const suppressHover = useRef(false)
   const [open, setOpen] = useState(false)
   const [pinned, setPinned] = useState(false)
-  const [position, setPosition] = useState({ left: 12, top: 12 })
+  const [position, setPosition] = useState({ left: 12, top: 12, maxHeight: window.innerHeight - 24 })
   const cancelTimer = () => { if (timer.current) clearTimeout(timer.current); timer.current = null }
   const close = (restore = false) => {
+    suppressHover.current = true
     cancelTimer(); setOpen(false); setPinned(false)
     if (pinnedOwner === id) pinnedOwner = null
     if (restore && trigger.current?.isConnected) {
@@ -27,6 +35,7 @@ export function EmberInspection({ label, children, className = '' }: { label: st
     }
   }
   const show = (deliberate = false) => {
+    if (!deliberate && suppressHover.current) return
     if (!deliberate && pinnedOwner !== null && pinnedOwner !== id) return
     cancelTimer()
     window.dispatchEvent(new CustomEvent(activationEvent, { detail: id }))
@@ -72,7 +81,7 @@ export function EmberInspection({ label, children, className = '' }: { label: st
     window.addEventListener('keydown', escape)
     return () => { document.removeEventListener('pointerdown', outside); window.removeEventListener('keydown', escape) }
   }, [open, id])
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (open && pinned) panel.current?.querySelector<HTMLButtonElement>('button')?.focus()
   }, [open, pinned])
   useLayoutEffect(() => {
@@ -83,10 +92,17 @@ export function EmberInspection({ label, children, className = '' }: { label: st
       const card = panel.current.getBoundingClientRect()
       const below = anchor.bottom + 8
       const rail = trigger.current.closest('.neq-rail-area')?.getBoundingClientRect()
-      const beside = rail && rail.right + card.width + 20 <= window.innerWidth ? rail.right + 8 : null
+      const beside = rail && rail.right + card.width + 20 <= window.innerWidth ? rail.right + 8
+        : anchor.right + card.width + 20 <= window.innerWidth ? anchor.right + 8
+        : anchor.left - card.width - 8 >= 12 ? anchor.left - card.width - 8 : null
+      const spaceBelow = window.innerHeight - below - 12
+      const spaceAbove = anchor.top - 20
+      const useBelow = spaceBelow >= Math.min(card.height, spaceAbove)
+      const maxHeight = beside !== null ? window.innerHeight - 24 : Math.max(48, useBelow ? spaceBelow : spaceAbove)
       setPosition({
         left: beside ?? Math.max(12, Math.min(anchor.left, window.innerWidth - card.width - 12)),
-        top: Math.max(12, Math.min(beside !== null ? anchor.top : below + card.height <= window.innerHeight - 12 ? below : anchor.top - card.height - 8, window.innerHeight - card.height - 12)),
+        top: Math.max(12, Math.min(beside !== null ? anchor.top : useBelow ? below : anchor.top - Math.min(card.height, maxHeight) - 8, window.innerHeight - Math.min(card.height, maxHeight) - 12)),
+        maxHeight,
       })
     }
     place()
@@ -97,19 +113,20 @@ export function EmberInspection({ label, children, className = '' }: { label: st
     return () => { observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
   }, [open])
   return <>
-    <button ref={trigger} type="button" className={`ember-inspection-trigger ${className}`}
+    <button ref={trigger} type="button" className={`ember-inspection-trigger ${className}`} aria-label={label}
       aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
-      onMouseEnter={() => show()} onMouseLeave={leave}
+      onMouseEnter={() => show()} onMouseLeave={() => { suppressHover.current = false; leave() }}
       onFocus={() => { if (!suppressFocus.current) show() }}
       onBlur={(event) => { suppressFocus.current = false; if (!panel.current?.contains(event.relatedTarget)) leave() }}
       onKeyDown={(event) => { if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); close(true) } }}
       onClick={() => { if (pinned) close(true); else { show(true); pinnedOwner = id; setPinned(true) } }}>
-      {label}
+      {triggerContent ?? label}
     </button>
     {open && createPortal(<div ref={panel} id={id} role="dialog" aria-label={`${label} details`} aria-modal="false"
       className="ember-inspection" style={position} onMouseEnter={cancelTimer} onMouseLeave={leave}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget) && event.relatedTarget !== trigger.current) close() }}
       onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true) } }}>
+      <InspectionLayer target={panel} onClose={() => close(pinned)} />
       <header><h3>{label}</h3><button type="button" aria-label={`Close ${label} details`} onClick={() => close(true)}>×</button></header>
       <div className="ember-inspection-body" tabIndex={0}>{children}</div>
     </div>, document.body)}

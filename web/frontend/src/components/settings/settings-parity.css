@@ -81,3 +81,21 @@
 .neq-autoplay-tooltip.visible { visibility: visible; opacity: 1; }
 .neq-autoplay-tooltip-header { margin-bottom: 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 5px; color: #7b68ee; font-weight: bold; }
 .neq-autoplay-tooltip-content { color: #d4d4d4; }
+.neq-settings-toggle input:focus-visible + span { outline: 2px solid #9ad8a0; outline-offset: 3px; }
+body[data-ember-desktop='true'] .neq-settings-toggle input:focus-visible + span { outline-color: #dfbb7c; }
+
+/* Keep the existing small-screen dropdown, but anchor its box to the viewport
+   rather than the narrow/wrapped header action column. */
+@media (max-width: 1023px) {
+  .neq-settings-dropdown.neq-settings-dropdown-parity {
+    position: fixed;
+    top: var(--neq-settings-top, 64px);
+    right: 8px;
+    left: auto;
+    width: min(280px, calc(100vw - 16px));
+    max-height: calc(100dvh - var(--neq-settings-top, 64px) - 8px);
+    margin-top: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}

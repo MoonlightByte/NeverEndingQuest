@@ -39,9 +39,13 @@ test('crossing desktop breakpoint preserves draft and selected panel', async ({ 
   await page.getByRole('tab', { name: 'Inventory', exact: true }).click()
   const input = page.getByRole('textbox', { name: 'Player input' })
   await input.fill('Unsent player draft')
+  await page.getByRole('button', { name: 'D20', exact: true }).click()
+  await page.getByRole('button', { name: 'D6', exact: true }).click()
+  const rolls = await page.getByTestId('dice-results').innerText()
   for (const [width, height] of [[1023, 768], [390, 844], [844, 390], [1586, 992]]) {
     await page.setViewportSize({ width: width!, height: height! })
     await expect(input).toHaveValue('Unsent player draft')
+    await expect(page.getByTestId('dice-results')).toHaveText(rolls)
     await expect(page.getByRole('tab', { name: 'Inventory', exact: true })).toHaveAttribute('aria-selected', 'true')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }

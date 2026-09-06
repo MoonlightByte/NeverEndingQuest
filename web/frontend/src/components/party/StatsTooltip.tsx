@@ -11,10 +11,12 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { asArray, asNumber, asRecord, asString } from './media'
 import './party-parity.css'
+import { useEmberDesktop } from '../layout/EmberPresentation'
 
 export interface StatsTooltipProps {
   stats: Record<string, unknown>
   anchor: HTMLElement | null
+  inline?: boolean
 }
 
 function formatSigned(value: number): string {
@@ -90,7 +92,9 @@ function parseClassFeatures(stats: Record<string, unknown>): FeatureLine[] {
   for (const entry of features) {
     const record = asRecord(entry)
     const name = record ? asString(record['name']) : undefined
-    if (name) lines.push({ name, usage: record ? asString(record['usage']) : undefined })
+    const usage = record ? asRecord(record['usage']) : undefined
+    const count = usage && asNumber(usage['current']) !== undefined && asNumber(usage['max']) !== undefined ? `${usage['current']}/${usage['max']}` : undefined
+    if (name) lines.push({ name, usage: count ?? (record ? asString(record['usage']) : undefined) })
   }
   return lines
 }
@@ -118,11 +122,13 @@ function parseConditions(stats: Record<string, unknown>): string | null {
   return names.length > 0 ? names.join(', ') : null
 }
 
-export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
+export function StatsTooltip({ stats, anchor, inline = false }: StatsTooltipProps) {
+  const ember = useEmberDesktop()
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
 
   useLayoutEffect(() => {
+    const place = () => {
     const element = ref.current
     if (!element || !anchor) return
     const rect = anchor.getBoundingClientRect()
@@ -132,7 +138,13 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
     let left = rect.left + rect.width / 2 - tip.width / 2
     const maxLeft = window.innerWidth - tip.width - 8
     left = Math.min(Math.max(left, 8), Math.max(maxLeft, 8))
+    top = Math.max(8, Math.min(top, window.innerHeight - tip.height - 8))
     setPosition({ top, left })
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
   }, [anchor, stats])
 
   const name = asString(stats['name']) ?? ''
@@ -140,9 +152,9 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
   const className = asString(stats['class'])
   const header = level && className ? `Lvl ${level} ${className}` : name.replace(/_/g, ' ')
 
-  const currentHp = asNumber(stats['currentHp'])
-  const maxHp = asNumber(stats['maxHp'])
-  const ac = asNumber(stats['ac'])
+  const currentHp = asNumber(stats['currentHp']) ?? asNumber(stats['hitPoints'])
+  const maxHp = asNumber(stats['maxHp']) ?? asNumber(stats['maxHitPoints'])
+  const ac = asNumber(stats['ac']) ?? asNumber(stats['armorClass'])
   const speed = asNumber(stats['speed']) ?? asString(stats['speed'])
   const initiative = asNumber(stats['initiative'])
 
@@ -159,11 +171,11 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
 
   if (header.length === 0) return null
 
-  return createPortal(
+  const content = (
     <div
       ref={ref}
       role="tooltip"
-      className={`neq-stats-tooltip-parity${position ? ' visible' : ''}`}
+      className={`neq-stats-tooltip-parity${position || inline ? ' visible' : ''}${inline ? ' ember-stats-inline' : ''}`}
       style={{
         top: position ? position.top : 0,
         left: position ? position.left : 0,
@@ -205,8 +217,8 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
 
       {slotLines.length > 0 && (
         <div className="neq-stats-tooltip-row-parity neq-stats-tooltip-section-parity" style={{ fontSize: 11 }}>
-          <span style={{ color: '#87CEEB' }}>Spell Slots: </span>
-          <span style={{ color: '#ddd' }}>
+          <span style={{ color: ember ? 'var(--ember-brass)' : '#87CEEB' }}>Spell Slots: </span>
+          <span style={{ color: ember ? 'var(--ember-text)' : '#ddd' }}>
             {slotLines.map((slot) => `${slot.label}: ${slot.current}/${slot.max}`).join(' • ')}
           </span>
         </div>
@@ -214,10 +226,10 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
 
       {spellLines.length > 0 && (
         <div className="neq-stats-tooltip-section-parity">
-          <div style={{ fontSize: 11, color: '#87CEEB', marginBottom: 2 }}>Spells Known:</div>
+          <div style={{ fontSize: 11, color: ember ? 'var(--ember-brass)' : '#87CEEB', marginBottom: 2 }}>Spells Known:</div>
           {spellLines.map((line) => (
             <div key={line.levelName} style={{ marginTop: 3 }}>
-              <span className="font-bold" style={{ fontSize: 10, color: '#FFA500' }}>
+              <span className="font-bold" style={{ fontSize: 10, color: ember ? 'var(--ember-brass)' : '#FFA500' }}>
                 {line.levelName}:
               </span>{' '}
               <span style={{ fontSize: 10, color: '#f0f0f0' }}>{line.spells}</span>
@@ -228,7 +240,7 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
 
       {featureLines.length > 0 && (
         <div className="neq-stats-tooltip-section-parity">
-          <div style={{ fontSize: 11, color: '#FFD700', marginBottom: 2 }}>Class Features:</div>
+          <div style={{ fontSize: 11, color: ember ? 'var(--ember-brass)' : '#FFD700', marginBottom: 2 }}>Class Features:</div>
           {featureLines.map((feature) => (
             <div key={feature.name} style={{ fontSize: 10, color: '#f0f0f0', marginTop: 2 }}>
               {'\u2022'} {feature.name}
@@ -246,7 +258,7 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
           <span style={{ color: '#ffaaaa' }}>{conditions}</span>
         </div>
       )}
-    </div>,
-    document.body,
+    </div>
   )
+  return inline ? content : createPortal(content, document.body)
 }

@@ -14,6 +14,7 @@ import { DebugTab } from './DebugTab'
 import { MapTab } from './MapTab'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberIcon } from '../layout/EmberIcon'
+import { InventoryViewProvider } from './InventoryViewState'
 
 const TABS: ReadonlyArray<{ id: SheetTab; label: string }> = [
   { id: 'character', label: 'Character' },
@@ -33,6 +34,7 @@ export function RightPanelTabs() {
   }, [active])
 
   return (
+    <InventoryViewProvider>
     <div className="neq-rail-panel flex h-full min-h-0 flex-col overflow-hidden">
       <div role="tablist" aria-label="Party panel" className="neq-tabs flex h-10 shrink-0 bg-[#333]" onKeyDown={ember ? (event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -84,5 +86,6 @@ export function RightPanelTabs() {
         <button type="button" onClick={() => useDialogs.getState().openDialog('journal')}><EmberIcon name="book" />Journal</button>
       </div>}
     </div>
+    </InventoryViewProvider>
   )
 }

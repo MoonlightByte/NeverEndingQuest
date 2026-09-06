@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, useWorld } from '../../stores'
 import './dialog-parity.css'
+import { DialogShell } from './DialogShell'
+import { useEmberViewport } from '../layout/useEmberViewport'
 
 interface StorageItem {
   name: string
@@ -31,6 +33,7 @@ function toContainer(raw: unknown): StorageContainer {
 }
 
 function StorageModalBody() {
+  const ember = useEmberViewport()
   const closeDialog = useDialogs((s) => s.closeDialog)
   const storage = useWorld((s) => s.storage)
   const storageError = useWorld((s) => s.storageError)
@@ -84,6 +87,7 @@ function StorageModalBody() {
     }
   }
 
+  if (ember) return <DialogShell title="Player Storage" onClose={closeDialog} maxWidth="760px">{body}</DialogShell>
   return (
     <div
       className="neq-storage-overlay-parity"

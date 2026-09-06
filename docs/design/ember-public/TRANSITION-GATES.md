@@ -1,7 +1,10 @@
 # Required interaction-transition and architecture gates
 
-These gates supplement every screen row in `PORT-PLAN.md`. All remain pending
-implementation and execution. They are not waived by clean plan review, resting
+These gates supplement every screen row in `PORT-PLAN.md`. Implementation and
+test receipts are now recorded in `PROGRESS.md` (full-screen integration
+checkpoint); final cross-screen/owner acceptance is still pending. Do not treat
+a partial receipt as closure of every transition in a gate. They are not waived
+by clean plan review, resting
 screenshots, mockup approval or identical donor files. Each implementation PR
 must link the relevant test, personally inspected capture and result here.
 

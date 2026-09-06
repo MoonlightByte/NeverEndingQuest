@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeverEndingQuest Developer Toolkit</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
     <style>
         /* === 1. Foundational Styles & Resets === */
         * {
@@ -2097,8 +2096,9 @@
         }
 
     </style>
+    <link href="{{ url_for('static', filename='css/ember-toolkit.css') }}" rel="stylesheet">
 </head>
-<body>
+<body class="ember-theme ember-workbench ember-toolkit">
     <div class="container">
         <div class="header">
             <h1>NeverEndingQuest Developer Toolkit</h1>
@@ -2709,7 +2709,7 @@
                             <button class="btn btn-primary" id="scan-module-btn" onclick="scanModuleAssets()">Scan Module<span class="tooltip-trigger" data-tooltip="Analyze the selected module to find all NPCs and monsters that need assets.">?</span></button>
                         </div>
                         
-                        <div id="asset-table-container" style="display: none;">
+                        <div id="asset-table-container" role="region" aria-label="Module assets (scroll horizontally for all columns)" tabindex="0" onkeydown="if (event.target === this && ['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) { event.preventDefault(); this.scrollTo({ left: event.key === 'Home' ? 0 : event.key === 'End' ? this.scrollWidth : this.scrollLeft + (event.key === 'ArrowLeft' ? -80 : 80), behavior: 'auto' }); }" style="display: none;">
                             <table id="asset-table" class="asset-table">
                                 <thead>
                                     <tr>
@@ -2746,7 +2746,7 @@
                                     <div class="progress-bar" id="media-gen-progress-bar" style="width: 0%;"></div>
                                     <span class="progress-text" id="media-gen-progress-text">0%</span>
                                 </div>
-                                <p id="media-gen-status-message">Initializing...</p>
+                                <p id="media-gen-status-message" role="status">Initializing...</p>
                                 
                                 <!-- Generation Log -->
                                 <div class="section" style="margin-top: 20px;">
@@ -3067,6 +3067,8 @@
                 const result = await response.json();
                 if (result.success) {
                     addLog('genLog', `Activated pack: ${packName}`, 'success');
+                    // Notify already-open public player tabs; no backend contract change.
+                    try { localStorage.setItem('neq_media_revision', `${Date.now()}:${packName}`); } catch (_) { /* storage may be unavailable */ }
                     if (result.backup_created) {
                         addLog('genLog', `Backup created: ${result.backup_name}`, 'info');
                     }
@@ -3087,10 +3089,11 @@
                 // Show export notification
                 const notification = document.createElement('div');
                 notification.className = 'export-notification';
+                notification.setAttribute('data-ember-modal', '');
                 notification.innerHTML = `
                     <div class="notification-content">
-                        <h4>Exporting Pack...</h4>
-                        <p>Preparing ${packName} for download...</p>
+                        <h4>Requesting Download...</h4>
+                        <p>Requesting ${packName}.zip from the server...</p>
                     </div>
                 `;
                 document.body.appendChild(notification);
@@ -3098,13 +3101,14 @@
                 // Trigger the download
                 window.location.href = `/api/toolkit/packs/${packName}/export`;
                 
-                // Update notification after a short delay
+                // Navigation hands the response to the browser. This page has
+                // no evidence that a download completed or where it was saved.
                 setTimeout(() => {
                     notification.innerHTML = `
-                        <div class="notification-content success">
-                            <h4>✓ Export Complete</h4>
-                            <p>${packName}.zip has been downloaded to your default Downloads folder</p>
-                            <button onclick="this.parentElement.parentElement.remove()">OK</button>
+                        <div class="notification-content">
+                            <h4>Download Requested</h4>
+                            <p>${packName}.zip was requested. Check your browser's downloads for status or errors.</p>
+                            <button data-ember-dismiss onclick="this.parentElement.parentElement.remove()">OK</button>
                         </div>
                     `;
                     
@@ -3822,6 +3826,7 @@
 
             // Show confirmation popup with generation settings
             const confirmationDiv = document.createElement('div');
+            confirmationDiv.setAttribute('data-ember-modal', '');
             confirmationDiv.style.cssText = `
                 position: fixed;
                 top: 50%;
@@ -3853,7 +3858,7 @@
                 </div>
                 <div style="text-align: center;">
                     <button onclick="proceedWithGeneration()" style="padding: 8px 20px; margin-right: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">Proceed</button>
-                    <button onclick="cancelGeneration()" style="padding: 8px 20px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button data-ember-dismiss onclick="cancelGeneration()" style="padding: 8px 20px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
                 </div>
             `;
             
@@ -4111,6 +4116,9 @@
             });
             
             socket.on('generation_complete', (data) => {
+                if (data.successful?.length > 0) {
+                    try { localStorage.setItem('neq_media_revision', `${Date.now()}:monster-generation`); } catch (_) { /* storage may be unavailable */ }
+                }
                 document.getElementById('genProgress').style.display = 'none'; // Use style.display
                 addLog('genLog', `Generation complete: ${data.successful.length} successful, ${data.failed.length} failed`, 'info');
                 
@@ -4264,6 +4272,7 @@
                 const failed = data.failed || [];
                 
                 if (successful.length > 0) {
+                    try { localStorage.setItem('neq_media_revision', `${Date.now()}:npc-generation`); } catch (_) { /* storage may be unavailable */ }
                     addLog('npcGenLog', `Successfully generated ${successful.length} portrait(s)!`, 'success');
                     successful.forEach(item => {
                         addLog('npcGenLog', `[OK] ${item.npc_name} portrait saved`, 'success');
@@ -5598,6 +5607,7 @@
             // Show confirmation popup with generation settings
             const confirmationDiv = document.createElement('div');
             confirmationDiv.id = 'npc-confirmation-popup';
+            confirmationDiv.setAttribute('data-ember-modal', '');
             confirmationDiv.style.cssText = `
                 position: fixed;
                 top: 50%;
@@ -5635,7 +5645,7 @@
                 </div>
                 <div style="text-align: center;">
                     <button onclick="proceedWithNpcGeneration()" style="padding: 8px 20px; margin-right: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">Proceed</button>
-                    <button onclick="cancelNpcGeneration()" style="padding: 8px 20px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button data-ember-dismiss onclick="cancelNpcGeneration()" style="padding: 8px 20px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
                 </div>
             `;
             
@@ -6048,11 +6058,20 @@
             
             notification.textContent = message;
             
-            // Add to page
-            document.body.appendChild(notification);
+            // Keep concurrent notices readable and inside the viewport.
+            let notificationHost = document.getElementById('ember-notifications');
+            if (!notificationHost) {
+                notificationHost = document.createElement('div');
+                notificationHost.id = 'ember-notifications';
+                notificationHost.setAttribute('role', 'status');
+                notificationHost.setAttribute('aria-live', 'polite');
+                document.body.appendChild(notificationHost);
+            }
+            notificationHost.appendChild(notification);
             
             // Auto-remove after delay
             setTimeout(() => {
+                notification.classList.add('ember-notification-exiting');
                 notification.style.animation = 'slideOut 0.3s ease';
                 setTimeout(() => notification.remove(), 300);
             }, 5000);
@@ -6304,6 +6323,7 @@
             // Show styled confirmation popup
             const confirmationDiv = document.createElement('div');
             confirmationDiv.id = 'media-gen-confirmation-popup';
+            confirmationDiv.setAttribute('data-ember-modal', '');
             confirmationDiv.style.cssText = `
                 position: fixed;
                 top: 50%;
@@ -6361,7 +6381,7 @@
                     <button id="media-gen-proceed-btn" style="padding: 10px 30px; margin-right: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
                         Proceed with Generation
                     </button>
-                    <button id="media-gen-cancel-btn" style="padding: 10px 30px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
+                    <button data-ember-dismiss id="media-gen-cancel-btn" style="padding: 10px 30px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
                         Cancel
                     </button>
                 </div>
@@ -6477,7 +6497,26 @@
             }
         });
 
+        function showMediaGenerationFailure(data) {
+            const message = data.error || data.message || 'Asset generation failed.';
+            showNotification('Generation error: ' + message, 'error');
+            addLog('mediaGenLog', `Error: ${message}`, 'error');
+            // Keep the last reported progress and selected assets for a retry.
+            // A failure is not 100% completion and must not clear the selection.
+            updateGenerateButton();
+            document.getElementById('generate-assets-btn').style.display = 'block';
+            const statusMessage = document.getElementById('media-gen-status-message');
+            if (statusMessage) statusMessage.textContent = 'Generation Failed - See log for details';
+        }
+
         socket.on('unified_generation_complete', (data) => {
+            // Older HTTP generation reports completion without a success field;
+            // the Socket.IO owner explicitly reports success:false on failure.
+            if (data.success === false || data.error) {
+                showMediaGenerationFailure(data);
+                return;
+            }
+            try { localStorage.setItem('neq_media_revision', `${Date.now()}:module-media-generation`); } catch (_) { /* storage may be unavailable */ }
             showNotification('Asset generation complete!', 'success');
             addLog('mediaGenLog', 'Generation completed successfully!', 'success');
             
@@ -6515,18 +6554,7 @@
         });
 
         socket.on('unified_generation_error', (data) => {
-            showNotification('Generation error: ' + data.error, 'error');
-            addLog('mediaGenLog', `Error: ${data.error}`, 'error');
-            
-            // Re-enable generate button
-            document.getElementById('generate-assets-btn').style.display = 'block';
-            
-            // Update status message but keep log visible
-            const statusMessage = document.getElementById('media-gen-status-message');
-            if (statusMessage) statusMessage.textContent = 'Generation Failed - See log for details';
-            
-            // Don't hide the container - keep log visible
-            // document.getElementById('generation-progress-container').style.display = 'none';
+            showMediaGenerationFailure(data);
         });
 
         // Update tab switching to load modules for media generator
@@ -6540,11 +6568,11 @@
     </script>
 
     <!-- Media Popup Modal -->
-    <div class="modal" id="media-modal">
+    <div class="modal" id="media-modal" data-ember-modal>
         <div class="media-modal-content">
             <div class="media-modal-header">
                 <h3 id="media-modal-title">Monster Preview</h3>
-                <span class="media-modal-close" onclick="closeMediaPopup()">&times;</span>
+                <button type="button" class="media-modal-close" data-ember-dismiss aria-label="Close media" onclick="closeMediaPopup()" style="background: transparent; border: 0;">&times;</button>
             </div>
             <div class="media-modal-body" id="media-modal-body">
                 <!-- Image or Video will be loaded here by JavaScript -->
@@ -6553,7 +6581,7 @@
     </div>
 
     <!-- Pack Activation Confirmation Modal -->
-    <div id="pack-confirm-modal" class="modal" style="display: none;">
+    <div id="pack-confirm-modal" class="modal" data-ember-modal style="display: none;">
         <div class="modal-content pack-confirm-content">
             <h3>Confirm Pack Activation</h3>
             <div class="modal-warning">
@@ -6568,13 +6596,13 @@
             </div>
             <div class="modal-buttons">
                 <button class="btn btn-danger" onclick="confirmPackActivation()">Activate Pack</button>
-                <button class="btn btn-secondary" onclick="cancelPackActivation()">Cancel</button>
+                <button class="btn btn-secondary" data-ember-dismiss onclick="cancelPackActivation()">Cancel</button>
             </div>
         </div>
     </div>
 
     <!-- Merge Pack Confirmation Modal -->
-    <div id="merge-confirm-modal" class="modal" style="display: none;">
+    <div id="merge-confirm-modal" class="modal" data-ember-modal style="display: none;">
         <div class="modal-content pack-confirm-content">
             <h3>Confirm Pack Merge</h3>
             <div class="modal-warning">
@@ -6587,13 +6615,13 @@
             </div>
             <div class="modal-buttons">
                 <button class="btn btn-primary" onclick="confirmMerge()">Confirm Merge</button>
-                <button class="btn btn-secondary" onclick="cancelMerge()">Cancel</button>
+                <button class="btn btn-secondary" data-ember-dismiss onclick="cancelMerge()">Cancel</button>
             </div>
         </div>
     </div>
 
     <!-- Export to Pack Modal -->
-    <div id="export-to-pack-modal" class="modal" style="display: none;">
+    <div id="export-to-pack-modal" class="modal" data-ember-modal style="display: none;">
         <div class="modal-content pack-confirm-content" style="min-width: 500px;">
             <h3 style="color: #4CAF50;">Export Monsters to New Pack</h3>
             <div class="modal-pack-info">
@@ -6630,7 +6658,7 @@
             
             <div class="modal-buttons">
                 <button class="btn btn-success" onclick="confirmExportToPack()">Create Pack</button>
-                <button class="btn btn-secondary" onclick="cancelExportToPack()">Cancel</button>
+                <button class="btn btn-secondary" data-ember-dismiss onclick="cancelExportToPack()">Cancel</button>
             </div>
         </div>
     </div>
@@ -6641,5 +6669,6 @@
         <p id="npc-status-message">Initializing process...</p>
         <button onclick="this.parentElement.style.display='none'">Close</button>
     </div>
+    <script src="{{ url_for('static', filename='js/ember-dialogs.js') }}"></script>
 </body>
 </html>

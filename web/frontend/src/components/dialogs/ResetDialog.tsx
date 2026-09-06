@@ -3,6 +3,7 @@ import { emitC } from '../../services/socket'
 import { useDialogs, useLog } from '../../stores'
 import { DialogShell, dialogButtonDanger, dialogButtonSecondary } from './DialogShell'
 import { prepareForServerRestart, reloadWhenServerReady } from '../../services/restart'
+import { useEmberViewport } from '../layout/useEmberViewport'
 
 /** Legacy-compatible five-digit confirmation code (10000-99999). */
 export function generateResetCode(): string {
@@ -19,6 +20,7 @@ const RESET_ACTIONS = [
 
 /** Body unmounts on close, so every open generates a fresh confirmation code. */
 function ResetDialogBody() {
+  const ember = useEmberViewport()
   const closeDialog = useDialogs((s) => s.closeDialog)
   const [code] = useState(() => generateResetCode())
   const [typed, setTyped] = useState('')
@@ -53,11 +55,11 @@ function ResetDialogBody() {
   }
 
   return (
-    <DialogShell title={<><span className="text-[#f44336]">⚠️</span> CAMPAIGN RESET <span className="text-[#f44336]">⚠️</span></>} onClose={closeDialog} maxWidth="750px" legacy className="neq-reset-dialog-parity" initialFocusRef={inputRef}>
+    <DialogShell title={ember ? 'Campaign Reset' : <><span className="text-[#f44336]">⚠️</span> CAMPAIGN RESET <span className="text-[#f44336]">⚠️</span></>} onClose={closeDialog} maxWidth="750px" legacy className="neq-reset-dialog-parity" initialFocusRef={inputRef}>
       <div>
         <div className="neq-reset-warning-container-parity">
           <div className="neq-reset-warning-box-parity">
-            <strong>🔥 WARNING: Complete Campaign Wipe</strong>
+            <strong>{!ember && '🔥 '}WARNING: Complete Campaign Wipe</strong>
             <p>
             This will permanently delete your current game progress and return to a fresh
             campaign start.
@@ -65,16 +67,16 @@ function ResetDialogBody() {
           </div>
 
           <div className="neq-reset-info-box-parity">
-            <h4>📋 What This Reset Does:</h4>
+            <h4>{!ember && '📋 '}What This Reset Does:</h4>
             <ul className="neq-reset-action-list-parity">
               {RESET_ACTIONS.map((line, index) => (
-                <li key={line}>{`${['✅','🗑️','🔄','🏁','🔒'][index]} ${line}`}</li>
+                <li key={line}>{`${ember ? '•' : ['✅','🗑️','🔄','🏁','🔒'][index]} ${line}`}</li>
               ))}
             </ul>
           </div>
 
           <div className="neq-reset-note-box-parity">
-            <strong>💡 Note:</strong> Your current progress will be backed up to{' '}
+            <strong>{!ember && '💡 '}Note:</strong> Your current progress will be backed up to{' '}
             <code>modules/backups/campaign_backup_[timestamp]</code>{' '}
             before reset. Module restore points (BU files) are protected and remain intact.
           </div>

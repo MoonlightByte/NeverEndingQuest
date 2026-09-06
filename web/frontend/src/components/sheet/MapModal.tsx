@@ -57,14 +57,7 @@ export function MapModal({ mapData, theme, onClose }: MapModalProps) {
     applyCurrentMarker(handle.svg, currentIsRevealed ? mapData.currentLocationId : null)
   }
 
-  // Its own effect, so the background is un-inerted on ANY unmount --
-  // including the mapData-went-null one in MapTab -- and never on a mere
-  // payload refresh.
-  useEffect(() => {
-    const root = document.getElementById('root')
-    root?.setAttribute('inert', '')
-    return () => root?.removeAttribute('inert')
-  }, [])
+  // DialogShell owns nested inertness, focus and scroll locking.
 
   useEffect(() => {
     const el = stageRef.current

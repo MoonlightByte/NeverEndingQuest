@@ -15,7 +15,7 @@ test('built player shell connects and core dialogs work', async ({ page, context
   await expect(saveDialog).toBeHidden()
 
   await page.getByRole('button', { name: 'Settings' }).click()
-  await expect(page.getByRole('menu', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Settings', exact: true })).toBeVisible()
   await expect(page.getByText('AI Provider', { exact: true })).toBeVisible()
 
   await context.setOffline(true)

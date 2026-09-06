@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const socketMock = vi.hoisted(() => ({
@@ -33,6 +34,18 @@ describe('socket reconnect synchronization', () => {
   it('allows Socket.IO to fall back to HTTP polling when WebSocket is unavailable', () => {
     expect(socketMock.io).toHaveBeenCalledWith()
   })
+  it('hydrates authoritative public state when startup transitions to ready', () => {
+    socketMock.connected = true
+    socketMock.handlers.get('connect')?.()
+    socketMock.emit.mockClear()
+    socketMock.handlers.get('startup_status')?.({ status: 'ready', phase: 'complete', startupAttemptId: 'attempt-ready' })
+    expect(useSession.getState()).toMatchObject({ startupStatus: 'ready', mode: 'play', inputAuthorized: true })
+    const events = socketMock.emit.mock.calls.map(([event]) => event)
+    expect(events).toContain('request_location_data')
+    expect(events).toContain('request_party_data')
+    expect(events).toContain('request_player_data')
+    expect(events).toContain('request_map_data')
+  })
 
   it('re-requests all volatile world state after every connection', () => {
     const connect = socketMock.handlers.get('connect')
@@ -45,10 +58,10 @@ describe('socket reconnect synchronization', () => {
     expect(socketMock.emit.mock.calls.map(([event]) => event)).toEqual([
       'request_location_data', 'request_party_data', 'request_initiative_data', 'request_ui_snapshot',
       'request_player_data', 'request_player_data', 'request_player_data', 'request_player_data',
-      'request_plot_data', 'request_storage_data',
+      'request_plot_data', 'request_storage_data', 'request_map_data',
       'request_location_data', 'request_party_data', 'request_initiative_data', 'request_ui_snapshot',
       'request_player_data', 'request_player_data', 'request_player_data', 'request_player_data',
-      'request_plot_data', 'request_storage_data',
+      'request_plot_data', 'request_storage_data', 'request_map_data',
     ])
     for (const [event, payload] of socketMock.emit.mock.calls) {
       if (event === 'request_player_data') expect(payload).toMatchObject({ dataType: expect.any(String) })

@@ -10,7 +10,7 @@
  * world.initiative state, from which combat mode is derived. Self-gating: renders nothing
  * while initiative is inactive (PartyStrip shows instead).
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { usePlayer, useSession, useWorld } from '../../stores'
 import { CharacterChip } from './CharacterChip'
 import type { ChipVariant } from './CharacterChip'
@@ -36,11 +36,13 @@ export function InitiativeTracker() {
     return typeof value === 'string' ? value : null
   })
   const [media, setMedia] = useState<MediaSource | null>(null)
+  const rosterIdentity = initiative.combatants.map((entry) => `${asString(entry['type'])}:${asString(entry['name'])}`).sort().join('|')
+  useEffect(() => { setMedia(null) }, [initiative.active, rosterIdentity])
 
   // PartyStrip shows instead while combat is inactive.
   if (!initiative.active || initiative.combatants.length === 0) return null
 
-  const renderCombatant = (combatant: Record<string, unknown>, index: number) => {
+  const renderCombatant = (combatant: Record<string, unknown>) => {
     const name = asString(combatant['name'])
     if (!name) return null
     const rawKind = asString(combatant['type'])
@@ -81,7 +83,7 @@ export function InitiativeTracker() {
 
     return (
       <CharacterChip
-        key={`${name}:${index}`}
+        key={`${kind}:${name}`}
         name={name}
         displayName={displayName}
         variant={variant}
@@ -102,7 +104,7 @@ export function InitiativeTracker() {
       </div>
     ) : null}
     <HorizontalChipRail label="Initiative order" itemCount={initiative.combatants.length}>
-      {initiative.combatants.map((combatant, index) => renderCombatant(combatant, index))}
+      {initiative.combatants.map(renderCombatant)}
     </HorizontalChipRail>
     <MediaPopup media={media} onClose={() => setMedia(null)} />
   </>
