@@ -40,6 +40,19 @@ const contentTypes = {
   '.svg': 'image/svg+xml',
 }
 
+function streamFile(file, response, contentType, unavailableStatus = 404) {
+  const stream = fs.createReadStream(file)
+  stream.on('open', () => {
+    response.writeHead(200, { 'content-type': contentType })
+    stream.pipe(response)
+  })
+  stream.on('error', () => {
+    if (response.headersSent) { response.destroy(); return }
+    response.writeHead(unavailableStatus, { 'content-type': 'text/plain; charset=utf-8' })
+    response.end(unavailableStatus === 503 ? 'Preview assets are rebuilding. Please refresh in a moment.' : 'Preview asset unavailable.')
+  })
+}
+
 const server = http.createServer((request, response) => {
   const requestPath = new URL(request.url ?? '/', `http://${request.headers.host}`).pathname
   if (emberVisual && ['/toolkit', '/builder'].includes(requestPath)) {
@@ -51,8 +64,7 @@ const server = http.createServer((request, response) => {
   if (emberVisual && /^\/static\/(?:css\/ember-[\w-]+\.css|js\/ember-[\w-]+\.js|fonts\/ember\/[\w.-]+)$/.test(requestPath)) {
     const file = path.join(webRoot, requestPath)
     if (!fs.existsSync(file)) { response.writeHead(404).end(); return }
-    response.writeHead(200, { 'content-type': contentTypes[path.extname(file)] ?? 'font/woff2' })
-    fs.createReadStream(file).pipe(response)
+    streamFile(file, response, contentTypes[path.extname(file)] ?? 'font/woff2')
     return
   }
   if (emberVisual && requestPath.startsWith('/api/toolkit/')) {
@@ -77,8 +89,7 @@ const server = http.createServer((request, response) => {
   }
   if (emberVisual && Object.hasOwn(emberMediaFiles, requestPath)) {
     const file = path.resolve(here, '../../..', emberMediaFiles[requestPath])
-    response.writeHead(200, { 'content-type': file.endsWith('.png') ? 'image/png' : 'image/jpeg' })
-    fs.createReadStream(file).pipe(response)
+    streamFile(file, response, file.endsWith('.png') ? 'image/png' : 'image/jpeg')
     return
   }
   if (request.method === 'POST' && ['/__e2e__/providers/reset', '/__e2e__/providers/reject'].includes(requestPath)) {
@@ -115,10 +126,7 @@ const server = http.createServer((request, response) => {
   const filename = safeCandidate && fs.existsSync(safeCandidate) && fs.statSync(safeCandidate).isFile()
     ? safeCandidate
     : path.join(dist, 'index.html')
-  response.writeHead(200, {
-    'content-type': contentTypes[path.extname(filename)] ?? 'application/octet-stream',
-  })
-  fs.createReadStream(filename).pipe(response)
+  streamFile(filename, response, contentTypes[path.extname(filename)] ?? 'application/octet-stream', 503)
 })
 
 const io = new Server(server)

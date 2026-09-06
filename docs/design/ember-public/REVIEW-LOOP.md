@@ -99,7 +99,23 @@ a fresh independent feature audit and primary-agent final visual pass remain ope
 Actual browser testing after source review also found and fixed inspection panels
 covering their own pointer target, dice results portaled into a removed breakpoint
 host, and the shared modal fallback referring to a nonexistent selected-tab class.
-The last fallback correction is undergoing its focused browser recheck.
+The last fallback correction passed its focused browser recheck and the complete
+13-test current-commit isolated Flask browser rerun.
+
+A fresh feature agent independently found four final issues: Settings close
+cancelling another audio owner, phone Settings overflow, missing builder sample
+state, and invisible keyboard toggle focus. All four were fixed and independently
+reverified in the browser; the bounded re-review is clean. Primary-agent final
+map/operation visual inspection is also complete. See HANDOFF.md for the remaining
+unverified release matrix and owner approval gate.
+
+Final clean-install review corrected a startup test that incorrectly expected
+duplicate requests while hydration was in flight; the independent reviewer
+confirmed the new response/trailing-refresh assertion matches production. The
+preview read-stream guard was also corrected after the reviewer reproduced an
+incorrect HTTP 200 on missing assets. Re-review reproduced the intended 503 and
+confirmed partial-response errors destroy the stream. This final bounded check
+is clean; the complete unit rerun is 31 files / 287 passing tests.
 
 These statements close specific reported findings only. They are not owner
 approval, comprehensive production validation or a claim of raster pixel parity.

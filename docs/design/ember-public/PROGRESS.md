@@ -1,5 +1,18 @@
 # Public Ember implementation ledger
 
+## Owner inspection checkpoint — 2026-09-05
+
+Full implementation checkpoint `e6f83c5` is saved on the inspection branch.
+See [HANDOFF.md](HANDOFF.md) for the running interactive preview, exact final
+receipts, intentional visual differences and outstanding release/owner gates.
+Clean installation/build and 31 files / 287 unit tests pass after correcting a
+startup test to account for existing in-flight request coalescing. Current-main
+isolated Flask browser recheck: 13 pass. Fresh independent feature and bounded
+architecture reviews closed their reported findings. Additional map/operation
+screenshots were personally inspected. These results supersede the pending
+rechecks in the historical integration checkpoint below; they do not certify
+100% parity, live provider inference or owner acceptance.
+
 ## Full-screen integration checkpoint — 2026-09-05
 
 The implementation is now on `feat/ember-public-complete`, with public main

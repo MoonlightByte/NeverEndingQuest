@@ -34,12 +34,19 @@ describe('socket reconnect synchronization', () => {
   it('allows Socket.IO to fall back to HTTP polling when WebSocket is unavailable', () => {
     expect(socketMock.io).toHaveBeenCalledWith()
   })
-  it('hydrates authoritative public state when startup transitions to ready', () => {
+  it('queues authoritative hydration behind in-flight reads when startup becomes ready', () => {
     socketMock.connected = true
     socketMock.handlers.get('connect')?.()
     socketMock.emit.mockClear()
     socketMock.handlers.get('startup_status')?.({ status: 'ready', phase: 'complete', startupAttemptId: 'attempt-ready' })
     expect(useSession.getState()).toMatchObject({ startupStatus: 'ready', mode: 'play', inputAuthorized: true })
+    // Connect already requested these resources. Ready must coalesce with those
+    // reads, then issue a fresh read as each pre-ready response arrives.
+    expect(socketMock.emit).not.toHaveBeenCalled()
+    socketMock.handlers.get('location_data_response')?.({ data: null, error: 'not ready' })
+    socketMock.handlers.get('party_data_response')?.({ members: [], error: 'not ready' })
+    socketMock.handlers.get('player_data_response')?.({ dataType: 'stats', data: null, error: 'not ready' })
+    socketMock.handlers.get('map_data_response')?.({ data: null, error: 'not ready' })
     const events = socketMock.emit.mock.calls.map(([event]) => event)
     expect(events).toContain('request_location_data')
     expect(events).toContain('request_party_data')

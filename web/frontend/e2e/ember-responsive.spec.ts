@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 // These are compatibility checks, not approval of a redesigned mobile interface.
-for (const [width, height] of [[360, 800], [390, 844], [844, 390], [760, 800], [761, 800], [1023, 768], [1024, 768]]) {
+for (const [width, height] of [[360, 800], [390, 844], [390, 460], [844, 390], [793, 496], [760, 800], [761, 800], [1023, 768], [1024, 768]]) {
   test(`public responsive boundary ${width}x${height}`, async ({ page }) => {
     await page.setViewportSize({ width: width!, height: height! })
     await page.goto('/play/')
