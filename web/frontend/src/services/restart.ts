@@ -16,10 +16,10 @@ async function readServerInstance(): Promise<string | null> {
 }
 
 /** Capture process identity before emitting an action that will restart it. */
-export async function prepareForServerRestart(): Promise<string | null> {
+export async function prepareForServerRestart(isCurrent: () => boolean = () => true): Promise<string | null> {
   if (typeof window === 'undefined') return null
   const instance = await readServerInstance()
-  window.sessionStorage.setItem(RESTART_BASELINE_KEY, instance ?? 'unavailable')
+  if (isCurrent()) window.sessionStorage.setItem(RESTART_BASELINE_KEY, instance ?? 'unavailable')
   return instance
 }
 
