@@ -7,6 +7,7 @@ import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberCurrency } from './EmberCurrency'
 import { usePlayer } from '../../stores'
 import { NpcDetailModal, type NpcModalKind } from './NpcDetailModal'
+import { matchingNpc } from '../party/partyData'
 import {
   ABILITIES,
   abilityModifier,
@@ -25,10 +26,12 @@ interface Selection {
   kind: NpcModalKind
 }
 
-export function NpcsTab() {
+export function NpcsTab({ npcName }: { npcName?: string } = {}) {
   const ember = useEmberDesktop()
   const npcs = usePlayer((state) => state.npcs)
   const error = usePlayer((state) => state.dataErrors.npcs)
+  const focusedNpc = npcName ? matchingNpc(npcs, npcName) : undefined
+  const visibleNpcs = npcName ? (focusedNpc ? [focusedNpc] : []) : npcs
   const [selected, setSelected] = useState<Selection | null>(null)
   const [media, setMedia] = useState<MediaSource | null>(null)
   const rosterIdentity = npcs.map(npcIdentity).sort().join('|')
@@ -40,9 +43,9 @@ export function NpcsTab() {
 
   return (
     <div className="neq-npcs-content h-full overflow-y-auto">
-      {npcs.length === 0 ? (
-        <p role={ember ? 'status' : undefined} data-state="empty" className="ember-sheet-status text-sm italic text-secondary">No NPC data available</p>
-      ) : npcs.map((npc) => {
+      {visibleNpcs.length === 0 ? (
+        <p role={ember ? 'status' : undefined} data-state="empty" className="ember-sheet-status text-sm italic text-secondary">{npcName ? 'Full character details are not available for this NPC.' : 'No NPC data available'}</p>
+      ) : visibleNpcs.map((npc) => {
         const name = str(npc['name'], 'Unknown NPC')
         const hp = num(npc['hitPoints'])
         const maxHp = num(npc['maxHitPoints'])
@@ -80,7 +83,7 @@ export function NpcsTab() {
               {ABILITIES.map((ability) => <div key={ability} className="neq-npc-ability-score"><div className="neq-npc-ability-name">{ability.slice(0, 3).toUpperCase()}</div><div className="neq-npc-ability-value">{scores[ability]}</div><div className="neq-npc-ability-modifier">{formatModifier(abilityModifier(scores[ability]))}</div></div>)}
             </div>}
             <div className="neq-npc-detail-buttons">
-              {actions.filter((action) => action.visible).map((action) => <button key={action.kind} type="button" className="neq-npc-detail-button" onClick={() => setSelected({ identity: npcIdentity(npc), kind: action.kind })}>{action.label}</button>)}
+              {actions.filter((action) => action.visible).map((action) => <button key={action.kind} type="button" className="neq-npc-detail-button" onClick={() => { window.dispatchEvent(new CustomEvent('neq:media-request')); setSelected({ identity: npcIdentity(npc), kind: action.kind }) }}>{action.label}</button>)}
               <button type="button" disabled aria-hidden="true" className="neq-npc-detail-button neq-npc-detail-spacer" />
             </div>
             {(status !== 'alive' || condition !== 'none') && <div className="neq-npc-status"><div className="neq-npc-status-item">Status: <span className={`neq-npc-status-value ${status}`}>{status}</span></div>{condition !== 'none' && <div className="neq-npc-status-item">Condition: <span className="neq-npc-condition-value">{condition}</span></div>}</div>}

@@ -111,11 +111,11 @@
 .ember-desktop .neq-saving-throws-grid > div { display: flex; gap: 6px; padding: 0; border: 0; background: none; border-radius: 0; min-height: 0; font: 400 16px/1.4 var(--font-body); }
 .ember-desktop .neq-saving-throws-grid > div > span { color: var(--ember-text); font-weight: 400; }
 .ember-desktop .ember-currency-row { order: 6; display: flex; justify-content: space-around; margin-top: 10px; padding: 9px 0; border-block: 1px solid var(--ember-frame); }
-.ember-desktop .ember-currency-row > div { display: flex; align-items: center; gap: 7px; }
-.ember-desktop .ember-currency-row > div > span:nth-child(2) { color: var(--ember-brass); }
-.ember-desktop .ember-coin { width: 18px; height: 18px; border: 2px solid #b88a42; outline: 1px solid #52341b; outline-offset: -4px; border-radius: 50%; background: radial-gradient(circle at 30% 20%,#fff0c8,#b57b30 50%,#40260e); box-shadow: inset 0 0 2px #fff9; }
-.ember-desktop .ember-coin-SP { filter: grayscale(1); }
-.ember-desktop .ember-coin-CP { background: radial-gradient(circle at 30% 20%,#f5c49f,#a96034 50%,#40200e); }
+.ember-desktop .ember-currency-row > div, body[data-ember-desktop='true'] .ember-npc-full-card .ember-currency-row > div { display: flex; align-items: center; gap: 7px; }
+.ember-desktop .ember-currency-row > div > span:nth-child(2), body[data-ember-desktop='true'] .ember-npc-full-card .ember-currency-row > div > span:nth-child(2) { color: var(--ember-brass); }
+.ember-desktop .ember-coin, body[data-ember-desktop='true'] .ember-npc-full-card .ember-coin { width: 18px; height: 18px; border: 2px solid #b88a42; outline: 1px solid #52341b; outline-offset: -4px; border-radius: 50%; background: radial-gradient(circle at 30% 20%,#fff0c8,#b57b30 50%,#40260e); box-shadow: inset 0 0 2px #fff9; }
+.ember-desktop .ember-coin-SP, body[data-ember-desktop='true'] .ember-npc-full-card .ember-coin-SP { filter: grayscale(1); }
+.ember-desktop .ember-coin-CP, body[data-ember-desktop='true'] .ember-npc-full-card .ember-coin-CP { background: radial-gradient(circle at 30% 20%,#f5c49f,#a96034 50%,#40200e); }
 .ember-desktop .neq-game-log { padding: 0 14px 12px; background: linear-gradient(120deg,#0e1515,#0b1010); border: 1px solid var(--ember-frame); border-radius: 3px; }
 .ember-desktop .neq-session-divider { display: flex; align-items: center; gap: 12px; max-width: none; margin: 5px 18px 0 54px; padding: 0; border: 0; border-radius: 0; background: none; color: var(--ember-muted); font: 400 17px/1.15 var(--font-body); }
 .ember-desktop .neq-session-divider::before, .ember-desktop .neq-session-divider::after { content: ''; height: 1px; background: var(--ember-rule); flex: 1; }

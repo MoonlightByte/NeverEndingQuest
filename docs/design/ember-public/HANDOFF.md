@@ -167,6 +167,11 @@ and re-review. These are bounded reviews, not blanket approval of every state.
 
 ## Differences and remaining release gates
 
+Owner-requested follow-up: [full NPC cards, visible party stats and restored
+parchment journal](OWNER-REVISION-01.md). The current build passes 346 unit tests;
+the four desktop baselines were intentionally revised for the requested rail
+change and personally reviewed. See that receipt for current browser counts.
+
 Latest [browser and interaction review](BROWSER-REVIEW.md): all 333 unit tests,
 13 final Chromium visual/interaction cases and 48 Firefox cases pass; the four desktop goldens
 are unchanged. The rebuilt UI includes independent-review corrections for

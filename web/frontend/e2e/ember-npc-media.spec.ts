@@ -49,13 +49,14 @@ test('all seven full NPC detail surfaces retain information and nested spell foc
   }
 })
 
-test('party stat details support deliberate keyboard inspection', async ({page}) => {
-  const trigger = page.locator('.ember-people').getByRole('button',{name:'Mira Thorne statistics',exact:true})
+test('party details open the full NPC card through the keyboard', async ({page}) => {
+  const trigger = page.locator('.ember-people').getByRole('button',{name:'Mira Thorne full character details',exact:true})
   await trigger.focus()
   await trigger.press('Enter')
-  const inspection = page.getByRole('dialog',{name:'Mira Thorne statistics details'})
+  const inspection = page.getByRole('dialog',{name:'Mira Thorne — Character'})
   await expect(inspection).toContainText('HP')
-  await expect(inspection.getByRole('button',{name:'Close Mira Thorne statistics details'})).toBeFocused()
+  await expect(inspection.getByRole('button',{name:'Inventory',exact:true})).toBeVisible()
+  await expect(inspection.getByRole('button',{name:'Close',exact:true})).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(inspection).toHaveCount(0)
   await expect(trigger).toBeFocused()

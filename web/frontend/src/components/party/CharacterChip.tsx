@@ -13,6 +13,7 @@ import type { ClickMedia, MediaSource } from './media'
 import './party-parity.css'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberInspection } from '../sheet/EmberInspection'
+import { PartyVitals } from './PartyVitals'
 
 export type ChipVariant =
   | 'party-player'
@@ -67,6 +68,8 @@ export interface CharacterChipProps {
   /** Current-turn highlight (initiative tracker only). */
   active?: boolean | undefined
   onOpenMedia: (media: MediaSource) => void
+  onOpenDetails?: (() => void) | undefined
+  showVitals?: boolean
 }
 
 export function CharacterChip({
@@ -79,6 +82,8 @@ export function CharacterChip({
   clickMedia,
   active,
   onOpenMedia,
+  onOpenDetails,
+  showVitals = false,
 }: CharacterChipProps) {
   const ember = useEmberDesktop()
   const mediaRevision = useMediaRevision()
@@ -232,12 +237,13 @@ export function CharacterChip({
           }}
         >
           {displayName}
+          {ember && showVitals && <PartyVitals stats={stats} />}
           {ember && isActive && <small className="ember-turn-label">Your turn</small>}
           {mediaPending && <small className="ember-turn-label" role="status">Loading media…</small>}
           {mediaMissing && <small className="ember-turn-label" role="status">No media available</small>}
         </span>
       </button>
-      {ember && <EmberInspection label={`${displayName} statistics`} triggerContent="Details" className="ember-person-details"><StatsTooltip stats={stats} anchor={null} inline /></EmberInspection>}
+      {ember && (onOpenDetails ? <button type="button" className="ember-person-details" aria-label={`${displayName} full character details`} onClick={() => { window.dispatchEvent(new CustomEvent('neq:media-request')); setHovered(false); if (showTimer.current !== null) window.clearTimeout(showTimer.current); onOpenDetails() }}>Details</button> : <EmberInspection label={`${displayName} statistics`} triggerContent="Details" className="ember-person-details"><StatsTooltip stats={stats} anchor={null} inline /></EmberInspection>)}
       {hovered && <StatsTooltip stats={stats} anchor={chipRef.current} />}
     </div>
   )

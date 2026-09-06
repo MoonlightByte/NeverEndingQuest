@@ -36,10 +36,10 @@ concept as documented in VISUAL-REVIEW.md; 100% raster equality is not claimed.
 | Inventory | Categories, quantity/equipment indicators, search/filter/order, currency, storage entry | Fixture items/counts; transfers are not new mechanics |
 | Spells & Magic | Casting summary, slots, prepared state, aliases, descriptions, scroll/magic-item metadata | Sample spell data; no real casting occurs |
 | NPCs and detail actions | Identity, stats, saves, skills, inventory, features, traits, background and spells where supplied | Not every NPC exposes every action; no fabricated biography text |
-| Party portrait and Details | Original image/video resolution, biography when supplied, visible close, focus return | Available sample art only; paid generation is not connected |
+| Party portraits, stats and Details | HP/bar, AC, level and XP beneath names when supplied; NPC Details opens the same full card/seven conditional menus as the NPC tab; portraits still open original media | Missing data is not invented; sample art only; paid generation is not connected |
 | Enter `combat` | Right-side initiative, server-shaped order, round/current turn, scrolling and retained character sheet | Scripted encounter, not real combat; refresh returns to exploration |
 | Map and expanded map | Existing parchment/night preference, notes, pan/zoom/reset, expansion and close | Sample reveal state; no real exploration/AI turn |
-| Journal and Storage | Sections, status/counts, overflow, close and focus return | Sample data; real campaign refresh requires live testing |
+| Journal and Storage | Journal is again a two-page parchment book with current/completed quests; inspect page scrolling, close and focus return; Storage remains Ember | Sample data; real campaign refresh requires live testing |
 | Settings | All four public providers, endpoint/model/key controls, images, voice/preview/autoplay and map settings | Synthetic keys only; simulated provider persistence/test responses |
 | Save and Load | Description/mode, list/selection, pending/confirmation/error presentation | Simulated actions; do not interpret mock “Saved” as a real backup |
 | Reset and Exit | Confirmation/cancel, clear consequences, safe focus/navigation | Do not confirm real destructive actions merely to inspect appearance |

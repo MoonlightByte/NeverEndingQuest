@@ -44,7 +44,7 @@ for (const scenario of ['loading', 'empty', 'error', 'populated']) {
       }
       await page.evaluate(() => document.fonts.ready)
       await page.screenshot({ path: info.outputPath(`${surface.toLowerCase()}-${scenario}.png`) })
-      await dialog.locator('.ember-dialog-card').screenshot({ path: info.outputPath(`${surface.toLowerCase()}-${scenario}-card.png`) })
+      await dialog.locator(surface === 'Journal' ? '.neq-journal-book' : '.ember-dialog-card').screenshot({ path: info.outputPath(`${surface.toLowerCase()}-${scenario}-card.png`) })
       await page.keyboard.press('Escape')
       await expect(dialog).toHaveCount(0)
       expect(await page.evaluate(() => !!document.activeElement?.closest('[inert]'))).toBe(false)

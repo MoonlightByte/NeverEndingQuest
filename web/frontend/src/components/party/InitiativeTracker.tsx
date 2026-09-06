@@ -27,8 +27,16 @@ import {
   npcClassFallbackPortrait,
 } from './media'
 import type { ChipKind, ClickMedia, MediaSource } from './media'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { matchingNpc, partySummary } from './partyData'
+import { NpcCardDialog } from './NpcCardDialog'
 
 export function InitiativeTracker() {
+  const ember = useEmberDesktop()
+  const npcs = usePlayer((s) => s.npcs)
+  const npcError = usePlayer((s) => s.dataErrors.npcs)
+  const player = usePlayer((s) => s.stats)
+  const [selectedNpc, setSelectedNpc] = useState<string | null>(null)
   const initiative = useWorld((s) => s.initiative)
   const isProcessing = useSession((s) => s.isProcessing)
   const playerName = usePlayer((s) => {
@@ -37,7 +45,7 @@ export function InitiativeTracker() {
   })
   const [media, setMedia] = useState<MediaSource | null>(null)
   const rosterIdentity = initiative.combatants.map((entry) => `${asString(entry['type'])}:${asString(entry['name'])}`).sort().join('|')
-  useEffect(() => { setMedia(null) }, [initiative.active, rosterIdentity])
+  useEffect(() => { setMedia(null); setSelectedNpc(null) }, [initiative.active, rosterIdentity, ember])
 
   // PartyStrip shows instead while combat is inactive.
   if (!initiative.active || initiative.combatants.length === 0) return null
@@ -87,7 +95,9 @@ export function InitiativeTracker() {
         name={name}
         displayName={displayName}
         variant={variant}
-        stats={combatant}
+        stats={ember && kind !== 'enemy' ? partySummary(combatant, kind === 'player' ? player : npcError ? undefined : matchingNpc(npcs, name)) : combatant}
+        showVitals
+        onOpenDetails={ember && kind === 'npc' ? () => setSelectedNpc(name) : undefined}
         thumbCandidates={thumbCandidates}
         thumbFallback={thumbFallback}
         clickMedia={clickMedia}
@@ -107,5 +117,6 @@ export function InitiativeTracker() {
       {initiative.combatants.map(renderCombatant)}
     </HorizontalChipRail>
     <MediaPopup media={media} onClose={() => setMedia(null)} />
+    {ember && selectedNpc && <NpcCardDialog name={selectedNpc} onClose={() => setSelectedNpc(null)} />}
   </>
 }

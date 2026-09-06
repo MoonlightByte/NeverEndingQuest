@@ -1,0 +1,7 @@
+/* The journal is an in-world parchment book, not an Ember settings card.
+ * Paper, ink, page shadows and binding reuse the original tokens.css rules.
+ * Keep these small desktop affordances away from the existing phone book. */
+.neq-journal-desktop .neq-journal-book { overflow: hidden; }
+.neq-journal-desktop .neq-journal-page { overscroll-behavior: contain; }
+.neq-journal-desktop .neq-journal-page:focus-visible { outline: 2px solid #6a4f3a; outline-offset: -6px; }
+.neq-journal-desktop .neq-journal-close:focus-visible { outline: 2px solid #f3e9d2; outline-offset: 4px; }

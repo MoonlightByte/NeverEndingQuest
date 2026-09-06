@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useWorld } from '../../stores'
+import { usePlayer, useWorld } from '../../stores'
 import { CharacterChip } from './CharacterChip'
 import type { ChipVariant } from './CharacterChip'
 import { MediaPopup } from './MediaPopup'
@@ -16,6 +16,8 @@ import { asString, npcThumbCandidates, partyClickMedia, playerThumbCandidates } 
 import type { MediaSource } from './media'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 import './party-parity.css'
+import { matchingNpc, partySummary } from './partyData'
+import { NpcCardDialog } from './NpcCardDialog'
 
 interface HorizontalChipRailProps {
   label: string
@@ -78,9 +80,13 @@ export function PartyStrip() {
   const party = useWorld((s) => s.party)
   const locationNpcs = useWorld((s) => s.locationNpcs)
   const combatActive = useWorld((s) => s.initiative.active)
+  const npcs = usePlayer((s) => s.npcs)
+  const npcError = usePlayer((s) => s.dataErrors.npcs)
+  const player = usePlayer((s) => s.stats)
+  const [selectedNpc, setSelectedNpc] = useState<string | null>(null)
   const [media, setMedia] = useState<MediaSource | null>(null)
   const rosterIdentity = [...party, ...locationNpcs].map((entry) => asString(entry['name']) ?? '').sort().join('|')
-  useEffect(() => { setMedia(null) }, [combatActive, rosterIdentity])
+  useEffect(() => { setMedia(null); setSelectedNpc(null) }, [combatActive, rosterIdentity, ember])
 
   // InitiativeTracker replaces the strip while combat is active.
   if (combatActive) return null
@@ -101,7 +107,9 @@ export function PartyStrip() {
         name={name}
         displayName={name}
         variant={variant}
-        stats={member}
+        stats={ember ? partySummary(member, kind === 'player' ? player : npcError ? undefined : matchingNpc(npcs, name)) : member}
+        showVitals
+        onOpenDetails={ember && kind === 'npc' ? () => setSelectedNpc(name) : undefined}
         thumbCandidates={kind === 'player' ? playerThumbCandidates(name) : npcThumbCandidates(name)}
         clickMedia={partyClickMedia(name, kind)}
         onOpenMedia={setMedia}
@@ -116,5 +124,6 @@ export function PartyStrip() {
       {locationNpcs.map((npc) => renderMember(npc, true))}
     </HorizontalChipRail>
     <MediaPopup media={media} onClose={() => setMedia(null)} />
+    {ember && selectedNpc && <NpcCardDialog name={selectedNpc} onClose={() => setSelectedNpc(null)} />}
   </>
 }

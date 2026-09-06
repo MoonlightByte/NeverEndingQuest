@@ -26,3 +26,18 @@ it('preserves all seven conditional detail actions and full feature description'
   expect(screen.getByRole('dialog').textContent).toContain('Full feature description')
   expect(screen.getByRole('dialog').textContent).toContain('2/3 · long rest')
 })
+
+it('the roster card reuses only the selected full NPC and keeps nested menus live', () => {
+  const elen = { name: 'Ranger Elen', equipment: [{ name: 'Arrow', quantity: 2, type: 'ammunition' }] }
+  usePlayer.setState({ npcs: [elen, { name: 'Rusk', equipment: [{ name: 'Secret item' }] }] })
+  const { container } = render(<NpcsTab npcName="ranger_elen" />)
+  expect(container.textContent).toContain('Ranger Elen')
+  expect(container.textContent).not.toContain('Rusk')
+  fireEvent.click(screen.getByRole('button', { name: 'Inventory' }))
+  expect(screen.getByRole('dialog').textContent).toContain('x2')
+  act(() => usePlayer.setState({ npcs: [{ ...elen, equipment: [{ name: 'Arrow', quantity: 9 }] }] }))
+  expect(screen.getByRole('dialog').textContent).toContain('x9')
+  act(() => usePlayer.setState({ npcs: [] }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(container.textContent).toContain('Full character details are not available')
+})
