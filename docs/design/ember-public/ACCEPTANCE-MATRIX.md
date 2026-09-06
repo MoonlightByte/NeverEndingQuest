@@ -1,13 +1,15 @@
 # Ember public acceptance matrix — 2026-09-05
 
-This is an evidence inventory, **not final approval**. The implementation is
-available on `feat/ember-public-complete`; no public-main publication is approved.
-Owner inspection and the remaining gates below prevent claiming the entire plan
+This is an evidence inventory, **not blanket release certification**. The owner
+approved the updated Ember screen, full NPC cards, visible party stats and
+parchment journal for the build; see [OWNER-REVISION-01.md](OWNER-REVISION-01.md).
+The implementation is available on `feat/ember-public-complete`; no public-main
+publication has occurred. Remaining gates below prevent claiming the entire plan
 complete. Earlier ledger entries describe historical scope, not current omissions.
 
 Sources of truth: `PORT-PLAN.md`, `TRANSITION-GATES.md`, actual source owners,
-colocated tests, browser captures and test output. The full unit suite currently
-passes 35 files / 333 tests. Browser receipt counts are in `HANDOFF.md` and
+colocated tests, browser captures and test output. The latest full unit run
+passed 38 files / 346 tests at the approved NPC/journal revision. Browser receipt counts are in `HANDOFF.md` and
 [BROWSER-REVIEW.md](BROWSER-REVIEW.md); test existence alone is not a pass.
 Chromium/Firefox evidence uses synthetic campaigns. The available frozen WebKit
 runtime has partial semantic evidence but fails accurate viewport emulation.
@@ -30,7 +32,7 @@ intentional compatibility exception, not a second Ember game. `e2e/` below means
 | Spells / magic | `spellDetails.test.tsx`, shared reference timeout/retry test, player/NPC/alias-scroll browser tests; non-caster notice and quantity-badge desktop/phone styling checks | All long/absent combinations not visually signed off; no casting actions invented |
 | NPC information | All seven detail actions, live quantity/usage/slot updates, nested focus and original portrait browser checks | Full live removal/load journey and each missing-data capture unverified |
 | Maps | `MapTab*.test.tsx`, `MapModal.test.tsx`, `useMapPanZoom.test.ts`, two populated browser map tests, expanded/empty captures | Real-device touch and every error presentation not owner-approved |
-| Journal | Reviewed loading/empty/error/populated browser captures and units; independent close/reopen retry and hidden-quest checks | Full live quest/reset transition and owner sign-off unverified |
+| Journal | Owner-approved restored parchment book; reviewed loading/empty/error/populated browser captures and units; independent close/reopen retry and hidden-quest checks | Full live quest/reset transition unverified |
 | Storage | Reviewed 4-state browser captures, actual request bindings and units; truthful desktop read-failure message, phone preservation, independent retry | Real storage refresh during a live campaign unverified |
 | Settings / providers | Seven browser checks; 25 real handler/SDK/stub tests; 10 settings unit tests; reviewed provider/voice/error captures | Paid inference unverified; old-response-after-new-probe correlation needs a contract decision |
 | Save | Browser dialog/intent/full-mode checks; exact payload and offline draft/reconnect ownership unit tests; actual essential/full handler-and-file probe | Full live browser journey and active-turn save queue unverified; owner preview is simulated |

@@ -5,13 +5,18 @@ Approved build baseline: `987f6c7`. On 2026-09-05 the owner approved the updated
 Ember screen, full NPC cards, visible party stats and parchment journal and asked
 to lock them in for the build. See [the approval record](OWNER-REVISION-01.md).
 No public-main merge, push or launcher-default change accompanies this lock.
+Build preparation now includes public main `3df32fa` via local merge `9030ac2`;
+the approved frontend is unchanged. Build, eight visual/owner checks, six
+real-Flask browser checks, 34 provider/launcher tests and the two-app entry-point
+probe pass. See [current build verification](BUILD-LOCK-VERIFICATION.md).
 Implementation checkpoint: `e6f83c5`; public main through `21702a7` is included.
 Additional visual fixes: `9d930df`; review-only drawer study: `074f8cc`.
 Portrait campaign-persistence correction: `1888181`; media refresh review and
 exact verification scope: [MEDIA-REVIEW.md](MEDIA-REVIEW.md).
 UI media-freshness correction and regression tests: `1a0765b`.
-The last upstream fetch found no additional main commits. Nothing from this
-public implementation has been pushed or merged into public main.
+The 2026-09-06 upstream fetch found 11 additional main commits, now included in
+the local review branch. Nothing from this public implementation has been pushed
+or merged into public main.
 
 ## Open and test
 
