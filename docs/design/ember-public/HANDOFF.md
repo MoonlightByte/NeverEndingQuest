@@ -92,6 +92,13 @@ and `TRANSITION-GATES.md` for acceptance requirements.
 - The separate intermediate-width prototype passes three browser checks for
   keyboard/touch, focus/inertness, draft/filter/scroll continuity and sample-only
   interactions. It remains unapproved and does not change production breakpoints.
+- Startup/empty-bootstrap: **6 browser checks pass**; Journal/Storage states and
+  phone preservation: **9 pass**. Desktop loading/notice/error styles, recovery
+  text and truthful Storage failure presentation are corrected. Full unit rerun:
+  **31 files / 291 tests**; ten main visual/interactive checks still pass unchanged.
+- Actual safe toolkit create/export/preview/import/delete and builder validation
+  pass in a disposable export. A photorealistic portrait survives the ZIP round
+  trip byte-for-byte. See [workflow evidence and limits](WORKFLOW-REVIEW.md).
 
 Final provider fixes: `c957f93` validates and durably saves a provider choice
 before applying it live, serializing simultaneous selections. The new failure
@@ -126,6 +133,11 @@ out, probe B starts, then A replies late, the UI cannot distinguish that reply
 from B. Closing/reopening an idle panel is now safe, but complete correlation
 would require a separately reviewed contract change. Broader pre-existing
 settings-file concurrency outside provider selection is also not solved here.
+
+The toolkit's existing merge endpoint returns placeholder success without merging.
+That workflow is not implemented by this design port and is not accepted as working.
+Actual safe ZIP export/import now has backend evidence; live generation and the
+full browser-to-backend authoring journey remain unverified.
 
 See [ACCEPTANCE-MATRIX.md](ACCEPTANCE-MATRIX.md) for screen-level evidence and
 remaining gaps; this checklist does not turn partial coverage into full approval.

@@ -18,18 +18,18 @@ intentional compatibility exception, not a second Ember game. `e2e/` below means
 
 | Plan surface | Inspected evidence | Remaining acceptance limit |
 | --- | --- | --- |
-| Entry / first-run | `layout/HeaderBar.test.tsx`, `StartingPanel.test.tsx`, startup/recovery tests; real runtime hydration/reconnect | Full live interview/new-game journey and each startup edge-state screenshot unverified |
+| Entry / first-run | Header/startup/recovery units; 3 real-Flask startup browser cases plus 3 empty-bootstrap cases with reviewed captures and desktop/phone checks | Full live interview/new-game journey and actual operator recovery unverified |
 | Global header | `HeaderBar.test.tsx`, `e2e/ember-public.spec.ts`, reference captures | Owner approval of public-control adaptation; no new overflow-menu design approved |
 | Main story / composer | `log/log.test.tsx`, `e2e/player-shell.spec.ts`, `ember-runtime.spec.ts`, four reviewed visual goldens | Real AI turn and platform typography unverified; raster concept equality not claimed |
 | Dice | Distinct SVG dice and local-roll explanation; log tests, responsive draft/roll continuity, main captures | Owner visual approval; no new authoritative roll mechanics |
 | Party / town / combat | Server-shaped combat hydration, `ember-runtime.spec.ts`, `ember-npc-media.spec.ts`, populated rail captures | Every dead/absent/long-list state has not received a final owner visual pass |
-| Character / abilities | `characterData.test.ts`, `CharacterTooltips.test.tsx`, long pinned feature browser test, main captures | All optional character-field combinations not screenshot-audited |
+| Character / abilities | Character/tooltip units, long pinned feature browser test, main captures; reviewed loading/no-character/error bootstrap states | All optional character-field combinations not screenshot-audited |
 | Inventory / search | `InventoryViewState.test.tsx`, `ember-inspection.spec.ts`, `ember-preview.spec.ts` | Full live campaign/reset journey unverified; tests use synthetic updates |
 | Spells / magic | `spellDetails.test.tsx`, shared reference timeout/retry test, player/NPC/alias-scroll browser tests | All long/absent combinations not visually signed off; no casting actions invented |
 | NPC information | All seven detail actions, live quantity/usage/slot updates, nested focus and original portrait browser checks | Full live removal/load journey and each missing-data capture unverified |
 | Maps | `MapTab*.test.tsx`, `MapModal.test.tsx`, `useMapPanZoom.test.ts`, two populated browser map tests, expanded/empty captures | Real-device touch and every error presentation not owner-approved |
-| Journal | Populated preview/browser dialog, `dialogs.test.tsx` populated/error/pending/empty | Edge-state unit assertions are not a complete screenshot review |
-| Storage | Populated preview, actual request bindings, `dialogs.test.tsx` failed hydration | Real storage refresh during a live campaign unverified |
+| Journal | Reviewed loading/empty/error/populated browser captures and units; independent close/reopen retry and hidden-quest checks | Full live quest/reset transition and owner sign-off unverified |
+| Storage | Reviewed 4-state browser captures, actual request bindings and units; truthful desktop read-failure message, phone preservation, independent retry | Real storage refresh during a live campaign unverified |
 | Settings / providers | Seven browser checks; 25 real handler/SDK/stub tests; 10 settings unit tests; reviewed provider/voice/error captures | Paid inference unverified; old-response-after-new-probe correlation needs a contract decision |
 | Save | Browser dialog/intent/full-mode checks; exact payload unit tests; actual essential/full handler-and-file probe | Full live browser journey and active-turn save queue unverified; owner preview is simulated |
 | Load / delete | Selection/hover styling, restore/delete/cancel/restart-preparation tests; actual valid/corrupt restore and delete/reconnect file probe | Actual process restart and every unavailable state unverified; probe intercepts exit |
@@ -38,8 +38,8 @@ intentional compatibility exception, not a second Ember game. `e2e/` below means
 | Long-running work | `operations.test.tsx`, blocking-overlay/reconnect browser checks; reviewed module failure/blocking and compression failure/nonblocking captures | Real compression/module jobs and every terminal screenshot unverified |
 | Media / narration | Original portrait viewer, asset revision refresh, cache/race/audio tests and reduced-motion checks | No paid image/TTS calls; full real upload across every simultaneous consumer unverified |
 | Debug | `DebugTab.test.tsx`, populated 64-line browser surface and capture | No formal large-log performance profile |
-| Toolkit — six tabs | Six browser workbench tests with actual open/cancel handlers, nested focus, failure/export wording, populated phone tables/toasts | Network-intercepted jobs are not proof of real authoring mutations/generation/export |
-| Standalone builder | Actual Flask `/` plus shared assets; workbench builder controls and synthetic statuses | Real module build/completion journey unverified |
+| Toolkit — six tabs | Six browser workbench tests; actual safe create/export/preview/import/recoverable-delete probe with portrait-byte round trip | Live generation/activation and browser-to-backend authoring unverified; existing merge endpoint is a nonfunctional placeholder |
+| Standalone builder | Actual Flask `/` plus shared assets; builder controls/statuses; actual incomplete-input/idle-cancel/list probe without jobs | Real module build/completion journey unverified |
 | Legacy fallback / launcher | Actual disposable missing-build503/legacy200/toolkit200, built React coexistence, launcher options/default/freshness probe; nine launcher tests | No native-platform or whole-legacy offline guarantee; default remains legacy |
 
 ## Transition gates

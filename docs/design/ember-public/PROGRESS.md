@@ -1,5 +1,25 @@
 # Public Ember implementation ledger
 
+## Startup, ledger and safe authoring pass — 2026-09-05
+
+Six startup/bootstrap browser checks and nine Journal/Storage cases now pass.
+Personal visual inspection found legacy full-height black/Courier character
+loading, small sheet notices/errors and small recovery status text. Desktop
+presentation now follows Ember while explicit phone checks preserve original
+styles. Storage read failures now report failure instead of claiming empty data.
+Independent source/visual reviews and same-page retry checks are clean within
+this scope. All 291 unit tests pass with the current frontend source in the
+isolated Linux export; build/lint succeed (16 warnings), and ten main visual/
+interactive regressions pass without updating goldens.
+
+An actual-handler authoring probe verified synthetic pack creation, duplicate
+rejection, ZIP export/preview/import, byte-identical portrait round trip and
+recoverable deletion. Builder incomplete-input/idle-cancel/list checks start no
+jobs. Independent review confirmed this bounded evidence. The pre-existing
+placeholder merge endpoint remains nonfunctional, explicitly not accepted.
+See WORKFLOW-REVIEW.md for commands, captures, exact limits and retained evidence.
+No public-main publication, real campaign mutation or paid inference occurred.
+
 ## Lifecycle, edge-state and intermediate-width pass — 2026-09-05
 
 Actual public save/list/restore/delete/reset handlers and filesystem operations

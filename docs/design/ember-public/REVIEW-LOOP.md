@@ -167,3 +167,26 @@ touch, native modality, focus containment/return and reviewed the 1024 captures.
 The author added explicit native-inert/touch tests; all three cases passed in both
 the author's run and a primary-agent rerun. No production navigation was changed.
 Owner approval and unverified full-plan rows remain open.
+
+## Startup, empty states and authoring review
+
+Independent ledger review traced actual storage/plot response schemas and found
+no lost fields or undiscovered-quest leakage. Browser review checked all eight
+desktop states, then exercised error → close → successful reopen with exact
+focus return. The author added a phone-preservation case and safe fixture stream
+handling; nine cases pass. Primary agent inspected all eight final dialog cards.
+
+Primary-agent startup inspection found legacy loading/notice/error presentation
+and small recovery result text. Independent review confirmed presentation-only
+scope, unconditional hooks and unchanged recovery/game contracts. The reviewer
+requested precise phone assertions, including Character loading's 16px Courier
+exception; all three tabs are now checked. Six startup/bootstrap cases pass,
+including failed-start no-turn authorization and keyboard-reachable Done. The
+reviewer personally inspected final bootstrap captures and independently tested
+1024/390/1586 resizing without overflow or browser errors; bounded review clean.
+
+Independent authoring probe ran actual safe create/export/import/delete and
+builder validation in a disposable tracked export. Another reviewer read the
+probe, real handlers and retained result and found no actionable probe flaw.
+The existing merge placeholder is excluded, not disguised as working. No agent
+executed generation, activation or a live browser-to-backend authoring journey.

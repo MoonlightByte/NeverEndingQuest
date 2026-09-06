@@ -81,3 +81,13 @@ palette, stacked sheet and optional inline imagery with collapsible drawers.
 Personally inspected 1024 main/sheet and 1180 initiative against the reference.
 It deliberately changes layout at narrower widths, so it is a proposal for owner
 review, not reference-raster equality or approved production navigation.
+
+## Startup and ledger states
+
+Personally inspected pre-start, failed-start recovery desktop/phone, and the
+keyboard-reachable recovery footer. Empty-bootstrap loading/notice/error captures
+revealed the old full-height Courier loading panel and small text; corrected all
+three sheet owners to compact Ember status cards, then personally inspected all
+three final renders. Phone styles and game/recovery contracts are unchanged.
+Also personally inspected all eight final Journal/Storage state card captures.
+See WORKFLOW-REVIEW.md for curated captures, commands and bounded acceptance.

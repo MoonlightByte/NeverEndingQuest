@@ -20,6 +20,10 @@ and is not an approved runtime layout. `review-load-selected.png` records the
 personally inspected selected/hover state after the legacy styling correction.
 `review-combat-overflow.png` records the synthetic 20-combatant processing state,
 scrolled to its final entry after the combat badge correction.
+`review-bootstrap-notice.png` and `review-startup-recovery.png` are synthetic
+empty-state/recovery browser captures. `review-storage-error.png` is a direct
+browser screenshot of the actual dialog element, excluding the sparse fixture
+background; no image retouching or replacement artwork is involved.
 
 Runtime assets and licenses:
 
