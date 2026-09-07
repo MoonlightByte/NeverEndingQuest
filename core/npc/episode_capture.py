@@ -26,7 +26,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 from core.npc.episode_extraction import extract_episode, flatten_scene
 from core.combat.invocation import InvocationSupersededError
 from utils.capture.live_provider_call import LiveProviderSuperseded, _check_live_authority
-from core.npc.episode_store import EpisodeStore
+from core.npc.episode_store import EpisodeStore, stable_episode_id
 from core.npc.relationship_store import (
     RelationshipStore,
     game_day_ordinal,
@@ -100,8 +100,10 @@ def resolve_present_companions(
             if npc_id and npc_id not in seen_ids:
                 seen_ids.add(npc_id)
                 present.append({"name": sheet_name, "id": npc_id})
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
         except Exception as error:  # noqa: BLE001 - best-effort resolution
-            _LOGGER.debug("companion identity resolve failed for %r: %r", name, error)
+            record_store_health("episode_identity_failed", detail="%s: %s" % (name, error))
             continue
     return present
 
@@ -121,7 +123,10 @@ def _resolve_player_id(player_name, party_tracker_data, path_manager, rel_store,
             module=str(party_tracker_data.get("module") or ""),
             location_id=str(world.get("currentLocationId") or ""), active=None,
         )
-    except Exception:
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
+    except Exception as error:
+        record_store_health("episode_player_identity_failed", detail=str(error))
         return None
 
 
@@ -224,7 +229,7 @@ def capture_location_episode(
     except (LiveProviderSuperseded, InvocationSupersededError):
         raise
     except Exception as error:  # noqa: BLE001 - fail-open; capture never breaks a turn
-        _LOGGER.debug("location episode capture failed: %r", error)
+        record_store_health("location_episode_capture_failed", detail=str(error))
         return None
 
 
@@ -257,27 +262,54 @@ def _commit_and_overlay(
         **result,
     )
     if episode_id:
-        try:
-            from core.npc.pov_overlay import derive_pov_episodes
-            stored = store.get_episode(episode_id)
-            if stored:
-                pov_by_npc = derive_pov_episodes(stored)
-                for pov_npc_id, pov_rows in pov_by_npc.items():
-                    rel.upsert_pov_episodes(pov_npc_id, pov_rows)
-                # Phase 5: elevate each witness's NPC->player relationship baseline
-                # from their accumulated pinned memories, so the bond deepens+sticks.
-                player_id = _resolve_player_id(
-                    player_name, party_tracker_data, path_manager, rel, json_loader
-                )
-                if player_id:
-                    game_day = game_day_ordinal(world)
-                    for pov_npc_id in pov_by_npc:
-                        rel.reinforce_baseline_from_pov(
-                            pov_npc_id, player_id, game_day=game_day
-                        )
-        except Exception as pov_error:  # noqa: BLE001
-            _LOGGER.debug("pov overlay/baseline derivation failed: %r", pov_error)
+        _project_episode(
+            store, rel, episode_id, world=world, player_name=player_name,
+            party_tracker_data=party_tracker_data, path_manager=path_manager,
+            json_loader=json_loader,
+        )
+    else:
+        record_store_health("episode_commit_failed", path=str(store.path))
     return episode_id
+
+
+def _project_episode(
+    store: EpisodeStore,
+    rel: RelationshipStore,
+    episode_id: str,
+    *,
+    world: Mapping[str, Any],
+    player_name: str,
+    party_tracker_data: Mapping[str, Any],
+    path_manager: Any,
+    json_loader: Callable[[str], Any],
+) -> None:
+    """Project the saved facts for both fresh commits and #311 partial replay.
+
+    Canonical and POV writes are separate. Reusing the existing idempotent
+    projection repairs a partial write without re-extraction or new crash state.
+    """
+    try:
+        from core.npc.pov_overlay import derive_pov_episodes
+        stored = store.get_episode(episode_id)
+        if not stored:
+            record_store_health("episode_projection_missing", detail=episode_id)
+            return
+        pov_by_npc = derive_pov_episodes(stored)
+        for pov_npc_id, pov_rows in pov_by_npc.items():
+            rel.upsert_pov_episodes(pov_npc_id, pov_rows)
+        player_id = _resolve_player_id(
+            player_name, party_tracker_data, path_manager, rel, json_loader
+        )
+        if player_id:
+            game_day = game_day_ordinal(world)
+            for pov_npc_id in pov_by_npc:
+                rel.reinforce_baseline_from_pov(
+                    pov_npc_id, player_id, game_day=game_day
+                )
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
+    except Exception as pov_error:  # noqa: BLE001 - canonical commit remains valid
+        record_store_health("episode_projection_failed", detail=str(pov_error))
 
 
 def combat_witness_names(
@@ -528,25 +560,43 @@ def consolidate_module_episodes(
         world = party_tracker_data.get("worldConditions", {})
         world = world if isinstance(world, Mapping) else {}
         position = _count_transition_markers(conversation_history) + 1
+        boundary = boundary_turn_id_for_position(position)
+        store = episode_store or EpisodeStore()
+        if store.read_only:
+            return None  # the existing latch reports the integrity failure
+        rel = rel_store or RelationshipStore()
+        episode_id = stable_episode_id(
+            str(party_tracker_data.get("module") or ""),
+            str(world.get("currentLocationId") or ""), boundary,
+        )
+        if store.get_episode(episode_id):
+            if authority_check is not None:
+                _check_live_authority(advisory_scope, authority_check)
+            _project_episode(
+                store, rel, episode_id, world=world, player_name=player_name,
+                party_tracker_data=party_tracker_data, path_manager=path_manager,
+                json_loader=safe_json_load,
+            )
+            return episode_id
         return capture_location_episode(
             leaving_location_name=str(world.get("currentLocation") or "Unknown location"),
             leaving_location_id=str(world.get("currentLocationId") or ""),
             segment_messages=final_segment,
             party_tracker_data=party_tracker_data,
             path_manager=path_manager,
-            boundary_turn_id=boundary_turn_id_for_position(position),
+            boundary_turn_id=boundary,
             player_name=player_name,
             provider=provider,
             derived_from="module_consolidation",
-            episode_store=episode_store,
-            rel_store=rel_store,
+            episode_store=store,
+            rel_store=rel,
             advisory_scope=advisory_scope,
             authority_check=authority_check,
         )
     except (LiveProviderSuperseded, InvocationSupersededError):
         raise
     except Exception as error:  # noqa: BLE001 - fail-open; never break module completion
-        _LOGGER.debug("module consolidation failed: %r", error)
+        record_store_health("module_episode_consolidation_failed", detail=str(error))
         return None
 
 

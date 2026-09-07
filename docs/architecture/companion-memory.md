@@ -3,6 +3,22 @@
 Purpose: Persist canonical shared episodes, per-NPC relationships and point of view,
 then supply grounded memory to conversation and voice calls.
 
+## Issue 311 implementation delta (2026-09-07; live acceptance pending)
+
+Module completion captures its frozen origin scene after the campaign commit's
+locks release and before publishing the completion flight. A completion-owned
+T108 advisory child spans extraction and persistence; accepted Save uses its
+exact executing-control identity without reopening external controls. Typed
+supersession propagates; completed advisory failures emit store-health telemetry.
+
+Final-coordinate replay preserves an existing canonical episode and projects
+its saved facts through the same private `_project_episode` helper as new
+location, combat and historical-backfill commits. Canonical and POV writes remain
+separate: replay can finish missing eligible POV/baseline without re-extraction,
+another ordinal or a new recovery store. A witness without a personally attributed
+fact legitimately has no POV. Primitive idempotency/schema checks are not live
+recall acceptance. Older sections below retain their historical pins.
+
 - Revision: `integration/npc-voice-episodic` through `6279ef52`
 - Verified: 2026-09-03
 - Doctrine: [GitHub issue #193 v2.10](https://github.com/MoonlightByte/NeverEndingQuest/issues/193)

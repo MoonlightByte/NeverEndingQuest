@@ -3037,10 +3037,10 @@ class CampaignManager:
             # #311: the origin snapshot belongs to this completion, not the
             # destination. Provider work starts only after _complete_module_once
             # has released all commit locks, and ends before flight publication.
+            from core.npc.relationship_store import record_store_health
             memory_scopes = ()
             try:
                 from core.npc.episode_capture import consolidate_module_episodes
-                from core.npc.relationship_store import record_store_health
                 from utils.capture.live_provider_call import open_advisory_scopes
                 from utils.module_path_manager import ModulePathManager
 
@@ -3070,6 +3070,7 @@ class CampaignManager:
             except Exception as memory_error:
                 warning(f"Module-final memory failed: {memory_error}",
                         category="campaign_management")
+                record_store_health("module_episode_failed", detail=str(memory_error))
             finally:
                 for memory_scope in memory_scopes:
                     memory_scope.finish()
