@@ -18,6 +18,7 @@ import { useEmberDesktop } from '../layout/EmberPresentation'
 import './party-parity.css'
 import { matchingNpc, partySummary } from './partyData'
 import { NpcCardDialog } from './NpcCardDialog'
+import { PlayerCardDialog } from './PlayerCardDialog'
 
 interface HorizontalChipRailProps {
   label: string
@@ -84,9 +85,10 @@ export function PartyStrip() {
   const npcError = usePlayer((s) => s.dataErrors.npcs)
   const player = usePlayer((s) => s.stats)
   const [selectedNpc, setSelectedNpc] = useState<string | null>(null)
+  const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null)
   const [media, setMedia] = useState<MediaSource | null>(null)
   const rosterIdentity = [...party, ...locationNpcs].map((entry) => asString(entry['name']) ?? '').sort().join('|')
-  useEffect(() => { setMedia(null); setSelectedNpc(null) }, [combatActive, rosterIdentity, ember])
+  useEffect(() => { setMedia(null); setSelectedNpc(null); setSelectedPlayer(null) }, [combatActive, rosterIdentity, ember])
 
   // InitiativeTracker replaces the strip while combat is active.
   if (combatActive) return null
@@ -109,7 +111,7 @@ export function PartyStrip() {
         variant={variant}
         stats={ember ? partySummary(member, kind === 'player' ? player : npcError ? undefined : matchingNpc(npcs, name)) : member}
         showVitals
-        onOpenDetails={ember && kind === 'npc' ? () => setSelectedNpc(name) : undefined}
+        onOpenDetails={ember ? () => kind === 'player' ? setSelectedPlayer(name) : setSelectedNpc(name) : undefined}
         thumbCandidates={kind === 'player' ? playerThumbCandidates(name) : npcThumbCandidates(name)}
         clickMedia={partyClickMedia(name, kind)}
         onOpenMedia={setMedia}
@@ -125,5 +127,6 @@ export function PartyStrip() {
     </HorizontalChipRail>
     <MediaPopup media={media} onClose={() => setMedia(null)} />
     {ember && selectedNpc && <NpcCardDialog name={selectedNpc} onClose={() => setSelectedNpc(null)} />}
+    {ember && selectedPlayer && <PlayerCardDialog name={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
   </>
 }

@@ -46,7 +46,7 @@ export function RightPanelTabs() {
         tabs[next]?.focus()
         tabs[next]?.click()
       } : undefined}>
-        {(ember ? [...TABS, { id: 'map' as const, label: 'Map' }] : TABS).map((tab) => {
+        {(ember ? [...TABS.filter(tab => tab.id !== 'npcs'), { id: 'map' as const, label: 'Map' }] : TABS).map((tab) => {
           const selected = active === tab.id
           return (
             <button

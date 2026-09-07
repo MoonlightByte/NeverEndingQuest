@@ -183,6 +183,34 @@ export function CharacterChip({
       ? '0 0 10px rgba(156, 39, 176, 0.5)'
       : undefined
 
+  // Roster cards have two sibling controls: a full-card biography target and
+  // a portrait above it for media. Never nest a media button inside a bio button.
+  if (ember && showVitals) {
+    const openDetails = () => {
+      window.dispatchEvent(new CustomEvent('neq:media-request'))
+      setHovered(false)
+      if (showTimer.current !== null) window.clearTimeout(showTimer.current)
+      onOpenDetails?.()
+    }
+    return <div className="ember-person-entry ember-person-card">
+      {onOpenDetails
+        ? <button type="button" className="ember-card-bio" aria-label={`${displayName} full character details`} onClick={openDetails} />
+        : <EmberInspection label={`${displayName} statistics`} triggerContent={<span className="sr-only">{displayName} statistics</span>} className="ember-card-bio"><StatsTooltip stats={stats} anchor={null} inline /></EmberInspection>}
+      <div className="neq-character-chip" data-chip={variant} data-name={name} data-active={isActive ? 'true' : 'false'}>
+        <button ref={chipRef} type="button" className="ember-card-portrait" aria-label={`${displayName} portrait`} aria-busy={mediaPending} disabled={!clickMedia} onClick={handleClick}>
+          <span className="ember-chip-portrait" aria-hidden="true" style={thumb ? { backgroundImage: `url('${thumb}')` } : undefined}>{!thumb && displayName.slice(0, 1)}</span>
+        </button>
+        <span className="ember-card-summary">
+          {displayName}
+          <PartyVitals stats={stats} />
+          {isActive && <small className="ember-turn-label">Your turn</small>}
+          {mediaPending && <small className="ember-turn-label" role="status">Loading media…</small>}
+          {mediaMissing && <small className="ember-turn-label" role="status">No media available</small>}
+        </span>
+      </div>
+    </div>
+  }
+
   return (
     <div className={ember ? 'ember-person-entry' : 'contents'}>
       <button

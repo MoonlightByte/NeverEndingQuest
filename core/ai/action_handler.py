@@ -1865,6 +1865,8 @@ def pre_validate_transition(
     return_plan=False,
     invocation_claim=None,
     module_snapshot=None,
+    detached_context=None,
+    turn_context=None,
 ):
     """
     Pre-validate a transitionLocation action using the transition intelligence agent.
@@ -1890,6 +1892,7 @@ def pre_validate_transition(
     )
     from core.ai.transition_validator import validate_transition_request
     from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
     from utils.file_operations import safe_read_json
 
     def finish(
@@ -2009,12 +2012,17 @@ def pre_validate_transition(
             except Exception:
                 pass
 
-        # Get player request from conversation history
+        # Explicit absence is meaningful: an engine-authored followup is not
+        # fresh player intent (#193 D-NPC-PARTY-3). Preserve older callers that
+        # do not supply turn_context; the shared reviewer supplies it always.
         player_request = ""
-        for msg in reversed(conversation_history):
-            if msg.get("role") == "user" and not msg.get("content", "").startswith("Error Note:"):
-                player_request = msg.get("content", "")
-                break
+        if turn_context is not None:
+            player_request = turn_context.get("player_input")
+        else:
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "user" and not msg.get("content", "").startswith("Error Note:"):
+                    player_request = msg.get("content", "")
+                    break
 
         # Call transition intelligence agent
         print(f"DEBUG: [TRANSITION AGENT] Checking travel: {current_location_id} -> {new_location_id}")
@@ -2033,6 +2041,7 @@ def pre_validate_transition(
             plot_data=plot_data,
             party_level=party_level,
             invocation_claim=invocation_claim,
+            detached_context=detached_context,
         )
 
         # Log agent decision

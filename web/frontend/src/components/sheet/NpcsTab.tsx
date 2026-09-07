@@ -8,6 +8,7 @@ import { EmberCurrency } from './EmberCurrency'
 import { usePlayer } from '../../stores'
 import { NpcDetailModal, type NpcModalKind } from './NpcDetailModal'
 import { matchingNpc } from '../party/partyData'
+import { NpcTabbedSheet } from './NpcTabbedSheet'
 import {
   ABILITIES,
   abilityModifier,
@@ -42,7 +43,7 @@ export function NpcsTab({ npcName }: { npcName?: string } = {}) {
   if (error) return <p role={ember ? 'alert' : undefined} data-state="error" className="ember-sheet-status p-4 font-body text-sm text-red-400">{error}</p>
 
   return (
-    <div className="neq-npcs-content h-full overflow-y-auto">
+    <div className={`neq-npcs-content h-full overflow-y-auto${ember && npcName ? ' tcs-focused-npc' : ''}`}>
       {visibleNpcs.length === 0 ? (
         <p role={ember ? 'status' : undefined} data-state="empty" className="ember-sheet-status text-sm italic text-secondary">{npcName ? 'Full character details are not available for this NPC.' : 'No NPC data available'}</p>
       ) : visibleNpcs.map((npc) => {
@@ -64,6 +65,7 @@ export function NpcsTab({ npcName }: { npcName?: string } = {}) {
         ]
         const hpRatio = hpPercent(hp, maxHp)
         const hpClass = hpRatio > 75 ? 'healthy' : hpRatio > 50 ? 'injured' : hpRatio > 25 ? 'bloodied' : 'critical'
+        if (ember && npcName) return <NpcTabbedSheet key={npcIdentity(npc)} npc={npc} actions={actions.filter((action) => action.visible)} onSelect={(kind) => { window.dispatchEvent(new CustomEvent('neq:media-request')); setSelected({ identity: npcIdentity(npc), kind }) }} portrait={<CharacterChip name={name} displayName={name} variant="party-npc" stats={npc} thumbCandidates={npcThumbCandidates(name)} clickMedia={partyClickMedia(name, 'npc')} onOpenMedia={setMedia} />} />
         return (
           <section key={npcIdentity(npc)} className="neq-npc-character-sheet">
             <div className="neq-npc-header">

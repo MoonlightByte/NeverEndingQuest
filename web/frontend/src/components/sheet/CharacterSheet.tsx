@@ -32,6 +32,7 @@ import { EmberCurrency } from './EmberCurrency'
 import { invalidateMediaCaches, useMediaRevision } from '../party/media'
 import { EmberInspection } from './EmberInspection'
 import { EmberIcon } from '../layout/EmberIcon'
+import { CharacterSheetIdentity } from './CharacterSheetIdentity'
 
 // ASCII-only source: proficiency dots as escapes (filled / open circle).
 const PROFICIENT_DOT = '\u25CF'
@@ -65,7 +66,7 @@ function SheetSection({ title, items, empty, accentItems = false, rightSuffix = 
   </>
 }
 
-function Portrait({ name }: { name: string }) {
+export function Portrait({ name }: { name: string }) {
   const revision = useMediaRevision()
   const [failed, setFailed] = useState(false)
   const [cacheBust, setCacheBust] = useState('')
@@ -107,7 +108,7 @@ function Portrait({ name }: { name: string }) {
   )
 }
 
-export function CharacterSheet() {
+export function CharacterSheet({ expanded = false, hideIdentity = false }: { expanded?: boolean; hideIdentity?: boolean } = {}) {
   const ember = useEmberDesktop()
   const stats = usePlayer((s) => s.stats)
   const error = usePlayer((s) => s.dataErrors.stats)
@@ -150,10 +151,10 @@ export function CharacterSheet() {
   const background = rec(stats['backgroundFeature'])
 
   return (
-    <div className="neq-character-tab h-full overflow-y-auto font-body">
+    <div className={`neq-character-tab h-full overflow-y-auto font-body${expanded ? ' tavern-player-sheet' : ''}${expanded && hideIdentity ? ' tps-body-only' : ''}`}>
       <div className="neq-character-sheet">
       {/* header: portrait + identity */}
-      <div className="neq-character-sheet-top flex gap-3">
+      {expanded ? !hideIdentity && <CharacterSheetIdentity stats={stats} portrait={<Portrait key={name} name={name} />} /> : <div className="neq-character-sheet-top flex gap-3">
         <Portrait key={name} name={name} />
         <div className="neq-character-header min-w-0 flex-1 rounded border border-card bg-page p-2">
           <div className="neq-character-name font-display">{name}</div>
@@ -179,17 +180,18 @@ export function CharacterSheet() {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ability grid with hover skill tooltips */}
       <div className="neq-abilities-row mt-3 grid grid-cols-6 gap-1">
+        {expanded && <h4 className="tps-section-label">Abilities</h4>}
         {ABILITIES.map((ability) => {
           const score = scores[ability]
           const abilityLabel = capitalize(ability)
           const abilitySkills = SKILL_MAP[abilityLabel] ?? []
           if (ember && abilitySkills.length > 0) return <div key={ability} className="neq-ability-score relative rounded border-2 border-card bg-panel py-1 text-center">
             <EmberInspection label={`${abilityLabel} ${score}, modifier ${formatModifier(abilityModifier(score))}`} className="ember-ability-inspection" triggerContent={<>
-              <span className="neq-ability-name block font-display text-[10px] text-secondary">{ability.slice(0, 3).toUpperCase()}</span>
+              <span className="neq-ability-name block font-display text-[10px] text-secondary">{expanded ? abilityLabel : ability.slice(0, 3).toUpperCase()}</span>
               <span className="neq-ability-value block text-base leading-tight text-primary">{score}</span>
               <span className="neq-ability-modifier block text-xs text-accent">{formatModifier(abilityModifier(score))}</span>
             </>}>
@@ -209,7 +211,7 @@ export function CharacterSheet() {
               className="neq-ability-score relative rounded border-2 border-card bg-panel py-1 text-center"
             >
               <div className="neq-ability-name font-display text-[10px] text-secondary">
-                {ability.slice(0, 3).toUpperCase()}
+                {expanded ? abilityLabel : ability.slice(0, 3).toUpperCase()}
               </div>
               <div className="neq-ability-value text-base leading-tight text-primary">{score}</div>
               <div className="neq-ability-modifier text-xs text-accent">{formatModifier(abilityModifier(score))}</div>
@@ -229,6 +231,7 @@ export function CharacterSheet() {
 
       {/* HP / AC / INIT / currency */}
       <div className="neq-combat-stats mt-3 grid grid-cols-6 gap-1">
+        {expanded && <h4 className="tps-section-label">Combat</h4>}
         <div className="neq-combat-stat rounded border border-accent bg-panel p-2 text-center">
           <div className="neq-combat-label font-display text-[10px] text-secondary">{ember && <EmberIcon name="heart" />}HP</div>
           <div className="neq-combat-value text-base text-accent">
@@ -271,7 +274,7 @@ export function CharacterSheet() {
           {saves.map((save) => (
             <div key={save.name} className="flex justify-between text-sm" aria-label={ember ? `${save.name} ${formatModifier(save.bonus)}${save.proficient ? ', proficient' : ''}` : undefined} title={`${save.name}${save.proficient ? ' — proficient' : ''}`}>
               <span className={save.proficient ? 'text-primary' : 'text-secondary'}>
-                {ember ? save.name.slice(0, 3).toUpperCase() : save.name} {!ember && (save.proficient ? PROFICIENT_DOT : UNPROFICIENT_DOT)}
+                {expanded && <span aria-hidden="true">{save.proficient ? PROFICIENT_DOT : UNPROFICIENT_DOT} </span>}{ember ? save.name.slice(0, 3).toUpperCase() : save.name} {!ember && (save.proficient ? PROFICIENT_DOT : UNPROFICIENT_DOT)}
               </span>
               <span className="text-accent">{formatModifier(save.bonus)}</span>
             </div>
@@ -284,8 +287,9 @@ export function CharacterSheet() {
       {racialTraits.length > 0 && <SheetSection title="Racial Traits" items={racialTraits} />}
       {background?.['name'] !== undefined && <SheetSection title="Background" items={[{ name: str(background['name']), detail: str(background['description']) }]} />}
       {arr(stats['feats']).length > 0 && <SheetSection title="Feats" items={featureItems('feats')} />}
+      {expanded && (['personality_traits', 'ideals', 'bonds', 'flaws'] as const).some(key => str(stats[key])) && <section className="tcs-biography"><h4>Personality & bonds</h4><dl>{(['personality_traits', 'ideals', 'bonds', 'flaws'] as const).map(key => str(stats[key]) ? <div key={key}><dt>{capitalizeWords(key.replace(/_/g, ' '))}</dt><dd>{str(stats[key])}</dd></div> : null)}</dl></section>}
       </div>
-      {ember && <EmberCurrency currency={currency} />}
+      {ember && !expanded && <EmberCurrency currency={currency} />}
       </div>
     </div>
   )

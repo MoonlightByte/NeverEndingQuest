@@ -643,6 +643,20 @@ _declare(
 )
 
 
+_declare(
+    "T114",
+    _profiles(
+        "OPENAI_GPT56_LUNA_LOW",
+        "NPC_RECALL_T112_GEMINI_FLASHLITE_LOW",
+        "NPC_RECALL_T112_LEGACY",
+        "NPC_RECALL_T112_LMSTUDIO",
+    ),
+    note="Required, action-triggered party-membership guardian before T065. "
+         "Reviews consent and accepted-story grounding without writing state "
+         "(#193 D-NPC-PARTY-2..4). Service: core/npc/party_guardian.py.",
+)
+
+
 def _build_bindings():
     bindings = {}
     for binding in _DECLARATIONS:
@@ -663,7 +677,7 @@ REGISTERED_TASK_IDS = tuple(
     "T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T050 T051 T052 T053 "
     "T054 T059 T063 T064 T065 T066 T067 T077 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T091 T092 T093 T094 T095 T096 T097 T098 "
-    "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113".split()
+    "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 

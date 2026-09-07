@@ -5,6 +5,8 @@ import { EquipmentDetails } from './EquipmentDetails'
 import { SpellDetails } from './spellDetails'
 import { spellKey } from './spellKey'
 import { useSpellReference } from './useSpellReference'
+import { useEmberDesktop } from '../layout/EmberPresentation'
+import { SpellcastingSummary } from './SpellcastingSummary'
 import {
   arr,
   equipmentList,
@@ -66,14 +68,20 @@ function InventoryBody({ npc }: { npc: Record<string, unknown> }) {
 }
 
 function SpellsBody({ npc }: { npc: Record<string, unknown> }) {
+  const ember = useEmberDesktop()
   const reference = useSpellReference()
   const casting = spellcastingView(npc)
   if (!casting) return <div className="neq-npc-no-spellcasting">This character does not have spellcasting abilities.</div>
-  return <div className="neq-npc-modal-spellcasting">
-    {(casting.saveDC !== null || casting.attackBonus !== null) && <div className="neq-npc-modal-spell-stats">{casting.saveDC !== null && <span>Save DC: {casting.saveDC}</span>}{casting.attackBonus !== null && <span>Spell Attack: {formatModifier(casting.attackBonus)}</span>}</div>}
+  return <div className={`neq-npc-modal-spellcasting${ember ? ' tis-spells' : ''}`}>
+    {ember ? <SpellcastingSummary data={npc} casting={casting} /> : (casting.saveDC !== null || casting.attackBonus !== null) && <div className="neq-npc-modal-spell-stats">{casting.saveDC !== null && <span>Save DC: {casting.saveDC}</span>}{casting.attackBonus !== null && <span>Spell Attack: {formatModifier(casting.attackBonus)}</span>}</div>}
     {reference.status === 'error' && <p role="status">Spell reference unavailable. <button type="button" onClick={reference.retry}>Retry</button></p>}
     {casting.levels.map((level) => <div key={level.levelIndex} className="neq-npc-modal-spell-level"><div className="neq-npc-modal-spell-header"><span className="neq-npc-modal-spell-name">{level.levelName}</span>{level.slots && <span className={`neq-npc-modal-spell-slots ${slotTone(level.slots)}`}>{level.slots.current}/{level.slots.max} slots</span>}</div><div className="neq-npc-modal-spell-list">{level.spells.map((spell) => <div key={spell} className="neq-npc-modal-spell-item"><EmberInspection label={spell}><SpellDetails fallbackName={spell} detail={reference.data[spellKey(spell)]} /></EmberInspection>{casting.prepared.includes(spell) && <span className="ember-npc-prepared">Prepared</span>}</div>)}</div></div>)}
   </div>
+}
+
+export function NpcDetailContent({ npc, kind }: { npc: Record<string, unknown>; kind: NpcModalKind }) {
+  const expanded = kind === 'inventory' || kind === 'spells'
+  return <div className={expanded ? 'neq-npc-inventory-body' : 'neq-npc-details-body'}>{kind === 'inventory' ? <InventoryBody npc={npc} /> : kind === 'spells' ? <SpellsBody npc={npc} /> : <DetailBody npc={npc} kind={kind} />}</div>
 }
 
 export function NpcDetailModal({ npc, kind, onClose }: { npc: Record<string, unknown>; kind: NpcModalKind; onClose: () => void }) {
@@ -81,6 +89,6 @@ export function NpcDetailModal({ npc, kind, onClose }: { npc: Record<string, unk
   const title = `${name}'s ${TITLES[kind]}`
   const expanded = kind === 'inventory' || kind === 'spells'
   return createPortal(<DialogShell title={title} onClose={onClose} maxWidth={expanded ? '42rem' : '34rem'} className="ember-npc-detail">
-      <div className={expanded ? 'neq-npc-inventory-body' : 'neq-npc-details-body'}>{kind === 'inventory' ? <InventoryBody npc={npc} /> : kind === 'spells' ? <SpellsBody npc={npc} /> : <DetailBody npc={npc} kind={kind} />}</div>
+      <NpcDetailContent npc={npc} kind={kind} />
   </DialogShell>, document.body)
 }

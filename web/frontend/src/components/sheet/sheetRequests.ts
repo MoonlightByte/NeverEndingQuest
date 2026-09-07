@@ -4,6 +4,7 @@
  * so the tab->event mapping is testable in isolation. All names come from
  * the frozen contract.
  */
+import { useEffect } from 'react'
 import { emitC } from '../../services/socket'
 
 export type SheetTab = 'character' | 'inventory' | 'spells' | 'npcs' | 'debug' | 'map'
@@ -35,4 +36,13 @@ export function requestNpcTabData(tab: NpcDetailTab, npcName: string): void {
   else if (tab === 'skills') emitC('request_npc_skills', { npcName })
   else if (tab === 'spells') emitC('request_npc_spells', { npcName })
   else emitC('request_npc_inventory', { npcName })
+}
+
+/** Keep popup data fresh with the same cadence as the main character rail. */
+export function useTabDataPolling(tab: SheetTab): void {
+  useEffect(() => {
+    requestTabData(tab)
+    const timer = window.setInterval(() => requestTabData(tab), 5000)
+    return () => window.clearInterval(timer)
+  }, [tab])
 }

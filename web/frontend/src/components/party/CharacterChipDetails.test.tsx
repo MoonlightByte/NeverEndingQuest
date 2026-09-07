@@ -67,18 +67,47 @@ it('still opens the resolved portrait when no later Details selection cancels it
 
 it('a nested full-card menu cancels pending header media and restores its own opener focus', async () => {
   const finish = heldMedia()
-  usePlayer.setState({ npcs: [{ name: 'Elen', equipment: [{ name: 'Arrow', quantity: 2, type: 'ammunition' }] }], dataErrors: {} })
+  usePlayer.setState({ npcs: [{ name: 'Elen', skills: { Perception: 4 } }], dataErrors: {} })
   render(<NpcCardDialog name="Elen" onClose={vi.fn()} />)
   fireEvent.click(screen.getByRole('button', { name: 'Elen' }))
-  const inventory = screen.getByRole('button', { name: 'Inventory' })
+  const inventory = screen.getByRole('button', { name: 'Skills' })
   inventory.focus()
   fireEvent.click(inventory)
   expect(screen.getAllByRole('dialog', { hidden: true })).toHaveLength(2)
-  expect(screen.getByRole('dialog', { name: "Elen's Inventory" }).textContent).toContain('x2')
+  expect(screen.getByRole('dialog', { name: "Elen's Skills" }).textContent).toContain('Perception')
   await finish()
   expect(screen.queryByRole('dialog', { name: 'Character media' })).toBeNull()
   expect(screen.getAllByRole('dialog', { hidden: true })).toHaveLength(2)
   fireEvent.keyDown(document.activeElement ?? document, { key: 'Escape' })
-  expect(screen.queryByRole('dialog', { name: "Elen's Inventory" })).toBeNull()
+  expect(screen.queryByRole('dialog', { name: "Elen's Skills" })).toBeNull()
   expect(document.activeElement).toBe(inventory)
+})
+
+it('roster card opens the bio while its separate portrait opens media only', async () => {
+  const openMedia = vi.fn(), openDetails = vi.fn()
+  vi.mocked(resolveClickMedia).mockResolvedValueOnce({ kind: 'image', src: '/media/npcs/elen.jpg' })
+  const { container } = render(<CharacterChip name="Elen" displayName="Elen" variant="party-npc"
+    stats={{ name: 'Elen', currentHp: 12, maxHp: 14 }} showVitals thumbCandidates={[]}
+    clickMedia={{ videoUrl: '/media/npcs/elen_video.mp4', imageCandidates: ['/media/npcs/elen.jpg'] }} onOpenMedia={openMedia} onOpenDetails={openDetails} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Elen full character details' }))
+  expect(openDetails).toHaveBeenCalledOnce()
+  expect(resolveClickMedia).not.toHaveBeenCalled()
+  expect(screen.queryByText('Details')).toBeNull()
+  expect(container.querySelector('button button')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Elen portrait' }))
+  await waitFor(() => expect(openMedia).toHaveBeenCalledOnce())
+  expect(openDetails).toHaveBeenCalledOnce()
+})
+
+it('opening a roster bio cancels a pending portrait so media cannot cover the bio later', async () => {
+  const finish = heldMedia()
+  const openMedia = vi.fn(), openDetails = vi.fn()
+  render(<CharacterChip name="Elen" displayName="Elen" variant="party-npc" stats={{ name: 'Elen' }}
+    showVitals thumbCandidates={[]} clickMedia={{ videoUrl: '/media/npcs/elen_video.mp4', imageCandidates: ['/media/npcs/elen.jpg'] }}
+    onOpenMedia={openMedia} onOpenDetails={openDetails} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Elen portrait' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Elen full character details' }))
+  await finish()
+  expect(openDetails).toHaveBeenCalledOnce()
+  expect(openMedia).not.toHaveBeenCalled()
 })

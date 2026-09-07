@@ -12,6 +12,7 @@ import { EquipmentDetails } from './EquipmentDetails'
 import { SpellDetails } from './spellDetails'
 import { spellKey as emberSpellKey } from './spellKey'
 import { useSpellReference } from './useSpellReference'
+import { SpellcastingSummary } from './SpellcastingSummary'
 import { equipmentList, formatModifier, slotTone, spellcastingView, type EquipmentItem, type SpellLevelGroup } from './characterData'
 
 function SlotBadge({ slots }: { slots: { current: number; max: number } }) {
@@ -59,7 +60,7 @@ function SpellRow({
     >
       <span ref={targetRef} className="neq-spell-name text-primary">{ember ? <EmberInspection label={spell}><SpellDetails detail={detail} fallbackName={spell} /></EmberInspection> : spell}</span>
       {prepared && (
-        <div className="neq-spell-badges"><span className="neq-spell-badge prepared" title="Prepared">P</span></div>
+        <div className="neq-spell-badges"><span className="neq-spell-badge prepared" title="Prepared">{ember ? 'Prepared' : 'P'}</span></div>
       )}
       {hovered && detail && <div
         ref={tooltipRef}
@@ -96,7 +97,7 @@ function MagicCategory({ title, items }: { title: string; items: EquipmentItem[]
   </div>)}</section>
 }
 
-export function SpellsTab() {
+export function SpellsTab({ expanded = false }: { expanded?: boolean } = {}) {
   const ember = useEmberDesktop()
   const spells = usePlayer((s) => s.spells)
   const error = usePlayer((s) => s.dataErrors.spells)
@@ -125,8 +126,8 @@ export function SpellsTab() {
     <div className="neq-spells-tab">
       {referenceStatus === 'error' && <p role="status">Spell reference unavailable. <button type="button" onClick={retry}>Retry details</button></p>}
       <div className="neq-spells-sheet">
-      {view ? <div className="neq-spellcasting-section"><h3>SPELLCASTING</h3>
-      {(view.saveDC !== null || view.attackBonus !== null) && <div className="neq-spell-stats">
+      {view ? <div className="neq-spellcasting-section">{ember && expanded ? <SpellcastingSummary data={spells} casting={view} /> : <h3>SPELLCASTING</h3>}
+      {!(ember && expanded) && (view.saveDC !== null || view.attackBonus !== null) && <div className="neq-spell-stats">
         {view.saveDC !== null && <span>Save DC: {view.saveDC}</span>}
         {view.attackBonus !== null && <span>Spell Attack: {formatModifier(view.attackBonus)}</span>}
       </div>}
