@@ -228,6 +228,7 @@ def review_ambiguous_segments(
     ambiguous_segments: List[Dict[str, Any]],
     travel_context: Optional[Dict[str, Any]] = None,
     invocation_claim=None,
+    detached_context=None,
 ) -> List[Dict[str, Any]]:
     """Use T021 to classify only the supplied ambiguous route segments.
 
@@ -266,6 +267,8 @@ def review_ambiguous_segments(
             ],
             _request_provider=model_config.MODEL_PROVIDER,
             _live_selected=True,
+            _detached_scope=(detached_context or {}).get("scope"),
+            _detached_status=(detached_context or {}).get("status"),
             model=transition_config["model"],
             temperature=TRANSITION_VALIDATOR_TEMPERATURE,
             **{
@@ -363,6 +366,7 @@ def validate_transition_request(
     plot_data: Dict,
     party_level: int = 1,
     invocation_claim=None,
+    detached_context=None,
 ) -> Dict[str, Any]:
     """Backward-compatible bridge for the existing action-handler callsite.
 
@@ -425,6 +429,7 @@ def validate_transition_request(
                 "party_level": party_level,
             },
             invocation_claim=invocation_claim,
+            detached_context=detached_context,
         )
         reviews_by_id = {review["location_id"]: review for review in reviews}
 

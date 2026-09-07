@@ -114,7 +114,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 @MULTI_AREA_TRAVEL={
   valid: Single transitionLocation to final destination with journey narration
   accepted_stop: If supplied accepted Travel Agent facts authorize stop X, narration may retain original goal but the single first transitionLocation MUST target X only
-  roster_change_in_place: If supplied accepted Travel Agent facts carry reason_code roster_change_in_place, code cancelled a co-emitted transitionLocation because updatePartyNPCs was present. Party stays put. Response MUST NOT contain transitionLocation, narration must not claim party travel, only the named companion leaves/arrives. NEVER reject for missing transitionLocation
+  roster_change_in_place: Code cancelled co-emitted party travel, NOT approved/committed membership. Party stays; no transitionLocation or party-travel narration. Validate actual intent/local-party boundary; retain genuine authorized leaving/rejoining or discard unauthorized roster proposal/narration. NEVER reject for missing transitionLocation or demand departure merely because proposed
   unavailable: If supplied accepted facts say no valid route, no transitionLocation, no alternate destination, honest in-fiction explanation, player owns next choice
   invalid: Multiple transitions for one request
   required: updateTime for full journey
@@ -129,6 +129,23 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 @XP_VALIDATION={
   post_combat: PROHIBITED after "Combat Summary"
   narrative_takedown: REQUIRED in same response if enemy defeated outside combat
+}
+
+@LOCAL_PARTY_BOUNDARY_VALIDATION={
+  judge: ACTUAL input + canonical location/roster + narration/actions. Local scouting supported; player-directed companion mission in ANOTHER location while player stays unsupported
+  reject: Remote scouting/action/arrival/report promises or performance, including later invented spy reports; advice/destination context is NOT authority
+  correction: valid=false; name violating remote activity, say it cannot happen under local-party boundary, direct DM to explain naturally in scene/character voice and offer supported choices with player agency
+  substitutions: Reject unauthorized dismissal, whole-party travel or moveBackgroundNPC workaround. Do NOT demand remove to satisfy remote request; corrected response removes unsupported promises/actions, preserves authorized intent, returns agency
+  valid: Honest explanation + unchanged membership/location; legitimate local scouting/party travel; genuine leaving/rejoining via existing mechanism and NPC/player agreement. Real membership changes require matching actions in SAME response; remote request alone is NOT removal consent
+  no_false_reject: Discussion/negation/future plan/refusal alone != membership change. Independently authorized parting != remote mission. Remove needs exact name only, no level/class/role or optional context
+  grounding: Preserve legitimate established knowledge/independent background events, never as remote-mission workaround. Validation != commit proof; keep correction loop, no game abort/forced player retry
+  cancelled_travel: roster_change_in_place proves travel cancellation ONLY, NOT membership authority/commit. Judge actual intent; accept discarded unauthorized removal with travel still cancelled; preserve genuinely authorized membership change
+}
+
+@PARTY_REVIEW_VALIDATION={
+  autonomy: Independent departure requires ALREADY ACCEPTED story grounding, never candidate-invented justification. Review ALL membership proposals incl generic partyNPCs replacement; prefer existing updatePartyNPCs lifecycle
+  authority: Guardian approval != full validation or execution. Judge LATEST candidate against actual input/accepted context; preserve applicable prior constraints, current canonical evidence may supersede stale factual feedback
+  rejection: Complete correction of latest draft, NEVER resurrect earlier rejected draft. Rejected drafts/feedback != accepted events or consent
 }
 
 @NPC_JOINING={
@@ -200,7 +217,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 @CLARIFICATIONS={
   1:Empty actions OK if waiting for input/consent
   2:NEVER ask player to roll for NPCs--DM rolls them
-  3:transitionLocation REQUIRED for actual chosen movement; not for discussion/questions/plans/quotes/negation. Supplied accepted Travel Agent stop/no-route/roster_change_in_place facts govern the destination or honest no-transition exception (roster_change_in_place: party stays, no transitionLocation, only the named companion moves)
+  3:transitionLocation REQUIRED for actual chosen movement; not for discussion/questions/plans/quotes/negation. Supplied accepted Travel Agent stop/no-route/roster_change_in_place facts govern the destination or honest no-transition exception (roster_change_in_place: party stays, no transitionLocation; cancellation != membership authority/commit; retain genuine authorized leaving/rejoining or discard unauthorized roster proposal/narration)
   4:INVENTORY QUERIES: "How many arrows?" / "Check inventory" = NO updateCharacterInfo needed (just narrate counts)
   5:Item loss/drop/trade REQUIRES updateCharacterInfo
   6:Ignore "Location transition:" user messages--system notes

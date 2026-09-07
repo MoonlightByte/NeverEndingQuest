@@ -21,6 +21,11 @@ Startup repair delta verified on 2026-09-05 against the `fix/issue-114-startup-r
 
 ## Authority table
 
+Guardian integration verified 2026-09-06 in the working candidate based on
+`185f8997a5055521f04fe7a55ca908a41f0d412f`. Changed welcome seams have controlled
+scope/lease/history tests; combined-code live acceptance and final review remain pending.
+Other historical anchors are not recertified by this note.
+
 | Datum | Source of truth | Acceptance or commit point |
 |---|---|---|
 | Wizard required | Unfinished startup checkpoint, or missing tracker/module/player identity | `startup_required()` resumes unfinished builds; completed history cannot override current campaign state |
@@ -30,7 +35,7 @@ Startup repair delta verified on 2026-09-05 against the `fix/issue-114-startup-r
 | Initial location | T093 proposal resolved against selected module's actual areas/locations | Validated IDs and canonical names precede whole tracker projection; no invented fallback |
 | Current game context | Tracker, module, location, plot, roster, and history files | Reloaded after recovery and used to rebuild conversation context |
 | Welcome identity | `startup_state.json` attempt ID, status, and lease owner | Lock-protected claim/processing/done transition |
-| Welcome result | Frozen history/location snapshot plus T067 output | Only the game thread may accept and apply a still-current result |
+| Welcome result | Frozen accepted history/party/location plus reviewed candidate and optional route plan | Only the game thread may accept and apply a still-current result |
 | Surface readiness | Structured startup markers | `startup_loop_ready`, completed kickoff, or skipped kickoff unlocks input |
 | Recovery state | Each subsystem's own durable receipt or checkpoint | Startup invokes those owners; it does not duplicate their authority |
 
@@ -43,8 +48,8 @@ Startup repair delta verified on 2026-09-05 against the `fix/issue-114-startup-r
 5. An existing game repairs missing character fields and synchronizes the durable `wizard_complete` state.
 6. Before ordinary context, startup drains staged module completion, recovers effects migration, reloads the location graph, resumes pending travel, and resumes an active combat encounter.
 7. It then reloads history and party state, reconciles campaign state, loads location/plot/module context, installs the system prompt and fresh context blocks, orders messages, and saves history with compression disabled.
-8. On queue-backed web/headless, startup freezes history, registers a detached welcome scope, starts a non-daemon T067 worker, emits an attempted marker, and proceeds to the input loop. The worker generates only; it cannot mutate history or game state.
-9. On raw terminal, the same welcome T067 runs synchronously, is lease-checked, applied by the game thread, and marked done before input opens.
+8. On queue-backed web/headless, startup freezes context, registers a detached welcome scope, starts a non-daemon T067 worker, emits an attempted marker, and proceeds to input. Fresh membership candidates enter the shared guardian/full-validator correction loop on that worker with the same scope/status. It never persists review drafts or executes actions.
+9. On raw terminal, welcome generation and applicable shared review run synchronously before existing lease/processing checks, game-thread apply, and completion receipt. Startup supplies no current player input; synthetic notes are not consent.
 10. The loop emits `startup_loop_ready`, refreshes state/effects, loads player statistics, and requests input. Queue-backed input can therefore be reachable while welcome generation is still active.
 11. If the player submits first, the game thread supersedes and reaps the welcome, then discards or hands it back before processing player text.
 12. T092 authors a typed interview/finalize response. A separate T092 review judges player intent, complete-build approval, and truthful narration; code checks shape and the latest actual player-message reference. Only accepted responses enter durable history.
@@ -65,6 +70,15 @@ Startup repair delta verified on 2026-09-05 against the `fix/issue-114-startup-r
 - Save includes unfinished startup history. Load replaces that history, including its absence in an ordinary campaign save. Browser reconnect distinguishes an interview prompt from play readiness.
 - Completed (`ready`) history left behind by a failed archive is non-authoritative residue: normal campaign state, including later HP/XP/travel, determines whether startup is needed. Only unfinished checkpoints force build resumption.
 - The detached welcome worker never mutates state. Game-thread acceptance rechecks the lease, frozen history, and current location, then applies exactly once.
+- Game-thread welcome follow-ups borrow the same provider scope with a `finally`
+  reset. Provider-stop takes the existing failure terminal; typed supersession
+  discards the result instead of recording a successful or failed kickoff.
+- The existing stale resolver retains each child's accepted history and party values.
+  Reviewed-travel feedback and unreviewed authority context are separate transient
+  data; neither is persisted approval. Recovery checks the existing scope/lease/value
+  owner before generation and before processing, without ordinary preparation of frozen
+  history. Nontravel retries retain their existing bound. Content failures cannot mark
+  kickoff successful; safe notices are suppressed after ownership loss.
 - Welcome Save/Load/Reset operations queue through the welcome scope and drain before it becomes quiescent.
 - The synchronous companion-memory backfill is still a real pre-prompt gate at this revision; open issue #258 tracks that gap.
 - Old-format transition and chronicle repair is deferred until after real input opens a cancellable turn scope. It may gate the first submitted turn, but not the prompt construction shown above.
@@ -83,8 +97,8 @@ Startup repair delta verified on 2026-09-05 against the `fix/issue-114-startup-r
 10. `main.py:7135-7294` - module, effects, and travel recovery before context.
 11. `main.py:7305-7370` - active-combat startup branch.
 12. `main.py:7481-7584` - authoritative context build and no-compression save.
-13. `main.py:298-378` - detached welcome lifecycle and generation-only worker.
-14. `main.py:420-750` - game-thread welcome acceptance and receipts.
+13. `main.py:362` and `main.py:9524` - detached generation and applicable shared membership review.
+14. `main.py:443`, `main.py:702` and `main.py:6756` - welcome acceptance, owner currentness checks and shared stale resolver.
 15. `main.py:7586-7758` - surface split, readiness marker, and first input.
 
 ## Invariants

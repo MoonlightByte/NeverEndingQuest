@@ -25,6 +25,13 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 
 ## Authority table
 
+Party-guardian delta verified 2026-09-06 in the working candidate based on
+`185f8997a5055521f04fe7a55ca908a41f0d412f` plus uncommitted guardian integration; unchanged anchors retain their earlier pins.
+T114 uses the existing required live transport and registry: OpenAI luna/low,
+with existing provider-specific profiles for Gemini, Legacy and LM Studio.
+Only OpenAI has live acceptance evidence for this change. No new user setting,
+provider router, persisted approval or background comparison is introduced.
+
 | Datum | Source of truth | Explicit non-authority |
 |---|---|---|
 | Current provider | `model_config.MODEL_PROVIDER`, initialized from ignored `user_settings.json` | Stale imported globals and old `USE_*` toggles |
@@ -35,6 +42,7 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 | Provider adapter | `api_client.create_completion` | Retry policy or model selection |
 | Successful response | Normalized content, usage, provider, T-ID, reported model, and response ID | Pre-call model constant |
 | Evidence | API/capture/usage logs | Gameplay or persisted-state authority |
+| Membership permission | T114 boolean/reason over actual input, accepted history and canonical party | Candidate narration and previous rejection feedback |
 
 ## Flow
 
@@ -55,9 +63,14 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 15. Capture task overrides select variants only. The sole production override is the registered attempt ladder, except the constrained OpenAI evaluation-primary mode available only while capture is enabled.
 16. Callsite schema/format/temperature overlays survive registry resolution. The adapter removes unsupported combinations per provider, including `top_p` and incompatible temperature/effort/schema forms.
 17. Local/Custom may replace only the LM Studio model from persisted settings and omits unsupported `json_object` while preserving explicit JSON schema.
-18. Required live tasks structurally reissue after a fully reaped unavailable generation, and keep reissuing transient transport/HTTP failures with capped jittered backoff until the provider answers or the player supersedes the turn (Load/Reset); only deterministic errors and a bounded run of empty replies hand off to the caller (#284, #193 B2-vii). The player sees a changing status line (attempt, elapsed) and one plain-words card per failure class naming the provider (local: connection lost; OpenAI/Gemini: named, out-of-funds when the structured error code says so). Advisory tasks terminate for that beat. The live policy, not capture, owns this distinction.
+18. Required live tasks structurally reissue after a fully reaped unavailable generation and keep reissuing transient transport/HTTP failures with capped jittered backoff until useful output or supersession (Load/Reset). The owner-approved integration policy below retains empty-response reissue; structured deterministic errors hand off to existing caller policy. Changing progress and provider-specific error cards remain transport-owned. Advisory tasks retain their own completion policy; capture does not own that distinction.
 19. Startup supplies a private reactive message-repair callback when a provider rejects request ordering. The live transport invokes it only after the correlated failed child is reaped, then freezes the repaired messages for the next generation. It does not fabricate a response or change provider selection.
 20. Capture removes that callback before serialization/API dispatch and records the actual repaired message sequence. Independent startup review uses the existing T092 binding; no parallel startup router or model-specific gameplay branch is introduced.
+21. Canonically normalized membership proposals trigger T114 before provisional
+    travel preflight and T065. A malformed verdict
+    repeats the same guardian stage; semantic rejection returns to the shared T067
+    correction owner. Revised candidates pass applicable checks again. Detached welcome
+    calls forward their existing scope/status; no provider call runs under response fences.
 
 ## State and atomicity
 
@@ -70,6 +83,11 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 - API master JSONL serializes before an in-process append lock and does not claim cross-process locking.
 - At this pin, per-T-ID primary capture lacks actual `response.model`, provider response ID, and usage invocation ID. The API master carries operation ID, generation, disposition, cause class, error code, retry-after and a billing marker for every error or reaped live-child generation (`metadata.source=live_provider_parent`, #284); success rows from callers still lack response ID/shared correlation, so neither store alone proves exact request-to-response identity for successes.
 - Source-revision capture hashes runtime Python and prompt/schema bytes with no subprocess (primed at import); the earlier Git probe hang (#250, #278) is resolved on main.
+- Scope supersession reaps a child and raises before generation logging; absence of a
+  completed T114 capture cannot prove whether an interrupted guardian started. The
+  guardian-load acceptance observation does not certify task-specific cancellation.
+- Guardian seams: `core/npc/party_guardian.py:95`, `main.py:9245`,
+  `model_registry.py:647`, `utils/capture/live_provider_call.py:52`.
 
 ## Load-bearing seams
 

@@ -33,6 +33,8 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 
 ### Standard beat
 
+Local-party instruction, completion-collection and travel-publication seams checked on 2026-09-06 in the uncommitted guardian integration based on `185f8997a5055521f04fe7a55ca908a41f0d412f`. Combined-code live acceptance is pending; older anchors elsewhere are not recertified. Doctrine: live #193, D-NPC-PARTY-1, D-NPC-PARTY-6 and D-VS-3.
+
 1. Main claims the live turn and durably appends the player's substantive input.
 2. Candidate selection resolves eligible active companions from the party roster and canonical
    sheets; it does not prose-gate the player request.
@@ -41,13 +43,28 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 4. If E3 recall is unnecessary, T105 dispatch starts immediately.
 5. T105 workers run in parallel across selected NPCs; an optional affinity classifier runs only
    when prior committed relationship evidence exists.
-6. During T067 request assembly, after compression, code polls the handle, seals pending work,
-   and injects completed advice immediately before the final player message.
+6. During T067 request assembly, after compression, code completion-collects dispatched advice
+   before injection immediately before the final player message; it does not pre-empt pending
+   companions (`core/npc/voice_context.py:1812`, `_RecallVoiceHandle.collect` at line328).
 7. T067 remains the sole player-facing DM and action author.
-8. T065 validates the candidate with the same request-local advisory batch; correction attempts
-   reuse that batch.
-9. Accepted T067 history is persisted under the live invocation claim.
-10. Only then does code commit each accepted T105 result to relationship working state.
+8. In the guardian working candidate based on the revision above, structured membership
+   proposals receive T114 review before route preflight and T065. The shared owner (`main.py:9585`) keeps
+   actual player input, accepted context, latest candidate and review feedback distinct.
+   T065 retains the same request-local advisory batch across correction attempts.
+
+   T067/T065 reconcile private advice against the supported local-party boundary: companion suggestions cannot authorize remote scouting, arrival or reports. Violating DM proposals return through existing semantic correction. Genuine leaving/rejoining and local scouting remain supported. No mandatory dialogue line or voice-coverage validator is added. T065 does not receive the generated common DM Note; its own prompt states the boundary. Ordinary narration remains before handler execution; this change adds no result-feedback loop.
+9. Ordinary accepted T067 history is persisted under the live invocation claim.
+   Travel excludes pre-processing history/sidecar publication; existing travel publishers
+   own commit after exact-plan currentness checks.
+10. Travel T105 working state is committed only after successful assistant processing
+    while the invocation is still current. A stale/content-failed travel result does not
+    commit that sidecar. Controlled caller checks are not successful-live-travel evidence.
+
+T114 is a membership reviewer, not another voice author. Private suggestions and
+rejected drafts cannot establish consent. Genuine requested membership changes and
+independent departures grounded in already accepted story remain possible; the full
+validator still reviews the complete candidate after guardian approval. Guardian
+feedback is request-local and never committed as companion memory.
 
 ### Recall beat
 
@@ -92,7 +109,7 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 6. `core/npc/voice_context.py:810-990` - canonical packet construction.
 7. `core/npc/voice_service.py:720-917` - fenced parallel T105 workers.
 8. `core/npc/voice_service.py:493-660` - response validator and affinity classification.
-9. `core/npc/voice_context.py:1633-1666` - poll, seal, and private injection.
+9. `core/npc/voice_context.py:1812` - completion-collection and private injection; `_RecallVoiceHandle.collect` at line328.
 10. `main.py:6642-6671` - post-compression injection before T067.
 11. `main.py:2952-2996` - same advice reaches T065 validation.
 12. `main.py:8974-9007` - accepted-history and sidecar commit gate.

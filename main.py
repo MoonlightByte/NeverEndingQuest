@@ -328,13 +328,14 @@ class _WelcomeLifecycle:
         self.frozen_history = frozen_history
         self.accepted_snapshot = copy.deepcopy(frozen_history)
         self.note_message = copy.deepcopy(note_message) if note_message else None
-        self.party_tracker_data = party_tracker_data
-        self.location_data = location_data
+        self.party_tracker_data = copy.deepcopy(party_tracker_data)
+        self.location_data = copy.deepcopy(location_data)
         self.startup_attempt_id = startup_attempt_id
         self.lease_owner = lease_owner
         self.location_id = location_id
         self.slot = None
         self.error = None
+        self.review_failure_status = None
         self.provider_complete = threading.Event()
         self.live_history = None  # the loop's live list; set before input parks
         self.worker = None
@@ -359,7 +360,7 @@ def _welcome_status(message):
 
 
 def _welcome_worker_main(lifecycle):
-    """Worker: detached T067 generation only. No history/state mutation."""
+    """Worker: detached generation and applicable review, no history/state writes."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
     try:
         _welcome_status("The DM is recalling your journey...")
@@ -372,8 +373,18 @@ def _welcome_worker_main(lifecycle):
                 "status": _welcome_status,
             },
         )
+        reviewed = _review_fresh_membership_candidate(
+            content, lifecycle.party_tracker_data, lifecycle.frozen_history,
+            player_input=None,
+            detached_context={"scope": lifecycle.scope, "status": _welcome_status},
+        )
         with lifecycle.lock:
-            lifecycle.slot = content
+            if reviewed["status"] == "accepted":
+                lifecycle.slot = reviewed
+            else:
+                lifecycle.error = reviewed["player_message"]
+                lifecycle.review_failure_status = reviewed["status"]
+                lifecycle.disposition = "FAILED"
     except LiveProviderSuperseded:
         with lifecycle.lock:
             if lifecycle.disposition is None:
@@ -431,6 +442,10 @@ def _finish_welcome(lifecycle, disposition):
 
 def _apply_welcome(lifecycle):
     """Game-thread handback: apply or discard the completed welcome."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded, _executing_control_scope,
+    )
     from utils.startup_handoff_state import (
         is_kickoff_claim_still_active,
         renew_kickoff_lease,
@@ -457,7 +472,8 @@ def _apply_welcome(lifecycle):
         ):
             lifecycle.disposition = "SUPERSEDED"
         disposition = lifecycle.disposition
-        content = lifecycle.slot
+        reviewed = lifecycle.slot
+        content = reviewed["candidate"] if reviewed is not None else None
         pending_receipt = lifecycle.pending_receipt
     history = (
         lifecycle.live_history
@@ -513,7 +529,7 @@ def _apply_welcome(lifecycle):
             startup_attempt_id=lifecycle.startup_attempt_id,
             lease_owner=lifecycle.lease_owner,
         )
-        _finish_welcome(lifecycle, "APPLIED")
+        _finish_welcome(lifecycle, pending_receipt.get("disposition", "APPLIED"))
         return
 
     if disposition in {"SUPERSEDED"}:
@@ -591,6 +607,12 @@ def _apply_welcome(lifecycle):
             % (lifecycle.error,),
             category="startup",
         )
+        if (
+            lifecycle.review_failure_status == "travel_content_unavailable"
+            and failed_receipt.get("status") == "updated"
+            and not lifecycle.scope.is_superseded()
+        ):
+            display_dm_narration(lifecycle.error)
         _finish_welcome(lifecycle, "FAILED")
         return
 
@@ -673,12 +695,64 @@ def _apply_welcome(lifecycle):
         )
         _finish_welcome(lifecycle, "STALE_DISCARDED")
         return
+    # Follow-up generation/review borrows the same welcome authority, just
+    # like committed module follow-ups; it must not become an unowned call.
+    detached_context = {"scope": lifecycle.scope, "status": _welcome_status}
+
+    def recovery_authority_current(review_context):
+        # These are value fences owned by the existing welcome, not a new
+        # approval. A child carries its own post-parent canonical party/base.
+        from core.managers.campaign_manager import _party_module_transition_lock
+        from utils.startup_handoff_state import STATE_FILE, _is_lease_active
+        from utils.transient_filesystem import is_transient_filesystem_error, read_bytes_preserving_errors
+        from utils.capture.live_provider_call import _interruptible_wait
+
+        while True:
+            with lifecycle.lock:
+                if (
+                    _welcome_lifecycle is not lifecycle
+                    or lifecycle.phase != "APPLYING"
+                    or lifecycle.scope.is_superseded()
+                ):
+                    return False
+            try:
+                with _party_module_transition_lock():
+                    # Observation must not invoke load_state's reset-on-error
+                    # behavior. Preserve the existing lease's value semantics.
+                    state = json.loads(read_bytes_preserving_errors(STATE_FILE).decode("utf-8-sig"))
+                    if not isinstance(state, dict) or (
+                        state.get("status") != "kickoff_processing"
+                        or state.get("startup_attempt_id") != lifecycle.startup_attempt_id
+                        or state.get("lease_owner") != lifecycle.lease_owner
+                        or not _is_lease_active(state)
+                    ):
+                        return False
+                    if load_json_file(json_file) != review_context.get("accepted_history"):
+                        return False
+                    if load_json_file("party_tracker.json") != review_context.get("party_snapshot"):
+                        return False
+                    return not lifecycle.scope.is_superseded()
+            except OSError as exc:
+                if not is_transient_filesystem_error(exc):
+                    return False
+            except (ValueError, TypeError):
+                return False
+            # Repeat the complete value check, never wait under either lock.
+            _interruptible_wait(0.25, lifecycle.scope, "Checking startup state...")
+
+    provider_scope_token = _executing_control_scope.set(lifecycle.scope)
     try:
+        if lifecycle.scope.is_superseded():
+            raise LiveProviderSuperseded("welcome handback superseded")
         process_result = process_ai_response(
             content,
             lifecycle.party_tracker_data,
             lifecycle.location_data,
             history,
+            approved_transition_plan=reviewed["approved_transition_plan"],
+            player_input=None,
+            review_context=_dm_review_context(reviewed, history, None, party_snapshot=lifecycle.party_tracker_data),
+            detached_context=detached_context,
         )
         if _is_restore_request(process_result):
             _finish_welcome(lifecycle, 'RESTORE_REQUESTED')
@@ -693,24 +767,48 @@ def _apply_welcome(lifecycle):
             lifecycle.party_tracker_data,
             lifecycle.location_data,
             history,
+            detached_context=detached_context,
+            authority_check=recovery_authority_current,
         )
+        if isinstance(process_result, dict) and process_result.get("status") == "stale_discarded":
+            receipt = mark_kickoff_done(lifecycle.startup_attempt_id, lifecycle.lease_owner)
+            if receipt.get("status") == "lock_timeout":
+                with lifecycle.lock:
+                    lifecycle.pending_receipt = {"call": "done", "disposition": "STALE_DISCARDED"}
+                    lifecycle.phase = "APPLY_PENDING"
+                return
+            _finish_welcome(lifecycle, "STALE_DISCARDED")
+            return
         if _is_restore_request(process_result):
             _finish_welcome(lifecycle, 'RESTORE_REQUESTED')
             return None if lifecycle.scope.is_superseded() else process_result
+        if lifecycle.scope.is_superseded():
+            raise LiveProviderSuperseded("welcome follow-up superseded")
         if isinstance(process_result, dict) and process_result.get("status") == "superseded_invocation":
             _finish_welcome(lifecycle, "SUPERSEDED")
             return
+        if isinstance(process_result, dict) and process_result.get("status") == "travel_content_unavailable":
+            # Content failure is not a completed welcome or a provider error.
+            # Existing failure cleanup retains any accepted parent beats.
+            if not is_kickoff_claim_still_active(lifecycle.startup_attempt_id, lifecycle.lease_owner):
+                _finish_welcome(lifecycle, "STALE_DISCARDED")
+                return
+            display_dm_narration(process_result["player_message"])
+            raise RuntimeError(process_result["player_message"])
         if (
             isinstance(process_result, dict)
             and (
                 process_result.get("retryable") is True
-                or process_result.get("status") == "error"
+                or process_result.get("status") in {"error", "provider_error"}
             )
         ):
             raise RuntimeError(
                 "startup welcome processing pending: %s"
                 % process_result.get("status", "unknown")
             )
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        _finish_welcome(lifecycle, "SUPERSEDED")
+        return
     except BaseException as exc:
         failed_receipt = mark_kickoff_failed(
             lifecycle.startup_attempt_id, lifecycle.lease_owner, str(exc)
@@ -736,6 +834,8 @@ def _apply_welcome(lifecycle):
         )
         _finish_welcome(lifecycle, "FAILED")
         return
+    finally:
+        _executing_control_scope.reset(provider_scope_token)
     update_result = mark_kickoff_done(
         lifecycle.startup_attempt_id, lifecycle.lease_owner
     )
@@ -966,6 +1066,9 @@ def _run_startup_kickoff_once(
     startup_state,
     precomputed_response=None,
 ):
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+
     claim = claim_kickoff_lease(source=source)
     claim_status = claim.get("status")
     state = claim.get("state", startup_state)
@@ -1004,6 +1107,10 @@ def _run_startup_kickoff_once(
             # the off-thread welcome worker instead of this path.
             initial_ai_response = get_ai_response(conversation_history)
 
+        reviewed = _review_fresh_membership_candidate(
+            initial_ai_response, party_tracker_data, conversation_history,
+            player_input=None,
+        )
         # Fence stale/expired workers before applying side effects.
         if not is_kickoff_claim_still_active(startup_attempt_id, lease_owner):
             emit_startup_marker(
@@ -1015,6 +1122,14 @@ def _run_startup_kickoff_once(
                 attempt_count=state.get("attempt_count"),
             )
             return "stale_discarded"
+
+        if reviewed["status"] != "accepted":
+            # A rejected draft and its notice both belong to this lease.
+            # Existing exception cleanup owns its failure receipt/recovery.
+            if reviewed["status"] == "travel_content_unavailable":
+                display_dm_narration(reviewed["player_message"])
+            raise RuntimeError(reviewed["player_message"])
+        initial_ai_response = reviewed["candidate"]
 
         lease_renew = renew_kickoff_lease(startup_attempt_id, lease_owner, lease_seconds=900)
         if lease_renew.get("status") != "updated":
@@ -1043,6 +1158,9 @@ def _run_startup_kickoff_once(
             party_tracker_data,
             location_data,
             conversation_history,
+            approved_transition_plan=reviewed["approved_transition_plan"],
+            player_input=None,
+            review_context=_dm_review_context(reviewed, conversation_history, None, party_snapshot=party_tracker_data),
         )
         if _is_restore_request(process_result):
             return process_result
@@ -1061,11 +1179,16 @@ def _run_startup_kickoff_once(
             return process_result
         if isinstance(process_result, dict) and process_result.get("status") == "superseded_invocation":
             return "stale_discarded"
+        if isinstance(process_result, dict) and process_result.get("status") == "travel_content_unavailable":
+            if not is_kickoff_claim_still_active(startup_attempt_id, lease_owner):
+                return "stale_discarded"
+            display_dm_narration(process_result["player_message"])
+            raise RuntimeError(process_result["player_message"])
         if (
             isinstance(process_result, dict)
             and (
                 process_result.get("retryable") is True
-                or process_result.get("status") == "error"
+                or process_result.get("status") in {"error", "provider_error"}
             )
         ):
             raise RuntimeError(
@@ -1096,6 +1219,8 @@ def _run_startup_kickoff_once(
             attempt_count=update_result.get("state", {}).get("attempt_count"),
         )
         return "done"
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        return "stale_discarded"
     except Exception as exc:
         fail_result = mark_kickoff_failed(startup_attempt_id, lease_owner, str(exc))
         emit_startup_marker(
@@ -3017,29 +3142,16 @@ def _assemble_validation_messages(
     return messages
 
 
-def validate_ai_response(
-    primary_response,
-    user_input,
-    validation_prompt_text,
-    conversation_history,
-    party_tracker_data,
-    srd_context=None,
-    npc_voice_batch=None,
-    transition_facts=None,
-    invocation_claim=None,
-    module_snapshot=None,
-    installed_module_references="",
-):
-    from core.combat.invocation import (
-        InvocationSupersededError,
-        require_current_invocation,
-    )
+def _normalize_dm_candidate(primary_response, party_tracker_data):
+    """One structural boundary before semantic review (#193 D-NPC-PARTY-3).
 
-    print("DEBUG: NPC validation running...")
-    status_validating()
-    
+    Preserve repair provenance for T065 diagnostics without normalizing an
+    already guardian-approved draft a second time.
+    """
     # Pre-validate JSON structure
-    is_valid_structure, fixed_response, structure_message = validate_json_structure(primary_response)
+    is_valid_structure, fixed_response, structure_message = validate_json_structure(
+        primary_response, party_tracker_data=party_tracker_data,
+    )
     
     if not is_valid_structure:
         # Structure is too broken to fix automatically
@@ -3075,6 +3187,55 @@ def validate_ai_response(
         validate_typed_encounter_actions(json.loads(response_to_validate))
     except (json.JSONDecodeError, ValueError, TypeError) as exc:
         return (False, f"Typed combat scene error: {exc}")
+
+    return True, {
+        "candidate": response_to_validate,
+        "original_response": primary_response,
+        "fixed_response": fixed_response,
+        "structure_message": structure_message,
+    }
+
+
+def validate_ai_response(
+    primary_response,
+    user_input,
+    validation_prompt_text,
+    conversation_history,
+    party_tracker_data,
+    srd_context=None,
+    npc_voice_batch=None,
+    transition_facts=None,
+    invocation_claim=None,
+    normalization=None,
+    review_feedback=None,
+    detached_context=None,
+    module_snapshot=None,
+    installed_module_references="",
+):
+    from core.combat.invocation import (
+        InvocationSupersededError,
+        require_current_invocation,
+    )
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+
+    print("DEBUG: NPC validation running...")
+    detached_status = (detached_context or {}).get("status")
+    detached_scope = (detached_context or {}).get("scope")
+    if detached_status:
+        detached_status("The DM is reviewing the scene...")
+    elif not detached_context:
+        status_validating()
+
+    if normalization is None:
+        is_normalized, normalization = _normalize_dm_candidate(
+            primary_response, party_tracker_data
+        )
+        if not is_normalized:
+            return False, normalization
+    response_to_validate = normalization["candidate"]
+    primary_response = normalization["original_response"]
+    fixed_response = normalization["fixed_response"]
+    structure_message = normalization["structure_message"]
 
     # Keep only player-authored text from prior enhanced turns. The current
     # enhanced DM note is excluded and reintroduced below as exact raw input.
@@ -3357,6 +3518,18 @@ def validate_ai_response(
     # player turn and exact candidate must remain the final adjacent pair.
     # Snapshot the provider once here; the model-config selection below reuses it.
     from model_config import MODEL_PROVIDER as _val_provider
+    if review_feedback:
+        # Transient review instructions, never selected as accepted fiction or
+        # passed through history compression/persistence.
+        validation_messages_to_send = list(validation_messages_to_send) + [{
+            "role": "system",
+            "content": (
+                "Prior review feedback (not story events). Preserve applicable "
+                "constraints; current canonical facts supersede stale factual "
+                "instructions. Judge this latest candidate independently:\n"
+                + json.dumps(review_feedback, ensure_ascii=True)
+            ),
+        }]
     validation_messages_to_send = _assemble_validation_messages(
         validation_messages_to_send,
         user_input,
@@ -3406,16 +3579,22 @@ def validate_ai_response(
         try:
             if invocation_claim is not None:
                 require_current_invocation(invocation_claim)
+            if detached_scope is not None and detached_scope.is_superseded():
+                raise LiveProviderSuperseded("scene review superseded")
             validation_result = capture_and_fanout("T065", api_client.create_completion,
                 _request_provider=_val_provider,
                 _live_selected=True,
+                _detached_scope=(detached_context or {}).get("scope"),
+                _detached_status=(detached_context or {}).get("status"),
                 messages=validation_messages_to_send,
                 model=validation_config["model"],
                 temperature=0.1,
                 **{k: v for k, v in validation_config.items() if k != "model"})
             if invocation_claim is not None:
                 require_current_invocation(invocation_claim)
-        except InvocationSupersededError:
+            if detached_scope is not None and detached_scope.is_superseded():
+                raise LiveProviderSuperseded("scene review superseded")
+        except (InvocationSupersededError, LiveProviderSuperseded):
             raise
         except Exception as provider_error:
             warning(
@@ -4874,16 +5053,33 @@ def process_ai_response(
     *,
     approved_transition_plan=None,
     invocation_claim=None,
+    player_input=None,
+    review_context=None,
+    detached_context=None,
 ):
     global needs_conversation_history_update
     from contextlib import ExitStack
+
+    # An unreviewed child's currentness is not review approval. Preserve its
+    # own input values for the existing bounded detached recovery path.
+    processor_authority_context = {
+        "accepted_history": copy.deepcopy(conversation_history),
+        "party_snapshot": copy.deepcopy(party_tracker_data),
+        "player_input": player_input,
+    } if detached_context is not None else None
+
+    def retryable_result(status, **details):
+        result = {"status": status, "retryable": True, **details}
+        if processor_authority_context is not None:
+            result["authority_context"] = processor_authority_context
+        return result
 
     json_content = extract_json_from_codeblock(response)
     structure_ok, normalized_content, structure_error = validate_json_structure(
         json_content, party_tracker_data=party_tracker_data,
     )
     if not structure_ok:
-        return {"status": "invalid_transition_actions", "retryable": True, "error": structure_error}
+        return retryable_result("invalid_transition_actions", error=structure_error)
     response = normalized_content
     json_content = normalized_content
     parsed_response = json.loads(json_content)
@@ -4902,8 +5098,8 @@ def process_ai_response(
         and item["parameters"].get("module") not in (None, "", current_module)
     ]
     if cross_module_indexes and cross_module_indexes != [0]:
-        return {"status": "invalid_transition_actions", "retryable": True,
-                "error": "Cross-module movement must appear once and first."}
+        return retryable_result("invalid_transition_actions",
+                                error="Cross-module movement must appear once and first.")
     requested_module = str(first_parameters.get("module", ""))
     is_travel_workflow = any(
         isinstance(action, dict) and action.get("action") == "transitionLocation"
@@ -4916,6 +5112,12 @@ def process_ai_response(
 
     response_fences = ExitStack()
     from utils.capture.live_provider_call import LiveProviderSuperseded
+
+    def precommit_stale_result(status, **details):
+        result = retryable_result(status, **details)
+        if is_travel_workflow and review_context is not None:
+            result["review_context"] = review_context
+        return result
 
     try:
         from core.combat.invocation import (
@@ -4966,10 +5168,7 @@ def process_ai_response(
                 load_json_file("party_tracker.json")
             )
             if authoritative_projection != caller_projection:
-                return {
-                    "status": "stale_response_context",
-                    "retryable": True,
-                }
+                return precommit_stale_result("stale_response_context")
 
         # Finish transitions left ready by an earlier return/process crash.
         # Intents carry their own bounded history snapshot, so this cannot mix
@@ -4993,11 +5192,9 @@ def process_ai_response(
                 # The provider response was assembled before this recovery
                 # changed the authoritative timeline. Never execute its stale
                 # actions or display its stale narration.
-                return {
-                    "status": "stale_response_context",
-                    "retryable": True,
-                    "completion_outcome": drain_outcome,
-                }
+                return precommit_stale_result(
+                    "stale_response_context", completion_outcome=drain_outcome,
+                )
         except (LiveProviderSuperseded, InvocationSupersededError):
             raise
         except Exception as drain_exc:
@@ -5043,10 +5240,7 @@ def process_ai_response(
                     "must be reconciled by the next turn",
                     category="location_transitions",
                 )
-            return {
-                "status": "transition_state_changed",
-                "retryable": True,
-            }
+            return retryable_result("transition_state_changed")
 
         # Movement is the transaction boundary for its response. Reject the
         # entire candidate before level-up or any other action can mutate
@@ -5060,14 +5254,12 @@ def process_ai_response(
         if transition_indexes and (
             len(transition_indexes) != 1 or transition_indexes[0] != 0
         ):
-            return {
-                "status": "invalid_transition_actions",
-                "retryable": True,
-                "error": (
+            return retryable_result(
+                "invalid_transition_actions", error=(
                     "A response containing transitionLocation must contain "
                     "exactly one transition and it must be the first action"
                 ),
-            }
+            )
 
         first_action = actions[0] if actions and isinstance(actions[0], dict) else {}
         first_params = first_action.get("parameters")
@@ -5082,14 +5274,12 @@ def process_ai_response(
             if len(actions) != 2 or not isinstance(actions[1], dict) or actions[1].get(
                 "action"
             ) != "updateTime":
-                return {
-                    "status": "invalid_transition_actions",
-                    "retryable": True,
-                    "error": (
+                return retryable_result(
+                    "invalid_transition_actions", error=(
                         "Cross-module travel must be updatePartyTracker followed "
                         "by exactly one updateTime action"
                     ),
-                }
+                )
             accepted_history = list(conversation_history)
             accepted_history.append({"role": "assistant", "content": response})
             try:
@@ -5101,7 +5291,7 @@ def process_ai_response(
                     parsed_response.get("narration", ""),
                 )
             except (ValueError, OSError) as exc:
-                return {"status": "transition_plan_stale", "retryable": True, "error": str(exc)}
+                return precommit_stale_result("transition_plan_stale", error=str(exc))
             resumed = _resume_v2_location_transition(
                 checkpoint["operation_id"], publish=True
             )
@@ -5172,26 +5362,23 @@ def process_ai_response(
         for action_index, action in enumerate(parsed_response.get("actions", [])):
             if action.get("action") == "transitionLocation":
                 if transition_action_index is not None:
-                    return {
-                        "status": "invalid_transition_actions",
-                        "retryable": True,
-                        "error": "Only one transitionLocation may be processed per response",
-                    }
+                    return retryable_result(
+                        "invalid_transition_actions",
+                        error="Only one transitionLocation may be processed per response",
+                    )
                 is_transition = True
                 transition_action_index = action_index
                 departure_narration = parsed_response.get("narration", "")
 
         if is_transition:
             if transition_action_index != 0:
-                return {
-                    "status": "invalid_transition_actions",
-                    "retryable": True,
-                    "error": (
+                return retryable_result(
+                    "invalid_transition_actions", error=(
                         "transitionLocation must be the first action in a "
                         "response; state changes may only follow a committed "
                         "movement"
                     ),
-                }
+                )
         
         # If it's a transition, handle it with the special two-step process
         if is_transition:
@@ -5274,11 +5461,9 @@ def process_ai_response(
                                     if conversation_history[index] is pre_transition_message:
                                         del conversation_history[index]
                                         break
-                            return {
-                                "status": "transition_plan_stale",
-                                "retryable": True,
-                                "error": response_data.get("error_message"),
-                            }
+                            return precommit_stale_result(
+                                "transition_plan_stale", error=response_data.get("error_message"),
+                            )
                         # A pending_archive on an error is recovery metadata,
                         # not proof that the party/location transition
                         # committed. Do not render arrival narration, cancel a
@@ -5348,17 +5533,19 @@ def process_ai_response(
                                 followup_history
                             )
                         ai_response = run_outside_response_fence(
-                            get_ai_response, followup_history
+                            get_ai_response, followup_history, detached_context=detached_context,
                         )
                         if result_status == "needs_post_combat_narration":
                             process_ai_response._just_finished_combat = True
                         response_fences.close()
-                        return process_ai_response(
+                        return _process_fresh_dm_response(
                             ai_response,
                             party_tracker_data,
                             location_data,
                             followup_history,
                             invocation_claim=invocation_claim,
+                            player_input=player_input,
+                            detached_context=detached_context,
                         )
                     # Check if we need to generate a DM response (e.g., after module creation)
                     if result.get("needs_dm_response"):
@@ -5380,15 +5567,17 @@ def process_ai_response(
                             party_tracker_data
                         )
                         ai_response = run_outside_response_fence(
-                            get_ai_response, followup_history
+                            get_ai_response, followup_history, detached_context=detached_context,
                         )
                         response_fences.close()
-                        return process_ai_response(
+                        return _process_fresh_dm_response(
                             ai_response,
                             party_tracker_data,
                             location_data,
                             followup_history,
                             invocation_claim=invocation_claim,
+                            player_input=player_input,
+                            detached_context=detached_context,
                         )
                 elif isinstance(result, bool) and result:
                     needs_conversation_history_update = True
@@ -5465,10 +5654,7 @@ def process_ai_response(
                         action_handler.complete_location_transition_checkpoint(
                             location_transition_id
                         )
-                    return {
-                        "status": "transition_state_changed",
-                        "retryable": True,
-                    }
+                    return retryable_result("transition_state_changed")
 
             # Record deferred work before publishing final narration. If the
             # process dies after the history write, restart recovery must still
@@ -6075,18 +6261,20 @@ def process_ai_response(
                                 followup_history
                             )
                         ai_response = run_outside_response_fence(
-                            get_ai_response, followup_history
+                            get_ai_response, followup_history, detached_context=detached_context,
                         )
                         if result_status == "needs_post_combat_narration":
                             process_ai_response._just_finished_combat = True
                         finish_location_transition_checkpoint()
                         response_fences.close()
-                        return process_ai_response(
+                        return _process_fresh_dm_response(
                             ai_response,
                             party_tracker_data,
                             deferred_location_data,
                             followup_history,
                             invocation_claim=invocation_claim,
+                            player_input=player_input,
+                            detached_context=detached_context,
                         )
                 elif isinstance(result, str) and result in {"exit", "restart"}:
                     finish_location_transition_checkpoint()
@@ -6151,15 +6339,17 @@ def process_ai_response(
                     party_tracker_data
                 )
                 ai_response = run_outside_response_fence(
-                    get_ai_response, followup_history
+                    get_ai_response, followup_history, detached_context=detached_context,
                 )
                 response_fences.close()
-                return process_ai_response(
+                return _process_fresh_dm_response(
                     ai_response,
                     party_tracker_data,
                     deferred_location_data,
                     followup_history,
                     invocation_claim=invocation_claim,
+                    player_input=player_input,
+                    detached_context=detached_context,
                 )
 
             return {"role": "assistant", "content": json.dumps({"narration": full_narration, "actions": []})}
@@ -6411,7 +6601,7 @@ def process_ai_response(
                     post_combat_history
                 )
                 ai_response_after_combat = run_outside_response_fence(
-                    get_ai_response, post_combat_history
+                    get_ai_response, post_combat_history, detached_context=detached_context,
                 )
                 
                 # Set flag to indicate we just finished combat (for XP display fix)
@@ -6421,12 +6611,14 @@ def process_ai_response(
                 # This ensures the post-combat narration is handled just like any other turn,
                 # maintaining consistency in how we process AI responses.
                 response_fences.close()
-                return process_ai_response(
+                return _process_fresh_dm_response(
                     ai_response_after_combat,
                     party_tracker_data,
                     location_data,
                     post_combat_history,
                     invocation_claim=invocation_claim,
+                    player_input=player_input,
+                    detached_context=detached_context,
                 )
             # --- END SIGNAL-BASED SUB-SYSTEM CONTROL ---
             
@@ -6453,16 +6645,22 @@ def process_ai_response(
 
                     # Now reload and get the new AI response
                     conversation_history = load_json_file("modules/conversation_history/conversation_history.json") or []
+                    conversation_history, party_tracker_data = rebuild_conversation_for_current_party(
+                        conversation_history, return_party=True,
+                    )
+                    location_data = get_location_data_from_party_tracker(party_tracker_data)
                     ai_response = run_outside_response_fence(
-                        get_ai_response, conversation_history
+                        get_ai_response, conversation_history, detached_context=detached_context,
                     )
                     response_fences.close()
-                    return process_ai_response(
+                    return _process_fresh_dm_response(
                         ai_response,
                         party_tracker_data,
                         location_data,
                         conversation_history,
                         invocation_claim=invocation_claim,
+                        player_input=player_input,
+                        detached_context=detached_context,
                     )
                 if result.get("needs_update"): needs_conversation_history_update = True
             elif result == "exit": return "exit"
@@ -6481,15 +6679,17 @@ def process_ai_response(
                 action_handler.process_action.level_up_summaries = []
                 
                 ai_response = run_outside_response_fence(
-                    get_ai_response, conversation_history
+                    get_ai_response, conversation_history, detached_context=detached_context,
                 )
                 response_fences.close()
-                return process_ai_response(
+                return _process_fresh_dm_response(
                     ai_response,
                     party_tracker_data,
                     location_data,
                     conversation_history,
                     invocation_claim=invocation_claim,
+                    player_input=player_input,
+                    detached_context=detached_context,
                 )
 
         # STANDARD TURN COMPLETION: For a normal turn (no special signals or sub-systems),
@@ -6561,9 +6761,21 @@ def resolve_retryable_ai_result(
     *,
     max_state_retries=2,
     invocation_claim=None,
+    player_input=None,
+    detached_context=None,
+    authority_check=None,
 ):
     """Regenerate responses invalidated by a concurrent timeline change."""
     from core.combat.invocation import require_current_invocation
+    from utils.capture.live_provider_call import LiveProviderSuperseded, get_live_provider_scope
+
+    def review_authority_current(context):
+        scope = (detached_context or {}).get("scope") or get_live_provider_scope()
+        if scope is not None and scope.is_superseded():
+            raise LiveProviderSuperseded("reviewed travel recovery superseded")
+        if detached_context is not None and authority_check is None:
+            return False
+        return authority_check(context) if authority_check is not None else True
 
     retry_statuses = {
         "invalid_transition_actions",
@@ -6574,12 +6786,108 @@ def resolve_retryable_ai_result(
     while (
         isinstance(final_result, dict)
         and final_result.get("retryable") is True
-        and final_result.get("status") in retry_statuses
-        and retries < max_state_retries
     ):
         if invocation_claim is not None:
             require_current_invocation(invocation_claim)
+        review_context = final_result.get("review_context")
+        if (
+            final_result.get("status") in {"transition_plan_stale", "stale_response_context"}
+            and isinstance(review_context, dict)
+        ):
+            # A processor returns its own exact precommit draft. In particular,
+            # an already committed parent must not replace a stale child's
+            # context. This branch never spends the unrelated nontravel budget.
+            if not review_authority_current(review_context):
+                final_result = {"status": "stale_discarded", "retryable": False}
+                break
+            if detached_context is None:
+                conversation_history = (
+                    load_json_file(json_file)
+                    or copy.deepcopy(review_context["accepted_history"])
+                )
+                prepared = prepare_conversation_for_ai_request(conversation_history)
+                party_tracker_data = prepared["party_tracker_data"]
+            else:
+                # The owner checked this exact child base. Do not rebuild or
+                # drain its frozen history using ordinary turn preparation.
+                conversation_history = copy.deepcopy(review_context["accepted_history"])
+                party_tracker_data = copy.deepcopy(review_context["party_snapshot"])
+                prepared = {"module_snapshot": None, "installed_module_references": ""}
+            location_data = get_location_data_from_party_tracker(party_tracker_data)
+
+            reviewed = _review_dm_candidate(
+                review_context["candidate"],
+                accepted_history=copy.deepcopy(conversation_history),
+                player_input=review_context["player_input"], party=party_tracker_data,
+                validation_prompt=load_validation_prompt(),
+                srd_context=review_context["srd_context"],
+                npc_voice_batch=review_context["npc_voice_batch"],
+                invocation_claim=invocation_claim,
+                live_turn_scope=get_live_provider_scope(),
+                detached_context=detached_context,
+                path_manager=ModulePathManager(party_tracker_data.get("module", "")),
+                location_graph=location_graph,
+                module_snapshot=prepared["module_snapshot"],
+                installed_module_references=prepared["installed_module_references"],
+                review_feedback=review_context["review_feedback"],
+                correction_reason=(
+                    "The travel records changed before this draft committed. "
+                    "This draft did not move the party. Reconcile the latest "
+                    "draft against the refreshed canonical context. "
+                    + str(final_result.get("error") or "")
+                ),
+            )
+            if reviewed["status"] != "accepted":
+                final_result = reviewed if review_authority_current(review_context) else {
+                    "status": "stale_discarded", "retryable": False,
+                }
+                break
+            next_context = {
+                "candidate": reviewed["candidate"],
+                "review_feedback": copy.deepcopy(reviewed["review_feedback"]),
+                "accepted_history": copy.deepcopy(conversation_history),
+                "player_input": review_context["player_input"],
+                "srd_context": review_context["srd_context"],
+                "npc_voice_batch": review_context["npc_voice_batch"],
+                "party_snapshot": copy.deepcopy(party_tracker_data),
+            }
+            if not review_authority_current(next_context):
+                final_result = {"status": "stale_discarded", "retryable": False}
+                break
+            final_result = process_ai_response(
+                reviewed["candidate"], party_tracker_data, location_data,
+                conversation_history, invocation_claim=invocation_claim,
+                player_input=review_context["player_input"],
+                approved_transition_plan=reviewed["approved_transition_plan"],
+                review_context=next_context,
+                detached_context=detached_context,
+            )
+            continue
+        if final_result.get("status") not in retry_statuses or retries >= max_state_retries:
+            break
         retries += 1
+        if detached_context is not None:
+            authority_context = final_result.get("authority_context")
+            if not isinstance(authority_context, dict) or not review_authority_current(authority_context):
+                final_result = {"status": "stale_discarded", "retryable": False}
+                break
+            conversation_history = copy.deepcopy(authority_context["accepted_history"])
+            party_tracker_data = copy.deepcopy(authority_context["party_snapshot"])
+            location_data = get_location_data_from_party_tracker(party_tracker_data)
+            regenerated_response = _get_live_ai_response(
+                conversation_history, detached_context=detached_context,
+            )
+            if not review_authority_current(authority_context):
+                final_result = {"status": "stale_discarded", "retryable": False}
+                break
+            final_result = _process_fresh_dm_response(
+                regenerated_response, party_tracker_data, location_data,
+                conversation_history, invocation_claim=invocation_claim,
+                player_input=authority_context["player_input"],
+                detached_context=detached_context,
+                authority_check=review_authority_current,
+            )
+            continue
         conversation_history = load_json_file(json_file) or conversation_history
         try:
             (
@@ -6600,12 +6908,13 @@ def resolve_retryable_ai_result(
             party_tracker_data
         )
         regenerated_response = get_ai_response(conversation_history)
-        final_result = process_ai_response(
+        final_result = _process_fresh_dm_response(
             regenerated_response,
             party_tracker_data,
             location_data,
             conversation_history,
             invocation_claim=invocation_claim,
+            player_input=player_input,
         )
     return (
         final_result,
@@ -6997,15 +7306,67 @@ def get_ai_response(
     *,
     npc_voice_batch=None,
     live_selected=None,
+    detached_context=None,
 ):
     """Prepare T067 using current authority unless explicitly opted out."""
     return _get_ai_response_impl(
         conversation_history,
         validation_retry_count=validation_retry_count,
         npc_voice_batch=npc_voice_batch,
-        prepare_history=True,
+        prepare_history=detached_context is None,
         live_selected=live_selected,
+        detached_context=detached_context,
     )
+
+
+
+
+def _build_dm_review_request(
+    accepted_history, latest_candidate, review_feedback, planner_projection,
+    *, module_snapshot=None, installed_module_references="",
+):
+    """Detached latest-draft correction packet (#193 D-NPC-PARTY-3).
+
+    Only the caller's accepted base is fiction. Drafts and prior review
+    instructions belong to this request and must never be persisted.
+    """
+    request_history = copy.deepcopy(accepted_history)
+    if module_snapshot is not None:
+        from core.ai.atlas_builder import build_atlas_for_module, format_atlas_for_conversation
+
+        request_history = [
+            message for message in request_history
+            if not (message.get("role") == "system" and
+                    ("COMPLETE MODULE WORLD ATLAS" in message.get("content", "") or
+                     "=== INSTALLED MODULE REFERENCES ===" in message.get("content", "")))
+        ]
+        atlas = build_atlas_for_module(module_snapshot["module_name"], snapshot=module_snapshot)
+        request_history.append({"role": "system", "content": format_atlas_for_conversation(atlas)})
+        request_history.append({"role": "system", "content": installed_module_references})
+    if latest_candidate is not None:
+        request_history.append({"role": "assistant", "content": latest_candidate})
+    if planner_projection:
+        request_history.append({
+            "role": "system",
+            "content": (
+                "Travel review facts for the previous draft, not movement authority. "
+                "The revised draft requires fresh review (JSON): "
+                + json.dumps(planner_projection, ensure_ascii=False, sort_keys=True)
+            ),
+        })
+    if review_feedback:
+        request_history.append({
+            "role": "user",
+            "content": (
+                "Review corrections, NOT player dialogue or story events. "
+                "Revise the latest assistant draft above, not an earlier rejected "
+                "draft. Preserve applicable prior constraints; current canonical "
+                "evidence and current review supersede stale factual instructions. "
+                "Return the complete corrected JSON response.\n"
+                + json.dumps(review_feedback, ensure_ascii=True)
+            ),
+        })
+    return request_history
 
 
 def _get_live_ai_response(
@@ -7013,6 +7374,7 @@ def _get_live_ai_response(
     validation_retry_count=0,
     *,
     npc_voice_batch=None,
+    detached_context=None,
 ):
     """Send an already-prepared, detached outer-turn T067 request."""
     return _get_ai_response_impl(
@@ -7021,6 +7383,7 @@ def _get_live_ai_response(
         npc_voice_batch=npc_voice_batch,
         prepare_history=False,
         live_selected=True,
+        detached_context=detached_context,
     )
 
 def ensure_main_system_prompt(conversation_history, main_system_prompt_text):
@@ -7788,7 +8151,7 @@ def _main_game_loop(startup_authority, turn_authority):
             # state owns HP/XP, so the immediate narration pass must not
             # reapply a model-authored echo after reconnect recovery.
             process_ai_response._just_finished_combat = True
-            post_combat_result = process_ai_response(
+            post_combat_result = _process_fresh_dm_response(
                 ai_response_after_combat,
                 party_tracker_data,
                 location_data_post_combat,
@@ -7814,6 +8177,10 @@ def _main_game_loop(startup_authority, turn_authority):
             if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "superseded_invocation":
                 raise InvocationSupersededError("Post-combat handoff was superseded")
             require_current_invocation(startup_claim)
+            if isinstance(post_combat_result, dict) and post_combat_result.get("status") in {
+                "provider_error", "travel_content_unavailable",
+            }:
+                display_dm_narration(post_combat_result["player_message"])
             if (
                 isinstance(post_combat_result, dict)
                 and (
@@ -8579,7 +8946,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 "levelUp for advancement, "
                 "establishHub when the party gains ownership or control of a location that could serve as a base of operations (stronghold, tavern, keep, etc.) - example: establishHub('The Silver Swan Inn', {hubType: 'tavern', description: 'Our permanent base of operations', services: ['rest', 'information'], ownership: 'party'}), "
                 "exitGame for ending sessions, and "
-                "transitionLocation should always be used when the player expresses a desire to move to a new location, "
+                "transitionLocation moves the party for actual party travel within the module, including multi-area travel under accepted route facts; companion scouting stays within the current location, and unsupported remote scouting must not be converted into dismissal or party travel; genuine leaving and rejoining use the existing party membership actions, "
                 "Always roleplay the NPC and NPC party rolls without asking the player. "
                 "Always ask the player character to roll for skill checks and other actions. "
                 "Proactively narrate location NPCs, start conversations, and weave plot elements into the adventure. "
@@ -8746,167 +9113,618 @@ def _main_game_loop(startup_authority, turn_authority):
                 )
         validation_prefix_length = len(conversation_history)
 
-        retry_count = 0
         valid_response_received = False
         invocation_superseded = not initial_history_persisted
+        review_failure_message = None
+        review_failure_status = None
         ai_response_content = None
         approved_transition_plan = None
-        rejected_candidate = None
-        retry_correction = None
-        semantic_corrections = []
-        planner_projection = None
-        previous_semantic_rejection = None
-        consecutive_semantic_rejections = 0
-        # Provider failures (key, credit, rate limit, outage) are bounded and
-        # reported to the player; see utils/provider_errors.py.
-        provider_failures = 0
-        provider_failure_message = None
-        provider_retry_notice_shown = False
-        travel_content_handback = False
         while not valid_response_received and not invocation_superseded:
-            if live_turn_scope.is_superseded():
-                # Release the T067 invocation claim through the superseded
-                # terminal (merge review: a scope-superseded exit must not
-                # leak the claim and starve the next begin_invocation).
-                invocation_superseded = True
-                conversation_history[:] = pre_turn_accepted_history
-                break
-            with _party_module_transition_lock():
-                if not invocation_is_current(t067_claim):
-                    invocation_superseded = True
-                    break
-            # Authorization belongs only to this candidate response. A retry
-            # must obtain a new plan from the current atlas/evidence snapshot.
-            approved_transition_plan = None
-            # Durable completion/rebuild work sees authoritative accepted
-            # history only. Retry material is appended to a detached view.
-            prepared_context = prepare_conversation_for_ai_request(conversation_history)
-            module_snapshot = prepared_context["module_snapshot"]
-            party_tracker_data = prepared_context["party_tracker_data"]
-            path_manager = ModulePathManager(module_snapshot["module_name"])
-            current_node = module_snapshot["nodes"].get(party_tracker_data.get("worldConditions", {}).get("currentLocationId"))
-            if current_node is not None:
-                location_data = copy.deepcopy(current_node["location_data"])
-            request_history = copy.deepcopy(conversation_history)
-            if semantic_corrections:
-                request_history.append({
-                    "role": "system",
-                    "content": "Earlier semantic feedback for this same player request. Preserve still-applicable agency and intent constraints; refreshed canonical facts supersede stale factual claims. This is review context, not fictional history: " + json.dumps(semantic_corrections),
-                })
-            if rejected_candidate:
-                request_history.append(
-                    {"role": "assistant", "content": rejected_candidate}
-                )
-            if planner_projection:
-                request_history.append(
-                    {
-                        "role": "system",
-                        "content": (
-                            "Previous candidate's Travel Agent feedback, not authorization for a new candidate (JSON): "
-                            + json.dumps(
-                                planner_projection,
-                                ensure_ascii=False,
-                                sort_keys=True,
-                            )
-                        ),
-                    }
-                )
-            if retry_correction:
-                request_history.append(
-                    {"role": "user", "content": retry_correction}
-                )
             from utils.capture.live_provider_call import LiveProviderSuperseded
             try:
-                ai_response_content = _get_live_ai_response(
-                    request_history,
-                    validation_retry_count=retry_count,
-                    npc_voice_batch=npc_voice_batch,
+                require_current_invocation(t067_claim)
+                prepared_context = prepare_conversation_for_ai_request(conversation_history)
+                party_tracker_data = prepared_context["party_tracker_data"]
+                module_snapshot = prepared_context["module_snapshot"]
+                path_manager = ModulePathManager(module_snapshot["module_name"])
+                current_node = module_snapshot["nodes"].get(
+                    party_tracker_data.get("worldConditions", {}).get("currentLocationId")
                 )
-            except LiveProviderSuperseded:
-                # Release the T067 invocation claim through the superseded
-                # terminal (merge review: a scope-superseded exit must not
-                # leak the claim and starve the next begin_invocation).
+                if current_node is not None:
+                    location_data = copy.deepcopy(current_node["location_data"])
+                review_result = _review_dm_candidate(
+                    None, accepted_history=copy.deepcopy(conversation_history),
+                    player_input=user_input_text, party=party_tracker_data,
+                    validation_prompt=validation_prompt_text,
+                    srd_context=turn_srd_context, npc_voice_batch=npc_voice_batch,
+                    invocation_claim=t067_claim, live_turn_scope=live_turn_scope,
+                    path_manager=path_manager, location_graph=location_graph,
+                    module_snapshot=prepared_context["module_snapshot"],
+                    installed_module_references=prepared_context["installed_module_references"],
+                )
+                require_current_invocation(t067_claim)
+                if live_turn_scope.is_superseded():
+                    raise LiveProviderSuperseded("player turn review superseded")
+            except (LiveProviderSuperseded, InvocationSupersededError):
                 invocation_superseded = True
                 conversation_history[:] = pre_turn_accepted_history
                 break
-            except Exception as response_error:
-                classification = classify_provider_error(response_error)
-                provider_failures += 1
-                decision = provider_failure_policy(
-                    classification,
-                    provider_failures,
-                    provider_retry_notice_shown,
-                )
-                error(
-                    f"FAILURE: T067 provider call failed on attempt "
-                    f"{retry_count + 1} (provider failure "
-                    f"{provider_failures}/{PROVIDER_MAX_FAILURES}, "
-                    f"classified as {classification['category']})",
-                    exception=response_error,
-                    category="ai_validation",
-                )
-                provider_failure_message = decision["player_message"]
-                if decision["stop"]:
-                    # The player's key, credit or model access is the problem,
-                    # or the provider stayed down for the whole budget. Another
-                    # attempt cannot help: restore the accepted history (no
-                    # error notes, nothing changed) and tell the player below.
-                    conversation_history[:] = pre_turn_accepted_history
-                    if not persist_t067_history_if_current(conversation_history):
-                        invocation_superseded = True
-                    break
-                if decision["notice"]:
-                    display_dm_narration(decision["notice"])
-                    provider_retry_notice_shown = True
-                status_manager.update_status(
-                    f"Continuing the same response (attempt {retry_count + 1})...",
-                    True,
-                )
-                conversation_history.append({
-                    "role": "user",
-                    "content": (
-                        "Error Note: The previous response attempt was unavailable. "
-                        "Please generate the requested response again."
-                    ),
-                })
+            if review_result["status"] != "accepted":
+                review_failure_message = review_result["player_message"]
+                review_failure_status = review_result["status"]
+                conversation_history[:] = pre_turn_accepted_history
                 if not persist_t067_history_if_current(conversation_history):
                     invocation_superseded = True
-                    break
-                retry_count += 1
-                if decision["delay"]:
-                    # Back off only for the classified transient failures;
-                    # unclassified errors keep the historical immediate retry.
-                    time.sleep(decision["delay"])
-                continue
-            if live_turn_scope.is_superseded():
-                # Release the T067 invocation claim through the superseded
-                # terminal (merge review: a scope-superseded exit must not
-                # leak the claim and starve the next begin_invocation).
+                break
+            ai_response_content = review_result["candidate"]
+            approved_transition_plan = review_result["approved_transition_plan"]
+            reviewed_actions = json.loads(ai_response_content).get("actions", [])
+            travel_candidate = approved_transition_plan is not None or (
+                bool(reviewed_actions)
+                and reviewed_actions[0].get("action") == "updatePartyTracker"
+                and (reviewed_actions[0].get("parameters") or {}).get("module")
+                not in (None, "", party_tracker_data.get("module"))
+            )
+            valid_response_received = True
+            live_turn_scope.phase = "MUTATING"
+            debug("SUCCESS: Shared review accepted the response", category="ai_validation")
+
+            # Failed candidates and validator feedback are retry context,
+            # not durable game history. Only the accepted candidate may
+            # cross into process_ai_response and its state handlers.
+            if not travel_candidate:
+                conversation_history, ai_response_content = _finalize_main_response_validation(
+                    conversation_history,
+                    validation_prefix_length,
+                    ai_response_content,
+                    candidate_valid=True,
+                )
+            if not travel_candidate and not persist_t067_history_if_current(conversation_history):
                 invocation_superseded = True
-                conversation_history[:] = pre_turn_accepted_history
+                valid_response_received = False
                 break
 
-            with _party_module_transition_lock():
-                if not invocation_is_current(t067_claim):
-                    invocation_superseded = True
-                    break
+            # Commit T105 sidecar effects only after this exact T067
+            # response and its durable history are accepted.
+            if npc_voice_batch is not None and not travel_candidate:
+                try:
+                    from core.npc.voice_context import (
+                        commit_accepted_ooc_voice_batch,
+                    )
 
-            # Prior facts were supplied as detached correction context above.
-            # Only this new candidate's preflight may authorize its movement.
-            planner_projection = None
-            # Normalize the supported envelope before any action-specific check.
-            structure_ok, normalized_candidate, structure_reason = validate_json_structure(
-                ai_response_content, party_tracker_data=party_tracker_data,
+                    commit_accepted_ooc_voice_batch(
+                        npc_voice_batch,
+                        party_tracker_data,
+                    )
+                except Exception as voice_commit_error:
+                    debug(
+                        "T105 accepted event skipped: %s"
+                        % type(voice_commit_error).__name__,
+                        category="ai_routing",
+                    )
+
+            # SIMPLIFIED ARCHITECTURE: process_ai_response now handles ALL complexity internally.
+            # This includes:
+            # - Standard turn processing
+            # - Combat encounters (via needs_post_combat_narration signal)
+            # - Location transitions (with seamless narration generation)
+            # - Level-up sessions (returned as enter_levelup_mode signal)
+            # - All conversation history updates
+            # The main loop is now just a thin orchestration layer.
+            try:
+                final_result = process_ai_response(
+                    ai_response_content,
+                    party_tracker_data,
+                    location_data,
+                    conversation_history,
+                    approved_transition_plan=approved_transition_plan,
+                    invocation_claim=t067_claim,
+                    player_input=user_input_text,
+                    review_context=_dm_review_context(
+                        review_result, conversation_history, user_input_text,
+                        turn_srd_context, npc_voice_batch,
+                        party_snapshot=party_tracker_data,
+                    ),
+                )
+                if isinstance(final_result, dict) and final_result.get("status") == "superseded_invocation":
+                    raise InvocationSupersededError("Turn processing was superseded")
+                (
+                    final_result,
+                    party_tracker_data,
+                    location_data,
+                    conversation_history,
+                ) = resolve_retryable_ai_result(
+                    final_result,
+                    party_tracker_data,
+                    location_data,
+                    conversation_history,
+                    invocation_claim=t067_claim,
+                    player_input=user_input_text,
+                )
+                if isinstance(final_result, dict) and final_result.get("status") == "superseded_invocation":
+                    raise InvocationSupersededError("Regenerated turn was superseded")
+                require_current_invocation(t067_claim)
+                if (
+                    travel_candidate and npc_voice_batch is not None
+                    and isinstance(final_result, dict)
+                    and final_result.get("role") == "assistant"
+                ):
+                    # Only successful processing can commit this travel beat's
+                    # sidecar, once, while the same invocation is still owned.
+                    try:
+                        from core.npc.voice_context import commit_accepted_ooc_voice_batch
+
+                        commit_accepted_ooc_voice_batch(npc_voice_batch, party_tracker_data)
+                    except Exception as voice_commit_error:
+                        warning(
+                            "T105 accepted travel event skipped: %s"
+                            % type(voice_commit_error).__name__, category="ai_routing",
+                        )
+            finally:
+                turn_authority.close()
+
+            if _is_restore_request(final_result):
+                return final_result
+            if (
+                isinstance(final_result, dict)
+                and final_result.get("retryable") is True
+            ):
+                retry_status = final_result.get(
+                    "status", "state_recovery_pending"
+                )
+                print(
+                    "[SYSTEM] The game state changed while that turn was "
+                    f"processing ({retry_status}). Your state is safe; "
+                    "please retry after recovery completes."
+                )
+                warning(
+                    f"Response processing paused: {retry_status}",
+                    category="module_management",
+                )
+            elif (
+                isinstance(final_result, dict)
+                and final_result.get("status") == "error"
+            ):
+                from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
+
+                processing_error = final_result.get("player_message")
+                if processing_error != SAFE_ACTION_FAILURE_MESSAGE:
+                    processing_error = SAFE_ACTION_FAILURE_MESSAGE
+                print(f"[SYSTEM] {processing_error}")
+                warning(
+                    "Response processing failed safely",
+                    category="module_management",
+                )
+
+            if isinstance(final_result, dict) and final_result.get("status") in {
+                "provider_error", "travel_content_unavailable",
+            }:
+                # Only the new followup was refused. Its accepted parent beat
+                # remains committed; ordinary end-of-turn cleanup still runs.
+                display_dm_narration(final_result["player_message"])
+
+            # After processing, we only need to check for control flow signals.
+            # Everything else (including history updates) has been handled by process_ai_response.
+            if final_result == "exit":
+                from utils.capture.live_provider_call import finish_live_turn_scope
+                finish_live_turn_scope(live_turn_scope)
+                return
+            elif final_result == "restart":
+                from utils.capture.live_provider_call import finish_live_turn_scope
+                finish_live_turn_scope(live_turn_scope)
+                print("\n[SYSTEM] Restarting game with restored save...\n")
+                return main_game_loop()
+            elif isinstance(final_result, dict) and final_result.get("status") == "enter_levelup_mode":
+                # Enter the level up sub-loop
+                level_up_session = final_result["session"]
+
+                # Get the first message from the session
+                dm_response = level_up_session.start()
+
+                # The level-up AI may wrap its opening message in JSON
+                # ({"narration": ...}) depending on the prompt. Display/store the
+                # narration text, not the raw JSON blob -- mirrors the per-turn
+                # handling in the loop below. Plain-text greetings fall through
+                # unchanged (json.loads raises -> use raw text).
+                try:
+                    _first_parsed = json.loads(dm_response)
+                    first_display = (_first_parsed.get("narration", dm_response)
+                                     if isinstance(_first_parsed, dict) else dm_response)
+                except (json.JSONDecodeError, TypeError):
+                    first_display = dm_response
+
+                # Autonomous/NPC sessions may complete in start().  In that
+                # branch there is no input-loop response to populate the
+                # final narration, so the opening response is also the
+                # definitive completion narration.
+                completed_on_start = level_up_session.is_complete
+                final_narration = first_display
+
+                # Display the first message and add to history
+                display_dm_narration(first_display, channel="levelup")
+                conversation_history.append({"role": "assistant", "content": first_display})
+                save_conversation_history(conversation_history)
+
+                # Loop until the session is complete
+                while not level_up_session.is_complete:
+                    # Get player input
+                    player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
+                    try:
+                        level_up_input = input(f"{player_name_display} (Leveling Up): ")
+                    except EOFError:
+                        # Closed/piped stdin must abort the sub-loop, not
+                        # crash the game (same guard the combat loop has).
+                        warning("LEVELUP: Input stream ended during level up. Aborting session.", category="level_up")
+                        if not level_up_session.summary:
+                            # The post-loop failure path displays and
+                            # persists this; without it the player gets
+                            # an empty message.
+                            level_up_session.summary = "The level up was interrupted before it could finish. It can be attempted again."
+                        break
+
+                    if not level_up_input or not level_up_input.strip():
+                        continue
+
+                    # Handle the input and get the next AI response from the session
+                    dm_response = level_up_session.handle_input(level_up_input)
+
+                    # Check if the response is the final JSON or a conversational step
+                    try:
+                        # It's the final JSON response
+                        parsed_data = json.loads(dm_response)
+                        final_narration = parsed_data.get("narration", "Level up complete!")
+                        display_dm_narration(final_narration, channel="levelup")
+                        # The session is now complete, loop will exit
+                    except (json.JSONDecodeError, TypeError):
+                        # It's a normal conversational response
+                        display_dm_narration(dm_response, channel="levelup")
+
+                # After the loop, the session is complete.
+                if level_up_session.success:
+                    debug("SUCCESS: Level up successful. Using final narration for context.", category="level_up")
+                    # Add the final, high-quality narration to the history as the definitive AI response.
+                    # This provides perfect context for the next turn without an extra AI call.
+                    final_history_message = {
+                        "role": "assistant",
+                        "content": json.dumps(
+                            {"narration": final_narration, "actions": []}
+                        ),
+                    }
+                    if completed_on_start and conversation_history:
+                        # The start response was already displayed/persisted;
+                        # canonicalize that record instead of duplicating it.
+                        conversation_history[-1] = final_history_message
+                    else:
+                        conversation_history.append(final_history_message)
+                    save_conversation_history(conversation_history)
+                else:
+                    # If the level up failed, inform the player and log it.
+                    display_dm_narration(level_up_session.summary, channel="levelup", color="red")
+                    conversation_history.append({"role": "system", "content": level_up_session.summary})
+                    save_conversation_history(conversation_history)
+
+                # Break the outer validation loop and proceed to the next turn.
+                break
+
+            # CRITICAL: Reload conversation history from disk.
+            # Since process_ai_response handles all history updates internally (including sub-systems
+            # like combat that may add multiple messages), we must reload to ensure our local
+            # conversation_history variable matches the persisted state.
+            # This is the ONLY place the main loop needs to manage conversation_history.
+            conversation_history = _reload_conversation_history_if_safe(
+                conversation_history
             )
-            if not structure_ok:
-                rejected_candidate = ai_response_content
-                retry_correction = structure_reason
-                retry_count += 1
-                continue
-            ai_response_content = normalized_candidate
+            # No need to save here, as process_ai_response already handled all persistence.
 
-            # Normalize and preflight before T065. Route approval remains
-            # provisional until semantic validation accepts this exact draft.
+        if invocation_superseded:
+            turn_authority.close()
+            raise InvocationSupersededError("The player turn was superseded")
+
+        if not valid_response_received:
+            from utils.capture.live_provider_call import finish_live_turn_scope
+
+            if not invocation_superseded:
+                # Review ended before processing. Report content failures
+                # truthfully, without classifying a disk problem as AI failure.
+                if review_failure_status == "travel_content_unavailable":
+                    warning("Travel records unavailable; proposed move not applied.",
+                            category="module_management")
+                else:
+                    error(
+                        "FAILURE: Provider call could not be completed for this "
+                        "turn. No game state was changed.",
+                        category="ai_validation",
+                    )
+                display_dm_narration(
+                    review_failure_message or (
+                        "Nothing in your game was changed. The AI provider "
+                        "call could not be completed. Try that action again; "
+                        "if it keeps happening, Load your last save."
+                    )
+                )
+            finish_live_turn_scope(live_turn_scope)
+            turn_authority.close()
+            if live_turn_scope.is_superseded():
+                raise LiveProviderSuperseded("Player turn ended after supersession")
+            status_ready()
+            if invocation_superseded:
+                # Load, Reset or exit own the restart; the engine ends here.
+                return
+            # The provider ended this turn (bad key, out of funds, malformed
+            # request). The player was told what to do; the game stays
+            # playable so they can do it (#284: returning here ended the
+            # engine, so "try that action again" was impossible). Release
+            # this turn's invocation claim first, or the next input blocks
+            # in begin_invocation (post-implementation audit F-AUD-1).
+            complete_invocation(t067_claim)
+            continue
+
+        # This block now only runs if a response was NOT held
+        # CRITICAL: Reload party tracker to ensure we have the latest module information after any updates
+        party_tracker_data = load_json_file("party_tracker.json")
+        print(f"DEBUG: [Before update_conversation_history] Reloaded party tracker. Module: {party_tracker_data.get('module', 'Unknown')}")
+
+        current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
+        # Use current module from party tracker for plot data
+        module_name_updated = party_tracker_data.get("module", "").replace(" ", "_")
+        updated_path_manager = ModulePathManager(module_name_updated)
+        plot_data = load_json_file(updated_path_manager.get_plot_path())
+        module_data = load_json_file(updated_path_manager.get_module_file_path())
+        debug(f"FILE_OP: Updated plot file path: {updated_path_manager.get_plot_path()}", category="module_management")
+
+        debug(f"STATE_CHANGE: Before AI response update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
+        prepared_recall_by_npc = getattr(
+            npc_voice_batch, "recalled_by_npc", None
+        )
+        conversation_history = update_conversation_history(
+            conversation_history,
+            party_tracker_data,
+            plot_data,
+            module_data,
+            prepared_recall_by_npc=prepared_recall_by_npc,
+        )
+        debug(f"STATE_CHANGE: After AI response update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
+        conversation_history = update_character_data(conversation_history, party_tracker_data)
+        conversation_history = ensure_main_system_prompt(conversation_history, main_system_prompt_text)
+
+        # Use the new order_conversation_messages function
+        conversation_history = order_conversation_messages(conversation_history, main_system_prompt_text)
+
+        save_conversation_history(conversation_history)
+
+        from utils.capture.live_provider_call import finish_live_turn_scope
+
+        finish_live_turn_scope(live_turn_scope)
+        if live_turn_scope.is_superseded():
+            raise LiveProviderSuperseded("Player turn ended after supersession")
+        # Post-combat integration defect (three-surface redo finding): the
+        # combat manager's early is_processing=False is correctly REJECTED by
+        # the status guard while this turn's scope is still open, so the
+        # ready signal must be re-sent AFTER the scope closes or the legacy
+        # UI stays locked on 'Resolving combat intents...' until a reconnect.
+        # Superseded turns never publish this readiness signal.
+        status_ready()
+
+def _dm_review_context(reviewed, accepted_history, player_input, srd_context=None, npc_voice_batch=None, *, party_snapshot):
+    """Transient processor handoff, not a persisted approval or story message."""
+    if "review_feedback" not in reviewed:
+        # The unchanged nonmembership bypass did not run the shared reviewer.
+        return None
+    return {
+        "candidate": reviewed["candidate"],
+        "review_feedback": copy.deepcopy(reviewed["review_feedback"]),
+        "accepted_history": copy.deepcopy(accepted_history),
+        "player_input": player_input,
+        "srd_context": srd_context,
+        "npc_voice_batch": npc_voice_batch,
+        "party_snapshot": copy.deepcopy(party_snapshot),
+    }
+
+
+def _review_fresh_membership_candidate(
+    response, party, accepted_history, *, player_input=None,
+    invocation_claim=None, detached_context=None,
+):
+    """Apply the shared owner to fresh internal proposals, never receipt replay."""
+    from core.npc.party_guardian import membership_proposals
+    from utils.capture.live_provider_call import get_live_provider_scope
+
+    normalized, record = _normalize_dm_candidate(response, party)
+    if normalized and not membership_proposals(record["candidate"], party):
+        # Preserve the existing nonmembership path, including its original bytes.
+        return {"status": "accepted", "candidate": response,
+                "approved_transition_plan": None}
+    # Unparseable proposals cannot establish nonmembership. The same review
+    # owner obtains a usable draft before any narration or mutation.
+    return _review_dm_candidate(
+        response, accepted_history=copy.deepcopy(accepted_history),
+        player_input=player_input, party=party,
+        validation_prompt=load_validation_prompt(), srd_context=None,
+        npc_voice_batch=None, invocation_claim=invocation_claim,
+        live_turn_scope=get_live_provider_scope(),
+        path_manager=ModulePathManager(str(party.get("module", "")).replace(" ", "_")),
+        location_graph=location_graph, detached_context=detached_context,
+        normalization=record if normalized else None,
+    )
+
+
+def _process_fresh_dm_response(
+    response, party_tracker_data, location_data, conversation_history, *,
+    invocation_claim=None, player_input=None, detached_context=None,
+    authority_check=None,
+):
+    """Internal handoff after its producer releases the response fence.
+
+    A rejected followup is never passed to an action-failure helper that saves
+    its response argument. Earlier committed beats remain caller-owned.
+    """
+    authority_context = {
+        "accepted_history": copy.deepcopy(conversation_history),
+        "party_snapshot": copy.deepcopy(party_tracker_data),
+        "player_input": player_input,
+    } if authority_check is not None else None
+    reviewed = _review_fresh_membership_candidate(
+        response, party_tracker_data, conversation_history,
+        invocation_claim=invocation_claim, player_input=player_input,
+        detached_context=detached_context,
+    )
+    if authority_check is not None and not authority_check(authority_context):
+        return {"status": "stale_discarded", "retryable": False}
+    if reviewed["status"] != "accepted":
+        return reviewed
+    return process_ai_response(
+        reviewed["candidate"], party_tracker_data, location_data,
+        conversation_history, invocation_claim=invocation_claim,
+        player_input=player_input,
+        approved_transition_plan=reviewed["approved_transition_plan"],
+        review_context=_dm_review_context(reviewed, conversation_history, player_input, party_snapshot=party_tracker_data),
+        detached_context=detached_context,
+    )
+
+
+def _review_dm_candidate(
+    initial_candidate, *, accepted_history, player_input, party,
+    validation_prompt, srd_context, npc_voice_batch, invocation_claim,
+    live_turn_scope, path_manager, location_graph, detached_context=None,
+    normalization=None, module_snapshot=None, installed_module_references="",
+    review_feedback=None, correction_reason=None,
+):
+    """One detached correction owner (#193 D-NPC-PARTY-2..4).
+
+    Review only: callers retain preparation, accepted history, publication,
+    state mutation and terminal cleanup. Every changed draft starts review anew.
+    """
+    from core.combat.invocation import (
+        InvocationSupersededError, require_current_invocation,
+    )
+    from core.npc.party_guardian import review_party_membership
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+
+    # Keep the extracted travel/validation contracts on their existing names.
+    party_tracker_data = party
+    conversation_history = accepted_history
+    user_input_text = player_input
+    t067_claim = invocation_claim
+    scope = (detached_context or {}).get("scope") or live_turn_scope
+    detached_status = (detached_context or {}).get("status")
+
+    def require_current():
+        if scope is not None and scope.is_superseded():
+            raise LiveProviderSuperseded("candidate review superseded")
+        if invocation_claim is not None:
+            require_current_invocation(invocation_claim)
+
+    def review_status(message):
+        if detached_status:
+            detached_status(message)
+        else:
+            status_manager.update_status(message, True)
+
+    def review_retry_status(attempt):
+        if detached_status:
+            detached_status("The DM is revising the scene...")
+        else:
+            status_retrying(attempt)
+
+    def content_unavailable():
+        return {
+            "status": "travel_content_unavailable",
+            "player_message": (
+                "You remain where you are. I couldn't verify the "
+                "destination's travel records, so that move hasn't "
+                "happened. You can take another action here or "
+                "Load a saved game."
+            ),
+        }
+
+    ai_response_content = initial_candidate
+    needs_generation = initial_candidate is None
+    rejected_candidate = initial_candidate if correction_reason else None
+    retry_correction = correction_reason
+    retry_stage = "publication" if correction_reason else "structure"
+    review_feedback = copy.deepcopy(review_feedback or [])
+    planner_projection = None
+    retry_count = 0
+    previous_semantic_rejection = None
+    consecutive_semantic_rejections = 0
+    provider_failures = 0
+    provider_retry_notice_shown = False
+    while True:
+        require_current()
+        approved_transition_plan = None
+        if module_snapshot is None:
+            # Internal entrants have no ordinary preparation result. Read only
+            # a request-local view; never rebuild or persist their frozen base.
+            from utils.path_encounter_analyzer import build_active_module_snapshot
+            from core.ai.atlas_builder import format_installed_module_references
+
+            try:
+                module_snapshot = build_active_module_snapshot(party.get("module", ""))
+                installed_module_references = format_installed_module_references(party.get("module", ""))
+            except OSError as exc:
+                from utils.transient_filesystem import is_transient_filesystem_error
+                from utils.capture.live_provider_call import _interruptible_wait
+
+                if not is_transient_filesystem_error(exc):
+                    return content_unavailable()
+                module_snapshot = None
+                _interruptible_wait(0.25, scope, "Checking the travel map...")
+                continue
+        if any(item["kind"] == "busy" for item in module_snapshot.get("read_errors", [])):
+            from utils.capture.live_provider_call import _interruptible_wait
+
+            module_snapshot = None
+            _interruptible_wait(0.25, scope, "Checking the travel map...")
+            continue
+        if retry_correction:
+            review_feedback.append({"stage": retry_stage, "reason": retry_correction})
+            retry_correction = None
+            needs_generation = True
+        try:
+            if needs_generation:
+                request_history = _build_dm_review_request(
+                    accepted_history, rejected_candidate, review_feedback,
+                    planner_projection,
+                    module_snapshot=module_snapshot,
+                    installed_module_references=installed_module_references,
+                )
+                ai_response_content = _get_live_ai_response(
+                    request_history, validation_retry_count=retry_count,
+                    npc_voice_batch=npc_voice_batch,
+                    detached_context=detached_context,
+                )
+                needs_generation = False
+                normalization = None
+                # The request keeps prior route feedback, but its approval
+                # cannot describe a newly generated draft. The explicit
+                # in-place roster constraint remains a structural correction.
+                if not (
+                    isinstance(planner_projection, dict)
+                    and planner_projection.get("reason_code") == "roster_change_in_place"
+                ):
+                    planner_projection = None
+            require_current()
+            if normalization is None:
+                normalized, normalization = _normalize_dm_candidate(
+                    ai_response_content, party
+                )
+                if not normalized:
+                    retry_stage = "structure"
+                    rejected_candidate = ai_response_content
+                    retry_correction = normalization
+                    normalization = None
+                    retry_count += 1
+                    review_retry_status(retry_count)
+                    continue
+            ai_response_content = normalization["candidate"]
+
+            # Tracker movement is normalized once by _normalize_dm_candidate.
+            # Mixed roster fields are corrected, never discarded by conversion.
+            retry_stage = "structure"
+
+            # Canonical candidate projection precedes guardian review. Route
+            # checks then provide provisional facts to full validation;
+            # only the existing publisher can authorize a state change.
             transition_check_passed = True
             transition_action = None
             try:
@@ -9013,7 +9831,7 @@ def _main_game_loop(startup_authority, turn_authority):
                         "updateTime. Do not add updatePlot or any later action. "
                         "Return the complete corrected JSON."
                     )
-                    status_retrying(retry_count)
+                    review_retry_status(retry_count)
 
                 if (
                     transition_check_passed
@@ -9034,13 +9852,12 @@ def _main_game_loop(startup_authority, turn_authority):
                                 if not is_transient_filesystem_error(exc):
                                     raise
                                 from utils.capture.live_provider_call import _interruptible_wait
-                                _interruptible_wait(0.25, live_turn_scope, "Checking the travel map...")
+                                _interruptible_wait(0.25, scope, "Checking the travel map...")
                         first_candidate_params.update(target_projection)
                         ai_response_content = json.dumps(response_data)
                         planner_projection = {"module": candidate_module, **target_projection}
                     except OSError as exc:
-                        travel_content_handback = True
-                        break
+                        return content_unavailable()
                     except ValueError as exc:
                         retry_count += 1
                         transition_check_passed = False
@@ -9054,7 +9871,7 @@ def _main_game_loop(startup_authority, turn_authority):
                             "location. Return the complete corrected JSON."
                             % str(exc)
                         )
-                        status_retrying(retry_count)
+                        review_retry_status(retry_count)
 
                 if transition_check_passed and transition_indexes:
                     # Owner ruling 2026-08-23: one model response resolves one
@@ -9127,13 +9944,16 @@ def _main_game_loop(startup_authority, turn_authority):
                             "reason_code": "roster_change_in_place",
                             "ruling": (
                                 "Code cancelled the co-emitted transitionLocation "
-                                "because updatePartyNPCs was present. This turn is "
-                                "a single companion roster change IN PLACE: the "
-                                "party does NOT travel and stays at its current "
-                                "location. The response MUST NOT contain "
-                                "transitionLocation, and narration must not claim "
-                                "the party travelled. The companion alone may be "
-                                "described as leaving or arriving."
+                                "because updatePartyNPCs was proposed. The party does NOT travel "
+                                "and stays at its current location. The response MUST NOT contain "
+                                "transitionLocation, and narration must not claim the party travelled. "
+                                "Cancellation is a structural fact, NOT approval or commitment of "
+                                "the proposed membership change. T065 must validate that proposal "
+                                "against the actual player intent and local-party boundary. "
+                                "Retain a genuine authorized departure or rejoin IN PLACE; discard "
+                                "an unauthorized roster proposal, including dismissal substituted "
+                                "for unsupported remote scouting. Corrected narration must reflect "
+                                "that judgment without remote mission, arrival or report promises."
                             ),
                             "cancelled_destination": (
                                 (cancelled_transition.get("parameters") or {})
@@ -9165,14 +9985,13 @@ def _main_game_loop(startup_authority, turn_authority):
                             + contract_error
                             + " Return the complete corrected JSON."
                         )
-                        status_retrying(retry_count)
+                        review_retry_status(retry_count)
 
             except json.JSONDecodeError as e:
                 # Structural validation below owns malformed provider JSON.
                 debug(f"Could not parse response for transition planning: {e}", category="location_transitions")
             except (InvocationSupersededError, LiveProviderSuperseded):
-                invocation_superseded = True
-                transition_check_passed = False
+                raise
             except Exception as e:
                 error(
                     "FAILURE: Transition structural check raised unexpectedly",
@@ -9188,13 +10007,75 @@ def _main_game_loop(startup_authority, turn_authority):
                 )
 
             if not transition_check_passed:
-                continue  # Skip to next retry iteration
+                continue
 
+            # Apply previously established cancellation before either semantic
+            # reviewer, never change a guardian-approved candidate afterward.
+            validated_data = json.loads(ai_response_content)
+            validated_actions = validated_data.get("actions", [])
             transition_action = next(
-                (action for action in json.loads(ai_response_content).get("actions", [])
+                (action for action in validated_actions
                  if isinstance(action, dict) and action.get("action") == "transitionLocation"),
                 None,
             )
+            if transition_action is not None:
+                proposed_location = str(
+                    (transition_action.get("parameters") or {}).get(
+                        "newLocation", ""
+                    )
+                )
+                current_location = str(
+                    party_tracker_data.get("worldConditions", {}).get(
+                        "currentLocationId", ""
+                    )
+                )
+                roster_ruling_in_force = (
+                    isinstance(planner_projection, dict)
+                    and planner_projection.get("reason_code")
+                    == "roster_change_in_place"
+                )
+                if proposed_location == current_location or roster_ruling_in_force:
+                    # A transition that survives T065 while a roster-change
+                    # ruling is in force is the same spurious party travel
+                    # the gate already cancelled: strip it deterministically
+                    # (no retry) so the ruling cannot be lost to route
+                    # planning or a later planner_projection overwrite.
+                    if roster_ruling_in_force:
+                        info(
+                            "VALIDATION: roster_change_in_place ruling in force; "
+                            "stripping a re-emitted transitionLocation before "
+                            "route planning.",
+                            category="location_transitions",
+                        )
+                    validated_actions.remove(transition_action)
+                    validated_data["actions"] = validated_actions
+                    ai_response_content = json.dumps(validated_data)
+                    transition_action = None
+
+            normalization["candidate"] = ai_response_content
+            require_current()
+            guardian_feedback = list(review_feedback)
+            if planner_projection:
+                guardian_feedback.append({"stage": "route_facts", "facts": planner_projection})
+            guardian_result = review_party_membership(
+                ai_response_content, accepted_history=accepted_history,
+                player_input=player_input, party=party,
+                review_feedback=guardian_feedback,
+                invocation_claim=invocation_claim, detached_context=detached_context,
+            )
+            require_current()
+            if guardian_result is None:
+                warning("T114 malformed verdict; reissuing guardian on the same candidate",
+                        category="ai_validation")
+                continue
+            if not guardian_result[0]:
+                retry_stage = "guardian"
+                rejected_candidate = ai_response_content
+                retry_correction = guardian_result[1]
+                retry_count += 1
+                review_retry_status(retry_count)
+                continue
+
             if transition_action is not None:
                 from core.ai.action_handler import pre_validate_transition
 
@@ -9207,19 +10088,16 @@ def _main_game_loop(startup_authority, turn_authority):
                         path_manager,
                         return_plan=True,
                         invocation_claim=t067_claim,
+                        detached_context=detached_context,
+                        turn_context={"player_input": user_input_text},
                         module_snapshot=module_snapshot,
                     )
                 except LiveProviderSuperseded:
-                    # Release the T067 invocation claim through the superseded
-                    # terminal (merge review: a scope-superseded exit must not
-                    # leak the claim and starve the next begin_invocation).
-                    invocation_superseded = True
-                    conversation_history[:] = pre_turn_accepted_history
-                    break
+                    raise
                 if not route_outcome.approved:
                     if route_outcome.reason_code == "travel_content_unavailable":
-                        travel_content_handback = True
-                        break
+                        return content_unavailable()
+                    retry_stage = "route"
                     rejected_candidate = ai_response_content
                     planner_projection = {
                         "reason_code": route_outcome.reason_code,
@@ -9264,7 +10142,7 @@ def _main_game_loop(startup_authority, turn_authority):
                             "response from the supplied structured facts."
                         )
                     retry_count += 1
-                    status_retrying(retry_count)
+                    review_retry_status(retry_count)
                     info(
                         "VALIDATION: Transition outcome %s; retry %s"
                         % (route_outcome.reason_code, retry_count),
@@ -9274,526 +10152,123 @@ def _main_game_loop(startup_authority, turn_authority):
                 approved_transition_plan = route_outcome.plan
                 planner_projection = {"reason_code": "approved", **dict(route_outcome.facts or {})}
 
-            if live_turn_scope.is_superseded():
-                # Release the T067 invocation claim through the superseded
-                # terminal (merge review: a scope-superseded exit must not
-                # leak the claim and starve the next begin_invocation).
-                invocation_superseded = True
-                conversation_history[:] = pre_turn_accepted_history
-                break
-            with _party_module_transition_lock():
-                if not invocation_is_current(t067_claim):
-                    invocation_superseded = True
-                    break
-
-            try:
-                validation_result = validate_ai_response(
-                    ai_response_content,
-                    user_input_text,
-                    validation_prompt_text,
-                    request_history,
-                    party_tracker_data,
-                    srd_context=turn_srd_context,
-                    npc_voice_batch=npc_voice_batch,
-                    transition_facts=planner_projection,
-                    invocation_claim=t067_claim,
-                    module_snapshot=module_snapshot,
-                    installed_module_references=prepared_context["installed_module_references"],
-                )
-            except LiveProviderSuperseded:
-                # Release the T067 invocation claim through the superseded
-                # terminal (merge review: a scope-superseded exit must not
-                # leak the claim and starve the next begin_invocation).
-                invocation_superseded = True
-                conversation_history[:] = pre_turn_accepted_history
-                break
-            except InvocationSupersededError:
-                invocation_superseded = True
-                break
-
-            with _party_module_transition_lock():
-                if not invocation_is_current(t067_claim):
-                    invocation_superseded = True
-                    break
-
-            # Unpack the validation result tuple
-            is_valid = False
-            validation_reason = ""
+            retry_stage = "validator"
+            validation_result = validate_ai_response(
+                ai_response_content, player_input, validation_prompt,
+                accepted_history, party, srd_context=srd_context,
+                npc_voice_batch=npc_voice_batch, transition_facts=planner_projection,
+                invocation_claim=invocation_claim, normalization=normalization,
+                review_feedback=review_feedback, detached_context=detached_context,
+                module_snapshot=module_snapshot,
+                installed_module_references=installed_module_references,
+            )
+            require_current()
             if isinstance(validation_result, tuple):
                 is_valid, validated_content = validation_result
+                validation_reason = "" if is_valid else validated_content
                 if is_valid:
-                    # Use the fixed/validated content if auto-fix was applied
-                    ai_response_content = validated_content
-                else:
-                    validation_reason = validated_content  # It's the error message when invalid
+                    if validated_content != ai_response_content:
+                        # A verdict and provisional route belong to the exact
+                        # reviewed draft, not a replacement returned by T065.
+                        ai_response_content = validated_content
+                        normalization = None
+                        planner_projection = None
+                        continue
             else:
-                # Handle old-style return (shouldn't happen after our change)
                 is_valid = validation_result is True
                 validation_reason = validation_result if isinstance(validation_result, str) else ""
-
-            if live_turn_scope.is_superseded():
-                # Release the T067 invocation claim through the superseded
-                # terminal (merge review: a scope-superseded exit must not
-                # leak the claim and starve the next begin_invocation).
-                invocation_superseded = True
-                conversation_history[:] = pre_turn_accepted_history
-                break
-            
-            if is_valid:
-                # Reparse normalized content returned by T065. Movement must
-                # still match the preflighted candidate; NPC-name normalization
-                # cannot grant approval for a different destination.
-                validated_data = json.loads(ai_response_content)
-                validated_actions = validated_data.get("actions", [])
-                validated_transition_indexes = [
-                    index
-                    for index, action in enumerate(validated_actions)
+            if not is_valid:
+                rejected_candidate = ai_response_content
+                if validation_reason:
+                    if validation_reason == previous_semantic_rejection:
+                        consecutive_semantic_rejections += 1
+                    else:
+                        previous_semantic_rejection = validation_reason
+                        consecutive_semantic_rejections = 1
+                    if consecutive_semantic_rejections >= 2:
+                        warning("VALIDATION: Repeated semantic rejection remains in the "
+                                "same visible logical operation.", category="ai_validation")
+                    correction_context = ("\n\n%s" % srd_context if srd_context else "")
+                    retry_correction = (
+                        "Your previous response failed semantic validation. "
+                        f"Reason: {validation_reason}. Return the complete corrected "
+                        f"JSON response.{correction_context}"
+                    )
+                else:
+                    warning("VALIDATION: Unusable validation result; correcting latest draft",
+                            category="ai_validation")
+                    retry_correction = (
+                        "The previous validation result was not usable. Return the "
+                        "complete corrected JSON response for the player's action."
+                    )
+                retry_count += 1
+                review_retry_status(retry_count)
+                continue
+            # The exact draft has cleared guardian, provisional route and T065.
+            # Publication still owns currentness and committed route authority.
+            validated_data = json.loads(ai_response_content)
+            validated_actions = validated_data.get("actions", [])
+            validated_transition_indexes = [
+                index
+                for index, action in enumerate(validated_actions)
+                if isinstance(action, dict)
+                and action.get("action") == "transitionLocation"
+            ]
+            if validated_transition_indexes and (
+                len(validated_transition_indexes) != 1
+                or validated_transition_indexes[0] != 0
+            ):
+                retry_stage = "structure"
+                rejected_candidate = ai_response_content
+                retry_correction = (
+                    "The normalized response is structurally unsafe: "
+                    "transitionLocation must appear once and first. Return "
+                    "the complete corrected JSON response."
+                )
+                retry_count += 1
+                review_retry_status(retry_count)
+                continue
+            transition_action = next(
+                (
+                    action
+                    for action in validated_actions
                     if isinstance(action, dict)
                     and action.get("action") == "transitionLocation"
-                ]
-                if validated_transition_indexes and (
-                    len(validated_transition_indexes) != 1
-                    or validated_transition_indexes[0] != 0
-                ):
-                    rejected_candidate = ai_response_content
-                    retry_correction = (
-                        "The normalized response is structurally unsafe: "
-                        "transitionLocation must appear once and first. Return "
-                        "the complete corrected JSON response."
-                    )
-                    retry_count += 1
-                    status_retrying(retry_count)
-                    continue
-                transition_action = next(
-                    (
-                        action
-                        for action in validated_actions
-                        if isinstance(action, dict)
-                        and action.get("action") == "transitionLocation"
-                    ),
-                    None,
-                )
-                if transition_action is not None:
-                    proposed_location = str(
-                        (transition_action.get("parameters") or {}).get(
-                            "newLocation", ""
-                        )
-                    )
-                    if approved_transition_plan is None or proposed_location != approved_transition_plan.destination_location_id:
-                        rejected_candidate = ai_response_content
-                        retry_correction = "This normalized movement differs from its provisional route. Return the complete candidate for fresh preflight."
-                        retry_count += 1
-                        continue
-
-                if live_turn_scope.is_superseded():
-                    # Release the T067 invocation claim through the superseded
-                    # terminal (merge review: a scope-superseded exit must not
-                    # leak the claim and starve the next begin_invocation).
-                    invocation_superseded = True
-                    conversation_history[:] = pre_turn_accepted_history
-                    break
-
-                valid_response_received = True
-                live_turn_scope.phase = "MUTATING"
-                debug(f"SUCCESS: Valid response generated on attempt {retry_count + 1}", category="ai_validation")
-
-                travel_candidate = approved_transition_plan is not None or (
-                    bool(validated_actions)
-                    and validated_actions[0].get("action") == "updatePartyTracker"
-                    and (validated_actions[0].get("parameters") or {}).get("module")
-                    not in (None, "", party_tracker_data.get("module"))
-                )
-                # Failed candidates and validator feedback are retry context,
-                # not durable game history. Only the accepted candidate may
-                # cross into process_ai_response and its state handlers.
-                if not travel_candidate:
-                    conversation_history, ai_response_content = _finalize_main_response_validation(
-                        conversation_history,
-                        validation_prefix_length,
-                        ai_response_content,
-                        candidate_valid=True,
-                    )
-                if not travel_candidate and not persist_t067_history_if_current(conversation_history):
-                    invocation_superseded = True
-                    valid_response_received = False
-                    break
-
-                # Commit T105 sidecar effects only after this exact T067
-                # response and its durable history are accepted.
-                if npc_voice_batch is not None and not travel_candidate:
-                    try:
-                        from core.npc.voice_context import (
-                            commit_accepted_ooc_voice_batch,
-                        )
-
-                        commit_accepted_ooc_voice_batch(
-                            npc_voice_batch,
-                            party_tracker_data,
-                        )
-                    except Exception as voice_commit_error:
-                        debug(
-                            "T105 accepted event skipped: %s"
-                            % type(voice_commit_error).__name__,
-                            category="ai_routing",
-                        )
-
-                # SIMPLIFIED ARCHITECTURE: process_ai_response now handles ALL complexity internally.
-                # This includes:
-                # - Standard turn processing
-                # - Combat encounters (via needs_post_combat_narration signal)
-                # - Location transitions (with seamless narration generation)
-                # - Level-up sessions (returned as enter_levelup_mode signal)
-                # - All conversation history updates
-                # The main loop is now just a thin orchestration layer.
-                retrying_transition = False
-                try:
-                    final_result = process_ai_response(
-                        ai_response_content,
-                        party_tracker_data,
-                        location_data,
-                        conversation_history,
-                        approved_transition_plan=approved_transition_plan,
-                        invocation_claim=t067_claim,
-                    )
-                    if isinstance(final_result, dict) and final_result.get("status") == "superseded_invocation":
-                        raise InvocationSupersededError("Turn processing was superseded")
-                    if isinstance(final_result, dict) and (
-                        final_result.get("status") == "transition_plan_stale"
-                        or (travel_candidate and final_result.get("status") == "stale_response_context")
-                    ):
-                        # Nothing has moved. The transition publisher removes
-                        # its transient draft; preserve the same live scope and
-                        # revise the actual latest candidate, not a nested turn.
-                        retrying_transition = True
-                        valid_response_received = False
-                        live_turn_scope.phase = "VALIDATING"
-                        rejected_candidate = ai_response_content
-                        planner_projection = None
-                        retry_correction = "The travel records changed before movement. Nothing moved. Reconcile this latest draft against the refreshed atlas. " + str(final_result.get("error") or "")
-                        retry_count += 1
-                        continue
-                    (
-                        final_result,
-                        party_tracker_data,
-                        location_data,
-                        conversation_history,
-                    ) = resolve_retryable_ai_result(
-                        final_result,
-                        party_tracker_data,
-                        location_data,
-                        conversation_history,
-                        invocation_claim=t067_claim,
-                    )
-                    if isinstance(final_result, dict) and final_result.get("status") == "superseded_invocation":
-                        raise InvocationSupersededError("Regenerated turn was superseded")
-                    require_current_invocation(t067_claim)
-                finally:
-                    if not retrying_transition:
-                        turn_authority.close()
-
-                if travel_candidate and npc_voice_batch is not None and not (
-                    isinstance(final_result, dict) and
-                    (final_result.get("retryable") or final_result.get("status") == "error")
-                ):
-                    try:
-                        from core.npc.voice_context import commit_accepted_ooc_voice_batch
-                        commit_accepted_ooc_voice_batch(npc_voice_batch, party_tracker_data)
-                    except Exception as voice_commit_error:
-                        warning("T105 accepted travel event skipped: %s" % type(voice_commit_error).__name__, category="ai_routing")
-
-                if _is_restore_request(final_result):
-                    return final_result
-                if (
-                    isinstance(final_result, dict)
-                    and final_result.get("retryable") is True
-                ):
-                    retry_status = final_result.get(
-                        "status", "state_recovery_pending"
-                    )
-                    print(
-                        "[SYSTEM] The game state changed while that turn was "
-                        f"processing ({retry_status}). Your state is safe; "
-                        "please retry after recovery completes."
-                    )
-                    warning(
-                        f"Response processing paused: {retry_status}",
-                        category="module_management",
-                    )
-                elif (
-                    isinstance(final_result, dict)
-                    and final_result.get("status") == "error"
-                ):
-                    from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
-
-                    processing_error = final_result.get("player_message")
-                    if processing_error != SAFE_ACTION_FAILURE_MESSAGE:
-                        processing_error = SAFE_ACTION_FAILURE_MESSAGE
-                    print(f"[SYSTEM] {processing_error}")
-                    warning(
-                        "Response processing failed safely",
-                        category="module_management",
-                    )
-
-                # After processing, we only need to check for control flow signals.
-                # Everything else (including history updates) has been handled by process_ai_response.
-                if final_result == "exit":
-                    from utils.capture.live_provider_call import finish_live_turn_scope
-                    finish_live_turn_scope(live_turn_scope)
-                    return
-                elif final_result == "restart":
-                    from utils.capture.live_provider_call import finish_live_turn_scope
-                    finish_live_turn_scope(live_turn_scope)
-                    print("\n[SYSTEM] Restarting game with restored save...\n")
-                    return main_game_loop()
-                elif isinstance(final_result, dict) and final_result.get("status") == "enter_levelup_mode":
-                    # Enter the level up sub-loop
-                    level_up_session = final_result["session"]
-
-                    # Get the first message from the session
-                    dm_response = level_up_session.start()
-
-                    # The level-up AI may wrap its opening message in JSON
-                    # ({"narration": ...}) depending on the prompt. Display/store the
-                    # narration text, not the raw JSON blob -- mirrors the per-turn
-                    # handling in the loop below. Plain-text greetings fall through
-                    # unchanged (json.loads raises -> use raw text).
-                    try:
-                        _first_parsed = json.loads(dm_response)
-                        first_display = (_first_parsed.get("narration", dm_response)
-                                         if isinstance(_first_parsed, dict) else dm_response)
-                    except (json.JSONDecodeError, TypeError):
-                        first_display = dm_response
-
-                    # Autonomous/NPC sessions may complete in start().  In that
-                    # branch there is no input-loop response to populate the
-                    # final narration, so the opening response is also the
-                    # definitive completion narration.
-                    completed_on_start = level_up_session.is_complete
-                    final_narration = first_display
-
-                    # Display the first message and add to history
-                    display_dm_narration(first_display, channel="levelup")
-                    conversation_history.append({"role": "assistant", "content": first_display})
-                    save_conversation_history(conversation_history)
-
-                    # Loop until the session is complete
-                    while not level_up_session.is_complete:
-                        # Get player input
-                        player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
-                        try:
-                            level_up_input = input(f"{player_name_display} (Leveling Up): ")
-                        except EOFError:
-                            # Closed/piped stdin must abort the sub-loop, not
-                            # crash the game (same guard the combat loop has).
-                            warning("LEVELUP: Input stream ended during level up. Aborting session.", category="level_up")
-                            if not level_up_session.summary:
-                                # The post-loop failure path displays and
-                                # persists this; without it the player gets
-                                # an empty message.
-                                level_up_session.summary = "The level up was interrupted before it could finish. It can be attempted again."
-                            break
-
-                        if not level_up_input or not level_up_input.strip():
-                            continue
-                    
-                        # Handle the input and get the next AI response from the session
-                        dm_response = level_up_session.handle_input(level_up_input)
-
-                        # Check if the response is the final JSON or a conversational step
-                        try:
-                            # It's the final JSON response
-                            parsed_data = json.loads(dm_response)
-                            final_narration = parsed_data.get("narration", "Level up complete!")
-                            display_dm_narration(final_narration, channel="levelup")
-                            # The session is now complete, loop will exit
-                        except (json.JSONDecodeError, TypeError):
-                            # It's a normal conversational response
-                            display_dm_narration(dm_response, channel="levelup")
-
-                    # After the loop, the session is complete.
-                    if level_up_session.success:
-                        debug("SUCCESS: Level up successful. Using final narration for context.", category="level_up")
-                        # Add the final, high-quality narration to the history as the definitive AI response.
-                        # This provides perfect context for the next turn without an extra AI call.
-                        final_history_message = {
-                            "role": "assistant",
-                            "content": json.dumps(
-                                {"narration": final_narration, "actions": []}
-                            ),
-                        }
-                        if completed_on_start and conversation_history:
-                            # The start response was already displayed/persisted;
-                            # canonicalize that record instead of duplicating it.
-                            conversation_history[-1] = final_history_message
-                        else:
-                            conversation_history.append(final_history_message)
-                        save_conversation_history(conversation_history)
-                    else:
-                        # If the level up failed, inform the player and log it.
-                        display_dm_narration(level_up_session.summary, channel="levelup", color="red")
-                        conversation_history.append({"role": "system", "content": level_up_session.summary})
-                        save_conversation_history(conversation_history)
-
-                    # Break the outer validation loop and proceed to the next turn.
-                    break 
-
-                # CRITICAL: Reload conversation history from disk.
-                # Since process_ai_response handles all history updates internally (including sub-systems
-                # like combat that may add multiple messages), we must reload to ensure our local
-                # conversation_history variable matches the persisted state.
-                # This is the ONLY place the main loop needs to manage conversation_history.
-                conversation_history = _reload_conversation_history_if_safe(
-                    conversation_history
-                )
-                # No need to save here, as process_ai_response already handled all persistence.
-
-            elif not is_valid and validation_reason:
-                # Validation failed with a reason
-                debug(f"VALIDATION: Validation failed. Reason: {validation_reason}", category="ai_validation")
-                status_retrying(retry_count + 1)
-                # Combat-line telemetry: flag a repeated identical semantic
-                # rejection inside the same visible logical operation. Retry
-                # material itself stays on the DETACHED request view (travel
-                # doctrine: durable history holds accepted content only).
-                if validation_reason == previous_semantic_rejection:
-                    consecutive_semantic_rejections += 1
-                else:
-                    previous_semantic_rejection = validation_reason
-                    consecutive_semantic_rejections = 1
-                if consecutive_semantic_rejections >= 2:
-                    warning(
-                        "VALIDATION: Repeated semantic rejection remains in the "
-                        "same visible logical operation.",
-                        category="ai_validation",
-                    )
-                correction_context = (
-                    "\n\n%s" % turn_srd_context if turn_srd_context else ""
-                )
-                rejected_candidate = ai_response_content
-                semantic_corrections.append(validation_reason)
-                retry_correction = (
-                    "Your previous response failed semantic validation. "
-                    f"Reason: {validation_reason}. Return the complete corrected "
-                    f"JSON response.{correction_context}"
-                )
-                retry_count += 1
-            else: 
-                warning(f"VALIDATION: Unexpected validation result: is_valid={is_valid}, reason={validation_reason}. Retrying.", category="ai_validation")
-                rejected_candidate = ai_response_content
-                retry_correction = (
-                    "The previous validation result was not usable. Return the "
-                    "complete corrected JSON response for the player's action."
-                )
-                retry_count += 1
-
-        if travel_content_handback and not invocation_superseded:
-            # D-303-2: no invented obstacle, no regeneration loop against a
-            # permanently unreadable source, and no mutation to repair it.
-            handback = (
-                "You remain where you are. I couldn't verify the destination's "
-                "travel records, so that move hasn't happened. You can take "
-                "another action here or Load a saved game."
+                ),
+                None,
             )
-            conversation_history, _ = _finalize_main_response_validation(
-                conversation_history, validation_prefix_length,
-                json.dumps({"narration": handback, "actions": []}), candidate_valid=True,
+            require_current()
+            return {
+                "status": "accepted", "candidate": ai_response_content,
+                "approved_transition_plan": approved_transition_plan,
+                "review_feedback": copy.deepcopy(review_feedback),
+            }
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
+        except Exception as response_error:
+            classification = classify_provider_error(response_error)
+            provider_failures += 1
+            decision = provider_failure_policy(
+                classification, provider_failures, provider_retry_notice_shown,
             )
-            if persist_t067_history_if_current(conversation_history):
-                display_dm_narration(handback)
-            turn_authority.close()
-            from utils.capture.live_provider_call import finish_live_turn_scope
-            finish_live_turn_scope(live_turn_scope)
-            complete_invocation(t067_claim)
-            status_ready()
-            continue
+            error(
+                f"FAILURE: Candidate review provider call failed "
+                f"(provider failure {provider_failures}/{PROVIDER_MAX_FAILURES}, "
+                f"classified as {classification['category']})",
+                exception=response_error, category="ai_validation",
+            )
+            if decision["stop"]:
+                return {"status": "provider_error", "player_message": decision["player_message"]}
+            if decision["notice"]:
+                review_status(decision["notice"])
+                provider_retry_notice_shown = True
+            review_status(f"Continuing the same response (attempt {retry_count + 1})...")
+            # A transport retry does not invalidate or regenerate an existing
+            # candidate. If generation failed, the same detached request repeats.
+            retry_count += 1
+            if decision["delay"]:
+                time.sleep(decision["delay"])
 
-        if invocation_superseded:
-            turn_authority.close()
-            raise InvocationSupersededError("The player turn was superseded")
-
-        if not valid_response_received:
-            from utils.capture.live_provider_call import finish_live_turn_scope
-
-            if not invocation_superseded:
-                # The provider, not the game, ended this turn. The accepted
-                # history was restored above; the player only needs to know
-                # why nothing happened and what to do about it.
-                from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
-
-                error(
-                    "FAILURE: Provider call could not be completed for this "
-                    "turn. No game state was changed.",
-                    category="ai_validation",
-                )
-                display_dm_narration(
-                    provider_failure_message or (
-                        "Nothing in your game was changed. The AI provider "
-                        "call could not be completed. Try that action again; "
-                        "if it keeps happening, Load your last save."
-                    )
-                )
-            finish_live_turn_scope(live_turn_scope)
-            turn_authority.close()
-            if live_turn_scope.is_superseded():
-                raise LiveProviderSuperseded("Player turn ended after supersession")
-            status_ready()
-            if invocation_superseded:
-                # Load, Reset or exit own the restart; the engine ends here.
-                return
-            # The provider ended this turn (bad key, out of funds, malformed
-            # request). The player was told what to do; the game stays
-            # playable so they can do it (#284: returning here ended the
-            # engine, so "try that action again" was impossible). Release
-            # this turn's invocation claim first, or the next input blocks
-            # in begin_invocation (post-implementation audit F-AUD-1).
-            complete_invocation(t067_claim)
-            continue
-
-        # This block now only runs if a response was NOT held
-        # CRITICAL: Reload party tracker to ensure we have the latest module information after any updates
-        party_tracker_data = load_json_file("party_tracker.json")
-        print(f"DEBUG: [Before update_conversation_history] Reloaded party tracker. Module: {party_tracker_data.get('module', 'Unknown')}")
-    
-        current_area_id = party_tracker_data["worldConditions"]["currentAreaId"] 
-        # Use current module from party tracker for plot data  
-        module_name_updated = party_tracker_data.get("module", "").replace(" ", "_")
-        updated_path_manager = ModulePathManager(module_name_updated)
-        plot_data = load_json_file(updated_path_manager.get_plot_path())
-        module_data = load_json_file(updated_path_manager.get_module_file_path())
-        debug(f"FILE_OP: Updated plot file path: {updated_path_manager.get_plot_path()}", category="module_management")
-
-        debug(f"STATE_CHANGE: Before AI response update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
-        prepared_recall_by_npc = getattr(
-            npc_voice_batch, "recalled_by_npc", None
-        )
-        conversation_history = update_conversation_history(
-            conversation_history,
-            party_tracker_data,
-            plot_data,
-            module_data,
-            prepared_recall_by_npc=prepared_recall_by_npc,
-        )
-        debug(f"STATE_CHANGE: After AI response update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
-        conversation_history = update_character_data(conversation_history, party_tracker_data)
-        conversation_history = ensure_main_system_prompt(conversation_history, main_system_prompt_text)
-    
-        # Use the new order_conversation_messages function
-        conversation_history = order_conversation_messages(conversation_history, main_system_prompt_text)
-    
-        save_conversation_history(conversation_history)
-
-        from utils.capture.live_provider_call import finish_live_turn_scope
-
-        finish_live_turn_scope(live_turn_scope)
-        if live_turn_scope.is_superseded():
-            raise LiveProviderSuperseded("Player turn ended after supersession")
-        # Post-combat integration defect (three-surface redo finding): the
-        # combat manager's early is_processing=False is correctly REJECTED by
-        # the status guard while this turn's scope is still open, so the
-        # ready signal must be re-sent AFTER the scope closes or the legacy
-        # UI stays locked on 'Resolving combat intents...' until a reconnect.
-        # Superseded turns never publish this readiness signal.
-        status_ready()
 
 def main():
     """Main entry point with startup wizard integration"""
