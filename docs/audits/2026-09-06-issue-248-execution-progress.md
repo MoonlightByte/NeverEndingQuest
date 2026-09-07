@@ -108,6 +108,13 @@ owner scope disposition is needed for312 rather than silently repairing prompts.
 
 ## Failed attempts
 
+Subsequent owner ruling kept unrelated312 separate and authorized continued
+testing. The earlier pause is superseded. See
+[live acceptance record](2026-09-06-issue-248-live-acceptance.md) for WSL/native
+recovery, real browserReset, cross-module, early queued input, matched saved
+combat and actual-provider-child cancellation results. Conditional NOT-REACHED
+branches remain explicit; no blanket full-matrix PASS or merge is claimed.
+
 An initial multi-file apply_patch had an invalid campaign-manager context and
 failed atomically (git diff empty). Reapplied against exact source, no lost edits.
 An initial receipt-status comparison used acquired rather than existing claimed;
