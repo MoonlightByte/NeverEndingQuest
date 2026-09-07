@@ -1,5 +1,21 @@
 # Startup and Boot
 
+## React-default launch delta (2026-09-06; native acceptance pending)
+
+`run_web.py` owns presentation argument parsing and frontend preparation; direct
+`web/web_interface.py` boot reuses those helpers. Default React redirects `/` to
+`/play/`; only explicit `--ui legacy` renders the old player. `--ui choose` is a
+deprecated React alias. `launch_toolkit.py` passes `--toolkit`, keeping toolkit
+startup Node-free. Root routing, browser URL and update preparation use one
+process-local boot choice, not `NEQ_START_PATH` or game saves.
+
+Frontend preparation checks entry dependencies, builds in temporary output and
+publishes dependencies before the entry HTML, preserving the old bundle on build
+failure. The Windows installer checks the actual checkout's locked engines using
+npm's offline dry run, requests installation consent and separates skipping React
+setup from explicitly launching legacy. Node/npm are not Python requirements.
+Authority: #193 D-UI-1. This launch-only delta does not recertify older anchors below.
+
 ## #248 implementation candidate (2026-09-06; acceptance pending)
 
 Pending travel owns or borrows the existing live scope before module-completion draining and retains it through effects/graph initialization and travel recovery. Safe completion closes owned scope before welcome/combat readiness and rechecks captured authority after Save draining. Only an arrival actually published during this logical recovery substitutes for welcome; legacy history repair and cleanup-only recovery retain normal welcome. Publication observation is process-local across transient retries.

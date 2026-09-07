@@ -53,7 +53,7 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 ## Flow
 
 1. Terminal setup calls the shared `main_game_loop`; builtin `input` blocks on stdin. With no claimed frontend sink, structured narration falls back to stdout.
-2. `run_web.py` serves built React at `/play/` when available and legacy `/` otherwise. Both connect to the same Flask-Socket.IO backend.
+2. `run_web.py` defaults to React at `/play/`; root redirects there. Explicit `--ui legacy` alone enables the legacy root template. Direct server boot uses the same selection/build helpers; browser URL and updater applicability follow process-local boot configuration. Missing prerequisites fail with setup instructions, never an automatic legacy launch (#193 D-UI-1). Both players retain one Flask-Socket.IO backend.
 3. Web `start_game` reuses a living `game_thread`; otherwise it installs `WebOutputCapture` and `WebInput`, claims the output sink, resets delivery cache state, and starts exactly one daemon game thread.
 4. A separate output-pump thread drains and emits queues only. It never runs gameplay.
 5. Socket `user_input` persists/emits the visible player command, then places text on `user_input_queue`; engine-thread `WebInput.readline` consumes it.

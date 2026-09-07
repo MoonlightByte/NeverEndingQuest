@@ -57,12 +57,12 @@ server.
 4. **Launch the game**: Run `launch_game.bat` in the `NeverEndingQuest` folder
 
 The installer automatically:
-- ✅ Checks for Python, Git, and Node.js/npm (and attempts to install missing Git or Node.js)
+- ✅ Checks Python/Git and offers Node.js LTS installation with your consent
 - ✅ Clones the repository to a `NeverEndingQuest` folder
 - ✅ Creates a virtual environment
 - ✅ Installs all dependencies
 - ✅ Creates the local configuration and offers an optional OpenAI-key dialog
-- ✅ Creates `launch_game.bat`, which lets you choose React or legacy at startup
+- ✅ Builds React and creates a React-default `launch_game.bat`; explicit legacy remains available
 
 **To restart the game later:**
 - Run `launch_game.bat` in the `NeverEndingQuest` installation folder
@@ -77,27 +77,34 @@ ready:
 1. **Install Python dependencies**: `pip install -r requirements.txt`
 2. **Install Node.js LTS**: Required only for the React player; it includes `npm`
 3. **Create local configuration**: Copy `config_template.py` to `config.py`
-4. **Choose an interface**: Run `python run_web.py --ui choose`
+4. **Launch React**: Run `python run_web.py`
 5. **Choose an AI provider**: Open **Settings → AI Provider** in either player
 6. **Start your adventure**: The game guides you through character creation and module selection
 
 ### Additional Launch Options
 
-- **Legacy Player (default)**: `python run_web.py` or `python run_web.py --ui legacy`
-- **React Player**: `python run_web.py --ui react`
-- **Choose at startup**: `python run_web.py --ui choose`
+- **React Player (default)**: `python run_web.py` or `python run_web.py --ui react`
+- **Explicit Legacy Player**: `python run_web.py --ui legacy`
+- **Old shortcuts**: `--ui choose` is a deprecated React alias, without a selection menu
 - **Module Toolkit**: `python launch_toolkit.py` - Opens directly to the module creation interface
 - **Terminal Mode**: `python main.py` - Classic text-based interface (limited features)
 
-When React is requested directly or through the chooser, the launcher runs
-`npm ci` and `npm run build` if the compiled frontend is missing or older than
-its source files. If npm is unavailable or the build fails, it safely starts
-the legacy player and prints instructions for enabling React. A plain
-`python run_web.py` intentionally starts legacy and does not require Node.js.
+The launcher installs locked frontend dependencies and builds missing, incomplete,
+or outdated React assets. A current usable build needs no Node.js/npm. Failed
+preparation preserves the previous published bundle and gives repair instructions;
+it never silently launches legacy. To skip React prerequisites, explicitly run
+`python run_web.py --ui legacy`. The toolkit and terminal also remain Node-free.
+
+The Windows installer checks the fetched checkout's complete dependency requirements
+and asks before installing/updating Node.js LTS. Declining completes base setup,
+then offers a separate choice to launch legacy or exit. After installing Node,
+open a new terminal if PATH still resolves an older version. Node.js is not a
+Python `requirements.txt` dependency.
 
 The server prints the exact address when it starts. A fresh configuration uses
 `http://localhost:8357`; if you change `WEB_PORT` in `config.py`, use the port
-shown by the launcher. React is served at `/play/` and legacy at `/`.
+shown by the launcher. React is served at `/play/`; `/` redirects there unless
+the server was explicitly started with `--ui legacy`.
 
 ### AI Provider Setup
 
@@ -335,13 +342,13 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 
 4. **Launch the game**
    ```bash
-   # Prompt for React or legacy at startup
-   python run_web.py --ui choose
+   # Default React player
+   python run_web.py
 
    # React player (automatically builds frontend assets when needed)
    python run_web.py --ui react
 
-   # Legacy player (also the default for python run_web.py)
+   # Explicit legacy player (does not require Node.js)
    python run_web.py --ui legacy
 
    # Module Toolkit directly
@@ -351,7 +358,7 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
    python main.py
    ```
 
-   Follow the URL printed by the launcher. With the unchanged template, legacy
+   Follow the URL printed by the launcher. With the unchanged template, explicit legacy
    opens at `http://localhost:8357/`, React at
    `http://localhost:8357/play/`, and the toolkit at
    `http://localhost:8357/toolkit`.
@@ -361,7 +368,7 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 - The AI wizard will guide you through character creation
 - Choose from pre-built modules or generate a custom adventure
 - Both web players use the same game state; React provides the component-based
-  interface while legacy remains available as the stable fallback
+  interface while legacy remains available through explicit boot selection
 
 ## How It Overcomes AI Limitations
 
@@ -890,8 +897,8 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 
 ### Starting Your Adventure
 ```bash
-# Choose React or legacy interactively
-python run_web.py --ui choose
+# Open the default React player
+python run_web.py
 
 # Or launch one directly
 python run_web.py --ui react
@@ -1097,8 +1104,10 @@ New module detected → Security scan → Content safety check → Schema valida
 - **React says it is not built**: Install Node.js LTS, then relaunch with
   `python run_web.py --ui react`. The launcher will run the required npm install
   and build commands automatically.
-- **React build fails**: From `web/frontend`, run `npm ci` followed by
-  `npm run build`, or continue with `python run_web.py --ui legacy`.
+- **React build fails**: Run `python run_web.py --check-frontend-tools` to check
+  Node/npm against this checkout's locked dependencies. Install compatible Node.js
+  LTS if needed, then retry `python run_web.py --prepare-frontend`. Alternatively,
+  explicitly use `python run_web.py --ui legacy`; no automatic fallback occurs.
 
 #### Startup Problems
 - **No modules**: Check `modules/` directory exists
@@ -1230,7 +1239,7 @@ This is unofficial Fan Content and is not affiliated with, endorsed, sponsored, 
 ### Current Main - React Player, Multi-Provider AI, and Startup Improvements
 
 #### Player Interfaces
-- **Two supported web players**: Legacy remains at `/`; the component-based React player is available at `/play/`.
+- **Two supported web players**: React is the default at `/play/`; `/` redirects there unless the server is explicitly started with `--ui legacy`.
 - **Shared game state**: Both players connect to the same Python game engine, saves, modules, and Socket.IO events.
 - **Legacy feature/layout parity**: React includes the party and initiative strips,
   character/inventory/spells/NPC/debug panels, journal, save/load/reset/settings,
@@ -1238,10 +1247,10 @@ This is unofficial Fan Content and is not affiliated with, endorsed, sponsored, 
 - **Reconnect hydration**: React restores authoritative game state after a browser refresh or Socket.IO reconnect.
 
 #### Startup and Frontend Build
-- **Explicit interface selection**: Use `--ui react`, `--ui legacy`, or `--ui choose`; plain `python run_web.py` starts legacy.
+- **React default**: Plain `python run_web.py` opens React. Use `--ui legacy` for legacy; old `--ui choose` shortcuts now open React without a menu.
 - **Automatic React preparation**: When React is requested, stale or missing assets trigger `npm ci` and `npm run build` automatically.
-- **Safe fallback**: Missing npm or a failed React build starts legacy and prints recovery instructions.
-- **Windows launcher choice**: New installer-generated `launch_game.bat` files prompt for React or legacy.
+- **Explicit recovery**: Missing prerequisites or failed builds show repair instructions without starting another player. Existing published assets and saves are preserved.
+- **Windows launcher**: `launch_game.bat` defaults to React and forwards arguments, including `--ui legacy`.
 
 #### AI Providers and Local Credentials
 - **Default provider is now OpenAI (GPT-5.x)**: The cost-optimized per-call-site

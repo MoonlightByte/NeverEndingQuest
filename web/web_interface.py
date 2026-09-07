@@ -52,7 +52,7 @@ import secrets
 # Add parent directory to path FIRST so we can import from utils, core, etc.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, render_template, request, jsonify, Response, abort, session
+from flask import Flask, render_template, request, jsonify, Response, abort, session, redirect
 from flask_socketio import SocketIO, emit
 import json
 import threading
@@ -174,6 +174,7 @@ app = Flask(__name__,
 # A random per-process secret is safe for local play and avoids a known signing
 # key. Operators who need stable sessions can supply NEQ_FLASK_SECRET_KEY.
 app.config['SECRET_KEY'] = os.environ.get("NEQ_FLASK_SECRET_KEY") or secrets.token_urlsafe(32)
+app.config.update(PLAYER_UI='react', TOOLKIT_ONLY=False)
 # Same-origin is the safe default. Explicit cross-origin support is not needed
 # for the bundled UI, which is served by this Flask application.
 socketio = SocketIO(app, cors_allowed_origins=None)
@@ -1022,6 +1023,8 @@ class WebInput:
 @app.route('/')
 def index():
     """Serve the main game interface"""
+    if app.config['PLAYER_UI'] != 'legacy':
+        return redirect('/play/')
     # Read version from VERSION file
     try:
         with open('VERSION', 'r') as f:
@@ -5072,6 +5075,13 @@ def send_output_to_clients_original():
         
         time.sleep(0.1)  # Small delay to prevent CPU spinning
 
+def _web_start_path():
+    """One process-local boot choice drives both browser and console URLs."""
+    if app.config['TOOLKIT_ONLY']:
+        return '/toolkit'
+    return '/' if app.config['PLAYER_UI'] == 'legacy' else '/play/'
+
+
 def open_browser():
     """Open the web browser after a short delay"""
     time.sleep(1.5)  # Wait for server to start
@@ -5080,9 +5090,7 @@ def open_browser():
         port = getattr(config, 'WEB_PORT', 8357)
     except ImportError:
         port = 8357
-    start_path = os.environ.get('NEQ_START_PATH', '/')
-    if start_path not in {'/', '/play/'}:
-        start_path = '/'
+    start_path = _web_start_path()
     webbrowser.open(f'http://localhost:{port}{start_path}')
 
 
@@ -6007,7 +6015,6 @@ def export_npcs_to_pack():
 
 # ============================================================================
 # REACT PLAYER FRONTEND (P4 standalone) - serves web/frontend/dist at /play
-# Added after all existing routes; does not modify any existing route.
 # ============================================================================
 
 @app.route('/play')
@@ -6018,18 +6025,24 @@ def serve_react_play(filename='index.html'):
 
     The app is built with Vite base '/play/', so its hashed assets resolve to
     /play/assets/... and are served by this same route. Unknown paths fall
-    back to index.html (SPA behavior). Requires `npm run build` in
-    web/frontend first; returns a plain 503 hint if dist/ is missing.
+    back to index.html for navigation, never for a missing static asset.
+    The launcher prepares the build; unavailable bundles return a setup hint.
     """
     from flask import send_from_directory
     from werkzeug.utils import safe_join
+    from run_web import _react_bundle_is_usable
     import os
     dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'dist')
-    if not os.path.isfile(os.path.join(dist_dir, 'index.html')):
-        return ("React frontend not built. Run 'npm run build' in web/frontend.", 503)
     requested_path = safe_join(dist_dir, filename)
-    if requested_path is None or not os.path.isfile(requested_path):
+    if requested_path is None:
+        abort(404)
+    if not os.path.isfile(requested_path):
+        if filename != 'index.html' and (filename.startswith('assets/') or os.path.splitext(filename)[1]):
+            return ('React asset not found. Retry setup with python run_web.py --prepare-frontend.', 404)
         filename = 'index.html'
+    if filename == 'index.html' and not _react_bundle_is_usable(dist_dir):
+        return ("React frontend is unavailable or incomplete. Run 'python run_web.py --prepare-frontend'. "
+                "Or stop the server and explicitly run 'python run_web.py --ui legacy'.", 503)
     response = send_from_directory(dist_dir, filename)
     if filename == 'index.html':
         version_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'VERSION')
@@ -6762,11 +6775,12 @@ def handle_trigger_update():
         # Keep /play/ deployable after an update. Reuse the same freshness
         # check/build path as the normal launcher instead of re-execing a
         # server that may point at stale or missing frontend assets.
-        from run_web import ensure_react_frontend
-        emit_update('update_log', {'message': 'Checking React player build...'})
-        if not ensure_react_frontend(repo_root=repo_path):
-            emit_update('update_error', {'error': 'React player build failed; server was not restarted.'})
-            return
+        if app.config['PLAYER_UI'] == 'react' and not app.config['TOOLKIT_ONLY']:
+            from run_web import ensure_react_frontend
+            emit_update('update_log', {'message': 'Checking React player build...'})
+            if not ensure_react_frontend(repo_root=repo_path):
+                emit_update('update_error', {'error': 'React player build failed; server was not restarted.'})
+                return
 
         # Step 3: Restart server
         emit_update('update_complete', {'message': 'Update complete! Server restarting...'})
@@ -6781,6 +6795,25 @@ def handle_trigger_update():
         emit_update('update_error', {'error': str(e)})
 
 if __name__ == '__main__':
+    from run_web import parse_args, select_ui, ensure_react_frontend, check_frontend_tools
+    boot_args = parse_args()
+    if boot_args.frontend_ready:
+        from pathlib import Path
+        from run_web import _react_build_is_current
+        sys.exit(0 if _react_build_is_current(Path(__file__).resolve().parent / 'frontend') else 1)
+    if boot_args.check_frontend_tools:
+        sys.exit(0 if check_frontend_tools() else 1)
+    if boot_args.prepare_frontend:
+        sys.exit(0 if ensure_react_frontend() else 1)
+    if boot_args.toolkit:
+        selected_ui = 'react'
+    else:
+        available = False if boot_args.ui == 'legacy' else ensure_react_frontend()
+        selected_ui = select_ui(boot_args.ui, available)
+        if selected_ui is None:
+            print('[SETUP] React is not ready. No game was started; retry setup or use --ui legacy.')
+            sys.exit(1)
+    app.config.update(PLAYER_UI=selected_ui, TOOLKIT_ONLY=boot_args.toolkit)
     # Create templates directory if it doesn't exist
     os.makedirs('templates', exist_ok=True)
     
@@ -6794,9 +6827,7 @@ if __name__ == '__main__':
         port = getattr(config, 'WEB_PORT', 8357)
     except ImportError:
         port = 8357
-    start_path = os.environ.get('NEQ_START_PATH', '/')
-    if start_path not in {'/', '/play/'}:
-        start_path = '/'
+    start_path = _web_start_path()
     print(f"Opening browser at http://localhost:{port}{start_path}")
     
     # Run the Flask app with SocketIO

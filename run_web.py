@@ -32,17 +32,109 @@ import os
 import time
 import argparse
 import shutil
+import tempfile
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 
 _AUTO_NPM = object()
+
+
+class _BundleReferences(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.paths = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "script" and attrs.get("src"):
+            self.paths.append(attrs["src"])
+        if tag == "link" and attrs.get("rel") in {"stylesheet", "modulepreload"}:
+            if attrs.get("href"):
+                self.paths.append(attrs["href"])
+
+
+def _react_bundle_is_usable(dist):
+    """Check actual entry dependencies, not just the presence of an HTML shell."""
+    dist = Path(dist).resolve()
+    try:
+        parser = _BundleReferences()
+        parser.feed((dist / "index.html").read_text(encoding="utf-8"))
+        if not parser.paths:
+            return False
+        for reference in parser.paths:
+            url = urlsplit(reference)
+            if url.scheme or url.netloc:
+                continue
+            path = unquote(url.path)
+            if path.startswith("/play/"):
+                path = path[len("/play/"):]
+            elif path.startswith("/"):
+                return False
+            target = (dist / path).resolve()
+            if dist not in target.parents or not target.is_file():
+                return False
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _replace_frontend_file(source, target):
+    """Sharing violations are busy, not a failed installation (#193 B2)."""
+    while True:
+        try:
+            os.replace(source, target)
+            return
+        except OSError as exc:
+            if getattr(exc, "winerror", None) not in {32, 33}:
+                raise
+            print("[SETUP] Waiting for the browser files to become available...")
+            time.sleep(0.25)
+
+
+def _publish_react_build(built, dist):
+    """Publish dependencies first and index last; retain the previous shell on error."""
+    built, dist = Path(built), Path(dist)
+    if not _react_bundle_is_usable(built):
+        raise ValueError("React build is incomplete; an entry dependency is missing")
+    dist.mkdir(parents=True, exist_ok=True)
+    originals = {}
+    files = [p for p in built.rglob("*") if p.is_file() and p != built / "index.html"]
+    files.append(built / "index.html")
+    try:
+        for source in files:
+            target = dist / source.relative_to(built)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            originals[target] = None
+            if target.exists():
+                previous = built.parent / 'previous' / source.relative_to(built)
+                previous.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, previous)
+                originals[target] = previous
+            _replace_frontend_file(source, target)
+    except BaseException:
+        # No game state is touched. Roll back only files this publication replaced.
+        for target in reversed(originals):
+            rollback = built / target.relative_to(dist)
+            # os.replace consumes its source only on success. Inspect that fact
+            # even if Ctrl+C arrived between replacement and Python bookkeeping.
+            # A failed/locked unchanged destination must not block restoration.
+            if rollback.exists():
+                continue
+            previous = originals[target]
+            if previous is None:
+                target.unlink(missing_ok=True)
+            else:
+                _replace_frontend_file(previous, target)
+        raise
 
 
 def _react_build_is_current(frontend_dir):
     """Return True when the compiled React entry point is newer than its inputs."""
     frontend_dir = Path(frontend_dir)
     index = frontend_dir / "dist" / "index.html"
-    if not index.is_file():
+    if not _react_bundle_is_usable(frontend_dir / "dist"):
         return False
 
     build_time = index.stat().st_mtime
@@ -67,6 +159,33 @@ def _react_build_is_current(frontend_dir):
     return True
 
 
+def check_frontend_tools(repo_root=None):
+    """Let npm validate this checkout's complete locked engine contract, offline."""
+    repo_root = Path(repo_root or Path(__file__).resolve().parent)
+    node, npm = shutil.which("node"), shutil.which("npm")
+    if not node or not npm:
+        print("[SETUP] Node.js and npm are required to build React.")
+        return False
+    try:
+        for command in ([node, "--version"], [npm, "--version"]):
+            if subprocess.run(command).returncode:
+                return False
+        # No package downloads, scripts, lockfile edits or node_modules changes.
+        result = subprocess.run(
+            [npm, "ci", "--dry-run", "--ignore-scripts", "--engine-strict",
+             "--offline", "--no-audit", "--include=dev"],
+            cwd=repo_root / "web" / "frontend",
+        )
+        if result.returncode:
+            print("[SETUP] This checkout's frontend dependency check failed. See npm's error above.")
+            print("For an unsupported engine, install Node.js LTS from https://nodejs.org/en/download.")
+            return False
+        return True
+    except OSError as exc:
+        print(f"[SETUP] Cannot run Node.js/npm: {exc}")
+        return False
+
+
 def ensure_react_frontend(repo_root=None, npm_command=_AUTO_NPM, runner=subprocess.run):
     """Build the React player when missing/stale; return whether it is usable."""
     repo_root = Path(repo_root or Path(__file__).resolve().parent)
@@ -80,39 +199,47 @@ def ensure_react_frontend(repo_root=None, npm_command=_AUTO_NPM, runner=subproce
     if not npm_command:
         print("\n[WARNING] The React player needs to be built, but npm was not found.")
         print("Install Node.js LTS from https://nodejs.org/ and run the game again.")
-        print("Starting the legacy interface instead.\n")
+        print("Or explicitly run: python run_web.py --ui legacy\n")
         return False
 
     print("\n[SETUP] Preparing the React player (first launch or frontend update)...")
-    commands = ([npm_command, "ci"], [npm_command, "run", "build"])
-    for command in commands:
-        try:
+    workspace = None
+    try:
+        workspace = tempfile.TemporaryDirectory(prefix=".react-build-", dir=frontend_dir)
+        built = Path(workspace.name) / "dist"
+        commands = (
+            [npm_command, "ci", "--engine-strict", "--include=dev"],
+            [npm_command, "run", "build", "--", "--outDir", str(built)],
+        )
+        for command in commands:
             result = runner(command, cwd=frontend_dir)
+            if result.returncode != 0:
+                print(f"[WARNING] Frontend setup failed: {' '.join(command)}")
+                print("Review the error above, repair the dependency or build problem, then retry.")
+                print("Or explicitly run: python run_web.py --ui legacy")
+                return False
+        _publish_react_build(built, frontend_dir / "dist")
+        print("[OK] React player built and verified\n")
+        return True
+    except (OSError, ValueError) as exc:
+        print(f"[WARNING] React preparation failed: {exc}")
+        print("Retry setup, or explicitly run: python run_web.py --ui legacy")
+        return False
+    finally:
+        try:
+            if workspace is not None:
+                workspace.cleanup()
         except OSError as exc:
-            print(f"[WARNING] Could not run npm: {exc}")
-            print("Starting the legacy interface instead.\n")
-            return False
-        if result.returncode != 0:
-            print(f"[WARNING] Frontend setup failed while running: {' '.join(command)}")
-            print("You can retry manually in web/frontend. Starting legacy instead.\n")
-            return False
-
-    print("[OK] React player built successfully\n")
-    return True
+            print(f"[WARNING] Temporary React build cleanup: {exc}")
 
 
 def select_ui(requested, react_available, input_fn=input):
-    """Resolve the requested startup interface, with a safe legacy fallback."""
-    if requested == "legacy" or not react_available:
+    """Legacy requires explicit consent; unavailable React is a setup outcome."""
+    if requested == "legacy":
         return "legacy"
     if requested == "choose":
-        print("Choose the player interface:")
-        print("  1. React player (recommended)")
-        print("  2. Legacy player")
-        choice = input_fn("Selection [1]: ").strip().lower()
-        if choice in {"2", "legacy", "l"}:
-            return "legacy"
-    return "react"
+        print("[INFO] --ui choose now opens React. Use --ui legacy to request legacy.")
+    return "react" if react_available else None
 
 
 def parse_args(argv=None):
@@ -120,9 +247,13 @@ def parse_args(argv=None):
     parser.add_argument(
         "--ui",
         choices=("react", "legacy", "choose"),
-        default="legacy",
-        help="interface to open (default: legacy; use --ui react for the new player)",
+        default="react",
+        help="interface to open (default: react; --ui legacy explicitly selects legacy)",
     )
+    parser.add_argument("--toolkit", action="store_true", help="open the module toolkit without building the player")
+    parser.add_argument("--prepare-frontend", action="store_true", help="prepare React assets without starting a game")
+    parser.add_argument("--check-frontend-tools", action="store_true", help="check Node/npm against locked dependencies without installing")
+    parser.add_argument("--frontend-ready", action="store_true", help="check current React assets without requiring Node/npm")
     return parser.parse_args(argv)
 
 def create_default_party_tracker():
@@ -141,7 +272,7 @@ def create_default_party_tracker():
             return False
     return True
 
-def main(ui="legacy"):
+def main(ui="react", toolkit=False):
     # Check if config.py exists first
     if not os.path.exists('config.py'):
         print("[D20] Welcome to NeverEndingQuest! [D20]")
@@ -190,9 +321,12 @@ def main(ui="legacy"):
             os.makedirs(dir_path, exist_ok=True)
 
     # An explicit legacy launch must not require Node.js or spend time building React.
-    react_available = False if ui == "legacy" else ensure_react_frontend()
-    selected_ui = select_ui(ui, react_available)
-    start_path = "/play/" if selected_ui == "react" else "/"
+    react_available = False if ui == "legacy" or toolkit else ensure_react_frontend()
+    selected_ui = "react" if toolkit else select_ui(ui, react_available)
+    if selected_ui is None:
+        print("[SETUP] React is not ready. No game was started; your saves are unchanged.")
+        return 1
+    start_path = "/toolkit" if toolkit else ("/play/" if selected_ui == "react" else "/")
     
     print("Launching NeverEndingQuest Web Interface...")
     try:
@@ -208,8 +342,11 @@ def main(ui="legacy"):
         try:
             # Run the web interface and capture the return code
             child_env = os.environ.copy()
-            child_env["NEQ_START_PATH"] = start_path
-            result = subprocess.run([sys.executable, "web/web_interface.py"], env=child_env)
+            child_env.pop("NEQ_START_PATH", None)
+            command = [sys.executable, "web/web_interface.py", "--ui", selected_ui]
+            if toolkit:
+                command.append("--toolkit")
+            result = subprocess.run(command, env=child_env)
             
             # Check if it was a planned restart (exit code 0)
             if result.returncode == 0:
@@ -231,6 +368,12 @@ def main(ui="legacy"):
 
 if __name__ == "__main__":
     args = parse_args()
+    if args.frontend_ready:
+        sys.exit(0 if _react_build_is_current(Path(__file__).resolve().parent / "web/frontend") else 1)
+    if args.check_frontend_tools:
+        sys.exit(0 if check_frontend_tools() else 1)
+    if args.prepare_frontend:
+        sys.exit(0 if ensure_react_frontend() else 1)
     # Check for updates before starting
     try:
         from utils.version_checker import check_for_updates
@@ -254,4 +397,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"[VERSION_CHECK] Could not check for updates: {e}")
 
-    main(args.ui)
+    sys.exit(main(args.ui, toolkit=args.toolkit))

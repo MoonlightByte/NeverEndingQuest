@@ -61,29 +61,6 @@ git --version
 echo [OK] Git found!
 echo.
 
-REM Step 2b: Check for Node.js/npm (required to compile the React player)
-echo Step 2b: Checking for Node.js and npm...
-npm --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Node.js/npm not found. Attempting to install Node.js LTS...
-    winget install --id OpenJS.NodeJS.LTS -e --source winget >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo [OK] Node.js LTS installed.
-        echo Please restart this installer so the updated PATH is available.
-        pause
-        exit /b 0
-    ) else (
-        echo [WARNING] Could not install Node.js automatically.
-        echo The legacy player will still work. For the React player, install:
-        echo https://nodejs.org/
-    )
-) else (
-    node --version
-    npm --version
-    echo [OK] Node.js and npm found!
-)
-echo.
-
 REM Step 3: Clone repository
 echo Step 3: Cloning repository...
 echo Installing to: %CD%
@@ -228,7 +205,7 @@ REM Create launch_game.bat in the repo folder
 echo @echo off > launch_game.bat
 echo cd /d "%%~dp0" >> launch_game.bat
 echo call venv\Scripts\activate.bat >> launch_game.bat
-echo python run_web.py --ui choose >> launch_game.bat
+echo python run_web.py %%* >> launch_game.bat
 echo pause >> launch_game.bat
 
 echo [OK] Created launch_game.bat
@@ -248,7 +225,7 @@ if exist "%USERPROFILE%\Desktop\NeverEndingQuest.lnk" (
 
 echo.
 echo ========================================
-echo   Installation Complete!
+echo   Base Installation Complete!
 echo ========================================
 echo.
 echo Installation location: %CD%
@@ -259,14 +236,79 @@ echo   Option 2: Run manually:
 echo            venv\Scripts\activate
 echo            python run_web.py
 echo.
-echo The game will open at: http://localhost:8357
+echo React is the default player. Explicit legacy: launch_game.bat --ui legacy
 echo.
-echo Press any key to launch the game now...
-pause >nul
 
-REM Launch the game
-call venv\Scripts\activate.bat
-start http://localhost:8357
+REM Validate against the fetched checkout, not the standalone installer's age.
+set "REACT_READY=0"
+call :PREPARE_REACT
+if "!REACT_READY!"=="0" goto CHOOSE_LEGACY_OR_EXIT
+echo [OK] React player is built and ready.
+echo R: Launch React   L: Explicitly launch legacy   X: Exit without launching
+choice /C RLX /N /M "Choose R, L, or X: "
+if "%errorlevel%"=="2" goto LAUNCH_LEGACY
+if not "%errorlevel%"=="1" goto END
 python run_web.py
+goto END
+
+:CHOOSE_LEGACY_OR_EXIT
+echo React is not ready. Base setup and your saves are preserved.
+echo Install compatible Node.js LTS, open a NEW terminal, and run launch_game.bat to retry.
+echo Skipping React setup does not select a different player automatically.
+echo L: Explicitly launch legacy now   X: Exit without launching
+choice /C LX /N /M "Choose L or X: "
+if not "%errorlevel%"=="1" goto END
+:LAUNCH_LEGACY
+python run_web.py --ui legacy
+goto END
+
+:PREPARE_REACT
+python run_web.py --frontend-ready
+if not errorlevel 1 (
+    set "REACT_READY=1"
+    exit /b 0
+)
+echo Checking this checkout's Node.js/npm dependency requirements...
+python run_web.py --check-frontend-tools
+if errorlevel 1 goto NODE_RECOVERY
+python run_web.py --prepare-frontend
+if errorlevel 1 goto FRONTEND_RECOVERY
+set "REACT_READY=1"
+exit /b 0
+
+:NODE_RECOVERY
+echo.
+echo [SETUP] Node.js/npm validation did not pass. Review the error above.
+echo For missing or unsupported Node.js, install LTS from https://nodejs.org/en/download
+echo I: Consent to install/update Node.js LTS using winget
+echo R: Recheck after correcting your environment
+echo S: Skip React setup and finish base installation
+echo Installing may affect other Node.js projects. If you use a version manager,
+echo select S and install a compatible version through that manager instead.
+choice /C IRS /N /M "Choose I, R, or S: "
+if "%errorlevel%"=="2" goto PREPARE_REACT
+if not "%errorlevel%"=="1" exit /b 0
+where winget >nul 2>&1
+if errorlevel 1 (
+    echo [SETUP] winget is unavailable. Use the official download link above.
+    goto NODE_RECOVERY
+)
+winget install --id OpenJS.NodeJS.LTS -e --source winget
+if errorlevel 1 (
+    echo [SETUP] Installation failed or was cancelled. React is not ready.
+    echo You can retry, install manually, or skip React setup.
+    goto NODE_RECOVERY
+)
+echo Installation returned successfully; verifying the actual node/npm on PATH.
+echo If the old version is still found, finish setup and open a NEW terminal.
+goto PREPARE_REACT
+
+:FRONTEND_RECOVERY
+echo [SETUP] React compilation failed. No game has been launched.
+echo R: Retry after addressing the build error   S: Finish without React
+choice /C RS /N /M "Choose R or S: "
+if not "%errorlevel%"=="1" exit /b 0
+goto PREPARE_REACT
 
 :END
+exit /b 0

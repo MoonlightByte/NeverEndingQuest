@@ -7,7 +7,6 @@ Launches the web interface with the module toolkit enabled
 import os
 import sys
 import webbrowser
-import time
 import subprocess
 import socket
 from pathlib import Path
@@ -74,19 +73,14 @@ def main():
     try:
         # Launch in subprocess so we can control it better
         process = subprocess.Popen(
-            [sys.executable, 'web/web_interface.py'],
+            [sys.executable, 'web/web_interface.py', '--toolkit'],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
             bufsize=1
         )
         
-        # Wait a moment for server to start
-        time.sleep(3)
-        
-        # Open browser to toolkit page
-        print(f"[INFO] Opening browser to http://localhost:{port}/toolkit")
-        webbrowser.open(f'http://localhost:{port}/toolkit')
+        # The server opens /toolkit after preparing its boot configuration.
         
         # Stream output from the process
         for line in process.stdout:
