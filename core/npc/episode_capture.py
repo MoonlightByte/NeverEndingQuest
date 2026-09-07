@@ -25,7 +25,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from core.npc.episode_extraction import extract_episode, flatten_scene
 from core.combat.invocation import InvocationSupersededError
-from utils.capture.live_provider_call import LiveProviderSuperseded
+from utils.capture.live_provider_call import LiveProviderSuperseded, _check_live_authority
 from core.npc.episode_store import EpisodeStore
 from core.npc.relationship_store import (
     RelationshipStore,
@@ -170,6 +170,7 @@ def capture_location_episode(
     rel_store: Optional[RelationshipStore] = None,
     json_loader: Callable[[str], Any] = safe_json_load,
     advisory_scope: Any = None,
+    authority_check: Optional[Callable[[], bool]] = None,
 ) -> Optional[str]:
     """Synchronous, testable core. Returns the committed episodeId or None.
     Never mutates conversation history; never raises."""
@@ -192,10 +193,14 @@ def capture_location_episode(
             )
             return None
         scene = flatten_scene(segment_messages)
+        if authority_check is not None:
+            _check_live_authority(advisory_scope, authority_check)
         result = extract_episode(
             scene, present, player_name=player_name, provider=provider,
             capture_fn=capture_and_fanout, advisory_scope=advisory_scope,
         )
+        if authority_check is not None:
+            _check_live_authority(advisory_scope, authority_check)
         if result is None:
             return None
         if not result.get("witness_ids"):
@@ -488,6 +493,8 @@ def consolidate_module_episodes(
     provider: Optional[str] = None,
     episode_store: Optional[EpisodeStore] = None,
     rel_store: Optional[RelationshipStore] = None,
+    advisory_scope: Any = None,
+    authority_check: Optional[Callable[[], bool]] = None,
 ) -> Optional[str]:
     """Module-leave consolidation (R10): capture the FINAL location.
 
@@ -500,6 +507,8 @@ def consolidate_module_episodes(
     they are intentionally not re-derived here. Runs AFTER the T038 summary commits.
     """
     try:
+        if authority_check is not None:
+            _check_live_authority(advisory_scope, authority_check)
         last_marker = -1
         for i, message in enumerate(conversation_history):
             if (
@@ -531,6 +540,8 @@ def consolidate_module_episodes(
             derived_from="module_consolidation",
             episode_store=episode_store,
             rel_store=rel_store,
+            advisory_scope=advisory_scope,
+            authority_check=authority_check,
         )
     except (LiveProviderSuperseded, InvocationSupersededError):
         raise

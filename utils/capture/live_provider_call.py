@@ -183,7 +183,9 @@ class LiveTurnScope:
 
     def register_advisory_scopes(self, advisory_scopes):
         with self.lock:
-            if not self.controls_open or self.supersession is not None:
+            if self.supersession is not None or (
+                not self.controls_open and self is not _executing_control_scope.get()
+            ):
                 return False
             self.advisory_scopes.extend(advisory_scopes)
             return True
@@ -242,6 +244,7 @@ def open_advisory_scopes(parent, beat_id, count, *, completion_required=False):
     if (
         parent is not get_live_turn_scope()
         and parent is not get_active_welcome_scope()
+        and parent is not _executing_control_scope.get()
     ):
         return ()
     scopes = tuple(

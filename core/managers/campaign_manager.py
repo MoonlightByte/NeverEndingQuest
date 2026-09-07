@@ -3034,6 +3034,45 @@ class CampaignManager:
                     # this wait. Live/unknown work is followed, never stolen.
                     _interruptible_wait(0.25, scope, "Finishing the campaign record...",
                                         authority_check=current)
+            # #311: the origin snapshot belongs to this completion, not the
+            # destination. Provider work starts only after _complete_module_once
+            # has released all commit locks, and ends before flight publication.
+            memory_scopes = ()
+            try:
+                from core.npc.episode_capture import consolidate_module_episodes
+                from core.npc.relationship_store import record_store_health
+                from utils.capture.live_provider_call import open_advisory_scopes
+                from utils.module_path_manager import ModulePathManager
+
+                _check_live_authority(scope, current)
+                memory_scopes = open_advisory_scopes(
+                    scope, "T108-module-%s" % module_name, 1,
+                    completion_required=True,
+                )
+                if memory_scopes:
+                    origin_party = copy.deepcopy(party_snapshot)
+                    origin_party["module"] = module_name
+                    consolidate_module_episodes(
+                        copy.deepcopy(history_snapshot), origin_party,
+                        path_manager=ModulePathManager(module_name),
+                        player_name=(origin_party.get("partyMembers") or [""])[0],
+                        advisory_scope=memory_scopes[0], authority_check=current,
+                    )
+                else:
+                    _check_live_authority(scope, current)
+                    record_store_health(
+                        "module_episode_scope_unavailable", detail=module_name,
+                    )
+                    warning("Module-final memory could not register its owner",
+                            category="campaign_management")
+            except (LiveProviderSuperseded, InvocationSupersededError):
+                raise
+            except Exception as memory_error:
+                warning(f"Module-final memory failed: {memory_error}",
+                        category="campaign_management")
+            finally:
+                for memory_scope in memory_scopes:
+                    memory_scope.finish()
         except BaseException as exc:
             completion.set_exception(exc)
             raise
@@ -3598,30 +3637,6 @@ class CampaignManager:
                 "Campaign completion commit failed; prior state restored: "
                 f"{commit_exc}"
             ) from commit_exc
-
-        # Phase 1d: module-leave consolidation -- capture the FINAL location that live
-        # per-location capture structurally misses (it never gets a transition-out).
-        # Placed HERE, only after the completion is DURABLY committed (the except above
-        # re-raises on failure, so this line is unreachable on rollback) and outside the
-        # archive/checkpoint critical section -- so it can never affect module
-        # completion. Best-effort, fail-open. Uses an explicit module_name snapshot so
-        # the episode coordinate is the completed module, not a live-mutated tracker.
-        try:
-            from core.npc.episode_capture import consolidate_module_episodes
-            from utils.module_path_manager import ModulePathManager
-            tracker_snapshot = copy.deepcopy(party_tracker_data)
-            if isinstance(tracker_snapshot, dict):
-                tracker_snapshot["module"] = module_name
-            consolidate_module_episodes(
-                conversation_history,
-                tracker_snapshot,
-                path_manager=ModulePathManager(module_name),
-                player_name=(party_tracker_data.get("partyMembers") or [""])[0],
-            )
-        except (LiveProviderSuperseded, InvocationSupersededError):
-            raise
-        except Exception:
-            pass
 
         work_marked = False
         try:
