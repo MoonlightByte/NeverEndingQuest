@@ -1,11 +1,29 @@
 # NeverEndingQuest
 
+## Launch the game: React by default
+
+After installation, run these commands from your game folder with its Python
+environment activated:
+
+- **React player (default):** `python run_web.py`
+- **Legacy player (explicit opt-in):** `python run_web.py --ui legacy`
+
+For Windows installer users, run `launch_game.bat` for React, or
+`launch_game.bat --ui legacy` for legacy.
+
+Both interfaces open in your browser. React is selected automatically; there is
+no interface-selection prompt and no automatic fallback to legacy. If React needs
+setup or repair, follow the launcher's instructions, or explicitly run legacy.
+Node.js/npm are needed to build or rebuild React, not to run an already-current
+build or the legacy player. See [Quick Start](#quick-start) for installation.
+
 **Version 0.3.5 (Alpha)**
 
 An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campaigns with infinite adventure potential. Experience the world's most popular roleplaying game with an intelligent AI that remembers every decision, adapts to your playstyle, and creates endless adventures tailored to your party.
 
-**🚀 NEW: React Player and Multi-Provider AI** - Choose the established legacy
-player or the component-based React player, then run the game with the current
+**🚀 NEW: React Player and Multi-Provider AI** - The component-based React player
+is now the default; the established legacy player remains an explicit launch option.
+Run the game with the current
 cost-optimized OpenAI GPT-5.x models (**the new default**), the stable GPT-4.1
 baseline (one toggle away), Gemini, or an OpenAI-compatible local or remote
 server.
