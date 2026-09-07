@@ -3003,6 +3003,7 @@ class CampaignManager:
         try:
             from utils.capture.live_provider_call import (
                 _check_live_authority, _interruptible_wait, get_live_provider_scope,
+                _wait_for_live_authority,
             )
             scope = get_live_provider_scope()
 
@@ -3044,7 +3045,7 @@ class CampaignManager:
                 from utils.capture.live_provider_call import open_advisory_scopes
                 from utils.module_path_manager import ModulePathManager
 
-                _check_live_authority(scope, current)
+                _wait_for_live_authority(scope, current)
                 memory_scopes = open_advisory_scopes(
                     scope, "T108-module-%s" % module_name, 1,
                     completion_required=True,
@@ -3055,11 +3056,12 @@ class CampaignManager:
                     consolidate_module_episodes(
                         copy.deepcopy(history_snapshot), origin_party,
                         path_manager=ModulePathManager(module_name),
+                        module_visit=result["visitCount"],
                         player_name=(origin_party.get("partyMembers") or [""])[0],
                         advisory_scope=memory_scopes[0], authority_check=current,
                     )
                 else:
-                    _check_live_authority(scope, current)
+                    _wait_for_live_authority(scope, current)
                     record_store_health(
                         "module_episode_scope_unavailable", detail=module_name,
                     )

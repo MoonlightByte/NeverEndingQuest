@@ -11,6 +11,14 @@ T108 advisory child spans extraction and persistence; accepted Save uses its
 exact executing-control identity without reopening external controls. Typed
 supersession propagates; completed advisory failures emit store-health telemetry.
 
+Module-final coordinates use the committed result's `module-visit-N` boundary,
+not a conversation marker count. Different visits remain distinct; the same
+committed visit replays. Old `close-N` records and POV links are preserved without
+guessed migration; an interrupted old-build completion may gain one additional
+episode under the owner-approved preservation-first compatibility ruling.
+Synchronous unreadable-authority checks wait interruptibly, retaining any extracted
+result until authority is established or the owning operation is superseded.
+
 Final-coordinate replay preserves an existing canonical episode and projects
 its saved facts through the same private `_project_episode` helper as new
 location, combat and historical-backfill commits. Canonical and POV writes remain

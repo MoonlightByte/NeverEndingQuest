@@ -1,20 +1,28 @@
 # Issue 311: module-final companion memory repair plan
 
 Status: EXECUTION APPROVED by owner: "execute this plan. sounds good".
-Full review and clean confirmation passed before approval. Implementation and
-scoped testing authorized; merge, push and issue closure remain separately gated.
+Original review and clean confirmation passed before approval. Task-4 is a
+substantive acceptance-driven amendment: owner accepted its preservation-first
+compatibility choice on 2026-09-07. Full amended-plan review and clean
+confirmation PASSED all nine seats on substantive SHA 5cc5b4fde08cb4f7c89e7dbe128ca4d8f2f0213557007f1cfdeab9a6c3dc98ae.
+Task-4 and task-2 FF-1 execution APPROVED after presentation, owner:
+"aoprvoed continue" (2026-09-07). Implementation and testing are underway.
+This status stamp changes no reviewed contract.
+Merge, push and issue closure remain separately gated.
 
 ## Authority and evidence pin
 
 Owner requested this issue and a full #193 review of the plan. Policy read live:
-#193 v3.1, updatedAt 2026-09-07T04:50:09Z. Issue #293 read for open rulings.
+#193 v3.1, refreshed updatedAt 2026-09-07T18:48:35Z with D-311-2
+codified in Part 5. Issue #293 read for open rulings.
 Inspection baseline main 99876535b4c9d24c29384236d52d03bfddc621be, captured
 2026-09-07 UTC; this revision is evidence, never runtime authority. Refresh
 main ancestry and policy epoch before implementation and shipment.
 Planning branch docs/311-module-final-memory-plan, isolated WSL worktree
 /home/loup/neq-worktrees/311-module-final-memory (D-WT-1).
 Execution branch: fix/311-module-final-memory in that same isolated worktree.
-Execution-start live policy epoch and origin/main are unchanged from this pin.
+Original execution-start policy epoch was 2026-09-07T04:50:09Z; origin/main
+is unchanged from this evidence pin. The amendment uses the refreshed epoch.
 
 Applicable doctrine: Part 2 p7 NEQ-NPC-01/02 (grounded attributed recall),
 p8 NEQ-WORLD-03/04 (module bubbles and player-data preservation), p9
@@ -136,11 +144,34 @@ any party/campaign/episode/relationship lock; do not hold a scope lock around
 provider or persistence waits. Lifecycle controls still quiesce the owning game
 thread and registered child before replacing files.
 
+FF-1 amendment (source-proven, not an observed live incident): an unavailable
+epoch read at a new synchronous check currently enters the broad advisory catch;
+completion can then clear its ready intent without final memory. Temporary busy
+authority is not completed-invalid extraction. Add one private
+_wait_for_live_authority in existing live_provider_call.py: loop on the existing
+nonwaiting _check_live_authority; on OSError use existing _interruptible_wait
+with its existing 0.25-second poll cadence and truthful memory progress, then
+retry. No attempt cap or terminal deadline. Typed supersession escapes unchanged.
+Do not change _check_live_authority, current(), or any provider-poll callback:
+those observations must remain nonwaiting so an active provider child can reap.
+
+Replace only the six new #311 synchronous checks: campaign_manager3047/3062
+and episode_capture202/208/543/574. All run outside store/party/campaign locks
+and outside an active provider request. The post-extraction check retains the
+local typed result while waiting; it does not discard or re-extract it. Keep
+the registered child owned until persistence/discard and finally finish it.
+Completed-invalid extraction and invalid visit metadata still use existing loud
+advisory handling; an unreadable authority observation is neither of those.
+The private helper's two-file caller family and FF-1 are its AP-4 warrant; no
+new public API, store, lock, worker, policy or unrelated retry refactor.
+
 ### task-3: preserve idempotency and make failure observable
 
-consolidate_module_episodes already derives origin location and close-(N+1)
-from the snapshot (episode_capture:482-534). stable_episode_id at
-episode_store:51 derives UUID5 from module|location|boundary values, not prose.
+The original close-(N+1) module-final identity is superseded by task-4 below:
+use origin module/location plus the returned committed visit's module-visit-N
+boundary. stable_episode_id at episode_store:51 continues deriving UUID5 from
+module|location|boundary values, not prose. Ordinary location boundaries stay
+unchanged; module-final capture has one identity path, not a legacy fallback.
 Before another extraction on replay, query that exact existing coordinate using
 the existing store read API. If a valid canonical record exists, preserve it:
 skip T108 and canonical rewriting, but finish its deterministic POV/baseline
@@ -176,6 +207,52 @@ advisory failure uses the existing one-beat Fork-3 handling, loudly, without
 turning committed module completion into failure. No claim of exactly-once
 billing across crashes. Source history/archive remain intact for later recovery.
 
+### task-4: distinguish another module visit from replay
+
+Observed at d11bfec5 in native acceptance: real receipt completion_id
+6d6aa3d2-4811-468a-818c-17fe4f6ad3f4 has committed visitCount2; its frozen
+Thornwood/RO01 history has16 location markers. Existing prior-visit canonical
+f2eba100-9aef-5c37-8b45-079f9d034e11 already occupies close-17. Real restart
+drains that new completion without T108, leaving ledger143 unchanged. Evidence:
+/mnt/c/agent-room-fleet-kit/local-data/311-native-crash-before-memory/cut and
+/mnt/c/agent-room-fleet-kit/local-data/311-native-crash-resume. Independent
+source/compat review confirmed the collision. This is in-scope memory identity,
+not an archive/compaction rewrite. The original A2 cut is not a memory PASS.
+
+Pass result['visitCount'] from _complete_module_once into consolidation as a
+required keyword module_visit. Validate a positive integer (not bool); form
+boundary 'module-visit-%d'. No upper limit, truncation or content-derived ID.
+Bad/missing visit metadata uses existing loud advisory failure handling and
+preserves the committed module, never guesses a close-N identity or runs an
+unscoped extra provider call. No new recovery gate on the player path.
+
+The existing visit assignment occurs under completion/campaign locks at
+campaign_manager3356-3362. Receipt.result preserves the original committed
+visit; same-ID replay returns that result3182. Direct completion_id=None and
+overlap callers also receive their committed result3232. Use that return value,
+never a later read of the latest summary. No new lock, receipt, schema, store,
+model, prompt, worker or provider policy. The one production consolidation
+caller is campaign_manager3055; both staged and direct complete_module entrants
+flow there. Optional old close-N runtime behavior is not retained.
+
+D-311-2 ACCEPTED by owner ('accepted', 2026-09-07): preserve all old close-N
+episodes untouched. Do not rename/delete them, guess their visit from content,
+or use old-coordinate existence as replay authority. An interrupted old-build
+completion may acquire one additional episode under the new visit coordinate;
+owner accepted this preservation-first compatibility tradeoff. Thereafter
+replay of that committed visit reuses the new coordinate. Do not claim an
+automatic migration or universal absence of old records. The authentic baseline
+fixture contains zero module_consolidation records; candidate-generated test
+records do exist. All existing memories and their links remain readable.
+
+Schema remains frozen: boundaryTurnId is already a string; existing retrieval
+grain follows derivedFrom=module_consolidation independently of boundary spelling.
+Change only campaign_manager.py and episode_capture.py plus scoped docs. Remove
+the old count helper only if a whole-repo caller search proves it is used solely
+by this replaced module-final coordinate; keep location/combat/backfill logic.
+This step replaces the task-3 identity assumption, not its shared projection,
+scope/epoch, no-provider-under-lock or canonical-preservation requirements.
+
 ## 3. Authority and end-state contract
 
 | Datum | Authority | Forbidden substitute |
@@ -183,7 +260,7 @@ billing across crashes. Source history/archive remain intact for later recovery.
 | Final scene/roster/time | Frozen origin party/history, durable staged intent on resume | Current destination tracker, narration guess |
 | Completion result | Existing committed summary/campaign/receipt | Episode success flag |
 | Episode content | Typed T108 extraction grounded in actual scene | Code prose parsing for story meaning |
-| Episode identity | Existing module/location/close coordinate | Hash of text, new receipt |
+| Module-final episode identity | Origin module/location and returned committed result.visitCount | Conversation marker count, latest live visit, text hash, new receipt |
 | POV/relationship | Existing per-NPC store mutation | Empty defaults or fabricated recollections |
 | Cancellation | Existing owner scope + campaign epoch | Elapsed time or missing capture log |
 
@@ -211,6 +288,8 @@ and unscoped late capture are not newly brought under this operation's authority
 | Incidental invocation from regeneration | Shared commit block above | Do not invent old-module facts from live destination | RETIRED as unreachable missing-input side effect under #311 proposal; owner execution gate required |
 | Ordinary/welcome registration identity rule | c1ede401d registration / 5819974a8 parent admission | Only owning workflow registers a child | PRESERVED exact identity; add current accepted-control entrant task-2, D2/A3 |
 | Re-extract final canonical episode on replay | adf280a8d projection sequence / existing coordinate API | Stable memory with no duplicate ordinal, full eligible POV and baseline | PRESERVED through shared projection of stored canonical record, task-3, A2/D1 |
+| Marker-count module-final identity | b164fc31, activated and replay-checked by a1e022fe/d11bfec5 | Same completion idempotent; distinct visit remembered | PRESERVED by task-4 committed visit identity; A2b/D4 |
+| Old close-N canonical/POV records | existing player data | Never erase/rewrite memories | PRESERVED untouched; D-311-2 accepted possible one-time duplicate on old-build interrupted completion |
 
 No unrelated branch, fallback, bound, schema, default or persisted field is retired.
 
@@ -223,7 +302,8 @@ Product allowlist (proposed, no edits yet):
    failure reporting on the used chain.
 3. core/npc/episode_extraction.py: typed failure visibility only, no prompt/schema.
 4. utils/capture/live_provider_call.py: exact executing-control child admission
-   at the two existing gates only; transport and external controls unchanged.
+   at the two existing gates, plus the private synchronous authority-wait helper
+   for FF-1. Transport polling and external controls remain unchanged.
 Docs: module-lifecycle.md, companion-memory.md, provider-routing.md (changed
 seams only), this plan and evidence report. Update false unlocked/working-final
 capture description and #248's historical #311 pointer with current evidence.
@@ -247,6 +327,10 @@ lock-held or unscoped intermediate). Local static/scope primitive checks;
 independent diff review; simplifier; commit. No live acceptance yet.
 C2: task-3, docs and exact before/after field preservation gates; independent
 review and simplifier; commit. No unrelated repair or tracked tests.
+C2b: task-4 and task-2 FF-1 after amended-plan review/presentation approval; source/primitive
+gates, independent diff review and simplifier, one correction commit. Update the
+same three schematics' #311 delta paragraphs. Original review evidence stays
+historical, not approval for an unreviewed identity change.
 C3: sequential real acceptance below, one game operation at a time; independent
 Player-Experience review against disk; final non-author five-point audit and
 both sentinel scans. Present owner report; no automatic merge/push/issue closure.
@@ -265,6 +349,7 @@ No new large source clone; same isolated worktree plus one active game copy.
 |---|---|
 | A1 | In the final origin location, have a genuine companion exchange; then one legal cross-module move. Capture origin scene/roster, actual T108 request/response, existing T038/T039 and T013/T063/T064, module commit chronology, one final coordinate and per-NPC POV. Inspect actual T112/T105/T067 request on a later natural recall question and verbatim grounded DM answer. Absent-mentioned NPC gets no witness/fact. |
 | A2 | Real process interruption around committed module/before intent cleanup; restart same game path, no fake marker. Missing episode must be captured from retained origin inputs. Separately reach canonical-present/eligible-POV-missing (before first projection or between companions): canonical bytes/ordinal stay unchanged, zero new T108, missing eligible POV and baseline complete before intent cleanup. Already-complete replay is the no-change control. Prove proactive POV injection and targeted canonical recall independently from their actual requests; one cannot substitute for the other. Visit/archive remain unchanged. Every unreached cut is NOT-REACHED, not pass. |
+| A2b | Real repeated visits to the same module/location with unchanged location-marker count: each committed visit adds its own final episode, old canonical/POV remain unchanged. Replay the same visit using actual interruption/restart: same episode/ordinal, no extra archive/visit. Old-coordinate records remain readable and unchanged under D-311-2, never used to suppress the new visit. |
 | A3 | Real Load/Reset/Quit during actual module-final T108, one operation per fresh lineage; prove task identity/child reap, truthful controls and no stale mutation after replacement. Separately accepted queued Save settling completion: child belongs to that exact executing control, no deadlock, saved sidecar equals committed safe-boundary state. If no real Save entrant reaches this seam, label NOT-REACHED and request owner disposition. |
 | A4 | No-companion normal completion (no T108 needed), same-module location-close and ordinary combat memory unaffected, summary regeneration does not increment visits/archive or extract a false final memory. Natural completed-invalid/provider error/store failure: record exact typed disposition and subsequent playable state if reached; never fake it. |
 | A5 | Real Save -> later turn -> Load preserves canonical episode/POV and grounding; capture hashes immediately after Save and after later turn before Load. Fresh no-pending startup and ordinary next turn still work; scope quiescent and zero orphan children at end. |
@@ -279,7 +364,21 @@ the real persistence primitives with specified data (not a fake model run);
 D2: exact active/welcome/control identity registration and sealed/stale rejection,
 completion_required flag, child finally/quiescence (no fake model response);
 D3: schema/read-write primitives with independently specified fixture values.
+D4: committed-visit identity primitives: visits1/2 differ; identical visit reuses;
+positive-int versus missing/bool/invalid metadata; existing old-coordinate record
+unchanged; direct caller uses returned visit. No fake model responses or mocked
+gameplay; source tracing and primitives do not substitute for live A2b.
 These are aids, never live acceptance substitutes. Tests ignored/local only.
+
+D5 for FF-1: native filesystem I/O primitive evidence of temporary sharing
+denial then successful read; source trace of each of the six wait sites and
+their no-lock/no-active-provider preconditions. A3 includes a real external
+sharing hold on the fixture's existing epoch file during module completion,
+then release, proving eventual memory completion rather than intent removal
+without memory. A separately reached actual Load/Reset/Quit during that wait
+must retain typed cancellation/quiescence. No file-content changes, fake model
+responses or production hooks; if the contention window is missed, mark
+NOT-REACHED. Do not claim a primitive probe proves live capture continuity.
 
 Evidence block per arm: task ID, reported model (UNKNOWN if not captured),
 input-relative latency and capture lines; parsed request fields; complete player
@@ -314,6 +413,8 @@ all-seat convergence per NEQ-REVIEW-11, unless only qualifying polish remains.
 - #213 chronicle compression and #312 travel narration fidelity remain separate.
 - #201/#270 broader lifecycle convergence/control arbitration remain separate.
 - #283 recall/affinity redesign remains separate; no selection changes.
+- #317 module archive/hopping audit and #318 factual-retention prompt repair
+  were owner-requested and separately filed; neither is absorbed here.
 - No newly discovered independent defect is silently repaired. New substantiated
   out-of-scope findings get an issue body and filing during review per R9.
 
@@ -333,6 +434,12 @@ all-seat convergence per NEQ-REVIEW-11, unless only qualifying polish remains.
 | R1-4 | Single-Path found no production caller for inherited manually constructed-manager compatibility; no new issue asserted from comment alone | fyi |
 | R3-1 | Nine seats passed round 2 and the clean confirmation on substantive SHA 816b4f3e9080b8dd4260e5bbbb6cbbe0ad414cdd03f81607589258102bb18a89; this status/ledger stamp is polish only, no task/test/code contract change | fixed-inline |
 | D-311-1 | Owner approved execution after reviewed plan and lay explanation; implementation/testing only, no merge authorization | override: owner execution approval in current conversation |
+| F6 | Real distinct-visit close-17 collision suppresses new final memory; committed visit identity replaces marker count | task-4 |
+| D-311-2 | Owner accepted visit identity plus preservation of old memories, with possible one-time duplicate for interrupted older-build saves | override: owner 'accepted' on 2026-09-07 |
+| CC-1 / ARCH-1 | Accepted D-311-2 now codified in live #193 Part 5 at 2026-09-07T18:48:35Z; authority/citation correction only | fixed-inline |
+| FF-1 | Temporary epoch-read failure at new synchronous checks can become final-memory abandonment; retain ownership and retry observation before capture/projection | task-2 |
+| R4-1 | All nine required seats and clean confirmation PASSED substantive SHA 5cc5b4fde08cb4f7c89e7dbe128ca4d8f2f0213557007f1cfdeab9a6c3dc98ae; FF-1 reverified in revised task-2; this row/status stamp is plan-polish only | fixed-inline |
+| D-311-3 | Owner approved the presented amended plan for implementation and testing; no merge/push authorization | override: owner 'aoprvoed continue' on 2026-09-07 |
 
 Review verdicts and subsequent revisions will be recorded by the controller.
 Round-1 controller consolidation (not verbatim transcripts):

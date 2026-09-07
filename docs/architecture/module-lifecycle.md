@@ -8,6 +8,11 @@ helper. `complete_module` now captures the final origin episode after
 the leader flight. Ready-intent replay takes that same path; canonical-existing
 memory completes its deterministic POV projection without another T108 call.
 The child finishes before staged-intent cleanup or an accepted Save returns.
+Final memory identity uses the returned committed visit count, including receipt
+replay, rather than counting history markers; later visits cannot reuse the prior
+visit's final episode. Existing old-coordinate records remain untouched.
+Unavailable epoch observations at the six synchronous memory checks wait
+interruptibly outside locks/provider requests; typed supersession still unwinds.
 Regeneration remains summary-only; no historical-location facts are inferred
 from the live destination. This supersedes only the #311 missing-input description
 below, not the historical acceptance receipts or broader lifecycle contracts.

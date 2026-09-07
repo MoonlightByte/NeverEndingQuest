@@ -25,7 +25,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from core.npc.episode_extraction import extract_episode, flatten_scene
 from core.combat.invocation import InvocationSupersededError
-from utils.capture.live_provider_call import LiveProviderSuperseded, _check_live_authority
+from utils.capture.live_provider_call import LiveProviderSuperseded, _wait_for_live_authority
 from core.npc.episode_store import EpisodeStore, stable_episode_id
 from core.npc.relationship_store import (
     RelationshipStore,
@@ -199,13 +199,13 @@ def capture_location_episode(
             return None
         scene = flatten_scene(segment_messages)
         if authority_check is not None:
-            _check_live_authority(advisory_scope, authority_check)
+            _wait_for_live_authority(advisory_scope, authority_check)
         result = extract_episode(
             scene, present, player_name=player_name, provider=provider,
             capture_fn=capture_and_fanout, advisory_scope=advisory_scope,
         )
         if authority_check is not None:
-            _check_live_authority(advisory_scope, authority_check)
+            _wait_for_live_authority(advisory_scope, authority_check)
         if result is None:
             return None
         if not result.get("witness_ids"):
@@ -505,22 +505,12 @@ def leaving_location_id_from_marker(transition_content: str) -> str:
     return match.group(1) if match else ""
 
 
-def _count_transition_markers(conversation_history: Sequence[Mapping[str, Any]]) -> int:
-    return sum(
-        1
-        for m in conversation_history
-        if isinstance(m, Mapping)
-        and m.get("role") == "user"
-        and isinstance(m.get("content"), str)
-        and "Location transition:" in m["content"]
-    )
-
-
 def consolidate_module_episodes(
     conversation_history: Sequence[Mapping[str, Any]],
     party_tracker_data: Mapping[str, Any],
     *,
     path_manager: Any,
+    module_visit: int,
     player_name: str = "",
     provider: Optional[str] = None,
     episode_store: Optional[EpisodeStore] = None,
@@ -534,13 +524,13 @@ def consolidate_module_episodes(
     got a transition-out from full-fidelity raw turns). The final location -- where
     the module ends without a transition-out -- is the one live capture structurally
     misses; its raw turns are still present at module completion. This captures it
-    idempotently (coordinate = the (N+1)th close) and fail-open. Older locations in
+    idempotently using the committed module visit and fail-open. Older locations in
     the archive are already compressed summaries and already have their episodes, so
     they are intentionally not re-derived here. Runs AFTER the T038 summary commits.
     """
     try:
         if authority_check is not None:
-            _check_live_authority(advisory_scope, authority_check)
+            _wait_for_live_authority(advisory_scope, authority_check)
         last_marker = -1
         for i, message in enumerate(conversation_history):
             if (
@@ -559,8 +549,9 @@ def consolidate_module_episodes(
             return None
         world = party_tracker_data.get("worldConditions", {})
         world = world if isinstance(world, Mapping) else {}
-        position = _count_transition_markers(conversation_history) + 1
-        boundary = boundary_turn_id_for_position(position)
+        if isinstance(module_visit, bool) or not isinstance(module_visit, int) or module_visit < 1:
+            raise ValueError("Module-final memory requires a positive committed visit")
+        boundary = "module-visit-%d" % module_visit
         store = episode_store or EpisodeStore()
         if store.read_only:
             return None  # the existing latch reports the integrity failure
@@ -571,7 +562,7 @@ def consolidate_module_episodes(
         )
         if store.get_episode(episode_id):
             if authority_check is not None:
-                _check_live_authority(advisory_scope, authority_check)
+                _wait_for_live_authority(advisory_scope, authority_check)
             _project_episode(
                 store, rel, episode_id, world=world, player_name=player_name,
                 party_tracker_data=party_tracker_data, path_manager=path_manager,

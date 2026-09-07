@@ -924,6 +924,20 @@ def _interruptible_wait(seconds, scope, message, emit=None, authority_check=None
         time.sleep(min(_HEARTBEAT_SECONDS, remaining))
 
 
+def _wait_for_live_authority(scope, authority_check=None):
+    """#311: wait outside locks/provider calls without losing pending memory."""
+    while True:
+        try:
+            _check_live_authority(scope, authority_check)
+            return
+        except OSError:
+            _interruptible_wait(
+                0.25, scope,
+                "Checking the current adventure before recording companion memory...",
+                authority_check=authority_check,
+            )
+
+
 def _delay_for_error(envelope, failure_count):
     retry_after = envelope.get("retry_after")
     if isinstance(retry_after, (int, float)) and retry_after >= 0:
