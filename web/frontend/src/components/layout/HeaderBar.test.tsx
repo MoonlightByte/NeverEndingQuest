@@ -36,11 +36,13 @@ describe('startup parity', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load' }))
     expect(useDialogs.getState().open).toBe('load')
   })
-  it('keeps the legacy loading label and Start Game button available while disconnected', () => {
+  it('keeps the loading label but disables Start Game while disconnected', () => {
     render(<HeaderBar />)
 
     expect(screen.getByText('Loading location...')).toBeTruthy()
-    expect((screen.getByRole('button', { name: 'Start Game' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: 'Start Game' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Start Game' }))
+    expect(emitC).not.toHaveBeenCalledWith('start_game', undefined)
   })
 
   it('uses New Game for a connected first-run player', () => {
@@ -52,6 +54,7 @@ describe('startup parity', () => {
 
   it('uses Start Game after the player has previously started a campaign', () => {
     localStorage.setItem('neq_hasPlayed', 'true')
+    useSession.getState().setConnected(true)
     render(<HeaderBar />)
 
     expect((screen.getByRole('button', { name: 'Start Game' }) as HTMLButtonElement).disabled).toBe(false)

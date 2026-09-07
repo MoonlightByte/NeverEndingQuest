@@ -1,0 +1,55 @@
+/* Compact desktop equipment rows and readable, non-interactive spell resources. */
+.tis-inventory-toolbar { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.tis-inventory-toolbar :is(input,select) { min-width:0; color:#eae2d2; background:#151a1280; border:1px solid #d5b47b35; border-radius:5px; padding:9px 12px; font:400 13px/1.4 'Segoe UI',sans-serif; }
+.tis-inventory-toolbar input { flex:1; min-width:150px; }
+.ember-player-full-card .tis-inventory-toolbar .neq-inventory-control { margin:0; width:auto; flex:none; padding:9px 12px; font:400 13px/1.4 'Segoe UI',sans-serif; border-radius:5px; }
+.tis-inventory-toolbar input::placeholder { color:#aca596; }
+.tis-inventory-toolbar select option { background:#191d17; }
+.tis-item-count { color:#aca596; font:400 12px/1.4 'Segoe UI',sans-serif; font-variant-numeric:tabular-nums; }
+.tis-inventory-table-wrap { overflow-x:auto; }
+.tis-inventory-table { width:100%; table-layout:fixed; border-collapse:collapse; color:#eae2d2; }
+.tis-inventory-table th { text-align:left; padding:9px 12px; color:#bfa981; background:#d5b47b08; border-block:1px solid #d5b47b25; font:600 10px/1.4 'Segoe UI',sans-serif; text-transform:uppercase; letter-spacing:.8px; }
+.tis-inventory-table th:first-child { width:44%; }
+.tis-inventory-table th:nth-child(2) { width:20%; }
+.tis-inventory-table th:nth-child(3) { width:9%; }
+.tis-inventory-table th:nth-child(4) { width:15%; }
+.tis-inventory-table th:nth-child(5) { width:12%; }
+.tis-inventory-table td { padding:10px 12px; border-bottom:1px solid #d5b47b20; vertical-align:middle; font:400 12px/1.5 'Segoe UI',sans-serif; color:#aca596; overflow-wrap:anywhere; }
+.tis-inventory-table td:first-child { color:#eae2d2; }
+.tis-inventory-table .ember-inspection-trigger { font:400 18px/1.3 'Crimson Text',Georgia,serif; }
+.tis-inventory-table tr:hover td { background:#d5b47b06; }
+.tis-item-description { display:block; margin-top:3px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#aca596; font:400 11px/1.4 'Segoe UI',sans-serif; }
+.tis-inventory-table .tis-quantity,.tis-inventory-table .tis-charges { color:#dac69e; font-variant-numeric:tabular-nums; }
+.tis-equipped { color:#bdcd9a; }
+.tis-carried { color:#aca596; }
+.tis-casting-summary { display:grid; grid-template-columns:minmax(230px,1fr) minmax(220px,1fr); gap:8px 24px; margin:0 0 20px; padding:16px 18px; border:1px solid #d5b47b30; border-radius:6px; background:#151a1240; }
+.tis-casting-overview { display:flex; justify-content:space-between; align-items:center; gap:20px; }
+.tis-eyebrow { color:#bfa981; font:600 10px/1.3 'Segoe UI',sans-serif; text-transform:uppercase; letter-spacing:1px; }
+.tis-casting-summary .tis-casting-overview h4 { margin:4px 0; padding:0; border:0; color:#eae2d2; font:400 25px/1.2 'Crimson Text',Georgia,serif; text-transform:none; }
+.tis-spell-count { color:#aca596; font:400 12px/1.4 'Segoe UI',sans-serif; }
+.tis-casting-overview dl { display:flex; gap:28px; margin:0; text-align:center; }
+.tis-casting-overview dt { color:#aca596; font:500 10px/1.4 'Segoe UI',sans-serif; text-transform:uppercase; letter-spacing:.5px; }
+.tis-casting-overview dd { margin:4px 0 0; color:#eae2d2; font:400 28px/1 'Crimson Text',Georgia,serif; }
+.tis-slot-levels { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin:0; border-left:1px solid #d5b47b20; padding-left:20px; }
+.tis-slot-level { display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
+.tis-slot-label { color:#d5b47b; font:600 11px/1.3 'Segoe UI',sans-serif; text-transform:uppercase; letter-spacing:.6px; }
+.tis-slot-level strong { color:#eae2d2; font:400 22px/1 'Crimson Text',Georgia,serif; }
+.tis-slot-level small { color:#aca596; font:400 12px/1.3 'Segoe UI',sans-serif; }
+.tis-slot-pips { display:flex; flex-wrap:wrap; gap:7px; }
+.tis-slot-pips i { width:14px; height:14px; border:1px solid #a9bbb66b; border-radius:3px; background:transparent; }
+.tis-slot-pips i.is-available { background:#a2b8ab; border-color:#c0d0bd; box-shadow:0 0 7px #a2b8ab20; }
+.tis-slot-legend { grid-column:2; color:#aca596; margin:0; padding-left:20px; font:400 11px/1.4 'Segoe UI',sans-serif; }
+.tis-slot-legend span { margin:0 6px; }
+.ember-npc-tabbed-card .tis-spells .neq-npc-modal-spell-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 24px; }
+.ember-npc-tabbed-card .tis-spells .neq-npc-modal-spell-item { padding:10px 0; min-height:40px; font:400 18px/1.3 'Crimson Text',Georgia,serif; border-bottom:1px solid #d5b47b18; }
+.tis-spells .ember-npc-prepared { font:500 10px/1.4 'Segoe UI',sans-serif; color:#bdcd9a; }
+.ember-player-full-card .neq-equipment-section:has(.tis-inventory-table) { overflow:visible; }
+.ember-player-full-card .neq-inventory-tab:has(.tis-inventory-table) > .ember-currency-row { display:none; }
+@media(max-width:760px) {
+  .tis-inventory-table { min-width:530px; }
+  .tis-casting-overview { flex-wrap:wrap; }
+  .tis-casting-summary { grid-template-columns:1fr; }
+  .tis-slot-levels { padding:12px 0 0; border-left:0; border-top:1px solid #d5b47b20; }
+  .tis-slot-legend { grid-column:1; padding:0; }
+  .ember-npc-tabbed-card .tis-spells .neq-npc-modal-spell-list { grid-template-columns:1fr; }
+}

@@ -11,6 +11,7 @@ import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberInspection } from './EmberInspection'
 import { EquipmentDetails } from './EquipmentDetails'
 import { EmberCurrency } from './EmberCurrency'
+import { DesktopInventoryTable } from './DesktopInventoryTable'
 import { useInventoryView } from './InventoryViewState'
 import { useSpellReference } from './useSpellReference'
 import { SpellDetails } from './spellDetails'
@@ -43,7 +44,7 @@ function InventorySearch({ query, onQuery, onClose }: { query: string; onQuery: 
   </div>
 }
 
-export function InventoryTab() {
+export function InventoryTab({ expanded = false }: { expanded?: boolean } = {}) {
   const ember = useEmberDesktop()
   const inventory = usePlayer((s) => s.inventory)
   const error = usePlayer((s) => s.dataErrors.inventory)
@@ -90,16 +91,16 @@ export function InventoryTab() {
 
   return (
     <div className="neq-inventory-tab">
-      <button
+      {!(ember && expanded) && <button
         type="button"
         onClick={openStorage}
         className="neq-storage-view-button"
       >
         View Player Storage
-      </button>
+      </button>}
 
-      <div className="neq-inventory-controls">
-        <button type="button" onClick={() => setSearchOpen(true)} className="neq-inventory-control">Search</button>
+      <div className={ember && expanded ? 'tis-inventory-toolbar' : 'neq-inventory-controls'}>
+        {ember && expanded ? <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Find an item…" aria-label="Search items" /> : <button type="button" onClick={() => setSearchOpen(true)} className="neq-inventory-control">Search</button>}
         <select
           value={sort}
           onChange={(e) => { setSort(e.target.value as InventorySort); setSortTouched(true) }}
@@ -116,12 +117,13 @@ export function InventoryTab() {
           <option value="">Filter</option><option value="weapon">Weapons</option><option value="armor">Armor</option><option value="consumable">Consumables</option><option value="magical">Magical</option><option value="equipped">Equipped</option>
         </select>
         <button type="button" onClick={() => { setQuery(''); setCategory(''); setSort('name-asc'); setSortTouched(false) }} className="neq-inventory-control">Clear</button>
+        {ember && expanded && <button type="button" onClick={openStorage} className="neq-inventory-control">Player storage</button>}
       </div>
 
       {/* equipment list */}
       <section ref={section} className="neq-equipment-section" onScroll={event => { const scrollTop = event.currentTarget.scrollTop; setView(previous => ({ ...previous, scrollTop })) }}>
-        <h4>Equipment</h4>
-        <div>
+        {!(ember && expanded) && <h4>Equipment</h4>}
+        {ember && expanded ? <DesktopInventoryTable items={visible} empty={items.length === 0 ? 'No equipment' : 'No items match the filter'} /> : <div>
           {visible.length === 0 ? (
             <div className="neq-inventory-item"><span className="neq-feature-bullet">●</span><span className="neq-item-name">{items.length === 0 ? 'No equipment' : 'No items match the filter'}</span></div>
           ) : (
@@ -143,7 +145,7 @@ export function InventoryTab() {
               </div>
             ))
           )}
-        </div>
+        </div>}
       </section>
       {ember && <EmberCurrency currency={currencyOf(inventory)} />}
       {searchOpen && <InventorySearch query={query} onQuery={setQuery} onClose={() => setSearchOpen(false)} />}
