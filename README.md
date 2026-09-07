@@ -8,8 +8,22 @@ environment activated:
 - **React player (default):** `python run_web.py`
 - **Legacy player (explicit opt-in):** `python run_web.py --ui legacy`
 
-For Windows installer users, run `launch_game.bat` for React, or
-`launch_game.bat --ui legacy` for legacy.
+**Want to play without a local installation?** [Explore NeverEndingQuest online](https://eternaltavern.com/neverendingquest/).
+Hosted alpha access is limited; the website describes current availability.
+
+On Windows, `launch_game.bat` now ships with the repository. Double-click it to
+choose online play or local play. The Windows installer offers the same choice
+before checking or installing dependencies. For an installed local game, explicit
+arguments skip the choice: `launch_game.bat --ui react` or `launch_game.bat --ui legacy`.
+Automated launches can set `NEQ_LOCAL_ONLY=1` or keep using `python run_web.py`.
+
+Local/custom models are experimental. Settings requires acknowledgment that
+capability and safeguards vary, outputs may be inappropriate or unreliable, and
+game rules may be misunderstood. Existing local configurations remain selected,
+but local calls wait for acknowledgment. For headless setup, review the warning
+with `python acknowledge_local_model.py`; automation can explicitly accept the
+displayed version with `python acknowledge_local_model.py --accept local-model-alpha-1`.
+Only the disclaimer version and acceptance time are added to local settings.
 
 Both interfaces open in your browser. React is selected automatically; there is
 no interface-selection prompt and no automatic fallback to legacy. If React needs

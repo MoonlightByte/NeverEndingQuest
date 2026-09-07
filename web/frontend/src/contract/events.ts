@@ -85,14 +85,14 @@ export interface ClientEvents {
   request_module_list: undefined;
   // --- local-edition operator settings (hidden when VITE_EDITION=hosted) ---
   get_model_provider: undefined;
-  set_model_provider: { provider: 'legacy' | 'openai' | 'gemini' | 'lmstudio' };
+  set_model_provider: { provider: 'legacy' | 'openai' | 'gemini' | 'lmstudio'; local_model_consent_version?: string };
   get_local_endpoint: undefined;
-  set_local_endpoint: { base_url: string; api_key?: string; model: string };
+  set_local_endpoint: { base_url: string; api_key?: string; model: string; local_model_consent_version?: string };
   get_openai_key: undefined;
   set_openai_key: { api_key: string };
   get_gemini_key: undefined;
   set_gemini_key: { api_key: string };
-  test_local_endpoint: { base_url: string; api_key?: string; model?: string };
+  test_local_endpoint: { base_url: string; api_key?: string; model?: string; local_model_consent_version?: string };
   // --- operator/toolkit scope: NOT bound in the player app (toolkit page owns these) ---
   start_build: { module_name: string; narrative: string; num_areas: number; locations_per_area: number; per_area_locations?: number[] };
   cancel_build: undefined;
@@ -197,7 +197,7 @@ export interface ServerEvents {
   map_data_response: { data: MapDataPayload | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   exit_acknowledged: { message: string };
   provider_changed: { provider: string };
-  local_endpoint_changed: { base_url: string; model: string; has_key: boolean };
+  local_endpoint_changed: { base_url: string; model: string; has_key: boolean; consent_version?: string; consent_accepted?: boolean };
   openai_key_status: { has_key: boolean };
   gemini_key_status: { has_key: boolean };
   local_endpoint_test_result: { ok: boolean; detail: string };

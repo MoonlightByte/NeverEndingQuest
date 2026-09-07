@@ -4481,6 +4481,7 @@
                     </div>
                     <div class="settings-section" id="local-endpoint-settings" style="display:none;">
                         <div class="settings-section-title">Local / Custom Server</div>
+                        <p class="settings-help-text">Experimental: model capability and safeguards vary. Local models may produce inappropriate or unreliable content and break game rules. This integration is still in development.</p>
                         <div class="settings-help">
                             Point at any OpenAI-compatible server (LM Studio, Ollama, vLLM, OpenRouter,
                             or a remote host). Leave blank to use the default local server at localhost:1234.
@@ -7264,6 +7265,14 @@
 
             // Initialize provider dropdown
             const providerSelect = document.getElementById('model-provider-select');
+            const localConsentVersion = 'local-model-alpha-1';
+            let localConsentAccepted = false;
+            let confirmedProvider = providerSelect.value;
+            function confirmLocalModel() {
+                if (localConsentAccepted) return true;
+                localConsentAccepted = window.confirm('Local models vary widely in capability and safeguards. They may produce inappropriate or unreliable content, misunderstand game rules, or behave unpredictably. This integration is experimental and still in development. I understand these limitations and want to enable a local model.');
+                return localConsentAccepted;
+            }
 
             const PROVIDER_HINTS = {
                 legacy:   'Legacy (GPT-4.1): stable baseline, recommended. Uses your OpenAI API key.',
@@ -7288,6 +7297,7 @@
             socket.emit('get_local_endpoint');
             socket.on('local_endpoint_changed', function (d) {
                 d = d || {};
+                localConsentAccepted = d.consent_version === localConsentVersion && d.consent_accepted === true;
                 var u = document.getElementById('local-base-url');
                 var m = document.getElementById('local-model');
                 var k = document.getElementById('local-api-key');
@@ -7298,7 +7308,9 @@
             (function () {
                 var saveBtn = document.getElementById('local-save-btn');
                 if (saveBtn) saveBtn.addEventListener('click', function () {
+                    if (!confirmLocalModel()) return;
                     socket.emit('set_local_endpoint', {
+                        local_model_consent_version: localConsentVersion,
                         base_url: (document.getElementById('local-base-url') || {}).value || '',
                         model: (document.getElementById('local-model') || {}).value || '',
                         api_key: (document.getElementById('local-api-key') || {}).value || ''
@@ -7315,11 +7327,13 @@
                     statusEl.style.color = pending ? '#888' : (ok ? '#2e7d32' : '#c62828');
                 }
                 if (testBtn) testBtn.addEventListener('click', function () {
+                    if (!confirmLocalModel()) return;
                     var base = (document.getElementById('local-base-url') || {}).value || '';
                     if (!base.trim()) { setStatus('Please enter a Server URL first.', false, false); return; }
                     setStatus('Testing connection...', false, true);
                     testBtn.disabled = true;
                     socket.emit('test_local_endpoint', {
+                        local_model_consent_version: localConsentVersion,
                         base_url: base,
                         model: (document.getElementById('local-model') || {}).value || '',
                         api_key: (document.getElementById('local-api-key') || {}).value || ''
@@ -7368,18 +7382,20 @@
             // Handle provider selection changes
             providerSelect.addEventListener('change', function() {
                 const provider = this.value;
+                if (provider === 'lmstudio' && !confirmLocalModel()) { this.value = confirmedProvider; return; }
                 updateProviderHint(provider);
                 toggleLocalFields(provider);
                 toggleGeminiField(provider);
                 // Show loading state
                 this.disabled = true;
                 this.style.opacity = '0.6';
-                socket.emit('set_model_provider', { provider: provider });
+                socket.emit('set_model_provider', Object.assign({ provider: provider }, provider === 'lmstudio' ? { local_model_consent_version: localConsentVersion } : {}));
                 console.log('Provider changed to:', provider);
             });
 
             // Listen for provider change confirmation from server
             socket.on('provider_changed', function(data) {
+                confirmedProvider = data.provider;
                 console.log('Provider change confirmed:', data);
                 providerSelect.value = data.provider;
                 updateProviderHint(data.provider);

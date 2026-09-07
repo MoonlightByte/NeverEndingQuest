@@ -19,6 +19,7 @@ beforeEach(() => {
   useSettings.setState(initialSettings, true)
   useSession.setState(initialSession, true)
   vi.clearAllMocks()
+  vi.stubGlobal('confirm', vi.fn(() => true))
 })
 
 afterEach(() => {
@@ -28,6 +29,32 @@ afterEach(() => {
 })
 
 describe('provider and voice settings behavior', () => {
+  it('does not activate a local provider when its disclaimer is declined', () => {
+    vi.stubGlobal('confirm', vi.fn(() => false))
+    useDialogs.getState().setProvider({ provider: 'openai' })
+    render(<SettingsMenu />)
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'lmstudio' } })
+    expect(emitC).not.toHaveBeenCalledWith('set_model_provider', expect.anything())
+    expect((screen.getByLabelText('Provider') as HTMLSelectElement).value).toBe('openai')
+  })
+  it('sends explicit versioned acknowledgment when local selection is accepted', () => {
+    render(<SettingsMenu />)
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'lmstudio' } })
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('inappropriate or unreliable'))
+    expect(emitC).toHaveBeenCalledWith('set_model_provider', { provider: 'lmstudio', local_model_consent_version: 'local-model-alpha-1' })
+  })
+  it('blocks local saving and probing on an old installation until acknowledged', () => {
+    vi.stubGlobal('confirm', vi.fn(() => false))
+    useDialogs.getState().setProvider({ provider: 'lmstudio' })
+    render(<SettingsMenu />)
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Test Connection' }))
+    expect(emitC).not.toHaveBeenCalledWith('set_local_endpoint', expect.anything())
+    expect(emitC).not.toHaveBeenCalledWith('test_local_endpoint', expect.anything())
+  })
   it('times out an unanswered endpoint probe and accepts a successful retry', () => {
     vi.useFakeTimers()
     useDialogs.getState().setProvider({ provider: 'lmstudio' })
