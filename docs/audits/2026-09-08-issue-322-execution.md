@@ -113,7 +113,7 @@ performed; request owner disposition before moving past this failed probe.
 | A1 regeneration | NOT-REACHED |Held after C4 factual failure |
 | A2 ordinary departure | NOT-REACHED |No gameplay acceptance started |
 | A3 actual consumers/player claims | NOT-REACHED |Source wiring proven; actual DM request/narration not yet exercised |
-| A4 invalid/unlock polarity | PARTIAL |Captured invalid parser firing and empty unlock real output; positive unlock/natural gameplay fallback not reached |
+| A4 full invalid/unlock polarity | NOT-REACHED |Captured invalid parser firing and empty unlock real output are proven; positive unlock/natural gameplay fallback not reached |
 | A5 Save/Load/Quit | NOT-REACHED |No game process launched |
 | A6 actual service/ownership change | NOT-REACHED |Pure replacement polarity only |
 | Quiescence/preservation | PASSED scoped |All probe processes exited0; native owned Python scan empty; campaign/party/both sidecars byte-equal to original fixture |
