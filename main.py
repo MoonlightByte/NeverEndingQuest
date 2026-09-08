@@ -9128,17 +9128,11 @@ def _main_game_loop(startup_authority, turn_authority):
             # Get established hubs information
             established_hubs_str = ""
             try:
-                from core.managers.campaign_manager import CampaignManager
+                from core.managers.campaign_manager import CampaignManager, format_campaign_hubs
                 campaign_manager = CampaignManager()
-                hubs = campaign_manager.get_available_hubs()
-                if hubs:
-                    hub_details = []
-                    for hub in hubs:
-                        hub_data = campaign_manager.campaign_data['hubs'].get(hub, {})
-                        ownership = hub_data.get('ownership', 'party')
-                        hub_type = hub_data.get('hubType', 'settlement')
-                        hub_details.append(f"{hub} ({hub_type}, {ownership})")
-                    established_hubs_str = f" Established hubs: {', '.join(hub_details)}."
+                hub_context = format_campaign_hubs(campaign_manager.campaign_data.get('hubs', {}))
+                if hub_context:
+                    established_hubs_str = " " + hub_context
             except Exception as e:
                 debug(f"Could not load hub information: {e}", category="dm_note")
 

@@ -157,6 +157,18 @@ def _is_valid_campaign_export_data(exported_data: Any) -> bool:
     )
 
 
+def format_campaign_hubs(hubs: Dict[str, Any]) -> str:
+    """Render the complete recorded hub facts for both DM-context readers (#328)."""
+    if not hubs:
+        return ""
+    return (
+        "Recorded hub information follows. Use only recorded facts. Missing or null "
+        "fields do not establish a type, service or owner. An explicit empty services "
+        "list records no services. Do not infer party ownership from hub membership.\n"
+        + json.dumps(hubs, ensure_ascii=False)
+    )
+
+
 _MODULE_COMPLETION_FLIGHTS = {}
 _MODULE_COMPLETION_FLIGHTS_GUARD = threading.Lock()
 _CAMPAIGN_COMPLETION_TRANSACTION_VERSION = 1

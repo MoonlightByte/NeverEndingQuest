@@ -1,5 +1,23 @@
 # Module Lifecycle
 
+## Issues 322/328 implementation delta (2026-09-08; acceptance pending)
+
+The existing T039 call is instructed to emit the five established container
+types and source-supported hub fields. Its structural validator is unchanged.
+At the existing campaign importer, effective supplied fields overlay the latest
+committed hub record; omission/null/blank/empty-object does not erase prior
+facts, while explicit false/zero/lists (including empty services) remain updates.
+Historical non-object hub facts use the existing details field losslessly when
+an effective update occurs; reads do not migrate stored data.
+
+Both live hub-context readers (conversation_utils world-state context and main
+DM note) use format_campaign_hubs from campaign_manager: complete stored JSON,
+no invented party ownership/type/services. Other categories and availability
+keep their existing pathways; get_campaign_context is not activated. T038,
+archives, visit identity, T108, locking and summary publication are unchanged.
+This supersedes only the export/import/hub-reader description, not historical
+acceptance claims. Real acceptance is recorded separately; code alone is not PASS.
+
 ## Issue 311 implementation delta (2026-09-07; live acceptance pending)
 
 The undefined-snapshot final-memory block is removed from the locked commit

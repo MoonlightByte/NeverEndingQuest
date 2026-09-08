@@ -24,3 +24,26 @@ must be sequential on isolated copies with real OpenAI, not model stubs.
 
 Acceptance is NOT RUN yet. Runtime outcomes will be recorded with artifacts,
 including FAILED/BLOCKED/NOT-REACHED. Plan agreement is not gameplay proof.
+
+## C1-C3 implementation and focused checks
+
+C1 commit2096a343: reviewed prompt exactly, original five goals/full source kept.
+C2 commit3f9711a0: one no-fact-first field overlay, no validator change.
+C3: one complete JSON formatter at both actual reader seams; surrounding
+availability and other DM-note contents unchanged. Separate read-only simplifier
+per slice found no removable machinery without losing approved behavior.
+
+Local script local-data/322-primitives.py runs AST-extracted production parsing,
+merge and formatting units, avoiding unrelated runtime/provider imports.128
+checks PASSED: original captured invalid containers; historical scalar admission;
+omitted/null/blank/empty-map preservation; explicit false/zero/empty-list updates;
+input immutability/idempotence; complete untruncated formatting. This is pure
+contract evidence, NOT simulated/live gameplay or proof of caller wiring.
+py_compile all3 PASSED; diff whitespace PASSED. Pyflakes full report has inherited
+unused/redefinition/missing-placeholder warnings but ZERO undefined names.
+No incidental warning cleanup. Exactly2 production formatter calls found.
+
+Native source/game copies use322-native-src-Elg2UF and322-game-IbP7La under C:/;
+private evidence local-data/322-acceptance-oZxruI. Source and game setup must
+finish and compare before any process launch. Existing311 source/game untouched.
+New local storage approximately400MB, not another complete repository clone.
