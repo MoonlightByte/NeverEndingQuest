@@ -378,3 +378,16 @@ path; corrected to core/ai/conversation_utils.py, not a product failure).
 Owner final disposition remains necessary for residual NOT-REACHED/factual
 criteria and shipment. No overall PASS, push/merge or issue closure inferred.
 #326/#331/#332 remain separate; no schema/readiness/plot/identity expansion.
+
+## Owner acceptance and branch publication (2026-09-08)
+
+The owner accepted the disclosed testing limits and authorized commit/push after
+the narrow-scope completion summary. This closes the preceding owner-disposition
+gate for publishing the issue branch. The recorded NOT-REACHED criteria remain
+NOT-REACHED, and the separate #326/#331/#332 findings are not reclassified PASS.
+Core implementation and native OpenAI acceptance are complete for this scope;
+no claim of exhaustive coverage or resolution of those follow-ups is made.
+
+Production commit addf3809 is unchanged after testing. This acceptance update is
+documentation only. Publish fix/322-campaign-export-hubs; no merge into main or
+issue closure is included in this operation.
