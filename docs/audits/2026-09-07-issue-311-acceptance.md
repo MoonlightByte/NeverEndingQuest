@@ -1,10 +1,11 @@
 # Issue 311 scoped acceptance and closeout
 
-Status: Scoped testing complete 2026-09-08; explicit accepted-Save-owner live
-gate disposition outstanding. Not a ship, all-arm PASS or issue-closure verdict.
+Status: Scoped acceptance complete 2026-09-08. Owner explicitly accepted the
+accepted-Save-owner live arm as NOT-REACHED and authorized closeout and push.
+This is not an all-arm PASS or a main-branch merge verdict.
 Product source: 6295077b98c2c51078fa66113c7b498ac6027dfd.
 Baseline: 99876535b4c9d24c29384236d52d03bfddc621be.
-Branch: fix/311-module-final-memory, isolated worktree. No push or merge.
+Branch: fix/311-module-final-memory, isolated worktree; publish this branch only.
 
 ## Scope and architecture
 
@@ -45,7 +46,7 @@ Primitive checks are supplemental, never substitutes for live gameplay.
 | Distinct module visits at equal old marker count | PASS | 311-c2b-controls-and-visits.md |
 | Actual file contention and release | PASS | 311-native-epoch-hold-release/observation.json |
 | Actual final-T108 network-wait Quit, Load and Reset | PASS | 311-actual-t108-controls.md; parent/child stacks and post-control state |
-| Accepted Save itself owns final T108 | NOT-REACHED; explicit owner disposition outstanding | 311-remaining-gate-reachability.md; no healthy normal entrant identified |
+| Accepted Save itself owns final T108 | NOT-REACHED; owner accepted limitation 2026-09-08 | 311-remaining-gate-reachability.md; no healthy normal entrant identified |
 | Ordinary Save, later turn, Load | PASS | 311-c2b-controls-and-visits.md; saved and restored sidecar comparisons |
 | Solo module completion | PASS | 311-solo-completion-verdict.md; no extra T108 |
 | Ordinary location capture | Reached; legacy retention FAILED separately | 311-location-retention-observation.md; 311-location-legacy-coordinate-addendum.md; #317 |
@@ -122,10 +123,12 @@ negative control as complete retention success or silently waive its failure.
 
 ## Closure boundary
 
-The remaining explicit owner choice is plan A3's accepted-Save-owned final T108:
-no healthy normal gameplay entrant was found, so it stays NOT-REACHED. Exact
-ownership primitives and ordinary Save/Load passed but are not its live substitute.
-Recommend accepting that disclosed limitation instead of introducing a new game
-mechanism or test hook. An explicit question was sent to the owner; no answer
-or waiver is recorded. Keep issue311 open until that disposition. No main push,
-merge, unrelated repair or unrecorded acceptance waiver is performed here.
+Plan A3's accepted-Save-owned final T108 remains NOT-REACHED: no healthy normal
+gameplay entrant was found. Exact ownership primitives and ordinary Save/Load
+passed but are not its live substitute. On 2026-09-08, responding to the explicit
+request to accept this limitation, the owner stated: "I agree, lets accept it so
+we cna close it out. If aeverbythign is done lets make sure we commti and push".
+This clears the remaining scoped closure gate without relabeling the arm PASS
+or adding machinery merely to force a test. Commit and publish the isolated
+branch, then close #311 with this evidence and disposition. No main-branch merge
+or unrelated repair is included. The separate findings above remain separate.
