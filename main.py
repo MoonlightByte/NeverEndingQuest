@@ -3579,6 +3579,45 @@ def validate_ai_response(
             "role": "system", "content": hub_context,
         }]
 
+    # Plot identity is module-scoped evidence, not authority to advance a quest.
+    plot_context_failure = None
+    if not module_name:
+        plot_context_failure = "missing_module_identity"
+    else:
+        try:
+            with open(path_manager.get_plot_path(), "r", encoding="utf-8") as plot_file:
+                canonical_plot_data = json.load(plot_file)
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            plot_context_failure = type(exc).__name__
+        else:
+            if not isinstance(canonical_plot_data, dict):
+                plot_context_failure = "non_object_plot_root"
+            elif not isinstance(canonical_plot_data.get("plotPoints"), list):
+                plot_context_failure = "unavailable_plot_points"
+    if plot_context_failure is not None:
+        warning(
+            f"VALIDATION: Canonical plot context unavailable ({plot_context_failure})",
+            category="ai_validation",
+        )
+        plot_context = (
+            "Canonical plot information is unavailable for this review. Missing evidence "
+            "does not establish that a proposed plot ID is invented, nor authorize a plot "
+            "update. Review against the remaining supplied facts."
+        )
+    else:
+        plot_context = (
+            "Canonical plot data for the current module follows. Use its recorded IDs, "
+            "statuses and plot impacts when reviewing this candidate. Authored descriptions, "
+            "objectives and future outcomes are scenario context, not proof that an event "
+            "occurred, a quest completed, or the party learned a hidden fact. Judge the "
+            "proposed change against the player's immediate action and established events; "
+            "the existence of an ID alone does not authorize a progression update.\n"
+            + json.dumps({"module": module_name, "plot": canonical_plot_data}, ensure_ascii=True)
+        )
+    validation_messages_to_send = list(validation_messages_to_send) + [{
+        "role": "system", "content": plot_context,
+    }]
+
     # The semantic boundary is deliberately outside compression: the exact raw
     # player turn and exact candidate must remain the final adjacent pair.
     # Snapshot the provider once here; the model-config selection below reuses it.

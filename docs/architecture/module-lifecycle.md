@@ -1,5 +1,17 @@
 # Module Lifecycle
 
+## Issue 332 canonical plot review evidence (2026-09-08; acceptance pending)
+
+The existing T065 semantic review reads the supplied party snapshot's module
+plot through ModulePathManager after prefix compression. It receives complete
+stored JSON, including main and side-quest IDs, not the lossy DM presentation.
+Authored objectives/future outcomes do not establish occurred events or earned
+rewards; the reviewing model still adjudicates the immediate player action.
+Missing/unreadable/invalid outer evidence is explicitly unavailable with a WARN,
+never repaired, defaulted to another module, or turned into a forced verdict.
+The raw player/candidate boundary, hub evidence, currentness and T077 writers
+remain unchanged. This is an evidence-read seam, not a progression rules engine.
+
 ## Issues 322/328 implementation delta (2026-09-08; acceptance pending)
 
 The existing T039 call is instructed to emit the five established container
