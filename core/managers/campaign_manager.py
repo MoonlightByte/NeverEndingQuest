@@ -4421,7 +4421,22 @@ Focus on story outcomes, character development, and decisions that will matter i
         
         # Import hubs
         for hub, data in exported_data.get('hubs', {}).items():
-            target['hubs'][hub] = data
+            # Omitted facts must not erase established property (#328).
+            fields = data if isinstance(data, dict) else {'details': data}
+            patch = {
+                key: value for key, value in fields.items()
+                if value is not None
+                and not (isinstance(value, str) and not value.strip())
+                and not (isinstance(value, dict) and not value)
+            }
+            if not patch:
+                continue
+            existing = target['hubs'].get(hub, {})
+            record = copy.deepcopy(
+                existing if isinstance(existing, dict) else {'details': existing}
+            )
+            record.update(copy.deepcopy(patch))
+            target['hubs'][hub] = record
         
         # Import world state changes
         for key, value in exported_data.get('worldState', {}).items():
