@@ -1,9 +1,11 @@
 # Issues 322 + 328: campaign export contract and hub preservation
 
-Status: REVISED PLAN ONLY, 2026-09-08. Owner approved inclusion of #328, NOT
-implementation. Full #193 review and post-presentation execution approval remain.
-This revision supersedes the prompt-only draft and its unconstrained-hub wording.
-Round-1 history is retained in 2026-09-08-issue-322-plan-review.md; no product edit.
+Status: C1-C4 implemented locally under D-322-1; native A1 PASSED and A3 FAILED.
+2026-09-08 C6 AMENDMENT PLAN ONLY: owner approved adding validator hub evidence.
+Section 10 supersedes the former two-reader-only scope and outdated approval
+status below. C6 needs independent review and post-review owner presentation
+before code. Existing implementation/evidence is retained, never relabeled PASS.
+Prior reviews: 2026-09-08-issue-322-plan-review.md; execution record is separate.
 
 ## 1. Authority and boundary
 
@@ -28,7 +30,8 @@ Production allowlist (three files, narrow seams only):
 - core/managers/campaign_manager.py: T039 instruction string, existing hub import
   loop with lossless structural adaptation, one shared hub-context formatter.
 - core/ai/conversation_utils.py: existing established-hubs context block only.
-- main.py: existing established-hubs DM-note block only.
+- main.py: existing established-hubs DM-note block plus C6 validator evidence
+  assembly only (section 10). Sanitization, gates and review loop unchanged.
 Docs: this plan, its review/acceptance record, narrow module-lifecycle schematic
 note. No T038 wording, archive source, T108, identity, model binding, transport,
 lock order, save format, schema-file or generic lifecycle redesign.
@@ -77,7 +80,8 @@ Accepted source history/plot/party
   -> existing generated-export validator
   -> existing transaction: preserve existing hub fields, overlay supplied facts
   -> committed summary + campaign maps + module availability
-  -> one shared factual hub formatter, used by BOTH current DM-context readers.
+  -> one shared factual hub formatter, used by both DM-context readers and,
+     after reviewed C6, the semantic validator's independent evidence context.
 
 | Boundary | Canonical owner | Required behavior |
 | --- | --- | --- |
@@ -192,8 +196,9 @@ This is not a global campaign merge library or a retrospective data migration.
 ### C3 - One truthful, compatibility-safe read formatter
 
 Add one pure public formatter in campaign_manager.py, e.g.
-format_campaign_hubs(hubs), with exactly two production consumers: the current
-conversation_utils hub block and main DM-note hub block. No new file/store.
+format_campaign_hubs(hubs), initially with the two current DM consumers:
+conversation_utils hub block and main DM-note hub block. C6 adds the validator
+as its third production consumer. No second formatter or new file/store.
 Serialize the complete stored hub map using JSON, including names and every
 nested field/value; prepend a short factual authority instruction:
 
@@ -229,7 +234,7 @@ unused get_campaign_context or change establish_hub's separate creation action.
 | Load/Reset/Quit and transaction fencing |existing lifecycle| PRESERVED byte-identical code, scoped control/live acceptance |
 
 No new store/marker/schema/version/flag/provider path/model call/thread/lock.
-One new pure formatter needs AP4 warrant #328 plus owner D-322-2 and two-callers
+One new pure formatter needs AP4 warrant #328 plus owner D-322-2 and three-callers
 audit. Existing importer receives a field-overlay loop and structural adaptation;
 no generic helper framework. Leanness DA now triggered by new public symbol/guard.
 No runtime cap/retry-count change; inherited export fallback debt not newly blessed.
@@ -277,7 +282,7 @@ Negative primitive matrix:
 Synthetic JSON for pure merge/format contract aids is not simulated gameplay.
 Record firing branches as primitive evidence, never native live PASS.
 Compile + pyflakes undefined-name, diff whitespace, FS1/sentinel raw scans.
-Both formatter production callers required, plus family scan for other readers.
+All three formatter production callers required, plus family scan for other readers.
 
 Real evidence fixture: copied authentic #311 Keep_of_Doom failure and original
 archives; official Keep_of_Doom/The_Thornwood_Watch, short native-valid source,
@@ -298,7 +303,7 @@ No private capture/keys tracked. Exact before/after state and lifecycle counts.
 | A5 | Ordinary Save, subsequent turn, Load, Quit | Hub/campaign and companion files restore; actionable prompt; no orphan child. Pending-T039 cancellation only if naturally reachable; label NOT-REACHED otherwise |
 | A6 | Genuine service/ownership change if normal gameplay supports it | Source establishes actual change, T039 proposed field and disk agree; no default clearing. If unavailable, retain primitive polarity and explicit NOT-REACHED owner disposition before closure; no invented request facts |
 
-A3's actual hub preservation and both real consumers are core gates, not waived
+A3's actual hub preservation and all three real consumers are core gates, not waived
 by mere type acceptance. If authentic source lacks a friendly hub, locate a
 product-legal real scenario or report NOT-REACHED; do not fabricate state.
 A6 verifies replacing facts, not speculative new capability; no retention-by-
@@ -315,7 +320,7 @@ Single-Path. Each receives full current plan+ledger and policy. Owner scope is
 closed, execution gate open. Full same-SHA review plus clean confirmation, except
 the policy's narrow plan-polish exception. Code-class corrections must reverify.
 
-Schema-Freeze: zero validator/schema changes; same accepted JSON data types,
+Schema-Freeze: zero admission/verdict/schema changes; same accepted JSON data types,
 per-use structural adaptation without metadata loss; authentic compatibility.
 Platform/Provider/Hygiene apply; no profile changes, ASCII/EOL/secrets/tests.
 Limits gate: no new numeric runtime bounds. FS1 applies all changed branches.
@@ -364,3 +369,155 @@ Existing services can still genuinely change; missing mention is not a change.
 Approval of this plan would include clearer agent instructions and the narrow
 lossless field overlay/formatter, not a rewrite of historical saves or an atlas.
 After review, present exact unresolved limitations and STOP for final approval.
+
+## 10. C6 amendment: canonical hub evidence for semantic validation
+
+### Authority, evidence and bounded scope
+
+Owner 2026-09-08: "Yes, mnarrolwy extend the plan to fix this gap" (D-322-4).
+This authorizes the narrow plan extension; NEQ-REVIEW-13 still requires the
+reviewed amendment's presentation before implementation. No new files in the
+production allowlist: C6 touches main.py only, at validate_ai_response's evidence
+assembly. No producer/importer, name, atlas, model, transport or save repair.
+Current evidence HEAD5fcc5f1c, branch fix/322-campaign-export-hubs; original
+implementation baseline origin/main6d18d09b. Reverify ancestry before execution;
+these hashes are evidence, not runtime authority. Policy read live at epoch
+2026-09-08T20:40:17Z; D-322-4 codification is the sole intended policy delta.
+Spec-pin: #193 Part2 p6 lines129-132 persistent services, p8 lines139-143
+world consequences, p11 lines155-159 provider/capture, p12 lines161-164
+preservation, p13 lines166-171 real native serial acceptance. Read-path recovery
+prohibition p2 and raw-input authority from Part1 remain binding. README promise:
+recorded world consequences remain usable without inventing ownership/services.
+
+OBSERVED A3, actual native OpenAI, copied official Thornwood/Keep_of_Doom game:
+private /mnt/c/322-game-IbP7La/debug/api_captures/api_calls_master.jsonl495 has
+complete canonical hubs in DM request messages2 and48; first draft lists four
+services.496 reviews that exact draft but lacks canonical hubs, rejecting those
+services as invented.497 removes them;498 accepts. Private evidence root
+/mnt/c/agent-room-fleet-kit/local-data/322-acceptance-oZxruI/A2-A5-game-interactive,
+protocolseq579 delivers "I cannot swear that any service there is ready."
+Two independent source/PX audits confirmed the linkage; four other spot-check
+claims passed. A1 was maintenance PASS; it did not prove this player path.
+
+CODE-PROVEN main.py3056/3118-3124 strips generated user notes and system history;
+3275-3279 selects that history;3469-3493 rebuilds validator context without hubs;
+3566-3573 appends exact raw input/candidate;10384-10409 applies rejection feedback.
+Sanitization lineage715732d55, prefix lineage932aceb00 (both mainline). Preserve
+both goals. No missing-name heuristic is involved. #326 remains separate.
+
+### Exact C6 mechanics
+
+At validate_ai_response, after existing prefix compression and BEFORE
+_assemble_validation_messages, read committed modules/campaign.json directly
+with the existing UTF-8 JSON reader pattern (open/json.load). Use the shared
+format_campaign_hubs on its hubs map. Add its nonempty result as ONE system
+evidence message to validation_messages_to_send. It is outside compression and
+outside accepted-history selection. The final raw-player/candidate pair and
+strict-template tail remain assembled by the unchanged existing helper.
+Use the formatter's existing wording verbatim; no additional narration rule,
+required-services lint, string-matched approval or new model call.
+
+Do NOT construct CampaignManager here: its initializer creates directories and
+can run completion recovery (campaign_manager.py1865-1896). This new read must
+not run recovery, take a transaction lock, mutate files or hold a lock across
+provider work. Existing atomic file publication makes a successful read a
+complete atomically published JSON document, not a global multi-file transaction
+snapshot and never a partially written JSON document. Read per validator
+invocation so Load/Reset and later accepted updates do not use a global cache.
+The existing invocation/scope currentness checks reject superseded results;
+there is no new acceptance/revision fence or persistent snapshot protocol.
+
+Absent campaign file or absent/empty hubs: no fabricated map/owner/service;
+omit the section, preserving the prior no-hub validation path. For unreadable
+file (OSError/UnicodeError/JSONDecodeError) or non-object campaign root, emit a
+WARN diagnostic naming the failure class, and include only the factual system
+note "Canonical campaign hub information is unavailable for this review;
+absence of this context does not establish absence of services or ownership."
+Then continue through the EXISTING semantic validator: no approval, rejection,
+empty verdict, fallback narration, new retry loop or recovery is manufactured.
+The diagnostic contains no player data. No broad except, silent swallow or
+catch of supersession/cancellation. Nested historical JSON values still use
+the same lossless formatter; do not add an outbound schema gate on saved hubs.
+
+This is evidence supply, not semantics enforcement: the validator judges the
+candidate against committed facts, including unknown ownership and explicitly
+empty services. It can still reject unsupported facilities. The DM remains
+agentic, every action is still reviewed, and only the existing state writers
+can change property. Existing replay/nonmembership bypasses are not widened.
+No claim that three independently timed reads are a new global snapshot; if
+acceptance observes live state-version incoherence, stop and report rather than
+adding coordination machinery here.
+
+### GL-1 and resolution ledger extension
+
+| Branch/goal | Origin | Disposition | Proof |
+| --- | --- | --- | --- |
+| Strip system/DM-note history; retain raw input |715732d55| PRESERVED unchanged | source byte/AST compare; actual T065 raw pair |
+| Existing NPC/location/module/inventory evidence |932aceb00| PRESERVED unchanged | prefix compare excluding added hub message |
+| Compress historical prefix, not final semantic pair |existing main.py3501-3573| PRESERVED unchanged | packet ordering and exact raw/candidate capture |
+| Hub facts absent from validator |A3 observed above| RETIRED D-322-4 | same recorded services reach T065 and survive narration |
+| All verdict/refusal/retry/action/currentness branches |existing validate_ai_response and _review_dm_candidate| PRESERVED byte-identical | source diff + actual invalid and supersession observations as reachable |
+| Missing campaign input |new evidence read only| task-C6 | no-hub old behavior; unavailable is not known-empty; unchanged validator terminal |
+
+New ledger entries: A3-V1 missing authoritative validator evidence=task-C6;
+C6-A1 post-review execution approval=escalate:@owner (present reviewed plan);
+original F7 execution gate was CLOSED by D-322-1, not still open. C4 broader
+attribution remains issue-#326 under D-322-3; no global factual PASS claimed.
+
+### Implementation and regression acceptance after review/approval
+
+C6a: fresh policy/ancestry/EOL check; add only the above main.py evidence block
+and formatter import, inspect focused diff; update module-lifecycle schematic
+third-consumer note. Compile/undefined-names/whitespace, exact no-change checks
+for sanitization, _assemble_validation_messages, all verdict/gate/loop paths,
+and C1-C3 producer/importer/formatter bytes. Mandatory simplifier and independent
+postimplementation audit, raw FS1 and both sentinel scans. No tracked tests.
+Pure JSON/I/O/format primitives may cover absent file, unreadable/bad JSON,
+empty map, historical scalar/null values and full untruncated payload; they
+are NOT live gameplay or forced model-failure evidence.
+
+C6b: re-run the SAME recall request via native run_headless.py serve, real
+OpenAI, one operation at a time, copied fixture with current source/prompts
+hash-verified. Preserve original FAILED A3 transcript and capture. Require all
+three actual messages (both T067 hub contexts and T065 system evidence) to carry
+the complete committed record; T065 raw player/candidate remain exact adjacent
+pair. Require player answer preserves four known services, owner, and friendly
+hub support WITHOUT invented village ownership. Five independent PX claims.
+The original rejection is historical baseline evidence, NOT proof that the
+post-C6 validator still rejects unsupported claims. Separately require real
+post-change semantic rejection -> correction -> playable continuation, checking
+persisted history excludes the rejected draft and transient correction feedback.
+This firing-path control must use actual live play, never injected model
+outcomes. If not naturally reached, mark that criterion NOT-REACHED and withhold
+its PASS; a positive three-consumer/narration PASS does not waive it. Unknown
+ownership must not become party; empty services must
+not become basic services (pure polarity plus live only when genuinely present).
+Measure added request tokens and input-to-prompt time without attributing the
+whole turn to T065. Publish actual model or unavailable, rows, complete text,
+fallback/retry counts, save/campaign comparisons and quiescence receipts.
+
+On clean C6b continue held A2, A5 and A6 under section7. A4's positive unlock,
+absent-file/error live paths and cancellation are NOT-REACHED unless naturally
+exercised; no corruption/state edits to manufacture a PASS. Failed core arm:
+preserve artifacts and stop, no mid-acceptance repair. All unrelated findings
+remain separate issues; no authority to commit/push/merge to main or close issues.
+
+### Review applicability
+
+FULL remains FULL (NEQ-REVIEW-03 one-way). Dispatch the same nine seats separately
+with this whole revised plan/ledger, live policy and source: Custodian,
+Fail-Forward, Acceptance, Consumer/Compat, Legacy-Contract, PX, Leanness and both
+sentinels. Reconfirm changed evidence read/error branches and third consumer,
+not just the successful old C3. No schema/store/lock/routing change proposed;
+zero limits; shared-primitive entrant and new exception path still get explicit
+compatibility, failure, hygiene, platform and source-family checks. A new plan
+has no new product diff yet: sentinel empty C6 diff is not implementation proof.
+Converge on one SHA plus confirmation or policy's plan-polish-only exception,
+then present to owner. #326 remains outside; #328 covers this observed gap.
+
+C6 review reconciliation: ACC-C6-1=task-C6b (new explicit post-change firing-path
+and persisted-history checks; acceptance-design change, full re-confirmation
+required). C6-P1=fixed-inline (wording only: atomic file publication is not a
+global multi-file snapshot). NL-C6-FYI=issue-#317 (pre-existing five-message
+transition-detection window; code-proven edge, gameplay impact unverified;
+no repair in this scope). All remaining round-1 seats had zero blockers.

@@ -10,9 +10,14 @@ facts, while explicit false/zero/lists (including empty services) remain updates
 Historical non-object hub facts use the existing details field losslessly when
 an effective update occurs; reads do not migrate stored data.
 
-Both live hub-context readers (conversation_utils world-state context and main
-DM note) use format_campaign_hubs from campaign_manager: complete stored JSON,
-no invented party ownership/type/services. Other categories and availability
+Three live hub-context readers (conversation_utils world-state context, main
+DM note, and semantic validator evidence) use format_campaign_hubs from
+campaign_manager: complete stored JSON, no invented party ownership/type/services.
+The validator reads campaign.json directly after prefix compression, before
+the unchanged exact player/candidate pair. It does not construct CampaignManager
+or run recovery. Absent data adds nothing; unreadable/non-object campaign data
+adds an explicit unavailable-evidence note and WARN, never a manufactured verdict.
+Other categories and availability
 keep their existing pathways; get_campaign_context is not activated. T038,
 archives, visit identity, T108, locking and summary publication are unchanged.
 This supersedes only the export/import/hub-reader description, not historical

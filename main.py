@@ -3547,6 +3547,38 @@ def validate_ai_response(
     else:
         validation_messages_to_send = validation_conversation
 
+    # Supply committed hub facts independently of sanitized/compressed history.
+    # A read must not construct CampaignManager or trigger its recovery path.
+    from core.managers.campaign_manager import format_campaign_hubs
+
+    hub_context = ""
+    hub_context_failure = None
+    try:
+        with open("modules/campaign.json", "r", encoding="utf-8") as campaign_file:
+            campaign_data = json.load(campaign_file)
+    except FileNotFoundError:
+        pass
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        hub_context_failure = type(exc).__name__
+    else:
+        if isinstance(campaign_data, dict):
+            hub_context = format_campaign_hubs(campaign_data.get("hubs"))
+        else:
+            hub_context_failure = "non_object_campaign_root"
+    if hub_context_failure is not None:
+        warning(
+            f"VALIDATION: Canonical hub context unavailable ({hub_context_failure})",
+            category="ai_validation",
+        )
+        hub_context = (
+            "Canonical campaign hub information is unavailable for this review; "
+            "absence of this context does not establish absence of services or ownership."
+        )
+    if hub_context:
+        validation_messages_to_send = list(validation_messages_to_send) + [{
+            "role": "system", "content": hub_context,
+        }]
+
     # The semantic boundary is deliberately outside compression: the exact raw
     # player turn and exact candidate must remain the final adjacent pair.
     # Snapshot the provider once here; the model-config selection below reuses it.
