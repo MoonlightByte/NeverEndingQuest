@@ -183,7 +183,9 @@ class LiveTurnScope:
 
     def register_advisory_scopes(self, advisory_scopes):
         with self.lock:
-            if not self.controls_open or self.supersession is not None:
+            if self.supersession is not None or (
+                not self.controls_open and self is not _executing_control_scope.get()
+            ):
                 return False
             self.advisory_scopes.extend(advisory_scopes)
             return True
@@ -242,6 +244,7 @@ def open_advisory_scopes(parent, beat_id, count, *, completion_required=False):
     if (
         parent is not get_live_turn_scope()
         and parent is not get_active_welcome_scope()
+        and parent is not _executing_control_scope.get()
     ):
         return ()
     scopes = tuple(
@@ -919,6 +922,20 @@ def _interruptible_wait(seconds, scope, message, emit=None, authority_check=None
         rendered = message() if callable(message) else message
         _safe_emit(emit, rendered)
         time.sleep(min(_HEARTBEAT_SECONDS, remaining))
+
+
+def _wait_for_live_authority(scope, authority_check=None):
+    """#311: wait outside locks/provider calls without losing pending memory."""
+    while True:
+        try:
+            _check_live_authority(scope, authority_check)
+            return
+        except OSError:
+            _interruptible_wait(
+                0.25, scope,
+                "Checking the current adventure before recording companion memory...",
+                authority_check=authority_check,
+            )
 
 
 def _delay_for_error(envelope, failure_count):

@@ -1,5 +1,19 @@
 # Provider Routing
 
+## Issue 311 implementation delta (2026-09-07; live acceptance pending)
+
+Final-module T108 uses the existing completion-required advisory transport,
+registered to the completion owner. The two advisory admission gates also accept
+the exact executing accepted-control scope (for Save completing ready work),
+while keeping its external controls closed and rejecting superseded owners.
+This synchronous child finishes before the control callback returns. Ordinary,
+welcome and asynchronous callers keep their existing parent selection. No new
+model profile, retry policy, provider branch, executor or persisted format.
+The six synchronous module-final authority checks use a private interruptible
+wait over the existing observation/pacing helpers. No provider request or
+persistence lock is active at those waits. The provider polling callback stays
+nonwaiting so unreadable authority can still trigger child reap/reissue.
+
 Purpose: bind each registered T-ID to one provider-specific model profile, execute the selected request through one normalized transport boundary, and keep capture evidence observational.
 
 Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 2026-09-01. Policy pointers refer to live [issue #193](https://github.com/MoonlightByte/NeverEndingQuest/issues/193), v2.3 at verification time.

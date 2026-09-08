@@ -1,5 +1,22 @@
 # Module Lifecycle
 
+## Issue 311 implementation delta (2026-09-07; live acceptance pending)
+
+The undefined-snapshot final-memory block is removed from the locked commit
+helper. `complete_module` now captures the final origin episode after
+`_complete_module_once` returns and releases all commit locks, before resolving
+the leader flight. Ready-intent replay takes that same path; canonical-existing
+memory completes its deterministic POV projection without another T108 call.
+The child finishes before staged-intent cleanup or an accepted Save returns.
+Final memory identity uses the returned committed visit count, including receipt
+replay, rather than counting history markers; later visits cannot reuse the prior
+visit's final episode. Existing old-coordinate records remain untouched.
+Unavailable epoch observations at the six synchronous memory checks wait
+interruptibly outside locks/provider requests; typed supersession still unwinds.
+Regeneration remains summary-only; no historical-location facts are inferred
+from the live destination. This supersedes only the #311 missing-input description
+below, not the historical acceptance receipts or broader lifecycle contracts.
+
 ## #248 implementation candidate (2026-09-06; acceptance pending)
 
 For startup with pending travel, the existing ordered completion drain runs under travel recovery authority. Structured failed work requests lifecycle choice; blocked/transient work continues waiting. Typed cancellation bypasses module-final advisory catches before outcome-marker completion/removal; already committed module data is not rolled back. Existing final-episode missing-input defect #311 prevents that T108 call on this baseline and remains a separate repair, not an acceptance PASS.

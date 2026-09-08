@@ -18,7 +18,6 @@ Design rules honored:
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 import model_config
@@ -26,9 +25,8 @@ from core.ai import api_client
 from core.combat.invocation import InvocationSupersededError
 from utils.capture.live_provider_call import LiveProviderSuperseded
 from core.npc.episode_store import VALID_SALIENT_KINDS
+from core.npc.relationship_store import record_store_health
 from utils.capture.multi_model_capture import register_callsite
-
-_LOGGER = logging.getLogger(__name__)
 
 TASK_ID = "T108"
 PROMPT_VERSION = "npc-episode-extract/v1"
@@ -174,9 +172,10 @@ def extract_episode(
     except (LiveProviderSuperseded, InvocationSupersededError):
         raise
     except Exception as error:  # noqa: BLE001 - fail-open by design
-        _LOGGER.debug("episode extraction failed: %r", error)
+        record_store_health("episode_extraction_failed", detail=str(error))
         return None
     if not isinstance(payload, Mapping):
+        record_store_health("episode_extraction_invalid", detail="response is not an object")
         return None
 
     # Reconcile by code: keep only facts for PRESENT companions, map name -> id.
