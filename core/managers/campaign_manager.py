@@ -3939,6 +3939,13 @@ Focus on story outcomes, character development, and decisions that will matter i
             hubType, ownership, services, description or other fact fields when supported.
             services, when stated, is a list of service names. Omit fields the source
             does not establish; omission is not deletion of previously recorded details.
+            services lists services the source establishes are actually offered at
+            that location, never a building type or possible future use. Put potential
+            future uses in details or status, not services. Omit services when the
+            source does not establish offered services or an explicit change to them.
+            ownership identifies an explicitly established owner or holder of control.
+            Operating or staffing a place does not establish ownership. If ownership
+            is unknown, omit the field rather than writing an unknown placeholder.
             Do not supply null, blank or empty-object defaults for unknown information.
             An explicit empty services list means the source establishes no services;
             never use it merely because services were not mentioned.
