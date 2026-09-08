@@ -3917,7 +3917,27 @@ Focus on story outcomes, character development, and decisions that will matter i
             4. World state changes (political shifts, curses lifted, etc)
             5. Modules that should be unlocked next
             
-            Format as JSON with keys: relationships, artifacts, hubs, worldState, unlockedModules"""
+            Return only one JSON object with exactly these keys:
+            {{"relationships": {{}}, "artifacts": {{}}, "hubs": {{}}, "worldState": {{}}, "unlockedModules": []}}
+            This illustrates container types, not permission to omit supported facts.
+            The first four categories must be objects, never arrays, with non-empty
+            string keys naming the source entity, item, hub or world-state fact.
+            Keep supported status and detail in the values; do not invent or rename facts.
+            Each hubs value must itself be an object of recorded facts. Use existing
+            hubType, ownership, services, description or other fact fields when supported.
+            services, when stated, is a list of service names. Omit fields the source
+            does not establish; omission is not deletion of previously recorded details.
+            Do not supply null, blank or empty-object defaults for unknown information.
+            An explicit empty services list means the source establishes no services;
+            never use it merely because services were not mentioned.
+            A new supported field value may update an earlier fact; record explicit
+            changed ownership as its actual value, not a blank or guessed party owner.
+            unlockedModules is a list of non-empty exact module identifier strings,
+            not objects or proposed adventure titles. Include only explicitly established
+            identifiers and unlocks; an unresolved lead does not establish an unlock.
+            Use empty category objects and an empty unlock list when no facts support
+            entries. Preserve uncertainty and attributed beliefs; no invented details,
+            extra top-level keys, markdown fences or commentary."""
             
             # T039: campaign export-data extraction (mini-tier JSON).
             # MODEL_PROVIDER already imported above for the T038 branch.
