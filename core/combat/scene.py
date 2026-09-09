@@ -16,8 +16,83 @@ CONTROLLER_SCOPE_VALUES = {"encounter", "turn", "temporary", "persistent"}
 OBJECTIVE_STATUS_VALUES = {"active", "satisfied", "failed", "abandoned"}
 
 
+# Dispositions that unambiguously declare opposition to the party. These are
+# compared as EXACT values against the typed relation field, never matched
+# against prose or scored against a vocabulary: an unrecognised disposition is
+# deliberately a no-op that leaves the existing side exactly as it was. The
+# field is free-form by contract, so this reads only what it can be certain of.
+ADVERSARIAL_DISPOSITIONS = frozenset({"hostile", "enemy", "adversarial", "opposed"})
+
+
 class SceneReconciliationError(ValueError):
     """A scene proposal cannot be reconciled to exact canonical identities."""
+
+
+def apply_scene_declared_sides(encounter):
+    """Correct `faction` from the sides the model actually authored (issue #279).
+
+    `ensure_combatant_ids` seeds `faction` from `type`, which is itself derived
+    from the createEncounter participant bucket: anything carrying a character
+    sheet lands in `npcs` and is seeded "party". That makes every named villain
+    a party member, which is how Bandit Captain Gorvek came to fight for the
+    party in his own set-piece.
+
+    The scene manifest already carries the answer. This promotes a participant
+    to "hostile" only when the scene explicitly says it is hostile toward
+    somebody on the party side.
+
+    Deliberately one-directional. It can promote a combatant to hostile; it can
+    never demote one to party. Wrongly demoting an adversary would end a fight
+    early, and wrongly promoting an ally would make `all_hostiles_resolved`
+    unsatisfiable and hang the encounter, so the only move available here is the
+    one the model stated outright. The player character is never promoted.
+
+    Absence-safe and creation-time only: no relations, an unrecognised
+    disposition, or a non-typed encounter all leave the roster untouched, and
+    encounters already on disk are never migrated.
+
+    Returns the set of combatant IDs whose faction this changed.
+    """
+    if not isinstance(encounter, dict):
+        return set()
+    creatures = encounter.get("creatures")
+    if not isinstance(creatures, list):
+        return set()
+    scene = encounter.get("sceneFacts")
+    if not isinstance(scene, dict) or scene.get("contractVersion") != CONTRACT_VERSION:
+        return set()
+
+    by_id = {
+        c.get("combatantId"): c
+        for c in creatures
+        if isinstance(c, dict) and c.get("combatantId")
+    }
+    player_ids = {
+        cid for cid, c in by_id.items() if c.get("type") == "player"
+    }
+    party_ids = player_ids | {
+        cid for cid, c in by_id.items() if c.get("faction") == "party"
+    }
+
+    changed = set()
+    for relation in scene.get("relations") or []:
+        if not isinstance(relation, dict):
+            continue
+        disposition = relation.get("disposition")
+        if not isinstance(disposition, str):
+            continue
+        if disposition.strip().lower() not in ADVERSARIAL_DISPOSITIONS:
+            continue
+        subject_id = relation.get("subjectId")
+        if relation.get("objectId") not in party_ids:
+            continue
+        if subject_id in player_ids or subject_id not in by_id:
+            continue
+        subject = by_id[subject_id]
+        if subject.get("faction") != "hostile":
+            subject["faction"] = "hostile"
+            changed.add(subject_id)
+    return changed
 
 
 def _require_object(value, label):
