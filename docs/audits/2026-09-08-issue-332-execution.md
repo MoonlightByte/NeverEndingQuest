@@ -121,7 +121,7 @@ a controlled before/after latency comparison or a whole-game benchmark.
 | A1 main plot | 6.725 | 7.688 | 3.630 | 102.654 / 145.182 |
 | A3 nested-SQ / deny reward | 5.676 | 5.448 | 3.301 | 104.852 / 140.830 |
 | A4 quiet, real correction | 5.917 + 7.459 | 5.664 + 6.011 | 4.108 | 172.985 / 202.495 |
-| A4 post-Load | 5.446 | 4.615 | none (no action) | local telemetry report |
+| A4 post-Load | 5.446 | 4.615 | none (no action) | 83.225 / 104.463 |
 
 New evidence message5923-6186 UTF-8 bytes; estimated o200k content tokens
 1378-1435, excluding role/framing. Actual T065 prompt-token counts26462,
@@ -145,4 +145,23 @@ isolated, not a general finding that he was fully healthy.
 
 ## C4 final independent audit
 
-Pending final post-Load turn/cleanup and five-verdict audit; no merge authority.
+Independent final post-Load PX PASSED: current inn and companion presence match
+disk; Town Square recalls the restored SQ001 impact; quest remains unresolved;
+no reward/time/HP/XP change. T067 actions empty and plot/tracker/character files
+byte-identical across this turn. Entire after-load-before-restart snapshot equals
+after-A3, while SQ001 impact differs from after-quiet, proving actual restoration.
+Quiet-turn rejection/correction independently verified against accepted durable
+history. Independent non-author332_impl_simplifier completed NEQ-REVIEW-15:
+
+1. SPEC COVERAGE PASSED: exact implementation and planned evidence accounted for.
+2. LEDGER CLOSURE PASSED: F1-F4 resolved, D332-1 ruled, findings333/334 filed.
+3. TRACKED FOLLOW-UPS PASSED:331/326/329/317/318 remain open and accurate.
+4. R3/SENTINEL RE-RUNS PASSED:15 primitives, no undefined names/new warnings,
+   both raw diff scans empty, baseline bytes/EOL preserved.
+5. BUG-LAYER ACCEPTANCE PASSED WITH DOCUMENTED BOUNDARIES above; final PX read.
+
+Raw output/artifact:193-independent-postimplementation-audit.txt; reproducible
+checks:193-independent-audit-checks.py, both under the local evidence root.
+The audit inspected codee95bc243 and evidence commit55ca6fc1; final changes
+after that are documentation only. No in-scope blocker. No push, main merge,
+automatic issue closure, or unrelated product repair is authorized by this record.

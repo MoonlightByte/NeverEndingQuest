@@ -1,6 +1,6 @@
 # Module Lifecycle
 
-## Issue 332 canonical plot review evidence (2026-09-08; acceptance pending)
+## Issue 332 canonical plot review evidence (2026-09-08; scoped acceptance passed)
 
 The existing T065 semantic review reads the supplied party snapshot's module
 plot through ModulePathManager after prefix compression. It receives complete
@@ -11,6 +11,8 @@ Missing/unreadable/invalid outer evidence is explicitly unavailable with a WARN,
 never repaired, defaulted to another module, or turned into a forced verdict.
 The raw player/candidate boundary, hub evidence, currentness and T077 writers
 remain unchanged. This is an evidence-read seam, not a progression rules engine.
+Native OpenAI acceptance and explicit unvisited branches are recorded in
+../audits/2026-09-08-issue-332-execution.md. No all-model or all-prose guarantee.
 
 ## Issues 322/328 implementation delta (2026-09-08; acceptance pending)
 
