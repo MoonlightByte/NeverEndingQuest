@@ -3731,7 +3731,6 @@ class CampaignManager:
         
         # Extract key information from party tracker
         party_npcs = party_tracker_data.get('partyNPCs', [])
-        active_quests = party_tracker_data.get('activeQuests', [])
         
         # Build enhanced prompt for AI using plot data and conversation history
         system_prompt = """You are the ultimate bard, a master saga-weaver whose words breathe life into legend. Your mission is not merely to summarize events; your sacred task is to immortalize a campaign's history, vividly portraying the souls, struggles, and triumphs of its characters in a tale worthy of eternal song.
@@ -3866,7 +3865,6 @@ STRUCTURED PLOT DATA:
 
 PARTY STATUS:
 Party NPCs: {json.dumps(party_npcs, indent=2)}
-Quest Status: {json.dumps(active_quests, indent=2)}
 
 CONVERSATION CONTEXT:
 {conversation_data}

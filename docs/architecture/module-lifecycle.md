@@ -1,5 +1,19 @@
 # Module Lifecycle
 
+## Issue 334 chronicle quest source (2026-09-09; scoped acceptance passed)
+
+The shared T038 builder no longer reads the deprecated party_tracker.activeQuests
+list or sends it as a competing Quest Status section. Its existing complete
+module_plot plotPoints snapshot (including nested side quests and status/impact),
+filtered conversation and party NPC roster remain unchanged. Normal departure
+and failed-summary regeneration share this builder and retain their selected
+module snapshot, including explicit missing-plot behavior. Old saved quest lists
+remain untouched for compatibility; no synchronization or migration is introduced.
+Models still interpret events and write the chronicle. Publication, archives,
+T039 export, final companion memory and lifecycle authority are unchanged.
+This corrects one missed consumer of the already-retired quest list, not prior
+stored stories. Execution and real acceptance: ../audits/2026-09-09-issue-334-execution.md.
+
 ## Issue 332 canonical plot review evidence (2026-09-08; scoped acceptance passed)
 
 The existing T065 semantic review reads the supplied party snapshot's module
