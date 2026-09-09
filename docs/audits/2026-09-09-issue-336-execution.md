@@ -122,3 +122,8 @@ the A7 coverage gap and authorized commit/merge ("I approve your reocmmendation
 and after you commti and merge take on 340 with a full 193 plan"). A7 remains
 NOT-REACHED, not retroactively PASSED. D336-2 CLOSED YES. Issues340/341 stay
 separate; only planning340 is authorized next. Publication receipts follow.
+
+Implementation committed2929f4f1; all tested production hashes identical after
+commit. Live main remained6c541cc5 at merge preflight, permitting fast-forward
+without conflict edits. Authority codified D-336-SHIP-20260909 in live193 Part5.
+Final remote publication SHA is recorded in issue336's closure comment.

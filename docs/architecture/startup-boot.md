@@ -1,6 +1,6 @@
 # Startup and Boot
 
-## #336 cancellation delta (2026-09-09; candidate tested, A7/ship held)
+## #336 cancellation delta (2026-09-09; owner accepted A7 test gap)
 
 Intentional wizard input cancellation (EOF, Ctrl-C, or the existing interview
 quit/exit/cancel command) propagates as process-local StartupCancelled. The shared
