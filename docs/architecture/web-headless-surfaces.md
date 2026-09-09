@@ -1,5 +1,12 @@
 # Web, Headless, and Terminal Surfaces
 
+## #340 output ownership delta (2026-09-09; candidate)
+
+The terminal UTF-8 helper changes only the encoding of Python's original Windows
+streams, in place. Active stdout/stderr adapters retain identity and routing;
+DebugOutputInterceptor.buffer remains pending text, never a binary sink. Native
+web/headless still own their capture adapters and bypass terminal main setup.
+
 ## #248 implementation candidate (2026-09-06; acceptance pending)
 
 During pre-input travel recovery the existing processing surface shows progress or a control-required reason; lifecycle commands remain available. Early input remains in the existing queue with explicit deferred acknowledgment. Recovery Save cancellations are distinct correlated result/system-message terminals, never successful saves or generic failure narration. No new frontend event type or gameplay authority is introduced.

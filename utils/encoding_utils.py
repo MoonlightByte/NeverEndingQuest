@@ -29,7 +29,6 @@ Provides consistent text sanitization and encoding/decoding functions.
 
 import unicodedata
 import json
-import codecs
 import os
 import threading
 import time
@@ -283,16 +282,10 @@ def fix_corrupted_location_name(name: str) -> str:
 
 
 def setup_utf8_console():
-    """
-    Set UTF-8 encoding for stdout to handle special characters on Windows.
-    This should only be called from main.py when running directly.
-    """
+    """Configure physical Windows streams without replacing active capture routes."""
     import sys
     if sys.platform == 'win32':
-        try:
-            if hasattr(sys.stdout, 'buffer'):
-                sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-                sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
-        except AttributeError:
-            # Already wrapped or in a different environment
-            pass
+        for stream in (sys.__stdout__, sys.__stderr__):
+            reconfigure = getattr(stream, 'reconfigure', None)
+            if callable(reconfigure):
+                reconfigure(encoding='utf-8', errors='strict')

@@ -1,5 +1,13 @@
 # Startup and Boot
 
+## #340 console-stream delta (2026-09-09; candidate)
+
+Terminal setup configures UTF-8 in place on Python's original Windows output
+streams. It does not replace active stdout/stderr capture adapters or interpret
+their pending-text buffers as binary streams. Non-Windows setup remains a no-op;
+web/headless continue entering the shared loop through their existing adapters.
+No model, lifecycle, schema or saved-state contract changes.
+
 ## #336 cancellation delta (2026-09-09; owner accepted A7 test gap)
 
 Intentional wizard input cancellation (EOF, Ctrl-C, or the existing interview
