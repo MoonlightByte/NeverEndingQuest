@@ -166,11 +166,21 @@ def _living_target_ids(encounter):
 
 
 def _living_opponent_ids(encounter, actor):
+    """Living combatants this actor may target.
+
+    Issue #279: this used to subtract everyone sharing the actor's `faction`.
+    `faction` is assigned once at encounter creation from the createEncounter
+    participant bucket (combat_state.ensure_combatant_ids) and is never mutated
+    afterwards, so it cannot express a named villain stored as an `npc`, nor any
+    mid-combat change of side (charm, domination, surrender, betrayal). Legality
+    of a target is now identity plus canonical state only; who is worth attacking
+    is a semantic judgment the actor agent makes from sceneFacts. The actor is
+    excluded because these lists are offered as attack targets in a rejection.
+    """
     return [
         target_id
         for target_id in _living_target_ids(encounter)
-        if (combatant_by_id(encounter, target_id) or {}).get("faction")
-        != actor.get("faction")
+        if target_id != actor.get("combatantId")
     ]
 
 
@@ -219,12 +229,7 @@ def validate_intent(encounter, characters, intent, strict=None):
         if strict and not target_id:
             return False, Rejection(
                 reason="attack requires a targetId",
-                legalTargets=[
-                    target
-                    for target in _living_target_ids(encounter)
-                    if (combatant_by_id(encounter, target) or {}).get("faction")
-                    != actor.get("faction")
-                ],
+                legalTargets=_living_opponent_ids(encounter, actor),
                 retryable=True,
             )
         if target_id is not None and combatant_by_id(encounter, target_id) is None:
@@ -236,11 +241,11 @@ def validate_intent(encounter, characters, intent, strict=None):
             return False, Rejection(
                 reason="target %s is already down" % target_id,
                 legalTargets=_living_opponent_ids(encounter, actor), retryable=True)
-        if strict and target is not None and target.get("faction") == actor.get("faction"):
-            return False, Rejection(
-                reason="%s cannot attack ally %s" % (actor_id, target_id),
-                legalTargets=_living_opponent_ids(encounter, actor),
-                retryable=True)
+        # Issue #279: the same-faction "cannot attack ally" rejection lived here.
+        # It read a table that code invents from the participant bucket, so it
+        # blocked a named villain from fighting the party and handed him his own
+        # men as the only legal targets. Allegiance is semantic and mutable;
+        # code owns identity, state and arithmetic, not who counts as a friend.
         if strict:
             entry = _find_action(sheet, intent.get("ability"))
             if entry is None or not is_executable_attack(entry):

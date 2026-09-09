@@ -570,7 +570,7 @@ def generate_encounter(encounter_data):
     # Every genuinely new encounter is typed-agentic. Persisted provenance,
     # never a hidden runtime selector, keeps old encounters on their existing
     # compatibility route.
-    from core.combat.scene import reconcile_scene_manifest
+    from core.combat.scene import apply_scene_declared_sides, reconcile_scene_manifest
     from core.managers.combat_state import ensure_combatant_ids, ensure_combat_state
 
     ensure_combatant_ids(encounter)
@@ -586,6 +586,10 @@ def generate_encounter(encounter_data):
     ]
     reconciled = reconcile_scene_manifest(encounter_data, canonical_snapshot)
     encounter["sceneFacts"] = reconciled["sceneFacts"]
+    # Issue #279: ensure_combatant_ids above seeded `faction` from the participant
+    # bucket before the authored scene was available. Now that it is, let the scene
+    # correct the sides it explicitly declared.
+    apply_scene_declared_sides(encounter)
     ensure_combat_state(
         encounter,
         new_encounter=True,
