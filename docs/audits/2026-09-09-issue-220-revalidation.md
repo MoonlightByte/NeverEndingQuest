@@ -81,4 +81,3 @@ rollback, root-file coverage or all Windows fault guarantee claimed.
 ## Shipment approval
 
 2026-09-09: owner reviewed these results and authorized "kay, go ahead and merge the narrow fix". Earlier no-shipment wording above records the test-phase boundary. Only the exact tested discovery hunk and its evidence/schematic documentation are included; #336 remains separate. Fresh main1f892928 equals the tested base, so no code integration delta. Post-merge compilation and equality to native-tested bytes are required before push.
-
