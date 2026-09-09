@@ -19,6 +19,71 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 
 
+@pytest.mark.parametrize("version", [None, "old-version", True])
+def test_local_activation_requires_current_explicit_consent(provider_runtime, version):
+    rt = provider_runtime
+    payload = {"provider": "lmstudio"}
+    if version is not None:
+        payload["local_model_consent_version"] = version
+    rt.handlers["handle_set_provider"](payload)
+    assert rt.events[-1][0] == "error"
+    assert rt.module.get_provider() == "openai"
+    assert not rt.module.local_model_consent_current()
+    with pytest.raises(ValueError, match="disclaimer"):
+        rt.module.set_provider("lmstudio")
+
+
+def test_existing_local_installation_stays_local_but_calls_wait_for_consent(provider_runtime, monkeypatch):
+    rt = provider_runtime
+    rt.module._save_user_settings({"model_provider": "lmstudio"})
+    module = rt.reload()
+    assert module.get_provider() == "lmstudio"
+    with pytest.raises(ValueError, match="disclaimer"):
+        module.require_local_model_consent()
+    import utils.openai_client as factory
+    monkeypatch.setattr(factory, "OpenAI", lambda **kwargs: pytest.fail("Unacknowledged provider was contacted"))
+    with pytest.raises(ValueError, match="disclaimer"):
+        factory.get_openai_client("lmstudio")
+    module.acknowledge_local_model(module.LOCAL_MODEL_CONSENT_VERSION)
+    assert rt.reload().local_model_consent_current()
+    recorded = json.loads((rt.root / "user_settings.json").read_text())
+    assert set(recorded["local_model_consent"]) == {"version", "accepted_at"}
+    assert type(recorded["local_model_consent"]["accepted_at"]) is int
+
+
+def test_local_save_and_probe_cannot_bypass_consent(provider_runtime):
+    rt = provider_runtime
+    rt.handlers["OpenAI"] = lambda **kwargs: pytest.fail("Probe bypassed consent")
+    payload = {"base_url": "http://fixture.invalid/v1", "api_key": "synthetic", "model": "test"}
+    rt.handlers["handle_set_local_endpoint"](payload)
+    assert rt.events[-1][0] == "error" and not rt.secrets
+    rt.handlers["handle_test_local_endpoint"](payload)
+    assert rt.events[-1][1]["ok"] is False
+    with pytest.raises(ValueError, match="disclaimer"):
+        rt.module.persist_local_endpoint(**payload)
+
+
+def test_old_consent_version_requires_new_acknowledgment(provider_runtime):
+    rt = provider_runtime
+    rt.module._save_user_settings({"model_provider": "lmstudio", "local_model_consent": {"version": "old", "accepted_at": 1}})
+    assert not rt.reload().local_model_consent_current()
+    rt.handlers["handle_set_provider"]({"provider": "lmstudio", "local_model_consent_version": rt.module.LOCAL_MODEL_CONSENT_VERSION})
+    assert rt.events[-1] == ("provider_changed", {"provider": "lmstudio"})
+
+
+def test_headless_acknowledgment_is_explicit_and_never_reads_from_a_pipe(provider_runtime, monkeypatch):
+    import acknowledge_local_model
+    rt = provider_runtime
+    monkeypatch.setattr(sys, "argv", ["acknowledge_local_model.py"])
+    monkeypatch.setattr(sys, "stdin", types.SimpleNamespace(isatty=lambda: False))
+    assert acknowledge_local_model.main() == 1
+    assert not rt.module.local_model_consent_current()
+    monkeypatch.setattr(sys, "argv", ["acknowledge_local_model.py", "--accept", rt.module.LOCAL_MODEL_CONSENT_VERSION])
+    assert acknowledge_local_model.main() == 0
+    assert rt.module.local_model_consent_current()
+    assert rt.module.get_provider() == "openai"
+
+
 @pytest.fixture
 def provider_runtime(tmp_path, monkeypatch):
     # Import-time settings/key migration must never see the developer's profile.
@@ -70,7 +135,7 @@ def provider_runtime(tmp_path, monkeypatch):
 @pytest.mark.parametrize("provider", ["legacy", "openai", "gemini", "lmstudio"])
 def test_provider_round_trip_survives_fresh_module_import(provider_runtime, provider):
     rt = provider_runtime
-    rt.handlers["handle_set_provider"]({"provider": provider})
+    rt.handlers["handle_set_provider"]({"provider": provider, "local_model_consent_version": rt.module.LOCAL_MODEL_CONSENT_VERSION})
     assert rt.events[-1] == ("provider_changed", {"provider": provider})
     assert rt.module.get_provider() == provider
     assert rt.reload().get_provider() == provider
@@ -100,6 +165,7 @@ def test_malformed_provider_does_not_change_live_or_persisted_selection(provider
 
 def test_endpoint_preserves_blank_key_without_echoing_secret(provider_runtime):
     rt = provider_runtime
+    rt.module.acknowledge_local_model(rt.module.LOCAL_MODEL_CONSENT_VERSION)
     synthetic = "fixture-only-local-key"
     rt.handlers["handle_set_local_endpoint"]({"base_url": "http://127.0.0.1:9999/v1", "model": "test-model", "api_key": synthetic})
     rt.handlers["handle_set_local_endpoint"]({"base_url": "http://127.0.0.1:9998/v1", "model": "next-model", "api_key": ""})
@@ -125,6 +191,7 @@ def test_key_set_and_blank_submit_report_status_only(provider_runtime, provider)
 
 def test_probe_uses_posted_values_and_reports_model_mismatch(provider_runtime):
     rt = provider_runtime
+    rt.module.acknowledge_local_model(rt.module.LOCAL_MODEL_CONSENT_VERSION)
     calls = []
 
     def client(**kwargs):
@@ -141,6 +208,7 @@ def test_probe_uses_posted_values_and_reports_model_mismatch(provider_runtime):
 
 def test_probe_rejects_empty_url_without_network(provider_runtime):
     rt = provider_runtime
+    rt.module.acknowledge_local_model(rt.module.LOCAL_MODEL_CONSENT_VERSION)
     rt.handlers["handle_test_local_endpoint"]({"base_url": ""})
     assert rt.events[-1] == ("local_endpoint_test_result", {"ok": False, "detail": "Base URL is required."})
 
@@ -221,6 +289,7 @@ def local_provider_stub(provider_runtime):
 ])
 def test_real_sdk_probe_success_and_fallback(provider_runtime, local_provider_stub, mode, model, detail):
     rt, stub = provider_runtime, local_provider_stub
+    rt.module.acknowledge_local_model(rt.module.LOCAL_MODEL_CONSENT_VERSION)
     stub.mode = mode
     before = rt.module.get_local_endpoint()
     rt.handlers["handle_test_local_endpoint"]({"base_url": stub.url, "model": model, "api_key": "fixture-only-key"})
@@ -239,6 +308,7 @@ def test_real_sdk_probe_success_and_fallback(provider_runtime, local_provider_st
 @pytest.mark.parametrize("model", ["", "fixture-model"])
 def test_real_sdk_authentication_failure_is_not_success(provider_runtime, local_provider_stub, model):
     rt, stub = provider_runtime, local_provider_stub
+    rt.module.acknowledge_local_model(rt.module.LOCAL_MODEL_CONSENT_VERSION)
     stub.mode = "auth"
     rt.handlers["handle_test_local_endpoint"]({"base_url": stub.url, "model": model, "api_key": "fixture-only-key"})
     assert rt.events[-1][1]["ok"] is False
@@ -253,6 +323,7 @@ def test_real_sdk_transport_failure_can_be_retried(provider_runtime, failure):
     from openai import OpenAI
 
     rt = provider_runtime
+    rt.module.acknowledge_local_model(rt.module.LOCAL_MODEL_CONSENT_VERSION)
     failing = True
 
     def transport(request):
@@ -358,7 +429,7 @@ def test_production_event_decorators_route_through_flask_socketio(provider_runti
     client = socketio.test_client(app)
     try:
         for provider in ("legacy", "openai", "gemini", "lmstudio"):
-            client.emit("set_model_provider", {"provider": provider})
+            client.emit("set_model_provider", {"provider": provider, "local_model_consent_version": rt.module.LOCAL_MODEL_CONSENT_VERSION})
             packet = client.get_received()[-1]
             assert packet["name"] == "provider_changed"
             assert packet["args"] == [{"provider": provider}]

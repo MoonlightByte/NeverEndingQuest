@@ -1138,6 +1138,12 @@ MODEL_TIER_MAP = {
 
 
 def set_provider(provider_name):
+    if provider_name == "lmstudio":
+        require_local_model_consent()
+    _apply_provider(provider_name)
+
+
+def _apply_provider(provider_name):
     """Switch all model variables to the specified provider's models.
 
     Updates both model_config globals AND config module globals (since
@@ -1306,6 +1312,8 @@ def _forget_credential(name):
 
 def persist_provider(provider_name):
     """Save provider choice to disk so it survives restarts."""
+    if provider_name == "lmstudio":
+        require_local_model_consent()
     settings = _load_user_settings()
     settings["model_provider"] = provider_name
     _save_user_settings(settings)
@@ -1322,11 +1330,53 @@ def load_persisted_provider():
     settings = _load_user_settings()
     provider = settings.get("model_provider", "openai")
     if provider in PROVIDER_MODELS:
-        set_provider(provider)
+        # Keep an existing local selection visible for acknowledgment. Never
+        # silently fall back to a paid cloud provider. The client factory blocks
+        # local calls until consent is current, including headless startup.
+        _apply_provider(provider)
 
 
 DEFAULT_LOCAL_BASE_URL = "http://localhost:1234/v1"
 DEFAULT_LOCAL_API_KEY = "not-needed"
+
+LOCAL_MODEL_CONSENT_VERSION = "local-model-alpha-1"
+LOCAL_MODEL_DISCLAIMER = (
+    "Local models vary widely in capability and safeguards. They may produce "
+    "inappropriate or unreliable content, misunderstand game rules, or behave "
+    "unpredictably. This integration is experimental and still in development. "
+    "I understand these limitations and want to enable a local model."
+)
+
+
+def local_model_consent_current():
+    consent = _load_user_settings().get("local_model_consent")
+    return (isinstance(consent, dict)
+            and consent.get("version") == LOCAL_MODEL_CONSENT_VERSION
+            and type(consent.get("accepted_at")) is int
+            and consent["accepted_at"] > 0)
+
+
+def require_local_model_consent():
+    if not local_model_consent_current():
+        raise ValueError("Local models are experimental. Accept the disclaimer in Settings "
+                         "before using them, or run python acknowledge_local_model.py for headless setup.")
+
+
+def acknowledge_local_model(version):
+    if version != LOCAL_MODEL_CONSENT_VERSION:
+        raise ValueError("Please review and accept the current local-model disclaimer.")
+    import time
+    settings = _load_user_settings()
+    settings["local_model_consent"] = {"version": version, "accepted_at": int(time.time())}
+    _save_user_settings(settings)
+
+
+def accept_local_model_request(data):
+    """Explicit versioned acknowledgment, or an already accepted installation."""
+    version = data.get("local_model_consent_version")
+    if version is not None:
+        acknowledge_local_model(version)
+    require_local_model_consent()
 
 
 def get_local_endpoint():
@@ -1352,6 +1402,7 @@ def persist_local_endpoint(base_url="", api_key=None, model=""):
     it. base_url/model are always written (blank base_url falls back to the
     default; blank model means keep each callsite's own model).
     """
+    require_local_model_consent()
     s = _migrate_plaintext_secrets(_load_user_settings())
     s["local_base_url"] = (base_url or "").strip()
     s["local_model"] = (model or "").strip()

@@ -4,6 +4,7 @@ import { test, expect } from '@playwright/test'
 test.describe.configure({ mode: 'serial' })
 let lateResultObserved: Promise<void>
 test.beforeEach(async ({ request, page }) => {
+  page.on('dialog', dialog => dialog.accept())
   lateResultObserved = new Promise(resolve => page.on('websocket', socket => socket.on('framereceived', frame => {
     if (String(frame.payload).includes('Delayed closed-panel result.')) resolve()
   })))
@@ -12,6 +13,19 @@ test.beforeEach(async ({ request, page }) => {
   await page.goto('/play/')
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(page.getByLabel('Provider', { exact: true })).toBeEnabled()
+})
+
+test('declining the local disclaimer leaves the confirmed provider unchanged', async ({ page }) => {
+  page.removeAllListeners('dialog')
+  page.once('dialog', async dialog => {
+    expect(dialog.message()).toContain('inappropriate or unreliable')
+    await dialog.dismiss()
+  })
+  await page.getByLabel('Provider', { exact: true }).selectOption('lmstudio')
+  await expect(page.getByLabel('Provider', { exact: true })).toHaveValue('legacy')
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page.getByLabel('Provider', { exact: true })).toHaveValue('legacy')
 })
 
 test('each provider is confirmed and survives browser reload', async ({ page }) => {

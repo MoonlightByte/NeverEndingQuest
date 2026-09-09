@@ -1,9 +1,11 @@
+import { LOCAL_CONSENT_VERSION, useLocalModelConsent } from './localModelConsent'
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs } from '../../stores'
 import type { ClientEvents } from '../../contract/events'
 
 type ProviderValue = ClientEvents['set_model_provider']['provider']
+
 
 const PROVIDER_OPTIONS: Array<{ value: ProviderValue; label: string }> = [
   { value: 'legacy', label: 'Legacy (GPT-4.1) - Stable baseline' },
@@ -38,6 +40,7 @@ function isProviderValue(value: string): value is ProviderValue {
 
 function LocalProviderPanelBody() {
   const settings = useDialogs((s) => s.settings)
+  const confirmLocalModel = useLocalModelConsent()
 
   // Sync all provider state from the server when the panel mounts.
   useEffect(() => {
@@ -66,8 +69,9 @@ function LocalProviderPanelBody() {
 
   const changeProvider = (value: string) => {
     if (!isProviderValue(value)) return
+    if (value === 'lmstudio' && !confirmLocalModel()) return
     setPendingProvider(value)
-    emitC('set_model_provider', { provider: value })
+    emitC('set_model_provider', { provider: value, ...(value === 'lmstudio' ? { local_model_consent_version: LOCAL_CONSENT_VERSION } : {}) })
   }
 
   // ---- local endpoint form (blank api_key keeps the stored key) ----
@@ -83,7 +87,8 @@ function LocalProviderPanelBody() {
   }, [settings.localEndpoint])
 
   const saveLocalEndpoint = () => {
-    emitC('set_local_endpoint', { base_url: baseUrl, model, api_key: localApiKey })
+    if (!confirmLocalModel()) return
+    emitC('set_local_endpoint', { base_url: baseUrl, model, api_key: localApiKey, local_model_consent_version: LOCAL_CONSENT_VERSION })
     setLocalApiKey('') // never keep the secret in the DOM; blank keeps the stored key
   }
 
@@ -109,6 +114,7 @@ function LocalProviderPanelBody() {
   }, [settings.endpointTest])
 
   const runEndpointTest = () => {
+    if (!confirmLocalModel()) return
     if (!baseUrl.trim()) {
       setTestStatus({ text: 'Please enter a Server URL first.', tone: 'fail' })
       return
@@ -116,7 +122,7 @@ function LocalProviderPanelBody() {
     setTesting(true)
     awaitingTest.current = true
     setTestStatus({ text: 'Testing connection...', tone: 'pending' })
-    emitC('test_local_endpoint', { base_url: baseUrl, model, api_key: localApiKey })
+    emitC('test_local_endpoint', { base_url: baseUrl, model, api_key: localApiKey, local_model_consent_version: LOCAL_CONSENT_VERSION })
   }
 
   // ---- API keys (blank submit keeps the stored key server-side) ----
@@ -165,6 +171,7 @@ function LocalProviderPanelBody() {
       {provider === 'lmstudio' && (
         <div className={sectionClass}>
           <div className={sectionTitleClass}>Local / Custom Server</div>
+          <p className="neq-settings-help-parity">Experimental: model capability and safeguards vary. Local models may produce inappropriate or unreliable content and break game rules. This integration is still in development.</p>
           <p className="neq-settings-help-parity">
             Point at any OpenAI-compatible server (LM Studio, Ollama, vLLM, OpenRouter, or a
             remote host). Leave blank to use the default local server at localhost:1234.

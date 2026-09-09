@@ -4255,6 +4255,8 @@ def handle_set_provider(data):
         with _provider_selection_lock:
             if provider not in model_config.PROVIDER_MODELS:
                 raise ValueError(f"Unknown provider: {provider}. Valid: {list(model_config.PROVIDER_MODELS.keys())}")
+            if provider == 'lmstudio':
+                model_config.accept_local_model_request(data)
             model_config.persist_provider(provider)
             model_config.set_provider(provider)
 
@@ -4280,6 +4282,8 @@ def handle_get_local_endpoint():
             'base_url': ep['base_url'],
             'model': ep['model'],
             'has_key': bool(ep['api_key']) and ep['api_key'] != 'not-needed',
+            'consent_version': model_config.LOCAL_MODEL_CONSENT_VERSION,
+            'consent_accepted': model_config.local_model_consent_current(),
         })
     except Exception as e:
         error(f"Error getting local endpoint: {e}", exception=e, category="web_interface")
@@ -4293,6 +4297,7 @@ def handle_set_local_endpoint(data):
     try:
         import model_config
         data = data or {}
+        model_config.accept_local_model_request(data)
         # Blank api_key => keep the existing stored key (UI promises "leave blank
         # to keep" and the field auto-clears after save); a value sets it.
         raw_key = (data.get('api_key') or '').strip()
@@ -4306,6 +4311,8 @@ def handle_set_local_endpoint(data):
             'base_url': ep['base_url'],
             'model': ep['model'],
             'has_key': bool(ep['api_key']) and ep['api_key'] != 'not-needed',
+            'consent_version': model_config.LOCAL_MODEL_CONSENT_VERSION,
+            'consent_accepted': model_config.local_model_consent_current(),
         }, broadcast=True)
     except Exception as e:
         error(f"Error setting local endpoint: {e}", exception=e, category="web_interface")
@@ -4406,6 +4413,12 @@ def handle_test_local_endpoint(data):
     callsite paths.
     """
     data = data or {}
+    import model_config
+    try:
+        model_config.accept_local_model_request(data)
+    except ValueError as exc:
+        emit('local_endpoint_test_result', {'ok': False, 'detail': str(exc)})
+        return
     base_url = (data.get('base_url') or '').strip()
     api_key = (data.get('api_key') or '').strip() or 'not-needed'
     model = (data.get('model') or '').strip()

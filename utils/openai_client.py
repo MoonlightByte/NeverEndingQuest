@@ -33,6 +33,7 @@ def get_openai_client(provider=None):
         # change applies on the next request with no restart. Defaults preserve
         # the original LM Studio localhost:1234 behavior. (Issue #120)
         import model_config
+        model_config.require_local_model_consent()
         ep = model_config.get_local_endpoint()
         return OpenAI(
             base_url=ep["base_url"],

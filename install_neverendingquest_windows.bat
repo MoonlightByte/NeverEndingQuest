@@ -6,6 +6,22 @@ REM ============================================================================
 
 SETLOCAL EnableDelayedExpansion
 
+REM This choice must precede Python/Git/Node checks and any installation.
+if "%NEQ_LOCAL_ONLY%"=="1" goto LOCAL_SETUP
+echo.
+echo Play online without installing NeverEndingQuest on this computer.
+echo Hosted alpha access is limited; see the website for current availability.
+echo O: Explore online play   L: Continue with local installation   X: Exit
+choice /C OLX /N /M "Choose O, L, or X: "
+if errorlevel 3 exit /b 0
+if errorlevel 2 goto LOCAL_SETUP
+if errorlevel 1 (
+    start "" "https://eternaltavern.com/neverendingquest/"
+    exit /b 0
+)
+exit /b 1
+
+:LOCAL_SETUP
 echo.
 echo ========================================
 echo   NeverEndingQuest Installation
@@ -62,6 +78,11 @@ echo [OK] Git found!
 echo.
 
 REM Step 3: Clone repository
+REM A downloaded checkout already contains the game; do not clone inside it.
+if exist "%~dp0run_web.py" (
+    cd /d "%~dp0"
+    goto REPOSITORY_READY
+)
 echo Step 3: Cloning repository...
 echo Installing to: %CD%
 echo.
@@ -88,6 +109,7 @@ if exist "NeverEndingQuest" (
 
 cd NeverEndingQuest
 
+:REPOSITORY_READY
 REM Step 4: Create virtual environment
 echo.
 echo Step 4: Creating Python virtual environment...
@@ -201,14 +223,13 @@ REM Step 7: Create desktop shortcut and launch script
 echo.
 echo Step 7: Creating launch scripts...
 
-REM Create launch_game.bat in the repo folder
-echo @echo off > launch_game.bat
-echo cd /d "%%~dp0" >> launch_game.bat
-echo call venv\Scripts\activate.bat >> launch_game.bat
-echo python run_web.py %%* >> launch_game.bat
-echo pause >> launch_game.bat
-
-echo [OK] Created launch_game.bat
+REM launch_game.bat ships with the checkout and includes the online/local choice.
+REM Do not replace it with a generated launcher that loses that choice.
+if not exist launch_game.bat (
+    echo [ERROR] This checkout is missing launch_game.bat. Download the current release.
+    exit /b 1
+)
+echo [OK] Using the repository's launch_game.bat
 
 REM Create desktop shortcut
 set SCRIPT_DIR=%CD%
