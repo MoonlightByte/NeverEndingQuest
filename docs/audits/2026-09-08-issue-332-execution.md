@@ -165,3 +165,16 @@ checks:193-independent-audit-checks.py, both under the local evidence root.
 The audit inspected codee95bc243 and evidence commit55ca6fc1; final changes
 after that are documentation only. No in-scope blocker. No push, main merge,
 automatic issue closure, or unrelated product repair is authorized by this record.
+
+## Owner shipment approval
+
+After the completed-test summary and its explicit untested-branch limits, the
+owner authorized committing and pushing to main. This supersedes the earlier
+publication hold only; it does not change the scoped verdicts or authorize any
+additional repair. Immediately before publication, fetched origin/main still
+equaled the tested base6916507c, so publication is a conflict-free fast-forward.
+The15 pure checks passed again on WSL and native Windows, compilation passed,
+static warnings were unchanged with zero undefined names, and diff-check passed.
+The production main.py hash remains86fd53291c4904bcdb0389269f9385b4ef2a8da65c4c26c7ac9a5f8749fa509d,
+identical to live acceptance. No repeat provider run is claimed for this docs-only
+shipment record. Other agents' worktrees and local main checkout are untouched.
