@@ -1,5 +1,15 @@
 # Save, Load, and Reset Lifecycle
 
+## #220 module discovery (2026-09-09; native revalidation passed)
+
+Phase2 selects immediate module directories by existing structural artifacts:
+module_context_BU.json, areas/, or a direct area JSON object carrying areaId,
+areaName and locations. Hidden and *_backup exclusions remain. Discovery does
+not recurse into backup trees; recursive BU restoration runs only inside actual
+modules. Backup-before-wipe, lifecycle locks and subsequent cleanup are unchanged.
+Native evidence: ../audits/2026-09-09-issue-220-revalidation.md. Historical open-item
+lists below describe their original revisions; #220 is resolved by this delta.
+
 ## #248 implementation candidate (2026-09-06; acceptance pending)
 
 Recovery-scoped Saves remain queued on fault alone and drain at safe completion. Accepted Load/Reset/Quit cancels only unstarted recovery Saves with their Save/control identities before quiescence; a started Save finishes normally. Admission against a sealed cancelled recovery scope returns cancellation, never a snapshot of replacement state. Ordinary turn/welcome semantics are unchanged. Raw terminal shares its existing numbered-save/reset/quit menu after recovery scope quiescence.

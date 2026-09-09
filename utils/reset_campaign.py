@@ -155,15 +155,38 @@ def create_backup():
     return backup_dir
 
 def discover_modules():
-    """Get list of all modules"""
+    """Get resettable modules from their direct structural artifacts."""
     modules = []
     if os.path.exists("modules"):
         for item in os.listdir("modules"):
             path = os.path.join("modules", item)
-            if os.path.isdir(path) and not item.startswith('.') and not item.endswith('_backup'):
-                # Skip campaign_archives and campaign_summaries
-                if item not in ["campaign_archives", "campaign_summaries"]:
+            if not os.path.isdir(path) or item.startswith('.') or item.endswith('_backup'):
+                continue
+
+            if (os.path.isfile(os.path.join(path, "module_context_BU.json")) or
+                    os.path.isdir(os.path.join(path, "areas"))):
+                modules.append(item)
+                continue
+
+            try:
+                filenames = os.listdir(path)
+            except OSError:
+                continue
+
+            for filename in filenames:
+                candidate = os.path.join(path, filename)
+                if not os.path.isfile(candidate) or not filename.endswith(".json"):
+                    continue
+                try:
+                    with open(candidate, "r", encoding="utf-8") as handle:
+                        value = json.load(handle)
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    continue
+                if isinstance(value, dict) and all(
+                    key in value for key in ("areaId", "areaName", "locations")
+                ):
                     modules.append(item)
+                    break
     return modules
 
 def reset_module(module_name):
