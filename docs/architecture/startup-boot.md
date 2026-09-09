@@ -1,5 +1,15 @@
 # Startup and Boot
 
+## #336 cancellation delta (2026-09-09; candidate tested, A7/ship held)
+
+Intentional wizard input cancellation (EOF, Ctrl-C, or the existing interview
+quit/exit/cancel command) propagates as process-local StartupCancelled. The shared
+runner owns one neutral pause acknowledgment. Both main entry points and the
+standalone wizard catch it without printing failure or starting incomplete play.
+Real False results, readiness checks and LiveProviderSuperseded remain distinct.
+No checkpoint schema, persistence, model behavior or lifecycle ownership changes.
+The reviewed plan and execution record live under docs/audits/2026-09-09-issue-336-*.
+
 ## React-default launch delta (2026-09-06; native acceptance pending)
 
 `run_web.py` owns presentation argument parsing and frontend preparation; direct

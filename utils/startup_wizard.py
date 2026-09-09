@@ -171,6 +171,10 @@ def initialize_game_files_from_bu():
     
     return initialized_count
 
+class StartupCancelled(Exception):
+    """Intentional input cancellation; retained setup is not a failure."""
+
+
 def run_startup_sequence():
     """Resume the shared setup, publishing success only from verified files."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
@@ -202,9 +206,9 @@ def run_startup_sequence():
         return True
     except LiveProviderSuperseded:
         raise
-    except (KeyboardInterrupt, EOFError):
+    except (StartupCancelled, KeyboardInterrupt, EOFError):
         print("Dungeon Master: Setup paused. Your choices are retained.")
-        return False
+        raise StartupCancelled() from None
 
 
 def startup_required(party_file="party_tracker.json"):
@@ -526,7 +530,7 @@ def select_module(conversation):
             print("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or name of the module.")
             
         except KeyboardInterrupt:
-            return None
+            raise
 
 # ===== CHARACTER MANAGEMENT =====
 
@@ -645,7 +649,7 @@ def select_or_create_character(conversation, module):
             print("Dungeon Master: I didn't understand that. Please enter the character number, character name, or 'new' to create a new character.")
             
         except KeyboardInterrupt:
-            return None
+            raise
 
 # ===== CHARACTER CREATION =====
 
@@ -832,10 +836,9 @@ def ai_character_interview(conversation, module):
                 if user_input:
                     break
         except (EOFError, KeyboardInterrupt):
-            return None
+            raise StartupCancelled() from None
         if user_input.lower() in {"quit", "exit", "cancel"}:
-            print("Dungeon Master: Character creation paused. Your choices are retained.")
-            return None
+            raise StartupCancelled()
         conversation.append({"role": "user", "content": user_input})
 
 def load_text_file(filename):
@@ -1961,10 +1964,14 @@ def load_module_for_ai_analysis(module_name):
 if __name__ == "__main__":
     # Test the startup wizard
     if startup_required():
-        success = run_startup_sequence()
-        if success:
-            print("Dungeon Master: Startup wizard completed successfully!")
+        try:
+            success = run_startup_sequence()
+        except StartupCancelled:
+            pass  # Shared runner already acknowledged the intentional pause.
         else:
-            print("Error: Startup wizard failed or was cancelled.")
+            if success:
+                print("Dungeon Master: Startup wizard completed successfully!")
+            else:
+                print("Error: Startup wizard failed or was cancelled.")
     else:
         print("Dungeon Master: Character and module already configured. No setup needed.")

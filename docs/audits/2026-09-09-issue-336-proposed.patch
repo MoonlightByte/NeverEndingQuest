@@ -1,0 +1,56 @@
+PROPOSED ONLY; not applied. Hunk anchors are source symbols, not apply-ready numbers.
+--- a/utils/startup_wizard.py
++++ b/utils/startup_wizard.py
+@@ before run_startup_sequence
++class StartupCancelled(Exception):
++    """Intentional input cancellation; retained setup is not a failure."""
++
++
+@@ run_startup_sequence cancellation handler
+-    except (KeyboardInterrupt, EOFError):
++    except (StartupCancelled, KeyboardInterrupt, EOFError):
+         print("Dungeon Master: Setup paused. Your choices are retained.")
+-        return False
++        raise StartupCancelled() from None
+@@ select_module KeyboardInterrupt
+         except KeyboardInterrupt:
+-            return None
++            raise
+@@ select_or_create_character KeyboardInterrupt
+         except KeyboardInterrupt:
+-            return None
++            raise
+@@ ai_character_interview input wait
+         except (EOFError, KeyboardInterrupt):
+-            return None
++            raise StartupCancelled() from None
+         if user_input.lower() in {"quit", "exit", "cancel"}:
+-            print("Dungeon Master: Character creation paused. Your choices are retained.")
+-            return None
++            raise StartupCancelled()
+@@ __main__ startup_required branch
+-        success = run_startup_sequence()
+-        if success:
+-            print("Dungeon Master: Startup wizard completed successfully!")
+-        else:
+-            print("Error: Startup wizard failed or was cancelled.")
++        try:
++            success = run_startup_sequence()
++        except StartupCancelled:
++            pass  # Shared runner already acknowledged the intentional pause.
++        else:
++            if success:
++                print("Dungeon Master: Startup wizard completed successfully!")
++            else:
++                print("Error: Startup wizard failed or was cancelled.")
+--- a/main.py
++++ b/main.py
+@@ BOTH existing lazy startup imports (8034 and10640)
+-        from utils.startup_wizard import startup_required, run_startup_sequence
++        from utils.startup_wizard import startup_required, run_startup_sequence, StartupCancelled
+@@ BOTH existing run_startup_sequence invocations (8041 and10647)
+-            success = run_startup_sequence()
++            try:
++                success = run_startup_sequence()
++            except StartupCancelled:
++                return

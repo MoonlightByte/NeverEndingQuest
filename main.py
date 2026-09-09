@@ -8031,14 +8031,17 @@ def _main_game_loop(startup_authority, turn_authority):
 
     # Check if first-time setup is needed
     try:
-        from utils.startup_wizard import startup_required, run_startup_sequence
+        from utils.startup_wizard import startup_required, run_startup_sequence, StartupCancelled
 
         if startup_required():
             print("[D20] Welcome to your 5th Edition Adventure! [D20]")
             print("It looks like this is your first time, or you need to set up a character.")
             print("Let's get you ready for adventure!\n")
 
-            success = run_startup_sequence()
+            try:
+                success = run_startup_sequence()
+            except StartupCancelled:
+                return
             if not success or startup_required():
                 print("[ERROR] Setup was cancelled or failed. Cannot start game loop.")
                 return
@@ -10637,14 +10640,17 @@ def main():
     
     # Check if first-time setup is needed
     try:
-        from utils.startup_wizard import startup_required, run_startup_sequence
+        from utils.startup_wizard import startup_required, run_startup_sequence, StartupCancelled
         
         if startup_required():
             print("[D20] Welcome to your 5th Edition Adventure! [D20]")
             print("It looks like this is your first time, or you need to set up a character.")
             print("Let's get you ready for adventure!\n")
             
-            success = run_startup_sequence()
+            try:
+                success = run_startup_sequence()
+            except StartupCancelled:
+                return
             if not success:
                 print("[ERROR] Setup was cancelled or failed. Exiting...")
                 return
