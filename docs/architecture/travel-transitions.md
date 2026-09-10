@@ -73,6 +73,17 @@ Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py:9551`) outs
 
 ### Atlas and gate
 
+- #337 stage-one fix (2026-09-09; real TW05 validation proven): the shared
+  `validate_ai_response` request appends complete canonical location records after
+  compression. Origin comes from the request-local party identity; a prospective
+  destination is included only for `transition_facts.reason_code == "approved"`.
+  Both resolve independently against the same module snapshot, matching module,
+  area and location identity and excluding ambiguous IDs. Missing evidence is
+  labeled unavailable, never replaced with fabricated empty encounter arrays.
+  Cancelled travel is not destination authority. These records inform T065's
+  existing semantic judgment; NPC-list presence does not determine allegiance,
+  and authored traps do not establish player discovery. No movement, publication,
+  schema, combat-side or currentness guard changes in this addition.
 - `build_active_module_snapshot` supplies detached source records to the atlas,
   validator and route preflight. `areas/*.json` retains structurally valid non-regex
   filenames; existing legacy-root precedence remains. Backup-only labels are

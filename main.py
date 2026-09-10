@@ -3618,6 +3618,59 @@ def validate_ai_response(
         "role": "system", "content": plot_context,
     }]
 
+    # Use the same detached location records as route preflight, not a name
+    # index or the candidate's unapproved destination. Keep them uncompressed.
+    scene_targets = [("origin", module_name, current_area_id, current_location_id)]
+    if transition_facts and transition_facts.get("reason_code") == "approved":
+        scene_targets.append((
+            "prospective_destination",
+            str(transition_facts.get("module") or "").replace(" ", "_"),
+            transition_facts.get("destination_area_id"),
+            transition_facts.get("destination_location_id"),
+        ))
+    scene_snapshot = module_snapshot or {}
+    scene_records = []
+    for role, scene_module, scene_area, scene_location in scene_targets:
+        scene_record = {
+            "role": role,
+            "module": scene_module,
+            "areaId": scene_area,
+            "locationId": scene_location,
+            "status": "unavailable",
+        }
+        scene_node = scene_snapshot.get("nodes", {}).get(scene_location)
+        if (
+            scene_module
+            and scene_snapshot.get("module_name") == scene_module
+            and scene_location not in scene_snapshot.get("invalid_location_ids", [])
+            and isinstance(scene_node, dict)
+            and scene_node.get("area_id") == scene_area
+            and scene_node.get("location_id") == scene_location
+            and isinstance(scene_node.get("location_data"), dict)
+            and scene_node["location_data"].get("locationId") == scene_location
+        ):
+            scene_record["status"] = "available"
+            scene_record["location"] = scene_node["location_data"]
+        scene_records.append(scene_record)
+    validation_messages_to_send = list(validation_messages_to_send) + [{
+        "role": "system",
+        "content": (
+            "Canonical location records for this review follow. Origin is the party's "
+            "recorded location. Any prospective destination is supplied by accepted "
+            "provisional travel facts; it is not proof that movement has committed. "
+            "Review the candidate against these records together with the actual "
+            "player input and established events. A location's named NPC list records "
+            "presence; appearing in that list does not by itself establish party "
+            "allegiance or invalidate an authored monster entry for the same person. "
+            "Judge the encounter role using the supplied scenario and typed proposal. "
+            "Authored traps, secrets and future events establish scenario context, "
+            "not that the party detected them, triggered them or earned their outcomes. "
+            "Unavailable evidence is neither evidence of absence nor permission to "
+            "invent facts. Keep all existing semantic, agency and single-beat checks.\n"
+            + json.dumps(scene_records, ensure_ascii=True)
+        ),
+    }]
+
     # The semantic boundary is deliberately outside compression: the exact raw
     # player turn and exact candidate must remain the final adjacent pair.
     # Snapshot the provider once here; the model-config selection below reuses it.
