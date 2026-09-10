@@ -31,6 +31,22 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 
 ## Flow
 
+### T107 profile contract boundary (#343, 2026-09-10)
+
+Focused source update on the reviewed main baseline aee5978c; native acceptance
+pending. Older anchors elsewhere in this schematic are not recertified here.
+Recruitment, OOC and combat profile requests share profile_service.build_messages.
+It supplies the unchanged grounding prompt plus the complete JSON Schema returned
+by voice_contracts.profile_response_schema, the same authority used to validate
+the response. A completed contract error enters the existing private correction
+with its precise diagnostic quoted as data, never facts or mutation authority.
+The model still authors personality from canonical sheet/lifecycle input; code
+validates shape and the existing RelationshipStore owns publication. No schema,
+model binding, cache/version or storage change. Matching successful profiles are
+reused; profile fields feed the existing T105 packet and remain advisory to the DM.
+Inherited transport-policy and destructive fallback replacement defects are tracked
+separately in #348 and #350; supplying the schema does not repair those paths.
+
 ### Standard beat
 
 Local-party instruction, completion-collection and travel-publication seams checked on 2026-09-06 in the uncommitted guardian integration based on `185f8997a5055521f04fe7a55ca908a41f0d412f`. Combined-code live acceptance is pending; older anchors elsewhere are not recertified. Doctrine: live #193, D-NPC-PARTY-1, D-NPC-PARTY-6 and D-VS-3.
