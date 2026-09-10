@@ -130,7 +130,12 @@ socket.on('disconnect', () => {
 })
 
 // ---------- session / startup ----------
+let displayedServerInstance: string | undefined
 on('connected', (payload) => {
+  if (payload.server_instance_id && payload.server_instance_id !== displayedServerInstance) {
+    useLog.setState({ messages: [], previousSessionCount: 0, images: [] })
+    displayedServerInstance = payload.server_instance_id
+  }
   hydration.advertise(payload.capabilities, payload.server_instance_id)
   useWorld.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)
   usePlayer.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)

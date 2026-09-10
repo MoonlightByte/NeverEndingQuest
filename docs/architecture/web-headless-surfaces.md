@@ -7,6 +7,25 @@ streams, in place. Active stdout/stderr adapters retain identity and routing;
 DebugOutputInterceptor.buffer remains pending text, never a binary sink. Native
 web/headless still own their capture adapters and bypass terminal main setup.
 
+## #116 display-history delta (2026-09-07; acceptance partial)
+
+Verified in the working candidate based on `553c8128`; supersedes earlier
+reconnect-history descriptions only. The existing cache remains display-only.
+On first/changed server identity, React clears messages, previous-session counts
+and image associations; legacy clears output and remembered message IDs. Normal
+same-instance reconnect retains merge/dedup protection. No wire schema changes.
+
+Connect announces identity before recovered narration and cached replay. The
+recovery notice is a trailing cache record with a stable ID, delivered immediately
+outside cache locks; replay deduplicates that same ID. Restore-paused cache
+load/add/match and gameplay drain suppress abandoned output, not lifecycle controls.
+Missing history is reconstructed once into the existing cache, never model context.
+
+Seams: `web/frontend/src/services/socket.ts:133`,
+`web/templates/game_interface.html:5704`, `web/web_interface.py:479` and `:2855`.
+Policy: #193 p9/p10/p12, D-UI-1. Shared SaveGameManager gives headless/terminal the
+same cache snapshot/absence semantics; those surfaces do not generate a web log.
+
 ## #248 implementation candidate (2026-09-06; acceptance pending)
 
 During pre-input travel recovery the existing processing surface shows progress or a control-required reason; lifecycle commands remain available. Early input remains in the existing queue with explicit deferred acknowledgment. Recovery Save cancellations are distinct correlated result/system-message terminals, never successful saves or generic failure narration. No new frontend event type or gameplay authority is introduced.

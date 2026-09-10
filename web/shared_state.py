@@ -10,6 +10,10 @@ import threading
 # Single, shared queue for module creation progress
 module_progress_queue = queue.Queue()
 
+# The browser cache and SaveGameManager use the same memory-before-file order.
+# Reentrant because captured diagnostic output may flush a pending DM message.
+message_cache_lock = threading.RLock()
+
 # Player-facing action failures use one static message. Internal/provider
 # details stay in server logs and are never promoted into game output.
 SAFE_ACTION_FAILURE_MESSAGE = (

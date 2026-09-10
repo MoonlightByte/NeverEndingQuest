@@ -223,6 +223,12 @@ be entered again after a restart. Existing keys in the local, gitignored
 - **Party Management** - Recruit NPCs, manage equipment, track relationships
 - **Save/Load System** - Automatic progress saving with backup protection
 
+Save also includes the recent on-screen conversation. Load restores the selected
+save's display history instead of keeping dialogue from later play, and resuming
+preserves it in both React and explicit legacy. Older saves without a captured
+display transcript recover available saved narration with a notice; this is not
+the complete original screen history. Reset clears the previous campaign display.
+
 ### Web Interface Features
 - **Real-Time Updates** - Live game state synchronization via SocketIO
 - **Character Sheets** - Interactive character information and inventory

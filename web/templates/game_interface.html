@@ -5701,6 +5701,16 @@
         // GAME_OUTPUT_DEDUP_START
         const displayedGameMessageIds = new Set();
         const displayedGameMessageOrder = [];
+        let displayedServerInstance;
+        socket.on('connected', (data) => {
+            const instance = data && data.server_instance_id;
+            if (instance && instance !== displayedServerInstance) {
+                document.getElementById('game-output').replaceChildren();
+                displayedGameMessageIds.clear();
+                displayedGameMessageOrder.length = 0;
+                displayedServerInstance = instance;
+            }
+        });
         function addGameOutputMessage(message) {
             if (!message || typeof message !== 'object') return false;
             const messageId = typeof message.message_id === 'string'

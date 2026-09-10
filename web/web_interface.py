@@ -44,7 +44,6 @@ import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 import os
-import hashlib
 import sys
 import hmac
 import secrets
@@ -220,6 +219,7 @@ log.setLevel(logging.ERROR)  # Only show errors, not every HTTP request
 # Import shared state
 from web.shared_state import (
     SAFE_ACTION_FAILURE_MESSAGE,
+    message_cache_lock,
     module_progress_queue,
     set_player_output_sink,
 )
@@ -256,7 +256,6 @@ startup_phase = ""
 MESSAGE_CACHE_FILE = "modules/conversation_history/game_interface_cache.json"
 MESSAGE_CACHE_SIZE = 15  # Keep last 15 messages
 message_cache = deque(maxlen=MESSAGE_CACHE_SIZE)
-message_cache_lock = threading.RLock()
 
 def _ui_response(request_data, payload):
     """Add optional correlation and a monotonic response revision.
@@ -376,28 +375,166 @@ def get_server_instance():
     return jsonify({'server_instance_id': _server_instance_id})
 
 # Message cache functions
-def load_message_cache():
-    """Load message cache from file"""
-    global message_cache
+def _saved_narration_messages():
+    """Project explicit saved narration, never raw model context or actions."""
+    from updates.save_game_manager import SaveGameManager
+    from utils.startup_contract import parse_startup_checkpoint
+    from utils.transient_filesystem import read_bytes_preserving_errors
+
+    def read_history(path):
+        try:
+            return json.loads(SaveGameManager._restore_io(
+                read_bytes_preserving_errors, path, wait_label='History recovery',
+            ).decode('utf-8'))
+        except FileNotFoundError:
+            return []
+
+    history_path = 'modules/conversation_history/conversation_history.json'
+    checkpoint = None
     try:
-        if os.path.exists(MESSAGE_CACHE_FILE):
-            with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as f:
-                cached_messages = json.load(f)
+        startup = read_history('modules/conversation_history/startup_conversation.json')
+        checkpoint = parse_startup_checkpoint(startup)
+    except (ValueError, OSError) as exc:
+        warning(f'History recovery ignored unreadable startup residue: {exc}',
+                category='web_interface')
+    try:
+        if checkpoint and checkpoint['phase'] != 'ready':
+            history = startup
+        else:
+            history = read_history(history_path)
+    except (ValueError, OSError) as exc:
+        warning(f'History recovery could not read saved narration: {exc}', category='web_interface')
+        history = []
+    messages = []
+    for entry in history if isinstance(history, list) else []:
+        if not isinstance(entry, dict) or entry.get('role') != 'assistant':
+            continue
+        content = entry.get('content')
+        if not isinstance(content, str):
+            warning('History recovery skipped non-text assistant content',
+                    category='web_interface')
+            continue
+        content = content.strip()
+        # Only a complete optional JSON fence, never a substring/prose guess.
+        lines = content.splitlines()
+        if len(lines) >= 3 and lines[0] in ('```json', '```') and lines[-1] == '```':
+            content = '\n'.join(lines[1:-1])
+        try:
+            record = json.loads(content)
+        except (ValueError, TypeError):
+            warning('History recovery skipped invalid assistant JSON',
+                    category='web_interface')
+            continue
+        if isinstance(record, dict) and isinstance(record.get('narration'), str):
+            messages.append({
+                'type': 'narration', 'content': record['narration'],
+                'message_id': f'msg-{uuid4().hex}',
+            })
+    return messages
+
+
+def _publish_recovered_cache(path, candidate):
+    """Publish derived history under the caller's existing cache ownership."""
+    from tempfile import NamedTemporaryFile
+
+    temporary_path = None
+    try:
+        directory = os.path.dirname(os.path.abspath(path))
+        os.makedirs(directory, exist_ok=True)
+        with NamedTemporaryFile(mode='w', encoding='utf-8',
+                                dir=directory,
+                                prefix='.display-history-', delete=False) as staged:
+            temporary_path = staged.name
+            json.dump(candidate, staged, ensure_ascii=False, indent=2)
+            staged.write('\n')
+            staged.flush()
+            os.fsync(staged.fileno())
+        # Unlike safe_write_json, preserve the native error for typed reissue.
+        try:
+            os.replace(temporary_path, path)
+        except OSError as exc:
+            if os.name == 'nt' and getattr(exc, 'winerror', None) == 5:
+                # Rename can report access denied for a reader denying delete
+                # sharing. Ask Windows for the exact class; do not infer that
+                # all access failures are transient or change any permissions.
+                import _winapi
+                try:
+                    handle = _winapi.CreateFile(
+                        os.fsdecode(path), 0x10000, 7, 0, 3, 0x80, 0,
+                    )  # DELETE access, share all, OPEN_EXISTING
+                except OSError as sharing_error:
+                    if getattr(sharing_error, 'winerror', None) in (32, 33):
+                        raise sharing_error from exc
+                else:
+                    _winapi.CloseHandle(handle)
+            raise
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            try:
+                os.unlink(temporary_path)
+            except OSError as exc:
+                warning(f'History recovery temporary-file cleanup failed: {exc}',
+                        category='web_interface')
+
+
+def load_message_cache(on_recovery=None):
+    """Load/preserve delivery records, or initialize a labeled saved projection."""
+    global message_cache
+    from utils.file_operations import atomic_writer
+    from utils.transient_filesystem import read_bytes_preserving_errors
+    from updates.save_game_manager import SaveGameManager
+
+    notice = None
+    cached_messages = []
+    try:
+        with message_cache_lock:
+            if _web_gameplay_paused():
+                return []
+            atomic_writer.acquire_lock(MESSAGE_CACHE_FILE)
+            try:
+                try:
+                    cached_messages = json.loads(SaveGameManager._restore_io(
+                        read_bytes_preserving_errors, MESSAGE_CACHE_FILE,
+                        wait_label='History recovery',
+                    ).decode('utf-8'))
+                    if not isinstance(cached_messages, list):
+                        raise ValueError('Display history must be a list')
+                except FileNotFoundError:
+                    # Selected absence is authoritative even if rebuilding
+                    # its display later fails; never replay the abandoned deque.
+                    message_cache.clear()
+                    cached_messages = _saved_narration_messages()
+                    notice = {
+                        'type': 'system', 'message_id': f'msg-{uuid4().hex}',
+                        'content': (
+                            'Recovered narration from this save. The original on-screen transcript was not included.'
+                            if cached_messages else
+                            'This save has no recoverable on-screen transcript. Resume your saved game to continue.'
+                        ),
+                    }
+                    cached_messages.append(notice)
                 migrated = False
-                for index, message in enumerate(cached_messages):
+                for message in cached_messages:
                     if isinstance(message, dict) and not message.get("message_id"):
-                        canonical = json.dumps(message, sort_keys=True, ensure_ascii=False)
-                        digest = hashlib.sha256(f"{index}:{canonical}".encode("utf-8")).hexdigest()[:24]
-                        message["message_id"] = f"legacy-{digest}"
+                        message["message_id"] = f"msg-{uuid4().hex}"
                         migrated = True
+                if migrated or notice is not None:
+                    candidate = cached_messages[-MESSAGE_CACHE_SIZE:]
+                    SaveGameManager._restore_io(
+                        _publish_recovered_cache, MESSAGE_CACHE_FILE, candidate,
+                        wait_label='History recovery',
+                    )
+                    cached_messages = candidate
                 message_cache = deque(cached_messages, maxlen=MESSAGE_CACHE_SIZE)
-                if migrated:
-                    save_message_cache()
-                print(f"[MESSAGE_CACHE] Loaded {len(message_cache)} cached messages")
-                return cached_messages
+            finally:
+                atomic_writer.release_lock(MESSAGE_CACHE_FILE)
     except Exception as e:
-        print(f"[MESSAGE_CACHE] Failed to load cache: {e}")
-    return []
+        warning(f"[MESSAGE_CACHE] Failed to load cache: {e}", category='web_interface')
+        return []
+    if notice is not None and on_recovery is not None:
+        on_recovery(notice)
+    return cached_messages
 
 def save_message_cache():
     """Save message cache to file"""
@@ -423,6 +560,9 @@ def _message_cache_matches(message):
         return False
     with message_cache_lock:
         from utils.file_operations import atomic_writer
+
+        if _web_gameplay_paused():
+            return False
 
         acquired = False
         try:
@@ -469,6 +609,9 @@ def add_to_message_cache(message):
     with message_cache_lock:
         from utils.file_operations import atomic_writer, safe_write_json
 
+        if _web_gameplay_paused():
+            return False
+
         acquired = False
         try:
             # The file lock makes read/merge/write one cross-process operation.
@@ -483,7 +626,7 @@ def add_to_message_cache(message):
                     return False
                 base = durable[-MESSAGE_CACHE_SIZE:]
             else:
-                base = list(message_cache)
+                base = []
             if message_id is not None and any(
                 cached.get("message_id") == message_id
                 for cached in base
@@ -533,16 +676,19 @@ def _queue_safe_player_output(message):
 def _emit_pending_game_output(emit_function):
     """Drain current player output through a supplied Socket.IO emitter."""
     emitted = 0
-    while True:
-        try:
-            message = game_output_queue.get_nowait()
-        except queue.Empty:
-            break
-        try:
-            emit_function("game_output", message)
-            emitted += 1
-        except Exception:
-            break
+    with message_cache_lock:
+        if _web_gameplay_paused():
+            return 0
+        while True:
+            try:
+                message = game_output_queue.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                emit_function("game_output", message)
+                emitted += 1
+            except Exception:
+                break
     return emitted
 
 def log_web_audit(event_name, **fields):
@@ -2698,16 +2844,19 @@ def handle_connect():
     # the normal game-reconnect handler below.
     if _OPERATOR_TOKEN and not session.get("operator_authenticated"):
         return False
-    emit('connected', {
-        'data': 'Connected to NeverEndingQuest',
-        'capabilities': dict(_ui_protocol_capabilities),
-        'server_instance_id': _server_instance_id,
-    })
+    with message_cache_lock:
+        emit('connected', {
+            'data': 'Connected to NeverEndingQuest',
+            'capabilities': dict(_ui_protocol_capabilities),
+            'server_instance_id': _server_instance_id,
+        })
 
     # Load the durable player ledger before any stable-ID recovery writes.
     # Otherwise a first recovered message could overwrite an older on-disk
     # cache from an empty process-local deque.
-    cached_messages = load_message_cache() if not _web_gameplay_paused() else []
+    cached_messages = load_message_cache(
+        on_recovery=lambda notice: emit('game_output', notice),
+    )
 
     # Claim the player-output sink before any reconnect replay below (e.g. combat
     # output recovery) so replayed prose reaches web clients rather than falling
@@ -2746,10 +2895,9 @@ def handle_connect():
 
     # Load and send cached messages from previous session
     with message_cache_lock:
-        cached_messages = list(message_cache)
-    if cached_messages:
-        emit('cached_messages', cached_messages)
-        print(f"[MESSAGE_CACHE] Sent {len(cached_messages)} cached messages to client")
+        cached_messages = [] if _web_gameplay_paused() else list(message_cache)
+        if cached_messages:
+            emit('cached_messages', cached_messages)
 
     # If a game is already running, tell THIS client to reattach (issue #122).
     if game_thread and game_thread.is_alive() and not _web_gameplay_paused():
@@ -3354,8 +3502,7 @@ def handle_start_game():
     startup_handoff_active = True
     startup_ready_emitted = False
     startup_phase = "launching"
-    message_cache.clear()
-    save_message_cache()
+    load_message_cache(on_recovery=lambda notice: socketio.emit('game_output', notice))
     game_thread = threading.Thread(target=run_game_loop, daemon=True)
     game_thread.start()
 

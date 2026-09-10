@@ -66,6 +66,7 @@ import os
 import shutil
 import zipfile
 import time
+from tempfile import TemporaryDirectory
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -73,7 +74,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from uuid import uuid4
 # Import our existing utilities
-from utils.file_operations import safe_write_json, safe_read_json
+from utils.file_operations import atomic_writer, safe_write_json, safe_read_json
+from web.shared_state import message_cache_lock
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -193,13 +195,13 @@ class SaveGameManager:
             warning(f"INITIALIZATION: Module context remains unselected: {e}", category="save_game")
 
     @staticmethod
-    def _restore_io(operation, *args, cancel_check=None, **kwargs):
+    def _restore_io(operation, *args, cancel_check=None, wait_label='Load', **kwargs):
         """Retry a restore stage on typed temporary I/O, never permission prose."""
         from utils.path_transaction_lock import _wait_to_retry
         from utils.transient_filesystem import is_transient_filesystem_error
 
         started = time.monotonic()
-        report = _lifecycle_wait_reporter('Load')
+        report = _lifecycle_wait_reporter(wait_label)
         while True:
             if cancel_check is not None:
                 cancel_check()
@@ -444,6 +446,7 @@ class SaveGameManager:
         for path in ('modules/effects_state.json',
                      'modules/conversation_history/combat_conversation_history.json',
                      'modules/conversation_history/startup_conversation.json',
+                     'modules/conversation_history/game_interface_cache.json',
                      'modules/conversation_history/pending_location_transition.json'):
             path = os.path.normpath(path)
             if path not in source_files:
@@ -488,6 +491,7 @@ class SaveGameManager:
             "modules/conversation_history/conversation_history.json",
             "modules/conversation_history/chat_history.json",
             "modules/conversation_history/startup_conversation.json",
+            "modules/conversation_history/game_interface_cache.json",
             
             # Character data
             "characters/",
@@ -982,11 +986,32 @@ class SaveGameManager:
                             _assert_no_active_campaign_completion(
                                 "modules/campaign.json"
                             )
-                            return self._create_save_game_locked(
-                                description,
-                                save_mode,
-                                save_folder=save_folder,
-                            )
+                            # Match browser writers' order, including stdout
+                            # callbacks that re-enter cache persistence (#116).
+                            with message_cache_lock:
+                                cache_path = "modules/conversation_history/game_interface_cache.json"
+                                cache_available = False
+                                try:
+                                    try:
+                                        atomic_writer.acquire_lock(cache_path)
+                                        cache_available = True
+                                    except OSError as exc:
+                                        # acquire_lock retries typed busy errors;
+                                        # an unavailable presentation lock must
+                                        # not refuse the canonical Save (#116).
+                                        warning(
+                                            f"SAVE: Display transcript lock unavailable: {exc}",
+                                            category='save_game',
+                                        )
+                                    return self._create_save_game_locked(
+                                        description,
+                                        save_mode,
+                                        save_folder=save_folder,
+                                        _cache_available=cache_available,
+                                    )
+                                finally:
+                                    if cache_available:
+                                        atomic_writer.release_lock(cache_path)
         except (LiveProviderSuperseded, _CampaignCompletionActive):
             raise
         except Exception as exc:
@@ -1007,6 +1032,7 @@ class SaveGameManager:
         save_mode: str = "essential",
         *,
         save_folder: Optional[str] = None,
+        _cache_available: bool = True,
     ) -> Tuple[bool, str]:
         """
         Create a save game with the specified mode.
@@ -1055,6 +1081,7 @@ class SaveGameManager:
             # Copy files based on save mode
             copied_files = []
             skipped_files = []
+            cache_omitted = not _cache_available
             
             # Walk through all files in the current directory
             for root, dirs, files in os.walk("."):
@@ -1089,6 +1116,50 @@ class SaveGameManager:
                         
                         # Ensure destination directory exists
                         dest_dir = os.path.dirname(dest_path)
+                        if file_path == "modules/conversation_history/game_interface_cache.json":
+                            if not _cache_available:
+                                skipped_files.append(file_path)
+                                continue
+                            # Presentation must not introduce a canonical Save
+                            # refusal. Publish complete bytes or authoritative
+                            # absence, never a partially copied transcript.
+                            staging = None
+                            try:
+                                from utils.transient_filesystem import read_bytes_preserving_errors
+
+                                frozen = self._restore_io(
+                                    read_bytes_preserving_errors, source_path, wait_label='Save',
+                                )
+                                staging = self._restore_io(
+                                    TemporaryDirectory, prefix='.display-cache-',
+                                    dir=os.path.dirname(save_path), wait_label='Save',
+                                )
+                                staged_path = Path(staging.name) / 'cache.json'
+                                self._restore_io(staged_path.write_bytes, frozen, wait_label='Save')
+                                if self._restore_io(
+                                    read_bytes_preserving_errors, staged_path, wait_label='Save',
+                                ) != frozen:
+                                    raise OSError('Staged display history did not match the snapshot')
+                                self._restore_io(os.makedirs, dest_dir, exist_ok=True, wait_label='Save')
+                                self._restore_io(os.replace, staged_path, dest_path, wait_label='Save')
+                                copied_files.append(file_path)
+                            except Exception as exc:
+                                cache_omitted = True
+                                skipped_files.append(file_path)
+                                warning(
+                                    f"SAVE: Display transcript was not included: {exc}",
+                                    category='save_game',
+                                )
+                            finally:
+                                if staging is not None:
+                                    try:
+                                        staging.cleanup()
+                                    except OSError as exc:
+                                        warning(
+                                            f"SAVE: Display staging cleanup remains outside the save: {exc}",
+                                            category='save_game',
+                                        )
+                            continue
                         if dest_dir:
                             os.makedirs(dest_dir, exist_ok=True)
                         
@@ -1125,6 +1196,11 @@ class SaveGameManager:
                 success_msg += " (essential files only)"
             else:
                 success_msg += " (full save)"
+            if cache_omitted:
+                success_msg += (
+                    "\nGame saved. The on-screen transcript could not be included; "
+                    "Load will recover available saved narration."
+                )
             
             info(f"SUCCESS: {success_msg}", category="save_game")
             return True, success_msg
@@ -1234,9 +1310,15 @@ class SaveGameManager:
                             self._restore_io(self._clear_campaign_completion_metadata,
                                              generation_only=True)
                             boundary_clean = previous_clean
-                            restore_outcome = self._restore_save_game_locked(
-                                save_folder, previous_clean=previous_clean
-                            )
+                            with message_cache_lock:
+                                cache_path = "modules/conversation_history/game_interface_cache.json"
+                                atomic_writer.acquire_lock(cache_path)
+                                try:
+                                    restore_outcome = self._restore_save_game_locked(
+                                        save_folder, previous_clean=previous_clean
+                                    )
+                                finally:
+                                    atomic_writer.release_lock(cache_path)
             if restore_outcome.disposition != "selected_applied":
                 return restore_outcome
 
@@ -1359,6 +1441,7 @@ class SaveGameManager:
                 "modules/effects_state.json",
                 "modules/conversation_history/combat_conversation_history.json",
                 "modules/conversation_history/startup_conversation.json",
+                "modules/conversation_history/game_interface_cache.json",
             ):
                 if os.path.normpath(optional_path) not in source_files:
                     try:

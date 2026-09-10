@@ -18,6 +18,23 @@ Real False results, readiness checks and LiveProviderSuperseded remain distinct.
 No checkpoint schema, persistence, model behavior or lifecycle ownership changes.
 The reviewed plan and execution record live under docs/audits/2026-09-09-issue-336-*.
 
+## #116 resumed-display delta (2026-09-07; acceptance partial)
+
+Verified in the working candidate based on `553c8128`; supersedes prior
+clear-on-start behavior only. Web Start preserves current delivery history before
+starting the engine; Reset still clears it. Missing cache projects top-level
+assistant JSON narration from main history, or from a valid unfinished startup
+checkpoint. Completed or invalid startup residue does not supersede main history.
+Raw prose, actions, internal messages and checkpoint records are not displayed.
+
+Recovered records receive once-persisted UUIDs and an explicit partial-transcript
+notice. Empty existing cache is not missing cache. Source conversations remain
+untouched; native transient publication retries retain the candidate and IDs.
+There is no new provider call, startup authority, schema or gameplay decision.
+Seams: `web/web_interface.py:378`, `:436`, `:479`, `:3503`.
+Policy: #193 p8-p12 and D-NPC-PARTY-3 history isolation. Full browser matrix remains
+an execution gate, not a claim made by this schematic.
+
 ## React-default launch delta (2026-09-06; native acceptance pending)
 
 `run_web.py` owns presentation argument parsing and frontend preparation; direct

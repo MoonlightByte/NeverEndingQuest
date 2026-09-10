@@ -10,6 +10,23 @@ modules. Backup-before-wipe, lifecycle locks and subsequent cleanup are unchange
 Native evidence: ../audits/2026-09-09-issue-220-revalidation.md. Historical open-item
 lists below describe their original revisions; #220 is resolved by this delta.
 
+## #116 display-history delta (2026-09-07; acceptance partial)
+
+Verified in the working candidate based on `553c8128`; this section supersedes
+earlier cache-coverage descriptions only. Both save modes include
+`modules/conversation_history/game_interface_cache.json`. Saved absence removes
+the live cache through the existing backup/verification/rollback transaction.
+After campaign ownership, Save/Load take the shared cache memory RLock followed
+by the existing cache file lock; both release before post-Load memory repair.
+Save stages complete cache bytes outside the saved-game directory before atomic
+publication. Cache-only failure preserves canonical Save and reports omission.
+
+Seams: `updates/save_game_manager.py:494` (membership), `:992` (ownership),
+`:1119` (publication), `:1314` (restore), `:1444` and `:449` (absence);
+`web/shared_state.py:15` (same reentrant memory lock used by web writers).
+Policy: #193 p9/p10, B1/B2, GL-1. Browser and native fault evidence remain scoped;
+this source map is not a full acceptance verdict.
+
 ## #248 implementation candidate (2026-09-06; acceptance pending)
 
 Recovery-scoped Saves remain queued on fault alone and drain at safe completion. Accepted Load/Reset/Quit cancels only unstarted recovery Saves with their Save/control identities before quiescence; a started Save finishes normally. Admission against a sealed cancelled recovery scope returns cancellation, never a snapshot of replacement state. Ordinary turn/welcome semantics are unchanged. Raw terminal shares its existing numbered-save/reset/quit menu after recovery scope quiescence.
