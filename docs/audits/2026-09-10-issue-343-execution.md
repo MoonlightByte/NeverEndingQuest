@@ -165,3 +165,25 @@ Required D-343-2 disposition
 for unreached obligations and publication approval remain OWNER-OPEN. Implementation
 is complete, but unqualified full-plan/ship PASS is not claimed. No push, merge or
 issue343 closure performed. #348/#350/#351/#352 and existing PX issues remain separate.
+
+## Owner shipment decision and merge gate (2026-09-10)
+
+The preceding OWNER-OPEN statements describe the pre-shipment checkpoint.
+Owner subsequently said "Go ahea dan dmerge" and requested the two disclosed
+coverage items next. Live #193 D-343-2 records acceptance of these limits for
+shipment without relabeling them PASSED (policy epoch2026-09-10T17:42:07Z).
+D-343-2 coverage/publication gate is now CLOSED by owner authority.
+
+Filed #353 for naturally unreached T107 malformed-response correction and #354
+for actual browser profile-flow/progress/Save-Load display coverage. These are
+acceptance follow-ups, not claims of observed bugs. Their next phase is a narrow
+validation plan; no synthetic model failures or speculative product changes.
+
+Fresh independent No-Limits and Single-Path merge scans cover c4170e65 against
+fresh origin/main aee5978c, same runtime5079018a/service hash above. Both passed:
+new runtime matches empty; inherited comments/provider overlays/provenance and
+documentary scan quotations explicitly disposed, #348/#350 unchanged. No schema,
+binding or prompt-file diff. Publication is a fast-forward of this reviewed
+line; git's remote ancestry check must succeed, never force. Unrelated worktrees
+and their branch registrations remain untouched. Final publication SHA/receipt
+is recorded in the issue343 closing evidence comment after remote verification.
