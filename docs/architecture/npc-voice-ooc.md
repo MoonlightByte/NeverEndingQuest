@@ -33,8 +33,11 @@ T067/T065, and commit accepted relationship working state after the DM turn is d
 
 ### T107 profile contract boundary (#343, 2026-09-10)
 
-Focused source update on the reviewed main baseline aee5978c; native acceptance
-pending. Older anchors elsewhere in this schematic are not recertified here.
+Focused source update5079018a on reviewed main baseline aee5978c; native OpenAI
+acceptance observed eleven valid T107 results, OOC/typed-combat consumers and
+Save/Load preservation. Live correction and browser surfaces were NOT-REACHED;
+see the scoped issue343 execution ledger. Older anchors elsewhere are not
+recertified here; this is not an overall voice-system or publication approval.
 Recruitment, OOC and combat profile requests share profile_service.build_messages.
 It supplies the unchanged grounding prompt plus the complete JSON Schema returned
 by voice_contracts.profile_response_schema, the same authority used to validate
