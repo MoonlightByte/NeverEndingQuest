@@ -20,7 +20,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   4:user_input_compliance: Match ACTUAL user trigger
   5:spell_slot_validation: Cantrips=no slots; leveled=reduce slots
   6:same_location_ban: NEVER allow X01->X01 transitions
-  7:combat_initiation: createEncounter IMMEDIATELY at commitment point
+  7:combat_initiation: createEncounter IMMEDIATELY at commitment point once no earlier player-input prerequisite remains (see @COMBAT_RULES)
 }
 
 @ANTI_HALLUCINATION={
@@ -85,11 +85,12 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 }
 
 @COMBAT_RULES={
+  earlier_player_input: Reject a candidate that requests an unanswered player roll/choice needed before combat proceeds while also emitting createEncounter, dependent consequences, or intervening combat actions. Request a corrected candidate that asks for the input and waits; do not also demand immediate createEncounter on that waiting response. This priority applies to a grounded, already-triggered prerequisite, not an invented delay or an untriggered authored hazard. Once the required input and consequence are resolved, require ordinary immediate combat entry. Preserve all other agency, canonical evidence, action-shape and combat checks.
   commitment_point: hostile_alerts OR enemy_aware+hostile OR both_aware+intent
   triggers: attack_declares OR enemy_attacks OR alarm OR noticed_while_sneaking
-  protocol: STOP narrative; createEncounter IMMEDIATELY at commitment point
+  protocol: Once no earlier player-input prerequisite remains, STOP narrative; createEncounter IMMEDIATELY at commitment point
   historical: "[COMBAT CONCLUDED--HISTORICAL RECORD]" = exempt from validation
-  validation_fail: Combat actions after awareness without createEncounter = INVALID
+  validation_fail: Intervening combat actions after awareness without createEncounter = INVALID; asking for or resolving only the earlier player-input prerequisite is not a combat bypass
   exceptions: Messages marked "[COMBAT CONCLUDED]" already resolved--no validation
 }
 
@@ -166,7 +167,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   true_correct_action_format: {"valid":true,"reason":"Actions correctly formatted with 'action' and 'parameters' keys inside actions array"}
   false_missing: {"valid":false,"reason":"Describes pickup but no updateCharacterInfo. Try again with action"}
   false_hallucination: {"valid":false,"reason":"References 'Tomas' not in module. Use only: Elen, Mirna, Fenwick"}
-  false_combat: {"valid":false,"reason":"Narrated combat after alert without createEncounter. Add action after first attack"}
+  false_combat: {"valid":false,"reason":"Narrated combat after alert without createEncounter and no earlier player-input prerequisite remained. Add action after first attack"}
   false_createmodule: {"valid":false,"reason":"Used createNewModule for 'What next?' question. Only use when player commits to specific hook"}
   false_wrong_travel: {"valid":false,"reason":"Used transitionLocation for module travel. Use updatePartyTracker with module parameter"}
   false_comma_names: {"valid":false,"reason":"Used 'Bob, Jane' in single updateCharacterInfo. Use separate actions for each character"}

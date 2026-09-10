@@ -41,6 +41,16 @@ Development checks alone are not gameplay evidence.
 
 ### New typed encounter and opening
 
+Entry prerequisite contract (#345, 2026-09-09): the full/compressed main DM and
+guardian prompts require an already-triggered earlier human roll/choice to be
+answered before `createEncounter`, even after hostile awareness. The accepted
+question uses ordinary conversation history and returns normal input. Resolved
+prerequisite character updates run through main's existing character-first
+dispatch before combat creation. No new pending store, initiative change or
+prose parser exists; this is model-authored semantic ordering, not a deterministic
+pending-roll guarantee. Combat with no earlier prerequisite still enters
+immediately. In-combat `pendingTurn` remains initiative-owned and unchanged.
+
 1. T067 emits `createEncounter.scene`; the builder reconciles canonical participant keys.
 2. Activation publishes matching combat history, party tracker identity, and encounter receipt.
 3. T044 returns opening narration with no combat actions.
