@@ -84,6 +84,19 @@ Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py:9551`) outs
   existing semantic judgment; NPC-list presence does not determine allegiance,
   and authored traps do not establish player discovery. No movement, publication,
   schema, combat-side or currentness guard changes in this addition.
+- #344 (2026-09-11; scoped native acceptance recorded in
+  `../audits/2026-09-11-issue-344-acceptance.md`): the same request appends one
+  uncompressed frame of complete canonical character records after compression,
+  replacing the earlier inventory-only projection of update targets. Targets are
+  every current `partyMembers`/`partyNPCs[].name` plus each normalized
+  `updateCharacterInfo` target, resolved through the existing
+  `get_character_path` normalizer and deduplicated by canonical path. Records
+  are read with `read_bytes_preserving_errors`; a transient sharing error waits
+  through the existing cancellable `_interruptible_wait` outside every lock,
+  while a missing, malformed or non-object record is labeled unavailable with a
+  typed reason and never a fabricated sheet. Stored sheets are pre-action
+  evidence for T065's existing judgment, not proof of the candidate's changes;
+  writers, arithmetic, schemas and model bindings are unchanged.
 - `build_active_module_snapshot` supplies detached source records to the atlas,
   validator and route preflight. `areas/*.json` retains structurally valid non-regex
   filenames; existing legacy-root precedence remains. Backup-only labels are

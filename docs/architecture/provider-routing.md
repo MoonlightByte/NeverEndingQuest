@@ -85,6 +85,11 @@ provider router, persisted approval or background comparison is introduced.
     repeats the same guardian stage; semantic rejection returns to the shared T067
     correction owner. Revised candidates pass applicable checks again. Detached welcome
     calls forward their existing scope/status; no provider call runs under response fences.
+22. T065 receives complete committed character records (party plus normalized update
+    targets) as one post-compression system frame (#344). The frame is request-local
+    review evidence read once per candidate review through the existing transient-safe
+    reader; it adds no provider call, binding, cap or persisted state. Its transient
+    read wait uses the current live/detached scope and re-raises supersession.
 
 ## State and atomicity
 
