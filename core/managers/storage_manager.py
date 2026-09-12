@@ -349,9 +349,10 @@ class StorageManager:
                     "action": "create_storage",
                     "character": operation["character"],
                     "storage_type": operation.get("storage_type", "chest"),
-                    "storage_name": operation.get("storage_name"),
                     "location_description": operation.get("location_description", "")
                 }
+                if "storage_name" in operation:
+                    create_operation["storage_name"] = operation["storage_name"]
                 create_result = self.create_storage(create_operation)
                 if not create_result["success"]:
                     raise Exception(f"Failed to create storage: {create_result['error']}")
