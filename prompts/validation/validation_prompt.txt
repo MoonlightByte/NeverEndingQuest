@@ -392,6 +392,7 @@ Important clarifications:
        - ALL moves use location ID only (e.g., "newLocation": "C07", "newLocation": "B01")
        - NO "areaConnectivityId" parameter needed - system auto-detects area changes
        - Location ID must be valid format (letter + 2 digits like A01, B05, C03, etc.)
+   13. Character-to-character item handoff = EXACTLY TWO updateCharacterInfo actions (remove N from giver, add N to receiver, delta language, exact item as on the giver's supplied sheet); never storageInteraction, never one-sided, never demand a container. A container operation followed by a handoff of the retrieved items is two distinct movements and needs both
 
 Here are examples of acceptable model assistant responses:
 
@@ -790,6 +791,7 @@ When you see storage operations with fees, validate:
    - Currency changes must show clear conversion math
    - storageInteraction itself owns removal/addition of the stored items
    - REJECT a redundant updateCharacterInfo that adds or removes the same items handled by storageInteraction; updateCharacterInfo is permitted here only for a distinct fee or unrelated character change
+   - A character-to-character handoff is never a storageInteraction; require two updateCharacterInfo actions (remove from giver, add to receiver) and REJECT a storageInteraction used for it
 
 3. ITEM VALIDATION:
    - Verify character actually possesses the items being stored

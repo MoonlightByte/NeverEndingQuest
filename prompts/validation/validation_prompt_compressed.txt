@@ -51,7 +51,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   establishHub: gain base ownership
   createNewModule: ONLY after specific commitment ("Yes investigate barrow")
   exitGame: end session
-  storageInteraction: sole store/retrieve item-transfer authority; REJECT duplicate updateCharacterInfo for those items; a distinct fee update may precede it
+  storageInteraction: ONLY for items moved between a character and a player storage container at a location (store/retrieve/create/view); it owns that container movement, so REJECT a duplicate updateCharacterInfo for the same stored items; a distinct fee update may precede it. NEVER for handing, giving, trading or sharing items between characters (player or party NPC): that is updateCharacterInfo per character (@CLARIFICATIONS 17) and a storageInteraction proposed for it is INVALID (no container is involved; it cannot perform the requested giver-to-receiver movement)
   updatePartyTracker: module/location updates; triggers archiving
   moveBackgroundNPC: NPCs not in party (captured/killed/relocated)
   updatePartyNPCs: add/remove traveling companions
@@ -164,6 +164,8 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   true_inventory_check: {"valid":true,"reason":"Player asks 'How many arrows?' - correctly narrates counts without updateCharacterInfo"}
   true_module_travel: {"valid":true,"reason":"Correctly uses updatePartyTracker with module parameter for inter-module travel"}
   true_multiple_chars: {"valid":true,"reason":"Multiple updateCharacterInfo actions in array, each with single character name"}
+  true_character_handoff: {"valid":true,"reason":"Giver removes N of an owned item and receiver adds N via two updateCharacterInfo actions; no container involved"}
+  false_handoff_as_storage: {"valid":false,"reason":"Character-to-character handoff proposed as storageInteraction. No container is involved; use two updateCharacterInfo actions: remove from giver, add to receiver"}
   true_correct_action_format: {"valid":true,"reason":"Actions correctly formatted with 'action' and 'parameters' keys inside actions array"}
   false_missing: {"valid":false,"reason":"Describes pickup but no updateCharacterInfo. Try again with action"}
   false_hallucination: {"valid":false,"reason":"References 'Tomas' not in module. Use only: Elen, Mirna, Fenwick"}
@@ -232,6 +234,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   14:createEncounter.monsters MUST be array of strings (["Bandit","Bandit"] not ["2 Bandits"])
   15:MULTIPLE updateCharacterInfo OK in actions array. Each updates ONE character. NEVER comma-separated names
   16:Actions go in "actions" array, NOT numbered keys like updateCharacterInfo_2, updateCharacterInfo_3
+  17:Character-to-character item handoff = EXACTLY TWO updateCharacterInfo actions (remove N from giver, add N to receiver, delta language, exact item as on the giver's supplied sheet); never storageInteraction, never one-sided, never demand a container. A container operation followed by a handoff of the retrieved items is two distinct movements and needs both
 }
 
 Evaluate last assistant response. Return JSON validation result.
