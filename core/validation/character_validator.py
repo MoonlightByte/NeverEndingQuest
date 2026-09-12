@@ -64,6 +64,7 @@ import logging
 import os
 import hashlib
 import re
+import jsonschema
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -988,6 +989,46 @@ def validate_schema(data: Any, schema: dict, path: str = "root") -> list[str]:
 
     return errors
 
+
+# The six equipment fields the T051 armor agent may change. Every value the
+# model proposes, every merged result, every cache hit and every source sheet
+# offered to T051 is checked against the frozen character schema's letter for
+# these fields only (issue #357: hand-written guards rejected the schema-valid
+# null echo, the model then invented 99, and the poisoned sheet blocked later
+# updates while its cache entry vouched for it).
+_T051_ARMOR_FIELDS = (
+    'equipped', 'ac_base', 'ac_bonus', 'dex_limit',
+    'armor_category', 'stealth_disadvantage',
+)
+
+
+def armor_contract_errors(
+    items: List[Dict[str, Any]],
+    item_schema: Dict[str, Any],
+) -> List[str]:
+    """Return one message per present armor field outside the frozen schema.
+
+    ``item_schema`` is the character schema's equipment item subschema. Only the
+    schema's letter (type, enum, range, null-ness) is checked; which value is
+    right for an armor stays with the model. An empty list means every present
+    armor field is schema-valid.
+    """
+    errors: List[str] = []
+    field_schemas = item_schema['properties']
+    for item in items:
+        for field in _T051_ARMOR_FIELDS:
+            if field not in item:
+                continue
+            subschema = field_schemas[field]
+            validator = jsonschema.Draft7Validator(subschema)
+            for schema_error in validator.iter_errors(item[field]):
+                errors.append(
+                    f"equipment '{item.get('item_name')}'.{field} "
+                    f"{schema_error.message}; the character schema for {field} "
+                    f"is {json.dumps(subschema, sort_keys=True)}"
+                )
+    return errors
+
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
     from utils.openai_usage_tracker import track_response
@@ -1015,6 +1056,8 @@ class AICharacterValidator:
         # Initialize validation cache
         self.cache_file = os.path.join('modules', 'validation_cache.json')
         self.validation_cache = self._load_cache()
+        # Frozen equipment item subschema, read lazily from the writer's schema file
+        self._equipment_item_schema_cache = None
     
     def _load_prompt(self, filename: str) -> str:
         """
@@ -1041,6 +1084,21 @@ class AICharacterValidator:
             error(f"Error loading prompt from {filename}: {str(e)}", category="character_validation")
             return ""
     
+    def _equipment_item_schema(self) -> Dict[str, Any]:
+        """Equipment item subschema from the same schemas/char_schema.json the writer loads."""
+        if self._equipment_item_schema_cache is None:
+            from updates.update_character_info import load_schema
+            try:
+                item_schema = load_schema()['properties']['equipment']['items']
+                item_schema['properties']
+            except Exception as exc:
+                raise RuntimeError(
+                    "T051: could not read properties.equipment.items.properties "
+                    f"from schemas/char_schema.json: {exc}"
+                ) from exc
+            self._equipment_item_schema_cache = item_schema
+        return self._equipment_item_schema_cache
+
     def extract_ac_relevant_data(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Extract only the fields relevant for AC validation.
@@ -1401,16 +1459,22 @@ class AICharacterValidator:
         json_str = json.dumps(ac_data, sort_keys=True, separators=(',', ':'))
         return hashlib.sha256(json_str.encode()).hexdigest()
     
-    def _is_ac_validation_cached(self, character_name: str, ac_hash: str) -> bool:
+    def _is_ac_validation_cached(
+        self,
+        character_name: str,
+        ac_hash: str,
+        ac_data: Dict[str, Any],
+    ) -> bool:
         """
         Check if AC validation is cached and still valid
         
         Args:
             character_name: Name of the character
             ac_hash: Hash of current AC-relevant data
+            ac_data: AC-relevant projection the hash was computed from
             
         Returns:
-            True if cached and unchanged, False otherwise
+            True if cached, unchanged and schema-valid, False otherwise
         """
         if character_name not in self.validation_cache:
             return False
@@ -1422,6 +1486,19 @@ class AICharacterValidator:
             debug(f"[Validation Cache] AC data changed for {character_name}", category="character_validation")
             return False
         
+        # A cache entry may vouch only for armor values that are actually inside
+        # the frozen schema; a poisoned projection never hits (issue #357).
+        armor_errors = armor_contract_errors(
+            ac_data['equipment'], self._equipment_item_schema()
+        )
+        if armor_errors:
+            warning(
+                f"[Validation Cache] Cached AC projection for {character_name} is "
+                f"outside the character schema; revalidating: {armor_errors}",
+                category="character_validation",
+            )
+            return False
+
         # Check if cache is still fresh (optional: add time-based expiry)
         # For now, we'll keep cache valid indefinitely until data changes
         
@@ -1682,7 +1759,7 @@ class AICharacterValidator:
         currency_hash = self._compute_currency_hash(currency_data)
         
         # Check cache for each
-        if not self._is_ac_validation_cached(character_name, ac_hash):
+        if not self._is_ac_validation_cached(character_name, ac_hash, ac_data):
             needs_validation['ac'] = True
             debug(f"[Smart Batch] {character_name} needs AC validation", category="character_validation")
         
@@ -1899,7 +1976,7 @@ class AICharacterValidator:
         ac_hash = self._compute_ac_hash(ac_relevant_data)
         
         # Check if validation is cached and unchanged
-        if self._is_ac_validation_cached(character_name, ac_hash):
+        if self._is_ac_validation_cached(character_name, ac_hash, ac_relevant_data):
             # Return original data - no changes needed since cached validation passed
             print(f"DEBUG: [Validation Cache] Skipping AC validation for {character_name} - data unchanged")
             info(f"[Validation Cache] Skipping AC validation for {character_name} - data unchanged", category="character_validation")
@@ -1973,12 +2050,26 @@ class AICharacterValidator:
                 from updates.update_character_info import deep_merge_dict
                 merged_data = deep_merge_dict(character_data, corrected_data)
 
+                # The merged projection, not just the fields the model returned,
+                # must satisfy the frozen schema: an omitted poisoned item would
+                # otherwise survive the changed-only merge and be blessed here.
+                merged_ac_data = self.extract_ac_relevant_data(merged_data)
+                merged_errors = armor_contract_errors(
+                    merged_ac_data['equipment'], self._equipment_item_schema()
+                )
+                if merged_errors:
+                    raise CharacterValidationResponseError(
+                        "T051: the merged equipment still violates the character "
+                        "schema: " + "; ".join(merged_errors) + ". Return each "
+                        "listed item in validated_character_data.equipment with a "
+                        "schema-valid value and describe the change in "
+                        "corrections_made"
+                    )
+
                 # Cache the fully merged output, never the pre-correction input. If a
                 # later persistence step fails, the unchanged disk data will not hit
                 # this entry and validation will self-heal on the next pass.
-                final_ac_hash = self._compute_ac_hash(
-                    self.extract_ac_relevant_data(merged_data)
-                )
+                final_ac_hash = self._compute_ac_hash(merged_ac_data)
                 self._update_ac_cache(character_name, final_ac_hash, merged_data)
 
                 return _validation_result(character_data, merged_data)
@@ -2405,10 +2496,6 @@ Provide the corrected character data with proper AC calculation."""
             )
             seen_names = set()
             immutable_equipment_fields = {'item_type', 'description', 'quantity'}
-            mutable_equipment_fields = {
-                'equipped', 'ac_base', 'ac_bonus', 'dex_limit',
-                'armor_category', 'stealth_disadvantage',
-            }
             allowed_equipment_fields = {
                 'item_name', 'item_type', 'equipped', 'description',
                 'ac_base', 'ac_bonus', 'dex_limit', 'armor_category',
@@ -2445,33 +2532,19 @@ Provide the corrected character data with proper AC calculation."""
                             f"T051: equipment[{index}] may not alter "
                             f"{immutable_field}"
                         )
-                if 'equipped' in item and type(item['equipped']) is not bool:
+                # Every proposed armor value is checked against the frozen
+                # schema's letter; the model chooses any value inside it.
+                contract_errors = armor_contract_errors(
+                    [item], self._equipment_item_schema()
+                )
+                if contract_errors:
                     raise CharacterValidationResponseError(
-                        f"T051: equipment[{index}].equipped must be a boolean"
+                        f"T051: equipment[{index}] violates the character schema: "
+                        + "; ".join(contract_errors)
                     )
-                if 'stealth_disadvantage' in item and type(
-                    item['stealth_disadvantage']
-                ) is not bool:
-                    raise CharacterValidationResponseError(
-                        f"T051: equipment[{index}].stealth_disadvantage must be a boolean"
-                    )
-                if 'armor_category' in item and not isinstance(
-                    item['armor_category'], str
-                ):
-                    raise CharacterValidationResponseError(
-                        f"T051: equipment[{index}].armor_category must be a string"
-                    )
-                for numeric_field in ('ac_base', 'ac_bonus', 'dex_limit'):
-                    if numeric_field in item and (
-                        isinstance(item[numeric_field], bool)
-                        or not isinstance(item[numeric_field], (int, float))
-                    ):
-                        raise CharacterValidationResponseError(
-                            f"T051: equipment[{index}].{numeric_field} must be numeric"
-                        )
 
                 normalized_update = {'item_name': source_item['item_name']}
-                for mutable_field in mutable_equipment_fields:
+                for mutable_field in _T051_ARMOR_FIELDS:
                     if (
                         mutable_field in item
                         and item[mutable_field] != source_item.get(mutable_field)

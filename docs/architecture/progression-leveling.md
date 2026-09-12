@@ -36,7 +36,7 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 13. Every T047 assistant turn is persisted to `level_up_conversation.json` before validation or mutation.
 14. A final action goes to T048 with the current sheet, leveling reference, and proposed JSON. A rejected result receives one immediate T047 correction and another T048 check; a second rejection leaves a corrective message in the still-open session.
 15. On acceptance, code extracts the changes and removes `experience_points`, preserving cumulative XP.
-16. `update_character_info` takes its character locks, reloads the sheet, asks T079 for a typed delta, checks requested-field completeness and the character schema, and atomically replaces the file. Post-save smart validators may apply a second atomic correction.
+16. `update_character_info` takes its character locks, reloads the sheet, asks T079 for a typed delta, checks requested-field completeness and the character schema, and atomically replaces the file. Post-save smart validators may apply a second atomic correction, schema-checked at the T051 boundary; a reloaded sheet whose armor projection is outside the frozen schema is offered to T051 once, in memory, before the schema gate.
 17. Success marks the in-memory session complete and main appends one compact completion record. Failure appends a visible system failure, then returns control to the ordinary outer turn.
 
 ## State and atomicity

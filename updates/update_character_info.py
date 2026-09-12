@@ -124,7 +124,7 @@ import re
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.encoding_utils import safe_json_load
-from core.validation.character_validator import AICharacterValidator
+from core.validation.character_validator import AICharacterValidator, armor_contract_errors
 from core.validation.character_effects_validator import AICharacterEffectsValidator
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
@@ -1428,6 +1428,38 @@ def _update_character_info_unlocked(
         error(f"FAILURE: Error loading character data", exception=e, category="file_operations")
         return False
     
+    # A sheet whose armor projection is already outside the frozen schema would
+    # be refused by the whole-sheet gate below on every ordinary update that
+    # leaves the value in place (issue #357). Offer it to the existing T051 armor
+    # agent first, in memory only, so the model's correction and the requested
+    # change share the one atomic write; nothing here touches the file.
+    validator = AICharacterValidator()
+    armor_errors = armor_contract_errors(
+        validator.extract_ac_relevant_data(character_data)['equipment'],
+        schema['properties']['equipment']['items'],
+    )
+    if armor_errors:
+        warning(
+            "VALIDATION: %s carries out-of-schema armor data; asking T051 to "
+            "correct it before the update: %s" % (character_name, armor_errors),
+            category="character_validation",
+        )
+        armor_result = validator.ai_validate_armor_class_with_result(character_data)
+        if armor_result.success and armor_result.changed:
+            info(
+                "VALIDATION: T051 corrected %s before the update: %s"
+                % (character_name, validator.corrections_made),
+                category="character_validation",
+            )
+            character_data = armor_result.data
+        else:
+            warning(
+                "VALIDATION: T051 could not correct %s before the update (%s); "
+                "continuing with the unrepaired sheet"
+                % (character_name, armor_result.error or armor_result.status.value),
+                category="character_validation",
+            )
+
     # Create file backup before any changes
     if not prepare_only:
         backup_path = create_character_backup(character_path, "update")
