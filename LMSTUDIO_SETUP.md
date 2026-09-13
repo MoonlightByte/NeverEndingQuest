@@ -83,14 +83,20 @@ Routes through a proxy for request/response logging. Use this for troubleshootin
 
 ### Recommended Models for NeverEndingQuest
 
-Good models to try (available in LM Studio's model browser):
+**Verified 2026-09-13 on LM Studio 0.4.24** (fresh install, full character
+creation, then main-loop play):
 
-| Model | Size | Context | Performance | Notes |
-|-------|------|---------|-------------|-------|
-| **Mistral 7B Instruct** | 7B | 32K | Excellent | Best all-around choice |
-| **Llama 3.1 8B Instruct** | 8B | 128K | Excellent | Great for long sessions |
-| **Phi-3 Medium** | 14B | 128K | Very Good | Good balance |
-| **Mistral Nemo** | 12B | 128K | Excellent | Great storytelling |
+| Model | Size | Result | Notes |
+|-------|------|--------|-------|
+| **`google/gemma-4-12b-qat`** | 12B | **Works. Smallest recommended model.** | Correct Standard Array, racial bonuses and AC; one review round per answer; character finalized in about 30 minutes |
+| `qwen/qwen3.5-9b` | 9B | **Not supported** | Poor prompt and schema adherence: fabricates rules, rejects correct answers, loops in character-creation review and never finalizes. Connection test passes; gameplay does not |
+
+The connection test only proves the endpoint speaks the API. Whether a model
+can play depends on how well it follows long prompts and structured JSON
+contracts. Anything weaker than Gemma 4 12B at instruction following should be
+expected to fail the way qwen3.5-9b does. Older suggestions (Mistral 7B, Llama
+3.1 8B, Phi-3, Mistral Nemo) have not been re-verified against the current
+prompts and are not recommended over Gemma 4 12B.
 
 **Minimum Requirements:**
 - 16GB RAM for 7B models
@@ -189,7 +195,7 @@ pip install mitmproxy
 - System prompt is too large for model's context
 
 **Solutions:**
-1. Try a different model (Mistral 7B Instruct recommended)
+1. Try a different model (`google/gemma-4-12b-qat` is the smallest verified; `qwen/qwen3.5-9b` is known not to work)
 2. Enable compression in NeverEndingQuest's `config.py`
 3. Use a model with larger context window (32K+)
 

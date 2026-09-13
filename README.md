@@ -616,6 +616,20 @@ Local models must follow long prompts, compressed tags, and structured game
 contracts reliably; combat and game-state updates are the most demanding paths.
 The Legacy GPT-4.1 provider remains the recommended quality baseline.
 
+**Local model compatibility (verified 2026-09-13, LM Studio 0.4.24):**
+
+- **Smallest recommended local model: `google/gemma-4-12b-qat` (Gemma 4 12B).**
+  It completes character creation and plays the main loop with correct rules
+  (Standard Array, racial bonuses, armor class) and one review round per answer.
+- **Not supported: `qwen/qwen3.5-9b`.** It cannot follow the game's prompt and
+  schema contracts: it fabricates rules (a made-up "Standard Array with Human
+  bonuses"), rejects correct player answers, and loops in the character-creation
+  review without ever finalizing a character. The connection test passes; the
+  game does not. Models that fail this way are a prompt/schema-adherence
+  problem, not a connection problem, and no server setting fixes them.
+- Smaller or weaker instruction-following models than Gemma 4 12B should be
+  expected to fail the same way.
+
 #### 🧪 LM Studio Compatibility Notes
 
 NeverEndingQuest supports LM Studio through its OpenAI-compatible API. Local
