@@ -24,7 +24,7 @@ Routes through a proxy for request/response logging. Use this for troubleshootin
 
 1. **Setup LM Studio:**
    - Download and install [LM Studio](https://lmstudio.ai/)
-   - Load a model (recommended: Mistral 7B, Llama 3.1 8B, or similar)
+   - Load a model (recommended: `google/gemma-4-12b-qat`)
    - Click "Start Server" in the Local Server tab (bottom-right)
    - Verify it says "Server running on port 1234"
 
@@ -94,9 +94,8 @@ creation, then main-loop play):
 The connection test only proves the endpoint speaks the API. Whether a model
 can play depends on how well it follows long prompts and structured JSON
 contracts. Anything weaker than Gemma 4 12B at instruction following should be
-expected to fail the way qwen3.5-9b does. Older suggestions (Mistral 7B, Llama
-3.1 8B, Phi-3, Mistral Nemo) have not been re-verified against the current
-prompts and are not recommended over Gemma 4 12B.
+expected to fail the way qwen3.5-9b does. Other models are not recommended at
+this time.
 
 **Minimum Requirements:**
 - 16GB RAM for 7B models

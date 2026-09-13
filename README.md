@@ -208,7 +208,7 @@ be entered again after a restart. Existing keys in the local, gitignored
 
 ### 💰 Advanced Token Compression (NEW!)
 - **70-90% Cost Reduction** - Revolutionary compression cuts API expenses dramatically
-- **Open-Source Model Support** - Run with Llama 3.1, Mistral, or other local models
+- **Open-Source Model Support** - Run with a local model such as Gemma 4 12B
 - **Parallel Processing** - 5x faster compression with multi-threaded architecture
 - **Smart Caching** - Intelligent compression cache reduces redundant processing
 - **Compressed Prompts** - System prompts reduced from 101K to 8K characters (92% reduction)
@@ -480,7 +480,7 @@ The Advanced Token Compression System has graduated from experimental to **CORE 
 - **Open-Source Compatibility**: Reduced context from 100K+ to under 10K tokens enables local model deployment
 - **Performance**: Faster inference times with smaller contexts
 - **Scalability**: Support for longer play sessions without context overflow
-- **Local Deployment**: Run the game on consumer GPUs with models like Llama 3.1 (8K-128K context)
+- **Local Deployment**: Run the game on consumer GPUs with a local model such as Gemma 4 12B
 
 ### Compression Technologies
 
@@ -583,13 +583,12 @@ The system includes comprehensive telemetry for optimization:
 
 ### Open-Source Model Compatibility
 
-The compression system enables deployment with popular open-source models:
+The compression system enables deployment with open-source models:
 
 #### Compatible Models
-- **Llama 3.1**: 8K-128K context window
-- **Mistral**: 32K context window
-- **Claude API Alternatives**: Various context sizes
-- **Mixtral**: 32K context window
+- **Gemma 4 12B** (`google/gemma-4-12b-qat`): the smallest verified local model
+- Other models are not recommended at this time; see the Local / Custom Server
+  section for what was verified and what is known not to work
 - **Solar**: 10K context window
 
 #### Local Deployment Benefits
@@ -627,8 +626,9 @@ The Legacy GPT-4.1 provider remains the recommended quality baseline.
   review without ever finalizing a character. The connection test passes; the
   game does not. Models that fail this way are a prompt/schema-adherence
   problem, not a connection problem, and no server setting fixes them.
-- Smaller or weaker instruction-following models than Gemma 4 12B should be
-  expected to fail the same way.
+- Other local models are not recommended at this time. Smaller or weaker
+  instruction-following models than Gemma 4 12B should be expected to fail the
+  same way.
 
 #### 🧪 LM Studio Compatibility Notes
 
@@ -1370,7 +1370,7 @@ This is the first iteration of the compression system designed to reduce API cos
 - **Combat Compression** - Special handling for verbose combat messages (82% reduction)
 - **Telemetry System** - Comprehensive usage tracking for optimization
 - **Cost Reduction** - 60-70% reduction in API costs through compression and routing
-- **Local Model Support** - Compatible with Llama 3.1, Mistral, and other open-source LLMs
+- **Local Model Support** - Verified with Gemma 4 12B via LM Studio
 
 ### Version 0.2.0 - Module Toolkit Release
 - **Module Toolkit** - Complete content creation suite
