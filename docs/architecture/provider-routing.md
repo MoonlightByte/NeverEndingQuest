@@ -123,8 +123,9 @@ provider router, persisted approval or background comparison is introduced.
 11. `core/ai/api_client.py:181-263` - response rejection and actual model/ID normalization.
 12. `core/ai/api_client.py:280-367` - provider-neutral router and error normalization.
 13. `core/ai/api_client.py:370-552` - provider constraints and Gemini translation.
-14. `utils/capture/live_provider_call.py:735` and `utils/capture/multi_model_capture.py:380` - live children, correlation, required reissue, reactive request repair, and capture bookkeeping (startup candidate).
-15. `utils/capture/file_writer.py:36-181` and `utils/api_logger.py:42-123` - capture and API evidence stores.
+14. `utils/capture/live_provider_call.py:735` and `utils/capture/multi_model_capture.py:380` - live children, correlation, required reissue, and capture bookkeeping.
+15. `core/ai/api_client.py` `normalize_local_template_messages` / `_local_template_repair` - Local/Custom strict-template shape repair (#179, #389). Lives in the adapter so every caller, the live child included, gets it: on a COMPLETED Local/Custom rejection (any HTTP status; provider prose is never parsed) the request is reissued once with one leading system block, later system messages converted to user turns in place, and a trailing user turn; an array the reshape leaves unchanged re-raises as before, so lenient models are never reshaped and nothing can loop. Capture rows keep the caller's assembled request; replay through the adapter applies the same repair.
+16. `utils/capture/file_writer.py:36-181` and `utils/api_logger.py:42-123` - capture and API evidence stores.
 
 ## Invariants
 
@@ -147,5 +148,5 @@ remove separately ratified caller-specific completed-invalid policies, and it
 does not guarantee bounded latency or cost during persistent empty responses.
 
 - Routing and liveness: #186, #204, #239 (in-process and no-scope callers; the live child path is covered by #284). #240 and #250 resolved.
-- Player-visible provider failures: #170, #179, #232, and #233.
+- Player-visible provider failures: #170, #179, #232, #233, and #389.
 - Provider/schema/platform debt: #148 and #166.
