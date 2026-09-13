@@ -332,14 +332,27 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     # --- Route to provider, then expose one response/error contract ---
     try:
         if request_provider in ("legacy", "openai", "lmstudio"):
-            raw_response = _openai_completion(
-                messages,
-                model,
-                temperature,
-                request_provider,
-                response_format=_response_format,
-                **kwargs,
-            )
+            try:
+                raw_response = _openai_completion(
+                    messages,
+                    model,
+                    temperature,
+                    request_provider,
+                    response_format=_response_format,
+                    **kwargs,
+                )
+            except Exception as exc:
+                repaired = _local_template_repair(request_provider, messages, exc)
+                if repaired is None:
+                    raise
+                raw_response = _openai_completion(
+                    repaired,
+                    model,
+                    temperature,
+                    request_provider,
+                    response_format=_response_format,
+                    **kwargs,
+                )
         else:  # gemini
             raw_response = _gemini_completion(
                 messages,
@@ -365,6 +378,91 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
         task_id=task_id,
         usage_invocation_id=usage_invocation_id,
     )
+
+
+def normalize_local_template_messages(messages):
+    """Reshape a message array for strict local chat templates (issues #179, #389).
+
+    Validated directly against the real LM Studio server (0.4.24; qwen3.5-9b and
+    gemma-4-26b). The Jinja template raises on two shapes, and LM Studio surfaces
+    both to the client as HTTP 400 with the engine's 500 nested in the body text:
+
+      1. "No user query found in messages"          -> at least one user turn.
+      2. "System message must be at the beginning"  -> ONE system message, first.
+         A second leading system block, a mid-conversation one and a trailing
+         one are all rejected. The main game loop opens with a dozen system
+         context blocks, so this is not a startup-only shape.
+
+    Keep the FIRST message's system as the single leading system block and
+    convert every OTHER system message to a user turn IN PLACE, preserving its
+    content and position. Position matters: the startup JSON-retry directive is
+    a trailing system message that must stay the model's latest instruction
+    (merging it forward and appending a generic nudge made the model answer the
+    nudge instead of emitting the corrected JSON). The main loop already carries
+    Dungeon Master notes as user turns, so a context block converted to a user
+    turn is a shape the DM prompt already treats as authoritative. Finally,
+    ensure the array ends on a user turn (strict-alternation templates, #168).
+
+    An already-valid array (one leading system, ending on user) is reconstructed
+    identically, which is what lets the caller apply this reactively.
+    """
+    normalized = []
+    for message in messages:
+        if message.get("role") == "system" and normalized:
+            normalized.append(dict(message, role="user"))
+        else:
+            normalized.append(dict(message))
+    if not normalized or normalized[-1].get("role") != "user":
+        normalized.append(
+            {"role": "user", "content": "Please respond based on the instructions above."}
+        )
+    return normalized
+
+
+def _completed_http_status(exc):
+    """HTTP status of a completed provider rejection, or None for transport failures."""
+    for candidate in (exc, getattr(exc, "original_error", None)):
+        if candidate is None:
+            continue
+        for value in (
+            getattr(candidate, "status_code", None),
+            getattr(getattr(candidate, "response", None), "status_code", None),
+        ):
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+    return None
+
+
+def _local_template_repair(provider, messages, exc):
+    """Messages to reissue once after a Local/Custom template rejection, else None.
+
+    Reactive by design: a lenient local model that accepts the raw shape is never
+    reshaped and its request stays byte-identical. Only a COMPLETED rejection
+    (the server answered with a status) qualifies; a transport failure is not a
+    shape problem. The status code itself is not authority -- #179 observed the
+    template error as a 500 and #389 observed the same error as a 400 from a
+    newer LM Studio -- and provider prose is never parsed. If the reshape leaves
+    the array unchanged the rejection was not about shape, and the caller
+    re-raises exactly as before, so this can never loop.
+    """
+    if provider != "lmstudio" or not isinstance(messages, list):
+        return None
+    if _completed_http_status(exc) is None:
+        return None
+    repaired = normalize_local_template_messages(messages)
+    if repaired == messages:
+        return None
+    try:
+        from utils.enhanced_logger import debug
+
+        debug(
+            "LOCAL_TEMPLATE_REPAIR status=%s messages=%d -> reissuing with one "
+            "leading system block" % (_completed_http_status(exc), len(messages)),
+            category="ai_routing",
+        )
+    except Exception:
+        pass
+    return repaired
 
 
 def _enforce_provider_constraints(provider, model, temperature, kwargs):
