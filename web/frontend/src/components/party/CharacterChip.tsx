@@ -6,6 +6,7 @@
  * shows the StatsTooltip on hover (50ms show / 100ms hide debounce, legacy
  * parity), and on click resolves video-else-image media for the MediaPopup.
  */
+import { cssImageUrl } from './cssImageUrl'
 import { useEffect, useRef, useState } from 'react'
 import { StatsTooltip } from './StatsTooltip'
 import { chipFontSize, probeImage, resolveClickMedia, resolveFirstImage, uploadedPortraitCandidates, useMediaRevision } from './media'
@@ -198,7 +199,7 @@ export function CharacterChip({
         : <EmberInspection label={`${displayName} statistics`} triggerContent={<span className="sr-only">{displayName} statistics</span>} className="ember-card-bio"><StatsTooltip stats={stats} anchor={null} inline /></EmberInspection>}
       <div className="neq-character-chip" data-chip={variant} data-name={name} data-active={isActive ? 'true' : 'false'}>
         <button ref={chipRef} type="button" className="ember-card-portrait" aria-label={`${displayName} portrait`} aria-busy={mediaPending} disabled={!clickMedia} onClick={handleClick}>
-          <span className="ember-chip-portrait" aria-hidden="true" style={thumb ? { backgroundImage: `url('${thumb}')` } : undefined}>{!thumb && displayName.slice(0, 1)}</span>
+          <span className="ember-chip-portrait" aria-hidden="true" style={thumb ? { backgroundImage: cssImageUrl(thumb) } : undefined}>{!thumb && displayName.slice(0, 1)}</span>
         </button>
         <span className="ember-card-summary">
           {displayName}
@@ -241,7 +242,7 @@ export function CharacterChip({
             ? '0 0 15px rgba(255, 165, 0, 0.7)'
             : hoverShadow ?? variantStyle.glow,
           cursor: clickMedia ? 'pointer' : 'default',
-          ...(thumb && !ember ? { backgroundImage: `url('${thumb}')` } : {}),
+          ...(thumb && !ember ? { backgroundImage: cssImageUrl(thumb) } : {}),
           ...(variantStyle.opacity !== undefined
             ? { opacity: isLocationHover ? 1 : variantStyle.opacity }
             : isEnemyMediaHover
@@ -254,7 +255,7 @@ export function CharacterChip({
               : {}),
         }}
       >
-        {ember && <span className="ember-chip-portrait" aria-hidden="true" style={thumb ? { backgroundImage: `url('${thumb}')` } : undefined}>{!thumb && displayName.slice(0, 1)}</span>}
+        {ember && <span className="ember-chip-portrait" aria-hidden="true" style={thumb ? { backgroundImage: cssImageUrl(thumb) } : undefined}>{!thumb && displayName.slice(0, 1)}</span>}
         <span
           className="w-full break-words"
           style={{
