@@ -111,6 +111,7 @@ class _NormalizedResponse:
         "provider",
         "task_id",
         "raw_response",
+        "sent_messages",
         "_usage_invocation_id",
         "__weakref__",
     )
@@ -140,6 +141,11 @@ class _NormalizedResponse:
         self.provider = provider
         self.task_id = task_id
         self.raw_response = raw_response
+        # The request actually sent when the adapter reshaped it (#389);
+        # None when the caller's array went out unchanged. Capture and API
+        # evidence read this so they describe the request that produced the
+        # answer, not the one the provider rejected.
+        self.sent_messages = None
         self._usage_invocation_id = usage_invocation_id
 
     def model_dump(self):
@@ -330,6 +336,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     _enforce_provider_constraints(request_provider, model, temperature, kwargs)
 
     # --- Route to provider, then expose one response/error contract ---
+    repaired = None
     try:
         if request_provider in ("legacy", "openai", "lmstudio"):
             try:
@@ -371,13 +378,16 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
             original_error=exc,
         ) from exc
 
-    return _normalize_provider_response(
+    normalized = _normalize_provider_response(
         raw_response,
         provider=request_provider,
         requested_model=model,
         task_id=task_id,
         usage_invocation_id=usage_invocation_id,
     )
+    if repaired is not None:
+        normalized.sent_messages = repaired
+    return normalized
 
 
 def normalize_local_template_messages(messages):

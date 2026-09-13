@@ -693,6 +693,7 @@ def _success_envelope(response, request_kwargs):
         "finish_reason": str(getattr(choice, "finish_reason", "unknown") or "unknown"),
         "usage": _primitive_usage(response),
         "usage_invocation_id": getattr(response, "_usage_invocation_id", None),
+        "sent_messages": getattr(response, "sent_messages", None),
     }
 
 
@@ -985,9 +986,10 @@ def _log_generation(task_id, frozen_messages, envelope, started):
     try:
         from utils.api_logger import log_live_provider_envelope
 
+        sent = envelope.get("sent_messages") if isinstance(envelope, dict) else None
         log_live_provider_envelope(
             task_id,
-            frozen_messages,
+            sent if isinstance(sent, list) else frozen_messages,
             envelope,
             latency_seconds=time.monotonic() - started,
         )
@@ -999,7 +1001,7 @@ def _log_generation(task_id, frozen_messages, envelope, started):
 def _reconstruct_response(envelope):
     from core.ai.api_client import _NormalizedResponse
 
-    return _NormalizedResponse(
+    response = _NormalizedResponse(
         content=envelope["content"],
         usage_dict=envelope["usage"],
         model=envelope.get("model", ""),
@@ -1010,6 +1012,10 @@ def _reconstruct_response(envelope):
         raw_response={"liveProviderCorrelation": dict(envelope["correlation"])},
         usage_invocation_id=envelope.get("usage_invocation_id"),
     )
+    sent = envelope.get("sent_messages")
+    if isinstance(sent, list):
+        response.sent_messages = sent
+    return response
 
 
 def call_live_provider(
