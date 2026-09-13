@@ -500,6 +500,13 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         # settings must not control production usage totals.
         _track_module_primary(response, task_id, request_provider, requested_model)
 
+    # Capture/fanout must describe the request that produced the response.
+    # When the adapter reshaped it for a strict local template (#389) the
+    # response carries the array actually sent.
+    sent_messages = getattr(response, "sent_messages", None)
+    if isinstance(sent_messages, list):
+        capture_messages = copy.deepcopy(sent_messages)
+
     # If capture disabled, return immediately - zero overhead
     if not _capture_enabled():
         return response

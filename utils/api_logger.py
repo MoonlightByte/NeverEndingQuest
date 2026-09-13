@@ -144,6 +144,13 @@ def log_api_call(endpoint_name, messages, response, metadata=None):
         completion_tokens = 0
         total_tokens = 0
 
+    # The row must describe the request that produced the response. When the
+    # adapter reshaped the caller's array for a strict local template (#389)
+    # the response carries the array actually sent.
+    sent_messages = getattr(response, "sent_messages", None)
+    if isinstance(sent_messages, list):
+        messages = sent_messages
+
     # Build log entry
     log_entry = {
         "timestamp": datetime.now().isoformat(),
