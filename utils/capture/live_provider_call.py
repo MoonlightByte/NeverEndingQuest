@@ -1183,11 +1183,38 @@ def call_live_provider(
                 else (_WIZARD_BACKSTOP_SECONDS if wizard_task else _WATCHDOG_SECONDS)
             )
         )
+        # The request is written by its own thread on a pipe that communicate()
+        # never sees. communicate(input=..., timeout=...) registers stdin for
+        # writing only on the call that carries `input`; once the 250 ms poll
+        # below expires with the payload part-written (any request over the
+        # pipe buffer whose child has not drained it yet), every later
+        # communicate(None) leaves the remainder unsent and stdin open, so the
+        # child waits on stdin and the parent waits on stdout forever.
+        # Observed 2026-09-13 on a fresh-install T092 (~80 KB request): the
+        # wizard heartbeat ran indefinitely with no request ever reaching the
+        # provider. The writer blocks only while the child drains; a dead child
+        # breaks the pipe and releases it.
+        request_stdin = process.stdin
+        process.stdin = None
+
+        def _feed_request():
+            try:
+                request_stdin.write(request_payload)
+            except (BrokenPipeError, OSError, ValueError):
+                pass
+            finally:
+                try:
+                    request_stdin.close()
+                except (BrokenPipeError, OSError, ValueError):
+                    pass
+
+        threading.Thread(
+            target=_feed_request, name="live-provider-request", daemon=True
+        ).start()
         next_heartbeat = started + _HEARTBEAT_SECONDS
         envelope = None
         superseded = False
         output = None
-        first_communicate = True
         backstop_exhausted = False
         authority_unavailable = False
         try:
@@ -1201,13 +1228,10 @@ def call_live_provider(
                     authority_unavailable = True
                     break
                 try:
-                    output, _ = process.communicate(
-                        input=request_payload if first_communicate else None,
-                        timeout=0.25,
-                    )
+                    output, _ = process.communicate(timeout=0.25)
                     break
                 except subprocess.TimeoutExpired:
-                    first_communicate = False
+                    pass
                 if time.monotonic() >= next_heartbeat:
                     _safe_emit(
                         emit,
