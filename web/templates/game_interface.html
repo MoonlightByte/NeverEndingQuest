@@ -4682,6 +4682,19 @@
     </div>
     
     <script>
+        // Game/model/module strings are data, including on a tooltip's second
+        // rendering pass. Escape at the final HTML text/attribute boundary.
+        function escapeLegacyHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, character => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[character]);
+        }
+
+        // An inline event handler is JavaScript nested inside an HTML
+        // attribute: JSON quote the complete argument, then HTML-encode it.
+        function legacyJsonAttribute(value) {
+            return escapeLegacyHtml(JSON.stringify(value) ?? 'null');
+        }
         const socket = io();
         let connected = false;
         let gameStarted = false;
@@ -4936,18 +4949,18 @@
             } else {
                 headerText = stats.name.replace(/_/g, ' ');
             }
-            let html = `<div class="stats-tooltip-header">${headerText}</div>`;
+            let html = `<div class="stats-tooltip-header">${escapeLegacyHtml(headerText)}</div>`;
             
             // First line: HP | AC | Speed
             html += '<div class="stats-tooltip-row" style="font-size: 12px;">';
             if (stats.currentHp !== undefined && stats.maxHp !== undefined) {
-                html += `<span>${stats.currentHp}/${stats.maxHp} HP</span>`;
+                html += `<span>${escapeLegacyHtml(stats.currentHp)}/${escapeLegacyHtml(stats.maxHp)} HP</span>`;
             }
             if (stats.ac !== undefined) {
-                html += `<span style="margin-left: 8px;">AC ${stats.ac}</span>`;
+                html += `<span style="margin-left: 8px;">AC ${escapeLegacyHtml(stats.ac)}</span>`;
             }
             if (stats.speed !== undefined) {
-                html += `<span style="margin-left: 8px;">${stats.speed}ft</span>`;
+                html += `<span style="margin-left: 8px;">${escapeLegacyHtml(stats.speed)}ft</span>`;
             }
             html += '</div>';
             
@@ -4957,11 +4970,11 @@
                 if (stats.primaryAttack) {
                     const bonus = stats.primaryAttack.bonus >= 0 ? '+' + stats.primaryAttack.bonus : stats.primaryAttack.bonus;
                     const weaponName = stats.primaryAttack.name || 'Attack';
-                    html += `<span>${weaponName}: ${bonus} (${stats.primaryAttack.damage})</span>`;
+                    html += `<span>${escapeLegacyHtml(weaponName)}: ${escapeLegacyHtml(bonus)} (${escapeLegacyHtml(stats.primaryAttack.damage)})</span>`;
                 }
                 if (stats.initiative !== undefined) {
                     const init = stats.initiative >= 0 ? '+' + stats.initiative : stats.initiative;
-                    html += `<span style="margin-left: 8px;">Init: ${init}</span>`;
+                    html += `<span style="margin-left: 8px;">Init: ${escapeLegacyHtml(init)}</span>`;
                 }
                 html += '</div>';
             }
@@ -4974,7 +4987,7 @@
                     const name = ammo.name.charAt(0).toUpperCase() + ammo.name.slice(1);
                     return `${name} (${ammo.quantity})`;
                 }).join(', ');
-                html += `<span>${ammoList}</span>`;
+                html += `<span>${escapeLegacyHtml(ammoList)}</span>`;
                 html += '</div>';
             }
 
@@ -4997,7 +5010,7 @@
                 if (slotInfo.length > 0) {
                     html += '<div class="stats-tooltip-row" style="font-size: 11px; margin-top: 4px; border-top: 1px solid #444; padding-top: 3px;">';
                     html += '<span style="color: #87CEEB;">Spell Slots: </span>';
-                    html += '<span style="color: #ddd;">' + slotInfo.join(' • ') + '</span>';
+                    html += '<span style="color: #ddd;">' + escapeLegacyHtml(slotInfo.join(' • ')) + '</span>';
                     html += '</div>';
                 }
             }
@@ -5020,8 +5033,8 @@
                     const spellList = stats.spells[level];
                     if (spellList && spellList.length > 0) {
                         html += `<div style="margin-top: 3px;">`;
-                        html += `<span style="font-size: 10px; color: #FFA500; font-weight: bold;">${levelName}:</span> `;
-                        html += `<span style="font-size: 10px; color: #f0f0f0;">${spellList.join(', ')}</span>`;
+                        html += `<span style="font-size: 10px; color: #FFA500; font-weight: bold;">${escapeLegacyHtml(levelName)}:</span> `;
+                        html += `<span style="font-size: 10px; color: #f0f0f0;">${escapeLegacyHtml(spellList.join(', '))}</span>`;
                         html += `</div>`;
                     }
                 }
@@ -5034,9 +5047,9 @@
                 html += '<div style="font-size: 11px; color: #FFD700; margin-bottom: 2px;">Class Features:</div>';
                 for (let feature of stats.classFeatures) {
                     html += '<div style="font-size: 10px; color: #f0f0f0; margin-top: 2px;">';
-                    html += `• ${feature.name}`;
+                    html += `• ${escapeLegacyHtml(feature.name)}`;
                     if (feature.usage) {
-                        html += ` <span style="color: #87CEEB;">(${feature.usage})</span>`;
+                        html += ` <span style="color: #87CEEB;">(${escapeLegacyHtml(feature.usage)})</span>`;
                     }
                     html += '</div>';
                 }
@@ -5047,7 +5060,7 @@
             if (stats.conditions && stats.conditions.length > 0) {
                 html += '<div class="stats-tooltip-row" style="font-size: 11px; margin-top: 4px; padding-top: 3px; border-top: 1px solid #444;">';
                 html += '<span style="color: #ff6666; font-weight: bold;">Conditions: </span>';
-                html += `<span style="color: #ffaaaa;">${stats.conditions.join(', ')}</span>`;
+                html += `<span style="color: #ffaaaa;">${escapeLegacyHtml(stats.conditions.join(', '))}</span>`;
                 html += '</div>';
             }
 
@@ -6071,11 +6084,11 @@
             html += '<div class="equipment-section"><h4>Equipment</h4>';
             if (data.equipment && data.equipment.length > 0) {
                 data.equipment.forEach(item => {
-                    const description = (item.description || 'No description available.').replace(/"/g, '&quot;');
-                    html += `<div class="inventory-item" data-tooltip-title="${item.item_name}" data-tooltip-content="${description}">
+                    const description = (item.description || 'No description available.');
+                    html += `<div class="inventory-item" data-tooltip-title="${escapeLegacyHtml(item.item_name)}" data-tooltip-content="${escapeLegacyHtml(description)}">
                                 <span class="feature-bullet">●</span>
-                                <span class="item-name">${item.item_name}${(item.quantity||1) > 1 ? ` ×${item.quantity}` : ''}</span>
-                                <span class="item-type"> (${(item.item_type || 'misc').toLowerCase()})</span>
+                                <span class="item-name">${escapeLegacyHtml(item.item_name)}${escapeLegacyHtml((item.quantity||1) > 1 ? ` ×${item.quantity}` : '')}</span>
+                                <span class="item-type"> (${escapeLegacyHtml((item.item_type || 'misc').toLowerCase())})</span>
                              </div>`;
                 });
             } else {
@@ -6116,7 +6129,7 @@
             const tooltip = document.createElement('div');
             tooltip.className = 'skill-tooltip';
             
-            let content = `<div class="skill-tooltip-header">${abilityName} Skills</div>`;
+            let content = `<div class="skill-tooltip-header">${escapeLegacyHtml(abilityName)} Skills</div>`;
             const associatedSkills = SKILL_MAP[abilityName];
             const proficientSkillsLower = proficientSkills.map(s => s.toLowerCase());
 
@@ -6128,8 +6141,8 @@
                     abilityMod + (characterData.proficiencyBonus || 2) : abilityMod;
 
                 content += `<div class="skill-tooltip-item">
-                    <span class="skill-tooltip-name">${isProficient ? '●' : '○'} ${skill}</span>
-                    <span class="skill-tooltip-value">${bonus >= 0 ? '+' : ''}${bonus}</span>
+                    <span class="skill-tooltip-name">${escapeLegacyHtml(isProficient ? '●' : '○')} ${escapeLegacyHtml(skill)}</span>
+                    <span class="skill-tooltip-value">${escapeLegacyHtml(bonus >= 0 ? '+' : '')}${escapeLegacyHtml(bonus)}</span>
                 </div>`;
             });
 
@@ -6230,8 +6243,8 @@
                         
                         <!-- COLUMN 1: PORTRAIT -->
                         <div class="character-portrait">
-                            <img id="char-portrait-img" src="/static/portraits/${normalizedName}.png" onerror="this.onerror=null;this.src='/static/icons/default_portrait.png';">
-                            <div class="upload-overlay" onclick="uploadPortrait('${normalizedName}')">
+                            <img id="char-portrait-img" src="/static/portraits/${escapeLegacyHtml(normalizedName)}.png" onerror="this.onerror=null;this.src='/static/icons/default_portrait.png';">
+                            <div class="upload-overlay" onclick="uploadPortrait(${legacyJsonAttribute(normalizedName)})">
                                 <span>Upload Portrait</span>
                             </div>
                             <!-- Hidden input removed - using persistent input instead -->
@@ -6239,12 +6252,12 @@
                         
                         <!-- COLUMN 2: HEADER INFO BOX -->
                         <div class="character-header-info">
-                            <div class="character-name">${data.name}</div>
+                            <div class="character-name">${escapeLegacyHtml(data.name)}</div>
                             <div class="character-details">
-                                <div><span class="orange">Level ${data.level}</span> ${data.race} ${data.class}</div>
-                                <div><span class="orange">XP:</span> ${data.experience_points} / ${data.exp_required_for_next_level}</div>
-                                <div><span class="orange">Profession:</span> ${data.background || 'Adventurer'}</div>
-                                <div><span class="orange">Alignment:</span> ${capitalizeWords(data.alignment) || 'Neutral'}</div>
+                                <div><span class="orange">Level ${escapeLegacyHtml(data.level)}</span> ${escapeLegacyHtml(data.race)} ${escapeLegacyHtml(data.class)}</div>
+                                <div><span class="orange">XP:</span> ${escapeLegacyHtml(data.experience_points)} / ${escapeLegacyHtml(data.exp_required_for_next_level)}</div>
+                                <div><span class="orange">Profession:</span> ${escapeLegacyHtml(data.background || 'Adventurer')}</div>
+                                <div><span class="orange">Alignment:</span> ${escapeLegacyHtml(capitalizeWords(data.alignment) || 'Neutral')}</div>
                             </div>
                         </div>
                     </div>`;
@@ -6255,16 +6268,16 @@
                     const capitalizedAbility = ability.charAt(0).toUpperCase() + ability.slice(1);
                     
                     // Pass data and proficientSkills to hover handlers
-                    const dataString = JSON.stringify(data).replace(/"/g, '&quot;');
-                    const skillsString = JSON.stringify(proficientSkills).replace(/"/g, '&quot;');
+                    const dataString = legacyJsonAttribute(data);
+                    const skillsString = legacyJsonAttribute(proficientSkills);
                     
                     html += `<div class="ability-score" 
-                                  data-ability="${capitalizedAbility}"
+                                  data-ability="${escapeLegacyHtml(capitalizedAbility)}"
                                   onmouseenter="showSkillTooltip(event, ${dataString}, ${skillsString})"
                                   onmouseleave="hideSkillTooltip()">
-                                <div class="ability-name">${ability.substr(0, 3).toUpperCase()}</div>
-                                <div class="ability-value">${score}</div>
-                                <div class="ability-modifier">${getModifier(score)}</div>
+                                <div class="ability-name">${escapeLegacyHtml(ability.substr(0, 3).toUpperCase())}</div>
+                                <div class="ability-value">${escapeLegacyHtml(score)}</div>
+                                <div class="ability-modifier">${escapeLegacyHtml(getModifier(score))}</div>
                              </div>`;
                 });
                 html += '</div>';
@@ -6274,28 +6287,28 @@
             html += `<div class="combat-stats">
                         <div class="combat-stat">
                             <div class="combat-stat-label">HP</div>
-                            <div class="combat-stat-value">${data.hitPoints}/${data.maxHitPoints}</div>
-                            <div class="hp-bar"><div class="hp-fill ${hpClass}" style="width: ${hpPercent}%"></div></div>
+                            <div class="combat-stat-value">${escapeLegacyHtml(data.hitPoints)}/${escapeLegacyHtml(data.maxHitPoints)}</div>
+                            <div class="hp-bar"><div class="hp-fill ${escapeLegacyHtml(hpClass)}" style="width: ${escapeLegacyHtml(hpPercent)}%"></div></div>
                         </div>
                         <div class="combat-stat">
                             <div class="combat-stat-label">AC</div>
-                            <div class="combat-stat-value">${data.armorClass}</div>
+                            <div class="combat-stat-value">${escapeLegacyHtml(data.armorClass)}</div>
                         </div>
                         <div class="combat-stat">
                             <div class="combat-stat-label">INIT</div>
-                            <div class="combat-stat-value">${data.initiative >= 0 ? '+' : ''}${data.initiative}</div>
+                            <div class="combat-stat-value">${escapeLegacyHtml(data.initiative >= 0 ? '+' : '')}${escapeLegacyHtml(data.initiative)}</div>
                         </div>
                         <div class="combat-stat currency">
                             <div class="combat-stat-label">GP</div>
-                            <div class="combat-stat-value">${data.currency?.gold || 0}</div>
+                            <div class="combat-stat-value">${escapeLegacyHtml(data.currency?.gold || 0)}</div>
                         </div>
                         <div class="combat-stat currency">
                             <div class="combat-stat-label">SP</div>
-                            <div class="combat-stat-value">${data.currency?.silver || 0}</div>
+                            <div class="combat-stat-value">${escapeLegacyHtml(data.currency?.silver || 0)}</div>
                         </div>
                         <div class="combat-stat currency">
                             <div class="combat-stat-label">CP</div>
-                            <div class="combat-stat-value">${data.currency?.copper || 0}</div>
+                            <div class="combat-stat-value">${escapeLegacyHtml(data.currency?.copper || 0)}</div>
                         </div>
                     </div>`;
 
@@ -6306,10 +6319,10 @@
             if (data.attacksAndSpellcasting && data.attacksAndSpellcasting.length > 0) {
                 html += '<div class="stat-group"><h4>Weapons & Attacks</h4><div class="stat-group-content">';
                 data.attacksAndSpellcasting.forEach(weapon => { 
-                    const description = (weapon.description || 'No description available.').replace(/"/g, '&quot;');
+                    const description = (weapon.description || 'No description available.');
                     const damageString = weapon.damage || `${weapon.damageDice}+${weapon.damageBonus}`;
-                    html += `<div class="feature-item" data-tooltip-title="${weapon.name}" data-tooltip-content="${description}">
-                                <span class="feature-name" style="color: #4CAF50;">${weapon.name} (${damageString})</span>
+                    html += `<div class="feature-item" data-tooltip-title="${escapeLegacyHtml(weapon.name)}" data-tooltip-content="${escapeLegacyHtml(description)}">
+                                <span class="feature-name" style="color: #4CAF50;">${escapeLegacyHtml(weapon.name)} (${escapeLegacyHtml(damageString)})</span>
                              </div>`; 
                 });
                 html += '</div></div>';
@@ -6321,7 +6334,7 @@
             if (data.ammunition && Array.isArray(data.ammunition) && data.ammunition.length > 0) {
                 html += '<div class="stat-group"><h4>Ammunition</h4><div class="stat-group-content">';
                 data.ammunition.forEach(ammo => {
-                    html += `<div class="inventory-item" style="border-bottom: none; padding: 2px 4px;"><div class="item-main" style="margin-bottom: 0;"><span class="item-name" style="font-size: 16px;">${ammo.name}</span><span class="item-qty" style="font-size: 16px;">×${ammo.quantity}</span></div></div>`;
+                    html += `<div class="inventory-item" style="border-bottom: none; padding: 2px 4px;"><div class="item-main" style="margin-bottom: 0;"><span class="item-name" style="font-size: 16px;">${escapeLegacyHtml(ammo.name)}</span><span class="item-qty" style="font-size: 16px;">×${escapeLegacyHtml(ammo.quantity)}</span></div></div>`;
                 });
                 html += '</div></div>';
             } else {
@@ -6337,7 +6350,7 @@
                     const isProficient = data.savingThrows.includes(save);
                     const abilityMod = data.abilities ? Math.floor((data.abilities[save.toLowerCase()] - 10) / 2) : 0;
                     const bonus = isProficient ? abilityMod + (data.proficiencyBonus || 2) : abilityMod;
-                    html += `<div class="save-item"><span class="save-name">${save} ${isProficient ? '●' : '○'}</span><span class="save-value">${bonus >= 0 ? '+' : ''}${bonus}</span></div>`;
+                    html += `<div class="save-item"><span class="save-name">${escapeLegacyHtml(save)} ${escapeLegacyHtml(isProficient ? '●' : '○')}</span><span class="save-value">${escapeLegacyHtml(bonus >= 0 ? '+' : '')}${escapeLegacyHtml(bonus)}</span></div>`;
                 });
                 html += '</div></div>';
             }
@@ -6350,19 +6363,19 @@
                 data.classFeatures.forEach(feature => {
                     let usageDisplay = '';
                     if (feature.usage && feature.usage.current !== undefined && feature.usage.max > 0) {
-                        usageDisplay = ` <span class="usage-counter ${feature.usage.current === 0 ? 'exhausted' : ''}">${feature.usage.current}/${feature.usage.max}</span>`;
+                        usageDisplay = ` <span class="usage-counter ${escapeLegacyHtml(feature.usage.current === 0 ? 'exhausted' : '')}">${escapeLegacyHtml(feature.usage.current)}/${escapeLegacyHtml(feature.usage.max)}</span>`;
                     }
-                    const description = (feature.description || 'No description available.').replace(/"/g, '&quot;');
-                    html += `<div class="feature-item" data-tooltip-title="${feature.name}" data-tooltip-content="${description}"><span class="feature-name">${feature.name}</span>${usageDisplay}${(feature.usage && feature.usage.refreshOn) ? ` <span class="feature-refresh">(${feature.usage.refreshOn})</span>` : ''}</div>`;
+                    const description = (feature.description || 'No description available.');
+                    html += `<div class="feature-item" data-tooltip-title="${escapeLegacyHtml(feature.name)}" data-tooltip-content="${escapeLegacyHtml(description)}"><span class="feature-name">${escapeLegacyHtml(feature.name)}</span>${usageDisplay}${(feature.usage && feature.usage.refreshOn) ? ` <span class="feature-refresh">(${escapeLegacyHtml(feature.usage.refreshOn)})</span>` : ''}</div>`;
                 });
                 html += '</div></div>';
             }
             if (data.temporaryEffects && data.temporaryEffects.length > 0) {
                 html += '<div class="stat-group"><h4>Active Effects</h4><div class="stat-group-content">';
                 data.temporaryEffects.forEach(effect => {
-                    let durationDisplay = effect.duration ? ` <span class="effect-duration">${effect.duration}</span>` : '';
-                    const description = (effect.description || 'No description available.').replace(/"/g, '&quot;');
-                    html += `<div class="feature-item" data-tooltip-title="${effect.name}" data-tooltip-content="${description}"><div class="feature-header"><span class="feature-name">${effect.name}</span>${durationDisplay}</div></div>`;
+                    let durationDisplay = effect.duration ? ` <span class="effect-duration">${escapeLegacyHtml(effect.duration)}</span>` : '';
+                    const description = (effect.description || 'No description available.');
+                    html += `<div class="feature-item" data-tooltip-title="${escapeLegacyHtml(effect.name)}" data-tooltip-content="${escapeLegacyHtml(description)}"><div class="feature-header"><span class="feature-name">${escapeLegacyHtml(effect.name)}</span>${durationDisplay}</div></div>`;
                 });
                 html += '</div></div>';
             }
@@ -6371,21 +6384,21 @@
                 if (specialTraits.length > 0) {
                     html += '<div class="stat-group"><h4>Racial Traits</h4><div class="stat-group-content">';
                     specialTraits.forEach(trait => { 
-                        const description = (trait.description || 'No description available.').replace(/"/g, '&quot;');
-                        html += `<div class="feature-item" data-tooltip-title="${trait.name}" data-tooltip-content="${description}"><span class="feature-name">${trait.name}</span></div>`; 
+                        const description = (trait.description || 'No description available.');
+                        html += `<div class="feature-item" data-tooltip-title="${escapeLegacyHtml(trait.name)}" data-tooltip-content="${escapeLegacyHtml(description)}"><span class="feature-name">${escapeLegacyHtml(trait.name)}</span></div>`;
                     });
                     html += '</div></div>';
                 }
             }
             if (data.backgroundFeature && data.backgroundFeature.name) {
-                const description = (data.backgroundFeature.description || 'No description available.').replace(/"/g, '&quot;');
-                html += `<div class="stat-group"><h4>Background</h4><div class="stat-group-content"><div class="feature-item" data-tooltip-title="${data.backgroundFeature.name}" data-tooltip-content="${description}"><span class="feature-name">${data.backgroundFeature.name}</span></div></div></div>`;
+                const description = (data.backgroundFeature.description || 'No description available.');
+                html += `<div class="stat-group"><h4>Background</h4><div class="stat-group-content"><div class="feature-item" data-tooltip-title="${escapeLegacyHtml(data.backgroundFeature.name)}" data-tooltip-content="${escapeLegacyHtml(description)}"><span class="feature-name">${escapeLegacyHtml(data.backgroundFeature.name)}</span></div></div></div>`;
             }
             if (data.feats && data.feats.length > 0) {
                 html += '<div class="stat-group"><h4>Feats</h4><div class="stat-group-content">';
                 data.feats.forEach(feat => { 
-                    const description = (feat.description || 'No description available.').replace(/"/g, '&quot;');
-                    html += `<div class="feature-item" data-tooltip-title="${feat.name}" data-tooltip-content="${description}"><span class="feature-name">${feat.name}</span></div>`; 
+                    const description = (feat.description || 'No description available.');
+                    html += `<div class="feature-item" data-tooltip-title="${escapeLegacyHtml(feat.name)}" data-tooltip-content="${escapeLegacyHtml(description)}"><span class="feature-name">${escapeLegacyHtml(feat.name)}</span></div>`;
                 });
                 html += '</div></div>';
             }
@@ -6422,21 +6435,21 @@
             const hasSpellcasting = data.spellcasting && data.spellcasting.spells && Object.values(data.spellcasting.spells).some(s => Array.isArray(s) && s.length > 0);
             if (hasSpellcasting) {
                 html += '<div class="spellcasting-section"><h3>SPELLCASTING</h3>';
-                if (data.spellcasting.spellSaveDC || data.spellcasting.spellAttackBonus) { html += `<div class="spell-stats">${data.spellcasting.spellSaveDC ? `<span>Save DC: ${data.spellcasting.spellSaveDC}</span>` : ''}${data.spellcasting.spellAttackBonus ? `<span>Spell Attack: +${data.spellcasting.spellAttackBonus}</span>` : ''}</div>`; }
+                if (data.spellcasting.spellSaveDC || data.spellcasting.spellAttackBonus) { html += `<div class="spell-stats">${data.spellcasting.spellSaveDC ? `<span>Save DC: ${escapeLegacyHtml(data.spellcasting.spellSaveDC)}</span>` : ''}${data.spellcasting.spellAttackBonus ? `<span>Spell Attack: +${escapeLegacyHtml(data.spellcasting.spellAttackBonus)}</span>` : ''}</div>`; }
                 const spellLevels = ['cantrips', 'level1', 'level2', 'level3', 'level4', 'level5', 'level6', 'level7', 'level8', 'level9'];
                 const spellLevelNames = ['Cantrips', '1st Level', '2nd Level', '3rd Level', '4th Level', '5th Level', '6th Level', '7th Level', '8th Level', '9th Level'];
                 spellLevels.forEach((level, index) => {
                     const spells = data.spellcasting.spells[level];
                     if (spells && spells.length > 0) {
-                        html += `<div class="spell-level-group"><div class="spell-level-header"><span class="spell-level-name">${spellLevelNames[index]}</span>`;
+                        html += `<div class="spell-level-group"><div class="spell-level-header"><span class="spell-level-name">${escapeLegacyHtml(spellLevelNames[index])}</span>`;
                         if (index > 0 && data.spellcasting.spellSlots && data.spellcasting.spellSlots[`level${index}`]) {
                             const slots = data.spellcasting.spellSlots[`level${index}`];
                             const slotClass = slots.current === 0 ? 'exhausted' : slots.current <= slots.max * 0.5 ? 'low' : 'available';
-                            html += `<span class="spell-slots ${slotClass}">${slots.current || 0}/${slots.max || 0} slots</span>`;
+                            html += `<span class="spell-slots ${escapeLegacyHtml(slotClass)}">${escapeLegacyHtml(slots.current || 0)}/${escapeLegacyHtml(slots.max || 0)} slots</span>`;
                         }
                         html += '</div><div class="spell-list">';
                         spells.forEach(spellName => {
-                            html += `<div class="spell-item"><span class="spell-name">${spellName}</span><div class="spell-badges">${data.spellcasting.preparedSpells && data.spellcasting.preparedSpells.includes(spellName) ? '<span class="spell-badge prepared">P</span>' : ''}</div></div>`;
+                            html += `<div class="spell-item"><span class="spell-name">${escapeLegacyHtml(spellName)}</span><div class="spell-badges">${data.spellcasting.preparedSpells && data.spellcasting.preparedSpells.includes(spellName) ? '<span class="spell-badge prepared">P</span>' : ''}</div></div>`;
                         });
                         html += '</div></div>';
                     }
@@ -6452,16 +6465,16 @@
             if (scrolls.length > 0) {
                 html += '<div class="magic-items-category"><h4>SCROLLS</h4>';
                 scrolls.forEach(s => { 
-                    const description = (s.description || 'No description available.').replace(/"/g, '&quot;');
-                    html += `<div class="magic-item" data-tooltip-title="${s.item_name}" data-tooltip-content="${description}"><span class="magic-item-name">${s.item_name}</span>${s.spellLevel !== undefined ? `<span class="spell-badge">${s.spellLevel === 0 ? 'Cantrip' : `Level ${s.spellLevel}`}</span>` : ''}${s.quantity > 1 ? `<span class="magic-item-charges">×${s.quantity}</span>` : s.consumable ? '<span class="magic-item-charges consumable">[1x]</span>' : ''}</div>`; 
+                    const description = (s.description || 'No description available.');
+                    html += `<div class="magic-item" data-tooltip-title="${escapeLegacyHtml(s.item_name)}" data-tooltip-content="${escapeLegacyHtml(description)}"><span class="magic-item-name">${escapeLegacyHtml(s.item_name)}</span>${s.spellLevel !== undefined ? `<span class="spell-badge">${escapeLegacyHtml(s.spellLevel === 0 ? 'Cantrip' : `Level ${s.spellLevel}`)}</span>` : ''}${s.quantity > 1 ? `<span class="magic-item-charges">×${escapeLegacyHtml(s.quantity)}</span>` : s.consumable ? '<span class="magic-item-charges consumable">[1x]</span>' : ''}</div>`;
                 });
                 html += '</div>';
             }
             if (potions.length > 0) {
                 html += '<div class="magic-items-category"><h4>POTIONS</h4>';
                 potions.forEach(p => { 
-                    const description = (p.description || 'No description available.').replace(/"/g, '&quot;');
-                    html += `<div class="magic-item" data-tooltip-title="${p.item_name}" data-tooltip-content="${description}"><span class="magic-item-name">${p.item_name}</span>${p.quantity > 1 ? `<span class="magic-item-charges">×${p.quantity}</span>` : p.consumable ? '<span class="magic-item-charges consumable">[1x]</span>' : ''}</div>`; 
+                    const description = (p.description || 'No description available.');
+                    html += `<div class="magic-item" data-tooltip-title="${escapeLegacyHtml(p.item_name)}" data-tooltip-content="${escapeLegacyHtml(description)}"><span class="magic-item-name">${escapeLegacyHtml(p.item_name)}</span>${p.quantity > 1 ? `<span class="magic-item-charges">×${escapeLegacyHtml(p.quantity)}</span>` : p.consumable ? '<span class="magic-item-charges consumable">[1x]</span>' : ''}</div>`;
                 });
                 html += '</div>';
             }
@@ -6471,10 +6484,10 @@
                     let chargesHtml = '';
                     if (item.charges) {
                         const chargeClass = item.charges.current === 0 ? 'exhausted' : item.charges.current <= item.charges.max * 0.5 ? 'low' : 'available';
-                        chargesHtml = `<span class="magic-item-charges ${chargeClass}">${item.charges.current || 0}/${item.charges.max || 0}</span>`;
+                        chargesHtml = `<span class="magic-item-charges ${escapeLegacyHtml(chargeClass)}">${escapeLegacyHtml(item.charges.current || 0)}/${escapeLegacyHtml(item.charges.max || 0)}</span>`;
                     }
-                    const description = (item.description || 'No description available.').replace(/"/g, '&quot;');
-                    html += `<div class="magic-item" data-tooltip-title="${item.item_name}" data-tooltip-content="${description}"><span class="magic-item-name">${item.item_name}</span>${chargesHtml}</div>`;
+                    const description = (item.description || 'No description available.');
+                    html += `<div class="magic-item" data-tooltip-title="${escapeLegacyHtml(item.item_name)}" data-tooltip-content="${escapeLegacyHtml(description)}"><span class="magic-item-name">${escapeLegacyHtml(item.item_name)}</span>${chargesHtml}</div>`;
                 });
                 html += '</div>';
             }
@@ -6511,32 +6524,32 @@
                 html += `<div class="npc-character-sheet">`;
                 
                 html += `<div class="npc-header">`;
-                html += `<div class="npc-header-main"><div class="npc-name">${npc.name}</div><div class="npc-details">${npc.race} ${npc.class} • Level ${npc.level} • ${capitalizeWords(npc.alignment)}</div></div>`;
+                html += `<div class="npc-header-main"><div class="npc-name">${escapeLegacyHtml(npc.name)}</div><div class="npc-details">${escapeLegacyHtml(npc.race)} ${escapeLegacyHtml(npc.class)} • Level ${escapeLegacyHtml(npc.level)} • ${escapeLegacyHtml(capitalizeWords(npc.alignment))}</div></div>`;
                 
                 if (npc.experience_points !== undefined && npc.exp_required_for_next_level !== undefined) {
                     html += `<div class="npc-header-xp">
                                 <div class="xp-label">XP</div>
-                                <div class="xp-value">${npc.experience_points} / ${npc.exp_required_for_next_level}</div>
+                                <div class="xp-value">${escapeLegacyHtml(npc.experience_points)} / ${escapeLegacyHtml(npc.exp_required_for_next_level)}</div>
                              </div>`;
                 }
 
                 if (npc.currency) {
-                    html += `<div class="npc-header-currency"><div class="currency-grid"><div class="currency-item"><span class="currency-amount">${npc.currency.gold || 0}</span><span class="currency-type">GP</span></div><div class="currency-item"><span class="currency-amount">${npc.currency.silver || 0}</span><span class="currency-type">SP</span></div><div class="currency-item"><span class="currency-amount">${npc.currency.copper || 0}</span><span class="currency-type">CP</span></div></div></div>`;
+                    html += `<div class="npc-header-currency"><div class="currency-grid"><div class="currency-item"><span class="currency-amount">${escapeLegacyHtml(npc.currency.gold || 0)}</span><span class="currency-type">GP</span></div><div class="currency-item"><span class="currency-amount">${escapeLegacyHtml(npc.currency.silver || 0)}</span><span class="currency-type">SP</span></div><div class="currency-item"><span class="currency-amount">${escapeLegacyHtml(npc.currency.copper || 0)}</span><span class="currency-type">CP</span></div></div></div>`;
                 }
                 html += `</div>`;
                 
                 if (npc.abilities) {
                     html += '<div class="npc-abilities">';
-                    html += `<div class="ability-score npc-combat-stat"><div class="ability-name">HP</div><div class="ability-value">${npc.hitPoints}/${npc.maxHitPoints}</div><div class="hp-bar"><div class="hp-fill ${hpClass}" style="width: ${hpPercent}%"></div></div></div>`;
-                    html += `<div class="ability-score npc-combat-stat npc-no-circle"><div class="ability-name">AC</div><div class="ability-value">${npc.armorClass}</div></div>`;
-                    html += `<div class="ability-score npc-combat-stat npc-no-circle"><div class="ability-name">INIT</div><div class="ability-value">${npc.initiative >= 0 ? '+' : ''}${npc.initiative}</div></div>`;
+                    html += `<div class="ability-score npc-combat-stat"><div class="ability-name">HP</div><div class="ability-value">${escapeLegacyHtml(npc.hitPoints)}/${escapeLegacyHtml(npc.maxHitPoints)}</div><div class="hp-bar"><div class="hp-fill ${escapeLegacyHtml(hpClass)}" style="width: ${escapeLegacyHtml(hpPercent)}%"></div></div></div>`;
+                    html += `<div class="ability-score npc-combat-stat npc-no-circle"><div class="ability-name">AC</div><div class="ability-value">${escapeLegacyHtml(npc.armorClass)}</div></div>`;
+                    html += `<div class="ability-score npc-combat-stat npc-no-circle"><div class="ability-name">INIT</div><div class="ability-value">${escapeLegacyHtml(npc.initiative >= 0 ? '+' : '')}${escapeLegacyHtml(npc.initiative)}</div></div>`;
                     
                     const allAbilities = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
                     allAbilities.forEach(ability => {
                         if (npc.abilities[ability]) {
                             const score = npc.abilities[ability];
                             const modifier = Math.floor((score - 10) / 2);
-                            html += `<div class="ability-score"><div class="ability-name">${ability.substr(0, 3).toUpperCase()}</div><div class="ability-value">${score}</div><div class="ability-modifier">${modifier >= 0 ? `+${modifier}` : modifier}</div></div>`;
+                            html += `<div class="ability-score"><div class="ability-name">${escapeLegacyHtml(ability.substr(0, 3).toUpperCase())}</div><div class="ability-value">${escapeLegacyHtml(score)}</div><div class="ability-modifier">${escapeLegacyHtml(modifier >= 0 ? `+${modifier}` : modifier)}</div></div>`;
                         }
                     });
                     html += '</div>';
@@ -6551,35 +6564,35 @@
                         const bonus = isProficient ? abilityMod + (npc.proficiencyBonus || 3) : abilityMod;
                         return { name: save, proficient: isProficient, bonus: bonus >= 0 ? `+${bonus}` : `${bonus}` };
                     });
-                    html += `<button class="npc-detail-button" onclick="showNPCSaves('${npc.name}', ${JSON.stringify(savesData).replace(/"/g, '&quot;')})">Saving Throw</button>`;
+                    html += `<button class="npc-detail-button" onclick="showNPCSaves(${legacyJsonAttribute(npc.name)}, ${legacyJsonAttribute(savesData)})">Saving Throw</button>`;
                 }
                 
                 if (npc.skills) {
                     let skillsData = Object.entries(npc.skills).map(([skill, value]) => ({ name: skill, bonus: value >= 0 ? `+${value}` : `${value}` }));
-                    html += `<button class="npc-detail-button" onclick="showNPCSkills('${npc.name}', ${JSON.stringify(skillsData).replace(/"/g, '&quot;')})">Skills</button>`;
+                    html += `<button class="npc-detail-button" onclick="showNPCSkills(${legacyJsonAttribute(npc.name)}, ${legacyJsonAttribute(skillsData)})">Skills</button>`;
                 }
                 
                 if (npc.equipment && npc.equipment.length > 0) {
-                    html += `<button class="npc-detail-button" onclick="showNPCInventory('${npc.name}', ${JSON.stringify(npc.equipment).replace(/"/g, '&quot;')})">Inventory</button>`;
+                    html += `<button class="npc-detail-button" onclick="showNPCInventory(${legacyJsonAttribute(npc.name)}, ${legacyJsonAttribute(npc.equipment)})">Inventory</button>`;
                 }
 
                 if (npc.classFeatures && npc.classFeatures.length > 0) {
                     const featuresData = npc.classFeatures.map(f => ({ name: f.name, detail: f.description || '' }));
-                    html += `<button class="npc-detail-button" onclick="showNPCDetailList('${npc.name}', 'Key Abilities', ${JSON.stringify(featuresData).replace(/"/g, '&quot;')})">Key Abilities</button>`;
+                    html += `<button class="npc-detail-button" onclick="showNPCDetailList(${legacyJsonAttribute(npc.name)}, 'Key Abilities', ${legacyJsonAttribute(featuresData)})">Key Abilities</button>`;
                 }
 
                 if (npc.racialTraits && npc.racialTraits.length > 0) {
                     const traitsData = npc.racialTraits.map(t => ({ name: t.name, detail: t.description || '' }));
-                    html += `<button class="npc-detail-button" onclick="showNPCDetailList('${npc.name}', 'Racial Traits', ${JSON.stringify(traitsData).replace(/"/g, '&quot;')})">Racial Traits</button>`;
+                    html += `<button class="npc-detail-button" onclick="showNPCDetailList(${legacyJsonAttribute(npc.name)}, 'Racial Traits', ${legacyJsonAttribute(traitsData)})">Racial Traits</button>`;
                 }
 
                 if (npc.backgroundFeature && npc.backgroundFeature.name) {
                     const backgroundData = [{ name: npc.backgroundFeature.name, detail: npc.backgroundFeature.description || '' }];
-                    html += `<button class="npc-detail-button" onclick="showNPCDetailList('${npc.name}', 'Background', ${JSON.stringify(backgroundData).replace(/"/g, '&quot;')})">Background</button>`;
+                    html += `<button class="npc-detail-button" onclick="showNPCDetailList(${legacyJsonAttribute(npc.name)}, 'Background', ${legacyJsonAttribute(backgroundData)})">Background</button>`;
                 }
                 
                 if (npc.spellcasting && Object.keys(npc.spellcasting).length > 0) {
-                    html += `<button class="npc-detail-button" onclick="showNPCSpells('${npc.name}', ${JSON.stringify(npc.spellcasting).replace(/"/g, '&quot;')})">Spells</button>`;
+                    html += `<button class="npc-detail-button" onclick="showNPCSpells(${legacyJsonAttribute(npc.name)}, ${legacyJsonAttribute(npc.spellcasting)})">Spells</button>`;
                 }
 
                 // Add a blank, disabled button to fill the grid if needed.
@@ -6588,8 +6601,8 @@
                 html += '</div>';
                 
                 if (npc.status !== 'alive' || npc.condition !== 'none') {
-                    html += `<div class="npc-status"><div class="status-item">Status: <span class="status-value ${npc.status}">${npc.status}</span></div>`;
-                    if (npc.condition !== 'none') { html += `<div class="status-item">Condition: <span class="condition-value">${npc.condition}</span></div>`; }
+                    html += `<div class="npc-status"><div class="status-item">Status: <span class="status-value ${escapeLegacyHtml(npc.status)}">${escapeLegacyHtml(npc.status)}</span></div>`;
+                    if (npc.condition !== 'none') { html += `<div class="status-item">Condition: <span class="condition-value">${escapeLegacyHtml(npc.condition)}</span></div>`; }
                     html += '</div>';
                 }
                 
@@ -6658,7 +6671,7 @@
                 const tab = response.dataType === 'stats' ? document.getElementById('stats-tab')
                     : response.dataType === 'inventory' ? document.getElementById('inventory-tab')
                     : response.dataType === 'spells' ? document.getElementById('spells-content') : null;
-                if (tab) { tab.innerHTML = '<div class="loading">' + response.notice + '</div>'; return; }
+                if (tab) { tab.innerHTML = '<div class="loading">' + escapeLegacyHtml(response.notice) + '</div>'; return; }
             }
             if (response.dataType === 'inventory') {
                 const activeTab = document.querySelector('.tab-button.active')?.textContent.toLowerCase();
@@ -7806,11 +7819,11 @@
             let html = '';
             if (itemsData && itemsData.length > 0) {
                 itemsData.forEach(item => {
-                    const detailText = item.detail ? `title="${item.detail.replace(/"/g, '&quot;')}"` : '';
-                    html += `<div class="npc-details-item" ${detailText}><span class="npc-details-name">${item.name}</span></div>`;
+                    const detailText = item.detail || '';
+                    html += `<div class="npc-details-item" title="${escapeLegacyHtml(detailText)}"><span class="npc-details-name">${escapeLegacyHtml(item.name)}</span></div>`;
                 });
             } else {
-                html = `<div class="npc-details-item">No ${modalTitle.toLowerCase()} available.</div>`;
+                html = `<div class="npc-details-item">No ${escapeLegacyHtml(modalTitle.toLowerCase())} available.</div>`;
             }
             
             body.innerHTML = html;
@@ -7825,8 +7838,8 @@
             let html = '';
             if (equipment && equipment.length > 0) {
                 equipment.forEach(item => {
-                    html += `<div class="npc-inventory-item"><div class="npc-inventory-item-header"><div class="npc-inventory-item-name">${item.item_name}</div><div class="npc-inventory-item-quantity">x${item.quantity || 1}</div></div><div class="npc-inventory-item-details">${item.item_type}</div>`;
-                    if (item.description) { html += `<div class="npc-inventory-item-description">${item.description}</div>`; }
+                    html += `<div class="npc-inventory-item"><div class="npc-inventory-item-header"><div class="npc-inventory-item-name">${escapeLegacyHtml(item.item_name)}</div><div class="npc-inventory-item-quantity">x${escapeLegacyHtml(item.quantity || 1)}</div></div><div class="npc-inventory-item-details">${escapeLegacyHtml(item.item_type)}</div>`;
+                    if (item.description) { html += `<div class="npc-inventory-item-description">${escapeLegacyHtml(item.description)}</div>`; }
                     html += '</div>';
                 });
             } else { html = '<div class="npc-inventory-item">No items in inventory.</div>'; }
@@ -7843,7 +7856,7 @@
             title.textContent = `${npcName}'s Skills`;
             let html = '';
             if (skillsData && skillsData.length > 0) {
-                skillsData.forEach(skill => { html += `<div class="npc-details-item"><span class="npc-details-name">${skill.name}</span><span class="npc-details-bonus">${skill.bonus}</span></div>`; });
+                skillsData.forEach(skill => { html += `<div class="npc-details-item"><span class="npc-details-name">${escapeLegacyHtml(skill.name)}</span><span class="npc-details-bonus">${escapeLegacyHtml(skill.bonus)}</span></div>`; });
             } else { html = '<div class="npc-details-item">No skills available.</div>'; }
             body.innerHTML = html;
             modal.style.display = 'block';
@@ -7856,7 +7869,7 @@
             title.textContent = `${npcName}'s Saving Throws`;
             let html = '';
             if (savesData && savesData.length > 0) {
-                savesData.forEach(save => { html += `<div class="npc-details-item"><span class="npc-details-name">${save.name} ${save.proficient ? '●' : '○'}</span><span class="npc-details-bonus">${save.bonus}</span></div>`; });
+                savesData.forEach(save => { html += `<div class="npc-details-item"><span class="npc-details-name">${escapeLegacyHtml(save.name)} ${escapeLegacyHtml(save.proficient ? '●' : '○')}</span><span class="npc-details-bonus">${escapeLegacyHtml(save.bonus)}</span></div>`; });
             } else { html = '<div class="npc-details-item">No saving throws available.</div>'; }
             body.innerHTML = html;
             modal.style.display = 'block';
@@ -7868,16 +7881,16 @@
             const body = document.getElementById('npc-details-body');
             title.textContent = `${npcName}'s Spellcasting`;
             let html = '';
-            if (spellsData.spellSaveDC || spellsData.spellAttackBonus) { html += `<div class="npc-spell-info">${spellsData.spellSaveDC ? `<span class="npc-spell-stat">Save DC: ${spellsData.spellSaveDC}</span>` : ''}${spellsData.spellAttackBonus ? `<span class="npc-spell-stat">Attack: +${spellsData.spellAttackBonus}</span>` : ''}</div>`; }
+            if (spellsData.spellSaveDC || spellsData.spellAttackBonus) { html += `<div class="npc-spell-info">${spellsData.spellSaveDC ? `<span class="npc-spell-stat">Save DC: ${escapeLegacyHtml(spellsData.spellSaveDC)}</span>` : ''}${spellsData.spellAttackBonus ? `<span class="npc-spell-stat">Attack: +${escapeLegacyHtml(spellsData.spellAttackBonus)}</span>` : ''}</div>`; }
             if (spellsData && spellsData.spellsByLevel && spellsData.spellsByLevel.length > 0) {
                 spellsData.spellsByLevel.forEach(levelData => {
-                    html += `<div class="npc-spell-level"><div class="npc-spell-level-header"><span class="npc-spell-level-name">${levelData.level}</span>`;
+                    html += `<div class="npc-spell-level"><div class="npc-spell-level-header"><span class="npc-spell-level-name">${escapeLegacyHtml(levelData.level)}</span>`;
                     if (levelData.levelNum > 0 && levelData.slots) {
                         const slotClass = levelData.slots.current === 0 ? 'exhausted' : levelData.slots.current <= levelData.slots.max * 0.5 ? 'low' : 'available';
-                        html += `<span class="npc-spell-slots ${slotClass}">${levelData.slots.current || 0}/${levelData.slots.max || 0} slots</span>`;
+                        html += `<span class="npc-spell-slots ${escapeLegacyHtml(slotClass)}">${escapeLegacyHtml(levelData.slots.current || 0)}/${escapeLegacyHtml(levelData.slots.max || 0)} slots</span>`;
                     }
                     html += `</div><div class="npc-spell-list">`;
-                    levelData.spells.forEach(spell => { html += `<div class="npc-spell-item">${spell}</div>`; });
+                    levelData.spells.forEach(spell => { html += `<div class="npc-spell-item">${escapeLegacyHtml(spell)}</div>`; });
                     html += `</div></div>`;
                 });
             } else { html = '<div class="npc-details-item">No spells available.</div>'; }
@@ -7902,8 +7915,8 @@
                 html += '<div class="spellcasting-section">';
                 if (spellsData.spellSaveDC || spellsData.spellAttackBonus) {
                     html += `<div class="spell-stats">
-                                ${spellsData.spellSaveDC ? `<span>Save DC: ${spellsData.spellSaveDC}</span>` : ''}
-                                ${spellsData.spellAttackBonus ? `<span>Spell Attack: +${spellsData.spellAttackBonus}</span>` : ''}
+                                ${spellsData.spellSaveDC ? `<span>Save DC: ${escapeLegacyHtml(spellsData.spellSaveDC)}</span>` : ''}
+                                ${spellsData.spellAttackBonus ? `<span>Spell Attack: +${escapeLegacyHtml(spellsData.spellAttackBonus)}</span>` : ''}
                              </div>`;
                 }
 
@@ -7913,15 +7926,15 @@
                 spellLevels.forEach((level, index) => {
                     const spells = spellsData.spells[level];
                     if (spells && spells.length > 0) {
-                        html += `<div class="spell-level-group"><div class="spell-level-header"><span class="spell-level-name">${spellLevelNames[index]}</span>`;
+                        html += `<div class="spell-level-group"><div class="spell-level-header"><span class="spell-level-name">${escapeLegacyHtml(spellLevelNames[index])}</span>`;
                         if (index > 0 && spellsData.spellSlots && spellsData.spellSlots[`level${index}`]) {
                             const slots = spellsData.spellSlots[`level${index}`];
                             const slotClass = slots.current === 0 ? 'exhausted' : slots.current <= slots.max * 0.5 ? 'low' : 'available';
-                            html += `<span class="spell-slots ${slotClass}">${slots.current || 0}/${slots.max || 0} slots</span>`;
+                            html += `<span class="spell-slots ${escapeLegacyHtml(slotClass)}">${escapeLegacyHtml(slots.current || 0)}/${escapeLegacyHtml(slots.max || 0)} slots</span>`;
                         }
                         html += '</div><div class="spell-list">';
                         spells.forEach(spellName => {
-                            html += `<div class="spell-item"><span>${spellName}</span></div>`;
+                            html += `<div class="spell-item"><span>${escapeLegacyHtml(spellName)}</span></div>`;
                         });
                         html += '</div></div>';
                     }
@@ -7964,11 +7977,11 @@
         function updateDiceDisplay() {
             const resultsDiv = document.getElementById('dice-results');
             let html = '';
-            if (diceRolls.d20.length > 0) { html += '<span class="dice-result-item">d20: ' + diceRolls.d20.join(', d20: ') + '</span>'; }
+            if (diceRolls.d20.length > 0) { html += '<span class="dice-result-item">d20: ' + escapeLegacyHtml(diceRolls.d20.join(', d20: ')) + '</span>'; }
             if (diceRolls.damage.length > 0) {
                 if (html) html += ' | ';
-                html += '<span class="dice-result-item">' + diceRolls.damage.map(r => `d${r.sides}: ${r.result}`).join(', ') + '</span>';
-                html += '<span class="dice-total">Total: ' + diceRolls.damage.reduce((sum, r) => sum + r.result, 0) + '</span>';
+                html += '<span class="dice-result-item">' + escapeLegacyHtml(diceRolls.damage.map(r => `d${r.sides}: ${r.result}`).join(', ')) + '</span>';
+                html += '<span class="dice-total">Total: ' + escapeLegacyHtml(diceRolls.damage.reduce((sum, r) => sum + r.result, 0)) + '</span>';
             }
             resultsDiv.innerHTML = html;
             resultsDiv.style.display = html ? 'block' : 'none';
@@ -8300,30 +8313,30 @@
             let html = '';
             saveGames.forEach(save => {
                 const modeClass = save.save_mode === 'full' ? 'full' : 'essential';
-                const modeBadge = save.save_mode ? `<span class="save-mode-badge ${modeClass}">${save.save_mode}</span>` : '';
+                const modeBadge = save.save_mode ? `<span class="save-mode-badge ${escapeLegacyHtml(modeClass)}">${escapeLegacyHtml(save.save_mode)}</span>` : '';
                 html += `
-                    <div class="save-item" onclick="selectSaveGame('${save.save_folder}', this)">
+                    <div class="save-item" onclick="selectSaveGame(${legacyJsonAttribute(save.save_folder)}, this)">
                         <div class="save-item-header">
-                            ${save.save_folder}
+                            ${escapeLegacyHtml(save.save_folder)}
                             ${modeBadge}
                         </div>
                         <div class="save-item-details">
                             <div class="save-detail-row">
                                 <span class="save-detail-label">Date:</span>
-                                <span class="save-detail-value date">${save.save_date_readable || 'Unknown'}</span>
+                                <span class="save-detail-value date">${escapeLegacyHtml(save.save_date_readable || 'Unknown')}</span>
                             </div>
                             <div class="save-detail-row">
                                 <span class="save-detail-label">Module:</span>
-                                <span class="save-detail-value module">${save.module || 'Unknown Module'}</span>
+                                <span class="save-detail-value module">${escapeLegacyHtml(save.module || 'Unknown Module')}</span>
                             </div>
                             <div class="save-detail-row">
                                 <span class="save-detail-label">Location:</span>
-                                <span class="save-detail-value location">${save.game_state?.current_location || 'Unknown Location'}</span>
+                                <span class="save-detail-value location">${escapeLegacyHtml(save.game_state?.current_location || 'Unknown Location')}</span>
                             </div>
                             ${save.description ? `
                             <div class="save-detail-row">
                                 <span class="save-detail-label">Notes:</span>
-                                <span class="save-detail-value description">${save.description}</span>
+                                <span class="save-detail-value description">${escapeLegacyHtml(save.description)}</span>
                             </div>` : ''}
                         </div>
                     </div>
@@ -8364,8 +8377,8 @@
             const tooltip = document.createElement('div');
             tooltip.className = 'spell-tooltip'; // Reuse the great style
             
-            let html = `<div class="spell-tooltip-header">${title}</div>`;
-            html += `<div class="spell-tooltip-description">${content}</div>`;
+            let html = `<div class="spell-tooltip-header">${escapeLegacyHtml(title)}</div>`;
+            html += `<div class="spell-tooltip-description">${escapeLegacyHtml(content)}</div>`;
             
             tooltip.innerHTML = html;
             return tooltip;
@@ -8376,7 +8389,7 @@
             const tooltip = document.createElement('div');
             tooltip.className = 'spell-tooltip';
             
-            let html = `<div class="spell-tooltip-header">${spellInfo.name}</div>`;
+            let html = `<div class="spell-tooltip-header">${escapeLegacyHtml(spellInfo.name)}</div>`;
             
             const components = [];
             if (spellInfo.components?.verbal) components.push('V');
@@ -8384,11 +8397,11 @@
             if (spellInfo.components?.material) components.push('M');
             
             const levelText = spellInfo.level === 0 ? 'Cantrip' : `Level ${spellInfo.level}`;
-            html += `<div class="spell-tooltip-meta">${levelText} ${spellInfo.school} • ${spellInfo.casting_time} • ${components.join(', ')}</div>`;
-            html += `<div class="spell-tooltip-description">${spellInfo.description}</div>`;
+            html += `<div class="spell-tooltip-meta">${escapeLegacyHtml(levelText)} ${escapeLegacyHtml(spellInfo.school)} • ${escapeLegacyHtml(spellInfo.casting_time)} • ${escapeLegacyHtml(components.join(', '))}</div>`;
+            html += `<div class="spell-tooltip-description">${escapeLegacyHtml(spellInfo.description)}</div>`;
             
             if (spellInfo.classes && spellInfo.classes.length > 0) {
-                html += `<div class="spell-tooltip-classes">Classes: ${spellInfo.classes.join(', ')}</div>`;
+                html += `<div class="spell-tooltip-classes">Classes: ${escapeLegacyHtml(spellInfo.classes.join(', '))}</div>`;
             }
             
             tooltip.innerHTML = html;
@@ -8527,9 +8540,9 @@
                     const itemClass = point.status === 'completed' ? 'quest-item completed' : 'quest-item';
                     
                     // Start building the HTML for this quest entry.
-                    html += `<div class="${itemClass}">`;
-                    html += `<h3 class="quest-title">${point.title}</h3>`;
-                    html += `<p class="quest-description">${point.description}</p>`;
+                    html += `<div class="${escapeLegacyHtml(itemClass)}">`;
+                    html += `<h3 class="quest-title">${escapeLegacyHtml(point.title)}</h3>`;
+                    html += `<p class="quest-description">${escapeLegacyHtml(point.description)}</p>`;
 
                     // If there are side quests, filter them as well before displaying.
                     if (point.sideQuests && point.sideQuests.length > 0) {
@@ -8537,9 +8550,9 @@
                         
                         discoveredSideQuests.forEach(sq => {
                             const sqClass = sq.status === 'completed' ? 'quest-item side-quest-item completed' : 'quest-item side-quest-item';
-                            html += `<div class="${sqClass}">`;
-                            html += `<h4 class="quest-title">${sq.title}</h4>`;
-                            html += `<p class="quest-description">${sq.description}</p>`;
+                            html += `<div class="${escapeLegacyHtml(sqClass)}">`;
+                            html += `<h4 class="quest-title">${escapeLegacyHtml(sq.title)}</h4>`;
+                            html += `<p class="quest-description">${escapeLegacyHtml(sq.description)}</p>`;
                             html += `</div>`;
                         });
                     }
@@ -8588,16 +8601,16 @@
             storageData.storage.forEach(container => {
                 html += `<div class="storage-container">
                             <div class="storage-container-header">
-                                <span class="storage-name">${container.name}</span>
-                                <span class="storage-location">${container.location}</span>
+                                <span class="storage-name">${escapeLegacyHtml(container.name)}</span>
+                                <span class="storage-location">${escapeLegacyHtml(container.location)}</span>
                             </div>
                             <ul class="storage-item-list">`;
                 
                 if (container.contents && container.contents.length > 0) {
                     container.contents.forEach(item => {
                         html += `<li class="storage-item-entry">
-                                    <span class="storage-item-name">${item.item_name}</span> 
-                                    <span class="storage-item-quantity">(x${item.quantity})</span>
+                                    <span class="storage-item-name">${escapeLegacyHtml(item.item_name)}</span>
+                                    <span class="storage-item-quantity">(x${escapeLegacyHtml(item.quantity)})</span>
                                  </li>`;
                     });
                 } else {
