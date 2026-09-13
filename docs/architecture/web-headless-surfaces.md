@@ -1,5 +1,57 @@
 # Web, Headless, and Terminal Surfaces
 
+## #378 ordinary action ordering trial (2026-09-12; acceptance pending)
+
+The #385/#386 correction trial threads a detached complete executable action
+array and current index from this loop through `process_action` and the existing
+effects-aware update entrances to T079. The index identifies the current step,
+not a commit receipt. One shared writer instruction distinguishes this tool's
+equipment changes from sibling storage transfers; genuine removals remain legal.
+The request-only frame follows history and precedes fresh character data.
+An ordinary `needs_response` handback now runs the existing complete T067 context
+assembler after party/location rebuild, refreshing character data before both
+the fresh DM call and its response processing. No new mutation owner.
+The equipped-storage prerequisite below adds existing referee review only on
+that failed step's repair; correctly ordered operations add no call.
+Live acceptance is pending; prior #378 failures remain in their original report.
+
+The shared ordinary dispatcher in `main.process_ai_response` executes the
+accepted action array in order, through one existing loop. It does not group
+character updates ahead of storage operations. Dedicated travel and level-up
+entry paths remain unchanged. Existing post-combat echo filtering retains
+non-echo actions in their original relative order.
+When that filter removes every action, the existing no-actions Ready branch
+now sees an empty list; no additional action is executed.
+
+A failed ordinary storage step in `core.ai.action_handler.process_action`
+returns the existing `needs_response` handback: later siblings do not execute,
+and the DM receives the failure fact plus instructions not to repeat earlier
+completed actions. Earlier commits are not rolled back. Existing inner storage
+cancellation handling remains separately tracked in #375/#324.
+
+Under #193 D-378-U1/U2/U3, ordinary store_item checks the selected canonical
+equipped booleans after item/quantity resolution and before any backup or write.
+Any equipped item returns equipment_prerequisite with complete selected-equipped
+item facts; none of that operation moves. The handler keeps its user-role
+Storage Error note, suppresses the generic ERROR print for this prerequisite,
+and passes its typed error_code in response_data. The DM uses the existing
+character/effects tool to unequip, then storage. Only this handback sets
+require_full_review in _process_fresh_dm_response, so the same shared reviewer
+checks the fresh candidate before execution; unrelated followups keep their
+existing behavior (#390). No code-owned armor math, scheduler or new store.
+Backups still precede implicit container creation. Staged travel remains #381.
+
+Both T065 prompts check resolved prerequisites before combat/exit and permit
+retrieve-then-equip and unequip-then-store without duplicating the transfer. This is a model check,
+not a deterministic dependency scheduler or a whole-batch atomic transaction.
+The #193 D-378-Q1 clarification requires an unequip step only for currently
+equipped items. An already-unequipped item needs no equipment update merely
+for storage; stale changes and duplicate movement still require correction.
+The ordinary equipped-storage prerequisite is deterministic; the DM still owns
+the equipment change that satisfies it. Live firing/repair acceptance is pending.
+Premature narration is not repaired here (#364/#360). Trial authority: #193
+D-378-1/D-378-2; exact acceptance outcomes belong to the #374/#378 evidence records.
+
 ## #340 output ownership delta (2026-09-09; candidate)
 
 The terminal UTF-8 helper changes only the encoding of Python's original Windows

@@ -6535,15 +6535,13 @@ def process_ai_response(
         for i, action in enumerate(actions):
             debug(f"DEBUG:   Action {i+1}: {action.get('action', 'unknown')}", category="character_updates")
         
-        # Separate updateCharacterInfo actions from the other action families.
-        char_update_actions = [action for action in actions if action.get("action") == "updateCharacterInfo"]
-        other_actions = [action for action in actions if action.get("action") != "updateCharacterInfo"]
-        if char_update_actions and _agentic_post_combat_narration_pass(
+        # Filter committed combat echoes without changing accepted action order.
+        if any(action.get("action") == "updateCharacterInfo" for action in actions) and _agentic_post_combat_narration_pass(
             party_tracker_data
         ):
-            retained_updates = []
+            retained_actions = []
             dropped_update_count = 0
-            for action in char_update_actions:
+            for action in actions:
                 if _agentic_post_combat_engine_echo(action):
                     dropped_update_count += 1
                     debug(
@@ -6553,8 +6551,8 @@ def process_ai_response(
                         category="character_updates",
                     )
                 else:
-                    retained_updates.append(action)
-            char_update_actions = retained_updates
+                    retained_actions.append(action)
+            actions = retained_actions
             if dropped_update_count:
                 drop_notice = {
                     "role": "system",
@@ -6571,9 +6569,6 @@ def process_ai_response(
                     dropped_update_count
                 )
         
-        debug(f"STATE_CHANGE: Separated into {len(char_update_actions)} character updates and {len(other_actions)} other actions", category="character_updates")
-        print(f"DEBUG: STATE_CHANGE: Separated into {len(char_update_actions)} character updates and {len(other_actions)} other actions")
-        
         # If there are no actions at all, signal that processing is complete
         if len(actions) == 0:
             try:
@@ -6583,59 +6578,11 @@ def process_ai_response(
             except Exception as e:
                 debug(f"Could not update status: {e}", category="status")
         
-        # Character updates are ordered state mutations. Run them one at a
-        # time so a failed update prevents every later sibling from starting.
-        if char_update_actions:
-            debug(
-                f"STATE_CHANGE: Processing {len(char_update_actions)} "
-                "character updates sequentially",
-                category="character_updates",
-            )
-            print(
-                "DEBUG: STATE_CHANGE: Processing "
-                f"{len(char_update_actions)} character updates sequentially"
-            )
-            for action in char_update_actions:
-                try:
-                    result = run_outside_response_fence(
-                        action_handler.process_action,
-                        action,
-                        party_tracker_data,
-                        location_data,
-                        conversation_history,
-                        invocation_claim=invocation_claim,
-                    )
-                except (LiveProviderSuperseded, InvocationSupersededError):
-                    return {
-                        "status": "superseded_invocation",
-                        "retryable": False,
-                    }
-                except Exception as action_error:
-                    error(
-                        "FAILURE: Character update handler raised unexpectedly",
-                        exception=action_error,
-                        category="character_updates",
-                    )
-                    result = {"status": "error"}
-                actions_processed = True
-                if isinstance(result, dict):
-                    if result.get("status") == "error":
-                        return _handle_ordinary_action_failure(
-                            result,
-                            response,
-                            action,
-                            conversation_history,
-                        )
-                    if result.get("needs_update"):
-                        needs_conversation_history_update = True
-                elif isinstance(result, bool) and result:
-                    needs_conversation_history_update = True
-        
         # Track pending archive info for delayed processing
         pending_archive_info = None
         
-        # Process all other actions sequentially
-        for action in other_actions:
+        # Execute accepted actions once, in the order the DM and referee approved.
+        for action_index, action in enumerate(actions):
             # Snapshot the history length BEFORE the handler runs: needs_response
             # producers append their user-role note to this same list, and the
             # follow-up block below must insert the assistant candidate BEFORE
@@ -6651,6 +6598,10 @@ def process_ai_response(
                     location_data,
                     conversation_history,
                     invocation_claim=invocation_claim,
+                    action_context={
+                        "actions": copy.deepcopy(actions),
+                        "current_index": action_index,
+                    },
                 )
             except (LiveProviderSuperseded, InvocationSupersededError):
                 return {
@@ -6816,6 +6767,9 @@ def process_ai_response(
                         conversation_history, return_party=True,
                     )
                     location_data = get_location_data_from_party_tracker(party_tracker_data)
+                    conversation_history = _prepare_rebuilt_history_for_t067(
+                        conversation_history
+                    )
                     ai_response = run_outside_response_fence(
                         get_ai_response, conversation_history, detached_context=detached_context,
                     )
@@ -6828,6 +6782,10 @@ def process_ai_response(
                         invocation_claim=invocation_claim,
                         player_input=player_input,
                         detached_context=detached_context,
+                        require_full_review=(
+                            result.get("response_data", {}).get("error_code")
+                            == "equipment_prerequisite"
+                        ),
                     )
                 if result.get("needs_update"): needs_conversation_history_update = True
             elif result == "exit": return "exit"
@@ -9864,14 +9822,14 @@ def _dm_review_context(reviewed, accepted_history, player_input, srd_context=Non
 
 def _review_fresh_membership_candidate(
     response, party, accepted_history, *, player_input=None,
-    invocation_claim=None, detached_context=None,
+    invocation_claim=None, detached_context=None, require_full_review=False,
 ):
     """Apply the shared owner to fresh internal proposals, never receipt replay."""
     from core.npc.party_guardian import membership_proposals
     from utils.capture.live_provider_call import get_live_provider_scope
 
     normalized, record = _normalize_dm_candidate(response, party)
-    if normalized and not membership_proposals(record["candidate"], party):
+    if not require_full_review and normalized and not membership_proposals(record["candidate"], party):
         # Preserve the existing nonmembership path, including its original bytes.
         return {"status": "accepted", "candidate": response,
                 "approved_transition_plan": None}
@@ -9892,7 +9850,7 @@ def _review_fresh_membership_candidate(
 def _process_fresh_dm_response(
     response, party_tracker_data, location_data, conversation_history, *,
     invocation_claim=None, player_input=None, detached_context=None,
-    authority_check=None,
+    authority_check=None, require_full_review=False,
 ):
     """Internal handoff after its producer releases the response fence.
 
@@ -9908,6 +9866,7 @@ def _process_fresh_dm_response(
         response, party_tracker_data, conversation_history,
         invocation_claim=invocation_claim, player_input=player_input,
         detached_context=detached_context,
+        require_full_review=require_full_review,
     )
     if authority_check is not None and not authority_check(authority_context):
         return {"status": "stale_discarded", "retryable": False}

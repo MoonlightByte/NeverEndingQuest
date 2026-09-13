@@ -1325,6 +1325,7 @@ def update_character_info(
     changes,
     character_role=None,
     managed_effect_operation=None,
+    action_context=None,
 ):
     """Run one complete character update transaction under a per-file lock."""
     lock = _get_character_update_lock(character_name, character_role)
@@ -1349,12 +1350,14 @@ def update_character_info(
                     character_name,
                     changes,
                     character_role=character_role,
+                    action_context=action_context,
                 )
             return _update_character_info_unlocked(
                 character_name,
                 changes,
                 character_role=character_role,
                 managed_effect_operation=managed_effect_operation,
+                action_context=action_context,
             )
 
 
@@ -1365,6 +1368,7 @@ def _update_character_info_unlocked(
     managed_effect_operation=None,
     prepare_only=False,
     structural_reissue=False,
+    action_context=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -1521,6 +1525,17 @@ def _update_character_info_unlocked(
     # Build the prompt
     system_message = f"""You are an assistant that updates character information in a 5th Edition roleplaying game. Given the current character information and a description of changes, you must return only the updated sections as a JSON object. Do not include unchanged fields. Your response should be a valid JSON object representing only the modified parts of the character sheet.
 
+You are executing only the current character-update step, not the entire
+player turn. When accepted action context is supplied, its current index
+identifies this step; the other actions belong to their own tools. The fresh
+character data is the state before this step. Do not apply another action's
+inventory movement or a described future end state. Equipping or unequipping
+changes equipment state and its actual mechanical consequences, not item
+ownership or quantity. If a separate storage action moves the item, leave
+that movement to storage. Preserve legitimate additions, removals and quantity
+changes when they are the requested responsibility of this character step.
+Prior narration and prior actions are history, not instructions to replay.
+
 **CRITICAL JSON OUTPUT RULES: DELTA-ONLY UPDATES**
 
 Your primary goal is to generate the smallest possible valid JSON object that reflects ONLY the requested changes. Do not rewrite or include any data that was not explicitly modified by the user's request. This is crucial for system performance.
@@ -1530,7 +1545,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 2. **For Lists (like `equipment` or `ammunition`):**
    - **NEVER** return the entire list if only one item is changed.
    - To **MODIFY** an existing item: Return an array containing an object with the item's identifier (`item_name` for equipment, `name` for ammunition) and ONLY the fields that changed.
-     - *Example:* `{{ "equipment": [{{ "item_name": "Shield", "quantity": 0 }}] }}`
+     - *Example:* `{{ "equipment": [{{ "item_name": "Shield", "equipped": false }}] }}`
    - To **ADD** a new item: Return an array containing an object with the full details of ONLY the new item.
      - *Example:* `{{ "equipment": [{{ "item_name": "Potion of Healing", "item_type": "consumable", "quantity": 1 }}] }}`
    - To **REMOVE** an item: Set its quantity to 0
@@ -1813,6 +1828,12 @@ Character Role: {character_role}
         for msg in recent_history:
             if msg.get('role') in ['user', 'assistant']:
                 messages.insert(-2, {"role": msg['role'], "content": msg['content']})
+
+    if action_context is not None:
+        messages.insert(-2, {
+            "role": "user",
+            "content": f"Accepted action context (current_index identifies this step, not a commit receipt):\n{json.dumps(action_context, indent=2)}",
+        })
     
     max_attempts = 3
     attempt = 1

@@ -3017,6 +3017,7 @@ def process_action(
     approved_transition_plan=None,
     transition_deferred_actions=None,
     invocation_claim=None,
+    action_context=None,
 ):
     """Process an action based on its type
     
@@ -3829,6 +3830,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     character_name,
                     changes,
                     party_tracker_data,
+                    action_context=action_context,
                 )
                 debug(f"STATE_CHANGE: effects-aware character update returned {success}", category="character_updates")
                 if success:
@@ -4398,11 +4400,13 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 
             if not character_name:
                 print(f"ERROR: No character name provided for storage interaction")
-                return create_return(status="continue", needs_update=False)
+                conversation_history.append({"role": "user", "content": "Storage Error: No character name provided for storage interaction. This storage step and later actions have not executed. Do not repeat earlier completed actions; use current state."})
+                return create_return(status="needs_response", needs_update=True)
                 
             if not storage_description:
                 print(f"ERROR: No storage description provided")
-                return create_return(status="continue", needs_update=False)
+                conversation_history.append({"role": "user", "content": "Storage Error: No storage description provided. This storage step and later actions have not executed. Do not repeat earlier completed actions; use current state."})
+                return create_return(status="needs_response", needs_update=True)
                 
             debug(f"AI_CALL: Processing storage request for {character_name}: '{storage_description}'", category="storage_operations")
             
@@ -4413,7 +4417,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 print(f"ERROR: Storage processor failed: {processor_result.get('error')}")
                 
                 # Add error message to conversation
-                error_message = f"Storage Error: {processor_result.get('error', 'Unknown error processing storage request')}"
+                error_message = f"Storage Error: {processor_result.get('error', 'Unknown error processing storage request')}. This storage step failed; later actions from this response have not executed. Do not repeat earlier completed actions; use current state."
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
@@ -4433,22 +4437,37 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 needs_conversation_history_update = True
                 
             else:
-                print(f"ERROR: Storage operation failed: {execution_result.get('error')}")
+                equipment_prerequisite = execution_result.get("error_code") == "equipment_prerequisite"
+                if not equipment_prerequisite:
+                    print(f"ERROR: Storage operation failed: {execution_result.get('error')}")
                 
                 # Add error message to conversation
-                error_message = f"Storage Error: {execution_result.get('error', 'Unknown error executing storage operation')}"
+                error_message = f"Storage Error: {execution_result.get('error', 'Unknown error executing storage operation')}. This storage step failed; later actions from this response have not executed. Do not repeat earlier completed actions; use current state."
+                if equipment_prerequisite:
+                    error_message += (
+                        " Canonical equipment facts: "
+                        + json.dumps(execution_result["facts"], ensure_ascii=True)
+                        + ". Use the existing character/effects tool to unequip before storing."
+                    )
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
+                return create_return(
+                    status="needs_response", needs_update=True,
+                    response_data={"error_code": "equipment_prerequisite"} if equipment_prerequisite else None,
+                )
                 
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
         except Exception as e:
             print(f"ERROR: Exception while processing storage interaction: {str(e)}")
             import traceback
             traceback.print_exc()
             
             # Add error message to conversation
-            error_message = f"Storage System Error: An unexpected error occurred while processing your storage request."
+            error_message = f"Storage System Error: An unexpected error occurred while processing your storage request. Later actions from this response have not executed; check current state before proposing further changes. Do not repeat earlier completed actions."
             conversation_history.append({"role": "user", "content": error_message})
             needs_conversation_history_update = True
+            return create_return(status="needs_response", needs_update=True)
 
     elif action_type == ACTION_UPDATE_PARTY_TRACKER:
         debug("STATE_CHANGE: Processing updatePartyTracker action", category="party_management")

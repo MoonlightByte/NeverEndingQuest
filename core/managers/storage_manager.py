@@ -308,10 +308,6 @@ class StorageManager:
             character_file = self.path_manager.get_character_path(operation["character"])
             debug(f"FILE_OP: Loading character from {character_file}", category="file_operations")
             
-            # Create backups
-            character_backup = self._create_backup(character_file)
-            storage_backup = self._create_backup(self.storage_file)
-            
             # Load character data
             character_data = safe_read_json(character_file)
             if not character_data:
@@ -340,7 +336,25 @@ class StorageManager:
                 if available_quantity < operation["quantity"]:
                     raise Exception(f"Character only has {available_quantity} {operation['item_name']}, requested {operation['quantity']}")
                 items_to_store.append((operation["item_name"], operation["quantity"], item_data))
-                
+
+            # Equipment changes belong to the character tool, before ownership moves.
+            equipped_items = [
+                {"item_name": item_data["item_name"], "quantity": quantity, "equipped": True}
+                for name, quantity, item_data in items_to_store
+                if item_data.get("equipped") is True
+            ]
+            if equipped_items:
+                return {
+                    "success": False,
+                    "error_code": "equipment_prerequisite",
+                    "error": "Selected items are still equipped; no items were stored",
+                    "facts": {"character": operation["character"], "items": equipped_items},
+                }
+
+            # Back up before any write, including implicit container creation.
+            character_backup = self._create_backup(character_file)
+            storage_backup = self._create_backup(self.storage_file)
+
             # Get or create storage
             storage_id = operation.get("storage_id")
             if not storage_id:

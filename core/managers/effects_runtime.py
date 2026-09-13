@@ -89,12 +89,15 @@ def update_character_with_effects(
     character_name,
     changes,
     party_tracker_data=None,
+    action_context=None,
 ):
     """Classifier-first T078 -> T079 character update for a migrated campaign."""
     if not campaign_effects_migrated():
         # Explicit recovery fallback for campaigns whose automatic conversion
         # was blocked.  Normal converted campaigns never execute this path.
-        success = update_character_info(character_name, changes)
+        success = update_character_info(
+            character_name, changes, action_context=action_context
+        )
         if success:
             from updates.update_character_effects import update_character_effects
 
@@ -129,6 +132,7 @@ def update_character_with_effects(
                 changes,
                 character_role=role,
                 managed_effect_operation=operation,
+                action_context=action_context,
             )
     if success:
         text = str(changes).lower()

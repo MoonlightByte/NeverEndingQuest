@@ -45,8 +45,22 @@ Entry prerequisite contract (#345, 2026-09-09): the full/compressed main DM and
 guardian prompts require an already-triggered earlier human roll/choice to be
 answered before `createEncounter`, even after hostile awareness. The accepted
 question uses ordinary conversation history and returns normal input. Resolved
-prerequisite character updates run through main's existing character-first
-dispatch before combat creation. No new pending store, initiative change or
+prerequisite character updates must precede combat creation in the accepted
+action array. The #378 trial uses ordinary listed-order dispatch and an explicit
+check in both T065 prompts instead of the previous character-first grouping.
+If the models accept a misordered batch, this is not a deterministic rescue;
+the model-side safeguard requires live acceptance (#193 D-378-1/D-378-2).
+The shared guidance also orders retrieve-before-equip and unequip-before-store;
+it does not change the combat prerequisites or introduce a new runtime path.
+Under #193 D-378-Q1 the ordinary storage wording uses current equipment state:
+already-unequipped items do not require an invented unequip step. Genuine
+equipment changes, stale-state rejection and storage ownership remain intact.
+Ordinary outgoing storage now checks selected canonical equipped=true before
+any transfer (#193 D-378-U1/U2/U3). An unmet prerequisite returns facts to the
+DM for the existing character/effects tool, then storage; its fresh repair goes
+through the existing full reviewer. This narrow deterministic storage boundary
+does not make combat ordering deterministic or calculate armor in code.
+No new pending store, initiative change or
 prose parser exists; this is model-authored semantic ordering, not a deterministic
 pending-roll guarantee. Combat with no earlier prerequisite still enters
 immediately. In-combat `pendingTurn` remains initiative-owned and unchanged.
