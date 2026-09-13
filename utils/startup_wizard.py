@@ -1690,58 +1690,6 @@ def initialize_startup_conversation():
     _set_startup_progress(conversation, phase="module_selection")
     return conversation
 
-def _ensure_local_provider_alternation(messages, provider):
-    """Make a startup message array safe for strict-alternation local templates.
-
-    Issue #179 (same class as #168/#170). The startup wizard steers the DM
-    entirely with ``system``-role messages and calls the model with no user turn
-    (module/character selection greetings, the JSON-retry interview steps), so on
-    a fresh install with a strict local chat template the game hangs at start.
-    Validated directly against the real LM Studio server: qwen3.5-9b enforces TWO
-    constraints its Jinja template raises 500 on --
-
-      1. "No user query found in messages"  -> the array must end on a user turn.
-      2. "System message must be at the beginning" -> only ONE system message,
-         at the start (a second/mid/trailing system message is rejected).
-
-    This is applied REACTIVELY by startup transport -- only after a local-provider
-    call fails -- so lenient models (e.g. Gemma 12B), which accept the raw shape
-    and succeed on the first attempt, are never reshaped (byte-identical). Only a
-    strict template that actually 500s triggers a normalized retry.
-
-    For the local provider ONLY: keep the FIRST message's system as the single
-    leading system block, and convert every OTHER system message to a user turn
-    IN PLACE -- preserving its content and position. This is critical for the
-    JSON-retry interview step, whose directive ("return corrected JSON: <error>")
-    is a trailing system message that must stay the model's operative latest
-    instruction: merging it to the front and appending a generic nudge made the
-    model answer the nudge (prose) instead of emitting the corrected JSON.
-    Finally, ensure the array ends on a user turn.
-
-    An already-valid request (one leading system, turns ending on user) is
-    reconstructed identically, so this cannot alter a currently-working call.
-    OpenAI/Gemini/legacy are returned unchanged -- they accept the raw shape.
-    STARTUP-ONLY (T092 interview/review and T093 location); the main game loop and
-    every non-LM-Studio provider are untouched.
-    """
-    if provider != "lmstudio":
-        return messages
-    normalized = []
-    for message in messages:
-        role = message.get("role")
-        content = message.get("content", "")
-        if role == "system" and not normalized:
-            normalized.append({"role": "system", "content": content})
-        elif role == "system":
-            normalized.append({"role": "user", "content": content})
-        else:
-            normalized.append({"role": role, "content": content})
-    if not normalized or normalized[-1].get("role") != "user":
-        normalized.append(
-            {"role": "user", "content": "Please respond based on the instructions above."}
-        )
-    return normalized
-
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
                     startup_phase="startup_interview"):
     """Run T092 through shared cancellable transport; borrowed scope stays open."""
@@ -1761,11 +1709,6 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
         "legacy": config.DM_MAIN_LEGACY,
     }[provider]
 
-    def repair_rejected_messages(messages, failure):
-        if provider == "lmstudio":
-            return _ensure_local_provider_alternation(messages, provider)
-        return messages
-
     request_messages = copy.deepcopy(conversation)
     _emit_startup_phase(startup_phase)
     status_processing_ai()
@@ -1778,9 +1721,6 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     "T092", api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
                     _detached_scope=scope,
-                    _live_retry_message_repair=(
-                        repair_rejected_messages if provider == "lmstudio" else None
-                    ),
                     messages=copy.deepcopy(request_messages),
                     model=main_cfg["model"], temperature=0.7,
                     response_format=response_format,
@@ -1892,10 +1832,6 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                     "T093", api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
                     _detached_scope=scope,
-                    _live_retry_message_repair=(
-                        (lambda rejected, failure: _ensure_local_provider_alternation(rejected, provider))
-                        if provider == "lmstudio" else None
-                    ),
                     messages=copy.deepcopy(messages),
                     model=mini_cfg["model"], temperature=0.7, response_format=None,
                     **{key: value for key, value in mini_cfg.items() if key != "model"},

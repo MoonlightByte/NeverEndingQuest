@@ -1021,7 +1021,6 @@ def call_live_provider(
     scope=None,
     status_emit=None,
     authority_check=None,
-    retry_message_repair=None,
 ):
     """Run one frozen selected request under its required/advisory policy.
 
@@ -1335,17 +1334,6 @@ def call_live_provider(
                 "retryable_transport",
             }:
                 raise LiveProviderCompletedError(task_id, envelope)
-            # #114/#179: a completed strict-template rejection must reach the
-            # startup-owned reactive adapter, even inside required reissue.
-            # The child was reaped above; private callbacks never enter kwargs.
-            http_status = envelope.get("http_status")
-            if (retry_message_repair is not None and correlation_accepted
-                    and type(http_status) is int and 500 <= http_status < 600):
-                if scope is not None and scope.is_superseded():
-                    raise LiveProviderSuperseded("startup request repair superseded")
-                frozen_messages = copy.deepcopy(retry_message_repair(
-                    copy.deepcopy(frozen_messages), dict(envelope)
-                ))
         error_class = envelope.get("error_class", "transport_unavailable")
         if not wizard_task:
             # A completed deterministic error (HTTP 400/401/403, a schema
