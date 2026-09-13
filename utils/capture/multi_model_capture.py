@@ -392,7 +392,6 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
                                       messages=messages, model=..., temperature=0.7)
     """
     live_selected = kwargs.pop("_live_selected", None)
-    retry_message_repair = kwargs.pop("_live_retry_message_repair", None)
     # Detached execution context (issue #214): an off-thread caller (the
     # startup welcome) passes its own cancellable scope + status sink so its
     # provider work never binds the global player-turn scope or the global
@@ -437,14 +436,6 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     # caller can mutate shared message/config objects.
     capture_messages = copy.deepcopy(messages)
 
-    def repair_and_record_messages(rejected_messages, failure):
-        nonlocal capture_messages
-        repaired = retry_message_repair(rejected_messages, failure)
-        # Capture/fanout must describe the request that produced the response,
-        # not the request rejected before the startup-owned reactive repair.
-        capture_messages = copy.deepcopy(repaired)
-        return repaired
-
     capture_kwargs = copy.deepcopy(kwargs)
     capture_kwargs.pop("_usage_invocation_id", None)
     current_frame = inspect.currentframe()
@@ -483,9 +474,6 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
             scope=detached_scope,
             status_emit=detached_status,
             authority_check=authority_check,
-            retry_message_repair=(
-                repair_and_record_messages if retry_message_repair is not None else None
-            ),
         )
         primary_latency = round(time.time() - start, 3)
         _track_module_primary(
