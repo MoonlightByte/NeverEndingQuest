@@ -647,9 +647,21 @@ class LevelUpSession:
         if prepared_after.get('level') != self.new_level:
             post_unattributed.append({'check': 'level',
                                       'error': 'prepared proposal does not contain the requested new level'})
-        if post_unattributed:
-            raise AssemblyConflict({}, [{'index': i, **entry}
-                                        for i, entry in enumerate(post_unattributed)])
+        post_owned = {}
+        if (prepared_after.get('exp_required_for_next_level')
+                == self.character_data.get('exp_required_for_next_level')):
+            # Numbers owns the next threshold; an unchanged value leaves the
+            # character eligible to advance again the moment play resumes.
+            post_owned['numbers'] = [{'check': 'exp_required_for_next_level',
+                                      'field': 'exp_required_for_next_level',
+                                      'path': ['exp_required_for_next_level'],
+                                      'domains': ['numbers'],
+                                      'error': 'exp_required_for_next_level still holds the old threshold; '
+                                               'set the next level\'s cumulative XP from the supplied '
+                                               'Character Advancement row'}]
+        if post_owned or post_unattributed:
+            raise AssemblyConflict(post_owned, [{'index': i, **entry}
+                                                for i, entry in enumerate(post_unattributed)])
 
         checks['removed_fields'] = unowned_removed
         checks['armor_repair'] = [entry for entry in armor_repair
