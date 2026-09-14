@@ -340,13 +340,13 @@ _declare(
 _declare(
     "T047",
     _profiles(
-        "OPENAI_GPT56_TERRA_LOW",
+        "OPENAI_GPT56_LUNA_NONE",
         "LEVELUP_CONV_GEMINI_FLASH_LOW",
         "LEVELUP_CONV_LEGACY",
         "LEVELUP_CONV_LMSTUDIO",
     ),
-    note="#323 owner-selected Terra low for the infrequent level-up interview. "
-         "Reliability takes priority; full saved-level-up acceptance remains pending.",
+    note="#323 level-up interview on Luna none (owner ruling 2026-09-14: the whole level-up "
+         "path runs on Luna; Terra was measured at ~10x the cost with the review stages retired).",
 )
 _declare(
     "T086",
@@ -360,7 +360,7 @@ _declare(
 _declare(
     "T048",
     _profiles(
-        "OPENAI_GPT56_TERRA_LOW",
+        "OPENAI_GPT56_LUNA_NONE",
         "LEVELUP_VAL_GEMINI_PRO_LOW",
         "LEVELUP_VAL_LEGACY",
         "LEVELUP_VAL_LMSTUDIO",
@@ -683,17 +683,17 @@ _declare(
 _declare(
     "T119",
     _profiles(
-        "OPENAI_GPT56_TERRA_LOW",
+        "OPENAI_GPT56_LUNA_NONE",
         "LEVELUP_CONV_GEMINI_FLASH_LOW",
         "LEVELUP_CONV_LEGACY",
         "LEVELUP_CONV_LMSTUDIO",
     ),
-    note="Required private level-up numbers author (#323); measured reliability experiment.",
+    note="Required private level-up numbers author (#323); Luna none with the rest of the level-up path (2026-09-14).",
 )
 _declare(
     "T116 T118 T120",
     _profiles(
-        "OPENAI_GPT56_TERRA_LOW",
+        "OPENAI_GPT56_LUNA_NONE",
         "LEVELUP_VAL_GEMINI_PRO_LOW",
         "LEVELUP_VAL_LEGACY",
         "LEVELUP_VAL_LMSTUDIO",

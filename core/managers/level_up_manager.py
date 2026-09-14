@@ -103,6 +103,7 @@ class LevelUpSession:
         self._entry_history = copy.deepcopy(accepted_history or [])
         self._entry_input = player_input
         self.conversation = []
+        self._interview_start = 0
         self.is_player = True
         self.character_data = None
         self.is_complete = False
@@ -525,6 +526,10 @@ class LevelUpSession:
         validated = validated_view(self._workspace)
         constraints = self._workspace.constraints.get(domain, {})
         proposal = self._workspace.proposals.get(domain)
+        # Both sheet views stay complete dicts: the workspace snapshots them from
+        # this packet and compares them value-for-value with the live views after
+        # every approval, so any substitute here reads as a changed source sheet
+        # and retracts the approved domain on every round.
         return {
             'provider': get_provider(),
             'stored': copy.deepcopy(self.character_data),
@@ -534,7 +539,10 @@ class LevelUpSession:
             'latest_proposal': _project_proposal(proposal) if proposal is not None else None,
             'constraints': {origin: asdict(constraint) for origin, constraint in constraints.items()},
             'answered_questions': answered_questions(self._workspace),
-            'interview': copy.deepcopy([message for message in self.conversation
+            # The level-up interview only: entry request, DM questions, player
+            # answers, approval. Pre-level-up campaign history is not evidence
+            # for advancement mechanics and was the largest item in every packet.
+            'interview': copy.deepcopy([message for message in self.conversation[self._interview_start:]
                                        if message['role'] in ('user', 'assistant')]),
             'references': self._leveling_reference,
             'saved_spell_references': self._spell_context,
@@ -804,14 +812,23 @@ class LevelUpSession:
             {"role": "user", "content": f"Begin the interactive level-up interview for {self.character_name}, who is advancing from level {self.current_level} to level {self.new_level}."}
         ]
         # Accepted pre-entry context is evidence, never system instructions or the
-        # candidate levelUp action. Keep actual player input distinct and once.
+        # candidate levelUp action. The DM needs where the party is and what was
+        # just said, not the campaign: only the last accepted exchange (the most
+        # recent assistant turn and the player turn before it) is carried in.
+        # The full history stays in main; the location summaries it holds were
+        # the largest single item in every interview and specialist packet.
         accepted = [copy.deepcopy(message) for message in self._entry_history
                     if message.get('role') in ('user', 'assistant')]
+        accepted = accepted[-2:]
         self.conversation.extend(accepted)
+        # Specialists receive the interview from the entry request onward.
+        self._interview_start = len(self.conversation)
         if self._entry_input is not None and not (
                 accepted and accepted[-1].get('role') == 'user'
                 and accepted[-1].get('content') == self._entry_input):
             self.conversation.append({'role': 'user', 'content': self._entry_input})
+        else:
+            self._interview_start = max(0, len(self.conversation) - 1)
 
     def _save_conversation(self):
         """Accepted audit only; capture failure is not gameplay failure."""
