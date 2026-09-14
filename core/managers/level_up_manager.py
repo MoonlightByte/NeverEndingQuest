@@ -301,15 +301,19 @@ class LevelUpSession:
         messages = copy.deepcopy([message for message in self.conversation])
         if self._constraints['envelope']:
             messages.append({'role': 'user', 'content':
-                'PRIVATE ENVELOPE CORRECTION (not player history):\n'
+                'CODE CHECK REJECTED YOUR LAST ANSWER (private; not player history). '
+                'Each note names exactly what to change. Resend the same answer with these fixes '
+                'applied and nothing else changed:\n'
                 + json.dumps(self._constraints['envelope'], ensure_ascii=True)})
         if self._constraints['full_review']:
             messages.append({'role': 'user', 'content':
-                'PRIVATE FULL-REVIEW CORRECTION (not player history):\n'
+                'THE VALIDATOR REJECTED YOUR LAST ANSWER (private; not player history). '
+                'Each objection states what to change and which subject it concerns. Resend the same '
+                'answer with those objections resolved and nothing else changed:\n'
                 + json.dumps(self._constraints['full_review'], ensure_ascii=True)})
         if self._latest_candidate is not None:
             messages.append({'role': 'user', 'content':
-                'YOUR LATEST REJECTED CANDIDATE (correct it; not player history):\n'
+                'YOUR LAST REJECTED ANSWER (the one to fix and resend; not player history):\n'
                 + self._latest_candidate})
         report = self._layer_report()
         messages.append({'role': 'user', 'content':
@@ -444,12 +448,18 @@ class LevelUpSession:
         prospective_pending = [question for question in pending if question['name'] not in recorded]
         errors = []
         unknown = sorted(name for name in recorded if name not in ws.questions and not choices[name].get('domain'))
-        if unknown:
-            errors.append('new choices require a typed domain and accepted source: ' + ', '.join(unknown))
+        for name in unknown:
+            # Say exactly which key to add and what it may hold: the earlier
+            # one-line note ("requires a typed domain") was re-read as the
+            # game term and re-sent unchanged 21 times (run 5, 2026-09-14).
+            errors.append('choices.%s is a new name and is missing the "domain" key: add "domain": "features", '
+                          '"spells" or "numbers" (the specialist that owns this choice; not a game term), '
+                          'keep its value and source unchanged' % name)
         for name, entry in choices.items():
             owner = ws.questions.get(name, {}).get('domain')
             if owner is not None and entry.get('domain', owner) != owner:
-                errors.append('a recorded choice cannot change its owning domain: ' + name)
+                errors.append('choices.%s belongs to the %s specialist: set "domain": "%s" or omit the key'
+                              % (name, owner, owner))
         if stage == 'ask':
             asking = parsed['asking']
             if self._advancement_authorized:
