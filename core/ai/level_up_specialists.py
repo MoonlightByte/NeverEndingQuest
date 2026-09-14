@@ -385,10 +385,116 @@ def _project_proposal(proposal):
     return {key: deepcopy(getattr(proposal, key)) for key in ENVELOPE_ORDER}
 
 
+def _spell_list_errors(proposal, stored):
+    """Count the spells author's own lists against the facts it declared (code owns the counting).
+
+    The author declares prepared_capacity, cantrip_count and always_prepared_grants
+    (name + spell level). The lists must agree with them: every grant present in
+    preparedSpells and in the level list of its own spell level, exactly
+    capacity-many non-grant preparations, the class cantrip count, no duplicate
+    names, and every prepared spell present in some level list. On Luna the author
+    got the arithmetic wrong in four of five drafts and a reviewer approved a wrong
+    count once (replay, 2026-09-14); the reviewer judges merit, code judges counts.
+    """
+    facts = proposal.rule_facts if isinstance(proposal.rule_facts, dict) else {}
+    changes = proposal.changes if isinstance(proposal.changes, dict) else {}
+    spellcasting = changes.get('spellcasting')
+    if not isinstance(spellcasting, dict):
+        return []
+    errors = []
+
+    def fact(name):
+        entry = facts.get(name)
+        return entry.get('value') if isinstance(entry, dict) else None
+
+    capacity, cantrip_count, grants = fact('prepared_capacity'), fact('cantrip_count'), fact('always_prepared_grants')
+    if not isinstance(capacity, int) or not isinstance(cantrip_count, int) or not isinstance(grants, list) or any(
+            not isinstance(g, dict) or not isinstance(g.get('name'), str) or not isinstance(g.get('level'), int) for g in grants):
+        return [{'field': ['rule_facts'],
+                 'error': 'declare rule_facts named exactly prepared_capacity (integer), cantrip_count (integer) and '
+                          'always_prepared_grants (array of {"name": spell, "level": spell level integer}); code checks '
+                          'your lists against them'}]
+    grant_names = [g['name'] for g in grants]
+    stored_spells = ((stored or {}).get('spellcasting') or {}).get('spells') or {}
+    proposed_spells = spellcasting.get('spells') if isinstance(spellcasting.get('spells'), dict) else {}
+
+    def level_list(level):
+        key = 'level%d' % level
+        value = proposed_spells.get(key, stored_spells.get(key))
+        return value if isinstance(value, list) else []
+
+    prepared = spellcasting.get('preparedSpells')
+    if isinstance(prepared, list):
+        seen = set()
+        for name in prepared:
+            if name in seen:
+                errors.append({'field': ['spellcasting', 'preparedSpells'], 'error': 'remove the duplicate entry %r' % name})
+            seen.add(name)
+        for name in grant_names:
+            if name not in prepared:
+                errors.append({'field': ['spellcasting', 'preparedSpells'], 'error': 'add the always-prepared grant %r' % name})
+        ordinary = [name for name in prepared if name not in grant_names]
+        if len(ordinary) != capacity:
+            errors.append({'field': ['spellcasting', 'preparedSpells'],
+                           'error': 'preparedSpells holds %d ordinary (non-grant) spells but prepared_capacity is %d: the list '
+                                    'must be exactly %d ordinary spells plus the %d grants = %d names'
+                                    % (len(ordinary), capacity, capacity, len(grant_names), capacity + len(grant_names))})
+        all_levels = [n for level in range(1, 10) for n in level_list(level)]
+        for name in prepared:
+            if name not in all_levels:
+                errors.append({'field': ['spellcasting', 'spells'],
+                               'error': '%r is in preparedSpells but in no spells.levelN list: add it to the list of its spell level' % name})
+    for g in grants:
+        if g['name'] not in level_list(g['level']):
+            errors.append({'field': ['spellcasting', 'spells', 'level%d' % g['level']],
+                           'error': 'add the grant %r to spells.level%d (keep the existing entries)' % (g['name'], g['level'])})
+    cantrips = proposed_spells.get('cantrips')
+    if isinstance(cantrips, list):
+        if len(cantrips) != cantrip_count:
+            errors.append({'field': ['spellcasting', 'spells', 'cantrips'],
+                           'error': 'cantrips holds %d names but cantrip_count is %d: list exactly %d distinct cantrips'
+                                    % (len(cantrips), cantrip_count, cantrip_count)})
+        if len(set(cantrips)) != len(cantrips):
+            errors.append({'field': ['spellcasting', 'spells', 'cantrips'], 'error': 'remove the duplicate cantrip'})
+    # Every listed spell sits at its own level: the SRD reference index (a name
+    # lookup in data/spell_repository.json) supplies the level; unresolved
+    # names are left to the reviewer, never guessed.
+    try:
+        from core.ai.srd_reference import load_srd_reference_index
+        index = load_srd_reference_index()
+    except Exception:
+        index = None
+    if index is not None:
+        listed = {}
+        for level in range(1, 10):
+            for name in level_list(level):
+                listed.setdefault(name, []).append(level)
+        for name, levels in sorted(listed.items()):
+            reference = index.reference(name)
+            actual = (reference or {}).get('entry', {}).get('level') if isinstance(reference, dict) else None
+            if isinstance(actual, int) and actual >= 1 and levels != [actual]:
+                errors.append({'field': ['spellcasting', 'spells'],
+                               'error': '%r is a level %d spell: list it in spells.level%d only (it is in %s)'
+                                        % (name, actual, actual, ', '.join('level%d' % l for l in levels))})
+    return errors
+
+
+def spells_merged_preview(proposal, stored):
+    """The exact spellcasting block the writer would save for this proposal (omitted lists keep stored entries)."""
+    from updates.update_character_info import deep_merge_dict
+    changes = proposal.changes if isinstance(proposal.changes, dict) else {}
+    if not isinstance(changes.get('spellcasting'), dict) or not isinstance((stored or {}).get('spellcasting'), dict):
+        return None
+    return deep_merge_dict(deepcopy(stored['spellcasting']), deepcopy(changes['spellcasting']))
+
+
 def _admission_errors(domain, proposal, packet, ws):
     """Check calculations against original inputs and independently reviewed rule proposals."""
     sources = sources_for_admission(packet, proposal)
-    return validate_calculations(proposal, sources)
+    errors = validate_calculations(proposal, sources)
+    if domain == 'spells':
+        errors = errors + _spell_list_errors(proposal, packet.get('stored'))
+    return errors
 
 
 def _replace_review(ws, domain, own_errors, draft):
@@ -468,6 +574,13 @@ def run_domain_cycle(domain, packet_for, ws, scope, status_emit, running):
         review_packet = dict(packet_for(domain))
         review_packet['latest_proposal'] = _project_proposal(proposal)
         review_packet['review_stage'] = 'proposal'
+        if domain == 'spells':
+            # The reviewer judges the merged lists it would save, not the delta's
+            # omissions: a Luna reviewer rejected five correct drafts for "missing"
+            # stored entries the delta rightly left untouched (replay, 2026-09-14).
+            preview = spells_merged_preview(proposal, review_packet.get('stored'))
+            if preview is not None:
+                review_packet['merged_preview'] = {'spellcasting': preview}
         previous_format = ws.constraints[domain].get('review_format')
         format_state = deepcopy(previous_format.errors[0]) if previous_format else {}
         try:
