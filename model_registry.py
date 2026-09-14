@@ -484,7 +484,7 @@ _declare(
 _declare(
     "T084",
     _profiles(
-        "OPENAI_GPT56_LUNA_NONE",
+        "OPENAI_GPT56_TERRA_LOW",
         "AGENTIC_COMPRESS_GEMINI_PRO_LOW",
         "AGENTIC_COMPRESS_LEGACY",
         "AGENTIC_COMPRESS_LMSTUDIO",
