@@ -560,7 +560,6 @@ class LevelUpSession:
         from updates.update_character_info import (prepare_character_delta, repair_character_data,
                                                    validate_critical_fields_preserved)
         from core.validation.character_validator import AICharacterValidator, armor_contract_errors
-        from core.validation.character_effects_validator import AICharacterEffectsValidator
 
         schema = load_schema()
         base = copy.deepcopy(self.character_data)
@@ -619,49 +618,30 @@ class LevelUpSession:
             raise AssemblyConflict(domain_errors, [{'index': i, **entry}
                                                    for i, entry in enumerate(unattributed)])
 
-        def character_review(scope):
-            return AICharacterValidator(commit_guard=self.commit_guard, provider_scope=scope,
-                                        provider_status=self._status_emit, persist_cache=False).validate_and_correct_character_smart_with_result(proposed)
+        # The prepared sheet is exactly the merged domain proposals over the
+        # stored base. The ordinary character-update path's post-write
+        # normalizers (T051 armor class, T052 inventory categories, T054
+        # currency and the effects validator) do not run inside a level-up:
+        # they rewrite possessions no domain authored, and the final
+        # preservation review then correctly rejects edits it cannot attribute
+        # to any author (#407). Those normalizers keep their place on the
+        # ordinary update path; a later ordinary update still applies them.
         self._report_phase('checking the prepared sheet')
-        character_result = collect_domain_work({'character': character_review}, self._scope)['character']
-        if isinstance(character_result, Exception):
-            raise character_result
-
-        def effects_review(scope):
-            return AICharacterEffectsValidator(commit_guard=self.commit_guard, provider_scope=scope,
-                                               provider_status=self._status_emit).validate_and_correct_effects(copy.deepcopy(character_result.data))
-        self._report_phase('checking effects on the prepared sheet')
-        corrected = collect_domain_work({'effects': effects_review}, self._scope)['effects']
-        if isinstance(corrected, Exception):
-            raise corrected
-
-        _, prepared_after, checks = prepare_character_delta(corrected, {}, role, schema, self.character_name)
-        checks['critical_warnings'].extend(validate_critical_fields_preserved(
-            self.character_data, prepared_after, self.character_name))
-        post_owned, post_unattributed = {}, []
-        for field in checks.get('removed_fields', []):
-            owners = changes_owning_path(proposals, field)
-            if owners:
-                entry = {'check': 'removed_fields', 'field': field,
-                         'path': field.split('.') if isinstance(field, str) else list(field),
-                         'domains': owners}
-                for owner in owners:
-                    post_owned.setdefault(owner, []).append(entry)
-            elif field not in unowned_removed:
-                unowned_removed.append(field)
-        if checks['critical_warnings']:
-            post_unattributed.append({'check': 'critical_warnings', 'warnings': checks['critical_warnings']})
-        if not checks['schema_valid']:
-            post_unattributed.append({'check': 'schema_valid', 'error': checks.get('error_message')})
+        prepared_after = proposed
+        post_unattributed = []
+        critical_warnings = validate_critical_fields_preserved(
+            self.character_data, prepared_after, self.character_name)
+        if critical_warnings:
+            post_unattributed.append({'check': 'critical_warnings', 'warnings': critical_warnings})
         if prepared_after.get('experience_points') != self.character_data.get('experience_points'):
             post_unattributed.append({'check': 'experience_points',
-                                      'error': 'prepared corrections changed the earned XP total'})
+                                      'error': 'prepared proposal changed the earned XP total'})
         if prepared_after.get('level') != self.new_level:
             post_unattributed.append({'check': 'level',
                                       'error': 'prepared proposal does not contain the requested new level'})
-        if post_owned or post_unattributed:
-            raise AssemblyConflict(post_owned, [{'index': i, **entry}
-                                                for i, entry in enumerate(post_unattributed)])
+        if post_unattributed:
+            raise AssemblyConflict({}, [{'index': i, **entry}
+                                        for i, entry in enumerate(post_unattributed)])
 
         checks['removed_fields'] = unowned_removed
         checks['armor_repair'] = [entry for entry in armor_repair
@@ -669,7 +649,7 @@ class LevelUpSession:
                                   and not changes_owning_path(proposals, entry['path'])]
         return {'before': copy.deepcopy(self.character_data), 'after': prepared_after,
                 'changes': changes, 'checks': checks,
-                'adjustments': checks['armor_repair'] + sheet_diff(proposed, prepared_after)}
+                'adjustments': list(checks['armor_repair'])}
 
     def _commit_complete_proposal(self):
         from updates.update_character_info import (commit_character_sheet, CharacterSnapshotChanged,
