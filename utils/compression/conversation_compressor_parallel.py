@@ -38,49 +38,6 @@ _PROCESS_CACHE_LOCKS_GUARD = threading.Lock()
 _PROCESS_KEY_LOCKS = {}
 _PROCESS_KEY_LOCKS_GUARD = threading.Lock()
 
-# T027 prose has no separate metadata channel once it enters conversation
-# history.  These are the stable factual anchors that can be checked without
-# trying to judge prose semantics: explicit IDs, numbers, quoted terms, and
-# proper names that occur away from a sentence boundary.  If T084 drops one,
-# retaining the source section is safer than committing a lossy compression.
-_FACTUAL_ID_PATTERN = re.compile(
-    r"\b(?=[A-Z0-9_-]*[A-Z])(?=[A-Z0-9_-]*\d)[A-Z][A-Z0-9_-]{1,31}\b"
-)
-_FACTUAL_NUMBER_PATTERN = re.compile(r"(?<![\w])\d+(?:\.\d+)?%?(?![\w])")
-_FACTUAL_QUOTED_PATTERN = re.compile(r'["\u201c]([^"\u201d]{2,})["\u201d]')
-_FACTUAL_PROPER_PATTERN = re.compile(r"\b[A-Z][A-Za-z'\u2019-]{2,}\b")
-_FACTUAL_PROPER_STOPWORDS = {
-    "After",
-    "And",
-    "Before",
-    "Both",
-    "But",
-    "During",
-    "Finally",
-    "For",
-    "From",
-    "Here",
-    "Into",
-    "Later",
-    "Meanwhile",
-    "Once",
-    "That",
-    "The",
-    "Their",
-    "Then",
-    "There",
-    "These",
-    "They",
-    "This",
-    "Those",
-    "Through",
-    "Together",
-    "Upon",
-    "When",
-    "While",
-    "With",
-    "Without",
-}
 
 
 def _process_cache_lock(path: str) -> threading.RLock:
@@ -290,27 +247,6 @@ class ParallelConversationCompressor:
         )
         return "v2:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    @staticmethod
-    def _factual_markers(narrative: str) -> List[str]:
-        """Return deterministic anchors whose omission makes prose unsafe."""
-        markers = set(_FACTUAL_ID_PATTERN.findall(narrative))
-        markers.update(_FACTUAL_NUMBER_PATTERN.findall(narrative))
-        markers.update(
-            match.strip() for match in _FACTUAL_QUOTED_PATTERN.findall(narrative)
-        )
-
-        for match in _FACTUAL_PROPER_PATTERN.finditer(narrative):
-            marker = match.group(0)
-            if marker in _FACTUAL_PROPER_STOPWORDS:
-                continue
-            prefix = narrative[: match.start()].rstrip()
-            # A lone capitalized word at the start of a sentence is ambiguous.
-            # Names elsewhere in a sentence are stable enough to require.
-            if not prefix or prefix[-1] in ".!?":
-                continue
-            markers.add(marker)
-
-        return sorted(markers, key=lambda marker: (marker.casefold(), marker))
 
     @classmethod
     def _valid_compressed_text(
@@ -326,16 +262,8 @@ class ParallelConversationCompressor:
         ):
             return False
 
-        # The raw-location T085 branch has its own schema validator. T084 owns
-        # campaign contexts and summary/chronicle prose.
-        if section_type == "location":
-            return True
-
-        normalized = " ".join(compressed_text.split()).casefold()
-        return all(
-            " ".join(marker.split()).casefold() in normalized
-            for marker in cls._factual_markers(narrative)
-        )
+        # No semantic or notation validation: use the returned text directly.
+        return True
 
     def _valid_cache_entry(
         self, entry: Any, narrative: str, section_type: str = None

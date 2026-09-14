@@ -1,5 +1,17 @@
 # Provider Routing
 
+## Issue 397 compression delta (2026-09-13; native gameplay acceptance pending)
+
+T084 OpenAI selects Terra/low through the existing registry. New historical
+derivatives use one generation call and JSON extraction, with no semantic or
+notation checker, correction call or content-retry loop. Returned text enters
+the existing cache and outbound history replacement; warm reads reuse it.
+Runtime cache identity includes the author prompt hash and the registered
+profile. Original history, T085 and other provider bindings are unchanged.
+Local/Custom effective-model provenance is tracked separately in #402; T084
+transport/liveness remains #398. See #193 D-397-3 and the #397 audit report for
+diagnostic evidence and limitations; this delta does not claim native gameplay PASS.
+
 ## Issue 311 implementation delta (2026-09-07; live acceptance pending)
 
 Final-module T108 uses the existing completion-required advisory transport,
