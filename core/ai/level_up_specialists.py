@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from utils.level_up_workspace import (
     Constraint, Domain, DomainProposal, DomainReview, FORWARD_ORDER,
-    _capture_inputs, pending_questions, promote,
+    _capture_inputs, merge_domain_changes, pending_questions, promote,
     retract, sheet_diff, sources_for_admission,
     validate_calculations, validated_view, withdraw, _same_value)
 
@@ -400,6 +400,35 @@ def _replace_review(ws, domain, own_errors, draft):
         ws.constraints[domain].pop('review', None)
 
 
+def _clear_satisfied_assembly_constraints(domain, proposal, packet, ws):
+    """Drop a merge or threshold objection that this admitted draft already satisfies.
+
+    Those objections come from deterministic checks in code, so code can verify
+    them again against the new draft before the reviewer sees the packet. Left in
+    place, a reviewer re-asserted a stale "nameless attack entry" objection twelve
+    times against a draft that named every entry (run 6, 2026-09-14). The reviewer
+    still judges the draft on merit; it just no longer sees a check it passed.
+    """
+    constraints = ws.constraints.get(domain, {})
+    if 'merge' in constraints:
+        siblings = [ws.proposals[d] for d in FORWARD_ORDER if d != domain and d in ws.reviews and d in ws.proposals]
+        _, merge_errors = merge_domain_changes(deepcopy(packet['stored']), siblings + [proposal])
+        if not any(domain in (error.get('domains') or []) for error in merge_errors):
+            constraints.pop('merge')
+    if 'assembly' in constraints:
+        remaining = []
+        for error in constraints['assembly'].errors:
+            if error.get('check') == 'exp_required_for_next_level':
+                proposed = (proposal.changes or {}).get('exp_required_for_next_level')
+                if proposed is not None and proposed != packet['stored'].get('exp_required_for_next_level'):
+                    continue
+            remaining.append(error)
+        if not remaining:
+            constraints.pop('assembly')
+        elif len(remaining) != len(constraints['assembly'].errors):
+            constraints['assembly'] = Constraint('assembly', domain, constraints['assembly'].draft, remaining)
+
+
 def run_domain_cycle(domain, packet_for, ws, scope, status_emit, running):
     """One own-domain worker: author -> grounded admission -> independent review.
 
@@ -434,6 +463,7 @@ def run_domain_cycle(domain, packet_for, ws, scope, status_emit, running):
             ws.constraints[domain]['admission'] = Constraint('admission', domain, draft, errors)
             continue
         ws.constraints[domain].pop('admission', None)
+        _clear_satisfied_assembly_constraints(domain, proposal, request_packet, ws)
         running[domain] = 'reviewing'
         review_packet = dict(packet_for(domain))
         review_packet['latest_proposal'] = _project_proposal(proposal)
