@@ -19,6 +19,7 @@ are valid:
 import json
 import threading
 import time
+from contextlib import nullcontext
 
 PROTOCOL_VERSION = 1
 
@@ -42,7 +43,7 @@ class ProtocolWriter:
         self._lock = threading.Lock()
         self._seq = 0
 
-    def emit(self, event_type, **fields):
+    def emit(self, event_type, *, commit_guard=None, **fields):
         payload = {"type": event_type}
         payload.update(fields)
         payload.pop("seq", None)
@@ -73,8 +74,9 @@ class ProtocolWriter:
                     + "}"
                 )
                 try:
-                    self._stream.write(encoded_payload + "\n")
-                    self._stream.flush()
+                    with commit_guard() if commit_guard is not None else nullcontext():
+                        self._stream.write(encoded_payload + "\n")
+                        self._stream.flush()
                 except (BrokenPipeError, OSError, ValueError):
                     # Callers that own a durable delivery receipt need to know the
                     # agent went away so they do not acknowledge output it never

@@ -41,15 +41,23 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   keep_checking: Same-location transitions (X01->X01) still invalid
 }
 
+@LEVEL_UP={
+  admit: eligible PC requests/agrees to advance -> levelUp begins specialist interview; do not require HP roll, choices or final confirmation before entry. Eligibility question alone != consent. Eligible party NPCs use same action automatically; one level at a time.
+  reject_bypass: ordinary updateCharacterInfo/updatePlayerInfo/updateNPCInfo applying any portion of advancement -> reject with concrete conflict and correct via existing levelUp, retaining real input, never choosing for player.
+  preserve: ordinary damage/healing, inventory/currency, earned XP awards and temporary max-HP effects remain valid under existing rules; judge purpose, not field. Appropriate non-mutating discussion is valid.
+  truthful: no saved-advancement claim before specialist completion.
+  ordering: levelUp is standalone; reject mixed handoff, retain pending independent work for normal actions before later handoff, never claim discarded siblings executed.
+}
+
 @ACTIONS={
-  updateCharacterInfo: stats/inventory/condition changes on EXISTING chars (NOT for checking/reporting current state)
+  updateCharacterInfo: non-advancement stats/inventory/condition changes on EXISTING chars (NOT for checking/reporting current state); advancement uses levelUp
   removeEffect: deliberately end/dispel one exact active temporary effect; automatic expiry needs no action
   updateTime: activities >=5min
   createEncounter: initialize combat (NOT for traps unless monsters)
   updateEncounter: modify active encounter state
   updatePlot: story developments/discoveries
   transitionLocation: party moves to new location (ID only)
-  levelUp: AFTER explicit agreement
+  levelUp: dedicated advancement handoff; see @LEVEL_UP for PC consent and automatic NPC entry
   establishHub: gain base ownership
   createNewModule: ONLY after specific commitment ("Yes investigate barrow")
   exitGame: end session

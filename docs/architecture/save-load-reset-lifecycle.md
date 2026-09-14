@@ -27,6 +27,33 @@ Seams: `updates/save_game_manager.py:494` (membership), `:992` (ownership),
 Policy: #193 p9/p10, B1/B2, GL-1. Browser and native fault evidence remain scoped;
 this source map is not a full acceptance verdict.
 
+## #323 level-up integration candidate (2026-09-08; acceptance pending)
+
+Inspected on the working candidate based on main `553c8128`; unchanged sections
+retain their older verification pins below. The process-local LevelUpSession
+captures the existing live scope. T047/T048 now use its required cancellable
+transport; cancellation propagates through the canonical character writer and
+the reachable smart/effects validators, rather than becoming a rejected draft.
+
+Lock order is character RLock -> effects path lease -> atomic file lease -> short
+scope RLock at replacement. Guarded level-up waits on busy ownership without
+expiry. No provider work or file-lock acquisition happens under the scope guard.
+Primary commit winning first is retained; cancellation denies subsequent writes
+and publication, never whole-level-up rollback or replay of that primary update.
+
+The same optional authority reaches accepted audit/history replacement and the
+existing web cache/queue or headless NDJSON admission. Guarded stdout fallback
+uses each capture adapter's direct publication leaf, never its delayed parser
+buffer. Already admitted output is not retroactively revoked. Main's final
+common-tail history save retains the captured callback through compression and
+context refresh; ordinary turns keep a None callback and their existing behavior.
+
+Seams: `level_up_manager.py:78`, `updates/update_character_info.py:1324`,
+`utils/encoding_utils.py:200`, `main.py:6967`, `main.py:9540`, `main.py:9687`,
+`web/web_interface.py:632`, `core/headless/protocol.py:46`.
+These are source contracts, not proof of live Load/Reset/Quit timing or #116
+display-replay acceptance. Native gates remain required under #193.
+
 ## #248 implementation candidate (2026-09-06; acceptance pending)
 
 Recovery-scoped Saves remain queued on fault alone and drain at safe completion. Accepted Load/Reset/Quit cancels only unstarted recovery Saves with their Save/control identities before quiescence; a started Save finishes normally. Admission against a sealed cancelled recovery scope returns cancellation, never a snapshot of replacement state. Ordinary turn/welcome semantics are unchanged. Raw terminal shares its existing numbered-save/reset/quit menu after recovery scope quiescence.
@@ -167,8 +194,9 @@ Startup/locking delta verified 2026-09-05 against the `fix/issue-114-startup-rep
   `.runtime_locks/atomic/` identity derived from the canonical target path. Dead processes
   release ownership through the OS; persistent lock files are not stale-owner evidence.
 - Windows sharing violations keep retrying while retaining original file bytes.
-  Startup's optional `commit_guard` checks supersession before a late replace; unguarded
-  callers and sibling `safe_json_dump` have no scope-aware cancellation check.
+  Startup's optional `commit_guard` checks supersession before a late replace.
+  The #323 candidate adds the same optional replacement authority to sibling
+  `safe_json_dump`; unguarded callers keep their existing behavior.
 
 ## Deployment boundary
 
@@ -176,6 +204,22 @@ Stop and restart every worker sharing the same game directory onto the same revi
 before using the new writer. Old PID-exclusive and new OS-advisory lock protocols must
 not run together. Workers must also share the same installation/runtime lock root.
 Do not delete lock files to reclaim ownership or stop unrelated installations.
+
+## #323 postapproval lifecycle delta (2026-09-13; acceptance pending)
+
+The local `fix/323-c4-pressure` candidate (HEAD `8c242fa1` plus working changes)
+keeps LevelUpSession and its private workspace process-local. The accepted audit
+JSON is not a persisted resumable interview. Original accepted game context and
+player input are forwarded into that session, never restored from rejected drafts.
+Accepted authorization and preferences survive a pre-write operational handback;
+retry follows actual player intent, not arbitrary input. No specialist questions
+or cooperative question-yield path remains. Owned threads still join and existing
+supersession retains Load/Quit authority; no resumable interview store was added.
+The existing guarded prepared-sheet commit remains the only level-up write;
+same-starting-level snapshot changes require recalculation without new consent;
+changed identity/starting level fails truthfully. Postcommit reporting cannot apply twice.
+Native g/h normal Quit completed with child exit0 and unchanged canonical sheets.
+Live Load-during-calculation and full committed-level-up continuity remain unproven.
 
 ## Load-bearing seams
 

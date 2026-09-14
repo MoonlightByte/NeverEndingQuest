@@ -63,7 +63,8 @@ from collections import deque
 import io
 import zipfile
 from uuid import uuid4
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stdout, redirect_stderr, nullcontext
+from utils.capture.live_provider_call import LiveProviderSuperseded
 from openai import OpenAI
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
@@ -588,7 +589,7 @@ def _message_cache_matches(message):
                 atomic_writer.release_lock(MESSAGE_CACHE_FILE)
     return False
 
-def add_to_message_cache(message):
+def add_to_message_cache(message, *, commit_guard=None):
     """Add a message once; stable IDs deduplicate replayable safe output."""
     if not isinstance(message, dict):
         return False
@@ -617,7 +618,7 @@ def add_to_message_cache(message):
             # The file lock makes read/merge/write one cross-process operation.
             # Atomic replacement alone prevents torn JSON but cannot prevent
             # two server processes from overwriting each other's stable IDs.
-            atomic_writer.acquire_lock(MESSAGE_CACHE_FILE)
+            atomic_writer.acquire_lock(MESSAGE_CACHE_FILE, commit_guard=commit_guard)
             acquired = True
             if os.path.exists(MESSAGE_CACHE_FILE):
                 with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
@@ -632,8 +633,9 @@ def add_to_message_cache(message):
                 for cached in base
                 if isinstance(cached, dict)
             ):
-                message_cache.clear()
-                message_cache.extend(base)
+                with commit_guard() if commit_guard is not None else nullcontext():
+                    message_cache.clear()
+                    message_cache.extend(base)
                 return False
             candidate = (base + [dict(message)])[-MESSAGE_CACHE_SIZE:]
             if not safe_write_json(
@@ -641,10 +643,14 @@ def add_to_message_cache(message):
                 candidate,
                 create_backup=False,
                 acquire_lock=False,
+                commit_guard=commit_guard,
             ):
                 return False
-            message_cache.clear()
-            message_cache.extend(candidate)
+            with commit_guard() if commit_guard is not None else nullcontext():
+                message_cache.clear()
+                message_cache.extend(candidate)
+        except LiveProviderSuperseded:
+            raise
         except Exception:
             return False
         finally:
@@ -653,16 +659,21 @@ def add_to_message_cache(message):
     return True
 
 
-def _queue_safe_player_output(message):
+def _queue_safe_player_output(message, *, commit_guard=None):
     """Route normalized player output through the existing web game queue."""
     try:
         payload = dict(message)
-        if not add_to_message_cache(payload):
+        if not add_to_message_cache(payload, commit_guard=commit_guard):
             # Stable-ID replay is successful when the exact message already
             # exists in the durable cache; do not enqueue a duplicate.
-            return _message_cache_matches(payload)
-        game_output_queue.put(payload)
+            matches = _message_cache_matches(payload)
+            with commit_guard() if commit_guard is not None else nullcontext():
+                return matches
+        with commit_guard() if commit_guard is not None else nullcontext():
+            game_output_queue.put_nowait(payload)
         return True
+    except LiveProviderSuperseded:
+        raise
     except Exception:
         return False
 
@@ -766,6 +777,16 @@ class WebOutputCapture:
         self.dm_buffer = []
         self.dm_section_is_startup = False
 
+    def _publish_dm_content(self, content, *, commit_guard=None):
+        message = {"type": "narration", "content": content}
+        with commit_guard() if commit_guard is not None else nullcontext():
+            game_output_queue.put_nowait(message)
+        add_to_message_cache(message, commit_guard=commit_guard)
+
+    def write_player_narration(self, content, *, commit_guard):
+        """Deliver guarded structured fallback without delayed parser buffers."""
+        self._publish_dm_content(content, commit_guard=commit_guard)
+
     def _flush_dm_buffer(self):
         global startup_ready_emitted
         if not self.dm_buffer:
@@ -777,12 +798,7 @@ class WebOutputCapture:
                 # DM narration is always type 'narration' so the client renders it
                 # with the full DM message styling (avatar, header, Generate Image).
                 # The old 'startup' type rendered as plain text with no formatting.
-                message = {
-                    'type': 'narration',
-                    'content': combined_content
-                }
-                game_output_queue.put(message)
-                add_to_message_cache(message)
+                self._publish_dm_content(combined_content)
                 debug_output_queue.put({
                     'type': 'debug',
                     'content': f"[OUTPUT_TRACE] Sent DM content to game_output: {len(combined_content)} chars",
@@ -1078,12 +1094,7 @@ class WebOutputCapture:
             # Remove "Dungeon Master:" prefix from the beginning if present
             combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
             if combined_content.strip():  # Only send if there's actual content
-                message = {
-                    'type': 'narration',
-                    'content': combined_content
-                }
-                game_output_queue.put(message)
-                add_to_message_cache(message)
+                self._publish_dm_content(combined_content)
             self.in_dm_section = False
             self.dm_buffer = []
         
@@ -3828,7 +3839,7 @@ def handle_party_data_request(data=None):
                         for feature in player_data.get('classFeatures', []):
                             # Include feature name and brief info about usage if available
                             feature_info = {'name': feature.get('name', '')}
-                            if 'usage' in feature:
+                            if isinstance(feature.get('usage'), dict):
                                 usage = feature['usage']
                                 if usage.get('current') is not None and usage.get('max'):
                                     feature_info['usage'] = f"{usage['current']}/{usage['max']}"
@@ -3910,7 +3921,7 @@ def handle_party_data_request(data=None):
                             for feature in npc_data.get('classFeatures', []):
                                 # Include feature name and brief info about usage if available
                                 feature_info = {'name': feature.get('name', '')}
-                                if 'usage' in feature:
+                                if isinstance(feature.get('usage'), dict):
                                     usage = feature['usage']
                                     if usage.get('current') is not None and usage.get('max'):
                                         feature_info['usage'] = f"{usage['current']}/{usage['max']}"
@@ -4166,7 +4177,7 @@ def handle_initiative_data_request(data=None):
                             class_features = []
                             for feature in char_data.get('classFeatures', []):
                                 feature_info = {'name': feature.get('name', '')}
-                                if 'usage' in feature:
+                                if isinstance(feature.get('usage'), dict):
                                     usage = feature['usage']
                                     if usage.get('current') is not None and usage.get('max'):
                                         feature_info['usage'] = f"{usage['current']}/{usage['max']}"

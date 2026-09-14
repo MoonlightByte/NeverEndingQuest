@@ -88,7 +88,7 @@ class StatusManager:
         self._status_callback = callback
         
     def update_status(self, message: str, is_processing: bool = True,
-                      at_input_boundary: bool = False):
+                      at_input_boundary: bool = False, owner_scope=None):
         """Update the current status message
 
         Args:
@@ -101,8 +101,17 @@ class StatusManager:
                 legitimately await player input mid-scope. Async callers (e.g.
                 the combat manager's early completion signal) must NOT pass it;
                 their premature un-processing stays rejected by the scope guard.
+            owner_scope: Optional captured lifecycle scope that owns this
+                publication (a level-up operation's scope). It is checked INSIDE
+                the status lock, in the same status->scope order the ready guard
+                below already uses, so a lifecycle owner that seals the scope and
+                then publishes through this same lock is always final: a stale
+                owner's line can only precede it, never follow it. Absent = the
+                ordinary unowned publication, byte-identical to before (#323).
         """
         with self._lock:
+            if owner_scope is not None and owner_scope.is_superseded():
+                return False
             if not is_processing:
                 try:
                     from utils.capture.live_provider_call import get_live_turn_scope

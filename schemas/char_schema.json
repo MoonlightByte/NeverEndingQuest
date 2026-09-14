@@ -173,7 +173,8 @@
           "description": {"type": "string"},
           "source": {"type": "string"},
           "usage": {
-            "type": "object",
+            "type": ["object", "null"],
+            "description": "D-323-6: null explicitly means no independent use pool; consult the feature description for any shared resource cost. Omission leaves usage unspecified. Numeric objects track an independent pool.",
             "properties": {
               "current": {"type": "integer", "minimum": 0},
               "max": {"type": "integer", "minimum": 0},

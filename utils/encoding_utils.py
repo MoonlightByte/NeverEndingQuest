@@ -32,6 +32,7 @@ import json
 import os
 import threading
 import time
+from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -195,7 +196,7 @@ def safe_json_load(filepath: str) -> Any:
         raise
 
 
-def safe_json_dump(data: Any, filepath: str, **kwargs) -> None:
+def safe_json_dump(data: Any, filepath: str, *, commit_guard=None, **kwargs) -> None:
     """
     Save JSON with sanitization and an atomic same-directory replacement.
 
@@ -239,7 +240,8 @@ def safe_json_dump(data: Any, filepath: str, **kwargs) -> None:
         # writer). Retain the write until the transient sharing lock clears.
         while True:
             try:
-                os.replace(temporary_path, filepath)
+                with commit_guard() if commit_guard is not None else nullcontext():
+                    os.replace(temporary_path, filepath)
                 break
             except (PermissionError, OSError) as replace_error:
                 winerror = getattr(replace_error, 'winerror', None)

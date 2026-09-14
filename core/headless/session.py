@@ -271,7 +271,7 @@ class HeadlessSession:
 
     # -- engine-side event handlers ---------------------------------------
 
-    def _on_stream_event(self, kind, **fields):
+    def _on_stream_event(self, kind, *, commit_guard=None, **fields):
         if kind == "narration":
             # With the player-output sink routing (P2) this path should stay
             # quiet; anything arriving here is a print site the sink does
@@ -279,7 +279,7 @@ class HeadlessSession:
             self.writer.emit(
                 "narration", channel=self._channel,
                 content=fields.get("content", ""),
-                source="stdout_scrape")
+                source="stdout_scrape", commit_guard=commit_guard)
         elif kind == "startup":
             # Each STARTUP_MARKER line is emitted twice by the engine (once
             # via print for the stream parser, once via the logger whose
@@ -319,7 +319,7 @@ class HeadlessSession:
         # harnesses never read it as input-locking processing state.
         self.writer.emit("welcome_progress", message=str(message))
 
-    def _on_player_output(self, payload):
+    def _on_player_output(self, payload, *, commit_guard=None):
         # Structured sink messages (all DM narration since P2, plus module
         # transitions and safe-action failures). Returning normally marks
         # the message handled, which suppresses the engine's fallback
@@ -331,7 +331,7 @@ class HeadlessSession:
             channel=payload.get("channel", "system"),
             content=payload.get("content", ""),
             message_id=payload.get("message_id"),
-            source="sink")
+            source="sink", commit_guard=commit_guard)
 
     def _classify_prompt(self, clean_prompt, snapshot):
         if "(Leveling Up)" in clean_prompt:

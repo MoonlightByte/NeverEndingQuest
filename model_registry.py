@@ -338,7 +338,18 @@ _declare(
     note="Retain incumbent: Terra-none was only 0.12s faster over four cases and offered no material accepted-result efficiency gain.",
 )
 _declare(
-    "T047 T086",
+    "T047",
+    _profiles(
+        "OPENAI_GPT56_TERRA_LOW",
+        "LEVELUP_CONV_GEMINI_FLASH_LOW",
+        "LEVELUP_CONV_LEGACY",
+        "LEVELUP_CONV_LMSTUDIO",
+    ),
+    note="#323 owner-selected Terra low for the infrequent level-up interview. "
+         "Reliability takes priority; full saved-level-up acceptance remains pending.",
+)
+_declare(
+    "T086",
     _profiles(
         "OPENAI_GPT56_LUNA_NONE",
         "LEVELUP_CONV_GEMINI_FLASH_LOW",
@@ -349,11 +360,13 @@ _declare(
 _declare(
     "T048",
     _profiles(
-        "OPENAI_GPT56_LUNA_NONE",
+        "OPENAI_GPT56_TERRA_LOW",
         "LEVELUP_VAL_GEMINI_PRO_LOW",
         "LEVELUP_VAL_LEGACY",
         "LEVELUP_VAL_LMSTUDIO",
     ),
+    note="#323 owner-selected Terra low for the level-up full validator. "
+         "Narrow interview controls passed; full saved-level-up acceptance remains pending.",
 )
 _declare(
     "T049",
@@ -657,6 +670,38 @@ _declare(
 )
 
 
+_declare(
+    "T115 T117",
+    _profiles(
+        "OPENAI_GPT56_LUNA_NONE",
+        "LEVELUP_CONV_GEMINI_FLASH_LOW",
+        "LEVELUP_CONV_LEGACY",
+        "LEVELUP_CONV_LMSTUDIO",
+    ),
+    note="Required private level-up domain authors: features, spells, numbers (#323).",
+)
+_declare(
+    "T119",
+    _profiles(
+        "OPENAI_GPT56_TERRA_LOW",
+        "LEVELUP_CONV_GEMINI_FLASH_LOW",
+        "LEVELUP_CONV_LEGACY",
+        "LEVELUP_CONV_LMSTUDIO",
+    ),
+    note="Required private level-up numbers author (#323); measured reliability experiment.",
+)
+_declare(
+    "T116 T118 T120",
+    _profiles(
+        "OPENAI_GPT56_TERRA_LOW",
+        "LEVELUP_VAL_GEMINI_PRO_LOW",
+        "LEVELUP_VAL_LEGACY",
+        "LEVELUP_VAL_LMSTUDIO",
+    ),
+    note="Required focused reviews of level-up domain proposals (#323).",
+)
+
+
 def _build_bindings():
     bindings = {}
     for binding in _DECLARATIONS:
@@ -677,7 +722,8 @@ REGISTERED_TASK_IDS = tuple(
     "T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T050 T051 T052 T053 "
     "T054 T059 T063 T064 T065 T066 T067 T077 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T091 T092 T093 T094 T095 T096 T097 T098 "
-    "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114".split()
+    "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114 "
+    "T115 T116 T117 T118 T119 T120".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 

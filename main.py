@@ -81,7 +81,7 @@ import glob
 import time
 import shutil
 import tempfile
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from uuid import uuid4
 from pathlib import Path
 from core.ai import api_client
@@ -3902,7 +3902,7 @@ def process_conversation_history(history):
     debug("STATE_CHANGE: Processing conversation history", category="conversation_management")
     for message in history:
         if message["role"] == "user" and message["content"].startswith("Leveling Dungeon Master Guidance"):
-            message["content"] = "DM Guidance: Proceed with leveling up the player character or the party NPC given the 5th Edition role playing game rules. Only level the player character or party NPC one level at a time to ensure no mistakes are made. If you are leveling up a party NPC then pass all changes at once using the 'updateCharacterInfo' action. If you are leveling up a player character then you must ask the player for important decisions and choices they would have control over. After the player has provided the needed information then use the 'updateCharacterInfo' to pass all changes to the players character sheet and include the experience goal for the next level. Do not update the player's information in segements."
+            message["content"] = "DM Guidance: This historical note is reference, not renewed player consent or a pending advancement command. Use the current canonical sheet and latest accepted player request; never repeat a completed transition because this old note appears. For eligible advancement, use the existing levelUp action one level at a time as a standalone handoff after independent ordinary updates are complete. A player's request or agreement begins the dedicated level-up interview; that interview preserves player-owned choices and requires final confirmation before its complete update. Eligible party NPCs advance automatically through the same specialist. Do not conduct advancement through ordinary updateCharacterInfo actions or apply it in segments. Ordinary non-advancement character updates keep their existing actions. Preserve cumulative earned XP."
     
     # Normalize legacy DM note headers before reuse.
     history = normalize_persisted_dm_notes(history)
@@ -4702,7 +4702,7 @@ def _emit_committed_module_message(content, message_id):
     return delivered is True
 
 
-def display_dm_narration(content, channel="main", color="blue", message_id=None):
+def display_dm_narration(content, channel="main", color="blue", message_id=None, *, commit_guard=None):
     """Deliver DM narration through the frontend sink, else the console.
 
     A frontend (web or headless) that installed a player-output sink gets
@@ -4723,10 +4723,17 @@ def display_dm_narration(content, channel="main", color="blue", message_id=None)
                 "channel": channel,
                 "content": content,
                 "message_id": message_id,
-            }
+            },
+            commit_guard=commit_guard,
         )
     if delivered is not True:
-        print(colored("Dungeon Master:", color), colored(content, color))
+        fallback = getattr(sys.stdout, "write_player_narration", None)
+        if commit_guard is not None and callable(fallback):
+            fallback(content, commit_guard=commit_guard)
+        else:
+            rendered = (colored("Dungeon Master:", color), colored(content, color))
+            with commit_guard() if commit_guard is not None else nullcontext():
+                print(*rendered)
 
 
 
@@ -5227,6 +5234,11 @@ def process_ai_response(
     global needs_conversation_history_update
     from contextlib import ExitStack
 
+    level_up_context = {
+        'accepted_history': copy.deepcopy(conversation_history),
+        'player_input': player_input,
+    }
+
     # An unreviewed child's currentness is not review approval. Preserve its
     # own input values for the existing bounded detached recovery path.
     processor_authority_context = {
@@ -5493,6 +5505,7 @@ def process_ai_response(
                             location_data,
                             conversation_history,
                             invocation_claim=invocation_claim,
+                            level_up_context=level_up_context,
                         )
                     except InvocationSupersededError:
                         return {
@@ -5588,6 +5601,7 @@ def process_ai_response(
                         else None
                     ),
                     invocation_claim=invocation_claim,
+                    level_up_context=level_up_context,
                 )
                 if _is_restore_request(result):
                     return result
@@ -6300,6 +6314,7 @@ def process_ai_response(
                     deferred_location_data,
                     fresh_conversation_history,
                     invocation_claim=invocation_claim,
+                    level_up_context=level_up_context,
                 )
                 if _is_restore_request(result):
                     return result
@@ -6602,6 +6617,7 @@ def process_ai_response(
                         "actions": copy.deepcopy(actions),
                         "current_index": action_index,
                     },
+                    level_up_context=level_up_context,
                 )
             except (LiveProviderSuperseded, InvocationSupersededError):
                 return {
@@ -7054,7 +7070,9 @@ def save_conversation_history(
     *,
     strict=False,
     allow_compression=True,
+    commit_guard=None,
 ):
+    from utils.capture.live_provider_call import LiveProviderSuperseded
     history_to_save = history
     try:
         # Compression is an optional optimization.  Its constructor, local
@@ -7075,6 +7093,8 @@ def save_conversation_history(
                         info("Conversation history compressed successfully", category="compression")
                     else:
                         debug("Compression not applied - conditions not fully met", category="compression")
+        except LiveProviderSuperseded:
+            raise
         except Exception as compression_error:
             warning(
                 "Conversation compression failed; saving uncompressed history: "
@@ -7082,8 +7102,10 @@ def save_conversation_history(
                 category="compression",
             )
 
-        safe_json_dump(history_to_save, json_file)
+        safe_json_dump(history_to_save, json_file, commit_guard=commit_guard)
         return True
+    except LiveProviderSuperseded:
+        raise
     except Exception as e:
         error(f"FAILURE: Failed to save conversation history", exception=e, category="file_operations")
         if strict:
@@ -9304,6 +9326,7 @@ def _main_game_loop(startup_authority, turn_authority):
         from utils.capture.live_provider_call import open_live_turn_scope
 
         live_turn_scope = open_live_turn_scope()
+        level_up_publication_guard = None
 
 
         # Old-format repairs are advisory and may invoke T018/T019/T087/T027.
@@ -9613,93 +9636,68 @@ def _main_game_loop(startup_authority, turn_authority):
                 print("\n[SYSTEM] Restarting game with restored save...\n")
                 return main_game_loop()
             elif isinstance(final_result, dict) and final_result.get("status") == "enter_levelup_mode":
-                # Enter the level up sub-loop
                 level_up_session = final_result["session"]
+                turn = level_up_session.start()
+                level_up_publication_guard = level_up_session.commit_guard
+                display_dm_narration(
+                    turn.narration, channel="levelup", commit_guard=level_up_publication_guard
+                )
+                # The entry context already belongs to main history. Start with
+                # only the first accepted reply, then transfer each new accepted
+                # answer/reply once. Session system frames and private reviews
+                # never enter main history (#323 postapproval publication).
+                level_up_history_cursor = len(level_up_session.conversation)
+                with level_up_publication_guard():
+                    conversation_history.append({"role": "assistant", "content":
+                        json.dumps({"narration": turn.narration, "actions": []})})
+                save_conversation_history(
+                    conversation_history, allow_compression=False,
+                    commit_guard=level_up_publication_guard,
+                )
 
-                # Get the first message from the session
-                dm_response = level_up_session.start()
-
-                # The level-up AI may wrap its opening message in JSON
-                # ({"narration": ...}) depending on the prompt. Display/store the
-                # narration text, not the raw JSON blob -- mirrors the per-turn
-                # handling in the loop below. Plain-text greetings fall through
-                # unchanged (json.loads raises -> use raw text).
-                try:
-                    _first_parsed = json.loads(dm_response)
-                    first_display = (_first_parsed.get("narration", dm_response)
-                                     if isinstance(_first_parsed, dict) else dm_response)
-                except (json.JSONDecodeError, TypeError):
-                    first_display = dm_response
-
-                # Autonomous/NPC sessions may complete in start().  In that
-                # branch there is no input-loop response to populate the
-                # final narration, so the opening response is also the
-                # definitive completion narration.
-                completed_on_start = level_up_session.is_complete
-                final_narration = first_display
-
-                # Display the first message and add to history
-                display_dm_narration(first_display, channel="levelup")
-                conversation_history.append({"role": "assistant", "content": first_display})
-                save_conversation_history(conversation_history)
-
-                # Loop until the session is complete
+                interrupted = False
                 while not level_up_session.is_complete:
-                    # Get player input
                     player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
                     try:
                         level_up_input = input(f"{player_name_display} (Leveling Up): ")
                     except EOFError:
-                        # Closed/piped stdin must abort the sub-loop, not
-                        # crash the game (same guard the combat loop has).
                         warning("LEVELUP: Input stream ended during level up. Aborting session.", category="level_up")
-                        if not level_up_session.summary:
-                            # The post-loop failure path displays and
-                            # persists this; without it the player gets
-                            # an empty message.
-                            level_up_session.summary = "The level up was interrupted before it could finish. It can be attempted again."
+                        level_up_session.summary = (
+                            "The level up was interrupted before it could finish. "
+                            "It can be attempted again."
+                        )
+                        interrupted = True
                         break
-
                     if not level_up_input or not level_up_input.strip():
                         continue
+                    turn = level_up_session.handle_input(level_up_input)
+                    display_dm_narration(
+                        turn.narration, channel="levelup", commit_guard=level_up_publication_guard
+                    )
+                    with level_up_publication_guard():
+                        conversation_history.extend(
+                            dict(message) for message in
+                            level_up_session.conversation[level_up_history_cursor:]
+                            if message.get('role') in ('user', 'assistant'))
+                        level_up_history_cursor = len(level_up_session.conversation)
+                    save_conversation_history(
+                        conversation_history, allow_compression=False,
+                        commit_guard=level_up_publication_guard,
+                    )
 
-                    # Handle the input and get the next AI response from the session
-                    dm_response = level_up_session.handle_input(level_up_input)
-
-                    # Check if the response is the final JSON or a conversational step
-                    try:
-                        # It's the final JSON response
-                        parsed_data = json.loads(dm_response)
-                        final_narration = parsed_data.get("narration", "Level up complete!")
-                        display_dm_narration(final_narration, channel="levelup")
-                        # The session is now complete, loop will exit
-                    except (json.JSONDecodeError, TypeError):
-                        # It's a normal conversational response
-                        display_dm_narration(dm_response, channel="levelup")
-
-                # After the loop, the session is complete.
                 if level_up_session.success:
                     debug("SUCCESS: Level up successful. Using final narration for context.", category="level_up")
-                    # Add the final, high-quality narration to the history as the definitive AI response.
-                    # This provides perfect context for the next turn without an extra AI call.
-                    final_history_message = {
-                        "role": "assistant",
-                        "content": json.dumps(
-                            {"narration": final_narration, "actions": []}
-                        ),
-                    }
-                    if completed_on_start and conversation_history:
-                        # The start response was already displayed/persisted;
-                        # canonicalize that record instead of duplicating it.
-                        conversation_history[-1] = final_history_message
-                    else:
-                        conversation_history.append(final_history_message)
-                    save_conversation_history(conversation_history)
-                else:
-                    # If the level up failed, inform the player and log it.
-                    display_dm_narration(level_up_session.summary, channel="levelup", color="red")
-                    conversation_history.append({"role": "system", "content": level_up_session.summary})
-                    save_conversation_history(conversation_history)
+                elif interrupted:
+                    display_dm_narration(
+                        level_up_session.summary, channel="levelup", color="red",
+                        commit_guard=level_up_publication_guard,
+                    )
+                    with level_up_publication_guard():
+                        conversation_history.append({"role": "system", "content": level_up_session.summary})
+                    save_conversation_history(
+                        conversation_history, allow_compression=False,
+                        commit_guard=level_up_publication_guard,
+                    )
 
                 # Break the outer validation loop and proceed to the next turn.
                 break
@@ -9757,6 +9755,9 @@ def _main_game_loop(startup_authority, turn_authority):
             complete_invocation(t067_claim)
             continue
 
+        if level_up_publication_guard is not None:
+            with level_up_publication_guard():
+                pass
         # This block now only runs if a response was NOT held
         # CRITICAL: Reload party tracker to ensure we have the latest module information after any updates
         party_tracker_data = load_json_file("party_tracker.json")
@@ -9788,7 +9789,7 @@ def _main_game_loop(startup_authority, turn_authority):
         # Use the new order_conversation_messages function
         conversation_history = order_conversation_messages(conversation_history, main_system_prompt_text)
 
-        save_conversation_history(conversation_history)
+        save_conversation_history(conversation_history, commit_guard=level_up_publication_guard)
 
         from utils.capture.live_provider_call import finish_live_turn_scope
 
