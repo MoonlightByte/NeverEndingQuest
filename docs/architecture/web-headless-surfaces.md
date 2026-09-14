@@ -51,6 +51,13 @@ The ordinary equipped-storage prerequisite is deterministic; the DM still owns
 the equipment change that satisfies it. Live firing/repair acceptance is pending.
 Premature narration is not repaired here (#364/#360). Trial authority: #193
 D-378-1/D-378-2; exact acceptance outcomes belong to the #374/#378 evidence records.
+## #323 resource display delta (2026-09-09; browser acceptance pending)
+
+The three backend player/NPC feature-tooltip builders display remaining/max
+only when usage is an object. Explicit null keeps the feature visible without
+inventing an independent counter (#193 D-323-6). Existing React record guards
+already accept this shape. Numeric display, events, state authority and routes
+are unchanged; the shared character schema/compressor carries the same contract.
 
 ## #340 output ownership delta (2026-09-09; candidate)
 
@@ -176,6 +183,23 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 13. `core/headless/streams.py:30-151` - output capture and blocking queue input.
 14. `core/headless/session.py:56-205` and `core/headless/session.py:300-467` - adapters, engine, prompt/state, and commands.
 15. `core/headless/state_reader.py:5-142` - disk-only state projection.
+
+## #323 postapproval surface delta (2026-09-13; acceptance incomplete)
+
+The local candidate on `fix/323-c4-pressure` (HEAD `8c242fa1` plus working changes)
+keeps the existing public LevelUpTurn and narration/actions envelope. Private
+ask/commit/report JSON, specialist drafts and rejection feedback are never
+substituted for accepted public history. The main model originates questions;
+only reviewed narration opens player input. After approval the substantive reply
+is held through calculation, independent validation and one save/readback. The DM
+then receives a private saved-changes/variations note and narrates the actual result.
+Main retains each accepted interview input/reply once, excluding initialization,
+private corrections and the internal note. Later edits use ordinary character updates.
+There is no new browser protocol or alternate headless leveling implementation.
+Native headless h showed questions and accepted a correction to a historical-ASI
+error; it did not complete a correct saved level-up. Browser interview, hidden-tab
+completion and final gameplay return remain required live checks, not inferred
+from shared code or the focused pure suite.
 
 ## Invariants
 

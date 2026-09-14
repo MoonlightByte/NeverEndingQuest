@@ -34,6 +34,7 @@ class HeadlessOutputCapture:
         # Duck-typed by main.emit_startup_marker(); must exist, must not be
         # the protocol stream (marker lines are re-printed through write()).
         self.original_stream = mirror_stream
+        self._emit = emit
         self.classifier = LineClassifier(emit, is_error=is_error)
         self.buffer = ""
         # The engine writes from several threads (game loop, character
@@ -63,6 +64,15 @@ class HeadlessOutputCapture:
                     except Exception:
                         pass
                 self.buffer = lines[-1]
+
+    def write_player_narration(self, content, *, commit_guard):
+        """Publish structured fallback directly; the mirror remains diagnostic."""
+        with self._lock:
+            try:
+                self.original_stream.write(content + "\n")
+            except Exception:
+                pass  # Raw mirror failure must not replay gameplay output.
+        self._emit("narration", content=content, commit_guard=commit_guard)
 
     def flush(self):
         with self._lock:

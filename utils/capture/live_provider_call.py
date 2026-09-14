@@ -38,6 +38,8 @@ _REQUIRED_TASK_IDS = frozenset(
         "T042",
         "T043",
         "T044",
+        "T047",
+        "T048",
         "T049",
         "T065",
         "T067",
@@ -50,6 +52,12 @@ _REQUIRED_TASK_IDS = frozenset(
         "T096",
         "T097",
         "T114",
+        "T115",
+        "T116",
+        "T117",
+        "T118",
+        "T119",
+        "T120",
     }
 )
 _ADVISORY_TASK_IDS = frozenset(
@@ -86,7 +94,8 @@ _WIZARD_TASK_IDS = frozenset({"T092", "T093"})
 _NO_WATCHDOG_ADVISORY_TASK_IDS = frozenset({"T105", "T112"})
 # Tasks whose SUCCESS envelopes are also written to the master log by the
 # parent (their callers do not log_api_call themselves).
-_SUCCESS_LOG_TASK_IDS = frozenset({"T105", "T108", "T113"})
+_SUCCESS_LOG_TASK_IDS = frozenset({"T047", "T048", "T105", "T108", "T113",
+                                   "T115", "T116", "T117", "T118", "T119", "T120"})
 _MAX_BACKOFF_SECONDS = 8.0
 _PERMANENT_ERROR_SECONDS = 60.0
 

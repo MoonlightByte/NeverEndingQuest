@@ -107,6 +107,7 @@ from jsonschema import validate, ValidationError
 import config
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from utils.capture.live_provider_call import LiveProviderSuperseded
 register_callsite("T079", "updates/update_character_info.py", 1692)
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Dict, Any, Optional
@@ -513,20 +514,23 @@ def normalize_status_and_condition(data, character_role):
 
     return data
 
+CHARACTER_NAMED_ARRAYS = {
+    'ammunition': 'name',
+    'attacksAndSpellcasting': 'name',
+    'classFeatures': 'name',
+    'equipment': 'item_name',
+    'equipment_effects': 'name',
+    'feats': 'name',
+    'racialTraits': 'name',
+}
+
+
 def deep_merge_dict(base_dict, update_dict):
     """Recursively merge update_dict into base_dict, preserving nested structures"""
     result = copy.deepcopy(base_dict)
     
     # Define arrays that need special merge handling (identified by name fields)
-    named_arrays = {
-        'ammunition': 'name',
-        'attacksAndSpellcasting': 'name', 
-        'classFeatures': 'name',
-        'equipment': 'item_name',
-        'equipment_effects': 'name',
-        'feats': 'name',
-        'racialTraits': 'name'
-    }
+    named_arrays = CHARACTER_NAMED_ARRAYS
     
     # Arrays that should be completely replaced, not merged
     complete_replacement_arrays = ['temporaryEffects']
@@ -1068,6 +1072,72 @@ def repair_character_data(character_data):
     return character_data
 
 
+def prepare_character_delta(character_data, updates, character_role, schema,
+                            character_name, managed_effect_operation=None):
+    """Shared provider-free stored-value preparation (#323 D-323-10).
+
+    Ordinary T079 input joins after effective-to-base normalization. Typed
+    level-up input joins in its stored frame. No model calls or persistence;
+    callers retain their different pre/postcommit review obligations.
+    """
+    updates = fix_injury_types(fix_item_types(copy.deepcopy(updates)))
+    if 'hitPoints' in updates and updates['hitPoints'] < 0:
+        updates['hitPoints'] = 0
+    if ('experience_points' in updates and
+            updates['experience_points'] < character_data.get('experience_points', 0)):
+        del updates['experience_points']
+    updated_data = deep_merge_dict(character_data, updates)
+    if managed_effect_operation:
+        from core.effects.lifecycle import apply_effect_ops
+        updated_data = apply_effect_ops(updated_data, [managed_effect_operation])
+    if 'hitPoints' in updated_data and updated_data['hitPoints'] < 0:
+        updated_data['hitPoints'] = 0
+    critical_warnings = validate_critical_fields_preserved(character_data, updated_data, character_name)
+    checks = {'critical_warnings': critical_warnings, 'removed_fields': [],
+              'schema_valid': False, 'error_message': None}
+    if critical_warnings:
+        return updates, updated_data, checks
+    updated_data = normalize_status_and_condition(updated_data, character_role)
+    updated_data, removed_fields = purge_invalid_fields(updated_data, schema, character_name)
+    is_valid, error_msg = validate_character_data(updated_data, schema, character_name)
+    checks.update(schema_valid=is_valid, error_message=error_msg, removed_fields=removed_fields)
+    if is_valid:
+        updated_data = repair_character_data(updated_data)
+    return updates, updated_data, checks
+
+
+class CharacterSnapshotChanged(ValueError):
+    """A prepared proposal consumed different canonical values (#323)."""
+
+    def __init__(self, current):
+        super().__init__('canonical character changed during preparation; reconcile the current values')
+        self.current = current
+
+
+def commit_character_sheet(character_path, updated_data, *, commit_guard=None, expected_before=None):
+    """One atomic write leaf, with locked value comparison for prepared work.
+
+    Ordinary callers already own their transaction and retain the existing
+    safe-write behavior. Prepared callers additionally own character/effects
+    locks and supply their exact consumed canonical snapshot. No provider work.
+    """
+    from utils.file_operations import atomic_writer
+    from utils.level_up_workspace import _same_value
+    locked = False
+    try:
+        if expected_before is not None:
+            atomic_writer.acquire_lock(character_path, commit_guard=commit_guard)
+            locked = True
+            current = safe_read_json(character_path)
+            if not _same_value(current, expected_before):
+                raise CharacterSnapshotChanged(current)
+        return safe_write_json(character_path, updated_data, acquire_lock=not locked,
+                               commit_guard=commit_guard)
+    finally:
+        if locked:
+            atomic_writer.release_lock(character_path)
+
+
 def _is_meaningful_character_delta(updates, schema):
     """Return whether T079 produced at least one recognized field update."""
     if not isinstance(updates, dict) or not updates:
@@ -1326,10 +1396,15 @@ def update_character_info(
     character_role=None,
     managed_effect_operation=None,
     action_context=None,
+    *,
+    commit_guard=None,
 ):
     """Run one complete character update transaction under a per-file lock."""
     lock = _get_character_update_lock(character_name, character_role)
     with lock:
+        if commit_guard is not None:
+            with commit_guard():
+                pass
         resolved_role = character_role or detect_character_role(character_name)
         character_path = get_character_path(character_name, resolved_role)
         from utils.path_transaction_lock import path_transaction_lock
@@ -1337,7 +1412,7 @@ def update_character_info(
         with path_transaction_lock(
             character_path,
             suffix=".effects.lock",
-            timeout_seconds=30.0,
+            timeout_seconds=None if commit_guard is not None else 30.0,
         ) as acquired:
             if acquired is None:
                 warning(
@@ -1351,6 +1426,8 @@ def update_character_info(
                     changes,
                     character_role=character_role,
                     action_context=action_context,
+                    structural_reissue=commit_guard is not None,
+                    commit_guard=commit_guard,
                 )
             return _update_character_info_unlocked(
                 character_name,
@@ -1358,6 +1435,8 @@ def update_character_info(
                 character_role=character_role,
                 managed_effect_operation=managed_effect_operation,
                 action_context=action_context,
+                structural_reissue=commit_guard is not None,
+                commit_guard=commit_guard,
             )
 
 
@@ -1369,6 +1448,8 @@ def _update_character_info_unlocked(
     prepare_only=False,
     structural_reissue=False,
     action_context=None,
+    *,
+    commit_guard=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -1382,6 +1463,9 @@ def _update_character_info_unlocked(
         bool: True if successful, False otherwise
     """
     
+    if commit_guard is not None:
+        with commit_guard():
+            pass
     debug(f"STATE_CHANGE: Updating character info for: {character_name}", category="character_updates")
     
     # Try fuzzy matching first if the character isn't found
@@ -1716,21 +1800,19 @@ CRITICAL INSTRUCTIONS:
     - When healing an unconscious character above 0 HP, clear unconscious from both condition and condition_affected fields
 14. RESOURCE TRACKING RULES:
     - "spell slot" or "expends [level] spell slot" -> Update spellSlots only
-    - "Channel Divinity" or "[ability name] (X uses)" -> Update classFeatures[].usage
-    - "uses [ability]" without spell slot mention -> Find in classFeatures and track usage
+    - For an ability, read its actual cost and identify the exact resource-owning feature in the current sheet. A shared option spends its parent's classFeatures[].usage, not an independent option counter.
     - If ability description mentions "expending a spell slot" -> ONLY update spellSlots
 15. CLASS FEATURE USAGE TRACKING:
     When updating ability uses (not spell slots):
-    a) Find the feature in classFeatures array by name
-    b) If usage field exists, update it: {{"current": X, "max": Y, "refreshOn": "shortRest/longRest"}}
-    c) If usage field doesn't exist, add it based on context:
-       - "(0 uses until rest)" -> {{"current": 0, "max": 1, "refreshOn": "shortRest"}}
-       - "(1/day)" -> {{"current": 0, "max": 1, "refreshOn": "longRest"}}
-       - "(X uses remaining)" -> {{"current": X, "max": [infer from context]}}
-    d) NEVER deduct spell slots for Channel Divinity or similar abilities
+    a) Match the exact stored resource-owning feature name. Preserve genuine independent pools and shared pools with complete current/max/refreshOn objects.
+    b) Omitted usage preserves the saved value. Explicit usage:null is saved as no independent use pool, NOT free/unlimited use or a deletion operator. Emit it only when the requested rules-grounded correction explicitly calls for removing that obsolete independent counter; never clear a real pool by default.
+    c) An option with usage:null describes its exact parent and cost. Spend that parent's counter. Do not create an option counter or rename an entry to evade the merge. Add a missing real independent pool only when the requested change and actual rules establish it, never from an old label alone.
+    d) refreshOn is a trigger tag, not recovery amount or exclusivity. Preserve the description's actual partial/full recovery rules; use longRest for an applicable full reset. Do not refill resources during level-up or spend spell slots unless the actual cost requires them.
+    e) Existing spell level lists/preparedSpells may include always-prepared grants. Exclude justified grants from ordinary preparation capacity without removing their spell access; do not invent alwaysPreparedSpells.
 16. RESOURCE UPDATE EXAMPLES:
-    Input: "Uses Channel Divinity ability Preserve Life (0 uses until rest)"
-    Update: Find "Preserve Life" or "Channel Divinity" in classFeatures, set/add usage: {{"current": 0, "max": 1, "refreshOn": "shortRest"}}
+    Current: Pool has usage {{"current": 1, "max": 2, "refreshOn": "longRest"}}; Option has usage:null and description "Spend one use of Pool."
+    Input: "Uses Option, spending one use of Pool"
+    Update: {{"classFeatures": [{{"name": "Pool", "usage": {{"current": 0, "max": 2, "refreshOn": "longRest"}}}}]}}
     
     Input: "Expends one 1st-level spell slot"  
     Update: {{"spellcasting": {{"spellSlots": {{"level1": {{"current": [reduced by 1]}}}}}}}}
@@ -1770,10 +1852,11 @@ WRONG (inconsistent state): {{"hitPoints": 12, "status": "alive", "condition": "
 
 RESOURCE TRACKING EXAMPLES:
 
-Example 1 - Channel Divinity (NO spell slots):
-Changes: "Uses Channel Divinity ability Preserve Life (0 uses until rest)"
-Current classFeatures includes: {{"name": "Preserve Life (Channel Divinity Option)", "description": "As an action, restore HP..."}}
-Update: {{"classFeatures": [{{"name": "Preserve Life (Channel Divinity Option)", "usage": {{"current": 0, "max": 1, "refreshOn": "shortRest"}}}}]}}
+Example 1 - Explicit obsolete option-counter correction (NO resource spending):
+Changes: "Correct Option to use the existing Pool rather than an independent counter; preserve remaining Pool uses."
+Current classFeatures includes Pool with usage {{"current": 1, "max": 2, "refreshOn": "longRest"}} and Option with an obsolete independent usage object.
+Update: {{"classFeatures": [{{"name": "Option", "description": "Spend one use of Pool.", "usage": null}}]}}
+Pool remains at 1/2 because it is omitted. Option's explicit null persists and prevents a separate use pool; the option still pays its actual parent cost. Preserve other existing description details when applying a real correction.
 
 Example 2 - Regular Spell:
 Changes: "Casts Cure Wounds, expending one 1st-level spell slot"
@@ -1854,6 +1937,13 @@ Character Role: {character_role}
         )
         if requested_delta_schema is not None:
             char_update_config["response_schema"] = requested_delta_schema
+        response_schema = char_update_config.get("response_schema")
+        if response_schema is not None:
+            feature_usage = (response_schema.get("properties", {})
+                .get("classFeatures", {}).get("items", {})
+                .get("properties", {}).get("usage"))
+            if feature_usage is not None:
+                feature_usage["nullable"] = True
     elif MODEL_PROVIDER == "lmstudio":
         char_update_config = config.CHAR_UPDATE_LMSTUDIO
     else:  # legacy
@@ -1875,8 +1965,14 @@ Character Role: {character_role}
             "updates. Restore the schema file or set MODEL_PROVIDER off gemini."
         )
 
+    primary_committed = False
+    validation_success = None
+    last_update_error = None
     while structural_reissue or attempt <= max_attempts:
         try:
+            if commit_guard is not None:
+                with commit_guard():
+                    pass
             debug(f"STATE_CHANGE: Attempt {attempt} of {max_attempts}", category="character_updates")
 
             response = capture_and_fanout("T079", api_client.create_completion,
@@ -2037,16 +2133,6 @@ Character Role: {character_role}
                 print(f"DEBUG: [XP Warning] XP change requested but experience_points not in updates!")
                 print(f"DEBUG: [XP Warning] AI returned: {updates}")
             
-            # Fix common item_type mistakes before applying updates
-            updates = fix_item_types(updates)
-            
-            # Fix common injury type mistakes before applying updates
-            updates = fix_injury_types(updates)
-            
-            # CRITICAL FIX: Prevent AI from setting negative HP in updates
-            if 'hitPoints' in updates and updates['hitPoints'] < 0:
-                debug(f"HP_FIX: AI attempted to set negative HP ({updates['hitPoints']}) for {character_name}, clamping to 0", category="character_updates")
-                updates['hitPoints'] = 0
             
             # Apply updates to character data using deep merge
             # print(f"[DEBUG] About to call deep_merge_dict for {character_name}")
@@ -2057,19 +2143,6 @@ Character Role: {character_role}
             # if 'ammunition' in updates:
             #     print(f"[DEBUG] Ammunition updates: {updates['ammunition']}")
             
-            # CRITICAL FIX: Prevent XP loss during post-combat processing
-            # This protects against stale character data overwriting recently awarded XP
-            if 'experience_points' in updates:
-                current_xp = character_data.get('experience_points', 0)
-                new_xp = updates['experience_points']
-                
-                # If the update would reduce XP, check if this might be stale data
-                if new_xp < current_xp:
-                    print(f"DEBUG: [XP Protection] Preventing XP reduction: {current_xp} -> {new_xp} for {character_name}")
-                    print(f"DEBUG: [XP Protection] This may be stale data from post-combat processing")
-                    # Remove the XP update to preserve current XP
-                    del updates['experience_points']
-                    print(f"DEBUG: [XP Protection] XP update removed, preserving current XP: {current_xp}")
             
             # Currency reduction validation
             if 'currency' in updates:
@@ -2128,14 +2201,10 @@ Please provide the CORRECT currency values:
             if 'hitPoints' in updates:
                 debug(f"HP_DEBUG: {character_name} - Before merge HP: {character_data.get('hitPoints')}/{character_data.get('maxHitPoints')}, Update wants HP: {updates.get('hitPoints')}", category="character_updates")
             
-            updated_data = deep_merge_dict(character_data, updates)
-            if declarative_effects and managed_effect_operation:
-                from core.effects.lifecycle import apply_effect_ops
-
-                updated_data = apply_effect_ops(
-                    updated_data,
-                    [managed_effect_operation],
-                )
+            updates, updated_data, preparation_checks = prepare_character_delta(
+                character_data, updates, character_role, schema, character_name,
+                managed_effect_operation if declarative_effects else None,
+            )
             
             # Debug HP changes AFTER merge
             if 'hitPoints' in updates:
@@ -2143,12 +2212,6 @@ Please provide the CORRECT currency values:
             
             # print(f"[DEBUG] deep_merge_dict completed successfully")
             
-            # CRITICAL FIX: Ensure hitPoints never go below 0
-            if 'hitPoints' in updated_data:
-                current_hp = updated_data.get('hitPoints', 0)
-                if current_hp < 0:
-                    debug(f"HP_FIX: Clamping negative HP ({current_hp}) to 0 for {character_name}", category="character_updates")
-                    updated_data['hitPoints'] = 0
             
             # print(f"[DEBUG] Checking ammunition after merge:")
             # if 'ammunition' in updated_data:
@@ -2156,7 +2219,7 @@ Please provide the CORRECT currency values:
             
             # Validate that critical fields weren't accidentally deleted
             # print(f"[DEBUG] About to validate critical fields")
-            critical_warnings = validate_critical_fields_preserved(character_data, updated_data, character_name)
+            critical_warnings = preparation_checks['critical_warnings']
             # print(f"[DEBUG] Critical field validation completed. Warnings: {critical_warnings}")
             if critical_warnings:
                 for crit_warning in critical_warnings:
@@ -2182,19 +2245,16 @@ Please provide the CORRECT currency values:
                 attempt += 1
                 continue
             
-            # Role-specific normalization
-            updated_data = normalize_status_and_condition(updated_data, character_role)
-            
-            # Purge invalid fields before validation
-            # print(f"[DEBUG] About to purge invalid fields")
-            updated_data, removed_fields = purge_invalid_fields(updated_data, schema, character_name)
+            # Shared provider-free preparation retains the ordinary error policy.
+            removed_fields = preparation_checks['removed_fields']
             # print(f"[DEBUG] Field purging completed. Removed fields: {removed_fields}")
             if removed_fields:
                 warning(f"VALIDATION: Purged {len(removed_fields)} invalid fields: {', '.join(removed_fields)}", category="character_validation")
             
             # Validate updated data
             # print(f"[DEBUG] About to validate character data against schema")
-            is_valid, error_msg = validate_character_data(updated_data, schema, character_name)
+            is_valid = preparation_checks['schema_valid']
+            error_msg = preparation_checks['error_message']
             # print(f"[DEBUG] Schema validation completed. Valid: {is_valid}, Error: {error_msg}")
             
             # Update debug data with validation results
@@ -2227,8 +2287,7 @@ Please provide the CORRECT currency values:
                 attempt += 1
                 continue
             
-            # Final repair pass before saving to ensure schema compliance
-            updated_data = repair_character_data(updated_data)
+            # Final repair is included in the shared preparation result.
             
             if prepare_only:
                 return {
@@ -2265,63 +2324,78 @@ Please provide the CORRECT currency values:
                 except Exception as e:
                     print(f"DEBUG: [SAVE] Could not read lock file: {e}")
             
-            save_result = safe_write_json(character_path, updated_data)
-            print(f"DEBUG: [SAVE] safe_write_json returned: {save_result}")
+            save_result = commit_character_sheet(character_path, updated_data, commit_guard=commit_guard)
+            if save_result:
+                primary_committed = True
+            try:
+                print(f"DEBUG: [SAVE] safe_write_json returned: {save_result}")
+            except Exception as exc:
+                if commit_guard is None or isinstance(exc, LiveProviderSuperseded):
+                    raise
+                warning(f"Save-result diagnostic failed: {exc}", category="character_updates")
             
             if save_result:
-                # print(f"[DEBUG] Character data saved successfully!")
-                info(f"SUCCESS: Successfully updated {character_name} ({character_role})!", category="character_updates")
-                
-                # Debug HP after save
-                if 'hitPoints' in updates:
-                    saved_data = safe_read_json(character_path)
-                    debug(f"HP_DEBUG: {character_name} - After save HP: {saved_data.get('hitPoints')}/{saved_data.get('maxHitPoints')}", category="character_updates")
-                
-                # Update debug data with success
-                debug_data["final_outcome"] = "success"
-                debug_data["validation_results"]["ai_validator_run"] = validation_success if 'validation_success' in locals() else None
-                
-                # Add to consolidated debug log
-                debug_log["updates"].append(debug_data)
-                # Keep only last 20 entries to prevent file from growing too large
-                if len(debug_log["updates"]) > 20:
-                    debug_log["updates"] = debug_log["updates"][-20:]
-                safe_write_json(debug_log_file, debug_log)
-                debug(f"Debug log updated: {debug_log_file}", category="character_updates")
-                
-                # DEBUG: Verify XP was saved correctly
-                if 'experience_points' in updates:
-                    saved_data = safe_read_json(character_path)
-                    if saved_data:
-                        saved_xp = saved_data.get('experience_points', 0)
-                        expected_xp = updated_data.get('experience_points', 0)
-                        print(f"DEBUG: [XP Verify] After save - Expected XP: {expected_xp}, Actual XP in file: {saved_xp}")
-                        if saved_xp != expected_xp:
-                            print(f"DEBUG: [XP Verify] WARNING: XP mismatch after save!")
-                
-                # Log the changes with more detail for user feedback
-                changed_fields = list(updates.keys())
-                debug(f"STATE_CHANGE: Updated fields: {', '.join(changed_fields)}", category="character_updates")
-                
-                # Provide user-friendly update notification
-                if 'equipment' in changed_fields:
-                    info(f"[Character Update] {character_name}'s equipment/inventory updated", category="character_updates")
-                elif 'currency' in changed_fields:
-                    info(f"[Character Update] {character_name}'s currency updated", category="character_updates")
-                else:
-                    info(f"[Character Update] {character_name}'s {', '.join(changed_fields)} updated", category="character_updates")
+                try:
+                    # print(f"[DEBUG] Character data saved successfully!")
+                    info(f"SUCCESS: Successfully updated {character_name} ({character_role})!", category="character_updates")
+
+                    # Debug HP after save
+                    if 'hitPoints' in updates:
+                        saved_data = safe_read_json(character_path) or {}
+                        debug(f"HP_DEBUG: {character_name} - After save HP: {saved_data.get('hitPoints')}/{saved_data.get('maxHitPoints')}", category="character_updates")
+
+                    # Update debug data with success
+                    debug_data["final_outcome"] = "success"
+                    debug_data["validation_results"]["ai_validator_run"] = validation_success
+
+                    # Add to consolidated debug log
+                    debug_log["updates"].append(debug_data)
+                    # Keep only last 20 entries to prevent file from growing too large
+                    if len(debug_log["updates"]) > 20:
+                        debug_log["updates"] = debug_log["updates"][-20:]
+                    safe_write_json(debug_log_file, debug_log)
+                    debug(f"Debug log updated: {debug_log_file}", category="character_updates")
+
+                    # DEBUG: Verify XP was saved correctly
+                    if 'experience_points' in updates:
+                        saved_data = safe_read_json(character_path)
+                        if saved_data:
+                            saved_xp = saved_data.get('experience_points', 0)
+                            expected_xp = updated_data.get('experience_points', 0)
+                            print(f"DEBUG: [XP Verify] After save - Expected XP: {expected_xp}, Actual XP in file: {saved_xp}")
+                            if saved_xp != expected_xp:
+                                print(f"DEBUG: [XP Verify] WARNING: XP mismatch after save!")
+
+                    # Log the changes with more detail for user feedback
+                    changed_fields = list(updates.keys())
+                    debug(f"STATE_CHANGE: Updated fields: {', '.join(changed_fields)}", category="character_updates")
+
+                    # Provide user-friendly update notification
+                    if 'equipment' in changed_fields:
+                        info(f"[Character Update] {character_name}'s equipment/inventory updated", category="character_updates")
+                    elif 'currency' in changed_fields:
+                        info(f"[Character Update] {character_name}'s currency updated", category="character_updates")
+                    else:
+                        info(f"[Character Update] {character_name}'s {', '.join(changed_fields)} updated", category="character_updates")
+                except Exception as exc:
+                    if commit_guard is None or isinstance(exc, LiveProviderSuperseded):
+                        raise
+                    warning(f"Post-save diagnostics failed: {exc}", category="character_updates")
                 
                 # AI Character Validation after successful update
                 try:
-                    print(f"DEBUG: [Character Validator] Starting validation for {character_name}...")
-                    
-                    # DEBUG: Check XP before validation
-                    pre_validation_data = safe_read_json(character_path)
-                    pre_validation_xp = pre_validation_data.get('experience_points', 0) if pre_validation_data else 0
-                    print(f"DEBUG: [XP Tracking] {character_name} XP BEFORE validation: {pre_validation_xp}")
-                    
-                    info(f"[Character Validator] Starting smart validation for {character_name}...", category="character_validation")
-                    validator = AICharacterValidator()
+                    pre_validation_xp = None
+                    try:
+                        print(f"DEBUG: [Character Validator] Starting validation for {character_name}...")
+                        pre_validation_data = safe_read_json(character_path)
+                        pre_validation_xp = pre_validation_data.get('experience_points', 0) if pre_validation_data else 0
+                        print(f"DEBUG: [XP Tracking] {character_name} XP BEFORE validation: {pre_validation_xp}")
+                        info(f"[Character Validator] Starting smart validation for {character_name}...", category="character_validation")
+                    except Exception as exc:
+                        if commit_guard is None or isinstance(exc, LiveProviderSuperseded):
+                            raise
+                        warning(f"Pre-validation diagnostics failed: {exc}", category="character_validation")
+                    validator = AICharacterValidator(commit_guard=commit_guard)
 
                     # Load character data for smart validation
                     char_data = safe_read_json(character_path)
@@ -2337,7 +2411,7 @@ Please provide the CORRECT currency values:
                         # Save the validated data back with better error handling
                         if validation_result.changed:
                             # Ensure write completes successfully
-                            write_success = safe_write_json(character_path, validated_data)
+                            write_success = safe_write_json(character_path, validated_data, commit_guard=commit_guard)
                             if write_success:
                                 if validation_result.success:
                                     debug("VALIDATION: Character auto-validated with corrections (using cache where possible)...", category="character_validation")
@@ -2374,12 +2448,14 @@ Please provide the CORRECT currency values:
                         print(f"DEBUG: [XP Tracking] WARNING: XP changed during validation! {pre_validation_xp} -> {post_validation_xp}")
                         
                 except Exception as e:
+                    if commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                        raise
                     warning(f"VALIDATION: Character validation error", category="character_validation")
                     # Don't fail the update if validation has issues
                 
                 # AI Character Effects Validation after AC validation
                 try:
-                    effects_validator = AICharacterEffectsValidator()
+                    effects_validator = AICharacterEffectsValidator(commit_guard=commit_guard)
                     effects_validated_data, effects_success = effects_validator.validate_character_effects_safe(character_path)
                     
                     if effects_success and effects_validator.corrections_made:
@@ -2390,15 +2466,25 @@ Please provide the CORRECT currency values:
                         warning("VALIDATION: Character effects validation failed, but update completed", category="character_validation")
                         
                 except Exception as e:
+                    if commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                        raise
                     warning(f"VALIDATION: Character effects validation error", category="character_validation")
                     # Don't fail the update if validation has issues
                 
+                if commit_guard is not None:
+                    with commit_guard():
+                        pass
                 return True
             else:
                 error("FAILURE: Failed to save character data", category="file_operations")
                 return False
                 
         except json.JSONDecodeError as e:
+            last_update_error = e
+            if commit_guard is not None and primary_committed:
+                with commit_guard():
+                    pass
+                return True
             error(f"FAILURE: JSON decode error (attempt {attempt})", exception=e, category="ai_processing")
             debug(f"AI_CALL: Raw response: {raw_response}", category="ai_processing")
             # print(f"\n[DEBUG ERROR] JSON decode error for {character_name}")
@@ -2417,6 +2503,13 @@ Please provide the CORRECT currency values:
             debug(f"JSON parse error details saved to: {debug_error_file}", category="character_updates")
             
         except Exception as e:
+            if commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                raise
+            last_update_error = e
+            if commit_guard is not None and primary_committed:
+                with commit_guard():
+                    pass
+                return True
             error(f"FAILURE: Error during update (attempt {attempt})", exception=e, category="character_updates")
             
             # Update debug data with exception details
@@ -2465,7 +2558,7 @@ Please provide the CORRECT currency values:
     # Log failure state
     if 'debug_data' in locals():
         debug_data["final_outcome"] = "failure"
-        debug_data["failure_reason"] = str(e) if 'e' in locals() else "Max attempts reached"
+        debug_data["failure_reason"] = str(last_update_error) if last_update_error is not None else "Max attempts reached"
         # Add to consolidated debug log
         debug_log["updates"].append(debug_data)
         if len(debug_log["updates"]) > 100:

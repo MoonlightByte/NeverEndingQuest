@@ -3018,6 +3018,7 @@ def process_action(
     transition_deferred_actions=None,
     invocation_claim=None,
     action_context=None,
+    level_up_context=None,
 ):
     """Process an action based on its type
     
@@ -3782,7 +3783,12 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             current_level = character_data.get("level", 1)
 
             # Create a new level up session object
-            level_up_session = LevelUpSession(entity_name, current_level, new_level)
+            entry = level_up_context or {}
+            level_up_session = LevelUpSession(
+                entity_name, current_level, new_level,
+                accepted_history=entry.get('accepted_history'),
+                player_input=entry.get('player_input'),
+            )
             
             # Return a special status to the main loop, passing the session object
             return {

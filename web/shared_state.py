@@ -6,6 +6,7 @@ This prevents circular dependencies and ensures single instances.
 
 import queue
 import threading
+from utils.capture.live_provider_call import LiveProviderSuperseded
 
 # Single, shared queue for module creation progress
 module_progress_queue = queue.Queue()
@@ -53,7 +54,7 @@ def has_player_output_sink():
         return _player_output_sink is not None
 
 
-def emit_player_output(message):
+def emit_player_output(message, *, commit_guard=None):
     """Best-effort output delivery; an absent or failed sink is never fatal."""
     try:
         payload = dict(message)
@@ -66,7 +67,11 @@ def emit_player_output(message):
     try:
         # ``False`` means the sink could not durably accept the message. None
         # remains a successful legacy sink result; modern sinks return True.
-        return sink(payload) is not False
+        if commit_guard is None:
+            return sink(payload) is not False
+        return sink(payload, commit_guard=commit_guard) is not False
+    except LiveProviderSuperseded:
+        raise
     except Exception:
         return False
 

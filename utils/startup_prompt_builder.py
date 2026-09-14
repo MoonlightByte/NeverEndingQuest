@@ -22,7 +22,6 @@ def build_character_creation_system_prompt():
     if not schema:
         raise ValueError("Could not load character schema")
     leveling_info = _read_text_file("prompts/leveling/leveling_info.txt")
-    npc_rules = _read_text_file("prompts/generators/npc_builder_prompt.txt")
     return f"""You are a friendly character creation guide for a fifth edition
 fantasy adventure, using SRD 5.2.1. The installed adventure and its real context
 are supplied by the wizard; never assume a particular campaign or destination.
@@ -85,10 +84,6 @@ CHARACTER SCHEMA:
 
 LEVELING INFORMATION:
 {leveling_info}
-
-RACE AND CLASS RULES (rules reference; the startup wire contract above governs
-output instead of any NPC-generator output instructions in this reference):
-{npc_rules}
 """
 
 

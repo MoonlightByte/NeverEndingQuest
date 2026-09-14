@@ -1038,14 +1038,22 @@ except:
     def track_response(r): pass
 import config
 from utils.file_operations import safe_read_json, safe_write_json
+from utils.capture.live_provider_call import LiveProviderSuperseded, LiveProviderUnavailable
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
 set_script_name(__name__)
 
 class AICharacterValidator:
-    def __init__(self):
+    def __init__(self, *, commit_guard=None, provider_scope=None, persist_cache=True,
+                 provider_status=None):
         """Initialize AI-powered validator with caching"""
+        self.commit_guard = commit_guard
+        self.provider_scope = provider_scope
+        # Optional caller-owned status sink for provider heartbeats (level-up
+        # phase reporting); None keeps the ordinary global transport status.
+        self.provider_status = provider_status
+        self.persist_cache = persist_cache
         self.logger = logging.getLogger(__name__)
         self.corrections_made = []
         
@@ -1439,10 +1447,14 @@ class AICharacterValidator:
     
     def _save_cache(self):
         """Save validation cache to file"""
+        if not self.persist_cache:
+            return
         try:
-            safe_write_json(self.cache_file, self.validation_cache)
+            safe_write_json(self.cache_file, self.validation_cache, commit_guard=self.commit_guard)
             debug(f"[Validation Cache] Saved cache with {len(self.validation_cache)} entries", category="character_validation")
         except Exception as e:
+            if self.commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                raise
             error(f"Failed to save validation cache: {str(e)}", category="character_validation")
     
     def _compute_ac_hash(self, ac_data: Dict[str, Any]) -> str:
@@ -1789,6 +1801,9 @@ class AICharacterValidator:
         Returns:
             AI-corrected character data
         """
+        if self.commit_guard is not None:
+            with self.commit_guard():
+                pass
         character_name = character_data.get('name', 'Unknown')
         info(f"[Smart Validator] Checking {character_name} for needed validations...", category="character_validation")
         original_snapshot = copy.deepcopy(character_data)
@@ -1840,7 +1855,9 @@ class AICharacterValidator:
             corrected_data = result.data
 
         corrected_data = self._apply_deterministic_validations(corrected_data)
-        
+        if self.commit_guard is not None:
+            with self.commit_guard():
+                pass
         return _validation_result(character_data, corrected_data)
 
     def validate_and_correct_character_smart(
@@ -2017,10 +2034,31 @@ class AICharacterValidator:
         ]
         max_attempts = 3
         last_error: BaseException = RuntimeError("T051 validation attempts exhausted")
-        for attempt in range(1, max_attempts + 1):
+        strict = self.provider_scope is not None and self.provider_scope.completion_required
+        base_messages = list(messages)
+        last_candidate = None
+        attempt = 0
+        while True:
             ai_response = None
+            if not strict:
+                attempt += 1
+            if strict:
+                messages = list(base_messages)
+                if last_candidate is not None:
+                    raw, objection = last_candidate
+                    messages.extend([
+                        {"role": "assistant", "content": raw if isinstance(raw, str) else ""},
+                        {"role": "user", "content": (
+                            f"VALIDATION ERROR: {objection}. Return the complete JSON "
+                            "object again. Ensure validated_character_data.armorClass "
+                            "exactly equals ac_calculation_breakdown.total_ac and that "
+                            "corrections_made accurately describes any changed value.")},
+                    ])
             try:
                 response = capture_and_fanout("T051", api_client.create_completion,
+                    _detached_scope=self.provider_scope,
+                    _detached_status=self.provider_status,
+                    _live_selected='advisory' if self.provider_scope is not None else None,
                     _request_provider=MODEL_PROVIDER,
                     messages=messages,
                     model=validator_config["model"],
@@ -2036,7 +2074,9 @@ class AICharacterValidator:
                     except:
                         pass
 
-                ai_response = response.choices[0].message.content.strip()
+                ai_response = response.choices[0].message.content
+                if not strict:
+                    ai_response = ai_response.strip()
 
                 # Parse AI response to get corrected character data
                 corrected_data = self.parse_ai_validation_response(
@@ -2074,12 +2114,23 @@ class AICharacterValidator:
 
                 return _validation_result(character_data, merged_data)
             except Exception as e:
-                last_error = e
+                if self.commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                    raise
                 self.corrections_made = copy.deepcopy(corrections_before)
+                if strict:
+                    if isinstance(e, LiveProviderUnavailable) and e.envelope.get('disposition') == 'empty':
+                        continue
+                    if isinstance(e, CharacterValidationResponseError):
+                        last_candidate = (ai_response, str(e))
+                        continue
+                    raise
+                last_error = e
                 self.logger.error(
                     f"AI validation failed (attempt {attempt}/{max_attempts}): {e}"
                 )
-                if attempt < max_attempts and ai_response is not None:
+                if attempt >= max_attempts:
+                    break
+                if ai_response is not None:
                     messages.extend([
                         {"role": "assistant", "content": ai_response},
                         {
@@ -2152,12 +2203,15 @@ class AICharacterValidator:
         # Data has changed or not cached - perform validation
         print(f"DEBUG: [Validation Cache] Running inventory validation for {character_name} - {len(inventory_data['equipment'])} items to check")
         info(f"[Validation Cache] Running inventory validation for {character_name} - {len(inventory_data['equipment'])} items to check", category="character_validation")
+        strict = self.provider_scope is not None and self.provider_scope.completion_required
+        last_candidate = None
         
         max_attempts = 3
         attempt = 1
         corrections_before = copy.deepcopy(self.corrections_made)
         
-        while attempt <= max_attempts:
+        while strict or attempt <= max_attempts:
+            ai_response = None
             try:
                 # Build prompt with filtered inventory data
                 validation_prompt = self.build_inventory_validation_prompt(inventory_data)
@@ -2173,12 +2227,25 @@ class AICharacterValidator:
                 else:  # legacy
                     inv_config = config.CHAR_VALIDATOR_LEGACY
 
+                messages = [
+                    {"role": "system", "content": self.get_inventory_validator_system_prompt()},
+                    {"role": "user", "content": validation_prompt}
+                ]
+                if last_candidate is not None:
+                    raw, objection = last_candidate
+                    messages.extend([
+                        {"role": "assistant", "content": raw if isinstance(raw, str) else ""},
+                        {"role": "user", "content": (
+                            "Your last response failed this validator's contract: " + objection
+                            + ". Return the complete JSON object required by the unchanged system "
+                              "and user instructions. Correct the stated defect and preserve valid fields.")},
+                    ])
                 response = capture_and_fanout("T052", api_client.create_completion,
+                    _detached_scope=self.provider_scope,
+                    _detached_status=self.provider_status,
+                    _live_selected='advisory' if self.provider_scope is not None else None,
                     _request_provider=MODEL_PROVIDER,
-                    messages=[
-                        {"role": "system", "content": self.get_inventory_validator_system_prompt()},
-                        {"role": "user", "content": validation_prompt}
-                    ],
+                    messages=messages,
                     model=inv_config["model"],
                     temperature=0.1,
                     **{k: v for k, v in inv_config.items() if k != "model"})
@@ -2192,7 +2259,9 @@ class AICharacterValidator:
                     except:
                         pass
                 
-                ai_response = response.choices[0].message.content.strip()
+                ai_response = response.choices[0].message.content
+                if not strict:
+                    ai_response = ai_response.strip()
                 
                 # Parse AI response to get inventory updates only
                 inventory_updates = self.parse_inventory_validation_response(
@@ -2220,7 +2289,16 @@ class AICharacterValidator:
                 return _validation_result(character_data, corrected_data)
                     
             except Exception as e:
+                if self.commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                    raise
                 self.corrections_made = copy.deepcopy(corrections_before)
+                if strict:
+                    if isinstance(e, LiveProviderUnavailable) and e.envelope.get('disposition') == 'empty':
+                        continue
+                    if isinstance(e, CharacterValidationResponseError):
+                        last_candidate = (ai_response, str(e))
+                        continue
+                    raise
                 self.logger.error(f"AI inventory validation attempt {attempt} failed: {str(e)}")
                 attempt += 1
                 if attempt > max_attempts:
@@ -3007,6 +3085,9 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         while attempt <= max_attempts:
             try:
                 response = capture_and_fanout("T053", api_client.create_completion,
+                    _detached_scope=self.provider_scope,
+                    _detached_status=self.provider_status,
+                    _live_selected='advisory' if self.provider_scope is not None else None,
                     _request_provider=MODEL_PROVIDER,
                     messages=[
                         {"role": "system", "content": self.get_combined_validator_system_prompt()},
@@ -3795,12 +3876,15 @@ Remember to return a single JSON response with all four validation results."""
         # Data has changed or not cached - perform consolidation
         print(f"DEBUG: [AI Validator] Checking {character_name}'s inventory for consolidation opportunities...")
         info(f"[Validation Cache] Running currency consolidation for {character_name} - {len(consolidation_data['equipment'])} items to check", category="character_validation")
+        strict = self.provider_scope is not None and self.provider_scope.completion_required
+        last_candidate = None
         
         max_attempts = 3
         attempt = 1
         corrections_before = copy.deepcopy(self.corrections_made)
         
-        while attempt <= max_attempts:
+        while strict or attempt <= max_attempts:
+            ai_response = None
             try:
                 # Build prompt with filtered data
                 consolidation_prompt = self.build_inventory_consolidation_prompt(consolidation_data)
@@ -3816,12 +3900,25 @@ Remember to return a single JSON response with all four validation results."""
                 else:  # legacy
                     consol_config = config.CHAR_VALIDATOR_LEGACY
 
+                messages = [
+                    {"role": "system", "content": self.get_inventory_consolidation_system_prompt()},
+                    {"role": "user", "content": consolidation_prompt}
+                ]
+                if last_candidate is not None:
+                    raw, objection = last_candidate
+                    messages.extend([
+                        {"role": "assistant", "content": raw if isinstance(raw, str) else ""},
+                        {"role": "user", "content": (
+                            "Your last response failed this validator's contract: " + objection
+                            + ". Return the complete JSON object required by the unchanged system "
+                              "and user instructions. Correct the stated defect and preserve valid fields.")},
+                    ])
                 response = capture_and_fanout("T054", api_client.create_completion,
+                    _detached_scope=self.provider_scope,
+                    _detached_status=self.provider_status,
+                    _live_selected='advisory' if self.provider_scope is not None else None,
                     _request_provider=MODEL_PROVIDER,
-                    messages=[
-                        {"role": "system", "content": self.get_inventory_consolidation_system_prompt()},
-                        {"role": "user", "content": consolidation_prompt}
-                    ],
+                    messages=messages,
                     model=consol_config["model"],
                     temperature=0.1,
                     **{k: v for k, v in consol_config.items() if k != "model"})
@@ -3835,7 +3932,9 @@ Remember to return a single JSON response with all four validation results."""
                     except:
                         pass
                 
-                ai_response = response.choices[0].message.content.strip()
+                ai_response = response.choices[0].message.content
+                if not strict:
+                    ai_response = ai_response.strip()
                 
                 # Parse AI response to get consolidation updates only
                 consolidation_updates = self.parse_currency_consolidation_response(
@@ -3861,7 +3960,16 @@ Remember to return a single JSON response with all four validation results."""
                 return _validation_result(character_data, corrected_data)
                     
             except Exception as e:
+                if self.commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                    raise
                 self.corrections_made = copy.deepcopy(corrections_before)
+                if strict:
+                    if isinstance(e, LiveProviderUnavailable) and e.envelope.get('disposition') == 'empty':
+                        continue
+                    if isinstance(e, CharacterValidationResponseError):
+                        last_candidate = (ai_response, str(e))
+                        continue
+                    raise
                 self.logger.error(f"AI currency consolidation attempt {attempt} failed: {str(e)}")
                 attempt += 1
                 if attempt > max_attempts:

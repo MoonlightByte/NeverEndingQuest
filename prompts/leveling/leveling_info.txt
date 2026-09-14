@@ -1,207 +1,48 @@
-# SRD 5.2.1 Leveling Information
-# Portions of this content derived from SRD 5.2.1, licensed under CC BY 4.0
+# SRD 5.2.1 Character Rules - Compact Guide
 
-Use the following information for for guidance leveling up characters:
+This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
-Experience Points by Level:
-Level,XP
-1,0
-2,300
-3,900
-4,2700
-5,6500
-6,14000
-7,23000
-8,34000
-9,48000
-10,64000
-11,85000
-12,100000
-13,120000
-14,140000
-15,165000
-16,195000
-17,225000
-18,265000
-19,305000
-20,355000
+Editorial changes: condensed orientation and selected calculation reminders, not the full SRD or its class/spell tables. Source: https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf . Page references below are printed pages, not proof that those pages were included in this request.
 
-Proficiency Bonus by Level:
-Level,Proficiency Bonus
-1,+2
-2,+2
-3,+2
-4,+2
-5,+3
-6,+3
-7,+3
-8,+3
-9,+4
-10,+4
-11,+4
-12,+4
-13,+5
-14,+5
-15,+5
-16,+5
-17,+6
-18,+6
-19,+6
-20,+6
+## Scope and evidence
 
-Spell Slots for Full Casters (Bard, Cleric, Druid, Sorcerer, Wizard):
-Level,1st,2nd,3rd,4th,5th,6th,7th,8th,9th
-1,2,-,-,-,-,-,-,-,-
-2,3,-,-,-,-,-,-,-,-
-3,4,2,-,-,-,-,-,-,-
-4,4,3,-,-,-,-,-,-,-
-5,4,3,2,-,-,-,-,-,-
-6,4,3,3,-,-,-,-,-,-
-7,4,3,3,1,-,-,-,-,-
-8,4,3,3,2,-,-,-,-,-
-9,4,3,3,3,1,-,-,-,-
-10,4,3,3,3,2,-,-,-,-
-11,4,3,3,3,2,1,-,-,-
-12,4,3,3,3,2,1,-,-,-
-13,4,3,3,3,2,1,1,-,-
-14,4,3,3,3,2,1,1,-,-
-15,4,3,3,3,2,1,1,1,-
-16,4,3,3,3,2,1,1,1,-
-17,4,3,3,3,2,1,1,1,1
-18,4,3,3,3,3,1,1,1,1
-19,4,3,3,3,3,2,1,1,1
-20,4,3,3,3,3,2,2,1,1
+Use SRD 5.2.1 for every campaign and character. Do not mix in SRD 5.1/2014 mechanics. Apply the relevant class, subclass, origin, feat and spell rules, not assumptions drawn from the character's name or an example character. This guide or model recall alone is not a complete rules table. Distinguish facts supplied in the request from recalled rules; never invent a quotation, supplied table row, reference result, player choice or historical roll. Explain an uncertain or conflicting rule to the appropriate specialist/reviewer, not as a choice for the player to solve. Existing explicit spell references take precedence over remembered spell descriptions.
 
-Spell Slots for Half Casters (Paladin, Ranger):
-Level,1st,2nd,3rd,4th,5th
-1,-,-,-,-,-
-2,2,-,-,-,-
-3,3,-,-,-,-
-4,3,-,-,-,-
-5,4,2,-,-,-
-6,4,2,-,-,-
-7,4,3,-,-,-
-8,4,3,-,-,-
-9,4,3,2,-,-
-10,4,3,2,-,-
-11,4,3,3,-,-
-12,4,3,3,-,-
-13,4,3,3,1,-
-14,4,3,3,1,-
-15,4,3,3,2,-
-16,4,3,3,2,-
-17,4,3,3,3,1
-18,4,3,3,3,1
-19,4,3,3,3,2
-20,4,3,3,3,2
+The active role's response schema and instructions govern output. During level-up, specialists determine rules, calculate exact changes and independently validate them; the main DM interviews for real player choices and explains the validated results, including automatic compatibility corrections, rather than computing or adjudicating mechanics itself. At startup, use the startup character-building contract, not a level-up delta. No proposal is a saved character until the writer confirms it.
 
-Warlock Spell Slots:
-Level,Slots,SlotLevel
-1,1,1st
-2,2,1st
-3,2,2nd
-4,2,2nd
-5,2,3rd
-6,2,3rd
-7,2,4th
-8,2,4th
-9,2,5th
-10,2,5th
-11,3,5th
-12,3,5th
-13,3,5th
-14,3,5th
-15,3,5th
-16,3,5th
-17,4,5th
-18,4,5th
-19,4,5th
-20,4,5th
+## Rules outline
 
-Third Caster Spell Slots (Arcane Trickster, Eldritch Knight):
-Level,1st,2nd,3rd,4th
-3,2,-,-,-
-4,3,-,-,-
-7,4,2,-,-
-10,4,3,-,-
-13,4,3,2,-
-16,4,3,3,-
-19,4,3,3,1
-20,4,3,3,1
+- Creation, pp. 19-23: class; background and species; languages; ability method and allocation; alignment and descriptive details; proficiencies, features, equipment and derived numbers. Background supplies ability increases, an Origin feat, two skills and a tool; do not add old-edition species ability bonuses. Apply each grant once. Preserve the player's real rolls and choices. Standard array is 15, 14, 13, 12, 10, 8; rolled scores use four d6, highest three, repeated for six scores; point buy uses the SRD's 27-point costs. Background increases are +2/+1 among its listed abilities or +1 to all three, with a maximum of 20 from these increases. Do not confuse a recommended build with a player decision.
+- Advancement, pp. 23-24: cumulative XP determines total character level; select the class advanced, increase Hit Dice/maximum HP, gain that class level's features, and update all affected ability/proficiency-derived values. Do not reset or spend earned XP. Class level, total character level and spell level are distinct. Do not award starting equipment again when leveling or multiclassing.
+- Class-specific work, pp. 28-82: check the attained class/subclass features and their actual granting levels, resource pools, recovery and choice requirements. Do not grant future subclass features or apply one class's feat/Extra Attack schedule to another. Source index: Barbarian 28; Bard 31; Cleric 36; Druid 41; Fighter 47; Monk 49; Paladin 53; Ranger 57; Rogue 61; Sorcerer 64; Warlock 70; Wizard 77. These page pointers are orientation, not a second rules engine or a restriction on character identity.
+- Origins/feats, pp. 83-88: preserve background/species identity and compatible established selections. Check feat category, prerequisites, repeatability and any choices within the feat. A fixed grant is not an invitation to pick another feat. A genuinely selectable skill, feat or spell remains a player choice in the existing interview, including when correcting an older sheet. No separate edition-conversion permission ceremony.
+- Spellcasting, pp. 104-106 plus the actual class/subclass: distinguish cantrips, ordinary prepared spells, always-prepared grants, spellbook contents, slot maxima, remaining slots and slot-free uses. These are not interchangeable counts. A spell's casting ability comes from its granting feature; a feature can grant access outside the usual class list. Use the separate supplied spell definitions for exact effects, upgrades and casting requirements; this guide does not replace that catalogue.
 
-Class Features:
-Barbarian:Rage,Unarmored Defense,Reckless Attack,Danger Sense,Primal Path,Extra Attack,Fast Movement,Feral Instinct,Brutal Critical,Relentless Rage,Persistent Rage,Indomitable Might,Primal Champion
-Bard:Spellcasting,Bardic Inspiration,Jack of All Trades,Song of Rest,Bard College,Expertise,Font of Inspiration,Countercharm,Magical Secrets,Superior Inspiration
-Cleric:Spellcasting,Divine Domain,Channel Divinity,Destroy Undead,Divine Intervention
-Druid:Spellcasting,Druidic,Wild Shape,Druid Circle,Timeless Body,Beast Spells,Archdruid
-Fighter:Fighting Style,Second Wind,Action Surge,Martial Archetype,Extra Attack,Indomitable
-Monk:Unarmored Defense,Martial Arts,Ki,Unarmored Movement,Monastic Tradition,Deflect Missiles,Slow Fall,Extra Attack,Stunning Strike,Ki-Empowered Strikes,Evasion,Stillness of Mind,Purity of Body,Tongue of the Sun and Moon,Diamond Soul,Empty Body,Perfect Self
-Paladin:Divine Sense,Lay on Hands,Fighting Style,Spellcasting,Divine Smite,Divine Health,Sacred Oath,Extra Attack,Aura of Protection,Aura of Courage,Improved Divine Smite,Cleansing Touch
-Ranger:Favored Enemy,Natural Explorer,Fighting Style,Spellcasting,Ranger Archetype,Primeval Awareness,Extra Attack,Land's Stride,Hide in Plain Sight,Vanish,Feral Senses,Foe Slayer
-Rogue:Expertise,Sneak Attack,Thieves' Cant,Cunning Action,Roguish Archetype,Uncanny Dodge,Evasion,Reliable Talent,Blindsense,Slippery Mind,Elusive,Stroke of Luck
-Sorcerer:Spellcasting,Sorcerous Origin,Font of Magic,Metamagic,Sorcerous Restoration
-Warlock:Otherworldly Patron,Pact Magic,Eldritch Invocations,Pact Boon,Mystic Arcanum,Eldritch Master
-Wizard:Spellcasting,Arcane Recovery,Arcane Tradition,Spell Mastery,Signature Spells
+## Calculation and edition-confusion checks
 
-Spell Lists:
-Bard Spells:
-Cantrips:Blade Ward,Dancing Lights,Friends,Light,Mage Hand,Mending,Message,Minor Illusion,Prestidigitation,True Strike,Vicious Mockery
-1st:Animal Friendship,Bane,Charm Person,Comprehend Languages,Cure Wounds,Detect Magic,Disguise Self,Faerie Fire,Feather Fall,Healing Word,Heroism,Identify,Illusory Script,Longstrider,Silent Image,Sleep,Speak with Animals,Tasha's Hideous Laughter,Thunderwave,Unseen Servant
-2nd:Animal Messenger,Blindness/Deafness,Calm Emotions,Cloud of Daggers,Crown of Madness,Detect Thoughts,Enhance Ability,Enthrall,Heat Metal,Hold Person,Invisibility,Knock,Lesser Restoration,Locate Animals or Plants,Locate Object,Magic Mouth,Phantasmal Force,See Invisibility,Shatter,Silence,Suggestion,Zone of Truth
-3rd:Bestow Curse,Clairvoyance,Dispel Magic,Fear,Feign Death,Glyph of Warding,Hypnotic Pattern,Leomund's Tiny Hut,Major Image,Nondetection,Plant Growth,Sending,Speak with Dead,Speak with Plants,Stinking Cloud,Tongues
-4th:Compulsion,Confusion,Dimension Door,Freedom of Movement,Greater Invisibility,Hallucinatory Terrain,Locate Creature,Polymorph
-5th:Animate Objects,Awaken,Dominate Person,Dream,Geas,Greater Restoration,Hold Monster,Legend Lore,Mass Cure Wounds,Mislead,Modify Memory,Planar Binding,Raise Dead,Scrying,Seeming,Teleportation Circle
+- Character Advancement (p. 23), level: cumulative XP threshold: 1:0; 2:300; 3:900; 4:2700; 5:6500; 6:14000; 7:23000; 8:34000; 9:48000; 10:64000; 11:85000; 12:100000; 13:120000; 14:140000; 15:165000; 16:195000; 17:225000; 18:265000; 19:305000; 20:355000. A next-level threshold is not a replacement XP total; do not invent a level-21 threshold from this table.
+- Ability modifier is floor((score - 10) / 2). Proficiency Bonus uses total character level: +2 at 1-4, +3 at 5-8, +4 at 9-12, +5 at 13-16, +6 at 17-20. Update affected skills, attacks, spell bonuses/DCs and other stored totals. Expertise or another feature can alter a contribution; do not add an already-included bonus twice. Spell save DC normally equals 8 + casting ability modifier + proficiency; spell attack bonus normally equals casting ability modifier + proficiency. Preserve independent equipment/effect contributions.
+- HP: level 1 uses the class's maximum Hit Die plus Constitution modifier. Later levels add a rolled Hit Die or fixed class gain plus Constitution modifier, minimum 1. Fixed gains before Constitution: Barbarian 7; Fighter/Paladin/Ranger 6; Bard/Cleric/Druid/Monk/Rogue/Warlock 5; Sorcerer/Wizard 4. If Constitution modifier changes, reconcile its effect across attained levels once; do not double-count the newly gained level. Never reconstruct past rolls to force a desired total.
+- Multiclassing, pp. 24-26: check all relevant primary-ability prerequisites and the new class's multiclass grants, not its full starting package. Nonstacking Extra Attack and alternative AC formulas remain nonstacking. Spell access/preparation is determined for each class separately. Combined Spellcasting slots count full Bard/Cleric/Druid/Sorcerer/Wizard levels and half Paladin/Ranger levels rounded up under the multiclass rule. A higher combined slot does not unlock a higher-level spell for either class. Pact Magic is a separate pool, though the rules permit cross-use with Spellcasting. Cantrip scaling normally uses total character level unless the spell says otherwise.
+- Prepared-spell capacity comes from the current class table, not a remembered older-edition ability-plus-level formula. Always-prepared grants do not consume ordinary preparation capacity; include every attained grant row, not just the newest. Wizard spellbook additions and prepared capacity are separate: two new spellbook spells per Wizard level after 1 do not mean two new preparation slots. Keep cantrip acquisition/replacement separate from level 1+ spell replacement.
+- Ordinary prepared-spell replacement timing (p. 104): Bard/Sorcerer/Warlock, one when gaining a level; Cleric/Druid/Wizard, any after a Long Rest; Paladin/Ranger, one after a Long Rest. Capacity-driven additions and explicit feature exceptions are separate. Do not interpret every level-up as permission to rebuild every prepared list or take a rest.
+- Resources and current mechanics: verify the current feature's pool, cost and recovery amounts, including partial Short Rest recovery versus full Long Rest recovery. Cleric Channel Divinity options share their class pool; Preserve Life spends Channel Divinity, not an independent pool. Fighter Second Wind has class-table uses and partial Short Rest recovery, not the old one-use rule. Paladin/Ranger Spellcasting starts at class level 1 in this SRD. These are reminders to check all affected features, not a whitelist of classes to repair.
 
-Cleric Spells:
-Cantrips:Guidance,Light,Mending,Resistance,Sacred Flame,Spare the Dying,Thaumaturgy
-1st:Bane,Bless,Command,Create or Destroy Water,Cure Wounds,Detect Evil and Good,Detect Magic,Detect Poison and Disease,Guiding Bolt,Healing Word,Inflict Wounds,Protection from Evil and Good,Purify Food and Drink,Sanctuary,Shield of Faith
-2nd:Aid,Augury,Blindness/Deafness,Calm Emotions,Continual Flame,Enhance Ability,Find Traps,Gentle Repose,Hold Person,Lesser Restoration,Locate Object,Prayer of Healing,Protection from Poison,Silence,Spiritual Weapon,Warding Bond,Zone of Truth
-3rd:Animate Dead,Beacon of Hope,Bestow Curse,Clairvoyance,Create Food and Water,Daylight,Dispel Magic,Feign Death,Glyph of Warding,Magic Circle,Mass Healing Word,Meld into Stone,Protection from Energy,Remove Curse,Revivify,Sending,Speak with Dead,Spirit Guardians,Tongues,Water Walk
-4th:Banishment,Control Water,Death Ward,Divination,Freedom of Movement,Guardian of Faith,Locate Creature,Stone Shape
-5th:Commune,Contagion,Dispel Evil and Good,Flame Strike,Geas,Greater Restoration,Hallow,Insect Plague,Legend Lore,Mass Cure Wounds,Planar Binding,Raise Dead,Scrying
+## Supplied correction facts: Cleric advancement through level 5
 
-Druid Spells (continued):
-2nd:Animal Messenger,Barkskin,Beast Sense,Darkvision,Enhance Ability,Find Traps,Flame Blade,Flaming Sphere,Gust of Wind,Heat Metal,Hold Person,Lesser Restoration,Locate Animals or Plants,Locate Object,Moonbeam,Pass without Trace,Protection from Poison,Spike Growth
-3rd:Call Lightning,Conjure Animals,Daylight,Dispel Magic,Meld into Stone,Plant Growth,Protection from Energy,Sleet Storm,Speak with Plants,Water Breathing,Water Walk,Wind Wall
-4th:Blight,Confusion,Conjure Minor Elementals,Conjure Woodland Beings,Control Water,Dominate Beast,Freedom of Movement,Giant Insect,Hallucinatory Terrain,Ice Storm,Locate Creature,Polymorph,Stone Shape,Stoneskin,Wall of Fire
-5th:Antilife Shell,Awaken,Commune with Nature,Conjure Elemental,Contagion,Geas,Greater Restoration,Insect Plague,Mass Cure Wounds,Planar Binding,Reincarnate,Scrying,Tree Stride,Wall of Stone
+Apply these facts only to the matching class/subclass and attained Cleric level, never by character name or campaign. These are supplied SRD 5.2.1 rules, not player choices or final character calculations; authors and reviewers use the same facts. This excerpt does not cover other classes or later table rows.
 
-Paladin Spells:
-1st:Bless,Command,Cure Wounds,Detect Evil and Good,Detect Magic,Detect Poison and Disease,Divine Favor,Heroism,Protection from Evil and Good,Purify Food and Drink,Shield of Faith
-2nd:Aid,Branding Smite,Find Steed,Lesser Restoration,Locate Object,Magic Weapon,Protection from Poison,Zone of Truth
-3rd:Create Food and Water,Daylight,Dispel Magic,Magic Circle,Remove Curse,Revivify
-4th:Banishment,Death Ward,Locate Creature
-5th:Dispel Evil and Good,Geas,Raise Dead
+- Cleric table, class level | base cantrips | ordinary prepared spells | slot maxima (spell levels 1/2/3): 4 | 4 | 7 | 4/3/0; 5 | 4 | 9 | 4/3/2. Multiclass slot maxima still use the combined-caster rule. Do not use Wisdom-plus-level preparation. The fourth base cantrip arrives at Cleric 4, not 5; repairing a missing selection is not a second new cantrip grant. Thaumaturge's extra cantrip is additional.
+- Life Domain always-prepared grants are cumulative: Cleric 3 grants Aid, Bless, Cure Wounds, Lesser Restoration; Cleric 5 adds Mass Healing Word and Revivify. These do not consume ordinary preparation capacity. Do not omit earlier grants or replace them with older-edition lists.
+- Channel Divinity at Cleric 4 and 5 has two shared uses; regain one expended use after a Short Rest, all after a Long Rest. Preserve Life spends that pool: Magic action, healing budget 5 times Cleric level, Bloodied creatures within 30 feet including self, each capped at half maximum HP. It has no independent use pool. Advancement does not restore spent uses.
+- Cleric 5 grants Sear Undead: on Turn Undead, optional Radiant damage of Wisdom modifier d8 (minimum one die) to each failed-save target; this damage does not end the turning effect. Do not substitute old Destroy Undead or add Font of Divine Power. Life Domain does not grant Heavy armor; Protector Divine Order grants Heavy armor and Martial weapons. No new ASI is granted at Cleric 5.
 
-Ranger Spells:
-1st:Alarm,Animal Friendship,Cure Wounds,Detect Magic,Detect Poison and Disease,Fog Cloud,Goodberry,Hunter's Mark,Jump,Longstrider,Speak with Animals
-2nd:Animal Messenger,Barkskin,Darkvision,Find Traps,Lesser Restoration,Locate Animals or Plants,Locate Object,Pass without Trace,Protection from Poison,Silence,Spike Growth
-3rd:Conjure Animals,Daylight,Nondetection,Plant Growth,Protection from Energy,Speak with Plants,Water Breathing,Water Walk
-4th:Conjure Woodland Beings,Freedom of Movement,Locate Creature,Stoneskin
-5th:Commune with Nature,Tree Stride
+## Existing-sheet preservation (application contract, not an SRD rule)
 
-Sorcerer Spells:
-Cantrips:Acid Splash,Blade Ward,Chill Touch,Dancing Lights,Fire Bolt,Friends,Light,Mage Hand,Mending,Message,Minor Illusion,Prestidigitation,Ray of Frost,Shocking Grasp,True Strike
-1st:Burning Hands,Charm Person,Chromatic Orb,Color Spray,Comprehend Languages,Detect Magic,Disguise Self,Expeditious Retreat,False Life,Feather Fall,Fog Cloud,Jump,Mage Armor,Magic Missile,Shield,Silent Image,Sleep,Thunderwave,Witch Bolt
-2nd:Alter Self,Blindness/Deafness,Blur,Cloud of Daggers,Crown of Madness,Darkness,Darkvision,Detect Thoughts,Enhance Ability,Enlarge/Reduce,Gust of Wind,Hold Person,Invisibility,Knock,Levitate,Mirror Image,Misty Step,Phantasmal Force,Scorching Ray,See Invisibility,Shatter,Spider Climb,Suggestion,Web
-3rd:Blink,Clairvoyance,Counterspell,Daylight,Dispel Magic,Fear,Fireball,Fly,Gaseous Form,Haste,Hypnotic Pattern,Lightning Bolt,Major Image,Protection from Energy,Sleet Storm,Slow,Stinking Cloud,Tongues,Water Breathing,Water Walk
-4th:Banishment,Blight,Confusion,Dimension Door,Dominate Beast,Greater Invisibility,Ice Storm,Polymorph,Stoneskin,Wall of Fire
-5th:Animate Objects,Cloudkill,Cone of Cold,Creation,Dominate Person,Hold Monster,Insect Plague,Seeming,Telekinesis,Teleportation Circle,Wall of Stone
+Automatically correct affected old-edition mechanics through the existing validated update. Preserve identity, earned XP, possessions, story, injuries, compatible choices and remaining resources. Level-up is not healing, resting, resurrection or a new character. Describe actual compatibility adjustments briefly with the normal recap.
 
-Warlock Spells:
-Cantrips:Blade Ward,Chill Touch,Eldritch Blast,Friends,Mage Hand,Minor Illusion,Prestidigitation,True Strike
-1st:Armor of Agathys,Arms of Hadar,Charm Person,Comprehend Languages,Expeditious Retreat,Hellish Rebuke,Hex,Illusory Script,Protection from Evil and Good,Unseen Servant,Witch Bolt
-2nd:Cloud of Daggers,Crown of Madness,Darkness,Enthrall,Hold Person,Invisibility,Mirror Image,Misty Step,Ray of Enfeeblement,Shatter,Spider Climb,Suggestion
-3rd:Counterspell,Dispel Magic,Fear,Fly,Gaseous Form,Hunger of Hadar,Hypnotic Pattern,Magic Circle,Major Image,Remove Curse,Tongues,Vampiric Touch
-4th:Banishment,Blight,Dimension Door,Hallucinatory Terrain
-5th:Contact Other Plane,Dream,Hold Monster,Scrying
+Use the supplied stored schema and the active update contract. Propose genuinely changed values, not a sheet rebuilt from defaults. Saving-throw name lists record proficiency; do not invent numeric save fields. Preserve skill-name lists or stored skill-bonus maps as represented. Stored numeric bonuses may need explicit updates even when another statistic is computed by the runtime.
 
-Wizard Spells:
-Cantrips:Acid Splash,Blade Ward,Chill Touch,Dancing Lights,Fire Bolt,Friends,Light,Mage Hand,Mending,Message,Minor Illusion,Prestidigitation,Ray of Frost,Shocking Grasp,True Strike
-1st:Alarm,Burning Hands,Charm Person,Chromatic Orb,Color Spray,Comprehend Languages,Detect Magic,Disguise Self,Expeditious Retreat,False Life,Feather Fall,Find Familiar,Fog Cloud,Grease,Identify,Illusory Script,Jump,Longstrider,Mage Armor,Magic Missile,Protection from Evil and Good,Shield,Silent Image,Sleep,Tasha's Hideous Laughter,Tenser's Floating Disk,Thunderwave,Unseen Servant,Witch Bolt
-2nd:Alter Self,Arcane Lock,Blindness/Deafness,Blur,Cloud of Daggers,Continual Flame,Crown of Madness,Darkness,Darkvision,Detect Thoughts,Enlarge/Reduce,Flaming Sphere,Gentle Repose,Gust of Wind,Hold Person,Invisibility,Knock,Levitate,Locate Object,Magic Mouth,Magic Weapon,Melf's Acid Arrow,Mirror Image,Misty Step,Nystul's Magic Aura,Phantasmal Force,Ray of Enfeeblement,Rope Trick,Scorching Ray,See Invisibility,Shatter,Spider Climb,Suggestion,Web
-3rd:Animate Dead,Bestow Curse,Blink,Clairvoyance,Counterspell,Dispel Magic,Fear,Feign Death,Fireball,Fly,Gaseous Form,Glyph of Warding,Haste,Hypnotic Pattern,Leomund's Tiny Hut,Lightning Bolt,Magic Circle,Major Image,Nondetection,Phantom Steed,Protection from Energy,Remove Curse,Sending,Sleet Storm,Slow,Stinking Cloud,Tongues,Vampiric Touch,Water Breathing
-4th:Arcane Eye,Banishment,Blight,Confusion,Conjure Minor Elementals,Control Water,Dimension Door,Evard's Black Tentacles,Fabricate,Fire Shield,Greater Invisibility,Hallucinatory Terrain,Ice Storm,Leomund's Secret Chest,Locate Creature,Mordenkainen's Faithful Hound,Mordenkainen's Private Sanctum,Otiluke's Resilient Sphere,Phantasmal Killer,Polymorph,Stone Shape,Stoneskin,Wall of Fire
-5th:Animate Objects,Bigby's Hand,Cloudkill,Cone of Cold,Conjure Elemental,Contact Other Plane,Creation,Dominate Person,Dream,Geas,Hold Monster,Legend Lore,Mislead,Modify Memory,Passwall,Planar Binding,Rary's Telepathic Bond,Scrying,Seeming,Telekinesis,Teleportation Circle,Wall of Force,Wall of Stone
+For named merged features use exact saved names and update the existing entry's mechanics; a new name adds an entry rather than renaming it. Omission does not delete an obsolete mechanic. Do not invent patch operators or unsupported fields. For classFeatures, omitted usage preserves the saved pool; explicit usage:null represents no independent pool, not free/unlimited use. Preserve genuine shared/independent pools and their remaining resources. State a dependent option's actual resource owner/cost in its description. refreshOn identifies a trigger; the description must retain partial/full recovery amounts and other applicable triggers. Use supported spell lists/preparedSpells for available spells, including always-prepared grants; do not invent a separate alwaysPreparedSpells field.
 
-When leveling up a character, use this information to determine the appropriate changes in experience points, spell slots, and available spells. Ensure that the 'experience_points' field in the character data matches the value from this table for the character's new level. For spellcasting classes, update the character's spell list according to their class and new level.
+Review the actual merged result against the original sheet and accepted choices. A complete preserved list is not data loss merely because it is long. Conversely, missing affected updates can leave wrong mechanics despite a correct summary. Reject specific rule, choice, calculation, schema or preservation failures; do not demand extra fields, repeated choices or fabricated source evidence. The character's full spell descriptions and the spell popup/overlay catalogue remain separate and unchanged.

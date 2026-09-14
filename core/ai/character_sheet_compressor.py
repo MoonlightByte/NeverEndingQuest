@@ -189,7 +189,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     for feat in class_feats:
         if isinstance(feat, dict):
             feat_name = feat.get('name', '')
-            usage = feat.get('usage', {})
+            usage = feat.get('usage') or {}
             current = usage.get('current')
             max_uses = usage.get('max')
             

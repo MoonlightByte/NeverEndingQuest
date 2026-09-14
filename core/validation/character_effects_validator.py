@@ -59,11 +59,22 @@ except:
     def track_response(r): pass
 
 from utils.file_operations import safe_read_json, safe_write_json
+from utils.capture.live_provider_call import LiveProviderSuperseded, LiveProviderUnavailable
 from utils.module_path_manager import ModulePathManager
 
+
+class EffectsResponseFormatError(ValueError):
+    """Raised when a T050 categorization response violates the response contract."""
+
 class AICharacterEffectsValidator:
-    def __init__(self):
+    def __init__(self, *, commit_guard=None, provider_scope=None, provider_status=None):
         """Initialize AI-powered effects validator"""
+        self.commit_guard = commit_guard
+        self.provider_scope = provider_scope
+        # Optional caller-owned status sink for provider heartbeats (level-up
+        # phase reporting); None keeps the ordinary global transport status.
+        self.provider_status = provider_status
+        self.require_complete = bool(provider_scope is not None and provider_scope.completion_required)
         self.logger = logging.getLogger(__name__)
         self.corrections_made = []
         # Get current module from party tracker for consistent path resolution
@@ -99,6 +110,8 @@ class AICharacterEffectsValidator:
                 corrected_data = self.initialize_class_feature_usage(corrected_data)
                 return corrected_data
         except Exception as exc:
+            if self.require_complete:
+                raise
             self.logger.warning(
                 "Could not determine effects pipeline mode; preserving effects: %s",
                 exc,
@@ -359,32 +372,49 @@ class AICharacterEffectsValidator:
         else:  # legacy
             effects_config = config.CHAR_VALIDATOR_LEGACY
 
+        base_messages = [
+            {"role": "system", "content": self.get_effects_system_prompt()},
+            {"role": "user", "content": categorization_prompt}
+        ]
         try:
-            response = capture_and_fanout("T050", api_client.create_completion,
-                _request_provider=MODEL_PROVIDER,
-                messages=[
-                    {"role": "system", "content": self.get_effects_system_prompt()},
-                    {"role": "user", "content": categorization_prompt}
-                ],
-                model=effects_config["model"],
-                temperature=0.1,
-                **{k: v for k, v in effects_config.items() if k != "model"})
-            
-            # Track usage if available
-            if USAGE_TRACKING_AVAILABLE:
+            last_format_failure = None
+            while True:
+                messages = list(base_messages)
+                if last_format_failure is not None:
+                    raw, reason = last_format_failure
+                    messages += [
+                        {'role': 'assistant', 'content': raw if isinstance(raw, str) else ''},
+                        {'role': 'user', 'content':
+                         'Response format correction: ' + reason +
+                         '. Return the complete categorization object required by the system prompt.'},
+                    ]
                 try:
-                    track_response(response)
-                except:
-                    pass
-            
-            ai_response = response.choices[0].message.content.strip()
-            
-            # Parse AI response and update character data
-            corrected_data = self.parse_ai_categorization_response(ai_response, character_data)
-            
-            return corrected_data
-            
+                    response = capture_and_fanout('T050', api_client.create_completion,
+                        _detached_scope=self.provider_scope,
+                        _detached_status=self.provider_status,
+                        _live_selected='advisory' if self.provider_scope is not None else None,
+                        _request_provider=MODEL_PROVIDER,
+                        messages=messages, model=effects_config['model'], temperature=0.1,
+                        **{k: v for k, v in effects_config.items() if k != 'model'})
+                    if USAGE_TRACKING_AVAILABLE:
+                        try:
+                            track_response(response)
+                        except:
+                            pass  # unchanged pre-existing usage-tracking handling
+                    raw = response.choices[0].message.content
+                    return self.parse_ai_categorization_response(
+                        raw, character_data, require_complete=self.require_complete)
+                except LiveProviderUnavailable as exc:
+                    if self.require_complete and exc.envelope.get('disposition') == 'empty':
+                        continue  # same request, same owning validator, no attempt-count exit
+                    raise  # deterministic rejection or ordinary advisory handling, unchanged type
+                except EffectsResponseFormatError as exc:
+                    if not self.require_complete:
+                        raise  # existing surrounding non-required handler retains its no-op behavior
+                    last_format_failure = (raw, str(exc))
         except Exception as e:
+            if self.require_complete or (self.commit_guard is not None and isinstance(e, LiveProviderSuperseded)):
+                raise
             self.logger.error(f"AI categorization failed: {str(e)}")
             return character_data
     
@@ -486,58 +516,71 @@ Instructions:
 
 Provide the corrected arrays following the response format."""
     
-    def parse_ai_categorization_response(self, ai_response: str, original_data: Dict[str, Any]) -> Dict[str, Any]:
+    def parse_ai_categorization_response(self, ai_response: str, original_data: Dict[str, Any],
+                                         *, require_complete=False) -> Dict[str, Any]:
         """Parse AI categorization response and update character data"""
         try:
+            # Raw content is handed in unstripped; the type check owns non-strings.
+            if not isinstance(ai_response, str):
+                raise EffectsResponseFormatError("T050 response must be a string")
+
             # Extract JSON from response
             start_idx = ai_response.find('{')
             end_idx = ai_response.rfind('}') + 1
-            
-            if start_idx != -1 and end_idx != -1:
-                json_str = ai_response[start_idx:end_idx]
+
+            if start_idx == -1 or end_idx <= start_idx:
+                raise EffectsResponseFormatError('T050 did not return a categorization object')
+
+            json_str = ai_response[start_idx:end_idx]
+            try:
                 parsed_response = json.loads(json_str)
-                required = {
-                    'temporaryEffects',
-                    'injuries',
-                    'removed_effects',
-                    'categorization_summary',
-                }
-                if not isinstance(parsed_response, dict) or set(parsed_response) != required:
-                    raise ValueError("T050 requires exactly the four categorization fields")
-                for field in ('temporaryEffects', 'injuries'):
-                    if not isinstance(parsed_response[field], list) or not all(
-                        isinstance(item, dict) for item in parsed_response[field]
-                    ):
-                        raise ValueError(f"T050 {field} must be an array of objects")
-                if not isinstance(parsed_response['removed_effects'], list) or not all(
-                    isinstance(item, str) and item.strip()
-                    for item in parsed_response['removed_effects']
+            except json.JSONDecodeError as exc:
+                raise EffectsResponseFormatError(f"T050 response was not valid JSON: {exc}") from exc
+
+            required = {
+                'temporaryEffects',
+                'injuries',
+                'removed_effects',
+                'categorization_summary',
+            }
+            if not isinstance(parsed_response, dict) or set(parsed_response) != required:
+                raise EffectsResponseFormatError("T050 requires exactly the four categorization fields")
+            for field in ('temporaryEffects', 'injuries'):
+                if not isinstance(parsed_response[field], list) or not all(
+                    isinstance(item, dict) for item in parsed_response[field]
                 ):
-                    raise ValueError("T050 removed_effects must contain useful strings")
-                summary = parsed_response['categorization_summary']
-                if not isinstance(summary, str):
-                    raise ValueError("T050 categorization_summary must be a string")
+                    raise EffectsResponseFormatError(f"T050 {field} must be an array of objects")
+            if not isinstance(parsed_response['removed_effects'], list) or not all(
+                isinstance(item, str) and item.strip()
+                for item in parsed_response['removed_effects']
+            ):
+                raise EffectsResponseFormatError("T050 removed_effects must contain useful strings")
+            summary = parsed_response['categorization_summary']
+            if not isinstance(summary, str):
+                raise EffectsResponseFormatError("T050 categorization_summary must be a string")
 
-                # Commit only after the complete response has passed validation.
-                corrected_data = copy.deepcopy(original_data)
-                from core.effects.model import preserve_engine_effects
+            # Commit only after the complete response has passed validation.
+            corrected_data = copy.deepcopy(original_data)
+            from core.effects.model import preserve_engine_effects
 
-                corrected_data['temporaryEffects'] = preserve_engine_effects(
-                    original_data.get('temporaryEffects', []),
-                    parsed_response['temporaryEffects'],
-                )
-                corrected_data['injuries'] = parsed_response['injuries']
+            corrected_data['temporaryEffects'] = preserve_engine_effects(
+                original_data.get('temporaryEffects', []),
+                parsed_response['temporaryEffects'],
+            )
+            corrected_data['injuries'] = parsed_response['injuries']
 
-                for removed in parsed_response['removed_effects']:
-                    self.logger.info(f"Removed effect: {removed}")
-                if summary.strip():
-                    self.corrections_made.append(summary)
+            for removed in parsed_response['removed_effects']:
+                self.logger.info(f"Removed effect: {removed}")
+            if summary.strip():
+                self.corrections_made.append(summary)
 
-                return corrected_data
-                
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+            return corrected_data
+
+        except EffectsResponseFormatError as e:
+            if require_complete:
+                raise
             self.logger.error(f"Failed to parse AI categorization response: {str(e)}")
-        
+
         return original_data
     
     def validate_character_effects_safe(self, file_path: str) -> tuple[Dict[str, Any], bool]:
@@ -551,6 +594,9 @@ Provide the corrected arrays following the response format."""
             Tuple of (character_data, success_flag)
         """
         try:
+            if self.commit_guard is not None:
+                with self.commit_guard():
+                    pass
             # Load character data
             character_data = safe_read_json(file_path)
             if character_data is None:
@@ -562,7 +608,7 @@ Provide the corrected arrays following the response format."""
             
             # Save if corrections were made
             if self.corrections_made:
-                success = safe_write_json(file_path, corrected_data)
+                success = safe_write_json(file_path, corrected_data, commit_guard=self.commit_guard)
                 if success:
                     self.logger.info(f"Character effects validated and corrected: {file_path}")
                     return corrected_data, True
@@ -570,10 +616,15 @@ Provide the corrected arrays following the response format."""
                     self.logger.error(f"Failed to save corrected character data to {file_path}")
                     return character_data, False
             else:
+                if self.commit_guard is not None:
+                    with self.commit_guard():
+                        pass
                 self.logger.debug(f"Character effects validated - no corrections needed: {file_path}")
                 return corrected_data, True
                 
         except Exception as e:
+            if self.commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                raise
             self.logger.error(f"Error validating character effects {file_path}: {str(e)}")
             return {}, False
 

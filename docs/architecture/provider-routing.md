@@ -33,6 +33,31 @@ profile. Original history, T085 and other provider bindings are unchanged.
 Local/Custom effective-model provenance is tracked separately in #402; T084
 transport/liveness remains #398. See #193 D-397-3 and the #397 audit report for
 diagnostic evidence and limitations; this delta does not claim native gameplay PASS.
+## #323 postapproval delta (2026-09-13; acceptance incomplete)
+
+The local candidate on `fix/323-c4-pressure` (HEAD `8c242fa1` plus working changes)
+uses T047/T048 for the interview and stage validation, then T115/T117/T119 for
+feature/spell/number authoring and T116/T118/T120 for independent domain review.
+Only a validated silent commit authorizes calculations after interviewing. The same registry/provider
+adapters serve every domain; no provider-specific interview or new routing mode.
+The level-up path assembles domain deltas through existing preparation/commit
+helpers, not T079. T079 remains available to ordinary character-update consumers.
+The existing collector drains completion-order results, joins owned work, and
+executes features -> spells -> numbers with independently approved upstream facts;
+final domain reviews remain parallel. Specialist questions/parking are retired.
+It does not abandon an in-flight request or alter transport retry policy.
+Historical OpenAI captures establish only the superseded interview/handback flow;
+new full saved-sheet acceptance is pending. Provider bindings are unchanged.
+
+## #323 resource representation delta (2026-09-09; OpenAI acceptance pending)
+
+T079 keeps its existing provider bindings and shared character writer. After
+selecting Gemini's requested-field response schema or base schema in its copied
+configuration, it marks only classFeatures.items.usage nullable. This preserves
+the D-323-6 object-or-null contract that the generic converter otherwise narrows.
+No classFeatures field is added to unrelated deltas; global configuration and
+all other schema fields are unchanged. Installed google-genai1.64.0 supports
+this nullable serialization. That is not live Gemini or local-model acceptance.
 
 ## Issue 311 implementation delta (2026-09-07; live acceptance pending)
 

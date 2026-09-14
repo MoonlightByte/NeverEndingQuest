@@ -177,10 +177,10 @@ Here's the strict list of specific actions that the model should take when the s
 
 **KEY ACTION DISTINCTIONS:**
 - **updatePartyNPCs**: For party composition changes (adding/removing traveling companions). This will create NPC character files automatically.
-- **updateCharacterInfo**: For character data changes (inventory, stats, conditions, effects) on existing characters only.
+- **updateCharacterInfo**: For non-advancement character data changes (inventory, stats, conditions, effects) on existing characters only; advancement uses the levelUp handoff below.
 - **removeEffect**: Deliberately end, dispel, or break concentration on one exact active temporary effect. Requires `characterName` plus `effectId` or `effectName`. Automatic duration expiry requires no action and its modifiers must never be manually reversed.
 
-"updateCharacterInfo": This is the unified action for making changes to ANY existing character's stats, inventory, condition, or other elements (both players and NPCs). Requires "characterName" parameter. When updating abilities, follow PHB structure:
+"updateCharacterInfo": This is the unified action for non-advancement changes to ANY existing character's stats, inventory, condition, or other elements (both players and NPCs). Requires "characterName" parameter. When updating abilities, follow PHB structure:
    - classFeatures: Class/subclass abilities only
    - racialTraits: Racial abilities only  
    - backgroundFeature: Single background feature
@@ -193,7 +193,9 @@ Here's the strict list of specific actions that the model should take when the s
 "createEncounter": To initialize combat correctly
 "updatePlot": For any plot developments and discoveries that impact the story
 "transitionLocation": Used to transition the party to a new location when the party and/or DM explicitly requests or states the party is moving to a new location.
-"levelUp": Only after the player explicitly agrees to level up or when an NPC levels up. If the player is asked whether they want to level up but has not confirmed yet, no action is required.
+"levelUp": For an eligible player who requested or agreed to advance, this begins the dedicated interview; do not require its HP roll, feature choices or final confirmation before admitting the handoff. Asking about eligibility alone is not agreement. Eligible party NPC advancement uses levelUp automatically. Advance one level at a time through the existing action shape.
+Reject an ordinary updateCharacterInfo, updatePlayerInfo or updateNPCInfo candidate that applies any portion of level advancement outside the dedicated level-up conversation. Return the concrete conflict and direct the main author to the existing levelUp handoff, preserving real player input and without choosing for the player. Do not mistake ordinary healing/damage, inventory/currency, an earned XP award, or temporary maximum-HP effects for advancement merely because the same fields change. Do not reject appropriate non-mutating discussion. Do not approve narration claiming a level-up has been saved before the specialist completes it.
+levelUp is a standalone handoff: reject a mixed handoff and request a coherent candidate retaining pending independent work for its normal actions before a later handoff. Never silently delete that work or claim discarded sibling actions executed. Ordinary multi-action turns remain valid.
 "establishHub": Used when the party gains ownership or control of a location that could serve as a base of operations. Requires "hubName" parameter (string), optional parameters: "hubType" (settlement/tavern/stronghold/keep), "description" (string), "services" (array), "ownership" (party/shared/arrangement).
 "saveGame": Save the coherent current timeline. Requires "description" (string) and "saveMode" ("essential" or "full").
 "restoreGame": Restore a timeline by its exact listed "saveFolder". It is a standalone lifecycle action and never a post-travel sibling.
@@ -572,23 +574,11 @@ Here are examples of acceptable model assistant responses:
   ]
 }
 
-// Example 12: Multiple actions - updateTime, updatePlayerInfo, and levelUp
+// Example 12: Standalone levelUp after any independent rest/resource actions have completed.
+// If rest or another independent update is still pending, perform it through normal actions first; do not bundle it with this handoff or claim it ran.
 {
-  "narration": "After a long rest and some training, you feel stronger and more skilled.",
+  "narration": "Your level-up review can begin; your choices will be confirmed before changes are applied.",
   "actions": [
-    {
-      "action": "updateTime",
-      "parameters": {
-        "timeEstimate": 480
-      }
-    },
-    {
-      "action": "updateCharacterInfo",
-      "parameters": {
-        "characterName": "kai",
-        "changes": "Restored all hit points and spell slots; Removed 1 ration from inventory"
-      }
-    },
     {
       "action": "levelUp",
       "parameters": {
