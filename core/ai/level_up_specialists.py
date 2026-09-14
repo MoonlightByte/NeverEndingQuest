@@ -39,7 +39,7 @@ def _load_response(raw):
 # direction; authors now report the lawful default selections they had to make
 # in variations (metadata for the DM post-save note, never a player prompt).
 ENVELOPE_ORDER = ('calculations', 'rule_facts', 'rule_refs', 'variations', 'changes')
-REVIEW_STAGES = ('proposal', 'assembly', 'prepared_sheet')
+REVIEW_STAGES = ('proposal',)   # one independent review per domain draft; nothing reviews the merged sheet again
 
 
 def _envelope_feedback(data, fields):
@@ -125,18 +125,9 @@ def parse_domain_review(raw, packet=None, *, domain=None):
                 and error.get('domain', domain) != domain
                 and error['domain'] not in packet.get('validated', {}).get('domains', {})):
             raise ValueError('proposal review cannot require unfinished downstream work: judge '
-                             'this author and supplied upstream facts now; complete cross-domain '
-                             'checks belong to the final prepared-sheet review')
-        if 'index' in error and type(error['index']) is not int:
-            raise ValueError('a review error index must be an integer assembly check index')
+                             'this author and the supplied upstream facts now')
     if data['valid'] == bool(data['errors']):
         raise ValueError('approval requires no errors; rejection requires corrections')
-    if packet is not None and packet.get('review_stage') == 'assembly':
-        supplied = {entry['index'] for entry in packet['assembly']['checks']}
-        unknown = [error.get('index') for error in data['errors']
-                   if type(error.get('index')) is not int or error['index'] not in supplied]
-        if unknown:
-            raise ValueError(f'each assembly error must claim a supplied check index; unknown: {unknown}')
     return DomainReview(data['valid'], data['errors'])
 
 
@@ -518,55 +509,6 @@ def _review_until_parsed(proposal, packet, scope, status_emit, *, format_state=N
         return review
 
 
-def _review_approved(ws, stage, supplement, packet_for, scope, status):
-    """ONE dispatcher for the two post-round stages the master owns ('assembly', 'prepared_sheet'):
-    every APPROVED domain's reviewer in parallel, each under its own child scope, each seeing its
-    own packet plus `supplement`. Returns {domain: DomainReview}; exceptions propagate by type."""
-    running = {}
-    heartbeat = _running_status(status, running)
-    verb = {'assembly': 'reviewing the assembled checks for', 'prepared_sheet': 'reviewing the prepared sheet for'}[stage]
-
-    work = {}
-    approved = [d for d in DOMAIN_TASKS if d in ws.reviews]
-    for domain in approved:
-        packet = {**packet_for(domain), 'review_stage': stage, stage: supplement}
-        work[domain] = _running_worker(running, domain, verb,
-            lambda child_scope, d=domain, p=packet: _review_until_parsed(ws.proposals[d], p, child_scope, heartbeat))
-    status(None, f"specialists {verb} {', '.join(approved)}")   # PX FYI-1: the KNOWN dispatch set, announced before any membership exists
-    results = collect_domain_work(work, scope)
-    for result in results.values():
-        if isinstance(result, Exception):
-            raise result                      # class S/P/X by actual type
-    return results
-
-
-def _review_assembly(ws, conflict, packet_for, scope, status):
-    """Stage 'assembly': approved proposals + the EXACT indexed checks (a failed merge has no
-    merged sheet); every returned error claims a supplied index and names the domain to repair."""
-    checks = conflict.unattributed
-    supplement = {'proposals': {d: {'domain': d, 'draft': ws.proposals[d].draft,
-                                  **_project_proposal(ws.proposals[d])}
-                               for d in DOMAIN_TASKS if d in ws.reviews}, 'checks': checks}
-    reviews = _review_approved(ws, 'assembly', supplement, packet_for, scope, status)
-    claims = {}
-    for reviewer, review in reviews.items():
-        for error in review.errors:
-            claims.setdefault(error.get('domain', reviewer), []).append({**error, 'raised_by': reviewer})
-    return claims
-
-
-def _review_prepared(ws, prepared, packet_for, scope, status):
-    """Stage 'prepared_sheet' over the exact before/after; run_layer is now its one owner (RC5-8).
-    Returns {domain: [rejections]}; {} = all approved."""
-    reviews = _review_approved(ws, 'prepared_sheet', {'before': prepared['before'], 'after': prepared['after']},
-                               packet_for, scope, status)
-    rejections = {}
-    for reviewer, review in reviews.items():
-        for error in review.errors:
-            rejections.setdefault(error.get('domain', reviewer), []).append({**error, 'raised_by': reviewer})
-    return rejections
-
-
 def _result(ws, layer, prepared):
     ws.revision += 1                          # the ONE per-session counter (RC5-5)
     return LayerResult(ws.revision, layer, prepared)   # no question snapshot: report() reads pending_questions(ws) at call time
@@ -580,10 +522,13 @@ def run_layer(ws, views, packet_for, assemble, scope, status):
     already-validated earlier outputs through its packet's validated view. An
     upstream correction or a fact conflict retracts and rebuilds the downstream
     stages in the same fixed order (the earliest unapproved domain is always
-    authored first). Once all three are approved the complete sheet is prepared and
-    its independent final domain checks run in parallel; an attributable defect
-    corrects its owner and rebuilds. No player/sibling/reference questions, no
-    parks, no stall, no scheduler.
+    authored first). Once all three are approved the complete sheet is prepared by
+    the provider-free assembler and returned for the single guarded commit. No
+    model reviews the merged sheet again: each domain was already authored and
+    independently reviewed, and a further review only restarted the chain (owner
+    ruling 2026-09-14, #407). A failed assembly check is handed back to its owning
+    domain, or to every approved domain when no owner is known, without a model
+    call. No player/sibling/reference questions, no parks, no stall, no scheduler.
     """
     domains = FORWARD_ORDER
 
@@ -635,29 +580,19 @@ def run_layer(ws, views, packet_for, assemble, scope, status):
         try:
             prepared = assemble()
         except AssemblyConflict as conflict:
-            claims = {}
-            if conflict.unattributed:
-                claims = _review_assembly(ws, conflict, packet_for, scope, status)   # stage 'assembly', every approved domain
-                claimed = {error['index'] for errors in claims.values() for error in errors if 'index' in error}
-                unclaimed = [entry for entry in conflict.unattributed if entry['index'] not in claimed]
-                if unclaimed:
-                    # Rehost the retired assembly_broadcast_targets goal: an unclaimed
-                    # assembly check is never silently dropped - the complete approved
-                    # round (all fixed-order domains) receives it.
-                    broadcast = [domain for domain in approved if ws.proposals[domain].changes] or list(approved)
-                    for domain in broadcast:
-                        claims.setdefault(domain, []).extend(unclaimed)
-                for domain in approved:
-                    ws.constraints.get(domain, {}).pop('assembly', None)
             # The merge/check attempt completed. Replace its origin sets for the
-            # whole approved round before installing the new objections.
+            # whole approved round before installing the new objections. A check
+            # with no known owner is never silently dropped: every approved domain
+            # that authored changes receives it and re-authors against it.
             for domain in approved:
                 ws.constraints.get(domain, {}).pop('merge', None)
+                ws.constraints.get(domain, {}).pop('assembly', None)
             for domain, errors in conflict.domain_errors.items():
                 constrain(domain, 'merge', errors)
-            for domain, errors in claims.items():
-                if errors:
-                    constrain(domain, 'assembly', errors)
+            if conflict.unattributed:
+                broadcast = [domain for domain in approved if ws.proposals[domain].changes] or list(approved)
+                for domain in broadcast:
+                    constrain(domain, 'assembly', list(conflict.unattributed))
             withdraw(ws, values(), set())
             continue                      # >= 1 domain was retracted above: the fixed-order pending list is non-empty
         # assemble() passed for the complete approved round: the merge and assembly
@@ -668,14 +603,4 @@ def run_layer(ws, views, packet_for, assemble, scope, status):
             if origins:
                 origins.pop('merge', None)
                 origins.pop('assembly', None)
-        rejections = _review_prepared(ws, prepared, packet_for, scope, status)   # ONE owner of this review (RC5-8); all collected before any retraction
-        # Every reviewer returned: clear each old set, then replace only the
-        # rejected domains. A successful sibling must not keep stale errors.
-        for cleared_domain in approved:
-            ws.constraints.get(cleared_domain, {}).pop('prepared_sheet', None)
-        if rejections:
-            for domain, errors in rejections.items():
-                constrain(domain, 'prepared_sheet', errors)
-            withdraw(ws, values(), set())
-            continue
         return _result(ws, 'assembled', prepared)
