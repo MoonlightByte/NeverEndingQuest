@@ -909,7 +909,11 @@ NARR_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 AGENTIC_COMPRESS_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
 AGENTIC_COMPRESS_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 AGENTIC_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-AGENTIC_COMPRESS_LMSTUDIO = {"model": "local-model"}
+# reasoning_effort "none": a local model with thinking enabled (gemma-4 in LM
+# Studio 0.4.24) otherwise spends its whole reply reasoning about this prompt
+# and never returns text (observed 2026-09-14: 2997 of 3000 tokens reasoning,
+# 0 content, 15 minutes with no reply; 1.5 s with effort none).
+AGENTIC_COMPRESS_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T087/T088/T089/T090: DM_MINI_MODEL utility callsites ---
 # NPC name canon (T087), NPC merge confirm (T088), prompt sanitizer (T089), quest formatter (T090).

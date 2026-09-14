@@ -66,6 +66,29 @@ def _strip_fences(ai_output: str) -> str:
     return text.strip()
 
 
+_BACKSLASH_NEWLINE = re.compile(r"\\\r?\n")
+
+
+def lenient_json_loads(text: str):
+    """Parse a reply as JSON, tolerating two syntax slips local models make.
+
+    Observed on gemma-4-12b (LM Studio 0.4.24, 2026-09-14): a backslash
+    followed by a real newline where the escaped ``\\n`` belongs, and raw
+    control characters inside the string. Both are repaired at the syntax
+    level only; the text content is never edited. Raises JSONDecodeError
+    when the reply is still not JSON.
+    """
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    try:
+        return json.loads(text, strict=False)
+    except json.JSONDecodeError:
+        pass
+    return json.loads(_BACKSLASH_NEWLINE.sub(r"\\n", text), strict=False)
+
+
 def structural_error(parsed: Any) -> str:
     """Return why ``parsed`` is not a usable compression reply, or None.
 
@@ -192,7 +215,7 @@ def compress_with_ai(
         if not isinstance(ai_output, str):
             ai_output = "" if ai_output is None else str(ai_output)
         try:
-            parsed = json.loads(_strip_fences(ai_output))
+            parsed = lenient_json_loads(_strip_fences(ai_output))
             problem = structural_error(parsed)
         except json.JSONDecodeError as e:
             parsed = None
