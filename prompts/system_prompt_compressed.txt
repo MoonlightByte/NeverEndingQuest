@@ -192,7 +192,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   priority: Chronicle events have same authority as DM Note - they are the official record.
   usage: Reference chronicle events when narrating as if they are recent memories or established facts.
   combat: If chronicle shows combat occurred (battle, shatters wights, etc.), it DID happen.
-  format: Chronicles use notation like @C={characters}, EVT[events] - these are actual game events, not metadata.
+  format: Chronicles are numbered event lines (older ones may use @C={characters}, EVT[events] notation) - these are actual game events, not metadata.
   rule: NEVER ignore or contradict chronicle content. It is the authoritative history of what happened.
 }
 

@@ -1,5 +1,27 @@
 # Provider Routing
 
+## Issue 400 compression delta (2026-09-14; live evidence in the PR)
+
+T084 now asks the model for `{"text": "..."}` only: a numbered list of the
+passage's events as plain sentences, each naming its setting in words. The
+codebook, ID tables, `with:` participant lists, `@R` relation slots, movement
+markers and block-matching envelope are gone. Nothing in the program parsed
+them, and those slots were where the model inferred participants, romances and
+ownership the passage never stated (#400). The pre-#400 `blocks[0].text`
+envelope is still read if a reply carries it.
+
+The only runtime gate is structural: the reply must parse as JSON and carry a
+non-empty `text` string. A reply that fails is sent back once with a one-line
+format note; a second failure falls back to the source section for that
+request and caches nothing. Content is never reviewed, corrected or retried.
+Transport failures are not redone here (#398).
+
+Cache entries are stamped with `callsite` and `prompt_sha256`. On every cache
+save, entries whose prompt hash is not a current T084/T085 prompt are dropped:
+their keys can never hit again, and a rebuild always starts from the source
+section, never from an old derivative. The DM prompt's chronicle rule now
+recognises numbered event lines as well as the older `@C`/`EVT` notation.
+
 ## Issue 397 compression delta (2026-09-13; native gameplay acceptance pending)
 
 T084 OpenAI selects Terra/low through the existing registry. New historical
