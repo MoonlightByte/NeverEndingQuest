@@ -24,6 +24,7 @@ from uuid import uuid4
 # Import compression functions
 sys.path.append('/mnt/c/dungeon_master_v1')
 from utils.compression.ai_narrative_compressor_agentic import (
+    SYSTEM_PROMPT as T084_SYSTEM_PROMPT,
     compress_with_ai,
     resolve_agentic_compression_runtime,
 )
@@ -179,6 +180,7 @@ class ParallelConversationCompressor:
             with self._locked_cache_file():
                 merged = self._read_cache_unlocked()
                 merged.update(pending)
+                merged = self._prune_stale_entries(merged)
                 self._write_cache_unlocked(merged)
         except OSError as exc:
             print(f"Warning: unable to persist compression cache: {exc}")
@@ -191,6 +193,35 @@ class ParallelConversationCompressor:
             self.cache = {**merged, **self._pending_cache}
         return True
     
+    @staticmethod
+    def _live_prompt_hashes() -> set:
+        """Prompt identities that a current cache key can still carry."""
+        return {
+            hashlib.sha256(T084_SYSTEM_PROMPT.encode("utf-8")).hexdigest(),
+            hashlib.sha256(LOCATION_SYSTEM_PROMPT.encode("utf-8")).hexdigest(),
+        }
+
+    @classmethod
+    def _prune_stale_entries(cls, entries: Dict[str, Any]) -> Dict[str, Any]:
+        """Drop derivatives that no current cache key can ever reach.
+
+        Every key hashes the compressor prompt, so an entry produced under a
+        superseded prompt (or one predating the prompt stamp) is dead weight:
+        it can never be a hit, and a rebuild always starts from the source
+        section, never from an old derivative. Entries for other providers
+        under the current prompts are kept.
+        """
+        live = cls._live_prompt_hashes()
+        kept = {
+            key: value
+            for key, value in entries.items()
+            if isinstance(value, dict) and value.get("prompt_sha256") in live
+        }
+        dropped = len(entries) - len(kept)
+        if dropped:
+            print(f"  [CACHE] Pruned {dropped} stale compression entries")
+        return kept
+
     def get_section_hash(self, content: str) -> str:
         """Generate hash for content to use as cache key"""
         return hashlib.md5(content.encode('utf-8')).hexdigest()
@@ -326,7 +357,7 @@ class ParallelConversationCompressor:
                         narrative, detached_context=self.detached_context
                     )
                     result = (
-                        {"blocks": [{"text": compressed_text}]}
+                        {"text": compressed_text}
                         if compressed_text
                         else None
                     )
@@ -346,13 +377,8 @@ class ParallelConversationCompressor:
                     )
                     runtime_still_matches = True
 
-                blocks = result.get("blocks") if isinstance(result, dict) else None
                 compressed_text = (
-                    blocks[0].get("text")
-                    if isinstance(blocks, list)
-                    and blocks
-                    and isinstance(blocks[0], dict)
-                    else None
+                    result.get("text") if isinstance(result, dict) else None
                 )
                 if not self._valid_compressed_text(
                     compressed_text, narrative, section_type
@@ -364,6 +390,10 @@ class ParallelConversationCompressor:
                 cache_entry = {
                     "original": narrative,
                     "compressed": compressed_text,
+                    # Stamped so save_cache can recognise and drop entries
+                    # left behind by a superseded prompt.
+                    "callsite": runtime["callsite"],
+                    "prompt_sha256": runtime["prompt_sha256"],
                     "original_length": len(narrative),
                     "compressed_length": len(compressed_text),
                     "reduction": (
