@@ -688,11 +688,16 @@ def abort_live_turn_scope(
 
 
 def _primitive_usage(response):
+    from core.ai.api_client import usage_detail_counts
+
     usage = getattr(response, "usage", None)
+    cached_tokens, reasoning_tokens = usage_detail_counts(usage)
     return {
         "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
         "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
         "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+        "cached_tokens": cached_tokens,
+        "reasoning_tokens": reasoning_tokens,
     }
 
 

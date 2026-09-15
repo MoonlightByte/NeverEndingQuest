@@ -58,21 +58,48 @@ class ProviderEmptyResponse(ProviderCallError):
             message=f"empty/non-text response (finish_reason={reason})",
         )
 
-class _Usage:
-    """Minimal wrapper matching openai.types.CompletionUsage."""
-    __slots__ = ("prompt_tokens", "completion_tokens", "total_tokens")
+class _TokenDetails:
+    """Minimal stand-in for the SDK's prompt/completion token detail objects."""
+    __slots__ = ("cached_tokens", "reasoning_tokens")
 
-    def __init__(self, prompt_tokens=0, completion_tokens=0, total_tokens=0):
+    def __init__(self, cached_tokens=0, reasoning_tokens=0):
+        self.cached_tokens = cached_tokens
+        self.reasoning_tokens = reasoning_tokens
+
+
+class _Usage:
+    """Minimal wrapper matching openai.types.CompletionUsage.
+
+    Carries the cached-prompt and reasoning token counts so the capture layer
+    can report prompt-cache hits: the provider child serializes usage to
+    primitives, and without these two fields every call reads as uncached.
+    """
+    __slots__ = ("prompt_tokens", "completion_tokens", "total_tokens",
+                 "prompt_tokens_details", "completion_tokens_details")
+
+    def __init__(self, prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                 cached_tokens=0, reasoning_tokens=0):
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
         self.total_tokens = total_tokens
+        self.prompt_tokens_details = _TokenDetails(cached_tokens=cached_tokens)
+        self.completion_tokens_details = _TokenDetails(reasoning_tokens=reasoning_tokens)
 
     def model_dump(self):
         return {
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens,
+            "cached_tokens": self.prompt_tokens_details.cached_tokens,
+            "reasoning_tokens": self.completion_tokens_details.reasoning_tokens,
         }
+
+
+def usage_detail_counts(usage):
+    """Return (cached_tokens, reasoning_tokens) from any SDK-shaped usage object."""
+    cached = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0)
+    reasoning = getattr(getattr(usage, "completion_tokens_details", None), "reasoning_tokens", 0)
+    return int(cached or 0), int(reasoning or 0)
 
 
 class _Message:
@@ -135,6 +162,8 @@ class _NormalizedResponse:
             prompt_tokens=usage_dict.get("prompt_tokens", 0),
             completion_tokens=usage_dict.get("completion_tokens", 0),
             total_tokens=usage_dict.get("total_tokens", 0),
+            cached_tokens=usage_dict.get("cached_tokens", 0) or 0,
+            reasoning_tokens=usage_dict.get("reasoning_tokens", 0) or 0,
         )
         self.model = model
         self.id = response_id
@@ -233,6 +262,9 @@ def _normalize_provider_response(
             ),
             "total_tokens": _integer_token_count(getattr(usage, "total_tokens", 0)),
         }
+        cached_tokens, reasoning_tokens = usage_detail_counts(usage)
+        usage_dict["cached_tokens"] = cached_tokens
+        usage_dict["reasoning_tokens"] = reasoning_tokens
     else:
         usage_meta = getattr(response, "usage_metadata", None)
         usage_dict = {
