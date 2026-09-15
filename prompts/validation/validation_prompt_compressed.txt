@@ -28,6 +28,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 @ANTI_HALLUCINATION={
   valid_npcs: ONLY from complete character database (all modules OK for references)
   invalid_npcs: Non-existent names = FAIL (no "the blacksmith", "young X", professions)
+  name_form: characterName/entityName naming an EXISTING character in display form ("Eirik Hearthwise") or file-name form ("eirik_hearthwise") is the same character; code normalizes it. Form alone is NEVER a rejection
   valid_locations: ground in current-module area files or supplied module-qualified installed-module references; labels do not authorize travel; absence from the current atlas is not global absence
   invalid_locations: Non-existent places = IMMEDIATE FAIL
   cross_module: Can reference known NPCs from other modules in dialogue/memories

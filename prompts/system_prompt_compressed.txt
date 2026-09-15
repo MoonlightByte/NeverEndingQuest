@@ -245,6 +245,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 
 @NORMALIZE={
   characterName: Use the exact canonical casing from the DM Note (e.g., "Ranger Thane").
+  entityName: Same rule as characterName: the display name from the DM Note (e.g., "Eirik Hearthwise"), never the file-name form.
   newLocation: Use the exact ID or name provided by context (e.g., "V07").
 }
 
@@ -257,7 +258,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 
 @EXAMPLES={
   currencyTransfer:[
-    {"action":"updateCharacterInfo","parameters":{"characterName":"eirik_hearthwise","changes":"Removed 10 gold from inventory."}},
+    {"action":"updateCharacterInfo","parameters":{"characterName":"Eirik Hearthwise","changes":"Removed 10 gold from inventory."}},
     {"action":"updateCharacterInfo","parameters":{"characterName":"Ranger Thane","changes":"Received 10 gold coins from Eirik. Added 10 gold to inventory."}}
   ],
   timePassage:[
@@ -287,10 +288,10 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
     {"action":"establishHub","parameters":{"hubName":"The Silver Swan Inn","hubType":"tavern","description":"A safe base for planning and recovery.","services":["rest","information"],"ownership":"party"}}
   ],
   storageInteraction:[
-    {"action":"storageInteraction","parameters":{"description":"Store the cursed idol and 2 healing potions in the church vault for 3 days.","characterName":"eirik_hearthwise"}}
+    {"action":"storageInteraction","parameters":{"description":"Store the cursed idol and 2 healing potions in the church vault for 3 days.","characterName":"Eirik Hearthwise"}}
   ],
   levelUp:[
-    {"action":"levelUp","parameters":{"entityName":"eirik_hearthwise","newLevel":6}}
+    {"action":"levelUp","parameters":{"entityName":"Eirik Hearthwise","newLevel":6}}
   ],
   updateEncounter:[
     {"action":"updateEncounter","parameters":{"encounterId":"TW03-E2","changes":{"add":{"monsters":["Skeleton","Skeleton"]}}}}
@@ -299,13 +300,13 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
     {"action":"updatePartyTracker","parameters":{"module":"The_Thornwood_Watch","currentAreaId":"RO001","currentArea":"Rangers' Outpost","currentLocationId":"RO01","currentLocation":"Rangers' Command Post"}}
   ],
   multiActionBundle:[
-    {"action":"updateCharacterInfo","parameters":{"characterName":"eirik_hearthwise","changes":"Removed 10 gold from inventory."}},
+    {"action":"updateCharacterInfo","parameters":{"characterName":"Eirik Hearthwise","changes":"Removed 10 gold from inventory."}},
     {"action":"updateCharacterInfo","parameters":{"characterName":"Ranger Thane","changes":"Received 10 gold coins from Eirik. Added 10 gold to inventory."}},
     {"action":"updateTime","parameters":{"timeEstimate":60}},
     {"action":"updatePlot","parameters":{"plotPointId":"PP001","newStatus":"in progress","plotImpact":"Short rest at Black Lantern Hearth; morale improves."}}
   ],
   spellCast:[
-    {"action":"updateCharacterInfo","parameters":{"characterName":"eirik_hearthwise","changes":"Expended 1 Level 2 spell slot to cast Aid (duration 8h)."}},
+    {"action":"updateCharacterInfo","parameters":{"characterName":"Eirik Hearthwise","changes":"Expended 1 Level 2 spell slot to cast Aid (duration 8h)."}},
     {"action":"updateCharacterInfo","parameters":{"characterName":"Scout Kira","changes":"Increase maximum HP and current HP by 5 (Aid spell, duration 8h)."}},
     {"action":"updateCharacterInfo","parameters":{"characterName":"Scout Elen","changes":"Increase maximum HP and current HP by 5 (Aid spell, duration 8h)."}},
     {"action":"updateCharacterInfo","parameters":{"characterName":"Ranger Thane","changes":"Increase maximum HP and current HP by 5 (Aid spell, duration 8h)."}}

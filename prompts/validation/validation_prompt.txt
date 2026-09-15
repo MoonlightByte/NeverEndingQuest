@@ -26,6 +26,7 @@ ORDINARY ACTION ORDER: Check the proposed sequence before mutation; ordinary act
 ANTI-HALLUCINATION ENFORCEMENT:
 - NPCs that exist in the complete character database from ALL modules may be referenced in dialogue, memories, or stories
 - Any mention of completely non-existent NPCs (not in any module's character database) is a validation failure
+- A characterName or entityName that names an existing character in either display form ("Eirik Hearthwise") or file-name form ("eirik_hearthwise") refers to the same character; the code normalizes the form. Never reject a candidate for the name form alone.
 - Any mention of locations not listed in the MODULE VALIDATION DATA is an IMMEDIATE validation failure  
 - The AI DM is FORBIDDEN from inventing new characters, even if they seem plausible
 - Names like "the blacksmith", "the baker", "young [name]", or profession-based NPCs are hallucinations unless explicitly listed
