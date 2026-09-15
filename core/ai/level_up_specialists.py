@@ -573,11 +573,70 @@ def _ownership_errors(domain, proposal, stored):
     return errors
 
 
+# Features-owned lists of plain strings that a level-up may only extend.
+# The barbarian 1->2 battery case (2026-09-15, #413) returned languages
+# without the stored "Orc": the author called it an unsupported grant, the
+# reviewer accepted, and the merge deleted something the character had.
+_ADDITIVE_GRANT_LISTS = (
+    ('languages',),
+    ('savingThrows',),
+    ('damageResistances',),
+    ('damageImmunities',),
+    ('damageVulnerabilities',),
+    ('conditionImmunities',),
+    ('proficiencies', 'armor'),
+    ('proficiencies', 'weapons'),
+    ('proficiencies', 'tools'),
+)
+
+
+def _string_list_at(container, path):
+    value = container
+    for key in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    if not isinstance(value, list):
+        return None
+    return [item for item in value if isinstance(item, str)]
+
+
+def _grant_preservation_errors(domain, proposal, stored):
+    """A features proposal may add to a stored string-list grant, never drop from it.
+
+    The advancement writer applies these lists as absolute values, so an
+    author that "reconciles" a sheet against the rules text can silently
+    delete a stored language or proficiency. Removing a stored grant is not a
+    level-up operation; an unexplained grant is kept and noted in variations.
+    """
+    if domain != 'features':
+        return []
+    changes = proposal.changes if isinstance(proposal.changes, dict) else {}
+    errors = []
+    for path in _ADDITIVE_GRANT_LISTS:
+        proposed = _string_list_at(changes, path)
+        if proposed is None:
+            continue  # omitted (unchanged) or not a list; ownership/shape checks own the latter
+        kept = _string_list_at(stored or {}, path) or []
+        proposed_keys = {item.strip().lower() for item in proposed}
+        missing = [item for item in kept if item.strip().lower() not in proposed_keys]
+        if missing:
+            dotted = '.'.join(path)
+            errors.append({'field': list(path),
+                           'error': '%s drops the stored %s; a level-up only adds to this list. Resend %s with %s '
+                                    'still present (keep every stored entry, then add the new grants). If a stored '
+                                    'entry looks unsupported, keep it and say so in variations instead of removing it.'
+                                    % (dotted, ', '.join(repr(m) for m in missing), dotted,
+                                       ', '.join(repr(m) for m in missing))})
+    return errors
+
+
 def _admission_errors(domain, proposal, packet, ws):
     """Check calculations against original inputs and independently reviewed rule proposals."""
     sources = sources_for_admission(packet, proposal)
     errors = validate_calculations(proposal, sources)
     errors = errors + _ownership_errors(domain, proposal, packet.get('stored'))
+    errors = errors + _grant_preservation_errors(domain, proposal, packet.get('stored'))
     if domain == 'spells':
         errors = errors + _spell_list_errors(proposal, packet.get('stored'))
     return errors
