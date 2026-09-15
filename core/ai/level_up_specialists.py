@@ -488,10 +488,96 @@ def spells_merged_preview(proposal, stored):
     return deep_merge_dict(deepcopy(stored['spellcasting']), deepcopy(changes['spellcasting']))
 
 
+# Which top-level sheet fields each domain may write, and which keys of a
+# classFeatures entry. Spells and numbers author side by side and never see
+# each other's draft, so the merge must never find two owners for one leaf:
+# ownership is enforced here, before review, with an exact note.
+_TOP_LEVEL_OWNER = {
+    'features': ('classFeatures', 'racialTraits', 'backgroundFeature', 'proficiencies', 'feats', 'languages',
+                 'damageResistances', 'damageImmunities', 'damageVulnerabilities', 'conditionImmunities',
+                 'savingThrows'),
+    'spells': ('spellcasting', 'classFeatures'),
+    'numbers': ('level', 'proficiencyBonus', 'maxHitPoints', 'initiative', 'skills', 'senses',
+                'attacksAndSpellcasting', 'classFeatures', 'spellcasting', 'exp_required_for_next_level'),
+}
+_FEATURE_ENTRY_KEYS = {
+    'features': ('name', 'description', 'source'),
+    'spells': ('name', 'description', 'source'),
+    'numbers': ('name', 'usage'),
+}
+_SPELLCASTING_KEYS = {
+    'spells': ('ability', 'spells', 'preparedSpells', 'spellSlots'),
+    'numbers': ('spellSaveDC', 'spellAttackBonus'),
+}
+
+
+def _ownership_errors(domain, proposal, stored):
+    changes = proposal.changes if isinstance(proposal.changes, dict) else {}
+    errors = []
+    # Shape first: a named array is an array of {name, ...} entries. Run 8's
+    # features author wrote classFeatures as an object keyed by name for seven
+    # drafts; its reviewer approved the content, and only the merge refused the
+    # shape, which retracted every domain each time.
+    from updates.update_character_info import CHARACTER_NAMED_ARRAYS
+    for key, name_field in CHARACTER_NAMED_ARRAYS.items():
+        value = changes.get(key)
+        if value is None:
+            continue
+        if isinstance(value, dict):
+            errors.append({'field': [key],
+                           'error': '%s must be an array of entry objects, not an object keyed by name: write '
+                                    '[{"%s": "<stored entry name>", ...changed fields}] with one object per entry'
+                                    % (key, name_field)})
+        elif isinstance(value, list):
+            for index, entry in enumerate(value):
+                if not isinstance(entry, dict) or not isinstance(entry.get(name_field), str) or not entry[name_field].strip():
+                    errors.append({'field': [key, index],
+                                   'error': '%s[%d] must be an object with a nonempty "%s" naming the exact stored entry'
+                                            % (key, index, name_field)})
+    allowed = _TOP_LEVEL_OWNER[domain]
+    for key in changes:
+        if key not in allowed:
+            owner = next((d for d, keys in _TOP_LEVEL_OWNER.items() if key in keys and d != domain), None)
+            errors.append({'field': [key], 'error': 'remove %s from changes: %s' % (
+                key, ('the %s specialist owns it' % owner) if owner else 'it is not a field this specialist may write')})
+    if domain == 'features' and 'skills' in changes:
+        pass  # already reported above; the note below says what to do instead
+    if domain == 'features' and 'skills' in changes and isinstance((stored or {}).get('skills'), dict):
+        errors.append({'field': ['skills'],
+                       'error': 'skills on this sheet is a numeric map that numbers computes; declare the new skill '
+                                'proficiency as rule_fact skill_proficiencies (array of skill names, sourced) and do not '
+                                'author skills'})
+    entries = changes.get('classFeatures')
+    if isinstance(entries, list):
+        keys = _FEATURE_ENTRY_KEYS[domain]
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            extra = [k for k in entry if k not in keys]
+            if extra:
+                errors.append({'field': ['classFeatures', entry.get('name')],
+                               'error': 'a %s classFeatures entry carries only %s; remove %s (%s)' % (
+                                   domain, '/'.join(keys), ', '.join(extra),
+                                   'usage is numbers-owned' if 'usage' in extra else 'description/source are features-owned')})
+            if domain == 'spells' and entry.get('name') != 'Spellcasting':
+                errors.append({'field': ['classFeatures', entry.get('name')],
+                               'error': 'spells may write only the Spellcasting classFeatures entry; remove %r' % entry.get('name')})
+    spellcasting = changes.get('spellcasting')
+    if isinstance(spellcasting, dict) and domain in _SPELLCASTING_KEYS:
+        keys = _SPELLCASTING_KEYS[domain]
+        for key in spellcasting:
+            if key not in keys:
+                errors.append({'field': ['spellcasting', key],
+                               'error': 'spellcasting.%s is %s-owned; remove it from this proposal' % (
+                                   key, 'numbers' if domain == 'spells' else 'spells')})
+    return errors
+
+
 def _admission_errors(domain, proposal, packet, ws):
     """Check calculations against original inputs and independently reviewed rule proposals."""
     sources = sources_for_admission(packet, proposal)
     errors = validate_calculations(proposal, sources)
+    errors = errors + _ownership_errors(domain, proposal, packet.get('stored'))
     if domain == 'spells':
         errors = errors + _spell_list_errors(proposal, packet.get('stored'))
     return errors
