@@ -494,8 +494,8 @@ def spells_merged_preview(proposal, stored):
 # ownership is enforced here, before review, with an exact note.
 _TOP_LEVEL_OWNER = {
     'features': ('classFeatures', 'racialTraits', 'backgroundFeature', 'proficiencies', 'feats', 'languages',
-                 'damageResistances', 'damageImmunities', 'damageVulnerabilities', 'conditionImmunities',
-                 'savingThrows'),
+                 'abilities', 'damageResistances', 'damageImmunities', 'damageVulnerabilities',
+                 'conditionImmunities', 'savingThrows'),
     'spells': ('spellcasting', 'classFeatures'),
     'numbers': ('level', 'proficiencyBonus', 'maxHitPoints', 'initiative', 'skills', 'senses',
                 'attacksAndSpellcasting', 'classFeatures', 'spellcasting', 'exp_required_for_next_level'),
