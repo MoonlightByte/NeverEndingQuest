@@ -14,7 +14,7 @@ from typing import Literal
 from uuid import uuid4
 
 from utils.level_up_workspace import (
-    Constraint, Domain, DomainProposal, DomainReview, FORWARD_ORDER,
+    Constraint, Domain, DomainProposal, DomainReview, FORWARD_ORDER, DEPENDS_ON, dependents_of,
     _capture_inputs, merge_domain_changes, pending_questions, promote,
     retract, sheet_diff, sources_for_admission,
     validate_calculations, validated_view, withdraw, _same_value)
@@ -610,15 +610,33 @@ def run_domain_cycle(domain, packet_for, ws, scope, status_emit, running):
         _replace_review(ws, domain, review.errors, draft)
 
 
+PLAYER_PHASE = {
+    # What the player reads in the input box while a domain is in flight. These
+    # are game words, never the internal author/review/specialist vocabulary.
+    ('features', 'authoring'): 'working out the new class features',
+    ('features', 'reviewing'): 'double-checking the class features',
+    ('spells', 'authoring'): 'choosing the spells',
+    ('spells', 'reviewing'): 'double-checking the spells',
+    ('numbers', 'authoring'): 'recalculating the numbers',
+    ('numbers', 'reviewing'): 'double-checking the numbers',
+}
+
+
+def player_phase(domains_verbs):
+    """One player-facing line for the set of (domain, verb) pairs in flight."""
+    parts = [PLAYER_PHASE.get((d, v), f'{v} {d}') for d, v in sorted(domains_verbs)]
+    if not parts:
+        return 'gathering the results'
+    if len(parts) == 1:
+        return parts[0]
+    return ', '.join(parts[:-1]) + ' and ' + parts[-1]
+
+
 def _running_status(status, running):
     """The manager's _running_emit, moved (LGC2-3): one heartbeat sink whose label is computed
     per call from the shared {domain: verb} map; workers never rewrite the phase themselves."""
     def emit(message):
-        by_verb = {}
-        for domain, verb in sorted(running.items()):
-            by_verb.setdefault(verb, []).append(domain)
-        phases = [f"{verb} {', '.join(names)}" for verb, names in by_verb.items()]
-        status(message, 'specialists ' + '; '.join(phases) if phases else 'collecting specialist results')
+        status(message, player_phase(list(running.items())))
     return emit
 
 
@@ -658,14 +676,14 @@ def _result(ws, layer, prepared):
 
 
 def run_layer(ws, views, packet_for, assemble, scope, status):
-    """Fixed features -> spells -> numbers execution (#323 postapproval).
+    """Dependency-ordered domain execution: features first, then spells and numbers side by side (#323).
 
-    Each author, in fixed order, is corrected privately to an admitted,
-    independently approved and promoted proposal; a later author consumes the
-    already-validated earlier outputs through its packet's validated view. An
-    upstream correction or a fact conflict retracts and rebuilds the downstream
-    stages in the same fixed order (the earliest unapproved domain is always
-    authored first). Once all three are approved the complete sheet is prepared by
+    Each author is corrected privately to an admitted, independently approved
+    and promoted proposal; a dependent author consumes the already-validated
+    upstream output through its packet's validated view (DEPENDS_ON). Every
+    round authors all domains whose dependencies are approved, in parallel. An
+    upstream correction or a fact conflict retracts the domain and its
+    dependents, which are rebuilt next round. Once all three are approved the complete sheet is prepared by
     the provider-free assembler and returned for the single guarded commit. No
     model reviews the merged sheet again: each domain was already authored and
     independently reviewed, and a further review only restarted the chain (owner
@@ -679,45 +697,53 @@ def run_layer(ws, views, packet_for, assemble, scope, status):
         return {'stored': views['stored'], 'effective': views['effective'], 'validated': validated_view(ws)}
 
     def constrain(domain, origin, errors):
-        # The ONE repair transition: replace this origin's set, then retract (approval, own facts -
-        # CU4-3). Recorded choices, drafts and other origins stay.
+        # The ONE repair transition: replace this origin's set, then retract the
+        # domain and every domain that consumes its output (CU4-3). Recorded
+        # choices, drafts and other origins stay.
         ws.constraints.setdefault(domain, {})[origin] = Constraint(origin, domain, ws.drafts.get(domain, 0), errors)
-        for downstream in domains[domains.index(domain):]:
-            retract(ws, downstream)
+        retract(ws, domain)
+        for dependent in dependents_of(domain):
+            retract(ws, dependent)
 
     withdraw(ws, values(), set())
     while True:
         pending = [domain for domain in domains if domain not in ws.reviews]
         if pending:
-            # Author the earliest unapproved domain in the fixed order. A corrected
-            # or conflict-retracted upstream domain is always picked up before its
-            # dependents, so downstream is rebuilt from the validated upstream output.
-            domain = pending[0]
-            ws.constraints.setdefault(domain, {})
-            ws.drafts.setdefault(domain, 0)
+            # Author every unapproved domain whose dependencies are all approved,
+            # side by side (spells and numbers both only need features). A
+            # corrected upstream domain retracts its dependents, so they are
+            # rebuilt from the validated upstream output on the next round.
+            ready = [domain for domain in pending if all(dep in ws.reviews for dep in DEPENDS_ON[domain])]
             running = {}
             heartbeat = _running_status(status, running)
-            status(None, f"specialists authoring {domain}")   # PX FYI-1: truthful pre-dispatch label
-            outcome = collect_domain_work({domain: _running_worker(
-                running, domain, 'authoring', lambda child_scope: run_domain_cycle(
-                    domain, packet_for, ws, child_scope, heartbeat, running))}, scope)[domain]
-            if isinstance(outcome, AssemblyConflict):
-                for target, errors in outcome.domain_errors.items():
-                    constrain(target, 'review', errors)
-                withdraw(ws, values(), set())
-                continue
-            if isinstance(outcome, Exception):
-                raise outcome
-            proposal = outcome
-            ws.proposals[domain] = proposal                   # record for correction continuity even on a conflict
-            conflicts = promote(ws, domain, proposal)         # store approved facts or report a cross-origin conflict
-            if conflicts:
-                constrain(domain, 'fact_conflict', conflicts)             # incoming origin must also see the disagreement
-                for origin in {conflict['origin'] for conflict in conflicts}:
-                    constrain(origin, 'fact_conflict', [c for c in conflicts if c['origin'] == origin])
-            else:                                                         # successful promotion clears the prior fact_conflict
-                ws.constraints.get(domain, {}).pop('fact_conflict', None)
-            withdraw(ws, values(), set())                                 # against the CURRENT views (rebuilds dependents)
+            work = {}
+            for domain in ready:
+                ws.constraints.setdefault(domain, {})
+                ws.drafts.setdefault(domain, 0)
+                work[domain] = _running_worker(
+                    running, domain, 'authoring',
+                    lambda child_scope, d=domain: run_domain_cycle(d, packet_for, ws, child_scope, heartbeat, running))
+            status(None, player_phase([(d, 'authoring') for d in ready]))   # PX FYI-1: truthful pre-dispatch label
+            outcomes = collect_domain_work(work, scope)
+            failure = next((o for o in outcomes.values() if isinstance(o, Exception) and not isinstance(o, AssemblyConflict)), None)
+            if failure is not None:
+                raise failure
+            for domain in ready:
+                outcome = outcomes[domain]
+                if isinstance(outcome, AssemblyConflict):
+                    for target, errors in outcome.domain_errors.items():
+                        constrain(target, 'review', errors)
+                    continue
+                proposal = outcome
+                ws.proposals[domain] = proposal                   # record for correction continuity even on a conflict
+                conflicts = promote(ws, domain, proposal)         # store approved facts or report a cross-origin conflict
+                if conflicts:
+                    constrain(domain, 'fact_conflict', conflicts)             # incoming origin must also see the disagreement
+                    for origin in {conflict['origin'] for conflict in conflicts}:
+                        constrain(origin, 'fact_conflict', [c for c in conflicts if c['origin'] == origin])
+                else:                                                         # successful promotion clears the prior fact_conflict
+                    ws.constraints.get(domain, {}).pop('fact_conflict', None)
+            withdraw(ws, values(), set())                                     # against the CURRENT views (rebuilds dependents)
             continue
         approved = tuple(domain for domain in domains if domain in ws.reviews)
         try:

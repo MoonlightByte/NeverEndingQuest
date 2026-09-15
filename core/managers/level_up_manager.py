@@ -590,7 +590,7 @@ class LevelUpSession:
             armor_probe.extract_ac_relevant_data(base)['equipment'],
             schema['properties']['equipment']['items'])
         if armor_errors:
-            self._report_phase('repairing stored armor data')
+            self._report_phase('tidying the armor entries')
             def repair_armor(scope):
                 validator = AICharacterValidator(
                     commit_guard=self.commit_guard, provider_scope=scope,
@@ -644,7 +644,7 @@ class LevelUpSession:
         # preservation review then correctly rejects edits it cannot attribute
         # to any author (#407). Those normalizers keep their place on the
         # ordinary update path; a later ordinary update still applies them.
-        self._report_phase('checking the prepared sheet')
+        self._report_phase('assembling the new character sheet')
         prepared_after = proposed
         post_unattributed = []
         critical_warnings = validate_critical_fields_preserved(
@@ -689,7 +689,7 @@ class LevelUpSession:
                 or self._layer is None or self._layer.layer != 'assembled'):
             raise ValueError('Only an authorized prepared advancement can reach the writer once.')
         role = 'player' if self.is_player else 'npc'
-        self._report_phase('confirming the same character still owns this sheet')
+        self._report_phase('confirming the character sheet')
         resolved_path = get_character_path(self.character_name, role)
         if os.path.normcase(os.path.abspath(resolved_path)) != os.path.normcase(os.path.abspath(self._character_path)):
             raise ValueError('Character identity/path changed; reconcile the current canonical owner.')
@@ -910,7 +910,7 @@ class LevelUpSession:
                 messages.append({"role": "user", "content":
                     "PRIVATE STRUCTURAL OBJECTION TO YOUR LAST VERDICT (restate it in the exact "
                     "contract; not player history):\n" + json.dumps(correction, ensure_ascii=True)})
-            self._report_phase('checking the proposal against the rules')
+            self._report_phase('the DM is checking the rules')
             response = capture_and_fanout("T048", api_client.create_completion,
                 _live_selected='required', _detached_scope=self._scope,
                 _detached_status=self._status_emit,
