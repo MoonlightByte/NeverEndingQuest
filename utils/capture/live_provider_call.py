@@ -91,6 +91,12 @@ _WATCHDOG_SECONDS = 600.0
 _WIZARD_READ_INACTIVITY_SECONDS = 40.0
 _WIZARD_BACKSTOP_SECONDS = 180.0
 _WIZARD_TASK_IDS = frozenset({"T092", "T093"})
+# Level-up interview and specialist calls answer in 10 to 30 s; a provider
+# that accepts the body and never replies (run 9, 2026-09-14: one call in
+# ~330) is reissued after 2 minutes instead of 10. Still a reissue trigger,
+# never a terminal (#193 B2-iii); owner ruling 2026-09-14.
+_LEVEL_UP_TASK_IDS = frozenset({"T047", "T048", "T115", "T116", "T117", "T118", "T119", "T120"})
+_LEVEL_UP_BACKSTOP_SECONDS = 120.0
 _NO_WATCHDOG_ADVISORY_TASK_IDS = frozenset({"T105", "T112"})
 # Tasks whose SUCCESS envelopes are also written to the master log by the
 # parent (their callers do not log_api_call themselves).
@@ -1076,7 +1082,10 @@ def call_live_provider(
     # translates it (OpenAI-compatible: request option with SDK retries
     # zeroed; Gemini: http_options timeout). The task-level exclusion for
     # plain-advisory T105/T112 is unchanged (D-VS-3).
-    if completion_required:
+    level_up_task = task_id in _LEVEL_UP_TASK_IDS
+    if level_up_task:
+        frozen_kwargs["timeout"] = _LEVEL_UP_BACKSTOP_SECONDS
+    elif completion_required:
         frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
     elif wizard_task and frozen_kwargs.get("_request_provider") == "openai":
         import httpx
@@ -1190,7 +1199,9 @@ def call_live_provider(
 
         started = time.monotonic()
         generation_limit = (
-            _WATCHDOG_SECONDS
+            _LEVEL_UP_BACKSTOP_SECONDS
+            if level_up_task
+            else _WATCHDOG_SECONDS
             if completion_required
             else (
                 None
