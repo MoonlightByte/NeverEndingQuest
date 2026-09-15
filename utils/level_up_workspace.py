@@ -18,6 +18,26 @@ from typing import Literal
 
 Domain = Literal['features', 'spells', 'numbers']
 FORWARD_ORDER = ('features', 'spells', 'numbers')
+# What each domain actually consumes from another domain's approved output.
+# Spells needs the approved subclass and feature grants; numbers needs the
+# approved feats and proficiencies (initiative, attacks, skills). Numbers does
+# not consume spells (save DC and attack bonus come from the ability score and
+# proficiency bonus; slot maxima are spells' own), so spells and numbers are
+# authored side by side once features is approved (owner ruling 2026-09-14).
+DEPENDS_ON = {'features': (), 'spells': ('features',), 'numbers': ('features',)}
+
+
+def dependents_of(domain):
+    """Every domain that consumes `domain`'s output, transitively (excluding itself)."""
+    found = []
+    frontier = [domain]
+    while frontier:
+        current = frontier.pop()
+        for other, needs in DEPENDS_ON.items():
+            if current in needs and other not in found:
+                found.append(other)
+                frontier.append(other)
+    return tuple(d for d in FORWARD_ORDER if d in found)
 QuestionState = Literal['open', 'answered', 'reopened']
 Origin = Literal['admission', 'review', 'assembly', 'prepared_sheet',
                  'merge', 'fact_conflict', 'review_format']
@@ -74,7 +94,7 @@ def _same_value(left, right):
 
 def _capture_inputs(packet, domain):
     """Keep source evidence in code, never ask an author to regenerate it."""
-    upstream = FORWARD_ORDER[:FORWARD_ORDER.index(domain)]
+    upstream = DEPENDS_ON[domain]
     validated = packet.get('validated') or {}
     return deepcopy({
         'stored': packet.get('stored'), 'effective': packet.get('effective'),
