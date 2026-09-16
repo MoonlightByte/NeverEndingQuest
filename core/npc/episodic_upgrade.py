@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Callable, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from core.npc.episode_backfill import (
     backfill_from_journal,
@@ -156,6 +156,7 @@ def backfill_campaign(
     provider: Optional[str] = None,
     progress: Optional[Callable[[str, int, int, str], None]] = None,
     advisory_scope: Any = None,
+    advisory_scopes: Optional[Sequence[Any]] = None,
     marker_path: str = MARKER_PATH,
     journal_path: str = JOURNAL_PATH,
     summaries_dir: str = SUMMARIES_DIR,
@@ -249,6 +250,7 @@ def backfill_campaign(
                 "recovering memories (%d seconds on this entry)" % int(elapsed),
             ),
             start_index=start_index, advisory_scope=advisory_scope,
+            advisory_scopes=advisory_scopes,
             last_failure=marker.get("lastFailure"),
             checkpoint_cb=checkpoint_journal,
         )
@@ -356,6 +358,7 @@ def check_and_run_episode_upgrade(
     provider: Optional[str] = None,
     progress: Optional[Callable[[str, int, int, str], None]] = None,
     advisory_scope: Any = None,
+    advisory_scopes: Optional[Sequence[Any]] = None,
     marker_path: str = MARKER_PATH,
 ) -> Dict[str, Any]:
     """First-run detector + orchestrator, called ONCE at the startup seam beside the
@@ -386,7 +389,7 @@ def check_and_run_episode_upgrade(
         return backfill_campaign(
             party_tracker_data, path_manager,
             provider=provider, progress=progress, advisory_scope=advisory_scope,
-            marker_path=marker_path,
+            advisory_scopes=advisory_scopes, marker_path=marker_path,
         )
     except Exception as error:  # noqa: BLE001 - upgrade never blocks startup
         _LOGGER.debug("episodic upgrade failed (non-fatal): %r", error)
@@ -413,12 +416,16 @@ def run_registered_episode_upgrade(
         register_welcome_scope,
     )
 
+    from core.npc.episode_backfill import backfill_worker_count
+
     scope = LiveTurnScope(purpose="maintenance")
     register_welcome_scope(scope)
+    # One registered child per extraction worker (#415): the journal pass runs
+    # T113 concurrently, each call on its own scope, and commits in order.
     children = open_advisory_scopes(
         scope,
         "episodic-upgrade",
-        1,
+        backfill_worker_count(),
         completion_required=True,
     )
     if not children:
@@ -430,9 +437,11 @@ def run_registered_episode_upgrade(
             provider=provider,
             progress=progress,
             advisory_scope=child,
+            advisory_scopes=children,
         )
     finally:
-        child.finish()
+        for registered in children:
+            registered.finish()
         scope.seal_advisory_scopes()
         # Release the detached registry before draining a queued Load: its
         # selected timeline may itself need one new maintenance scope.
