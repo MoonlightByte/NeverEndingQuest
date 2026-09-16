@@ -225,6 +225,12 @@ COMMON_PACKET_PROPERTIES: Dict[str, Any] = {
     "beat": strict_object(
         {
             "id": {"type": "string", "minLength": 1},
+            # Out-of-combat beats carry who spoke the summary (the player
+            # character, by display name) so the limited-context voice call
+            # reads "you" in the beat as itself, not as the player. Optional:
+            # combat beats fold the encounter summary into the same string.
+            "kind": {"enum": ["player"]},
+            "speaker": {"type": "string", "minLength": 1},
             "summary": {"type": "string", "minLength": 1},
             "relationshipEvidence": {
                 "anyOf": [

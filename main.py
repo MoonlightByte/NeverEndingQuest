@@ -8898,6 +8898,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 }
                 party_members_stats.append(stats)
 
+        roster_level_synced = False
         try:
             for npc_info_iter in party_tracker_data["partyNPCs"]:
                 debug(f"STATE_CHANGE: Processing NPC: {npc_info_iter['name']}", category="npc_management")
@@ -8907,6 +8908,13 @@ def _main_game_loop(startup_authority, turn_authority):
                 npc_data_iter = load_json_file(npc_data_file)
                 debug(f"FILE_OP: NPC data loaded: {npc_data_iter is not None}", category="npc_management")
                 if npc_data_iter:
+                    # The character sheet owns the level; the roster entry is a
+                    # record-keeping copy. A level-up writes the sheet only, so
+                    # copy the value across on every pass (no model involved).
+                    sheet_level = npc_data_iter.get("level")
+                    if isinstance(sheet_level, int) and npc_info_iter.get("level") != sheet_level:
+                        npc_info_iter["level"] = sheet_level
+                        roster_level_synced = True
                     npc_data_iter = _effects_runtime_view(npc_data_iter)
                     stats = {
                         "name": npc_info_iter["name"],
@@ -8922,6 +8930,9 @@ def _main_game_loop(startup_authority, turn_authority):
             error(f"FAILURE: Error processing NPCs", exception=e, category="npc_management")
             import traceback
             traceback.print_exc()
+        if roster_level_synced:
+            safe_write_json("party_tracker.json", party_tracker_data)
+            debug("FILE_OP: Updated party_tracker.json partyNPCs levels from character sheets", category="npc_management")
     
         # Reload current location_data for the DM note based on party_tracker
         # This ensures location_data is fresh for each DM note construction

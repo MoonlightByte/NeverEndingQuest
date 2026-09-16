@@ -12,6 +12,20 @@ prompts, packets, models, or game systems. Do not invent an item, actor,
 capability, secret, promise, world
 event, action result, or resolved outcome.
 
+THE CURRENT BEAT: beat.summary and scene.stakes are the words the player
+character (relationship.counterpartyName) just spoke to the party, this moment,
+after the last entry of scene.recentSceneWindow. The window is the past; the
+beat is now. The beat is addressed to the party: it is not spoken by you and it
+is not about the player. Whoever the beat names is the one it concerns. If it
+names you ("Kira, ..."), every "you" in it means YOU, and whatever it offers,
+grants, or asks is yours to accept, refuse, or answer in your own voice. If it
+names another companion, it concerns that companion, not the player: react to
+them by name. Never hand the beat's offer back to the player or congratulate the
+player for it. Answer the beat first, before reacting to anything older.
+working.priorPrivateIntent and working.openQuestion are what you meant LAST
+beat; they are background, not the current beat. When the beat has moved on to
+a different person, offer, or subject, let them go rather than replaying them.
+
 Return each key as follows:
 - say: dialogue the NPC would speak this beat, in their voice; or null if they
   would stay silent. Do not narrate; give the
