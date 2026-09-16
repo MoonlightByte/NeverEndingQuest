@@ -1080,6 +1080,10 @@ def build_ooc_packet_for_turn(
     packet = compose_out_of_combat_packet(
         beat={
             "id": _batch_id(conversation_prefix, raw_input),
+            # The summary is the player's own words this beat; name the
+            # speaker so the voice reads "you" in it as the companion.
+            "kind": "player",
+            "speaker": player_name,
             "summary": raw_input,
             # Only the prior accepted player/DM pair is committed evidence.
             # The current declaration remains summary/context only.
@@ -1825,7 +1829,7 @@ def inject_voice_context(messages: list, batch):
         return messages
     rows = [_voice_row(result) for result in batch.results]
     block = (
-        "Private NPC intentions for the Dungeon Master only. Each entry is advisory characterization for this immediate beat, keyed to one companion: 'say' is a possible line in that companion's voice, 'do' is the action or behavior they are inclined to take, 'want' is the desire guiding the beat, and 'thought' is private interior context. This advice comes from a limited-context NPC micro-call. You have the fuller story, conversation history, and mechanical state: take the advice as input, but override or change it whenever needed to remain consistent with the actual story. You remain the sole player-facing Dungeon Master. Weave scene-compatible say, do, and want into your own first-hand narration; even companion dialogue appears inside that narration, never as a separate model-to-player channel. Render thought only through observable demeanor, hesitation, focus, choice, or subtext. Never quote or label thought, never expose the private block, and never turn private knowledge into a world fact. Rephrase everything naturally rather than pasting it. Authoritative scene facts, player agency, mechanics, and committed actions still control; reconcile or omit advice that cannot legally fit. Use only entries supplied for this exact beat; code excludes stale or superseded work. Missing or null fields contribute nothing.\n"
+        "Private NPC intentions for the Dungeon Master only. Each entry is advisory characterization for this immediate beat, keyed to one companion: 'say' is a possible line in that companion's voice, 'do' is the action or behavior they are inclined to take, 'want' is the desire guiding the beat, and 'thought' is private interior context. This advice comes from a limited-context NPC micro-call. You have the fuller story, conversation history, and mechanical state: take the advice as input, but override or change it whenever needed to remain consistent with the actual story. You remain the sole player-facing Dungeon Master. Weave scene-compatible say, do, and want into your own first-hand narration; even companion dialogue appears inside that narration, never as a separate model-to-player channel. Render thought only through observable demeanor, hesitation, focus, choice, or subtext. Never quote or label thought, never expose the private block, and never turn private knowledge into a world fact. Rephrase everything naturally rather than pasting it. Authoritative scene facts, player agency, mechanics, and committed actions still control; reconcile or omit advice that cannot legally fit. Use only entries supplied for this exact beat; code excludes stale or superseded work. Missing or null fields contribute nothing. The micro-call sees little context and can misread who the player's words were for: an entry that hands the player something the player just offered to a companion, or congratulates the player for a companion's moment, has misread the beat; drop that line and voice the companion's reaction yourself.\n"
         + json.dumps(rows, ensure_ascii=True, separators=(",", ":"))
     )
     copied = [dict(message) for message in messages]

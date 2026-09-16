@@ -32,6 +32,8 @@ def _text_list(values: Any) -> List[str]:
 def _normalize_common(packet: Dict[str, Any]) -> None:
     packet["beat"]["id"] = _text(packet["beat"].get("id"))
     packet["beat"]["summary"] = _text(packet["beat"].get("summary"))
+    if "speaker" in packet["beat"]:
+        packet["beat"]["speaker"] = _text(packet["beat"].get("speaker"))
     evidence = packet["beat"].get("relationshipEvidence")
     if isinstance(evidence, dict):
         for key in ("actorId", "actor", "targetId", "target", "summary"):
