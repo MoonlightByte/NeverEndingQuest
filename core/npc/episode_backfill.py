@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
@@ -45,6 +46,22 @@ _LOGGER = logging.getLogger(__name__)
 
 TASK_ID = "T113"
 PROMPT_VERSION = "npc-backfill-extract/v1"
+# Journal entries are extracted by up to this many concurrent T113 calls, each on its
+# own registered advisory scope (the same shape the companion voices and the level-up
+# specialists use). Commit stays strictly in journal order behind the cursor, so the
+# ledger, the checkpoints and the resume semantics are unchanged; only the wall clock
+# of a 277-entry save drops from ~30 minutes to a few (#415). NEQ_BACKFILL_WORKERS
+# overrides it (1 = the old serial behaviour).
+BACKFILL_WORKERS = 6
+
+
+def backfill_worker_count() -> int:
+    raw = os.environ.get("NEQ_BACKFILL_WORKERS", "").strip()
+    try:
+        value = int(raw) if raw else BACKFILL_WORKERS
+    except ValueError:
+        value = BACKFILL_WORKERS
+    return max(1, value)
 register_callsite(TASK_ID, "core/npc/episode_backfill.py", 60)
 
 
@@ -369,19 +386,27 @@ def _process_backfill_entry(
     json_loader: Callable[[str], Any],
     advisory_scope: Any,
     advisory_status: Optional[Callable[[str], None]],
+    extraction: Optional[Callable[[], Any]] = None,
 ) -> Dict[str, Any]:
-    """Run the one shared T113 entry lifecycle for either backfill provenance."""
+    """Run the one shared T113 entry lifecycle for either backfill provenance.
+
+    `extraction`, when given, yields the T113 result (or raises exactly what the
+    call raised) for an extraction that already ran on a worker thread; the
+    failure handling below then applies unchanged on the committing thread."""
     try:
-        result = extract_backfill_episode(
-            prose,
-            roster_names,
-            resolve_ids,
-            player_name=player_name,
-            provider=provider,
-            capture_fn=capture_and_fanout,
-            advisory_scope=advisory_scope,
-            advisory_status=advisory_status,
-        )
+        if extraction is not None:
+            result = extraction()
+        else:
+            result = extract_backfill_episode(
+                prose,
+                roster_names,
+                resolve_ids,
+                player_name=player_name,
+                provider=provider,
+                capture_fn=capture_and_fanout,
+                advisory_scope=advisory_scope,
+                advisory_status=advisory_status,
+            )
         episode_id = _commit_backfill(
             store,
             rel,
@@ -480,9 +505,18 @@ def backfill_from_journal(
     start_index: int = 0,
     last_failure: Optional[Mapping[str, Any]] = None,
     advisory_scope: Any = None,
+    advisory_scopes: Optional[Sequence[Any]] = None,
+    workers: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Backfill episodes from journal entries. Idempotent (stable coordinates), fail-
-    open per entry. Returns {committed, processed, next_index, total}."""
+    open per entry. Returns {committed, processed, next_index, total}.
+
+    T113 extraction runs on up to `workers` threads, one registered advisory scope
+    each (`advisory_scopes`; `advisory_scope` alone means one worker). Commit happens
+    on this thread in journal order, one entry at a time, exactly as before: the
+    cursor, the checkpoints, the two-strike skip and the halt-and-resume on a failed
+    entry are unchanged. Extractions already in flight past a halted entry are
+    discarded; their coordinates are stable, so the resume simply redoes them."""
     entries = journal.get("entries") if isinstance(journal, Mapping) else None
     entries = entries if isinstance(entries, list) else []
     total = len(entries)
@@ -493,58 +527,133 @@ def backfill_from_journal(
     failure = None
     index = max(0, start_index)
 
-    while index < total:
-        entry = entries[index]
-        index += 1
-        processed += 1
-        if progress_cb:
-            try:
-                progress_cb(index, total)
-            except Exception:
-                pass
-        if not isinstance(entry, Mapping):
-            continue
-        summary = str(entry.get("summary") or "").strip()
+    scopes = [s for s in (advisory_scopes or ()) if s is not None]
+    if not scopes and advisory_scope is not None:
+        scopes = [advisory_scope]
+    worker_count = workers if workers is not None else backfill_worker_count()
+    worker_count = max(1, min(int(worker_count), len(scopes))) if scopes else 1
+    if not scopes:
+        scopes = [None]
+
+    # Work items in journal order; workers pull the next one, extract, and park the
+    # outcome; the committing loop below consumes outcomes strictly in order.
+    prepared: Dict[int, Optional[Dict[str, Any]]] = {}
+    for i in range(index, total):
+        entry = entries[i]
+        summary = str(entry.get("summary") or "").strip() if isinstance(entry, Mapping) else ""
         if not summary:
+            prepared[i] = None
             continue
         loc = normalize_journal_location(entry.get("location"), name_to_id_map)
-        entry_started = time.monotonic()
+        prepared[i] = {"summary": summary, "loc": loc}
+    order = [i for i in range(index, total) if prepared[i] is not None]
+    outcomes: Dict[int, Dict[str, Any]] = {}
+    ready = threading.Condition()
+    stop = threading.Event()
+    cursor = {"next": 0}
 
-        def entry_status(_message):
+    def worker(scope):
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+        while not stop.is_set():
+            with ready:
+                if cursor["next"] >= len(order):
+                    return
+                i = order[cursor["next"]]
+                cursor["next"] += 1
+            holder: Dict[str, Any] = {"started": time.monotonic()}
+            try:
+                if scope is not None and scope.is_superseded():
+                    raise LiveProviderSuperseded("companion memory backfill superseded")
+                holder["result"] = extract_backfill_episode(
+                    prepared[i]["summary"],
+                    roster_names,
+                    resolve_ids,
+                    player_name=player_name,
+                    provider=provider,
+                    capture_fn=capture_and_fanout,
+                    advisory_scope=scope,
+                    advisory_status=None,
+                )
+            except BaseException as exc:  # noqa: BLE001 - replayed on the committing thread
+                holder["error"] = exc
+            with ready:
+                outcomes[i] = holder
+                ready.notify_all()
+
+    threads = []
+    for k in range(worker_count):
+        thread = threading.Thread(target=worker, args=(scopes[k % len(scopes)],),
+                                  name="episodic-backfill-%d" % k, daemon=False)
+        thread.start()
+        threads.append(thread)
+
+    try:
+        while index < total:
+            entry_index = index
+            index += 1
+            processed += 1
             if progress_cb:
-                progress_cb(index, total, time.monotonic() - entry_started)
+                try:
+                    progress_cb(index, total)
+                except Exception:
+                    pass
+            item = prepared.get(entry_index)
+            if item is None:
+                continue
+            wait_started = time.monotonic()
+            with ready:
+                while entry_index not in outcomes:
+                    ready.wait(timeout=5.0)
+                    if progress_cb and entry_index not in outcomes:
+                        try:
+                            progress_cb(index, total, time.monotonic() - wait_started)
+                        except Exception:
+                            pass
+                holder = outcomes.pop(entry_index)
 
-        entry_index = index - 1
-        outcome = _process_backfill_entry(
-            summary,
-            roster_names,
-            resolve_ids,
-            entry_index=entry_index,
-            last_failure=last_failure,
-            source_label="journal backfill entry",
-            store=episode_store,
-            rel=rel_store,
-            module=module,
-            location_id=loc["id"],
-            location_name=loc["name"],
-            boundary_turn_id="backfill-journal-%s-%d"
-            % (loc["id"] or "mod", entry_index),
-            player_name=player_name,
-            provider=provider,
-            party_tracker_data=party_tracker_data,
-            path_manager=path_manager,
-            json_loader=json_loader,
-            advisory_scope=advisory_scope,
-            advisory_status=entry_status,
-        )
-        if not outcome["completed"]:
-            index -= 1
-            failure = outcome["failure"]
-            break
-        if outcome["committed"]:
-            committed += 1
-        if checkpoint_cb:
-            checkpoint_cb(index, committed)
+            def replay(holder=holder):
+                if "error" in holder:
+                    raise holder["error"]
+                return holder.get("result")
+
+            loc = item["loc"]
+            outcome = _process_backfill_entry(
+                item["summary"],
+                roster_names,
+                resolve_ids,
+                entry_index=entry_index,
+                last_failure=last_failure,
+                source_label="journal backfill entry",
+                store=episode_store,
+                rel=rel_store,
+                module=module,
+                location_id=loc["id"],
+                location_name=loc["name"],
+                boundary_turn_id="backfill-journal-%s-%d"
+                % (loc["id"] or "mod", entry_index),
+                player_name=player_name,
+                provider=provider,
+                party_tracker_data=party_tracker_data,
+                path_manager=path_manager,
+                json_loader=json_loader,
+                advisory_scope=scopes[0],
+                advisory_status=None,
+                extraction=replay,
+            )
+            if not outcome["completed"]:
+                index -= 1
+                failure = outcome["failure"]
+                break
+            if outcome["committed"]:
+                committed += 1
+            if checkpoint_cb:
+                checkpoint_cb(index, committed)
+    finally:
+        stop.set()
+        with ready:
+            cursor["next"] = len(order)
+        for thread in threads:
+            thread.join()
     return {
         "committed": committed,
         "processed": processed,
