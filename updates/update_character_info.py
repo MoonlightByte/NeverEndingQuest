@@ -1693,7 +1693,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 - When equipment that affects AC (shields, armor, rings of protection) is added, removed, equipped, or unequipped, you **MUST** calculate and return the new total `armorClass`.
 - When a weapon is changed, you **MUST** update the relevant entry in the `attacksAndSpellcasting` array.
 - When a temporary effect is added or removed, you **MUST** return the **complete** `temporaryEffects` array, containing only the effects that should remain active. This is the one exception to the delta-only rule for lists.
-- Death/unconscious: Update `hitPoints`, `status`, `condition`, and `deathSaves` as needed
+- Down/unconscious (house rule, NO death saves): at 0 HP set `hitPoints` to 0 and `status` to "unconscious"; never write death saves; a character at 0 dies only if the whole party falls; a heal, potion, Medicine, or rest that restores them sets `hitPoints` above 0 and `status` to "alive"
 - Conditions: Always update BOTH `condition` and `condition_affected` when applying conditions
 
 **Your adherence to these delta-only rules is paramount. Generate the most minimal, targeted JSON possible while ensuring ALL logically affected fields are included.**

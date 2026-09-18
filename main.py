@@ -114,6 +114,14 @@ except:
 
 # Import other necessary modules (config is now patched)
 from core.managers.combat_manager import run_combat_simulation
+from core.combat.down_scene import (
+    MAIN_DOWN_BANNER,
+    MAIN_DOWN_SINK_LINE,
+    TPK_BANNER_CONTROLS,
+    TPK_BANNER_TERMINAL,
+    TPK_PAUSE_TEXT,
+    sheet_is_down,
+)
 from updates.plot_update import update_plot
 from utils.player_stats import get_player_stat
 from updates.update_world_time import update_world_time
@@ -3377,7 +3385,27 @@ def validate_ai_response(
         print(f"ERROR: Failed to build NPC context: {e}")
         import traceback
         traceback.print_exc()
-    
+
+    # D-242 consumer 6: the validator never sees the conversation's system
+    # entries, so the one down-scene rules string is added to its own context
+    # here, OUTSIDE the fail-open NPC-context try above (a fault must not mute
+    # the rule), rendered from the sheets on disk. Absent when nobody is down,
+    # so the validator context is byte-identical to today in that case.
+    from core.combat.down_scene import from_sheets as _down_scene_rules_from_sheets
+    _validation_sheets = []
+    _validation_path_manager = ModulePathManager(
+        str(party_tracker_data.get("module", "")).replace(" ", "_")
+    )
+    for _member_name in list(party_tracker_data.get("partyMembers", [])) + [
+        npc.get("name") for npc in party_tracker_data.get("partyNPCs", []) if isinstance(npc, dict)
+    ]:
+        if not _member_name:
+            continue
+        _sheet = safe_json_load(_validation_path_manager.get_character_path(_member_name))
+        if isinstance(_sheet, dict):
+            _validation_sheets.append(_sheet)
+    validation_down_rules = _down_scene_rules_from_sheets(_validation_sheets)
+
     validation_conversation = [
         {"role": "system", "content": validation_prompt_text},
         {"role": "system", "content": structure_validation_note},
@@ -3397,6 +3425,11 @@ def validate_ai_response(
             else None
         ),
         {"role": "system", "content": npc_validation_context},  # Always include, even if empty
+        (
+            {"role": "system", "content": validation_down_rules}
+            if validation_down_rules
+            else None
+        ),
         {"role": "system", "content": location_details},
         {"role": "system", "content": module_data_context},
     ]
@@ -8841,7 +8874,30 @@ def _main_game_loop(startup_authority, turn_authority):
             stats_display = f"{LIGHT_OFF_GREEN}[{time_display}][HP:{current_hp}/{max_hp}][XP:{current_xp}/{next_level_xp}]{RESET_COLOR}"
             player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
             print("[DEBUG] About to show input prompt with stats")
-            user_input_text = input(f"{stats_display} {player_name_display}: ")
+            # D-242 (Tasks 5 and 6): the prompt line is keyed on values read
+            # before the prompt. A persisted party-defeat pause names the moves
+            # the transport can honor; a downed player character gets the
+            # table-talk banner and its explanation; otherwise the ordinary
+            # prompt, byte-identical to before.
+            pre_prompt_recovery = _active_combat_recovery(party_tracker_data)
+            if pre_prompt_recovery and pre_prompt_recovery.get("reason") == "party_defeated":
+                tpk_banner = (
+                    TPK_BANNER_CONTROLS
+                    if hasattr(sys.stdin, "queue")
+                    else TPK_BANNER_TERMINAL
+                )
+                user_input_text = input(f"{stats_display} {tpk_banner} ")
+            elif sheet_is_down(player_data_current):
+                display_dm_narration(
+                    MAIN_DOWN_SINK_LINE.format(name=player_name_actual),
+                    channel="main",
+                    color="yellow",
+                )
+                user_input_text = input(
+                    f"{stats_display} " + MAIN_DOWN_BANNER.format(name=player_name_actual) + " "
+                )
+            else:
+                user_input_text = input(f"{stats_display} {player_name_display}: ")
         else:
             print("[DEBUG] About to show basic input prompt")
             user_input_text = input("User: ")
@@ -8862,17 +8918,28 @@ def _main_game_loop(startup_authority, turn_authority):
 
         combat_recovery = _active_combat_recovery(party_tracker_data)
         if combat_recovery:
-            display_dm_narration(
-                "Combat is paused (%s). This input was not sent to the "
-                "Dungeon Master. Load or restore a save before resuming "
-                "encounter %s."
-                % (
-                    combat_recovery["reason"],
-                    combat_recovery["encounter_id"],
-                ),
-                channel="combat",
-                color="yellow",
-            )
+            if combat_recovery.get("reason") == "party_defeated":
+                # D-242 Task 6: the party-defeat pause is the ratified interim
+                # until #184's defeat scene; the text names what actually works.
+                display_dm_narration(
+                    TPK_PAUSE_TEXT
+                    if hasattr(sys.stdin, "queue")
+                    else TPK_PAUSE_TEXT + " Close this window or press Ctrl+C, then use the launcher.",
+                    channel="combat",
+                    color="yellow",
+                )
+            else:
+                display_dm_narration(
+                    "Combat is paused (%s). This input was not sent to the "
+                    "Dungeon Master. Load or restore a save before resuming "
+                    "encounter %s."
+                    % (
+                        combat_recovery["reason"],
+                        combat_recovery["encounter_id"],
+                    ),
+                    channel="combat",
+                    color="yellow",
+                )
             continue
 
         # Remove duplicate NPCs if any exist

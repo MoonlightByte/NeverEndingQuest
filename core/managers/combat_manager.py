@@ -159,10 +159,19 @@ from core.managers.combat_state import (
     ensure_combat_state,
     expected_automatic_actor_ids,
     expected_player_window_ids,
-    player_control_unavailable,
+    is_down,
     recovery_action,
     resolve_creature_controller,
     valid_pending_delivery,
+)
+from core.combat.down_scene import (
+    COMBAT_DOWN_BANNER,
+    COMBAT_DOWN_SINK_LINE,
+    GO_ON_TOKEN,
+    TABLE_TALK_PREFIX,
+    TPK_PAUSE_TEXT,
+    from_encounter as down_scene_rules_from_encounter,
+    is_go_on,
 )
 from core.managers.combat_orchestrator import CombatTurnPaused, execute_agentic_turn
 from core.combat.invocation import InvocationSupersededError
@@ -244,6 +253,9 @@ T040_VERDICT_REQUEST = (
 )
 T040_MAX_ATTEMPTS_PER_CANDIDATE = 2
 T043_RESUME_FALLBACK_NARRATION = "The battle continues! What will you do next?"
+# D-242: the resume fallback when the player character is down never asks
+# the unconscious character what they do.
+T043_RESUME_FALLBACK_NARRATION_DOWN = "The battle continues around your fallen form."
 T045_REJECTED_ACTION_NARRATION = (
     "I could not safely resolve that combat action, so no combat state was "
     "changed. Please submit the action again."
@@ -297,16 +309,18 @@ def _finalize_t043_resume_exchange(
     response_content,
     expected_combat_round,
     retry_provider=None,
+    fallback_narration=T043_RESUME_FALLBACK_NARRATION,
 ):
     """Commit one answered resume exchange and return its visible narration.
 
     The provider response is staged until its JSON narration is validated.
     Typed combat structurally reissues through ``retry_provider``; the legacy
-    route retains its existing fixed fallback behavior.
+    route retains its existing fixed fallback behavior. ``fallback_narration``
+    is selected by the caller from the human's down value (D-242).
     """
     parse_error = None
     used_fallback = True
-    narration = T043_RESUME_FALLBACK_NARRATION
+    narration = fallback_narration
     assistant_content = narration
 
     if response_content is None and retry_provider is not None:
@@ -1446,7 +1460,10 @@ def _build_initial_combat_prompt(
     opening_preroll_text = _opening_preroll_context(
         encounter_data, preroll_text
     )
-    return f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so please describe the scene and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.
+    # D-242 consumer 4: a party member already down at combat start.
+    down_rules = down_scene_rules_from_encounter(encounter_data)
+    down_block = f"\n\n{down_rules}" if down_rules else ""
+    return f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so please describe the scene and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.{down_block}
 
 Important Character Field Definitions:
 - 'status' field: Overall life/death state - ONLY use 'alive', 'dead', 'unconscious', or 'defeated' (lowercase)
@@ -1469,11 +1486,25 @@ Player: {initial_prompt_text}"""
 
 
 def _automatic_turn_continuation_text(
-    actor_names, player_name, skipped_notice=None
+    actor_names, player_name, skipped_notice=None, human_is_down=False
 ):
-    """Render one continuation message from already-resolved actor labels."""
+    """Render one continuation message from already-resolved actor labels.
+
+    ``human_is_down`` is the encounter value ``is_down`` of the human creature
+    (D-242): when the player character is down there is no player window to
+    stop at, so the stop clause is replaced rather than inviting a player
+    input request the resolver would reject.
+    """
     required_actors = ", ".join(actor_names)
     skipped_context = f" {skipped_notice}" if skipped_notice else ""
+    if human_is_down:
+        return (
+            "System combat continuation: resolve these living non-player "
+            "turns in strict initiative order: "
+            f"{required_actors}. No player action this round: the player "
+            f"character {player_name} is down and cannot act. This is not "
+            f"a submitted player action.{skipped_context}"
+        )
     return (
         "System combat continuation: resolve these living non-player "
         "turns in strict initiative order before asking for the "
@@ -3739,7 +3770,35 @@ def _run_combat_simulation(
        print("[COMBAT_MANAGER] Injecting 'player has returned' message to re-engage AI.")
        debug("RESUME: Starting combat resume flow", category="combat_events")
        print("DEBUG: [RESUME] Starting combat resume flow")
-       resume_prompt = f"""Dungeon Master Note: The game session is resuming after a pause. The player has returned. Re-establish the scene briefly and prompt the player for their next action from the last known state.
+       # D-242 consumer 5: ONE evaluation of the human's down value selects
+       # both the resume sentence and the fallback narration.
+       resume_human = next(
+           (
+               creature
+               for creature in encounter_data.get("creatures", [])
+               if isinstance(creature, dict)
+               and resolve_creature_controller(creature, combat_state) == "human"
+           ),
+           None,
+       )
+       resume_human_down = is_down(resume_human)
+       if resume_human_down:
+           resume_instruction = (
+               "Re-establish the scene briefly. The player character is "
+               "unconscious and cannot act; do not prompt them; end on the "
+               "party's situation."
+           )
+           resume_fallback = T043_RESUME_FALLBACK_NARRATION_DOWN
+           resume_rules = down_scene_rules_from_encounter(encounter_data) or ""
+           resume_rules_block = f"\n\n{resume_rules}" if resume_rules else ""
+       else:
+           resume_instruction = (
+               "Re-establish the scene briefly and prompt the player for "
+               "their next action from the last known state."
+           )
+           resume_fallback = T043_RESUME_FALLBACK_NARRATION
+           resume_rules_block = ""
+       resume_prompt = f"""Dungeon Master Note: The game session is resuming after a pause. The player has returned. {resume_instruction}{resume_rules_block}
 
 Return exactly one JSON object with these fields and no others:
 - "combat_round": {round_num}
@@ -3874,6 +3933,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                    if combat_provenance(encounter_data) == "typed"
                    else None
                ),
+               fallback_narration=resume_fallback,
            )
        )
        if resume_parse_error is not None:
@@ -4036,6 +4096,11 @@ This is narration only. Do not advance the round or apply any combat action."""
    print("DEBUG: [COMBAT_LOOP] Entering main while True combat loop")
    if is_resuming:
        print("DEBUG: [RESUME] Successfully reached main combat loop after resume")
+   # D-242-A: one control boundary per round while the human is down. Loop
+   # local and in memory only; a restart simply shows the boundary once more
+   # for the current round.
+   last_boundary_round = None
+   down_table_talk = None
    
    # Update status to show combat is active
    try:
@@ -4130,32 +4195,27 @@ This is narration only. Do not advance the round or apply any combat action."""
                    category="combat_events",
                )
                return None, None
+       # D-242: a player at 0 HP is unconscious, not a stop. The round goes on
+       # through the companion and enemy windows below (a downed human is
+       # never turn-eligible, so no window is ever built for them). Only a
+       # whole-party defeat pauses the encounter (D-DS-3 scene, #184).
        if (
            agentic_mode
            and (encounter_data.get("combatState") or {}).get(
                "pendingDelivery"
            ) is None
-           and player_control_unavailable(encounter_data)
+           and all_party_resolved(encounter_data)
        ):
            state = encounter_data.get("combatState") or {}
            state["phase"] = "recovery_required"
-           state["pauseReason"] = (
-               "party_defeated"
-               if all_party_resolved(encounter_data)
-               else "player_incapacitated"
-           )
+           state["pauseReason"] = "party_defeated"
            if not safe_write_json(json_file_path, encounter_data):
-               raise RuntimeError("Could not persist the player-down combat pause")
-           pause_message = (
-               "Combat is paused because the player character cannot act. "
-               "No further model turns or state changes were made; restore, "
-               "or load a save before resuming this encounter."
-           )
-           _display_combat_narration(pause_message)
+               raise RuntimeError("Could not persist the party-defeat combat pause")
+           _display_combat_narration(TPK_PAUSE_TEXT)
            try:
                from core.managers.status_manager import status_manager
                status_manager.update_status(
-                   "Combat paused - player character is down",
+                   "Combat paused - the whole party has fallen",
                    is_processing=False,
                )
            except Exception:
@@ -4197,15 +4257,70 @@ This is narration only. Do not advance the round or apply any combat action."""
        current_time_str = party_tracker_data["worldConditions"].get("time", "Unknown")
        
        stats_display = f"[{current_time_str}][HP:{current_hp}/{max_hp}][XP:{current_xp}/{next_level_xp}]"
-       
+       # D-242: the human creature's down state is a value read from the
+       # encounter (the same value the windows use to skip an actor).
+       human_creature = next(
+           (
+               creature
+               for creature in encounter_data.get("creatures", [])
+               if isinstance(creature, dict)
+               and resolve_creature_controller(
+                   creature, encounter_data.get("combatState") or {}
+               ) == "human"
+           ),
+           None,
+       )
+       human_is_down = is_down(human_creature)
+
        print("DEBUG: [COMBAT_LOOP] About to request player input")
        debug("COMBAT_LOOP: Requesting player input", category="combat_events")
        agentic_actor_ids = []
        skipped_player_notice = None
        presentation_history_input = None
        presentation_skipped_player_notice = None
+       down_table_talk = None
        if agentic_mode:
            agentic_recovery = recovery_action(encounter_data)
+           # D-242-A round boundary: while the human is down, before the
+           # automatic window runs, once per combat round, read one line from
+           # the human as a control point (Load/quit/table talk). It is never
+           # a request for the character to act.
+           current_round_number = (
+               encounter_data.get("combatState") or {}
+           ).get("round")
+           if (
+               human_is_down
+               and (encounter_data.get("combatState") or {}).get(
+                   "pendingDelivery"
+               ) is None
+               and agentic_recovery["action"] == "continue"
+               and current_round_number != last_boundary_round
+           ):
+               last_boundary_round = current_round_number
+               _display_combat_narration(
+                   COMBAT_DOWN_SINK_LINE.format(
+                       name=player_name_display, token=GO_ON_TOKEN
+                   )
+               )
+               try:
+                   boundary_line = input(
+                       f"{stats_display} "
+                       + COMBAT_DOWN_BANNER.format(
+                           name=player_name_display, token=GO_ON_TOKEN
+                       )
+                       + " "
+                   )
+               except EOFError:
+                   error("FAILURE: EOF at the down-scene boundary", category="combat_events")
+                   print("DEBUG: [COMBAT_LOOP] EOF at the down boundary, breaking loop")
+                   break
+               if boundary_line and boundary_line.strip() and not is_go_on(boundary_line):
+                   down_table_talk = boundary_line
+               debug(
+                   "COMBAT_LOOP: down-scene boundary for round %s (table talk: %s)"
+                   % (current_round_number, bool(down_table_talk)),
+                   category="combat_events",
+               )
            agentic_actor_ids, automatic_initiative_step = _agentic_actor_window(
                encounter_data
            )
@@ -4320,12 +4435,24 @@ This is narration only. Do not advance the round or apply any combat action."""
                    automatic_turn_window,
                    player_name_display,
                    skipped_player_notice,
+                   human_is_down=human_is_down,
                )
                presentation_history_input = _automatic_turn_continuation_text(
                    presentation_turn_window,
                    player_name_display,
                    presentation_skipped_player_notice,
+                   human_is_down=human_is_down,
                )
+               if down_table_talk:
+                   # D-242-A: the human's table talk rides with the automatic
+                   # window's provider input, whole, never inventory-enhanced
+                   # and never as the character's action.
+                   user_input_text = "%s\n\n%s%s" % (
+                       user_input_text, TABLE_TALK_PREFIX, down_table_talk
+                   )
+                   presentation_history_input = "%s\n\n%s%s" % (
+                       presentation_history_input, TABLE_TALK_PREFIX, down_table_talk
+                   )
            if not agentic_mode:
                pending_initial_npc_turns = []
            debug(

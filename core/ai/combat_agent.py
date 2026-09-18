@@ -26,6 +26,7 @@ from core.ai.srd_reference import (
     load_srd_reference_index,
     normalize_rule_name,
 )
+from core.combat.down_scene import from_encounter as down_scene_rules_from_encounter
 from core.managers.combat_state import combatant_by_id, resolve_creature_controller
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.capture.live_provider_call import LiveProviderSuperseded
@@ -101,6 +102,13 @@ def _relevant_sheet(sheet):
         "classFeatures",
         "ammunition",
         "temporaryEffects",
+        # D-242 (ruling 5): the tactical model chooses rescues from what the
+        # sheets actually hold, so equipment, feats, skills and proficiencies
+        # travel whole, for every combatant, every window. No filtering.
+        "equipment",
+        "feats",
+        "skills",
+        "proficiencies",
     )
     return {key: sheet[key] for key in keys if key in sheet}
 
@@ -395,6 +403,10 @@ def request_intent_batch(
             else spell_references or {}
         ),
     }
+    # D-242 consumer 1: the one rules string while any party member is down.
+    down_rules = down_scene_rules_from_encounter(encounter)
+    if down_rules:
+        payload["downScene"] = down_rules
     pending_ids = list(pending_turn.get("actorIds", []))
     if isinstance(npc_voice_intents, Mapping):
         selected_voice = {}
@@ -559,6 +571,10 @@ def request_narration_candidate(
         payload["correction"] = correction
     if isinstance(npc_voice_intents, Mapping) and npc_voice_intents:
         payload["npcVoiceIntents"] = dict(npc_voice_intents)
+    # D-242 consumer 2: the same rules string (rules only; facts stay with T096).
+    down_rules = down_scene_rules_from_encounter(encounter)
+    if down_rules:
+        payload["downScene"] = down_rules
     # This must remain last even when correction context exists.
     payload["authoritativeFacts"] = authoritative_facts
     messages = [

@@ -76,7 +76,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 }
 
 @CRITICAL_5E={
-  death: At 0 HP, creature is unconscious. Each turn roll a death save (d20 DC10). 3 fails=death, 3 successes=stable at 0 HP.
+  death: house rule, NO death saves. At 0 HP a character is unconscious and stable, cannot act, speak, or answer (allies may speak to or about them), cannot lose more HP, and dies only if the whole party falls. Recovery is a real action: healing, a potion administered by an ally, Medicine to stabilize, or rest when the scene allows.
   actions: Each turn = 1 Action, 1 Bonus Action (if available), 1 Reaction (outside own turn), plus Movement.
   concentration: Only 1 concentration spell at a time. If damaged, roll Con save DC10 or half damage (whichever higher) to maintain.
   conditions: Apply standard 5e conditions (prone, restrained, stunned, paralyzed, frightened, unconscious) exactly as written.

@@ -85,6 +85,10 @@ from utils.character_sheet_contract import normalize_for_runtime
 from utils.plot_formatting import format_plot_for_ai
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from core.ai.atlas_builder import build_atlas_for_module, format_atlas_for_conversation
+from core.combat.down_scene import (
+    DOWN_RULES_MARKER,
+    from_sheets as down_scene_rules_from_sheets,
+)
 
 
 def _effects_runtime_view(character_data):
@@ -978,6 +982,26 @@ def update_conversation_history(
 
     return new_history
 
+def _single_line(value):
+    """Whole text on one line (whitespace collapsed); no slice, no cap (D-242-D)."""
+    if value is None or isinstance(value, (bool, list, dict)):
+        return ""
+    return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def _feats_text(feats):
+    """Every feat as 'name: description' (D-242-D); non-dict entries as text."""
+    parts = []
+    for feat in feats or []:
+        if isinstance(feat, dict):
+            name = _single_line(feat.get("name"))
+            desc = _single_line(feat.get("description"))
+            parts.append(f"{name}: {desc}" if desc else name)
+        else:
+            parts.append(_single_line(feat))
+    return ", ".join(parts)
+
+
 def update_character_data(conversation_history, party_tracker_data):
     updated_history = conversation_history.copy()
 
@@ -988,12 +1012,16 @@ def update_character_data(conversation_history, party_tracker_data):
         if not (
             entry["role"] == "system"
             and ("Here's the updated character data for" in entry["content"]
-                 or "Here's the NPC data for" in entry["content"])
+                 or "Here's the NPC data for" in entry["content"]
+                 or DOWN_RULES_MARKER in entry["content"])
         )
     ]
 
     if party_tracker_data:
         character_data = []
+        # D-242 consumer 3: the sheets as loaded this turn, so the down-scene
+        # rules entry is rendered from the same values the sheet entries show.
+        loaded_sheets = []
         # Get current module from party tracker for consistent path resolution
         current_module = party_tracker_data.get("module", "").replace(" ", "_")
         path_manager = ModulePathManager(current_module)
@@ -1028,6 +1056,10 @@ def update_character_data(conversation_history, party_tracker_data):
                         item_description = f"{item['item_name']} ({item['item_type']})"
                         if item['quantity'] > 1:
                             item_description = f"{item_description} x{item['quantity']}"
+                        # D-242-D: the item's whole description (single line).
+                        item_desc_text = _single_line(item.get('description'))
+                        if item_desc_text:
+                            item_description = f"{item_description}: {item_desc_text}"
                         equipment_list.append(item_description)
                     
                     equipment_str = ", ".join(equipment_list)
@@ -1092,7 +1124,7 @@ COND IMM: {', '.join(member_data['conditionImmunities'])}
 CLASS FEAT: {', '.join([f"{feature['name']}" for feature in member_data['classFeatures']])}
 RACIAL: {', '.join([f"{trait['name']}" for trait in member_data['racialTraits']])}
 BG FEAT: {bg_feature_name}
-FEATS: {', '.join([f"{feat['name']}" for feat in member_data.get('feats', [])])}
+FEATS: {_feats_text(member_data.get('feats', []))}
 TEMP FX: {_format_temporary_effects(member_data)}
 EQUIP: {equipment_str}
 AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in member_data.get('ammunition', [])])}
@@ -1108,6 +1140,7 @@ FLAWS: {member_data['flaws']}
 """
                     character_message = f"Here's the updated character data for {name}:\n{formatted_data}\n"
                     character_data.append({"role": "system", "content": character_message})
+                    loaded_sheets.append(member_data)
             except FileNotFoundError:
                 print(f"{member_file} not found. Skipping JSON data for {name}.")
             except json.JSONDecodeError:
@@ -1141,6 +1174,10 @@ FLAWS: {member_data['flaws']}
                         # Check if quantity exists before accessing it
                         if item.get('quantity', 1) > 1:
                             item_description = f"{item_description} x{item['quantity']}"
+                        # D-242-D: the item's whole description (single line).
+                        item_desc_text = _single_line(item.get('description'))
+                        if item_desc_text:
+                            item_description = f"{item_description}: {item_desc_text}"
                         equipment_list.append(item_description)
                     
                     equipment_str = ", ".join(equipment_list)
@@ -1206,7 +1243,7 @@ COND IMM: {', '.join(npc_data['conditionImmunities'])}
 CLASS FEAT: {', '.join([f"{feature['name']}" for feature in npc_data['classFeatures']])}
 RACIAL: {', '.join([f"{trait['name']}" for trait in npc_data['racialTraits']])}
 BG FEAT: {bg_feature_name}
-FEATS: {', '.join([f"{feat['name']}" for feat in npc_data.get('feats', [])])}
+FEATS: {_feats_text(npc_data.get('feats', []))}
 TEMP FX: {_format_temporary_effects(npc_data)}
 EQUIP: {equipment_str}
 AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in npc_data['ammunition']])}
@@ -1222,11 +1259,20 @@ FLAWS: {npc_data['flaws']}
 """
                     npc_message = f"Here's the NPC data for {npc_data['name']}:\n{formatted_data}\n"
                     character_data.append({"role": "system", "content": npc_message})
+                    loaded_sheets.append(npc_data)
             except FileNotFoundError:
                 print(f"{npc_file} not found. Skipping JSON data for NPC {npc['name']}.")
             except json.JSONDecodeError:
                 print(f"{npc_file} has an invalid JSON format. Skipping JSON data for NPC {npc['name']}.")
         
+        # D-242 consumer 3: one dedicated system entry, after the sheet
+        # entries (so no sheet-compressor block regex can span it), carrying
+        # the one rules string while any party member is down. It is refreshed
+        # each turn through the removal list above and never accumulates.
+        down_rules = down_scene_rules_from_sheets(loaded_sheets)
+        if down_rules:
+            character_data.append({"role": "system", "content": down_rules})
+
         # Insert character and NPC data after party tracker data
         party_tracker_index = next((i for i, msg in enumerate(updated_history) if msg["role"] == "system" and "Here's the updated party tracker data:" in msg["content"]), -1)
         if party_tracker_index != -1:

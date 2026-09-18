@@ -27,6 +27,15 @@ def slug(s: str) -> str:
 def compact(s: str) -> str:
     return re.sub(r'\s+', ' ', str(s)).strip()
 
+def describe_text(s) -> str:
+    """Whole description text, single line: whitespace collapsed and ';' -> ','.
+
+    No slice, no cap (D-242-D). Non-string or missing values render empty.
+    """
+    if s is None or isinstance(s, (bool, list, dict)):
+        return ''
+    return compact(str(s)).replace(';', ',')
+
 def strip_parens(text: str) -> Tuple[str, Optional[str]]:
     # Don't strip +N modifiers for weapons/armor
     if re.search(r'\+\d+', text):
@@ -205,6 +214,20 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
             cf_norm.append(normalize_feat(feat, None))
     classfeat_out = ','.join(cf_norm)
 
+    # Feats (D-242-D, ruling 5): every feat with its whole description, so the
+    # DM can choose a rescue from what the sheet actually holds. Complete list,
+    # no cap, no filtering; whitespace collapsed and ';' -> ',' only so the
+    # one-line-per-key shape survives. Never normalize_feat (it strips text).
+    feats_out_parts: List[str] = []
+    for feat in get_list(character, 'feats'):
+        if isinstance(feat, dict):
+            feat_name = compact(feat.get('name') or '')
+            feat_desc = describe_text(feat.get('description'))
+        else:
+            feat_name, feat_desc = compact(str(feat)), ''
+        feats_out_parts.append(f"{feat_name}: {feat_desc}" if feat_desc else feat_name)
+    feats_out = ','.join(feats_out_parts)
+
     # Equipment
     equip = get_list(character, 'equipment')
     equip_names: List[str] = []
@@ -212,12 +235,15 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
         if isinstance(it, dict):
             raw = it.get('item_name') or it.get('name') or ''
             qty = it.get('quantity', 1)
+            desc = describe_text(it.get('description'))
         else:
-            raw, qty = str(it), 1
+            raw, qty, desc = str(it), 1, ''
         base, _ = strip_parens(raw) if not keep_paren_info else (raw, None)
         nm = compact(base)
         nm_qty = f"{nm} x{qty}" if qty and qty > 1 else nm
-        equip_names.append(nm_qty)
+        # D-242-D: the item's whole description after a colon (never inside
+        # parentheses, which strip_parens keys on for names).
+        equip_names.append(f"{nm_qty}: {desc}" if desc else nm_qty)
     equip_out = '[' + ','.join(equip_names) + ']'
 
     # Attacks
@@ -307,6 +333,8 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     out.append(f"PROF={{{prof_out}}};")
     out.append(f"VULN={vuln}; RES={res_out}; IMM=; COND_IMM={cimm_out};")
     out.append(f"CLASSFEAT={classfeat_out};")
+    if feats_out:
+        out.append(f"FEATS={feats_out};")
     if temporary_effects:
         out.append(f"TEMP_FX=[{','.join(temporary_effects)}];")
     out.append(f"EQUIP={equip_out};")

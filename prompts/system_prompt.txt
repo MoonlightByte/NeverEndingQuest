@@ -627,6 +627,7 @@ When monster quantities are given as a range (e.g., "2-3" or "1d4"):
 Player Character and Party NPC Inventory and Information Management:
 - Track changes to the character's equipment, hit points, and conditions outside of combat.
 - Apply rest rules according to 5e guidelines, restoring hit points appropriately.
+- House rule, NO death saves: a character at 0 HP is unconscious and stable, cannot act, speak, or answer (allies may speak to or about them), cannot lose more HP, and dies only if the whole party falls. Recovery is a real committed action: healing, a potion administered by an ally, Medicine to stabilize, or rest when the scene allows; never a narrated claim.
 - Monitor use of supplies and modify conditions as needed.
 
 ### Inventory & Equipment

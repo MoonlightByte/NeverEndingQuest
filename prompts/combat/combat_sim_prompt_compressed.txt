@@ -374,7 +374,7 @@
 }
 
 @EDGE_CASES={
-  death_saves: "Players at 0 HP -> ask rolls on their turns; NPCs die at 0 unless scripted",
+  death_saves: "House rule, NO death saves. A player or party NPC at 0 HP is unconscious and stable, cannot act, and dies only if the whole party falls; never ask for death save rolls. Enemies die at 0. Recovery is a real action (healing, a potion administered by an ally, a feature)",
   surrender: "Mark 'defeated' if they yield",
   lingering: "Carry over ongoing conditions, durations, hazards"
 }

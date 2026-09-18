@@ -36,6 +36,7 @@ from core.effects.model import normalize_effect, validate_effect
 from core.managers.combat_state import (
     combatant_by_id,
     is_combatant_targetable,
+    is_party_member,
     is_turn_eligible,
     normalize_status,
 )
@@ -454,9 +455,11 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
     if target is not None and swings:
         status_after = target.get("status", "alive")
         if hp_after == 0:
+            # D-242-1: party members (player and companions) fall unconscious;
+            # only hostiles die at 0. Party-ness is the roster value.
             status_after = (
                 PLAYER_UNCONSCIOUS
-                if target.get("type") == "player"
+                if is_party_member(target)
                 else NONPLAYER_DEAD
             )
         event["outcome"]["targets"].append({
@@ -1065,7 +1068,8 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
         hp_after = max(0, min(hp_before + hp_delta, ceiling))
         status_after = normalize_status(target.get("status"))
         if hp_after == 0 and hp_delta < 0:
-            status_after = (PLAYER_UNCONSCIOUS if target.get("type") == "player"
+            # D-242-1: same rule as the attack path above.
+            status_after = (PLAYER_UNCONSCIOUS if is_party_member(target)
                             else NONPLAYER_DEAD)
         elif target["combatantId"] in canonical_wake_targets:
             status_after = "alive"
