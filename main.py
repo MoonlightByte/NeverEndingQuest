@@ -8888,13 +8888,21 @@ def _main_game_loop(startup_authority, turn_authority):
                 )
                 user_input_text = input(f"{stats_display} {tpk_banner} ")
             elif sheet_is_down(player_data_current):
+                # The banner names the character as the sheet spells it, not
+                # the file-form name the ordinary prompt line shows.
+                down_display_name = (
+                    player_data_current.get("name")
+                    if isinstance(player_data_current.get("name"), str)
+                    and player_data_current.get("name").strip()
+                    else player_name_actual
+                )
                 display_dm_narration(
-                    MAIN_DOWN_SINK_LINE.format(name=player_name_actual),
+                    MAIN_DOWN_SINK_LINE.format(name=down_display_name),
                     channel="main",
                     color="yellow",
                 )
                 user_input_text = input(
-                    f"{stats_display} " + MAIN_DOWN_BANNER.format(name=player_name_actual) + " "
+                    f"{stats_display} " + MAIN_DOWN_BANNER.format(name=down_display_name) + " "
                 )
             else:
                 user_input_text = input(f"{stats_display} {player_name_display}: ")
