@@ -352,3 +352,20 @@ converges in 2 trips 3/3 (the recorded round-1 windows also took 2); the human's
 (`CombatPlayerInputRequired`, no-model replay); fresh round-2 heals after the heal wording: positive 5/5
 (12, 13, 13, 13, 15), before it 1/3; fresh-then-correct on the round-2 down window converges in 2 trips 3/3. Acceptance 7a/7b/7c/7d/7e/7f remain to be run live on the
 amended branch; slice results are dev aids, never acceptance.
+
+## 13. Amendment B (2026-09-19, marsh trial 4 on 37264ddc)
+
+Trial 4: every 7a-i and 7a-ii criterion met in substance (Eirik 0 -> 24 by two committed companion heals in the
+round-2 window, his prompt back at his next slot; boundary once per down round; every correction converged in
+one trip, the D1 reject fired live once and was fixed in one trip) but the formal verdict is INCONCLUSIVE under
+the pre-declared transport rule: two dropped OpenAI connections (T096 round 1, T042 round 7), each 600 s to the
+engine's honest retry, then success. The #409 fix is an ancestor of HEAD; this is a different or recurring stall
+and is reported to the owner, not fixed in this lane. A clean rerun remains due for the formal second 7a-i trial.
+
+D4 (found in trial 4): the companion declared a Potion of healing with resources.owner = herself while the potions
+sit in the downed character's pack; the resolver rejected it three times and she shot instead. Wording added to the
+T096 resources contract (owner is the sheet that holds the item; never declare a spell or potion the sheets cannot
+pay for) and to the rules text (a potion in the downed character's own pack counts). Slice on the recorded round-7
+window: invented potion 2/3 -> 0/4, no-slot fake cast 1/3 -> 0/4; no-model replay proves an Eirik-owned potion
+administered by Elen commits (0 -> 7, pack 1 -> 0). Files: `core/ai/combat_agent.py`, `core/combat/down_scene.py`
+(already in the allowlist). Verdict file: `marsh-4-verdict.md` in the kit.

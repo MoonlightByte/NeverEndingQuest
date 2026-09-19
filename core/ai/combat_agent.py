@@ -302,7 +302,12 @@ An adjudicated intent may contain:
 - save: {type, dc, halfOnSave} when targets roll a save
 - targets: [{combatantId, hpDelta}], negative damage / positive healing
 - resources: [{owner, kind, name, delta}], using exact sheet names; kind is
-  ammunition, spellSlot, featureUse, or item
+  ammunition, spellSlot, featureUse, or item. owner is the sheet that HOLDS
+  the resource, which need not be the actor: an ally administering a potion
+  from the downed character's own pack lists owner as that downed character
+  and name as the item exactly as that sheet lists it. Read the sheets before
+  choosing: if the actor's slot is spent and no party sheet holds the item,
+  do not declare the spell or potion at all; take a real listed action.
 - effects: [{op:'add', owner, effect:{name,description,roundsRemaining,
   concentration,tickTrigger,modifiers:[{stat,value}],conditions:[],
   incapacitates:false,onApply:[],onRemove:[]}}] or

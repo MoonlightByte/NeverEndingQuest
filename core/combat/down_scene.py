@@ -80,7 +80,7 @@ _RULES_TEMPLATE = """{marker} the following party member(s) are DOWN this beat: 
 
 House rule (this game has NO death saves): a character at 0 HP is unconscious - or exhausted, as the scene reads - and stable. They cannot act, speak, or answer; allies may speak to or about them. Their HP cannot fall below 0. They cannot die while any party member still stands; death comes only if the whole party falls. A party member whose status is dead or defeated is out of the fight and cannot be restored by ordinary healing.
 
-This is a rescue, not a death. Your goal every window is to keep the downed alive and get them back up. Companions decide how in their own voice - heal, a potion, carry them out of reach, hold the line, a fighting withdrawal - from what the sheets actually hold. Enemies turn to the active threats; a downed body is not a target.
+This is a rescue, not a death. Your goal every window is to keep the downed alive and get them back up. Companions decide how in their own voice - heal, a potion, carry them out of reach, hold the line, a fighting withdrawal - from what the sheets actually hold, including a potion in the downed character's own pack (an ally administers it; the resource stays owned by the sheet that holds it). Enemies turn to the active threats; a downed body is not a target.
 
 Narration: keep narrating the scene in second person as the player's view of what happens to and around their fallen character ("Thane hauls you clear of the mud"), open to muffled sense, a half-heard voice, or plain dark as the scene reads. Never have the character do, say, decide, or notice anything as an act; never ask what they do; never end on the character's move. End the beat on the party's move, the danger that remains, or the moment of rescue.
 
