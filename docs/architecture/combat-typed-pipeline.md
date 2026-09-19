@@ -95,6 +95,14 @@ immediately. In-combat `pendingTurn` remains initiative-owned and unchanged.
 4. `pendingDelivery` skips T096 and mechanics; it reuses recorded narration or calls T097,
    then delivers and acknowledges exactly once.
 5. `recovery_action` chooses the branch from persisted state, never from narration.
+6. A downed human (D-242, `combat_state.is_down`) is not a pause. The loop pauses only on
+   `all_party_resolved` (`pauseReason = party_defeated`). While the human is down, one
+   boundary per round shows the explanation line and the table-talk banner; 'go on' or an
+   empty line runs the automatic window, anything else rides with that window's provider
+   input as table talk. T043 resume uses its down variant and never asks the unconscious
+   character what they do. A persisted `player_incapacitated` pause from older code adapts
+   forward on the first commit. The rules text (`core/combat/down_scene.py`) reaches T096,
+   T097, T044, T043 and the DM/validator system entries while any party member is down.
 
 ### Completion and handoff
 
@@ -155,7 +163,8 @@ of forward adaptation into this typed pipeline; #266 is a hard retirement prereq
 - #191 - agentic combat recovery epic.
 - #201/#202/#243/#270 - lifecycle, lock, supersession, and command-arbitration gaps.
 - #203/#205/#206/#207 - out-of-turn, unsupported-action, flee, and reinforcement gaps.
-- #242/#245/#264/#266 - down scene, survivability, escape, and defensive-save parity.
+- #242 down scene: implemented on fix/242-down-scene (Resume item 6). #245/#264/#266 -
+  survivability, escape closure, and defensive-save parity remain open.
 - #253 - completed encounter source identity can duplicate fights and XP.
 - #259/#268/#269 - combat voice delivery and player-roll restart gaps.
 - #262 - remaining gameplay-path No-Limits retirement.

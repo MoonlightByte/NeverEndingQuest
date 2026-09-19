@@ -16,7 +16,12 @@ good-play replays. Master evidence:
 1. Zero-HP / recovery seam (5 rows: TW-F01/F40, PK-017/018/036) - unconscious PC gets a
    normal prompt; typed Load intercepted; a downed PC freezes living allies. The
    DOWN-SCENE DESIGN is owner-only (deaths themselves are intended challenge; #246
-   closed accordingly; the narrow mechanic seam is still real, #242 remains open).
+   closed accordingly). RULED and FIXED on fix/242-down-scene (#193 Part 5 D-242-1..6,
+   plan docs/audits/2026-09-16-242-down-scene-plan.md): no death saves; a party member at
+   0 HP is unconscious and stable; the fight continues through companion and enemy windows
+   with a table-talk boundary once per round; only whole-party defeat pauses (Load / Reset).
+   Acceptance 7a-7d PASS on real play. Typed Load during an automatic window still applies
+   immediately instead of after the window commits: that is #243, not this seam.
 2. Liveness / continuation stalls (7 rows: TW-F08, PK-019/027/035/037/039/040).
 3. State-vs-narration divergence (10 rows: TW-F22/F27/F31/F36/F37/F39/F43 + PK-012/014).
    NOTE: the replay showed several of these are live-correctable via the player screen
