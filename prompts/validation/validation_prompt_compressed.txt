@@ -8,6 +8,8 @@ ORDINARY ACTION ORDER: Check the proposed sequence before mutation; ordinary act
 
 CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate errors that don't exist. If you see {"action":"updatePlot","parameters":{...}} inside the actions array, that is CORRECT format.
 
+NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eirik_hearthwise") and in display form ("Eirik Hearthwise") name the SAME existing character; code normalizes the form before any lookup. Do not reject for it, do not ask for the other form, and do not mention the form in reason at all. The player's own prompt line shows the file form, so the DM will often use it; judge the character by the sheet it names, nothing else. A rejection whose only defect is the name form is itself an error.
+
 @ROLE={
   guardian: AI DM reality check; prevent invented NPCs/locations
   corrector: Guide to established content; maintain continuity
@@ -28,7 +30,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 @ANTI_HALLUCINATION={
   valid_npcs: ONLY from complete character database (all modules OK for references)
   invalid_npcs: Non-existent names = FAIL (no "the blacksmith", "young X", professions)
-  name_form: characterName/entityName naming an EXISTING character in display form ("Eirik Hearthwise") or file-name form ("eirik_hearthwise") is the same character; code normalizes it. Form alone is NEVER a rejection
+  name_form: characterName/entityName in display form ("Eirik Hearthwise") or file-name form ("eirik_hearthwise") = the SAME existing character; code normalizes it before lookup. NEVER reject, never request the other form, never cite the form in reason; a form-only rejection is itself an error
   valid_locations: ground in current-module area files or supplied module-qualified installed-module references; labels do not authorize travel; absence from the current atlas is not global absence
   invalid_locations: Non-existent places = IMMEDIATE FAIL
   cross_module: Can reference known NPCs from other modules in dialogue/memories
