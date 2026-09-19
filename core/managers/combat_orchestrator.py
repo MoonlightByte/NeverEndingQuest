@@ -196,7 +196,7 @@ def _intent_correction(exc, batch=None):
                 "legalTargets (%s), or choose a non-attack action."
                 % ", ".join(rendered_targets)
             )
-            if "already down" in str(exc):
+            if feedback.get("targetDown") is True:
                 instruction += (
                     " The creatures list shows HP at the start of this window;"
                     " code resolves your intents in order with this round's"

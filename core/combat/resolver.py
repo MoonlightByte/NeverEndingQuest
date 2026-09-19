@@ -234,9 +234,12 @@ def validate_intent(encounter, characters, intent, strict=None):
                 legalTargets=_living_opponent_ids(encounter, actor), retryable=True)
         target = combatant_by_id(encounter, target_id) if target_id else None
         if target is not None and not is_combatant_targetable(target):
+            # targetDown marks a PROJECTED state: the target fell to an earlier
+            # intent of the same ordered batch. The correction text keys on it.
             return False, Rejection(
                 reason="target %s is already down" % target_id,
-                legalTargets=_living_opponent_ids(encounter, actor), retryable=True)
+                legalTargets=_living_opponent_ids(encounter, actor), retryable=True,
+                targetDown=True)
         if strict and target is not None and target.get("faction") == actor.get("faction"):
             return False, Rejection(
                 reason="%s cannot attack ally %s" % (actor_id, target_id),

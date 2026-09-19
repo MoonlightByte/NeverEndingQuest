@@ -20,7 +20,9 @@ good-play replays. Master evidence:
    plan docs/audits/2026-09-16-242-down-scene-plan.md): no death saves; a party member at
    0 HP is unconscious and stable; the fight continues through companion and enemy windows
    with a table-talk boundary once per round; only whole-party defeat pauses (Load / Reset).
-   Acceptance 7a-7d PASS on real play. Typed Load during an automatic window still applies
+   Acceptance on real play: 7a stamped fixed by the owner on trials 3 and 4 (trial 4 met
+   every criterion but carried two 600 s provider drops, #409), 7b/7c/7d and the
+   compression-off parity run PASS. Typed Load during an automatic window still applies
    immediately instead of after the window commits: that is #243, not this seam.
 2. Liveness / continuation stalls (7 rows: TW-F08, PK-019/027/035/037/039/040).
 3. State-vs-narration divergence (10 rows: TW-F22/F27/F31/F36/F37/F39/F43 + PK-012/014).

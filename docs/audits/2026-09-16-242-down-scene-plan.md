@@ -369,3 +369,27 @@ pay for) and to the rules text (a potion in the downed character's own pack coun
 window: invented potion 2/3 -> 0/4, no-slot fake cast 1/3 -> 0/4; no-model replay proves an Eirik-owned potion
 administered by Elen commits (0 -> 7, pack 1 -> 0). Files: `core/ai/combat_agent.py`, `core/combat/down_scene.py`
 (already in the allowlist). Verdict file: `marsh-4-verdict.md` in the kit.
+
+## 14. Amendment C (2026-09-19, post-implementation audit NEQ-REVIEW-15, non-author)
+
+Audit verdict on 0d8a7077..36d24b4a: 0 blocking, 2 should-fix, notes. Every task (1-6, 4b) and Amendments A/B found
+implemented at the named lines; sentinel scan clean (no cap, deadline, config hasattr, prose regex, or second path);
+backward compatibility probed (missing-field tolerance of is_down / sheet_is_down / is_party_member; persisted
+player_incapacitated pause adapts forward); ASCII clean; EOLs preserved.
+
+Should-fix 1 (resolved here): the correction text keyed on the literal "already down" from resolver.py. The
+resolver now marks that rejection with a structured `targetDown: True` feedback key and `_intent_correction` keys on
+it. Same text, same slice result (corrected call resolves in one trip).
+
+Should-fix 2 (recorded, owner-directed): commit 780ad7e1 rewrites the validator name_form rule (#436) - not a #242
+task. The owner directed that fix in this lane on 2026-09-19 after acceptance 7b exposed it; it rides in this branch by
+that ruling. Slice proof on the issue.
+
+Notes accepted as-is: `down_table_talk = None` at loop init (readable initialisation, reset each iteration);
+`retryable: True` in the NPC roll-request rejection (harmless, matches sibling rejections); three per-renderer
+whitespace helpers (plan named per-renderer normalisation); KNOWN_ISSUES wording reconciled to the owner's stamp
+(7a stamped on trials 3 and 4; 7b/7c/7d/parity PASS; 7e rides on #243).
+
+Acceptance ledger at this amendment: 7a stamped by owner; 7b PASS (with #436 found and fixed); 7c PASS; 7d PASS;
+7e NOT MET = pre-existing #243 (evidence posted there; owner decides gate-or-ride); 7f manual, pending owner;
+4b(ii) parity PASS. Issues touched: #435 (open by design), #436 (closed), #409 and #190 and #243 (evidence).
