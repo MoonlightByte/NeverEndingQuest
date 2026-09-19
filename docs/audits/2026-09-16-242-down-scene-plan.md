@@ -322,3 +322,33 @@ D-242-A, D-242-B, D-242-C: RULED 2026-09-16 = recommended (section 0).
 ## 11. Draft #193 Part 5 text for the owner to paste (owner-only edit)
 
 **D-242-1..6 - Down-scene house rules (ratified 2026-09-16; supersede D-DS-1).** (1) NO death saves. At 0 HP a player character is unconscious (or exhausted, as the scene reads), stable, cannot act, speak, or answer (allies may speak to or about them); HP floors at 0; they cannot die while any party member stands; death comes only from whole-party defeat (D-DS-3 scene). Party companions at 0 HP are likewise unconscious, not dead. (2) Enemies do not keep attacking a downed character; the AI agent picks another threat. (3) Narration is open and scenario-dependent: the DM narrates the fall, the party's response, and the recovery as one continuous scene; the unconscious character never acts, speaks, or is asked anything. (4) Mechanics are on rails: every heal, potion, stabilization, or rest that restores the character is a real committed action (typed combat events in combat; action-handler actions out of combat), never a narrated claim. (5) The DM chooses recovery from the party's real resources (complete inventories, prepared spells and slots, features, feats, skills), which reach the deciding model; potions and healing spells when surrounded, Medicine and rest when safe. (6) Surrender is not offered until #427 defines its contract; flee is legitimate but its closure is #264 (a withdrawal never falsely closes combat). D-DS-1 (hybrid death saves) is REVERSED by (1); D-DS-2, D-DS-3, D-DS-4 stand. Per-plan rulings D-242-A (one round boundary while down, table-talk input), D-242-B (#264 sequenced next), D-242-C (shared combat prompt line replaced under D-VR-13b) ratified the same day.
+
+## 12. Amendment A (2026-09-19, owner-directed after marsh trial 3)
+
+Trial 3 on aa1dcd14 gave 7a-i PASS (1 of 2) and 7a-ii NOT-REACHED, and exposed three pre-existing faults in the
+T096 window (files untouched by this plan; identical on main): (D1) an NPC intent carrying `requiresPlayerInput`
+was silently committed with its declared `hpDelta 0` while the slot was spent (`core/combat/pipeline.py:324`
+honored the request for the human actor only); (D2) the correction loop ping-ponged 62 times between "Thane is
+already down" and "Elen is already down" because the model answered each correction by redirecting every enemy
+onto the named legal target, and `_intent_correction` never explained that the rejection is a projection of the
+model's own earlier intents; (D3) the mound named `Multiattack` (a `0d0` container entry) as its ability in
+every window; (D1b, found by the slices) on the fresh path the model declared its own Cure Wounds at `hpDelta 0` with
+"the healing is rolled by the engine" in the description, reading "code owns dice" as covering adjudicated heals.
+
+Owner rulings: D1 fixed narrowly in code (reject as a correction); D2 and D3 fixed by prompt/correction text,
+proven on replayed single-call slices against the real resolver with reconstructed round dice (DEV AID, kit
+`slice_replay.py`), then no-regression slices; issue filed for D2 recurrence.
+
+Files added to the allowlist: `core/combat/pipeline.py` (one reject branch after the human roll-request branch),
+`core/managers/combat_orchestrator.py` (`_intent_correction` projection sentence), `core/ai/combat_agent.py`
+(T096 system prompt: projection rule, no `Multiattack`/`0d0` ability, NPC never carries `requiresPlayerInput`,
+code never rolls adjudicated damage/healing dice so a heal must carry a positive integer hpDelta).
+
+Slice evidence (real T096 calls, gpt-5.6-luna|none; captures in `slice-capture-baseline/` and
+`slice-capture-after/`): D2 corrected call resolves in one trip 0/3 -> 3/3; companion Cure Wounds commits a
+real heal from the recorded batch 0 -> 3/3 in one trip (0->13, 0->12, 0->12); fresh round-2 window names
+Multiattack 0/4 and NPC roll request 0/4 (before: every window); round-1 pre-fall window fresh-then-correct
+converges in 2 trips 3/3 (the recorded round-1 windows also took 2); the human's own roll request still pauses
+(`CombatPlayerInputRequired`, no-model replay); fresh round-2 heals after the heal wording: positive 5/5
+(12, 13, 13, 13, 15), before it 1/3; fresh-then-correct on the round-2 down window converges in 2 trips 3/3. Acceptance 7a/7b/7c/7d/7e/7f remain to be run live on the
+amended branch; slice results are dev aids, never acceptance.

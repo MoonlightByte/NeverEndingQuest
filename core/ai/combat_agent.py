@@ -318,7 +318,11 @@ An adjudicated intent may contain:
   values for damage, final hpDelta values for healing, and hpDelta 0 for
   control-only targets. Code rolls declared saving throws, applies their
   half/no-damage outcomes, clamps state, and stages only effects whose save
-  condition won.
+  condition won. Code does NOT roll adjudicated damage or healing dice: the
+  engine never turns '2d8+3' in a description into a number. You roll those
+  dice in the ruling and put the resulting integer in hpDelta. A heal left at
+  hpDelta 0 restores nothing and still spends the slot or potion, so a
+  healing spell, potion, or feature must always carry a positive hpDelta.
   Example for a hostile control target:
   targets:[{combatantId:'cmb-enemy-bandit-1',hpDelta:0}],
   effects:[{op:'add',combatantId:'cmb-enemy-bandit-1',applyOn:'failedSave',
@@ -339,11 +343,20 @@ An adjudicated intent may contain:
 
 One known attack intent represents the actor's full Attack action. Code owns
 the number of Multiattack swings and consumes each persisted roll; do not emit
-duplicate intents for the same actor.
+duplicate intents for the same actor. Never set ability to 'Multiattack'
+itself or to any listed entry whose damageDice is 0d0: those are containers,
+not attacks. Name the single weapon/action the Multiattack is made of (for
+example 'Slam') and code applies the extra swings.
 
 Intents resolve in the required order. Account for the HP changes you propose
 for earlier actors: never have a later actor attack a target your earlier
 intent would reduce to 0 HP. If no valid opponent would remain, use defend.
+A correction that says a target is already down reports the state projected
+after the earlier intents in your own batch resolve with this round's dice;
+creatures still shows the HP from the start of the window. Answer it by
+keeping validatedIntents exactly as given and changing only the rejected
+actor's targetId or action. Never redirect earlier actors onto the legal
+target: that moves the same damage onto it and repeats the rejection.
 
 The PLAYER actor must always use mode='adjudicated'; never roll automatically
 for the player. Apply only rolls/results explicitly supplied in playerInput,
@@ -357,9 +370,12 @@ One requiresPlayerInput represents exactly ONE next player roll or choice.
 Never combine two rolls or two spells in one request. For a multi-action turn,
 ask only for the earliest unresolved player roll; after the player supplies it,
 the next pass may ask for the later roll. spellName must name one exact spell.
-requiresPlayerInput is only for a roll or choice the PLAYER must supply. Never
-pause to ask the player for an NPC or enemy saving throw: put that save in the
-intent's save field and code will roll it. If a player damage roll is needed
+requiresPlayerInput is only for a roll or choice the PLAYER must supply. An
+NPC or enemy actor never carries requiresPlayerInput: for an NPC spell, heal,
+potion, or feature, roll its dice yourself in the ruling and supply the final
+hpDelta and resources, so a companion's healing lands the moment it resolves.
+Never pause to ask the player for an NPC or enemy saving throw: put that save
+in the intent's save field and code will roll it. If a player damage roll is needed
 before that save resolves, explicitly ask the player to roll the damage dice;
 do not phrase the request as the enemy making its save.
 
