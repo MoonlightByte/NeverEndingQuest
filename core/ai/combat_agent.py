@@ -26,6 +26,7 @@ from core.ai.srd_reference import (
     load_srd_reference_index,
     normalize_rule_name,
 )
+from core.combat.down_scene import from_encounter as down_scene_rules_from_encounter
 from core.managers.combat_state import combatant_by_id, resolve_creature_controller
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.capture.live_provider_call import LiveProviderSuperseded
@@ -101,6 +102,13 @@ def _relevant_sheet(sheet):
         "classFeatures",
         "ammunition",
         "temporaryEffects",
+        # D-242 (ruling 5): the tactical model chooses rescues from what the
+        # sheets actually hold, so equipment, feats, skills and proficiencies
+        # travel whole, for every combatant, every window. No filtering.
+        "equipment",
+        "feats",
+        "skills",
+        "proficiencies",
     )
     return {key: sheet[key] for key in keys if key in sheet}
 
@@ -294,7 +302,12 @@ An adjudicated intent may contain:
 - save: {type, dc, halfOnSave} when targets roll a save
 - targets: [{combatantId, hpDelta}], negative damage / positive healing
 - resources: [{owner, kind, name, delta}], using exact sheet names; kind is
-  ammunition, spellSlot, featureUse, or item
+  ammunition, spellSlot, featureUse, or item. owner is the sheet that HOLDS
+  the resource, which need not be the actor: an ally administering a potion
+  from the downed character's own pack lists owner as that downed character
+  and name as the item exactly as that sheet lists it. Read the sheets before
+  choosing: if the actor's slot is spent and no party sheet holds the item,
+  do not declare the spell or potion at all; take a real listed action.
 - effects: [{op:'add', owner, effect:{name,description,roundsRemaining,
   concentration,tickTrigger,modifiers:[{stat,value}],conditions:[],
   incapacitates:false,onApply:[],onRemove:[]}}] or
@@ -310,7 +323,11 @@ An adjudicated intent may contain:
   values for damage, final hpDelta values for healing, and hpDelta 0 for
   control-only targets. Code rolls declared saving throws, applies their
   half/no-damage outcomes, clamps state, and stages only effects whose save
-  condition won.
+  condition won. Code does NOT roll adjudicated damage or healing dice: the
+  engine never turns '2d8+3' in a description into a number. You roll those
+  dice in the ruling and put the resulting integer in hpDelta. A heal left at
+  hpDelta 0 restores nothing and still spends the slot or potion, so a
+  healing spell, potion, or feature must always carry a positive hpDelta.
   Example for a hostile control target:
   targets:[{combatantId:'cmb-enemy-bandit-1',hpDelta:0}],
   effects:[{op:'add',combatantId:'cmb-enemy-bandit-1',applyOn:'failedSave',
@@ -331,11 +348,20 @@ An adjudicated intent may contain:
 
 One known attack intent represents the actor's full Attack action. Code owns
 the number of Multiattack swings and consumes each persisted roll; do not emit
-duplicate intents for the same actor.
+duplicate intents for the same actor. Never set ability to 'Multiattack'
+itself or to any listed entry whose damageDice is 0d0: those are containers,
+not attacks. Name the single weapon/action the Multiattack is made of (for
+example 'Slam') and code applies the extra swings.
 
 Intents resolve in the required order. Account for the HP changes you propose
 for earlier actors: never have a later actor attack a target your earlier
 intent would reduce to 0 HP. If no valid opponent would remain, use defend.
+A correction that says a target is already down reports the state projected
+after the earlier intents in your own batch resolve with this round's dice;
+creatures still shows the HP from the start of the window. Answer it by
+keeping validatedIntents exactly as given and changing only the rejected
+actor's targetId or action. Never redirect earlier actors onto the legal
+target: that moves the same damage onto it and repeats the rejection.
 
 The PLAYER actor must always use mode='adjudicated'; never roll automatically
 for the player. Apply only rolls/results explicitly supplied in playerInput,
@@ -349,9 +375,12 @@ One requiresPlayerInput represents exactly ONE next player roll or choice.
 Never combine two rolls or two spells in one request. For a multi-action turn,
 ask only for the earliest unresolved player roll; after the player supplies it,
 the next pass may ask for the later roll. spellName must name one exact spell.
-requiresPlayerInput is only for a roll or choice the PLAYER must supply. Never
-pause to ask the player for an NPC or enemy saving throw: put that save in the
-intent's save field and code will roll it. If a player damage roll is needed
+requiresPlayerInput is only for a roll or choice the PLAYER must supply. An
+NPC or enemy actor never carries requiresPlayerInput: for an NPC spell, heal,
+potion, or feature, roll its dice yourself in the ruling and supply the final
+hpDelta and resources, so a companion's healing lands the moment it resolves.
+Never pause to ask the player for an NPC or enemy saving throw: put that save
+in the intent's save field and code will roll it. If a player damage roll is needed
 before that save resolves, explicitly ask the player to roll the damage dice;
 do not phrase the request as the enemy making its save.
 
@@ -395,6 +424,10 @@ def request_intent_batch(
             else spell_references or {}
         ),
     }
+    # D-242 consumer 1: the one rules string while any party member is down.
+    down_rules = down_scene_rules_from_encounter(encounter)
+    if down_rules:
+        payload["downScene"] = down_rules
     pending_ids = list(pending_turn.get("actorIds", []))
     if isinstance(npc_voice_intents, Mapping):
         selected_voice = {}
@@ -559,6 +592,10 @@ def request_narration_candidate(
         payload["correction"] = correction
     if isinstance(npc_voice_intents, Mapping) and npc_voice_intents:
         payload["npcVoiceIntents"] = dict(npc_voice_intents)
+    # D-242 consumer 2: the same rules string (rules only; facts stay with T096).
+    down_rules = down_scene_rules_from_encounter(encounter)
+    if down_rules:
+        payload["downScene"] = down_rules
     # This must remain last even when correction context exists.
     payload["authoritativeFacts"] = authoritative_facts
     messages = [

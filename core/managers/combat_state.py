@@ -202,6 +202,42 @@ def is_turn_eligible(creature):
     return creature.get("effectIncapacitated") is not True
 
 
+def is_down(creature):
+    """Return whether an encounter creature is down (D-242 house rule).
+
+    Exactly the complement of ``is_combatant_targetable`` so the boundary that
+    speaks to a downed human and the windows that skip that human can never
+    disagree. Rescuability is not part of this value: the down-scene rules
+    text renders each member's status verbatim.
+    """
+    return isinstance(creature, dict) and not is_combatant_targetable(creature)
+
+
+def sheet_is_down(sheet):
+    """Return whether a character sheet is down (sheet-field form of ``is_down``)."""
+    if not isinstance(sheet, dict):
+        return False
+    if normalize_status(sheet.get("status")) != ACTIVE_STATUS:
+        return True
+    hit_points = sheet.get("hitPoints")
+    return isinstance(hit_points, (int, float)) and hit_points <= 0
+
+
+def is_party_member(creature):
+    """Return whether a creature is on the party side (value, not entity type).
+
+    ``faction`` is stamped on every typed roster (``ensure_combatant_ids``);
+    the entity-type fallback keeps pre-faction encounters on the same answer
+    ``all_party_resolved`` has always given them.
+    """
+    if not isinstance(creature, dict):
+        return False
+    faction = creature.get("faction")
+    if faction in ("party", "hostile"):
+        return faction == "party"
+    return creature.get("type") in ("player", "npc")
+
+
 def is_hostile(creature):
     return isinstance(creature, dict) and (
         creature.get("faction") == "hostile" or creature.get("type") == "enemy"
@@ -310,8 +346,7 @@ def all_party_resolved(encounter):
     party = [
         creature
         for creature in encounter.get("creatures", [])
-        if isinstance(creature, dict)
-        and (creature.get("type") in ("player", "npc") or creature.get("faction") == "party")
+        if is_party_member(creature)
     ]
     return bool(party) and all(
         normalize_status(creature.get("status")) != ACTIVE_STATUS

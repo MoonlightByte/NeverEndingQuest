@@ -378,6 +378,10 @@ File: `core/managers/combat_manager.py` plus C1 prompt text.
    recomputes the next eligible actor. In TW05-E1 Mara is unconscious, so A1
    must not prompt her; current canonical code must reach the separately owned
    `player_incapacitated` recovery boundary with no later actor mechanics.
+   [SUPERSEDED 2026-09-19 by D-242-1..6 / docs/audits/2026-09-16-242-down-scene-plan.md:
+   a downed PC no longer pauses combat; later actor windows DO run, and the
+   `player_incapacitated` pause is retired. The "no gameplay prompt to the unconscious PC"
+   half of this criterion still holds.]
 3. A separate conscious-PC fixture proves the normal actionable prompt and
    input boundary. The queued headless `quit` check proves process exit, not a
    gameplay action consumed by combat.
@@ -449,6 +453,8 @@ On a separate copy of codex-ps's preserved game:
 - code reaches the exact existing `phase="recovery_required"`,
   `pauseReason="player_incapacitated"` boundary; no Kira/enemy mechanics run
   after publication and no victory is invented;
+  [SUPERSEDED 2026-09-19 by D-242: the pause no longer exists; companion and enemy
+  windows run while the PC is down, and only `party_defeated` pauses.]
 - a deferred headless `quit` exits the process and no later T097 write occurs.
 
 ### A2 -- Fresh real OpenAI combat

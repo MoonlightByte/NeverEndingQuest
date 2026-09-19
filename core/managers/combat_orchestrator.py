@@ -196,6 +196,19 @@ def _intent_correction(exc, batch=None):
                 "legalTargets (%s), or choose a non-attack action."
                 % ", ".join(rendered_targets)
             )
+            if feedback.get("targetDown") is True:
+                instruction += (
+                    " The creatures list shows HP at the start of this window;"
+                    " code resolves your intents in order with this round's"
+                    " dice, so the rejected target is at 0 HP by the time the"
+                    " rejected actor acts BECAUSE of the earlier intents in"
+                    " your own batch. That is not a contradiction of creatures"
+                    " and not a reason to move any other actor: redirecting"
+                    " earlier attacks onto the legal target changes the"
+                    " projection and drops that target instead, which repeats"
+                    " this rejection. Keep every earlier intent exactly as"
+                    " given and change only the rejected actor."
+                )
         else:
             instruction += (
                 " No legalTargets remain; the rejected actor must choose a "

@@ -38,7 +38,8 @@ is the anomaly, not the game.
    dangerous. First try in-fight responses a player would try: heal, stabilize,
    retreat, drag to safety. Reloading a save afterward is a legitimate player choice.
    Report a death-scene defect ONLY if the mechanics around it misbehave (prompted
-   while unconscious, Load intercepted, death saves absent).
+   while unconscious, Load intercepted). This game has NO death saves by house rule:
+   absent death saves are correct, never a defect.
 
 5. LIMIT RETRIES: THREE STRIKES, THEN CHANGE STRATEGY. If you fail the same encounter
    3 times, do what a human does: go earn XP and level up, buy healing potions and

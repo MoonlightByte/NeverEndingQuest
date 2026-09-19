@@ -327,6 +327,19 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 actor_id,
                 {"request": deepcopy(intent.get("requiresPlayerInput"))},
             )
+        if controller != "human" and intent.get("requiresPlayerInput"):
+            # Only the human's actor can answer a roll request. An NPC intent
+            # that carries one would otherwise commit its declared values
+            # (a heal of 0) while still spending the resource. Send it back
+            # as a correction: the model rolls the NPC's dice in the ruling.
+            raise CombatIntentError(
+                "%s is not the player: requiresPlayerInput cannot be answered "
+                "for an NPC or enemy. Remove it and supply the final hpDelta, "
+                "resources, and effects for this action, rolling its dice in "
+                "the ruling." % (actor.get("name") or actor_id),
+                actor_id,
+                {"retryable": True},
+            )
         valid, rejection = validate_intent(
             next_encounter,
             next_characters,
