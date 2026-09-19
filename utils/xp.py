@@ -6,6 +6,7 @@
 import json
 import os
 from .module_path_manager import ModulePathManager
+from core.managers.combat_state import is_hostile
 
 # CR to XP mapping (updated to include fractional CRs)
 cr_to_xp = {
@@ -42,23 +43,44 @@ def calculate_xp(encounter, party_tracker):
     path_manager = ModulePathManager(current_module)
 
     for creature in encounter['creatures']:
-        if creature['type'] == 'enemy' and is_defeated(creature['status']):
-            defeated_count += 1
-            monster_type = creature['monsterType'].lower()
-            if monster_type not in monster_cache:
-                monster_file = path_manager.get_monster_path(monster_type)
-                if os.path.exists(monster_file):
-                    monster = load_json_file(monster_file)
-                    monster_cache[monster_type] = monster
-                else:
-                    print(f"Warning: Monster file {monster_file} not found.")
-                    continue
-            
-            monster = monster_cache[monster_type]
-            cr = monster['challengeRating']
-            xp = get_xp_for_cr(cr)
-            total_xp += xp
-            xp_breakdown.append((monster['name'], cr, xp))
+        # Issue #279: this counted `type == 'enemy'`, which is derived from the
+        # createEncounter participant bucket, not from which side a combatant is
+        # on. A named villain carrying a character sheet is stored as type 'npc',
+        # so defeating the module's boss awarded nothing and he was not even
+        # counted. Hostility is the correct question, and is_hostile() reads the
+        # side the scene declared.
+        if not is_hostile(creature) or not is_defeated(creature.get('status', '')):
+            continue
+        defeated_count += 1
+
+        # Encounter monsters carry a monsterType pointing at a stat block whose
+        # challengeRating prices the kill. A sheet-based hostile has no stat
+        # block; its value must come from an authored challengeRating, and there
+        # is none to invent here. Award nothing rather than guess a CR, and say
+        # so loudly enough to be diagnosable.
+        monster_type = creature.get('monsterType')
+        if not monster_type:
+            print(
+                f"Warning: no challengeRating available for defeated hostile "
+                f"{creature.get('name')!r} (no monsterType); no XP awarded for it."
+            )
+            continue
+
+        monster_type = monster_type.lower()
+        if monster_type not in monster_cache:
+            monster_file = path_manager.get_monster_path(monster_type)
+            if os.path.exists(monster_file):
+                monster = load_json_file(monster_file)
+                monster_cache[monster_type] = monster
+            else:
+                print(f"Warning: Monster file {monster_file} not found.")
+                continue
+
+        monster = monster_cache[monster_type]
+        cr = monster['challengeRating']
+        xp = get_xp_for_cr(cr)
+        total_xp += xp
+        xp_breakdown.append((monster['name'], cr, xp))
 
     # Count player characters and party NPCs
     num_players = len(party_tracker['partyMembers'])

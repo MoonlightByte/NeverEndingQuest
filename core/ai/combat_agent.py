@@ -26,7 +26,11 @@ from core.ai.srd_reference import (
     load_srd_reference_index,
     normalize_rule_name,
 )
-from core.managers.combat_state import combatant_by_id, resolve_creature_controller
+from core.managers.combat_state import (
+    combat_provenance,
+    combatant_by_id,
+    resolve_creature_controller,
+)
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.capture.live_provider_call import LiveProviderSuperseded
 from utils.character_sheet_contract import extract_json_object
@@ -289,6 +293,18 @@ spell listed for that actor there; use that entry's guidance and exact resource
 keys. If no suitable listed spell remains, choose a listed weapon/action or a
 defensive action instead of guessing spell mechanics. encounterContext and
 ruleReferences are authoritative scene/rule guidance when present.
+
+sceneFacts, when present, is the authoritative allegiance and motive record for
+this encounter. sceneFacts.relations gives directed subject/object dispositions
+and sceneFacts.objectives gives who is trying to do what to whom, both keyed by
+exact combatantId. Use them to decide who each actor fights. A creature's 'type'
+and 'faction' fields describe how that combatant is stored and controlled, NOT
+which side it is on: a named villain with a character sheet is stored as
+type 'npc', and a charmed, dominated, surrendered or turncoat combatant keeps
+whatever type and faction it was created with. When type/faction and sceneFacts
+disagree about a side, sceneFacts wins. When sceneFacts is silent about a pair,
+use the scene as narrated in encounterContext and the actor's own objectives;
+do not fall back to type or faction to infer an alliance.
 An adjudicated intent may contain:
 - description: mechanical ruling
 - save: {type, dc, halfOnSave} when targets roll a save
@@ -395,6 +411,19 @@ def request_intent_batch(
             else spell_references or {}
         ),
     }
+    # Issue #279: the scene relations and objectives are authored by the model at
+    # createEncounter and reconciled to exact combatant IDs, but were persisted and
+    # never shown back to the actor agent. Without them the only allegiance signal in
+    # this payload was the creature `type`/`faction` pair, which is derived from the
+    # createEncounter participant bucket and says "npc" for every named villain.
+    # Absence-safe: legacy and pre_typed encounters carry no sceneFacts and are
+    # byte-identical to before.
+    if combat_provenance(encounter) == "typed":
+        scene = encounter.get("sceneFacts") or {}
+        payload["sceneFacts"] = {
+            "relations": scene.get("relations", []),
+            "objectives": scene.get("objectives", []),
+        }
     pending_ids = list(pending_turn.get("actorIds", []))
     if isinstance(npc_voice_intents, Mapping):
         selected_voice = {}
