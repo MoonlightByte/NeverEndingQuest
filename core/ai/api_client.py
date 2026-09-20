@@ -7,6 +7,7 @@ to the OpenAI response shape so callsites don't need provider-specific code.
 create_completion() is a thin routing layer. Callsites own their
 model and params via named config dicts in model_config.py.
 """
+import time
 from uuid import uuid4
 
 from utils.openai_client import get_openai_client
@@ -650,13 +651,18 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
     stream = client.responses.create(**call_kwargs)
     parts = []
     final = None
+    last_receiving = 0.0
     for event in stream:
         kind = getattr(event, "type", "")
         if kind == "response.created":
             _phase(phase_emit, "acknowledged")
         elif kind == "response.output_text.delta":
-            if not parts:
+            # Every delta is progress; report it at most once a second so a
+            # long answer keeps refreshing the last-progress clock without a
+            # frame per token (audit F2).
+            if not parts or time.monotonic() - last_receiving >= 1.0:
                 _phase(phase_emit, "receiving")
+                last_receiving = time.monotonic()
             parts.append(event.delta)
         elif kind in ("response.completed", "response.incomplete"):
             final = event.response
@@ -714,6 +720,7 @@ def _chat_stream_completion(client, call_kwargs, phase_emit):
     response_id = ""
     reported_model = ""
     acknowledged = False
+    last_receiving = 0.0
     for chunk in stream:
         if not acknowledged:
             _phase(phase_emit, "acknowledged")
@@ -729,8 +736,9 @@ def _chat_stream_completion(client, call_kwargs, phase_emit):
         delta = getattr(choice, "delta", None)
         text = getattr(delta, "content", None) if delta is not None else None
         if text:
-            if not parts:
+            if not parts or time.monotonic() - last_receiving >= 1.0:
                 _phase(phase_emit, "receiving")
+                last_receiving = time.monotonic()
             parts.append(text)
         elif getattr(delta, "reasoning_content", None):
             _phase(phase_emit, "working", "reasoning")
