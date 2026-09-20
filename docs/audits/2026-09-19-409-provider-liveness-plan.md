@@ -95,6 +95,8 @@ One real minimal call through the child transport (a T107-shaped tiny request, t
 | A6 controls | Load during a streaming call; Quit during a call | supersession within one poll interval, child reaped, no orphan (`ps` shows none), state unchanged | orphan child or applied partial | n/a |
 | A7 lmstudio parity | 2 turns against the remote LM Studio host | chat-stream path assembles the same response; phases present; template repair (#389) still reactive | any local-provider regression | host offline -> INCONCLUSIVE |
 | A8 cost | compare A1 usage to marsh-4 per task | no regression beyond A3 tolerance | regression | n/a |
+| A9 T026 schema (review finding 2) | one T026-shaped strict json_schema request through the adapter on openai | accepted; content valid against the schema | 400 on the translated format | credit/429 |
+| A10 working-phase longevity (review finding 1) | any acknowledged request whose reasoning exceeds the old 600 s | not reaped while progress events continue; reaped only after 600 s WITHOUT a progress event | reaped while events flow | none observed -> NOT-REACHED (expected) |
 
 Verdict: PASS on A1, A2, A3, A6, A7, A8 with A2m owner-run and A4/A5 NOT-REACHED is a shippable result; the A2m row stays open on the issue until the owner runs it.
 
@@ -110,9 +112,14 @@ Verdict: PASS on A1, A2, A3, A6, A7, A8 with A2m owner-run and A4/A5 NOT-REACHED
 | `_feed_request` closure (`:1231-1240`) | d3c4cbf9 | deliver the payload without communicate(input=) | PRESERVED as a parameterised function; join added (#428) |
 | `client.chat.completions.create(**call_kwargs)` for provider openai (`api_client.py:608`) | original adapter; #284 T-C1 timeout option; #120 lmstudio model override untouched | one request per generation, SDK retries 0, timeout option honoured, JSON mode default, temperature rule | PRESERVED on Responses: `with_options(timeout=..., max_retries=0)` unchanged; JSON mode via `text.format`; temperature rule unchanged; SDK retries stay 0 (D-409-1 gates the switch) |
 
-No persisted format changes. Master-log records gain optional `metadata.phases`; readers ignore unknown keys (to verify in Task 1: `analyze_telemetry.py`, capture readers).
+| `_terminate_process` reading stdout via `communicate()` (`live_provider_call.py:872-903`) | #284 D-8 lineage | (a) terminate then kill; (b) collect whatever the child wrote; (c) close every local handle | (a) PRESERVED (same terminate/kill/wait sequence); (b) PRESERVED by joining the generation reader and returning its captured envelope; (c) PRESERVED |
+| Reissue wording "did not answer. The connection was dropped" (`provider_errors.py:90`) and the provider-naming requirement (`:63-66`, owner 2026-09-05) | 3df32fa5 / #284 F-notices | name the provider (OpenAI/Gemini) or read as a lost connection (local) so the player knows which account to look at | PRESERVED: every phase sentence names the provider; local sentence unchanged; the unobserved cause ("connection was dropped") RETIRED in favour of the observed phase |
 
-## 8. Owner decisions (per-plan; execution blocked while open)
+No persisted format changes. Master-log records gain optional `metadata.phases`, `lastPhase`, `lastProgressSeconds`; the only writer is `utils/api_logger.py` and readers key by name, so the keys are additive. Untouched `OpenAI(...)` constructions off the play path: `utils/capture/openai_caller.py:21`, `web/web_interface.py` (three sites), `core/toolkit/monster_generator.py:41`, `core/toolkit/npc_generator.py:41`.
+
+## 8. Owner decisions (per-plan)
+
+RULED 2026-09-19 (room, "execute your plan"): D-409-1 YES, D-409-2 option (ii) at 30 s, D-409-3 as stated, D-409-4 as recommended (owner-run rows; machine setting untouched). Original text kept for the record.
 
 - **D-409-1 - Responses endpoint for provider openai.** Recommended YES (section 2 items 4-5: it is the only OpenAI liveness signal; parity measured). The owner paused API migration in #398; this is that decision, scoped to the openai provider only, Chat Completions retained for legacy/lmstudio.
 - **D-409-2 - The unobservable class.** A request that reached `sent` with the socket alive and no `acknowledged` within the measured envelope (max 0.86 s across 3 KB-133 KB, every effort). Options: (i) keep the existing 600 s backstop as the only trigger for this class (status truthfully says "delivered, not acknowledged"); (ii) a pre-acknowledgment reissue trigger at 30 s, keyed on the `sent` phase only (never on a working request; a request the provider has not acknowledged has done no work the reissue could duplicate; billing still marked possible). Recommended (ii); it is a phase-keyed trigger with a measured distribution, not a generation timer, but it is a number and the owner rules on it.
@@ -148,3 +155,12 @@ No persisted format changes. Master-log records gain optional `metadata.phases`;
 | L5 | Unobservable class (sent, alive, never acknowledged) | s.2 items 4-5 | escalate:@owner D-409-2 |
 | L6 | Owner wants a tool to validate a provider is working | room 2026-09-19 | task-5 |
 | L7 | "The connection was dropped" notice states an unobserved cause | `provider_errors.py:90` | task-1 (wording from the observed phase) |
+| R1 | BLOCKING: the 600 s loop bound at `:1262` fires regardless of phase; an acknowledged, working request would be killed at 600 s | review r1 finding 1 | task-1: the generation backstop now measures inactivity since the last progress event once the provider has acknowledged (`live_provider_call.py` wait loop, "idle_reference"); endpoints with no acknowledgment keep the start-bound (documented limitation); spec-pin row (c) reads accordingly; row A10 added |
+| R2 | BLOCKING: T026 sends the chat-nested json_schema shape; Responses needs the flat text.format | review r1 finding 2; `location_generator.py:529-536` | task-3: `_responses_text_format` flattens name/schema/strict/description; row A9 added; shape probe against the real endpoint (`schema_probe.py`) |
+| R3 | `response.incomplete` must return content with a mapped finish_reason, not raise (capacity retry at `location_generator.py:1388`, `story_first/execution.py:369`) | review r1 finding 3 | task-3: incomplete -> content + finish_reason `length` / `content_filter` / reason string; only `response.failed` and `error` raise |
+| R4 | raw_response becomes the assembled wrapper; no production reader; cached/reasoning counts survive via `_Usage` | review r1 finding 4 | fyi (verified: `usage_detail_counts` reads `_Usage`) |
+| R5 | `_terminate_process` also read stdout via communicate(); two readers would race on Load/Quit; GL-1 must contract `:872-903` | review r1 finding 5 | task-1: terminate uses `wait()`, joins the reader, never reads stdout; GL-1 row added below |
+| R6 | provider-naming requirement (`provider_errors.py:63-66`) not in GL-1 | review r1 finding 6 | fixed-inline: every phase sentence names the provider; local wording unchanged; GL-1 row added |
+| R7 | both `OpenAI(...)` constructions need `http_client`; other OpenAI() sites off play path; SDK default timeout for T105/T112 inherited | review r1 finding 7 | task-2 (both constructions share `_provider_http_client`); untouched sites listed in section 9; inherited bound flagged-not-added |
+| R8 | frame-parse failure must warn, not `except: pass`; `analyze_telemetry.py` does not exist | review r1 finding 8 | task-1: `LIVE_PROVIDER_PHASE_FRAME_UNREADABLE` warning; citation corrected (readers: `utils/api_logger.py` writer only; unknown keys are additive) |
+| R9 | rows for finding 1 and finding 2 missing | review r1 finding 9 | fixed-inline: A9, A10 |
