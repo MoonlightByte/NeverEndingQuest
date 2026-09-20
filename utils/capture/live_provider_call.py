@@ -104,6 +104,30 @@ _SUCCESS_LOG_TASK_IDS = frozenset({"T047", "T048", "T105", "T108", "T113",
                                    "T115", "T116", "T117", "T118", "T119", "T120"})
 _MAX_BACKOFF_SECONDS = 8.0
 _PERMANENT_ERROR_SECONDS = 60.0
+# Transport phases the child reports, in the order a healthy generation
+# passes through them (#409 plan section 4). Evidence only: never authority.
+_PHASE_NAMES = (
+    "spawned", "payload_read", "connecting", "connected", "secured", "sent",
+    "acknowledged", "working", "receiving", "done", "failed",
+)
+# Phases in which the provider has received the request but has done no
+# acknowledged work yet. Only an endpoint that acknowledges BEFORE working
+# (the Responses endpoint: response.created measured at 0.7-0.9 s for every
+# size and effort) is subject to the pre-acknowledgment reissue trigger,
+# D-409-2 (ii), owner-ruled 2026-09-19. It is a reissue trigger, never a
+# terminal (#193 B2-iii), and it never fires once work is acknowledged.
+_PRE_ACK_PHASES = frozenset({"sent"})
+_ACK_BACKSTOP_SECONDS = 30.0
+_ACK_ENDPOINTS = frozenset({"responses"})
+# httpcore trace events -> transport phases (the child observes them through
+# the library's own logging trace; nothing is patched).
+_RETRYABLE_STREAM_ERROR_CODES = frozenset({"server_error", "rate_limit_exceeded"})
+_HTTPCORE_PHASES = (
+    ("connect_tcp.started", "connecting"),
+    ("connect_tcp.complete", "connected"),
+    ("start_tls.complete", "secured"),
+    ("send_request_body.complete", "sent"),
+)
 
 
 class LiveProviderSuperseded(RuntimeError):
@@ -769,6 +793,11 @@ def _error_disposition(exc, original, status, error_code=None):
         isinstance(status, int) and 500 <= status < 600
     ):
         return "retryable_http"
+    if isinstance(error_code, str) and error_code.lower() in _RETRYABLE_STREAM_ERROR_CODES:
+        # A streamed Responses answer that FAILED after acknowledgment
+        # carries its structured code in the terminal event instead of an
+        # HTTP status; the same classes a status would make retryable.
+        return "retryable_http"
     cause = original if original is not None else exc
     cause_types = {base.__name__ for base in type(cause).__mro__}
     if cause_types.intersection(
@@ -817,19 +846,74 @@ def _primitive_error(exc, request_kwargs):
     }
 
 
+class _ChildPhaseWriter:
+    """Writes one `P {json}` line per transport phase on the protocol stdout.
+
+    The parent's reader thread turns these into the current phase shown to
+    the player and recorded in the master log. A write failure means the
+    parent is gone; the provider call itself is unaffected.
+    """
+
+    def __init__(self, protocol_stdout, started):
+        self._out = protocol_stdout
+        self._started = started
+        self._lock = threading.Lock()
+
+    def __call__(self, phase, detail=None):
+        import json
+
+        line = json.dumps(
+            {
+                "phase": str(phase),
+                "t": round(time.monotonic() - self._started, 3),
+                "detail": detail if isinstance(detail, (str, int, float)) else None,
+            }
+        )
+        with self._lock:
+            try:
+                self._out.write(("P " + line + "\n").encode("ascii", "replace"))
+                self._out.flush()
+            except (OSError, ValueError):
+                pass
+
+
+class _HttpcoreTraceHandler(logging.Handler):
+    """Maps httpcore's trace log lines to transport phases (observation only)."""
+
+    def __init__(self, phase_emit):
+        super().__init__(level=logging.DEBUG)
+        self._emit = phase_emit
+
+    def emit(self, record):
+        try:
+            message = record.getMessage()
+        except Exception:
+            return
+        for event, phase in _HTTPCORE_PHASES:
+            if event in message:
+                self._emit(phase)
+                return
+
+
 def _child_main():
     """Private subprocess entry: provider call only, primitive IPC only."""
     request_kwargs = {}
     protocol_stdout = sys.stdout.buffer
+    started = time.monotonic()
+    phase = _ChildPhaseWriter(protocol_stdout, started)
     try:
         payload = sys.stdin.buffer.read()
         request = pickle.loads(payload)
         messages = request["messages"]
         request_kwargs = request["request_kwargs"]
         correlation = request["correlation"]
+        phase("payload_read", len(payload))
         null_stream = open(os.devnull, "w", encoding="utf-8")
         sys.stdout = null_stream
         sys.stderr = null_stream
+        trace_logger = logging.getLogger("httpcore")
+        trace_logger.setLevel(logging.DEBUG)
+        trace_logger.addHandler(_HttpcoreTraceHandler(phase))
 
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         if repo_root not in sys.path:
@@ -838,19 +922,106 @@ def _child_main():
 
         response = api_client.create_completion(
             messages=messages,
+            _phase_emit=phase,
             **request_kwargs,
         )
         envelope = _success_envelope(response, request_kwargs)
+        phase("done")
     except BaseException as exc:
         envelope = _primitive_error(exc, request_kwargs)
         correlation = locals().get("correlation", {})
+        phase(
+            "failed",
+            "%s: %s" % (
+                envelope.get("cause_class") or envelope.get("error_class"),
+                str(exc).replace("\n", " "),
+            ),
+        )
     envelope["correlation"] = correlation
     try:
-        protocol_stdout.write(pickle.dumps(envelope, protocol=pickle.HIGHEST_PROTOCOL))
+        body = pickle.dumps(envelope, protocol=pickle.HIGHEST_PROTOCOL)
+        protocol_stdout.write(("E %d\n" % len(body)).encode("ascii"))
+        protocol_stdout.write(body)
         protocol_stdout.flush()
         return 0
     except BaseException:
         return 2
+
+
+class _GenerationReader(threading.Thread):
+    """Owns the child's stdout for one generation.
+
+    Consumes `P` phase lines into the shared state as they arrive and keeps
+    the framed final envelope. EOF (the child exited or was reaped) ends it;
+    the parent never blocks on this thread while the child lives.
+    """
+
+    def __init__(self, stream, started):
+        super().__init__(name="live-provider-reader", daemon=True)
+        self._stream = stream
+        self._generation_started = started
+        self._lock = threading.Lock()
+        self.phases = {}
+        self.current = "spawned"
+        self.last_progress = None
+        self.detail = None
+        self.endpoint = None
+        self.output = None
+        self.finished = False
+
+    def _record(self, line):
+        import json
+
+        try:
+            event = json.loads(line)
+            name = str(event.get("phase"))
+            offset = float(event.get("t"))
+        except (ValueError, TypeError, AttributeError):
+            # Evidence loss only (a malformed frame); the envelope protocol
+            # and the provider call are unaffected. Logged, not swallowed.
+            _LOGGER.warning("LIVE_PROVIDER_PHASE_FRAME_UNREADABLE %r", line[:120])
+            return
+        with self._lock:
+            if name == "endpoint":
+                self.endpoint = event.get("detail")
+                return
+            self.phases.setdefault(name, offset)
+            self.current = name
+            self.detail = event.get("detail")
+            if name in ("acknowledged", "working", "receiving"):
+                self.last_progress = offset
+
+    def snapshot(self):
+        with self._lock:
+            return {
+                "phases": dict(self.phases),
+                "current": self.current,
+                "last_progress": self.last_progress,
+                "detail": self.detail,
+                "endpoint": self.endpoint,
+            }
+
+    def run(self):
+        try:
+            while True:
+                line = self._stream.readline()
+                if not line:
+                    break
+                if line.startswith(b"P "):
+                    self._record(line[2:].decode("ascii", "replace"))
+                elif line.startswith(b"E "):
+                    try:
+                        length = int(line[2:].strip())
+                    except ValueError:
+                        break
+                    body = self._stream.read(length)
+                    if len(body) == length:
+                        self.output = body
+                    break
+        except (OSError, ValueError):
+            pass
+        finally:
+            self.finished = True
 
 
 def _emit_working(message):
@@ -869,8 +1040,13 @@ def _close_process_streams(process):
             pass
 
 
-def _terminate_process(process):
-    """Terminate, hard-kill if needed, wait, and close every local handle."""
+def _terminate_process(process, reader=None):
+    """Terminate, hard-kill if needed, wait, drain the reader, close handles.
+
+    The child's stdout belongs to the generation reader, never to
+    communicate(): once the child is dead the reader sees EOF and ends, and
+    whatever final envelope it captured is returned.
+    """
     try:
         if process.poll() is None:
             try:
@@ -880,8 +1056,7 @@ def _terminate_process(process):
         soft_deadline = time.monotonic() + 5.0
         while process.poll() is None and time.monotonic() < soft_deadline:
             try:
-                output, _ = process.communicate(timeout=0.25)
-                return output
+                process.wait(timeout=0.25)
             except subprocess.TimeoutExpired:
                 pass
 
@@ -892,15 +1067,87 @@ def _terminate_process(process):
                 if process.poll() is None:
                     time.sleep(0.05)
             try:
-                output, _ = process.communicate(timeout=0.25)
-                return output
+                process.wait(timeout=0.25)
             except subprocess.TimeoutExpired:
                 pass
 
-        output, _ = process.communicate()
-        return output
+        if reader is not None:
+            reader.join()
+            return reader.output
+        return None
     finally:
         _close_process_streams(process)
+
+
+def _feed_request(request_stdin, request_payload):
+    """Deliver one generation's request on its own pipe, then close it.
+
+    Written by its own thread on a pipe communicate() never sees:
+    communicate(input=..., timeout=...) registers stdin for writing only on
+    the call that carries `input`, so a 250 ms poll with the payload
+    part-written (any request over the pipe buffer whose child has not
+    drained it yet) left the remainder unsent forever (d3c4cbf9). The pipe
+    and payload arrive as arguments, never through a closure the next
+    generation could rebind (#428). The writer blocks only while the child
+    drains; a dead child breaks the pipe and releases it.
+    """
+    try:
+        request_stdin.write(request_payload)
+    except (BrokenPipeError, OSError, ValueError):
+        pass
+    finally:
+        try:
+            request_stdin.close()
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+
+
+def phase_status_line(provider_name, attempt, state, elapsed, generation_elapsed=None):
+    """The player's wait line, rendered from the child's reported phase.
+
+    One renderer for every caller (the level-up manager reuses it). The
+    stopwatch is context, never the claim of activity; the claim is the
+    phase the child actually reported and when the provider last did
+    something (D-PROVIDER-LIVENESS-20260913). ``elapsed`` is the logical
+    call's age (shown); ``generation_elapsed`` is this attempt's age, the
+    clock the child's phase offsets are relative to.
+    """
+    seconds = max(1, int(elapsed))
+    if generation_elapsed is None:
+        generation_elapsed = elapsed
+    shown = "%d min" % (seconds // 60) if seconds >= 120 else "%d s" % seconds
+    prefix = "Attempt %d, %s: " % (attempt, shown)
+    suffix = " Your turn is safe."
+    if not state:
+        return prefix + "starting a connection to %s..." % provider_name + suffix
+    current = state.get("current")
+    if current in ("spawned", "payload_read", "connecting"):
+        body = "connecting to %s..." % provider_name
+    elif current in ("connected", "secured"):
+        body = "connected to %s; sending your request..." % provider_name
+    elif current == "sent":
+        waited = max(
+            0, int(generation_elapsed - float(state["phases"].get("sent", 0.0)))
+        )
+        body = (
+            "request delivered to %s; waiting for it to acknowledge (%d s)..."
+            % (provider_name, waited)
+        )
+    elif current in ("acknowledged", "working"):
+        since = state.get("last_progress")
+        ago = max(0, int(generation_elapsed - float(since))) if since is not None else 0
+        body = "%s is working on it (last activity %d s ago)..." % (
+            provider_name, ago,
+        )
+    elif current == "receiving":
+        body = "answer arriving from %s..." % provider_name
+    elif current == "done":
+        body = "answer received from %s; finishing..." % provider_name
+    elif current == "failed":
+        body = "%s connection failed; reconnecting..." % provider_name
+    else:
+        body = "waiting for %s..." % provider_name
+    return prefix + body + suffix
 
 
 def _safe_emit(emit, message):
@@ -1029,7 +1276,10 @@ def _reconstruct_response(envelope):
         finish_reason=envelope.get("finish_reason", "unknown"),
         provider=envelope.get("provider", ""),
         task_id=envelope.get("task_id"),
-        raw_response={"liveProviderCorrelation": dict(envelope["correlation"])},
+        raw_response={
+            "liveProviderCorrelation": dict(envelope["correlation"]),
+            "liveProviderPhases": dict(envelope.get("phases") or {}),
+        },
         usage_invocation_id=envelope.get("usage_invocation_id"),
     )
     sent = envelope.get("sent_messages")
@@ -1106,18 +1356,27 @@ def call_live_provider(
     notices_shown = set()
     player_turn = scope is not None and scope is get_live_turn_scope()
 
+    from utils.provider_errors import provider_display_name
+
+    provider_name = provider_display_name(frozen_kwargs.get("_request_provider"))
+    current_reader = {"reader": None, "started": None}
+
     def turn_heartbeat(_generation_number=None):
         # Attempt = this call's own physical attempts (failure_count + 1), not
         # the scope generation, which other tasks in the turn also consume.
+        # The line names the transport phase the child has actually reported
+        # (D-PROVIDER-LIVENESS: never a bare stopwatch as proof of activity).
         attempt = failure_count + 1
-        elapsed = max(1, int(time.monotonic() - logical_started))
-        if elapsed >= 120:
-            shown = "%d min" % (elapsed // 60)
-        else:
-            shown = "%d s" % elapsed
-        return (
-            "Attempt %d, %s elapsed. Waiting for the AI provider. Your turn "
-            "is safe." % (attempt, shown)
+        reader = current_reader["reader"]
+        state = reader.snapshot() if reader is not None else None
+        now = time.monotonic()
+        generation_elapsed = (
+            now - current_reader["started"]
+            if current_reader["started"] is not None else 0.0
+        )
+        return phase_status_line(
+            provider_name, attempt, state, now - logical_started,
+            generation_elapsed,
         )
 
     def notify_player_once(key, text):
@@ -1225,31 +1484,34 @@ def call_live_provider(
         # wizard heartbeat ran indefinitely with no request ever reaching the
         # provider. The writer blocks only while the child drains; a dead child
         # breaks the pipe and releases it.
+        # The writer is bound to THIS generation's pipe and payload by
+        # argument and joined before the next generation starts (#428): a
+        # late-waking writer can no longer close a newer child's stdin.
         request_stdin = process.stdin
         process.stdin = None
-
-        def _feed_request():
-            try:
-                request_stdin.write(request_payload)
-            except (BrokenPipeError, OSError, ValueError):
-                pass
-            finally:
-                try:
-                    request_stdin.close()
-                except (BrokenPipeError, OSError, ValueError):
-                    pass
-
-        threading.Thread(
-            target=_feed_request, name="live-provider-request", daemon=True
-        ).start()
+        writer = threading.Thread(
+            target=_feed_request,
+            args=(request_stdin, request_payload),
+            name="live-provider-request",
+            daemon=True,
+        )
+        writer.start()
+        # The child's stdout carries phase lines and then the framed final
+        # envelope; one reader thread per generation owns it (#409 Task 1).
+        reader = _GenerationReader(process.stdout, started)
+        process.stdout = None
+        reader.start()
+        current_reader["reader"] = reader
+        current_reader["started"] = started
         next_heartbeat = started + _HEARTBEAT_SECONDS
         envelope = None
         superseded = False
         output = None
         backstop_exhausted = False
+        ack_backstop_exhausted = False
         authority_unavailable = False
         try:
-            while generation_limit is None or time.monotonic() - started < generation_limit:
+            while True:
                 try:
                     _check_live_authority(scope, authority_check)
                 except LiveProviderSuperseded:
@@ -1258,11 +1520,38 @@ def call_live_provider(
                 except OSError:
                     authority_unavailable = True
                     break
-                try:
-                    output, _ = process.communicate(timeout=0.25)
+                if process.poll() is not None and reader.finished:
+                    output = reader.output
                     break
-                except subprocess.TimeoutExpired:
-                    pass
+                state = reader.snapshot()
+                now = time.monotonic()
+                if (
+                    state["endpoint"] in _ACK_ENDPOINTS
+                    and state["current"] in _PRE_ACK_PHASES
+                    and now - started - state["phases"][state["current"]]
+                    >= _ACK_BACKSTOP_SECONDS
+                ):
+                    ack_backstop_exhausted = True
+                    break
+                # Once the provider has acknowledged the request and reported
+                # progress, the generation backstop measures INACTIVITY since
+                # the last progress event, never total time: a request that
+                # keeps emitting events is never killed for being long
+                # (D-PROVIDER-LIVENESS clarification; review finding 1).
+                # Endpoints without an acknowledgment signal keep today's
+                # behaviour (bound from generation start), a documented
+                # limitation, not a healthy signal.
+                if state["last_progress"] is not None:
+                    idle_reference = started + float(state["last_progress"])
+                else:
+                    idle_reference = started
+                if (
+                    generation_limit is not None
+                    and now - idle_reference >= generation_limit
+                ):
+                    backstop_exhausted = True
+                    break
+                time.sleep(0.25)
                 if time.monotonic() >= next_heartbeat:
                     _safe_emit(
                         emit,
@@ -1271,15 +1560,18 @@ def call_live_provider(
                         ),
                     )
                     next_heartbeat = time.monotonic() + _HEARTBEAT_SECONDS
-            else:
-                backstop_exhausted = True
         finally:
             if process.poll() is None:
-                terminated_output = _terminate_process(process)
+                terminated_output = _terminate_process(process, reader)
                 if output is None:
                     output = terminated_output
             else:
+                reader.join()
+                if output is None:
+                    output = reader.output
                 _close_process_streams(process)
+            writer.join()
+        phase_state = reader.snapshot()
         if superseded:
             raise LiveProviderSuperseded("live player turn superseded")
         try:
@@ -1318,6 +1610,8 @@ def call_live_provider(
                 (
                     "ProviderChildGenerationBackstop"
                     if backstop_exhausted
+                    else "ProviderChildAcknowledgeBackstop"
+                    if ack_backstop_exhausted
                     else "ProviderChildUnavailable"
                 ),
                 task_id,
@@ -1327,6 +1621,9 @@ def call_live_provider(
             )
         if isinstance(envelope, dict):
             envelope["correlation_accepted"] = correlation_accepted
+            envelope["phases"] = phase_state["phases"]
+            envelope["last_phase"] = phase_state["current"]
+            envelope["last_progress"] = phase_state["last_progress"]
             # Every error or reaped generation of every task is evidence
             # (#284 F6); success rows keep the existing gate because those
             # callers already log their own successes.
@@ -1420,6 +1717,7 @@ def call_live_provider(
                 envelope.get("http_status"),
                 frozen_kwargs.get("_request_provider"),
                 envelope.get("error_code"),
+                last_phase=envelope.get("last_phase"),
             )
             notify_player_once("exits", player_exits_notice())
             notify_player_once(

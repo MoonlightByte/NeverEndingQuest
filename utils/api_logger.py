@@ -107,6 +107,13 @@ def log_live_provider_envelope(task_id, messages, envelope, *, latency_seconds=0
                 "provider": str(value.get("provider") or ""),
                 "finishReason": str(value.get("finish_reason") or ""),
                 "latencySeconds": max(0.0, float(latency_seconds)),
+                # Transport phases the child reported (offsets in seconds
+                # from the generation start) and the last one seen: the
+                # evidence that names WHERE a reaped or failed generation
+                # stood (#409). Evidence only, never authority.
+                "phases": dict(value.get("phases") or {}),
+                "lastPhase": str(value.get("last_phase") or ""),
+                "lastProgressSeconds": value.get("last_progress"),
             },
         }
         Path(MASTER_LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
