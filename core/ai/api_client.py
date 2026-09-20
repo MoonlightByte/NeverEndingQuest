@@ -359,6 +359,9 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
         raise ValueError(f"Unknown request provider: {request_provider}")
     kwargs.pop("top_p", None)
     _response_format = kwargs.pop("response_format", _UNSET)
+    # Observational transport-phase callback from the live-provider child
+    # (#409): never forwarded to a provider, never affects routing.
+    _phase_emit = kwargs.pop("_phase_emit", None)
 
     # create_completion() is a thin routing layer. It does NOT inject
     # reasoning_effort, thinking_level, or other params. The callsite
@@ -378,6 +381,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     temperature,
                     request_provider,
                     response_format=_response_format,
+                    phase_emit=_phase_emit,
                     **kwargs,
                 )
             except Exception as exc:
@@ -390,6 +394,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     temperature,
                     request_provider,
                     response_format=_response_format,
+                    phase_emit=_phase_emit,
                     **kwargs,
                 )
         else:  # gemini
@@ -547,7 +552,207 @@ def _enforce_provider_constraints(provider, model, temperature, kwargs):
 # OpenAI / LM Studio path
 # ---------------------------------------------------------------------------
 
-def _openai_completion(messages, model, temperature, provider, response_format=_UNSET, **kwargs):
+class _AssembledCompletion:
+    """The completed answer assembled from a stream, in the ChatCompletion shape
+    _normalize_provider_response already reads (choices, usage, id, model)."""
+    __slots__ = ("choices", "usage", "id", "model")
+
+    def __init__(self, content, finish_reason, usage, response_id, model):
+        self.choices = [_Choice(_Message(content), finish_reason=finish_reason)]
+        self.usage = usage
+        self.id = response_id
+        self.model = model
+
+
+class ResponsesStreamFailed(Exception):
+    """The Responses stream ended with a provider-reported failure.
+
+    Carries the structured ``code`` the provider sent so the child's
+    classifier (`_structured_error_code`) reads it as it reads any SDK error;
+    the message text is never used for classification.
+    """
+
+    def __init__(self, code, message):
+        self.code = code
+        super().__init__("%s: %s" % (code, message))
+
+
+def _phase(phase_emit, phase, detail=None):
+    if phase_emit is None:
+        return
+    try:
+        phase_emit(phase, detail)
+    except Exception:
+        # Observation only (NEQ-PROVIDER-02): never interrupts the call.
+        pass
+
+
+_INCOMPLETE_FINISH_REASONS = {
+    "max_output_tokens": "length",
+    "content_filter": "content_filter",
+}
+
+
+def _responses_text_format(response_format):
+    """Translate the chat response_format the callsites carry into the
+    Responses endpoint's text.format. Chat nests json_schema under a
+    ``json_schema`` key; Responses flattens name/schema/strict beside type."""
+    if response_format is _UNSET:
+        return {"type": "json_object"}
+    if response_format is None:
+        return None
+    if not isinstance(response_format, dict):
+        return response_format
+    kind = response_format.get("type")
+    if kind == "json_schema" and isinstance(response_format.get("json_schema"), dict):
+        nested = response_format["json_schema"]
+        flat = {"type": "json_schema"}
+        for key in ("name", "schema", "strict", "description"):
+            if key in nested:
+                flat[key] = nested[key]
+        return flat
+    return dict(response_format)
+
+
+def _responses_stream_completion(client, messages, model, temperature, strip_temp,
+                                 response_format, phase_emit, **kwargs):
+    """One streamed Responses request assembled into a ChatCompletion-shaped
+    answer. The stream is consumed here only for liveness (D-PROVIDER-
+    LIVENESS): nothing partial leaves this function.
+
+    Measured 2026-09-19 (plan section 2): ``response.created`` arrives
+    within a second of the request at every size and effort, and reasoning
+    item events arrive while the model thinks, which Chat Completions never
+    signals (its headers wait for the first output token).
+    """
+    instructions = None
+    input_items = []
+    for index, message in enumerate(messages):
+        role = message.get("role")
+        content = message.get("content")
+        if index == 0 and role == "system":
+            instructions = content
+            continue
+        input_items.append({"role": role, "content": content})
+    call_kwargs = {"model": model, "input": input_items, "stream": True}
+    if instructions is not None:
+        call_kwargs["instructions"] = instructions
+    if temperature is not None and not strip_temp:
+        call_kwargs["temperature"] = temperature
+    text_format = _responses_text_format(response_format)
+    if text_format is not None:
+        call_kwargs["text"] = {"format": text_format}
+    reasoning_effort = kwargs.pop("reasoning_effort", None)
+    if reasoning_effort is not None:
+        call_kwargs["reasoning"] = {"effort": reasoning_effort}
+    call_kwargs.update(kwargs)
+
+    _phase(phase_emit, "endpoint", "responses")
+    stream = client.responses.create(**call_kwargs)
+    parts = []
+    final = None
+    for event in stream:
+        kind = getattr(event, "type", "")
+        if kind == "response.created":
+            _phase(phase_emit, "acknowledged")
+        elif kind == "response.output_text.delta":
+            if not parts:
+                _phase(phase_emit, "receiving")
+            parts.append(event.delta)
+        elif kind in ("response.completed", "response.incomplete"):
+            final = event.response
+        elif kind == "response.failed":
+            error = getattr(event.response, "error", None)
+            raise ResponsesStreamFailed(
+                getattr(error, "code", None), getattr(error, "message", "")
+            )
+        elif kind == "error":
+            raise ResponsesStreamFailed(
+                getattr(event, "code", None), getattr(event, "message", "")
+            )
+        else:
+            _phase(phase_emit, "working", kind)
+    if final is None:
+        raise ResponsesStreamFailed("stream_ended", "no terminal response event")
+    content = "".join(parts)
+    if not content:
+        # A completed Responses answer whose text is not in the deltas
+        # (defensive read of the final object; same text, never a second value).
+        content = getattr(final, "output_text", "") or ""
+    finish_reason = "stop"
+    details = getattr(final, "incomplete_details", None)
+    if getattr(final, "status", "") == "incomplete":
+        reason = str(getattr(details, "reason", "") or "incomplete")
+        finish_reason = _INCOMPLETE_FINISH_REASONS.get(reason, reason)
+    usage = getattr(final, "usage", None)
+    input_details = getattr(usage, "input_tokens_details", None)
+    output_details = getattr(usage, "output_tokens_details", None)
+    assembled_usage = _Usage(
+        _integer_token_count(getattr(usage, "input_tokens", 0)),
+        _integer_token_count(getattr(usage, "output_tokens", 0)),
+        _integer_token_count(getattr(usage, "total_tokens", 0)),
+        cached_tokens=_integer_token_count(getattr(input_details, "cached_tokens", 0)),
+        reasoning_tokens=_integer_token_count(getattr(output_details, "reasoning_tokens", 0)),
+    )
+    return _AssembledCompletion(
+        content, finish_reason, assembled_usage,
+        str(getattr(final, "id", "") or ""), str(getattr(final, "model", "") or model),
+    )
+
+
+def _chat_stream_completion(client, call_kwargs, phase_emit):
+    """One streamed Chat Completions request (legacy OpenAI models, LM Studio
+    and other OpenAI-compatible servers) assembled into the completed answer.
+    The first chunk is the acknowledgment; content deltas are progress."""
+    call_kwargs = dict(call_kwargs)
+    call_kwargs["stream"] = True
+    call_kwargs["stream_options"] = {"include_usage": True}
+    _phase(phase_emit, "endpoint", "chat")
+    stream = client.chat.completions.create(**call_kwargs)
+    parts = []
+    finish_reason = None
+    usage = None
+    response_id = ""
+    reported_model = ""
+    acknowledged = False
+    for chunk in stream:
+        if not acknowledged:
+            _phase(phase_emit, "acknowledged")
+            acknowledged = True
+        response_id = response_id or str(getattr(chunk, "id", "") or "")
+        reported_model = reported_model or str(getattr(chunk, "model", "") or "")
+        if getattr(chunk, "usage", None) is not None:
+            usage = chunk.usage
+        choices = getattr(chunk, "choices", None) or []
+        if not choices:
+            continue
+        choice = choices[0]
+        delta = getattr(choice, "delta", None)
+        text = getattr(delta, "content", None) if delta is not None else None
+        if text:
+            if not parts:
+                _phase(phase_emit, "receiving")
+            parts.append(text)
+        elif getattr(delta, "reasoning_content", None):
+            _phase(phase_emit, "working", "reasoning")
+        if getattr(choice, "finish_reason", None):
+            finish_reason = _finish_reason_value(choice.finish_reason)
+    cached_tokens, reasoning_tokens = usage_detail_counts(usage) if usage is not None else (0, 0)
+    assembled_usage = _Usage(
+        _integer_token_count(getattr(usage, "prompt_tokens", 0)),
+        _integer_token_count(getattr(usage, "completion_tokens", 0)),
+        _integer_token_count(getattr(usage, "total_tokens", 0)),
+        cached_tokens=cached_tokens,
+        reasoning_tokens=reasoning_tokens,
+    )
+    return _AssembledCompletion(
+        "".join(parts), finish_reason or "stop", assembled_usage,
+        response_id, reported_model or call_kwargs.get("model", ""),
+    )
+
+
+def _openai_completion(messages, model, temperature, provider, response_format=_UNSET,
+                       phase_emit=None, **kwargs):
     """Execute a completion via the OpenAI-compatible API."""
     client = get_openai_client(provider=provider)
 
@@ -588,6 +793,16 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
     if request_timeout is not None:
         client = client.with_options(timeout=request_timeout, max_retries=0)
 
+    if provider == "openai":
+        # The Responses endpoint is the OpenAI transport (D-409-1, owner-ruled
+        # 2026-09-19): same model, JSON mode, temperature rule and prompt
+        # cache; it acknowledges before working, which is the liveness signal
+        # Chat Completions cannot give.
+        return _responses_stream_completion(
+            client, messages, model, temperature, strip_temp, response_format,
+            phase_emit, **kwargs,
+        )
+
     call_kwargs = {"model": model, "messages": messages}
 
     # Temperature: pass through unless stripped by constraint enforcement
@@ -604,7 +819,7 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
     # Forward remaining kwargs (reasoning_effort, max_tokens, etc.)
     call_kwargs.update(kwargs)
 
-    return client.chat.completions.create(**call_kwargs)
+    return _chat_stream_completion(client, call_kwargs, phase_emit)
 
 
 # ---------------------------------------------------------------------------
