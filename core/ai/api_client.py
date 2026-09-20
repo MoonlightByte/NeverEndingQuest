@@ -625,18 +625,17 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
     item events arrive while the model thinks, which Chat Completions never
     signals (its headers wait for the first output token).
     """
-    instructions = None
-    input_items = []
-    for index, message in enumerate(messages):
-        role = message.get("role")
-        content = message.get("content")
-        if index == 0 and role == "system":
-            instructions = content
-            continue
-        input_items.append({"role": role, "content": content})
+    # Every message travels as an input item in its original role and order
+    # (system items are accepted). Nothing moves to `instructions`: the
+    # endpoint's JSON-mode precondition ("input messages must contain the
+    # word json") is checked against input items only, and the game's JSON
+    # instruction lives in the system prompt (marsh-live trial 1, 2026-09-19:
+    # every T067/T082/T084 call was refused 400 with the split).
+    input_items = [
+        {"role": message.get("role"), "content": message.get("content")}
+        for message in messages
+    ]
     call_kwargs = {"model": model, "input": input_items, "stream": True}
-    if instructions is not None:
-        call_kwargs["instructions"] = instructions
     if temperature is not None and not strip_temp:
         call_kwargs["temperature"] = temperature
     text_format = _responses_text_format(response_format)
