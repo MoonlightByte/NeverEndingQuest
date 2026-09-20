@@ -188,9 +188,18 @@ python run_headless.py serve --game-dir /tmp/neq-test \
 Then, per turn: wait for `{"type": "prompt"}`, read the `state` event that
 follows it, decide, and write `{"type": "input", "content": "..."}` to the
 process's stdin. A provider call in flight shows up as `status` events with
-`is_processing: true`. Silence alone does not identify the cause: inspect the
-same live process/children and protocol before diagnosing provider versus local
-blocking. Observation timeout is not permission to abandon gameplay work.
+`is_processing: true` whose message names the transport phase the provider
+child has actually reported, e.g. "Attempt 1, 12 s: request delivered to
+OpenAI; waiting for it to acknowledge (11 s)... Your turn is safe." or
+"OpenAI is working on it (last activity 3 s ago)...". The phases are
+connecting, connected, secured, sent, acknowledged, working, receiving, done,
+failed; every provider row in `debug/api_captures/api_calls_master.jsonl`
+carries them under `metadata.phases` with `lastPhase`, so a stalled call can
+be attributed to its stage after the fact. Silence alone does not identify the
+cause: inspect the same live process/children and protocol before diagnosing
+provider versus local blocking. Observation timeout is not permission to
+abandon gameplay work. `python utils/provider_health.py` runs one real tiny
+call through the same transport and prints its phase timeline.
 
 ## Limitations
 

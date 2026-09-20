@@ -64,6 +64,15 @@ post-voices refactor).
 4. [Both replays] Provider 429 handling: PS's run is parked mid-campaign on persistent
    OpenAI 429s (T065/T067); stopped cleanly at the three-strikes boundary. Whether the
    engine should surface a friendlier player-facing wait/retry experience is untested.
+   Related, ruled and built on fix/409-provider-liveness (plan
+   docs/audits/2026-09-19-409-provider-liveness-plan.md): the 600 s blind waits (#409,
+   #348, #398) were not the pipe bug and not #428; the child exported no phase evidence.
+   Now every provider call reports its transport phase (wait line and master log), TCP
+   keepalive surfaces a dead path in seconds, OpenAI calls stream through the Responses
+   endpoint (acknowledged in under a second, progress during reasoning), the backstop
+   measures inactivity after acknowledgment instead of total time, and the #428 writer
+   is joined per generation. Owner-run rows (network cut mid-turn, native Windows) stay
+   open on #409.
 
 ## D. Deferred by owner ruling (post-voices refactor; do not work)
 - Progression/level-up UX (auto-fire vs ask-driven is SETTLED for now: ask-driven is
