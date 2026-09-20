@@ -45,11 +45,11 @@ def main(argv=None):
         )
     except Exception as exc:
         print("FAILED after %.1f s: %s: %s" % (
-            time.monotonic() - started, type(exc).__name__, str(exc)[:300]))
+            time.monotonic() - started, type(exc).__name__, exc))
         return 1
     phases = (response.raw_response or {}).get("liveProviderPhases", {})
     print("answer: %r in %.1f s" % (
-        (response.choices[0].message.content or "").strip()[:40],
+        (response.choices[0].message.content or "").strip(),
         time.monotonic() - started))
     usage = response.usage.model_dump()
     print("usage: prompt=%d completion=%d cached=%d reasoning=%d" % (

@@ -979,7 +979,7 @@ class _GenerationReader(threading.Thread):
         except (ValueError, TypeError, AttributeError):
             # Evidence loss only (a malformed frame); the envelope protocol
             # and the provider call are unaffected. Logged, not swallowed.
-            _LOGGER.warning("LIVE_PROVIDER_PHASE_FRAME_UNREADABLE %r", line[:120])
+            _LOGGER.warning("LIVE_PROVIDER_PHASE_FRAME_UNREADABLE %r", line)
             return
         with self._lock:
             if name == "endpoint":
