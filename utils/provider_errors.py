@@ -56,12 +56,15 @@ def _provider_of(exc):
     return ""
 
 
-def reissue_notice(disposition, http_status, provider, error_code=None):
+def reissue_notice(disposition, http_status, provider, error_code=None,
+                   last_phase=None):
     """Plain-words reason for a live reissue, shown once per class per turn.
 
     Owner requirement (2026-09-05): a local model must read as a lost
     connection; OpenAI and Gemini must name themselves so the player knows
-    which account to look at.
+    which account to look at. ``last_phase`` is the transport phase the
+    child last reported (#409): the sentence states what was observed and
+    never guesses a cause the transport did not see.
     """
     name = provider_display_name(provider)
     local = str(provider or "").lower() == "lmstudio"
@@ -86,9 +89,24 @@ def reissue_notice(disposition, http_status, provider, error_code=None):
             "Connection to your local model server was lost. Reconnecting; "
             "check that it is still running."
         )
+    phase = str(last_phase or "")
+    if phase in ("spawned", "payload_read", "connecting"):
+        return _sentence(
+            "%s could not be reached (no connection was established). Trying "
+            "a fresh connection." % name
+        )
+    if phase in ("connected", "secured", "sent"):
+        return _sentence(
+            "%s received the request but never acknowledged it. Trying a "
+            "fresh connection." % name
+        )
+    if phase in ("acknowledged", "working", "receiving"):
+        return _sentence(
+            "%s stopped answering part-way through. Trying a fresh "
+            "connection." % name
+        )
     return _sentence(
-        "%s did not answer. The connection was dropped; trying a fresh "
-        "connection." % name
+        "%s did not answer. Trying a fresh connection." % name
     )
 
 

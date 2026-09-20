@@ -163,13 +163,15 @@ class LevelUpSession:
         self._phase = phase
         self._publish_status(f'Level up: {phase}...')
 
-    def _status_emit(self, _message, phase=None):
-        """Provider heartbeats show the real phase and the operation clock, not one call's."""
+    def _status_emit(self, message, phase=None):
+        """Provider heartbeats show the level-up phase, the operation clock, and
+        the transport line the provider child rendered (its reported phase,
+        never a bare stopwatch: #409, one renderer for every caller)."""
         started = self._operation_started if self._operation_started is not None else time.monotonic()
         elapsed = max(1, int(time.monotonic() - started))
         self._publish_status(
             f'Level up: {phase or self._phase} ({elapsed} s since {self._since_label}). '
-            'Waiting for the AI provider. Your turn is safe.')
+            f'{message}')
 
     def start(self):
         """Initialize the interview and return only an accepted presentation."""
