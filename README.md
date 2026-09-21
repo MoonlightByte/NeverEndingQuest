@@ -178,18 +178,17 @@ For Local / Custom Server, the default endpoint is
 servers; remote services may require both. Save the endpoint and select **Test
 Connection** before starting a game.
 
-> ⚙️ **Turn "thinking" / reasoning OFF for local models (recommended).** If you
-> run **LM Studio** (or another local server) with a model that has a "thinking"
-> or reasoning mode, **disable it on the loaded model** before starting a game.
-> NeverEndingQuest's call sites are already highly structured (compression,
-> validation, summaries, combat bookkeeping), so chain-of-thought adds little and
-> costs a lot: a mechanical history-compression call that returns in a few seconds
-> with thinking off can take 10x longer with it on, and on a long game the startup
-> compression pass can run so long it trips the transport liveness boundary and
-> retries — leaving you stuck before the first prompt. Disabling thinking makes
-> the same call return in seconds with no loss of gameplay quality. In LM Studio,
-> switch the loaded model's reasoning/thinking setting to off (some models expose
-> it as a per-model toggle; others via the model's parameters).
+> ⚙️ **Local models run with "thinking" / reasoning OFF.** Every Local/Custom
+> call site sends `reasoning_effort: "none"`, so a model with a thinking mode
+> (Gemma 4 in LM Studio, for example) answers directly. NeverEndingQuest's call
+> sites are already highly structured (compression, validation, summaries,
+> combat bookkeeping), so chain-of-thought adds little and costs a lot: with
+> thinking on, Gemma 4 12B spent 15 minutes reasoning about a ten-line quest
+> journal and returned nothing; with it off the same call returns in 5 seconds
+> (issue #396). **Also disable thinking on the loaded model in LM Studio** (a
+> per-model toggle or a model parameter, depending on the model) so a server
+> that ignores the request flag behaves the same way. If a game call sits in
+> "your local model server is working on it" for minutes, thinking is still on.
 >
 > The same preference **often applies to the OpenAI providers**: the default
 > matrix already binds most call sites to the lowest reasoning tier that passed
@@ -620,6 +619,9 @@ The Legacy GPT-4.1 provider remains the recommended quality baseline.
 - **Smallest recommended local model: `google/gemma-4-12b-qat` (Gemma 4 12B).**
   It completes character creation and plays the main loop with correct rules
   (Standard Array, racial bonuses, armor class) and one review round per answer.
+  Run it with thinking off: the game asks for `reasoning_effort: "none"` on
+  every local call, and the model's own thinking toggle in LM Studio should be
+  off as well (see the note under Choosing a provider).
 - **Not supported: `qwen/qwen3.5-9b`.** It cannot follow the game's prompt and
   schema contracts: it fabricates rules (a made-up "Standard Array with Human
   bonuses"), rejects correct player answers, and loops in the character-creation

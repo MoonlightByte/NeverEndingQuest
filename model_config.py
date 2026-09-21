@@ -174,9 +174,13 @@ DM_MINI_MODEL_GEMINI_FLASH_LOW = {"model": "gemini-3.1-flash-lite-preview", "thi
 DM_FULL_MODEL_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 DM_MINI_MODEL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 
-# LM Studio (local passthrough - no extra params, routes through OpenAI client to localhost)
-DM_FULL_MODEL_LMSTUDIO = {"model": "local-model"}
-DM_MINI_MODEL_LMSTUDIO = {"model": "local-model"}
+# LM Studio (local passthrough, routes through the OpenAI client to the local server).
+# Every *_LMSTUDIO binding carries reasoning_effort "none" (owner ruling 2026-09-21,
+# issue #396): a local model with a thinking mode (Gemma 4 in LM Studio) otherwise
+# spends its whole reply reasoning about the game's structured prompts. T090 on
+# Gemma 4 12B: 887 s of reasoning and no answer with thinking on, 5.5 s with it off.
+DM_FULL_MODEL_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
+DM_MINI_MODEL_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T065 AI Response Validation Model Configs (from capture + manual testing) ---
 # Validation requires reasoning -- gpt-5.2|none is UNUSABLE (0/15 correct).
@@ -192,7 +196,7 @@ DM_VALIDATION_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_l
 DM_VALIDATION_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 
 # LM Studio (local passthrough)
-DM_VALIDATION_LMSTUDIO = {"model": "local-model"}
+DM_VALIDATION_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T082 Action Predictor Model Configs (from capture testing) ---
 # Binary classifier, fires every turn. Speed and cost critical.
@@ -208,7 +212,7 @@ ACTION_PRED_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_lev
 ACTION_PRED_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 
 # LM Studio (local passthrough)
-ACTION_PRED_LMSTUDIO = {"model": "local-model"}
+ACTION_PRED_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T079 Character Update Model Configs (from capture + simulation testing) ---
 # Gemini requires response_schema to prevent narration output. Schema is
@@ -230,7 +234,7 @@ CHAR_UPDATE_GEMINI_FLASHLITE_LOW = {
 CHAR_UPDATE_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 
 # LM Studio (local passthrough)
-CHAR_UPDATE_LMSTUDIO = {"model": "local-model"}
+CHAR_UPDATE_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T017 Combat Compression Model Configs (from synthetic testing v5 prompt) ---
 # CRITICAL: This callsite outputs plain text tags (@T=CS/v2), NOT JSON.
@@ -247,7 +251,7 @@ COMBAT_COMPRESS_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking
 COMBAT_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14", "response_format": None}
 
 # LM Studio (local passthrough)
-COMBAT_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
+COMBAT_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None, "reasoning_effort": "none"}
 
 # ----- T096/T097 Agentic Combat -----
 # T096 selects one ordered tactical intent per persisted actor window. T097
@@ -302,7 +306,7 @@ COMBAT_INTENT_GEMINI_FLASH_LOW = {
     ),
 }
 COMBAT_INTENT_LEGACY = {"model": "gpt-4.1-2025-04-14"}
-COMBAT_INTENT_LMSTUDIO = {"model": "local-model"}
+COMBAT_INTENT_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 COMBAT_NARRATE_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
 COMBAT_NARRATE_GPT54MINI_LOW = {"model": "gpt-5.4-mini", "reasoning_effort": "low"}
 COMBAT_NARRATE_GPT54MINI_MEDIUM = {"model": "gpt-5.4-mini", "reasoning_effort": "medium"}
@@ -325,7 +329,7 @@ COMBAT_NARRATE_GEMINI_FLASH_MEDIUM = {
     ),
 }
 COMBAT_NARRATE_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-COMBAT_NARRATE_LMSTUDIO = {"model": "local-model"}
+COMBAT_NARRATE_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # ----- T046 Initiative Tracker -----
 # Analytical combat utility: tracks turn order, determines who acts next.
@@ -346,7 +350,7 @@ INIT_TRACKER_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_le
 INIT_TRACKER_LEGACY = {"model": "gpt-4.1-2025-04-14", "response_format": None}
 
 # LM Studio (local passthrough)
-INIT_TRACKER_LMSTUDIO = {"model": "local-model", "response_format": None}
+INIT_TRACKER_LMSTUDIO = {"model": "local-model", "response_format": None, "reasoning_effort": "none"}
 
 # ----- T078 Character Effects -----
 # Analyzes character updates for trackable temporary effects (buffs/debuffs).
@@ -364,7 +368,7 @@ CHAR_EFFECTS_GEMINI_FLASH_HIGH = {"model": "gemini-3-flash-preview", "thinking_l
 CHAR_EFFECTS_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 
 # LM Studio (local passthrough)
-CHAR_EFFECTS_LMSTUDIO = {"model": "local-model"}
+CHAR_EFFECTS_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # ----- T040 Combat Validation -----
 # Validates AI combat responses for D&D rules compliance.
@@ -424,7 +428,7 @@ COMBAT_VALID_GEMINI_FLASH_LOW = {
 COMBAT_VALID_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 
 # LM Studio (local passthrough)
-COMBAT_VALID_LMSTUDIO = {"model": "local-model"}
+COMBAT_VALID_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # ----- T051 Character Validator -----
 # Validates character AC calculations per 5e rules.
@@ -631,7 +635,7 @@ CHAR_VALIDATOR_T054_GEMINI_FLASH_LOW = {
 CHAR_VALIDATOR_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 
 # LM Studio (local passthrough)
-CHAR_VALIDATOR_LMSTUDIO = {"model": "local-model"}
+CHAR_VALIDATOR_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # ----- T050 Effects Gemini Config -----
 # T054 has a dedicated schema-bearing config above.
@@ -652,7 +656,7 @@ MONSTER_BUILD_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_l
 MONSTER_BUILD_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 
 # LM Studio (local passthrough)
-MONSTER_BUILD_LMSTUDIO = {"model": "local-model"}
+MONSTER_BUILD_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # ----- T035 NPC Builder -----
 # Creates full NPC character sheets from name + race/class/level.
@@ -670,7 +674,7 @@ NPC_BUILD_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level
 NPC_BUILD_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 
 # LM Studio (local passthrough)
-NPC_BUILD_LMSTUDIO = {"model": "local-model"}
+NPC_BUILD_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # ----- T081 Encounter Update -----
 # Updates encounter creature data after combat actions.
@@ -701,7 +705,7 @@ _T081_ENCOUNTER_UPDATE_SCHEMA = {
 ENCOUNTER_UPD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 ENCOUNTER_UPD_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low", "response_schema": convert_to_gemini_schema(_T081_ENCOUNTER_UPDATE_SCHEMA)}
 ENCOUNTER_UPD_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-ENCOUNTER_UPD_LMSTUDIO = {"model": "local-model"}
+ENCOUNTER_UPD_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # ----- T077 Plot Update -----
 # Updates plot progression after game events.
@@ -710,7 +714,7 @@ ENCOUNTER_UPD_LMSTUDIO = {"model": "local-model"}
 PLOT_UPD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 PLOT_UPD_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 PLOT_UPD_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-PLOT_UPD_LMSTUDIO = {"model": "local-model"}
+PLOT_UPD_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # ----- T021 Transition Validation -----
 # Validates location transitions (path blocking, encounter checks).
@@ -719,7 +723,7 @@ PLOT_UPD_LMSTUDIO = {"model": "local-model"}
 TRANSITION_VAL_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 TRANSITION_VAL_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 TRANSITION_VAL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-TRANSITION_VAL_LMSTUDIO = {"model": "local-model"}
+TRANSITION_VAL_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # ----- T048 Level Up Validation -----
 # Validates AI-generated level-up actions against 5e rules.
@@ -729,7 +733,7 @@ TRANSITION_VAL_LMSTUDIO = {"model": "local-model"}
 LEVELUP_VAL_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 LEVELUP_VAL_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 LEVELUP_VAL_LEGACY = {"model": "gpt-4.1-2025-04-14"}
-LEVELUP_VAL_LMSTUDIO = {"model": "local-model"}
+LEVELUP_VAL_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T047: Level-Up Conversation (interactive interview, temp=0.7) ---
 # v3 prompt tested: 100% pass rate across 24 synthetic tests (8 scenarios x 3 models).
@@ -738,7 +742,7 @@ LEVELUP_VAL_LMSTUDIO = {"model": "local-model"}
 LEVELUP_CONV_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 LEVELUP_CONV_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 LEVELUP_CONV_LEGACY = {"model": "gpt-4.1-2025-04-14"}
-LEVELUP_CONV_LMSTUDIO = {"model": "local-model"}
+LEVELUP_CONV_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T086: NPC Auto-Level-Up (single-shot JSON, temp=0.3) ---
 # Same model selections as T047 -- simpler task, all models pass easily.
@@ -768,7 +772,7 @@ _T014_NPC_MOVEMENT_SCHEMA = {
     },
 }
 NPC_MOVEMENT_T014_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low", "response_schema": convert_to_gemini_schema(_T014_NPC_MOVEMENT_SCHEMA)}
-NPC_INFO_LMSTUDIO = {"model": "local-model"}
+NPC_INFO_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # T091 uses response_format=None at the callsite (JSON array output, not object).
 # T014 uses default JSON mode (JSON object output).
@@ -780,7 +784,7 @@ NPC_INFO_LMSTUDIO = {"model": "local-model"}
 COMBAT_SUMMARY_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
 COMBAT_SUMMARY_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 COMBAT_SUMMARY_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-COMBAT_SUMMARY_LMSTUDIO = {"model": "local-model"}
+COMBAT_SUMMARY_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T030/T032/T033/T038/T066: DM Summarization (parsing, narration, safety, summaries) ---
 # 24/24 synthetic tests passed. Mini-tier (DM_SUMMARIZATION_MODEL).
@@ -791,7 +795,7 @@ COMBAT_SUMMARY_LMSTUDIO = {"model": "local-model"}
 DM_SUMM_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
 DM_SUMM_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 DM_SUMM_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-DM_SUMM_LMSTUDIO = {"model": "local-model"}
+DM_SUMM_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T039: Campaign export-data extraction (short JSON, mini tier) ---
 # Secondary call inside _generate_module_summary that extracts structured
@@ -810,7 +814,7 @@ DM_SUMM_LMSTUDIO = {"model": "local-model"}
 DM_SUMM_T039_GPT5MINI = {"model": "gpt-5-mini"}
 DM_SUMM_T039_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
 DM_SUMM_T039_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-DM_SUMM_T039_LMSTUDIO = {"model": "local-model"}
+DM_SUMM_T039_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T012: Starting-location analysis helper (short JSON, mini tier) ---
 # Called by _ai_analyze_starting_location in core/ai/action_handler.py when
@@ -841,7 +845,7 @@ _T012_STARTING_LOCATION_SCHEMA = {
 DM_LOCSTART_T012_GPT5MINI = {"model": "gpt-5-mini"}
 DM_LOCSTART_T012_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low", "response_schema": convert_to_gemini_schema(_T012_STARTING_LOCATION_SCHEMA)}
 DM_LOCSTART_T012_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-DM_LOCSTART_T012_LMSTUDIO = {"model": "local-model"}
+DM_LOCSTART_T012_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T049: Storage action extraction (short JSON, mini tier) ---
 # Called when a player issues a storage-related action (deposit, withdraw,
@@ -859,7 +863,7 @@ DM_LOCSTART_T012_LMSTUDIO = {"model": "local-model"}
 STORAGE_PROCESSOR_T049_GPT5MINI = {"model": "gpt-5-mini"}
 STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low", "response_schema": _STORAGE_ACTION_SCHEMA_GEMINI}
 STORAGE_PROCESSOR_T049_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-STORAGE_PROCESSOR_T049_LMSTUDIO = {"model": "local-model"}
+STORAGE_PROCESSOR_T049_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T015/T016/T018/T019: Adventure Summaries (location updates, chronicles, journals) ---
 # 12/12 synthetic tests passed (4 scenarios x 3 models). Mini-tier (ADVENTURE_SUMMARY_MODEL).
@@ -869,7 +873,7 @@ STORAGE_PROCESSOR_T049_LMSTUDIO = {"model": "local-model"}
 ADV_SUMM_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
 ADV_SUMM_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 ADV_SUMM_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-ADV_SUMM_LMSTUDIO = {"model": "local-model"}
+ADV_SUMM_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T043/T044/T045: Combat Main Loop (scene setup, per-turn, resume) ---
 # 100% on 16-criteria audit after V5 prompt (4/4 blind runs).
@@ -880,7 +884,7 @@ ADV_SUMM_LMSTUDIO = {"model": "local-model"}
 COMBAT_MAIN_GPT54_NONE = {"model": "gpt-5.4", "reasoning_effort": "none"}
 COMBAT_MAIN_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 COMBAT_MAIN_LEGACY = {"model": "gpt-4.1-2025-04-14"}
-COMBAT_MAIN_LMSTUDIO = {"model": "local-model"}
+COMBAT_MAIN_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # ----- T085 Location Compression -----
 # Compresses location JSON into token-based @-tag format for runtime context.
@@ -890,7 +894,7 @@ COMBAT_MAIN_LMSTUDIO = {"model": "local-model"}
 LOC_COMPRESS_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none", "response_format": None}
 LOC_COMPRESS_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low", "response_format": None}
 LOC_COMPRESS_LEGACY = {"model": "gpt-4.1-2025-04-14", "response_format": None}
-LOC_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
+LOC_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None, "reasoning_effort": "none"}
 
 # ----- T020 Narrative Compression -----
 # Compresses game conversation into 2-3 paragraph narrative summary.
@@ -899,7 +903,7 @@ LOC_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 NARR_COMPRESS_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none", "response_format": None}
 NARR_COMPRESS_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low", "response_format": None}
 NARR_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14", "response_format": None}
-NARR_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
+NARR_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None, "reasoning_effort": "none"}
 
 # ----- T084 Agentic EVT Compression -----
 # Compresses narrative into structured JSON with codebook + EVT beats.
@@ -931,7 +935,7 @@ MINI_UTIL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 # MINI_UTIL callsites include both structured and prose responses. Each callsite
 # owns response_format explicitly (or intentionally uses the router's JSON
 # default), so the shared Local config must not inject a second value.
-MINI_UTIL_LMSTUDIO = {"model": "local-model"}
+MINI_UTIL_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T031+: DM_MAIN_MODEL callsites (module generation, DM narration, transitions) ---
 # First DM_MAIN_MODEL migration (T031). These dicts will be reused by all 12 DM_MAIN_MODEL callsites.
@@ -940,7 +944,7 @@ MINI_UTIL_LMSTUDIO = {"model": "local-model"}
 DM_MAIN_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 DM_MAIN_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 DM_MAIN_LEGACY = {"model": "gpt-4.1-2025-04-14"}
-DM_MAIN_LMSTUDIO = {"model": "local-model"}
+DM_MAIN_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # T026 (location batch generation) -- per-callsite selection from the 2026-08-15
 # blind 3-reviewer quality + cost eval (docs/audits/2026-08-15-t026-model-quality-eval.md).
@@ -975,7 +979,7 @@ NPC_COHERENCE_T104_GPT56LUNA_NONE = copy.deepcopy(OPENAI_GPT56_LUNA_NONE)
 NPC_COHERENCE_T104_GPT56LUNA_HIGH = copy.deepcopy(OPENAI_GPT56_LUNA_HIGH)
 NPC_COHERENCE_T104_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 NPC_COHERENCE_T104_LEGACY = {"model": "gpt-4.1-2025-04-14"}
-NPC_COHERENCE_T104_LMSTUDIO = {"model": "local-model"}
+NPC_COHERENCE_T104_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 # Feature flag (issue #160). Defined here so it reaches every build via config.py's
 # `from model_config import *`, regardless of whether an existing config.py copy has
 # it. ON: the pass is fail-closed + heal-forward so shipping enabled is safe.
@@ -992,12 +996,12 @@ ENABLE_NPC_COHERENCE_REPAIR = True
 NPC_VOICE_T105_OPENAI_LUNA_NONE = copy.deepcopy(OPENAI_GPT56_LUNA_NONE)
 NPC_VOICE_T105_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
 NPC_VOICE_T105_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-NPC_VOICE_T105_LMSTUDIO = {"model": "local-model"}
+NPC_VOICE_T105_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 NPC_PROFILE_T107_OPENAI_LUNA_NONE = copy.deepcopy(OPENAI_GPT56_LUNA_NONE)
 NPC_PROFILE_T107_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
 NPC_PROFILE_T107_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-NPC_PROFILE_T107_LMSTUDIO = {"model": "local-model"}
+NPC_PROFILE_T107_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # T108: companion EPISODE extraction (attributed salient facts from full-fidelity
 # encounter text -> canonical episode ledger). Runs at per-location close and at
@@ -1008,7 +1012,7 @@ NPC_PROFILE_T107_LMSTUDIO = {"model": "local-model"}
 NPC_EPISODE_T108_OPENAI_LUNA_LOW = copy.deepcopy(OPENAI_GPT56_LUNA_LOW)
 NPC_EPISODE_T108_GEMINI_FLASH_LOW = {"model": "gemini-3.1-flash-preview", "thinking_level": "low"}
 NPC_EPISODE_T108_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-NPC_EPISODE_T108_LMSTUDIO = {"model": "local-model"}
+NPC_EPISODE_T108_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # T112: episodic RECALL anchor-parse. When the player references the past, this
 # parses their line into structured anchors (entities/places/outcomes); CODE then
@@ -1017,7 +1021,7 @@ NPC_EPISODE_T108_LMSTUDIO = {"model": "local-model"}
 NPC_RECALL_T112_OPENAI_LUNA_LOW = copy.deepcopy(OPENAI_GPT56_LUNA_LOW)
 NPC_RECALL_T112_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
 NPC_RECALL_T112_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-NPC_RECALL_T112_LMSTUDIO = {"model": "local-model"}
+NPC_RECALL_T112_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # T113: episodic BACKFILL extraction. One-time, when upgrading an existing game to
 # the episodic-memory feature: reads compressed journal / campaign-summary PROSE and
@@ -1027,7 +1031,7 @@ NPC_RECALL_T112_LMSTUDIO = {"model": "local-model"}
 NPC_BACKFILL_T113_OPENAI_LUNA_LOW = copy.deepcopy(OPENAI_GPT56_LUNA_LOW)
 NPC_BACKFILL_T113_GEMINI_FLASH_LOW = {"model": "gemini-3.1-flash-preview", "thinking_level": "low"}
 NPC_BACKFILL_T113_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-NPC_BACKFILL_T113_LMSTUDIO = {"model": "local-model"}
+NPC_BACKFILL_T113_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
