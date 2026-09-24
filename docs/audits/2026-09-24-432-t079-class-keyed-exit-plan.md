@@ -1,370 +1,503 @@
 # #432 T079 character writer: class-keyed exit, confirmed no-change answers, supersession
 
-Status: PLAN r2 (2026-09-24), after Part 3 round 1 (nine seats; resolution ledger in section 11). Nothing implemented. Execution needs convergence and the owner's approval (NEQ-REVIEW-13).
+Status: PLAN r3 (2026-09-24), after Part 3 rounds 1 and 2 (nine seats each; resolution ledger in section 11). Nothing implemented. Execution needs convergence and the owner's approval (NEQ-REVIEW-13).
 
 ## 0. Provenance (captured dynamically; evidence, never authority)
 
 | Item | Value |
 |---|---|
-| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`; r1 commit 6639a6f9 |
+| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed. Code is unchanged from base; only this plan differs. |
 | Base revision | `origin/main` = 7b20bc7d. Ancestor check: `git merge-base --is-ancestor HEAD origin/main` at plan time. |
 | #193 epoch | v3.1, `updatedAt` 2026-09-18T18:20:12Z. Re-checked before implementation (NEQ-OPS-03). |
-| Provider / model | `openai`. T079, T078 and T051 resolve to `gpt-5.6-luna`, `reasoning_effort: none` (`model_registry.py:390-397`, `:460-477`; verified with `model_config.resolve_callsite_config("T079","openai",0)`). Never the legacy GPT-4.1 provider. |
-| Platform | WSL2 headless first; native Windows row owner-run |
+| Provider / model | `openai`. T079, T078 and T051 resolve to `gpt-5.6-luna` with `reasoning_effort: none` (`model_registry.py:390-397`, `:460-477`). Never the legacy GPT-4.1 provider. |
+| Platform | WSL2 headless first. The native Windows row is owner-run. |
 | Owner assignment | 2026-09-21: "pick a new issue worthy of your brain that doesn't require the LM model". #432 was filed with owner authorization on 2026-09-18. |
 
-Line numbers below are at 7b20bc7d. They are re-verified at implementation time.
+Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 
 ## 1. Scope
 
-**In scope.** The T079 retry loop in `updates/update_character_info.py::_update_character_info_unlocked` (1444-2571), including its exception handlers, and the empty-delta check `_is_meaningful_character_delta` (1141-1148).
+**In scope:** the T079 retry loop in `updates/update_character_info.py::_update_character_info_unlocked` (1444-2571), including its exception handlers, and the empty-delta check `_is_meaningful_character_delta` (1141-1148).
 
-**Not in scope.** Each item is already tracked, or has a drafted issue waiting for owner authorization (section 10).
-- **#433.** The quoted terminal has been dormant since b7f7a863. Forensics and a re-scope were posted on 2026-09-24, and a separate plan follows.
-- **#357 residual.** O3's class belongs to #357's T051 pre-repair (`:1519-1549`). See section 2, O3, and row A2a.
-- **#324.** The T051/T052/T054 bounds and description caps stay there. #432 takes over only the T079 default-loop part of #324's "Bounded failure exits". Task 1 routes confirmed no-change answers through the post-commit validators, which carry #324's caps; the caps themselves are unchanged (NL-3).
-- **#431.** The T079 `history[-10:]` window at 1910 (NL-2).
-- **#367.** The turn loop's `PROVIDER_MAX_FAILURES`.
-- **#375.** The storage processor's count.
-- **Level-up.** `level_up_manager.py:620` calls `prepare_character_delta` with typed input and never calls T079. It is untouched.
+**Not in scope.** Each item is tracked in an issue or in a drafted issue waiting for owner authorization (section 9).
+
+- **#433.** Re-scoped on 2026-09-24; a separate plan will follow.
+- **#357 residual.** Covered by row A2a.
+- **#241.** The staged travel-sibling preparer passes the removed `structural_reissue` to `classify_effect`. A second-instance comment was posted on 2026-09-24. See section 3.
+- **#324.** The T051/T052/T054 bounds and description caps. Confirmed no-change answers now pass through the post-commit validators, which carry those caps; the caps themselves are unchanged (NL-3).
+- **#431.** The T079 `history[-10:]` window.
+- **#367.** The turn-loop provider count.
+- **#375.** The storage processor count.
+- **#300.** The legacy effects runtime that owns the effect-reversal entrant.
+- **Level-up.** `level_up_manager.py:620` never calls T079.
 
 ## 2. Observed failures (NEQ-EVIDENCE-01; artifacts under `agent-room-fleet-kit/local-data/`)
 
-### O1: false failure after a correct "no change" answer (2026-09-18, `242-down-scene/marsh-raw-1`, openai gpt-5.6-luna)
+**O1: false failure after a correct "no change" answer.** 2026-09-18, `242-down-scene/marsh-raw-1`, openai gpt-5.6-luna.
 
-- The accepted DM response had one action (`242-down-scene/game-marsh-raw-1/modules/conversation_history/conversation_history.json` index 46): `updateCharacterInfo(eirik_hearthwise, "Escaped the quicksand with a successful Athletics check. Remains at 1 hit point; soaked and on unstable floating moss near the deep central water.")`.
-- The pre-update sheet was already at 1/54 HP with status alive. The product's own backup confirms it: `characters/eirik_hearthwise.backup_update_20260918_235325.json`. So the request had no mechanical effect.
-- T079 answered `{}` on all three attempts (`242-down-scene/game-marsh-raw-1/debug/character_updates_log.json`; the per-call capture is in `242-down-scene/capture-marsh-raw-1/T079.json`).
-- Each answer raised `ValueError: T079 returned an empty or unrecognized character delta` (`game_errors.log:1-15`; the traceback line matches the raise at 7b20bc7d:2071).
-- The code then logged `Failed to update character eirik_hearthwise after 3 attempts`, and the action handler returned `status=error` (`core/ai/action_handler.py:3845-3853`).
-- What the player saw:
-  - At seq 606 in `marsh-raw-1.ndjson`, the correct escape narration.
-  - For 10.8 s after that (seq 611 to 702), "Updating character info...".
-  - At seq 702: `That action could not be completed safely. No further actions from that response were applied.` (`web/shared_state.py:20`, printed at `main.py:9691-9704`).
-- That run used a parity clone with `COMPRESSION_ENABLED = False`. That setting is disclosed; it does not touch this path.
+- **Pre-state:** Eirik was already at 1/54 HP and alive. The product backup `242-down-scene/game-marsh-raw-1/characters/eirik_hearthwise.backup_update_20260918_235325.json` shows this.
+- **Accepted DM action:** the response had exactly one action (`conversation_history.json` index 46):
 
-### O2: the same error class at combat end (2026-09-07, `issue116`)
+  ```
+  updateCharacterInfo(eirik_hearthwise, "Escaped the quicksand with a successful Athletics check. Remains at 1 hit point; soaked and on unstable floating moss near the deep central water.")
+  ```
 
-- `issue116/legacy-server.log:3920-3950`: `Following the turn's events: Completes her required turn after all hostile creatures are dead..` for scout_elen. The request has no mechanical effect.
+- **What T079 did:** it answered `{}` three times (`242-down-scene/capture-marsh-raw-1/T079.json`, also `game-marsh-raw-1/debug/character_updates_log.json`).
+- **What the code did:** each answer raised `ValueError: T079 returned an empty or unrecognized character delta` (`game_errors.log:1-15`; this is the raise at `:2071`). The loop then logged `Failed to update character eirik_hearthwise after 3 attempts`, and the action handler returned `status=error` (`core/ai/action_handler.py:3845-3853`).
+- **What the player saw:**
+  1. The correct escape narration (`marsh-raw-1.ndjson` seq 606).
+  2. The status "Updating character info..." for 10.8 s (seq 611-702).
+  3. The line `That action could not be completed safely. No further actions from that response were applied.` (seq 702).
+- **Run setting:** the run used a parity clone with `COMPRESSION_ENABLED = False` (disclosed).
+
+**O2: same error class at combat end.** 2026-09-07, `issue116`.
+
+- `legacy-server.log:3920-3950` shows the request `Following the turn's events: Completes her required turn after all hostile creatures are dead..` for scout_elen. It has no mechanical effect.
 - The same `ValueError` was raised three times, then `Final consolidated update failed for scout_elen`.
-- The raw answer was not retained, so that the answer was `{}` is inferred, not proven.
-- The combat-end caller only logs the failure (`core/managers/combat_manager.py:5734-5741`). This is the legacy combat entrant, reached by encounters that default to legacy (`combat_state:621-625`).
+- The raw answer was not retained, so "it was `{}`" is inferred.
+- The caller only logs the failure (`core/managers/combat_manager.py:5734-5741`). It always runs inside a live scope: `run_combat_simulation` holds one (`combat_manager.py:3303-3305`, `live_provider_call.py:340-344`).
 
-### O3: pre-#357 armor poisoning (2026-09-07, `issue116`). Superseded on main; not acted on here.
+**O3: pre-#357 armor poisoning. Superseded on main; not acted on here.**
 
-- The request was: `Uses one arrow to attack Skeleton_2, dealing 8 piercing damage.` (`:3840`, `:3890`).
-- Thane was at 50/50 HP before the merge (`:3895`).
-- The T079 answers were ammunition -1 on attempts 1 and 3. On attempt 2 the answer also carried `hitPoints: 42` (`:3906`), which misread the damage Thane *dealt* as damage taken.
-- All three answers were rejected with `99 is greater than the maximum of 10 at path: equipment.2.dex_limit`. The requested arrow was lost; no HP change was requested. Kira shows the same class (`:3865-3887`).
-- The `99` came from an older T051 correction in the same run (`:3304`, `:3380`, `:3469`).
-- #357 (948ff048, 2026-09-11, an ancestor of main) since added two fixes:
-  - prevention: T051 checks its proposals against the schema (`core/validation/character_validator.py:2613-2621`);
-  - recovery: before T079 runs, T051 repairs out-of-schema armor in memory, and the repair shares the update's one atomic write (`update_character_info.py:1519-1549`; D-357-1..4).
-- #357's own live acceptance observed 99 -> null with HP 8 -> 12 committed in one write (`docs/audits/2026-09-11-issue-357-armor-schema-contract-acceptance.md`).
-- O3 predates #357, so this plan adds no mechanism for it. Row A2a re-derives it on today's main as forensics. If it reproduces (T051 exhausts, then T079 is refused), the result goes to the owner under #357 (two-strikes) and not into this plan.
-- **Failed approach (NEQ-OPS-04):** r1's Task 2 (commit around pre-existing violations with a WARN) was withdrawn. It duplicated #357's single path. #357's plan had already rejected that exact option ("O2 ... leaves invalid data forever", `docs/audits/2026-09-11-issue-357-armor-schema-contract-plan.md:482-484`). Its index-free key would also have passed a violation introduced by the delta (GL-2).
+- **Request:** `Uses one arrow to attack Skeleton_2, dealing 8 piercing damage.` (`legacy-server.log:3840`, `:3890`).
+- **Pre-state:** Thane was at 50/50 HP (`:3895`).
+- **Answers:**
+  - Attempts 1 and 3: ammunition -1.
+  - Attempt 2 (`:3906`) also returned `hitPoints: 42`, a misread of the damage Thane dealt.
+- **Why every answer failed:** the sheet carried `99 is greater than the maximum of 10 at path: equipment.2.dex_limit`, written earlier in the same run by an older T051 correction (`:3304`, `:3380`, `:3469`). The requested arrow was lost.
+- **Why it is superseded:** #357 (948ff048, 2026-09-11, an ancestor of main) added prevention (`core/validation/character_validator.py:2613-2621`) and in-memory T051 recovery before T079 (`update_character_info.py:1519-1549`). #357's live acceptance observed 99 -> null with HP committed in one write.
+- **Failed approach (NEQ-OPS-04):** r1's Task 2 (commit around pre-existing violations) duplicated #357's single path. #357 had already rejected that option (`docs/audits/2026-09-11-issue-357-armor-schema-contract-plan.md:482-484`). It was withdrawn in r2.
 
-### Real-data scan (row A0, run read-only by the Acceptance seat)
+**Real-data scans (round 1, read-only).**
 
-- No `"dex_limit": 99` in the owner's `modules/`, `data/` or `characters/`.
-- Schema check of 39 live sheets: violations only in four `test_integration_hero` backups.
+- Owner checkout: `modules/`, `data/` and root `characters/` contain no `"dex_limit": 99`.
+- 137 owner sheets: 3 raw root `additionalProperties` hits (an `inventory` holding only empty currency, purged on every update).
+- 3,645 kit sheets: 18 invalid, all armor `dex_limit` 99. There are zero non-armor and zero container-level violations.
 
 ## 3. Root cause (NEQ-OPS-02)
 
 **O1/O2 are class (d): a deterministic-vs-agentic disagreement that breaks the coherence rule.**
-- The T079 prompt says "Do not include unchanged fields" and "Only include top-level keys ... if a value within them has changed" (`:1610`, `:1627`). For a change with no mechanical effect, the contract-correct answer is `{}`.
-- The gate rejects exactly that answer (`:1141-1148`, `:2068-2073`), so the loop cannot be won:
-  - On the ordinary path it gives up after 3 attempts and reports a false failure.
-  - On the staged travel-sibling path (`effects_runtime.py:253`, `structural_reissue=True`), the generic handler adds no correction note (`:2505-2556`). The same request reissues forever. This is CODE-PROVEN.
-- **Origin of the empty rejection:** 36bd7ed0 (2026-07-14, "fix(multi-model): harden callsite contracts and state recovery"; no issue), reaching main through 715732d5. Its goal traces to 12ddb548 (HIGH-6: "the update silently no-ops"): never report success when a real change produced nothing.
 
-**The cancel signal is swallowed (FF-1, CODE-PROVEN; pre-existing and found in round 1).**
-- `:2506` re-raises `LiveProviderSuperseded` only when `commit_guard is not None`.
-- That condition came from 2e6ad1f8 (2026-09-13, the #323 baseline). No production caller passes `commit_guard` (grep of every caller: `effects_runtime.py:98/130/253`, `combat_manager.py:5734`, `process_effect_expirations.py:54/101`, `update_character_effects.py:740`).
-- On the ordinary path, a superseded T079 therefore spends two more immediate attempts and returns `False`.
-- On the staged path the loop never ends:
-  - `_check_live_authority` raises again on every reissue (`live_provider_call.py:1166-1168`) and the handler swallows it each time.
-  - A web Load waits on `quiescent.wait()` (`web_interface.py:3187-3188`) forever. B1 says Load is never refused.
+- The T079 prompt says "Do not include unchanged fields" (`:1610`, `:1627`).
+- For a change with no mechanical effect, the only contract-correct answer is `{}`.
+- The gate (`:1141-1148`, `:2068-2073`) rejects `{}`, so on the ordinary path the loop gives up after 3 attempts with a false failure.
+- **Origin of the rejection:** 715732d5 (the function first appears in 36bd7ed0, which is not an ancestor of main). The goal came from 12ddb548 (HIGH-6, also not an ancestor of main): never report success when a real change produced nothing.
 
-**B2-vii: the count keys on every failure class.**
-- The one bound counts all of these:
+**The staged travel-sibling T079 path is unreachable on main** (CODE-PROVEN; #241 second-instance comment).
+
+- `core/managers/effects_runtime.py:241-247` calls `classify_effect(..., structural_reissue=True)`, but `core/ai/effects_agent.py:220` has had no such parameter since 4b53aace (2026-08-24). Every staged `updateCharacterInfo` sibling therefore raises `TypeError` before T078 or T079 runs.
+- The reviewed turn also rejects that sibling. Within-module travel accepts only `updateTime`/`updatePlot` (`main.py:10271-10365`), and cross-module travel accepts only `updatePartyTracker` + `updateTime`.
+- If the path were reached, the exception would escape `action_handler.py:3579`, `main.py:5617`, `process_ai_response` (`main.py:6911-6927`, which catches only supersession and JSON errors) and `main.py:9621`, and would stop the engine at `main.py:8035-8037`, then `web_interface.py:5059-5082`.
+- r1/r2 claims that the staged loop "reissues forever" and that "Load hangs" cannot happen on main. They are withdrawn.
+- #241's future fix must give staged preparation a terminal the player can continue from, with the party at the origin.
+
+**The cancel signal is swallowed** (CODE-PROVEN).
+
+- `:2506` re-raises `LiveProviderSuperseded` only when `commit_guard is not None`. That condition came from 2e6ad1f8 (2026-09-13, the #323 baseline import, "No behavior change in this commit"), and no production caller passes `commit_guard`.
+- The swallow itself is an accident of the catch-all from f5e84dd5. `LiveProviderSuperseded` and T079's required-live status both arrived later, in b7f7a863.
+- **Today:** on the ordinary path, a superseded T079 is counted as a failed attempt and reissued. The reissue fails immediately at the authority check, twice, and the function returns `False`.
+- **What the player sees:** the ordinary path looks the same with or without the swallow. `action_handler.py:3854-3863` catches every `RuntimeError`, including supersession, and `main.py:6682`/`:5006-5013` emits the safe-failure line during the Load (issue I-9). The cost of the swallow is misclassification and wasted reissues. Once #241 makes the staged path reachable, it would also produce an endless loop there.
+
+**B2-vii: the count keys on every failure class** (live-scope entrants).
+
+- Inside a live scope, T079 is a required live task. The transport already reissues transient and empty failures (`live_provider_call.py:46`, `:1691-1698`).
+- What reaches the loop's count is:
   - completed-invalid answers;
-  - deterministic provider refusals (`LiveProviderCompletedError`, the #240 rule in its docstring). These are retried twice on the ordinary path and forever on the staged path.
   - swallowed supersession;
-  - non-live provider errors.
-- Non-live errors arrive only when T079 runs outside a live turn scope. Inside one, T079 is a required live task, and the transport already reissues transient and empty failures (`live_provider_call.py:46`, `:1691-1698`).
-- The one verified entrant outside a scope is effect-reversal expiry for unmigrated campaigns: `main.py:8810`, inside the main `while True` at `:8742`, before the per-turn scope at `:9414`. That caller re-queues a failed reversal as `pending` (`update_character_effects.py:524-528`) and resumes on the next iteration, so the resume already lives at the caller.
+  - `LiveProviderCompletedError`. The #240 contract says deterministic errors return "to the existing caller immediately" (`live_provider_call.py:146-153`), yet the loop retries them. Owner-checkout evidence: `modules/logs/game_errors.log:3330-3452` shows three identical `insufficient_quota` 429s that retries did not heal.
+- Non-live provider errors reach the loop only from two entrants that run outside a scope:
+  - the effect-reversal expiry for unmigrated campaigns (`main.py:8810`, in the main loop before `:9414`; #300);
+  - the terminal-mode synchronous startup kickoff (`main.py:8680-8683`, `8713-8717`, then `1165`).
+- Their transient class needs a live scope, which is the owning boundary (issue I-8). This plan leaves their handling unchanged.
 
 ## 4. Spec-pin (NEQ-REVIEW-04)
 
 **Identities.**
-- The character file comes from `get_character_path(name, role)`.
-- The ordinary path holds the per-character update lock and the `.effects.lock` lease (`update_character_info.py:1403-1422`, `effects_runtime.py:107-115`).
-- The staged preparation (`effects_runtime.py:238-262`) holds neither. It locks only at apply (`:283-298`).
-- The callsite is `T079` (`update_character_info.py:111`). Lock order is unchanged.
 
-**Source of truth.** The character sheet JSON on disk. A T079 answer is a proposal (NEQ-CORE-06).
+- The character file comes from `get_character_path(name, role)`.
+- The ordinary path holds the per-character update lock and the `.effects.lock` lease (`update_character_info.py:1403-1422`, `effects_runtime.py:107-115`). The staged preparation (`effects_runtime.py:238-262`) holds neither.
+- The callsite is `T079` (`:111`). Lock order is unchanged.
+
+**Source of truth.** The character sheet JSON on disk. Model answers are proposals (NEQ-CORE-06).
 
 **Commit points (unchanged).**
-- Ordinary path: `commit_character_sheet` (`:2327`).
-- Staged path: `apply_staged_character_update` (`effects_runtime.py:283-298`). It returns `already_committed` when the file equals `after`, `blocked_conflict` when the file differs from `before`, and `committed` otherwise.
 
-**Failure classes.** Only exceptions raised by the provider-call statement (`:1978-1983`) are provider-classified; everything else is `completed_invalid`.
+- Ordinary: `commit_character_sheet` (`:2327`).
+- Staged: `apply_staged_character_update` (`effects_runtime.py:283-298`). Unreachable on main (section 3).
 
-| Class | What produces it | Policy |
+**Loop outcomes.** "The call" means the provider-call statement at `:1978-1983`.
+
+| Outcome | What produces it | Policy |
 |---|---|---|
-| `superseded` | `LiveProviderSuperseded` from anywhere in the pre-commit loop | Re-raised on every path |
-| `provider_deterministic` | `LiveProviderCompletedError` (live scope) | The transport has already decided no reissue can heal it: 4xx, quota, or a schema rejection |
-| `provider_handback` | `ProviderCallError` from a non-live call (`core/ai/api_client.py:22`; includes `ProviderEmptyResponse`, which `_fire_primary_with_retry` has already retried) | Returned to the caller at once, never counted. Transport recovery is not this loop's job; the transport or the caller owns it |
-| `completed_invalid` | JSON decode error; a non-empty delta with no recognized field; an incomplete delta (`:2093`); critical-field loss (`:2224`); schema-invalid merged sheet (`:2267`); any other exception from the loop body or the call statement (capture or config errors) | Counted |
+| `superseded` | `LiveProviderSuperseded` anywhere in the pre-commit loop | Propagates out of the loop on every path |
+| `provider_deterministic` | `LiveProviderCompletedError` raised by the call | Returns `False` at once |
+| `bounded_failure` | Any of: a JSON decode error; a non-empty delta with no recognized field; an incomplete delta (`:2093`); critical-field loss (`:2224`); a schema-invalid merged sheet (`:2267`); any other exception from the loop body or the call, including capture/config errors and, unchanged from today, non-live `ProviderCallError` (I-8, #300) | Counted |
+| `confirmation` | A `{}` answer that does not directly follow the confirmation note | Not counted (Task 1) |
 
-**No-change confirmation.**
-- A first `{}` answer is not a failure. The loop appends one confirmation note and asks again (Task 1).
-- A second consecutive `{}` is accepted as "no mechanical change".
+The confirmation flag:
 
-**End states.** Each has a player-visible terminal.
+- is set only when the confirmation note is appended;
+- is cleared when any other correction note is appended;
+- is left as it was when the call raises a counted exception, because the request is re-sent unchanged.
 
-| # | End state | Result | What the player sees |
+**End states** (ordinary path; the staged path is unreachable on main).
+
+| # | End state | Loop result | What the player sees |
 |---|---|---|---|
-| 1 | Success with a change | Sheet committed; returns `True` or a receipt | Narration, and the sheet matches it |
-| 2 | Confirmed no change (`{}` twice) | The unchanged sheet flows through the existing preparation and normalization and commits. On the ordinary path the post-commit validators run as for any update. On the staged path the receipt's `after` is the prepared sheet, which may differ from `before` only by normalization. | Narration, with no failure line |
-| 3 | `completed_invalid` at the D-432-1 bound (ordinary path only) | Returns `False` | Ordinary action: `SAFE_ACTION_FAILURE_MESSAGE` after the narration, and the narrated change is absent from the sheet. Combat end: log only; the narrated change is absent with no player line (pre-existing, issue I-1 drafted). Effect reversal: re-queued as pending; resumes. |
-| 4 | `provider_deterministic` | Returns `False` at once on both paths | Ordinary path: as in state 3. Staged path: `prepare_character_update` raises `EffectsRuntimeError` (`effects_runtime.py:261-262`) inside `prepare_current_transition_actions` (`action_handler.py:3579`), after the `planned` checkpoint was written at `:3573`. `main.py:6655-6668` shows the safe failure; the `planned` checkpoint is discarded on the next iteration (`action_handler.py:1668-1674`), and the party does not move. Today this state is an endless reissue. |
-| 5 | `provider_handback` | Returns `False` at once, uncounted | Effect reversal: pending, resumes next iteration. Any other non-live entrant: its caller's existing handling (table in Task 3 step 0). |
-| 6 | `superseded` | Raises | Staged path: `superseded_invocation` (`main.py:6655-6659`). Ordinary path: the action handler's existing generic handler (`action_handler.py:3854-3863`) while the superseding Load/Reset/Quit proceeds. |
+| 1 | Success with a change | Sheet committed; `True` | Narration, and the sheet matches it |
+| 2 | Confirmed no change (`{}`, note, `{}`) | The unchanged sheet flows through the existing preparation and commit. The post-commit validators run as for any update. On disk, only differences attributable to normalization or to T051/effects validation appear. | Narration, with no failure line |
+| 3 | `bounded_failure` at the D-432-1 bound | `False` | Ordinary action: `SAFE_ACTION_FAILURE_MESSAGE` after the narration, and the narrated change is absent from the sheet. Combat end: log only, and the narrated change is absent with no player line (I-1). Effect reversal: released to pending, then resumes (`update_character_effects.py:524-528`, `:553-558`). Terminal kickoff: its caller's existing handling (I-8). |
+| 4 | `provider_deterministic` | `False` at once | Ordinary action: as in end state 3, with the generic line and no provider-specific message (I-10). Combat end: log only (I-1). Reversal: pending, then resumes. |
+| 5 | `superseded` | Raises | `action_handler.py:3854-3863` turns it into `status=error`, so the safe-failure line appears during the Load (I-9). `combat_manager.py:5741` logs it and the loop continues. `update_character_effects.py:541-547` releases the claim to pending. |
 
 **Part 2 pages cited.**
-- p5 NEQ-EFFECTS-01: the staged caller is the effects runtime.
-- p8 NEQ-WORLD-04: the sheet is player data.
-- p9 NEQ-SAVE-01: Load is never refused.
-- p11 NEQ-PROVIDER-01: `create_completion` stays a thin router and is untouched.
-- p12 NEQ-SCHEMA-01/02: schema authority is unchanged.
-- p13 NEQ-ACCEPT-01..03.
 
-**README promise.** "an intelligent AI that remembers every decision" (README.md:22) and "Character Sheets" (README.md:233): what narration says happened must be on the sheet. This plan advances the promise and must not degrade it.
+- p5 NEQ-EFFECTS-01
+- p8 NEQ-WORLD-04
+- p9 NEQ-SAVE-01
+- p11 NEQ-PROVIDER-01 (`create_completion` is untouched)
+- p12 NEQ-SCHEMA-01/02
+- p13 NEQ-ACCEPT-01..03
+
+**README promise.** "an intelligent AI that remembers every decision" (README.md:22) and "Character Sheets" (README.md:233).
 
 ## 5. Tasks
 
-**Task 0. Rollback point.** The plan-only commits (r1 6639a6f9, then this r2) precede any code change.
+**Task 0: rollback point.** The plan-only commits (r1, r2, r3) come before any code change.
 
-**Task 1. `{}` is a typed "no change" answer, confirmed once (fixes O1/O2; D-432-2; GL-3).**
-- `_is_meaningful_character_delta` (`:1141-1148`) returns `True` for an empty dict. It still returns `False` for a non-dict, and for a non-empty dict with no recognized schema field. Its docstring's word "meaningful" becomes "recognized".
-- In the loop, straight after the parse (`:2067`):
-  - A `{}` answer that does not directly follow the confirmation note appends one confirmation note to the request. Wording: "Your previous answer was {} (no character-sheet field changes). If the described change alters any field on this sheet (hit points, spell slots, equipment, ammunition, currency, experience, conditions or any other field), return those fields now. If it changes nothing on the sheet, return {} again." The loop then reissues. This is not a `completed_invalid` outcome and does not count.
-  - A `{}` answer immediately after the confirmation note is accepted. The loop logs `info("T079 confirmed no mechanical change for <name>")` and continues through the existing completeness check, preparation and commit, unchanged.
-  - The note is appended exactly as the existing correction notes are (`messages[-1]["content"] += ...`), with no count or length bound.
-- **Coverage (disclosed in D-432-2).** After confirmation, T079 is the authority on "no mechanical change". The existing completeness regex (`:1151-1251`, AP-7, issue I-2 drafted) is not presented as a safeguard; it returns an empty set for most observed change strings.
-- **Interaction with the completeness regex (disclosed).** A confirmed `{}` still passes through the completeness check. If the regex infers a required field, that is a regex-vs-model disagreement: it counts as `completed_invalid`, exactly as a partial non-empty answer does today. On the staged path that disagreement can repeat without end, which is the same pre-existing exposure a partial answer has there (issues I-2 and I-4). No new handling is added for it here.
-- **The `declarative_effects and managed_effect_operation` clause at `:2068-2070` (SP-5).** It already lets an empty delta through when an engine-owned effect operation exists, and it is unchanged. That case needs no confirmation because the effect operation is the change.
+**Task 1: `{}` is a typed "no change" answer, confirmed once. Fixes O1/O2 (D-432-2 option A).**
 
-**Task 2. Withdrawn in r2** (section 2, O3; resolution ledger rows SP-2, CUST-1, LEAN-1, GL-1, GL-2, ACC-1). The number is kept so ledger references stay stable.
+1. **The check.** `_is_meaningful_character_delta` (`:1141-1148`) returns `True` for an empty dict. It still returns `False` for a non-dict, and for a non-empty dict with no recognized schema field. Its docstring's word "meaningful" becomes "recognized".
+2. **The effects clause.** Keep `declarative_effects and managed_effect_operation` (`:2068-2070`) in one local variable, read at both the gate and the confirmation check (SP-5, SP2 fyi). When it is true, `{}` needs no confirmation, because the engine-owned effect operation is itself the change.
+3. **The confirmation.** Right after the parse (`:2067`), a `{}` answer with the confirmation flag clear appends this note and reissues:
 
-**Task 3. Class-keyed exit (B2-vii; D-432-1).**
-- **Step 0 (audit, before code).** Produce the entrant table: caller, file:line, live scope present?, terminal on `False`. Cover the seven entrants in section 3, plus the startup combat resume (`main.py:8419` then `combat_manager.py:5734`), which LEAN-3 hypothesized runs without a round scope. Record the result in this plan. Any entrant whose terminal silently loses a narrated change goes to issue I-1, not into this plan.
-- **Step 1.** Wrap the provider-call statement (`:1978-1983`) in its own `try`:
-  - `LiveProviderSuperseded`: re-raise.
-  - `LiveProviderCompletedError`: `provider_deterministic`. Log `FAILURE: T079 provider refused <name> (deterministic, <http_status>)` and return `False`.
-  - Any other `ProviderCallError`: `provider_handback`. Log `T079 provider call for <name> returned to caller (<class>)` and return `False`.
-  - Anything else: re-raise into the existing handlers, where it counts as `completed_invalid`.
-  - The live transport already classified the error, so no second classifier is imported (SP-1, SP-4, LEAN-4).
-- **Step 2.** In the loop-level generic handler (`:2505-2507`), re-raise `LiveProviderSuperseded` unconditionally. Drop the `commit_guard is not None and` condition.
-  - The post-commit validator handlers at `:2451` and `:2469` keep their condition. They run after the primary commit; raising there would report a committed update as failed.
-- **Step 3.** Replace the per-iteration `attempt <= max_attempts` exits (`:2115`, `:2242`, `:2269`, `:2552`) with one total count of `completed_invalid` outcomes (`completed_invalid_count`, never reset: LEAN-6).
-  - The ordinary path ends at the D-432-1 bound.
-  - The staged path (`structural_reissue=True`) keeps its unbounded correction loop for this class. That is unchanged behavior, and the pre-existing split is issue I-4 drafted.
-- **Step 4.** The debug field `attempt` (`:2001`, `:2015`) stays: it is the call ordinal for each T079 answer. The terminal line at `:2569` becomes `FAILURE: T079 answers stayed invalid for <name> (<n> completed-invalid answers)`.
+   ```
+   Your previous answer was {} (no character-sheet field changes). If the described change alters any field on this sheet (hit points, spell slots, equipment, ammunition, currency, experience, conditions or any other field), return those fields now. If it changes nothing on the sheet, return {} again.
+   ```
 
-**Task 4. Documentation.**
-- `docs/architecture/provider-routing.md`, the T079 paragraph at `:54`: the class-keyed exit and the confirmed `{}` no-change contract.
-- `docs/architecture/travel-transitions.md`, step 6 (`:48`) and the crash/restart steps (`:67-71`): the staged-sibling `provider_deterministic` terminal (end state 4) and supersession propagation (end state 6) (CUST-2).
-- `docs/audits/2026-09-11-issue-357-armor-schema-contract-plan.md`: no change. This plan cites it and adds no competing mechanism.
-- #193 Part 5: append D-432-1 and D-432-2 once the owner rules (NEQ-LEDGER-01).
+   - The note is appended exactly as the existing correction notes are (`messages[-1]["content"] += ...`). No count or length bound applies.
+   - A `{}` answer while the flag is set is accepted: `info("T079 confirmed no mechanical change for <name>")`. It then continues through the existing completeness check, preparation and commit, unchanged.
+4. **Disclosed limits.**
+   - After confirmation, T079 is the only authority on "no mechanical change". The completeness regex (`:1151-1251`) is not a safeguard (I-2).
+   - The note lists field types, so it is a leading prompt (LEAN2-3). Acceptance treats any post-note change the narration did not claim as FAILED.
+   - Worst case on the ordinary path: `{}`, note, `{}`, then INCOMPLETE from the regex, repeated to the bound. That is 6 T079 calls instead of today's 3 (GL2-3).
+
+**Task 2: withdrawn in r2** (section 2, O3). The number is kept so that ledger references stay stable.
+
+**Task 3: class-keyed exit (B2-vii; D-432-1).**
+
+- **Step 0 (audit, before code).** Commit the entrant table. Columns: caller, file:line, live scope present?, reachable?, terminal on `False`, terminal on supersession. Rows:
+  - `effects_runtime.py:98` and `:130` (via `action_handler.py:3835`);
+  - `effects_runtime.py:253` (unreachable: #241);
+  - `combat_manager.py:5734` (live: `:3303-3305`);
+  - `process_effect_expirations.py:54` (non-live: `main.py:8810`; #300);
+  - `process_effect_expirations.py:101` (zero production callers, only `__main__`);
+  - `update_character_effects.py:740` (live, through `effects_runtime.py:104`);
+  - the terminal-mode kickoff path (non-live: `main.py:8713-8717` -> `1165`);
+  - the zero-caller wrappers `updatePlayerInfo`, `updateNPCInfo`, `update_multiple_characters_parallel`, `update_party_parallel` (`:2574-2830`).
+- **Step 1.** Wrap the call (`:1978-1983`) in its own `try` that catches only `LiveProviderCompletedError`. That exception becomes `provider_deterministic`: log `FAILURE: T079 provider refused <name> (deterministic, <http_status>)` and return `False`. Every other exception propagates unchanged, and supersession reaches Step 2's handler.
+- **Step 2.** In the loop-level generic handler (`:2505-2507`), re-raise `LiveProviderSuperseded` unconditionally by dropping `commit_guard is not None and`.
+  - The post-commit handlers at `:2451` and `:2469` keep their condition. They run after the primary commit, and raising there would report a committed update as failed.
+  - Warrant: #432's class-keyed mandate (supersession is not an unusable answer) plus the A3(e) control arm on main before this hunk lands (LEAN2-6).
+- **Step 3.** Replace the counting.
+  - `bounded_failure_count` counts every `bounded_failure` and is never reset.
+  - The loop condition at `:1971` becomes `while structural_reissue or bounded_failure_count < BOUND`.
+  - The per-site `return False` exits at `:2115`, `:2242` and `:2269` are deleted, so the bound is checked in one place.
+  - The tail at `:2552-2556` reads the same count.
+  - `attempt` stays only as the debug call ordinal (`:2001`, `:2015`).
+  - R3 check: after the change, `grep -nE "attempt (<=|<|==) max_attempts" updates/update_character_info.py` returns nothing.
+- **Step 4.** The terminal line at `:2569` becomes `FAILURE: T079 answers stayed invalid for <name> (<n> bounded failures)`.
+
+**Task 4: documentation.**
+
+- `docs/architecture/provider-routing.md`, T079 paragraph (`:54`): state the class-keyed exit and the confirmed `{}` contract.
+- `docs/architecture/save-load-reset-lifecycle.md:198-199`: "unguarded callers keep their existing behavior" becomes "unguarded T079 callers now propagate supersession out of the loop (#432)" (GL2-1).
+- `docs/architecture/travel-transitions.md`: no change. Its staged-sibling flow is unreachable on main until #241 is fixed, and this plan does not change that terminal (CUST2-1).
+- #193 Part 5: append D-432-1..3 once ruled (NEQ-LEDGER-01).
 - Issue comments after landing:
   - #432 and #324: landed scope.
-  - #431: after Task 1 a confirmed `{}` commits, so a `{}` caused by context lost beyond the 10-message window would now be accepted (NL-2).
+  - #431: a confirmed `{}` is now committed, which interacts with the history window (NL-2).
   - #357: the A2a result.
+  - #300: the reversal entrant's handling.
 
-**Task 5. Acceptance (section 8).** Rows run serially, one operation at a time.
+**Task 5: acceptance (section 8).** Serial, one operation at a time.
 
 ## 6. GL-1 Behavioral Contract
 
+Dispositions use GL-1 tokens.
+
 | Changed element | Origin | Goals | Disposition |
 |---|---|---|---|
-| `{}` rejection (`:1143-1144`, raise `:2068-2073`) | 36bd7ed0 (2026-07-14, no issue) via 715732d5; goal from 12ddb548 (HIGH-6); engine-effect exemption 3525150b | (a) never report success when a real change produced nothing; (b) reject dicts with only unknown keys; (c) do not silently no-op on Gemini narration | (a) PRESERVED in part: a `{}` gets one typed confirmation (Task 1). A second `{}` makes T079 the authority, which D-432-2 discloses. (b) PRESERVED (`:1146-1148`). (c) PRESERVED: narration fails `json.loads`, or yields unknown keys, under schema forcing. |
-| Single `attempt <= max_attempts` budget (`:1921-1922`, `:2115`, `:2242`, `:2269`, `:2552-2556`) | f5e84dd5 (2025-05-31, "Implement unified character system") | Every update ends and returns; the effect-reversal caller relies on that return (`main.py:8810-8816`) | PRESERVED for `completed_invalid` (D-432-1). `provider_deterministic`: the retries are REMOVED, and the call stops at once (D-432-1). `provider_handback`: the retries are REMOVED, and the error is returned to the caller at once. `superseded`: re-raised. |
-| `structural_reissue` bypass (`:1971`, `:2115`, `:2242`, `:2269`, `:2552`) | b7f7a863 (2026-08-24, "fix(travel): make agentic transitions recoverable"); `commit_guard` wiring at `:1428/:1437` from 2e6ad1f8 (#323), which has zero production callers | A required staged sibling is fixed before movement and never fails the travel turn by count | PRESERVED for `completed_invalid`. `provider_deterministic` now ends the staged preparation (end state 4). |
-| Supersession re-raise condition (`:2506`) | 2e6ad1f8 (2026-09-13, #323 baseline) | Re-raise for the #323 guarded caller | Widened to every path (FF-1). The goal is kept, and the endless staged loop and wasted ordinary attempts are removed. |
-| #357 pre-gate armor recovery (`:1519-1549`) | 948ff048 (#357; D-357-1..4) | Recover damaged armor through T051 in the same atomic write; never loosen the schema | UNCHANGED. Listed because it sits in the changed function. |
-| Schema-invalid branch and its correction notes (`:2267-2288`) | f5e84dd5 (the gate); 31f5e8db (2025-06-28, the notes: "learn from validation failures", item_subtype values) | Never commit an invalid sheet; give the model actionable feedback | UNCHANGED, apart from counting as `completed_invalid` |
-| Completeness regex (`:1151-1259`) | 36bd7ed0 via 715732d5 | Stop partial application of mechanically coupled changes | UNCHANGED in code. No longer described as a `{}` safeguard. AP-7 issue I-2 drafted. |
-| Success consumers of a confirmed no-change: `effects_runtime.py:137-147` (rest lifecycle, keyed on prose; pre-existing) and `:101-104` | 3525150b lineage | Run the effect lifecycle after a successful update | PRESERVED: they run on every success, as today |
+| `{}` rejection (`:1143-1144`, raise `:2068-2073`) | 715732d5 (first in 36bd7ed0, not on main, no issue); goal from 12ddb548 (HIGH-6, not on main); engine-effect exemption 3525150b | (a) never report success when a real change produced nothing; (b) reject dicts with only unknown keys; (c) no silent no-op on Gemini narration | (a) RETIRED in part (D-432-2): one typed confirmation, after which T079 is the authority. (b) PRESERVED (`:1146-1148`). (c) PRESERVED: narration fails `json.loads` or yields unknown keys; the schema-None guard at `:1952-1965` is unchanged. |
+| Single `attempt <= max_attempts` budget (`:1921-1922`, `:1971`, `:2115`, `:2242`, `:2269`, `:2552-2556`) | f5e84dd5 (2025-05-31; moved in 2c472143); per-site exits b7f7a863 | Every update terminates and returns; the reversal caller relies on the return | PRESERVED for `bounded_failure` (D-432-1(i)). RETIRED for `LiveProviderCompletedError` retries (D-432-1(ii); #240 contract; OBSERVED futile on quota). RETIRED for supersession counting (D-432-1(iii)). |
+| `structural_reissue` bypass (`:1971` and the exits) | b7f7a863; `commit_guard` wiring at `:1429/:1438` from 2e6ad1f8 with zero production callers | A required staged sibling is fixed before movement | PRESERVED for `bounded_failure`. The staged path is unreachable on main (#241). |
+| Supersession re-raise condition (`:2506`) | 2e6ad1f8 (#323 baseline, "No behavior change") | Re-raise for the #323 guarded caller; the documented goal "unguarded callers keep their existing behavior" (`save-load-reset-lifecycle.md:198-199`) | RETIRED for unguarded T079 callers (D-432-1(iii)). The doc line is updated (Task 4). |
+| #357 pre-gate armor recovery (`:1519-1549`) | 948ff048 (#357; D-357-1..4) | Recover damaged armor through T051 in one atomic write | UNCHANGED |
+| Schema-invalid branch and correction notes (`:2267-2288`) | f5e84dd5; notes 31f5e8db | Never commit an invalid sheet; give actionable feedback | UNCHANGED except that it counts as `bounded_failure` |
+| Completeness regex (`:1151-1259`) | 715732d5 lineage | Stop partial application of coupled changes | UNCHANGED; no longer called a `{}` safeguard (I-2) |
+| Success consumers of a confirmed no-change: `effects_runtime.py:137-147` (rest lifecycle, keyed on prose) and `:101-104`; reversal claim completion at `update_character_effects.py:563-568` (COMPAT-3) | 3525150b lineage | Run the lifecycle after a successful update; complete a reversal claim on success | PRESERVED (they run on every success). The prose keying is issue I-2. The reversal-claim effect of a wrong confirmed `{}` is disclosed in D-432-2. |
 
-**Not true in r1, and corrected:** "No deletion of an except, retry ... pattern". Task 3 removes the retries for `provider_deterministic` and `provider_handback`. Both are listed above.
+Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedError` retries, and supersession reissues.
 
 ## 7. FS-1
 
 | Hit | Exhaustion terminal | Class |
 |---|---|---|
-| `completed_invalid_count` bound (ordinary path) | End state 3 | TERMINATES for the `completed_invalid` class only. Legal only with the D-432-1 ratification (B2-iv; B2-vii scoped to a deterministic class). |
-| `provider_deterministic` stop (N=1) | End state 4 | TERMINATES. Legal only with the D-432-1 ratification. #240 is a code docstring, not a ledger entry. |
-| `provider_handback` (N=1) | End state 5 | CONTINUES at the caller for the verified non-live entrant (reversal re-queued as pending, `update_character_effects.py:524-528`). The Step 0 table must show a CONTINUES terminal for every other non-live entrant, or the entrant is issue I-1. |
-| `time.sleep(1)` before a reissue (`:2554`) | A reissue | CONTINUES |
-| Staged-path unbounded `completed_invalid` | A reissue with a correction note | CONTINUES. Pre-existing; the split is issue I-4. |
-| `_fire_primary_with_retry(max_attempts=3)` for non-live empties (`multi_model_capture.py:350-377`) | `ProviderEmptyResponse`, which becomes `provider_handback` | Inherited; flagged, not added |
-| `.effects.lock` 30 s (`update_character_info.py:1412-1422`; `effects_runtime.py:109-115`, `:283-287`) | Busy turned into a refusal | Inherited B2-ii. Flagged, not added: #324 (2026-09-10 comment) covers `update_character_info.py`; issue I-3 drafted for `effects_runtime.py`. |
+| `bounded_failure_count < BOUND` (ordinary) | End state 3 | TERMINATES for the `bounded_failure` class; legal only with D-432-1(i). Non-live `ProviderCallError` is included, unchanged from today: CONTINUES at the reversal entrant (pending/resume), TERMINATES at the terminal kickoff (I-8). |
+| `provider_deterministic` (N=1) | End state 4 | TERMINATES; legal only with D-432-1(ii), for the class as coded (section 9) |
+| Confirmation (one note, then acceptance) | End state 2 | CONTINUES |
+| `time.sleep(1)` before a reissue (`:2554`) | Reissue | CONTINUES |
+| Staged-path unbounded `bounded_failure` | Reissue with a correction note | Unreachable on main (#241). The notes grow the request without trimming; a context-length 4xx would become `provider_deterministic`. Split: I-4. |
+| `_fire_primary_with_retry(max_attempts=3)` for non-live empties (`multi_model_capture.py:350-377`) | `ProviderEmptyResponse` becomes `bounded_failure` | Inherited. CONTINUES at the reversal entrant; TERMINATES at the kickoff (I-8). |
+| OpenAI SDK default `max_retries=2` on the non-live path (`utils/openai_client.py:86-89`; zeroed only with a timeout, `api_client.py:800-801`) | `ProviderCallError` becomes `bounded_failure` | Inherited; flagged, not added |
+| `.effects.lock` 30 s (`update_character_info.py:1412-1422`; `effects_runtime.py:109-115`, `:283-287`) | Busy turned into a refusal | Inherited B2-ii; #324 comment, I-3 |
 
 ## 8. Acceptance (NEQ-ACCEPT-01..03; evidence block NEQ-EVIDENCE-04 on every row)
 
-**Common conditions for every row.**
-- Headless, real OpenAI, current bindings.
-- Driver: `run_headless.py serve --game-dir` plus the kit's `242-down-scene/build_combat.py` / `drive_combat.py` pattern. The harness named in #193 p13 does not exist on main (ACC-6).
-- Every fixture is built fresh, with `prompts/` and `schemas/` refreshed from the checkout, and every prompt file's hash is recorded (NEQ-REVIEW-16, 2026-09-04).
-- `COMPRESSION_ENABLED` stays at its default (True). The difference from O1 is disclosed.
-- T079 raw answers come from the capture directory, not the trimmed `debug/character_updates_log.json`.
-- Every row lists every T079, T078 and T051 call with: response.model; latency from the player input; capture line; T079 history length compared with the 10-message window (NL-2); and whether each post-commit validator hit its cache or made a model call (NL-3).
-- Every row prints each T079 answer next to its change string and the narration. Any `{}`, confirmed or not, next to a change string with a mechanical effect is FAILED.
-- The Player-Experience seat reviews every row's transcript. Five narration claims are spot-checked against disk (PX-6).
-- Runs are serial.
+**Common conditions**
 
-**Rows.**
-- **A0. Real-save scan.** Done read-only in round 1 (section 2): the owner's live sheets are clean. It is re-run with the literal command at implementation time over `modules/`, `data/`, root `characters/` and every kit fixture.
+- **Harness and driver.** Headless, real OpenAI, current bindings. Driver: `run_headless.py serve --game-dir`, following the kit's `242-down-scene/build_combat.py` / `drive_combat.py` pattern (the harness named in #193 p13 does not exist on main).
+- **Fixtures.** Built fresh, with `prompts/` and `schemas/` refreshed from the checkout. Record the hash of every prompt file.
+- **Inline prompt text.** The T079 prompt and the note are inline code, so for each call record the parsed note text and the capture's `source_revision`.
+- **Compression.** `COMPRESSION_ENABLED` stays at its default (True).
+- **Where T079 answers come from.** The capture directory.
+- **Per-call record (item 1).** Every T078, T079, T051, T052 and T054 call, including the staged advisory validator if reached. For each call:
+  - `response.model`;
+  - latency relative to the player input;
+  - capture line;
+  - whether each post-commit validator hit its cache or made a model call (NL-3).
+
+  For T079 also record:
+  - the source `conversation_history.json` length at call time;
+  - the number of history messages sent;
+  - for every `{}` answer, whether the message that sets the change's context fell outside the sent window (NL-2, NL2-1).
+
+- **Item 4 grep, per row.**
+
+  ```
+  T079 confirmed no mechanical change
+  T079 provider refused
+  T079 answers stayed invalid
+  could not be completed safely
+  Final consolidated update failed
+  blocked_conflict
+  "status": "fallback"
+  LiveProviderSuperseded
+  ```
+
+  Zero hits are stated as zero.
+
+- **Status duration.** Record the "Updating character info..." status duration per update.
+
+**Verdict rules (every row)**
+
+- An ACCEPTED `{}` on a change string with a mechanical effect is FAILED.
+- A post-note answer that changes a field the change string does not claim is FAILED.
+- A first `{}` followed, after the note, by a correct non-empty answer is A3(g) PASSED.
+
+**Review**
+
+- The Player-Experience seat reviews every row's transcript.
+- Five narration claims are spot-checked against disk.
+- A3 counts only runs on the branch revision.
+
+**Rows**
+
+- **A0. Real-save scan.** Run this literal command, read-only:
+
+  ```
+  python3 <kit>/432-433/scan_sheets.py schemas/char_schema.json <root>
+  ```
+
+  Roots: `/mnt/c/dungeon_master_v1/modules`, `/mnt/c/dungeon_master_v1/characters`, `/mnt/c/agent-room-fleet-kit/local-data`. The script is the Consumer/Compat seat's round-1 scanner, copied into the kit folder before use. Report counts per class.
+
 - **A1. No-change answer at the play layer (O1).**
-  - Setup: branch; the Boggard Marsh fixture; the marsh-raw-1 command sequence up to the quicksand escape.
+  - Setup: branch; the Boggard Marsh fixture from `build_combat.py`, whose HP-1 edit is disclosed; the marsh-raw-1 command sequence with O1's roll strings pinned (for example "I rolled 6/17 on the d20.").
   - PASSED when all of these hold:
     - the DM emits an `updateCharacterInfo` with no mechanical effect;
-    - T079 answers `{}`, the confirmation follows, and `{}` again;
-    - the log shows `T079 confirmed no mechanical change`;
-    - the mechanical fields are byte-equal before and after;
+    - T079 answers `{}`, the note is sent, and T079 answers `{}` again;
+    - the log line is present;
+    - on the full-sheet diff, every differing path is tied to a named normalizer or T051/effects-validator log line;
     - the transcript has no `could not be completed safely` line.
-  - NOT-REACHED if the DM emits no such action, or if T079 answers non-empty.
-- **A1b. Updater-layer diagnostic (O1 input verbatim). Never cited as PASSED.**
-  - Setup: a fresh fixture directory whose Eirik pre-state is the product backup `eirik_hearthwise.backup_update_20260918_235325.json` (1/54, disclosed).
-  - Call the production `update_character_with_effects("eirik_hearthwise", <O1 change string>, party, action_context=<O1 captured action_context>)`.
-  - Record the parsed T079 requests next to the O1 capture, both answers, the return value, and the sheet diff (no non-empty -> empty transition, NEQ-SCHEMA-02).
-  - Evidence class: OBSERVED at the updater layer, outside a live scope. It is diagnostic only.
-- **A2a. O3 forensics on today's main, before any code (ACC-1).**
-  - Setup: main 7b20bc7d; `issue116/clean-reset-fixture/saved_games/save_20260907_125556` restored into a fresh game directory with refreshed prompts and schemas.
-  - One ordinary-path command changes Kira's sheet (29/40 HP; three armor pieces with `dex_limit` 99), for example "Kira takes a short rest and binds her wounds".
-  - Record the T051 pre-check calls, T051's answers, T079's answers and the outcome.
-  - If the change commits with `dex_limit` repaired, O3 is not reproduced on main: record the result on #357 and do nothing here.
-  - If T051 exhausts and T079 is refused, escalate:@owner under #357 (two-strikes; D-357-2/4).
-- **A3. Gate polarity (NEQ-ACCEPT-02).** Each item is PASSED if reached in A1, A2a or a pinned run, and otherwise stated NOT-REACHED. No synthetic probe is added.
-  - (a) `provider_deterministic` stop, end state 4.
+  - A post-note non-empty answer is judged by the verdict rules.
+  - NOT-REACHED if no such action occurs.
+
+- **A1b. Updater-layer diagnostic. Never cited as PASSED.**
+  - Setup, in a fresh fixture directory:
+    - Eirik's pre-state = the product backup (1/54, disclosed);
+    - `conversation_history.json` = the `game-marsh-raw-1` file truncated before index 46;
+    - record the effects-migration state and `party_tracker.json`.
+  - Call `update_character_with_effects("eirik_hearthwise", <O1 string>, party, action_context=<O1 capture entry 0's "Accepted action context" message>)`.
+  - Diff the first parsed request against O1 capture entry 0. Record both answers, the return value and the sheet diff.
+
+- **A2a. O3 forensics on main 7b20bc7d. Informs #357; not acceptance of this plan.**
+  - Setup: restore `issue116/clean-reset-fixture/saved_games/save_20260907_125556` only through the product restore path (`run_headless.py:382-407`) into a fresh game directory with refreshed prompts.
+  - Before the command, record Kira's on-disk `dex_limit` values.
+  - Issue one ordinary command that changes Kira's sheet, for example "Kira takes a short rest and binds her wounds".
+  - Record the T051 pre-check, T051's answers, T079's answers and the outcome.
+  - If the DM emits no update for Kira, the row is NOT-REACHED.
+  - If the change commits with the armor repaired, record that on #357.
+  - If T051 exhausts and T079 is refused: escalate:@owner under #357.
+
+- **A2b. Parity.** The A2a scenario on the branch. Every T079 call is judged by the verdict rules and A4.
+
+- **A3. Gate polarity.** Each item is PASSED if reached on the branch. Otherwise it is NOT-REACHED, stated per item. No synthetic probe is added. If (a) and (f) are both NOT-REACHED, D-432-3 applies.
+  - (a) `provider_deterministic`: one `T079 provider refused` line, then end state 4. The game accepts the next input.
   - (b) The completeness INCOMPLETE correction still fires.
-  - (c) A staged travel sibling (`updateCharacterInfo` alongside `transitionLocation`) commits. Pinned run: travel with a sibling that changes the sheet.
-  - (d) Combat-end entrant: the O2 path. Record the terminal.
-  - (e) Supersession: a headless Load issued while a T079 call is in flight completes, with no hang and no orphan provider child.
-    - Control arm on main for (e) on the staged path: expected hang (FF-1). The attempt is bounded by the operator stopping it and is reported with its artifacts.
-    - (e) is attempted on the ordinary path first. It is PASSED when Load completes and the transcript shows the restore.
-  - (f) `completed_invalid` at the bound.
-- **A4. Parity.** For every T079 call in A1, A2a and A3, the change string and sheet diff are shown side by side and judged by Claude.
-  - Zero `{}` answers are accepted on a change string with a mechanical effect.
+  - (c) Staged travel sibling: NOT-REACHABLE on main (#241). Not attempted.
+  - (d) Combat-end entrant. PASSED when all of these hold:
+    - `{}`, the note, `{}`;
+    - the confirmed log line;
+    - no `Final consolidated update failed` line (`combat_manager.py:5735-5736`).
+
+    NOT-REACHED if no legacy combat is won.
+  - (e) Supersession on the ordinary path. Trigger: send the restore command while T079 is in flight. In-flight proof: the restore send time falls between the `STATE_CHANGE: Attempt` debug line and the capture timestamp plus `latency_s`.
+    - Control arm on main, run before Step 2 lands (the AP-5 observation): it shows `FAILURE: Error during update (attempt n)` carrying `LiveProviderSuperseded`, repeated, then `Failed to update character`.
+    - Branch arm PASSED when all of these hold:
+      - no such lines after the supersession claim;
+      - the Load completes and the transcript shows the restore;
+      - `ps --ppid <serve pid>` after the result shows no live-provider child.
+    - The safe-failure line during the Load is expected on both arms (I-9) and is recorded, not judged.
+    - The staged arm is NOT-REACHABLE (#241).
+  - (f) `bounded_failure` at the bound: end state 3.
+  - (g) Confirmation gate: the note appears verbatim as the newest user text of the next T079 request (capture `input.messages`), and the game continues.
+
+- **A4. Parity across A1, A2b and A3.**
+  - Every T079 call's change string and sheet diff are shown side by side and judged by Claude.
+  - Zero accepted `{}` answers on mechanical changes.
   - Zero non-empty -> empty transitions.
-  - Changes the narration did not claim are listed (PX-2).
+  - Unclaimed changes are FAILED.
+  - Any effect-reversal T079 call is tagged with its claim record before and after (`update_character_effects.py:563-568`). NOT-REACHED if none occur.
+
 - **Hygiene.**
-  - ASCII-only touched Python.
-  - `pyflakes` undefined-name check on changed files (NEQ-OPS-05).
+  - ASCII only in touched Python.
+  - `pyflakes` undefined-name check on changed files.
   - No-Limits and Single-Path sentinel greps over the diff, pasted raw.
+  - The local untracked test `/mnt/c/dungeon_master_v1/tests/test_t079_same_character_serialization.py:13` asserts the old `{}` rejection. It is updated locally (D-9: not tracked).
 
 ## 9. Owner decisions (execution blocked until ruled, NEQ-REVIEW-09)
 
-**D-432-1. T079 class-keyed exit (B2-iv/B2-vii; a new ledger class like D-VR-15/D-VS-12).** Ratify all four of:
-- (i) On the ordinary path, 3 completed-invalid T079 answers in total end the update with `False`. The terminals are exactly end state 3:
-  - Ordinary action: the safe-failure line after the narration, with the narrated change absent from the sheet.
-  - Combat end: log only (issue I-1).
-  - Reversal: resumes.
-- (ii) `LiveProviderCompletedError` (4xx, quota, schema rejection, as the transport already classifies it) ends the update at once on both paths. The staged terminal is end state 4.
-- (iii) Non-live provider errors are returned to the caller at once and never counted.
-- (iv) Supersession always propagates.
-- Recommendation: ratify. The alternative, unbounded correction on the ordinary path, risks an unwinnable loop (the #194 scar).
+**D-432-1: T079 class-keyed exit.** A new ledger class, like D-VR-15 and D-VS-12. Ratify all three:
 
-**D-432-2. Accept `{}` as T079's typed "no change" answer after one confirmation.**
-- Disclosed: after the confirmation, T079 alone decides that a change has no mechanical effect. A lazy second `{}` to a real change such as "takes 8 damage" would commit as no change.
-- No observed case exists: across 7 debug logs and 65 T079 answers, the only `{}` answers were O1's correct ones.
-- For an effect reversal, a confirmed `{}` completes the durable reversal claim (`update_character_effects.py:563-568`) instead of releasing it for retry, so a wrong confirmed `{}` there loses that reversal (COMPAT-3).
-- Cost: one extra T079 call per no-change request.
-- Recommendation: yes.
+- **(i) Bound.** On the ordinary path, 3 `bounded_failure` outcomes in total end the update with `False`. The terminals are exactly end state 3.
+  - Non-live provider errors stay in this bound, as today. Their transient class belongs to a live scope for the terminal kickoff (I-8) and to #300 for the reversal entrant, which already resumes.
+  - This departs from #432's literal "transient failures reissue" only for those two non-live entrants. Inside a live scope, the transport already reissues.
+- **(ii) Deterministic stop.** `LiveProviderCompletedError` ends the update at once. The class is exactly what the live transport hands back as deterministic (`live_provider_call.py:781-813`):
+  - HTTP 4xx other than 408/409/429;
+  - quota codes;
+  - any error type the classifier does not recognize and that has no status or code, including a Responses stream that ends with no terminal event (`ResponsesStreamFailed("stream_ended")`, `api_client.py:680-681`).
 
-**Issue authorizations** (new public issues need the owner, per the standing rule; bodies drafted by the finding seats, R9). File each: yes/no.
-- **I-1** (PX-1/FF-3): the combat-end consolidated update failure is log-only, so narrated XP/HP/ammunition is silently absent (`combat_manager.py:5731-5741`). Evidence: `issue116/legacy-server.log:3889/3918/4035/4138`, and an owner-checkout quota 429 at combat end (`modules/logs/game_errors.log:3330-3452`).
-- **I-2** (CUST-3/GL-7): the T079 completeness check infers required fields from DM prose by regex (AP-7) (`update_character_info.py:1151-1251`).
-- **I-3** (FF-6): the `.effects.lock` 30 s deadlines in `effects_runtime.py:109-115/283-287` turn busy into a refusal (B2-ii).
-- **I-4** (SP-3): T079 termination forks on `structural_reissue`, and the `commit_guard` mode is dormant (NEQ-LEDGER-09, NEQ-CORE-08). Its twin is #375.
-- **I-5** (SP-4): provider errors are classified twice with divergent verdicts: typed `_error_disposition` versus prose-matching `classify_provider_error`.
-- **I-6** (FF-7, mechanism CODE-PROVEN, reachability HYPOTHESIS): staged siblings for the same character are prepared from one starting sheet, so the later one returns `blocked_conflict`.
+  Whether `stream_ended` should instead be reissued is issue I-7. Until then this stop applies to it. For T079 today that means 1 attempt instead of 3 on an unobserved class.
+
+  The player sees the generic safe-failure line, not the provider's own message such as "add credit" (I-10).
+- **(iii) Supersession.** Supersession always propagates out of the T079 loop. The ordinary action handler still turns it into the safe-failure line during the Load (I-9).
+
+Recommendation: ratify. The alternative, unbounded correction on the ordinary path, risks an unwinnable loop (the #194 scar).
+
+**D-432-2: the no-change answer.** The trade in player terms: today a correct "nothing changed" produces a visible false failure (O1, OBSERVED). After the change, a wrong "nothing changed" would leave a narrated change off the sheet with no line shown. That second case is unobserved: across 7 debug logs and 65 T079 answers, the only `{}` answers were O1's correct ones.
+
+- **(A) Confirm once, then accept** (Task 1, as written).
+  - Cost: one extra T079 call per no-change request, about 2-3 s (O1 measured 1.8-2.8 s per call). The worst case is 6 calls instead of 3.
+  - Coverage is partial. The check tests key presence only. `{"hitPoints": <current value>}` for "takes 8 damage" passes today and would still pass.
+- **(B) Accept the first `{}`.** This retires goal (a) entirely by owner ruling and costs no extra calls.
+- For an effect reversal, an accepted wrong `{}` completes the reversal claim, so the expired effect stays on the sheet (COMPAT-3).
+- Recommendation: (A).
+
+**D-432-3: gate-polarity fallback (ACC2-4).** If A3(a) and A3(f) end NOT-REACHED, the owner rules on one of:
+
+- close on CODE-PROVEN plus the owner-checkout quota record (`modules/logs/game_errors.log:3330-3452`);
+- authorize one isolated controlled-error check in the D-NPC-PARTY-5 form.
+
+Merge waits for this ruling.
+
+**Issue authorizations.** New public issues need the owner (standing rule). The bodies are drafted in `agent-room-fleet-kit/local-data/432-433/issue-drafts-I1-I6.md`, plus the r3 additions below. File each one, yes or no:
+
+- **I-1:** combat-end update failure is log-only (PX-1/FF-3).
+- **I-2:** T079 completeness and the rest lifecycle infer from prose (AP-7). Includes the negated-mention example "wishes for a long rest but presses on" (CUST-3/GL-7/CUST2-3).
+- **I-3:** `.effects.lock` 30 s busy-refusal in `effects_runtime.py` (FF-6).
+- **I-4:** `structural_reissue` termination fork plus the dormant `commit_guard` mode. Includes the post-commit fork: `:2484`/`:2509` return True only in guarded mode; on the ordinary path, a post-save diagnostics exception (`:2380-2382`) is counted and T079 is reissued after the commit (SP-3/SP2-2/GL2-4).
+- **I-5:** two provider-error classifiers with divergent verdicts (SP-4).
+- **I-6:** same-character staged siblings return `blocked_conflict` (FF-7/COMPAT2-4). Moot until #241.
+- **I-7 (new, r3):** the live `_error_disposition` falls through to `deterministic` for unrecognized errors, including `stream_ended`. A truncated stream is a lost response and may belong in `retryable_transport` (FF2-1).
+- **I-8 (new, r3):** the terminal-mode startup kickoff runs provider calls outside any live scope (`main.py:8680-8683`, `8713-8717` -> `1165`), so there is no transport reissue and no supersession (FF2-2).
+- **I-9 (new, r3):** `action_handler.py:3854` catches supersession as an action failure, so the safe-failure line appears between "Load accepted" and the restore, and `main.py:6655` is dead for character updates (PX2-2/COMPAT2-2/FF2-4).
+- **I-10 (new, r3):** the T079 deterministic stop shows the generic line. The provider's own message (`provider_errors.py:71-80`, for example "add credit") never reaches the player (PX2-3).
+
+The staged `classify_effect` TypeError was added to existing #241 on 2026-09-24 rather than filed new.
 
 ## 10. Tracked follow-ups
 
 - #433: separate plan.
-- #357: A2a result.
-- #324: validator bounds and caps.
-- #431: history window (plus the NL-2 comment).
-- #367: turn-loop provider count.
-- I-1..I-6: `escalate:@owner` until filed.
+- #357: the A2a result.
+- #241: the staged path.
+- #324, #431, #367, #300.
+- I-1..I-10: `escalate:@owner` until filed.
 
 ## 11. Resolution ledger
 
-Round 1 dispatched nine seats on r1 (6639a6f9). Verdicts:
-- BLOCKING: Custodian, Fail-Forward, Acceptance, Legacy-Contract, Player-Experience, Leanness, Single-Path, Consumer/Compat.
-- PASS: No-Limits.
+**Round 1** (nine seats on r1, 6639a6f9)
 
-The Consumer/Compat real-save scan (read-only Draft7Validator) found:
-- 137 owner sheets: 3 raw root `additionalProperties` (`inventory` holding only empty currency, purged on every update today). The pre-merge view is clean.
-- 3,645 kit sheets: 18 invalid, all armor `dex_limit` 99 (issue116 and 332-acceptance snapshots). Zero non-armor violations, zero container-level violations.
-- Every sheet that the withdrawn Task 2 would have touched is in #357's T051 class.
+- Verdicts: BLOCKING from every seat except No-Limits (PASS).
+- 44 findings, all resolved in r2 (09bfbbed). The r2 ledger rows are preserved verbatim in the git history of this file (`git show 09bfbbed:docs/audits/2026-09-24-432-t079-class-keyed-exit-plan.md`).
+- Summary:
+  - Task 2 withdrawn (SP-2, CUST-1, LEAN-1, GL-1, COMPAT-1, ACC-1).
+  - Transient branch removed (SP-1, FF-2, LEAN-2).
+  - Confirmation step (GL-3, CUST-3, LEAN-5, PX-3).
+  - Supersession re-raise (FF-1).
+  - Classifier boundary (CUST-4, FF-4, LEAN-4, GL-5, COMPAT-5).
+  - Acceptance rows (ACC-1..6, PX-2, PX-6, NL-2, NL-3).
+  - Issue drafts I-1..I-6.
+
+**Round 2** (nine seats on r2, 09bfbbed)
+
+- PASS: No-Limits, Single-Path, Legacy-Contract (LGTM).
+- BLOCKING: Custodian, Fail-Forward, Acceptance, Consumer/Compat, Player-Experience, Leanness.
+- Every round-1 row was re-verified in code: RESOLVED, except the rows reopened below.
 
 | Round | Seat | Finding | Reconciliation (NEQ-REVIEW-14) | Resolution |
 |---|---|---|---|---|
-| 1 | Single-Path | SP-1: transient branch is a second transport-reissue path | GENUINE_FIX | task-3 (branch removed; `provider_handback`) |
-| 1 | Single-Path | SP-2: Task 2 duplicates #357's single path | GENUINE_FIX | task-2 withdrawn; A2a |
-| 1 | Single-Path | SP-3: `structural_reissue` termination split, dormant `commit_guard` | PRE_EXISTING_OUT | escalate:@owner (I-4) |
-| 1 | Single-Path | SP-4: two classifiers; "one classifier exists" false | PRE_EXISTING_OUT + wording | fixed-inline; escalate:@owner (I-5) |
-| 1 | Single-Path | SP-5: Task 1's relation to the `:2068-2070` exemption | plan-polish | fixed-inline (Task 1) |
-| 1 | Custodian | CUST-1: Task 2 rests on pre-#357 evidence | GENUINE_FIX | task-2 withdrawn; A2a |
-| 1 | Custodian | CUST-2: travel schematic, p5 cite, #357 relation | GENUINE_FIX | task-4; fixed-inline (section 4) |
-| 1 | Custodian | CUST-3: regex presented as the `{}` safeguard (AP-7) | GENUINE_FIX + PRE_EXISTING_OUT | task-1 (confirmation), D-432-2 disclosure; escalate:@owner (I-2) |
-| 1 | Custodian | CUST-4: classifier boundary undefined | GENUINE_FIX | task-3 step 1 |
-| 1 | Fail-Forward | FF-1: supersession swallowed; staged loop blocks Load | GENUINE_FIX | task-3 step 2; A3(e) |
-| 1 | Fail-Forward | FF-2: transient branch freezes the main loop | GENUINE_FIX | task-3 (branch removed) |
-| 1 | Fail-Forward | FF-3: combat-end terminal is silent | PRE_EXISTING_OUT | D-432-1 disclosure; escalate:@owner (I-1) |
-| 1 | Fail-Forward | FF-4: classifier input set | GENUINE_FIX | task-3 step 1 |
-| 1 | Fail-Forward | FF-5: empty class unnamed | GENUINE_FIX | task-3 (`provider_handback` includes `ProviderEmptyResponse`); D-432-1(iii) |
-| 1 | Fail-Forward | FF-6: busy->refuse in effects_runtime untracked | PRE_EXISTING_OUT | escalate:@owner (I-3) |
-| 1 | Fail-Forward | FF-7: same-character sibling conflict | PRE_EXISTING_OUT (HYPOTHESIS reachability) | escalate:@owner (I-6) |
-| 1 | Fail-Forward | FF-8: spec-pin lock text; caller list | plan-polish | fixed-inline (section 4, section 3) |
-| 1 | Leanness | LEAN-1 = SP-2 | GENUINE_FIX | task-2 withdrawn |
-| 1 | Leanness | LEAN-2 = FF-2 | GENUINE_FIX | task-3 |
-| 1 | Leanness | LEAN-3: entrant list incomplete | GENUINE_FIX | task-3 step 0 |
-| 1 | Leanness | LEAN-4 = FF-4 | GENUINE_FIX | task-3 step 1 |
-| 1 | Leanness | LEAN-5 = CUST-3 | GENUINE_FIX | task-1; D-432-2 |
-| 1 | Leanness | LEAN-6: "consecutive" reset undefined; unread debug field | GENUINE_FIX | task-3 step 3 (total, no reset); Task 2 field gone |
-| 1 | Leanness | LEAN-7: artifact root path | plan-polish | fixed-inline |
-| 1 | Player-Experience | PX-1 = FF-3 | PRE_EXISTING_OUT | D-432-1 disclosure; escalate:@owner (I-1) |
-| 1 | Player-Experience | PX-2: O3 misstated (HP 42 was a misread) | GENUINE_FIX | fixed-inline (O3); task-5 (A4 unclaimed changes) |
-| 1 | Player-Experience | PX-3: `{}` vs mechanical change unguarded | GENUINE_FIX | task-1; task-5 (FAILED rule) |
-| 1 | Player-Experience | PX-4: staged terminal unstated | plan-polish | fixed-inline (end state 4) |
-| 1 | Player-Experience | PX-5: no status during transient reissue | moot | the transient branch was removed (task-3) |
-| 1 | Player-Experience | PX-6: transcript review per row | plan-polish | fixed-inline (section 8) |
-| 1 | Acceptance | ACC-1: A2 contradicted by #357 | GENUINE_FIX | task-5 (A2a) |
-| 1 | Acceptance | ACC-2: A1b input differs from O1 | GENUINE_FIX | task-5 (A1b) |
-| 1 | Acceptance | ACC-3: gate polarity incomplete | GENUINE_FIX | task-5 (A3 a-f) |
-| 1 | Acceptance | ACC-4: A4/A1 PASS not falsifiable | GENUINE_FIX | task-5 (A1, A4) |
-| 1 | Acceptance | ACC-5: evidence-block gaps | GENUINE_FIX | task-5 (common conditions) |
-| 1 | Acceptance | ACC-6: harness absent; A0 scope; stale prompts | plan-polish | fixed-inline (section 8) |
-| 1 | Legacy-Contract | GL-1 = SP-2 (plus #357 row omitted) | GENUINE_FIX | task-2 withdrawn; GL-1 row added |
-| 1 | Legacy-Contract | GL-2: index-free key passes delta-introduced violations | GENUINE_FIX | moot (task-2 withdrawn) |
-| 1 | Legacy-Contract | GL-3: HIGH-6 goal (a) unproven | GENUINE_FIX | task-1 (confirmation); D-432-2 |
-| 1 | Legacy-Contract | GL-4: origins, "no retry deleted", end state 2, `attempt` field | plan-polish | fixed-inline (sections 4 and 6); task-3 step 4 |
-| 1 | Legacy-Contract | GL-5 = FF-4 | GENUINE_FIX | task-3 step 1 |
-| 1 | Legacy-Contract | GL-6: deterministic stop needs a ledger cite | GENUINE_FIX | D-432-1(ii) |
-| 1 | Legacy-Contract | GL-7: success-path consumers; AP-7 issue | GENUINE_FIX + PRE_EXISTING_OUT | GL-1 row added; escalate:@owner (I-2) |
-| 1 | No-Limits | NL-1: uncapped correction text | plan-polish | fixed-inline (Task 1 note unbounded; Task 2 withdrawn) |
-| 1 | No-Limits | NL-2: `{}` from context lost past the 10-message window | GENUINE_FIX | task-5 (history length recorded); task-4 (#431 comment) |
-| 1 | No-Limits | NL-3: more calls through #324's caps | GENUINE_FIX | section 1 names the dependency; task-5 (cache vs call recorded) |
-| 1 | Consumer/Compat | COMPAT-1 = SP-2 (O3 predates #357) | GENUINE_FIX | task-2 withdrawn; A2a |
-| 1 | Consumer/Compat | COMPAT-2: container-level errors defeat the error key | moot | task-2 withdrawn |
-| 1 | Consumer/Compat | COMPAT-3: a `{}` now completes a durable reversal claim (`update_character_effects.py:563-568`) instead of releasing it | GENUINE_FIX (disclosure) | D-432-2 disclosure; task-5 (A4 records every reversal answer) |
-| 1 | Consumer/Compat | COMPAT-4 = end state 4 | plan-polish | fixed-inline (end state 4) |
-| 1 | Consumer/Compat | COMPAT-5 = FF-4 | GENUINE_FIX | task-3 step 1 |
-| 1 | Consumer/Compat | Polish: end state 2 before/after; GL-1 bypass | plan-polish | fixed-inline (section 4; Task 1 and GL-1 name the `:2068-2070` clause) |
-| 1 | Consumer/Compat | FYI: on `{}`, the unmigrated path (`effects_runtime.py:98-104`) now also runs `update_character_effects` (one more model call); the migrated path now runs the rest lifecycle on a no-change rest (fixes a latent skipped rest) | fyi | recorded |
+| 2 | Player-Experience | PX2-1: staged path raises TypeError before T079; end state 4 mis-traced (engine stop) | GENUINE_FIX (plan text) + PRE_EXISTING_OUT | fixed: sections 3, 4, 6, 7; A3(c)/(e) staged NOT-REACHABLE; Task 4 travel doc unchanged; #241 comment (issue-#241) |
+| 2 | Consumer/Compat | COMPAT2-1 = PX2-1 | GENUINE_FIX | as above |
+| 2 | Custodian | CUST2-1 = PX2-1 (also GL-1 row 3, FS-1 staged, I-4/I-6 assumptions) | GENUINE_FIX | as above; I-4/I-6 note "moot until #241" |
+| 2 | Fail-Forward | FF2-3 = PX2-1; end state 6 staged cite | GENUINE_FIX | as above; staged end state removed |
+| 2 | Leanness | LEAN2-1: loop condition `:1971` still counts calls; confirmation spends it | GENUINE_FIX | task-3 step 3 (condition on `bounded_failure_count`; R3 grep) |
+| 2 | Custodian | R-1 = LEAN2-1 | GENUINE_FIX | task-3 step 3 |
+| 2 | Leanness | LEAN2-2: goal (a) uncited; coverage partial; offer (B) | GENUINE_FIX (disclosure) | D-432-2 options A/B, partial coverage stated |
+| 2 | Leanness | LEAN2-3: the note leads the model | GENUINE_FIX | task-1 disclosure; verdict rule (post-note unclaimed change = FAILED) |
+| 2 | Leanness | LEAN2-4: flag lifecycle; staged note growth | plan-polish | fixed-inline (section 4 flag rules; FS-1 staged row) |
+| 2 | Leanness | LEAN2-5: Step 1 superseded branch duplicates Step 2 | plan-polish | fixed-inline (Step 1 catches only `LiveProviderCompletedError`) |
+| 2 | Leanness | LEAN2-6: Step 0 superseded column; zero-caller `:101`; control arm before Step 2 | GENUINE_FIX | task-3 step 0; A3(e) control arm ordering |
+| 2 | Fail-Forward | FF2-1: deterministic class wider than described (`stream_ended`) | GENUINE_FIX (disclosure) + PRE_EXISTING_OUT | D-432-1(ii) states the coded class; escalate:@owner (I-7) |
+| 2 | Fail-Forward | FF2-2: terminal kickoff is a second non-live entrant; handback would cut its retries | GENUINE_FIX | `provider_handback` withdrawn (non-live errors unchanged); section 3; escalate:@owner (I-8) |
+| 2 | Fail-Forward | FF2-4: ordinary-path supersession shows the safe-failure line | PRE_EXISTING_OUT | end state 5 disclosed; escalate:@owner (I-9) |
+| 2 | Fail-Forward | FF2-5: FS-1 gaps; 6-call worst case | GENUINE_FIX | section 7 rows added; D-432-2 discloses the worst case |
+| 2 | Custodian | CUST2-2: Step 2 warrant (no player-visible change on the ordinary path) | GENUINE_FIX | section 3 restated; Step 2 warrant = #432 mandate + A3(e) control arm observation |
+| 2 | Custodian | CUST2-3: rest lifecycle prose keying widened by Task 1 | PRE_EXISTING_OUT | escalate:@owner (I-2 extended); GL-1 row |
+| 2 | Custodian | R-2: non-live entrants other than reversal lose retries | GENUINE_FIX | moot: non-live handling is unchanged in r3 |
+| 2 | Custodian | R-3: supersession doc belongs in save-load-reset-lifecycle | plan-polish | task-4 (`:198-199`) |
+| 2 | Legacy-Contract | GL2-1: row 4 omits the documented #323 goal; end state 6 caller list | GENUINE_FIX | GL-1 row 4 RETIRED (D-432-1(iii)); end state 5 lists every caller; task-4 doc line |
+| 2 | Legacy-Contract | GL2-2 = FF2-1 | GENUINE_FIX | D-432-1(ii) |
+| 2 | Legacy-Contract | GL2-3: worst case 2x the bound | GENUINE_FIX (disclosure) | Task 1, D-432-2 |
+| 2 | Legacy-Contract | GL2-4: post-commit diagnostics exception reissues T079 after commit | PRE_EXISTING_OUT (HYPOTHESIS reachability) | escalate:@owner (I-4 extended) |
+| 2 | Legacy-Contract | Nits: GL tokens; 12ddb548/36bd7ed0 off main; `:1429/:1438`; row 8 cross-ref | plan-polish | fixed-inline (section 6) |
+| 2 | Player-Experience | PX2-2 = FF2-4 | PRE_EXISTING_OUT | I-9 |
+| 2 | Player-Experience | PX2-3: quota message never reaches the player | PRE_EXISTING_OUT | D-432-1(ii) disclosure; escalate:@owner (I-10) |
+| 2 | Player-Experience | PX2-4: D-432-2 in player terms | plan-polish | fixed-inline (D-432-2) |
+| 2 | Consumer/Compat | COMPAT2-2 = FF2-4 | PRE_EXISTING_OUT | I-9 |
+| 2 | Consumer/Compat | COMPAT2-3: `after` also shaped by #357/T051/validators | GENUINE_FIX | end state 2; A1 attribution rule |
+| 2 | Consumer/Compat | COMPAT2-4: I-6 addition; reversal re-claim loop ends on confirmed `{}` | fyi | I-6 draft note; recorded |
+| 2 | Acceptance | ACC2-1: FAILED rule contradicts Task 1; confirmation gate untested | GENUINE_FIX | verdict rules; A3(g) |
+| 2 | Acceptance | ACC2-2: A3 could pass on main (A2a) | GENUINE_FIX | "A3 counts only branch runs"; A2b |
+| 2 | Acceptance | ACC2-3: A3(e) ordinary arm passes on unfixed code | GENUINE_FIX | A3(e) PASS criteria, in-flight proof, orphan check, control arm expectations |
+| 2 | Acceptance | ACC2-4: no route if gate-polarity rows are NOT-REACHED | GENUINE_FIX | D-432-3 |
+| 2 | Acceptance | ACC2-5: evidence block gaps | GENUINE_FIX | common conditions (note text, `source_revision`, item-4 greps, T052/T054, status duration) |
+| 2 | Acceptance | ACC2-6: A1b history not pinned | GENUINE_FIX | A1b setup |
+| 2 | Acceptance | ACC2-7: unfalsifiable verdicts | GENUINE_FIX | A1 full-diff attribution; A3(d); A4 reversal tagging; NL-2 detail |
+| 2 | Acceptance | ACC2-8: A2a details | GENUINE_FIX | A2a setup |
+| 2 | Acceptance | A0 literal command; A1 roll pinning | plan-polish | fixed-inline |
+| 2 | No-Limits | NL2-1: history-length recording cannot fail as written | plan-polish | fixed-inline (item 1 record) |
+| 2 | Single-Path | SP2-1: merge the two handback branches | moot | only one branch remains (Step 1) |
+| 2 | Single-Path | SP2-2: amend I-4 with the post-commit fork | PRE_EXISTING_OUT | I-4 extended |
+| 2 | Single-Path | SP2-3: cite #300 | plan-polish | fixed-inline (sections 1, 3) |
+| 2 | Single-Path | SP2-4: single bound site | GENUINE_FIX | task-3 step 3 |
+| 2 | Single-Path | fyi: gate predicate in one local variable | fyi | task-1 item 2 |
