@@ -1,12 +1,12 @@
 # #432 T079 character writer: class-keyed exit, confirmed no-change answers, supersession
 
-Status: PLAN r12 (2026-09-24). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5); round 9 reviewed it and r12 folds the findings in (section 11); round 10 re-verifies. Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
+Status: PLAN r13 (2026-09-24). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5); rounds 9 and 10 reviewed it, and r12 and r13 fold the findings in (section 11); round 11 re-verifies. Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
 
 ## 0. Provenance (captured dynamically; evidence, never authority)
 
 | Item | Value |
 |---|---|
-| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0, r7 3ab190f8, r8 1c9be032, r9 35ede40e, r10 b4442681, r11 3ecdd911. Code: Task 1 at 7231d28d, Task 3 Step 0 at 9021ed87, Task 3 Steps 1-4 at 87c41b76. |
+| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0, r7 3ab190f8, r8 1c9be032, r9 35ede40e, r10 b4442681, r11 3ecdd911, r12 359baff4. Code: Task 1 at 7231d28d, Task 3 Step 0 at 9021ed87, Task 3 Steps 1-4 at 87c41b76. |
 | Base revision | `origin/main` = 7b20bc7d. Ancestor check: `git merge-base --is-ancestor HEAD origin/main` at plan time. |
 | #193 epoch | v3.1, `updatedAt` 2026-09-18T18:20:12Z. Re-checked before implementation (NEQ-OPS-03). |
 | Provider / model | `openai`. T079, T078 and T051 resolve to `gpt-5.6-luna` with `reasoning_effort: none` (`model_registry.py:390-397`, `:460-477`). Never the legacy GPT-4.1 provider. |
@@ -159,7 +159,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 
 ## 5. Tasks
 
-**Task 0: rollback point.** The plan-only commits (r1-r12; hashes in section 0) come before any code change.
+**Task 0: rollback point.** The plan-only commits (r1-r13; hashes in section 0) come before any code change.
 
 **Task 1: `{}` is a typed "no change" answer, confirmed once. Fixes O1/O2 (D-432-2 option A).**
 
@@ -249,32 +249,60 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 
 **Task 5: acceptance (section 8).** Serial, one operation at a time.
 
-**Task 6 (r11-r12, owner direction D-432-4): a refused update stops safely and says why.** Folds the player-facing half of I-10 and I-12, and the startup welcome's generation refusal (PX9-1). Extends the #240 player-messaging design (3e6dbb6f, 31b053c2; owner 2026-09-05: "show the player exactly that ... they ran out of funds") to the moments it did not reach (GL9-4).
+**Task 6 (r11-r13, owner direction D-432-4): a refused update stops safely and says why.** Folds the player-facing half of I-10 and I-12, and the startup welcome's refusal (PX9-1). Extends the #240/#284 player-messaging design (3e6dbb6f, 31b053c2; owner 2026-09-05: "show the player exactly that ... they ran out of funds") to the moments it did not reach (GL9-4, GL10-1).
 
-- **Why it is needed.** After Task 3, a provider refusal ends the update at once, but the player still sees only the generic safe-failure line. On a migrated campaign the refusal usually arrives at T078 first, which today retries it and re-wraps it as `EffectsAgentContractError`, discarding the envelope (I-12). The turn loop explains a refused DM call on an ordinary turn (`main.py:10636-10648`). It does not reach two moments: a refusal after the narration was shown (this update), and a refusal of the startup welcome's own generation. The welcome case keeps only the raw exception text (`main.py:376`, `:401-405`) and shows a line only for `travel_content_unavailable` (`:619-624`). It is the most likely out-of-credit moment for a returning player (PX9-1).
+- **Why it is needed.** After Task 3, a provider refusal ends the update at once, but the player still sees only the generic safe-failure line. On a migrated campaign the refusal usually arrives at T078 first, which today retries it and re-wraps it as `EffectsAgentContractError`, discarding the envelope (I-12). The turn loop explains a refused DM call on an ordinary turn (`main.py:10636-10648`). It does not reach two moments. One is a refusal after the narration was shown (this update). The other is a refusal of the startup welcome, which keeps only the raw exception text (`main.py:376`, `:401-405`) and shows a line only for `travel_content_unavailable` (`:619-624`). The welcome is the most likely out-of-credit moment for a returning player (PX9-1).
 - **Step 1.** Task 3 Step 5.
-- **Step 2: one table of account refusals.** In `utils/provider_errors.py`, one private table maps each of `insufficient_quota`, `authentication_failed` and `model_access_denied` to a reason and a fix. These are the classes the player fixes on their own account (`:10-14`). `ACCOUNT_REFUSAL_CATEGORIES` is the table's key set. Both texts are built from the table, so each reason and each fix is written once (SP9-3):
-  - Turn loop (`classify_provider_error`; callers unchanged): `<Reason>. Nothing in your game was changed. <Fix>, then try that action again.` The quota and API-key texts stay byte-identical to today (`:223-226`, `:245-249`). The model-access text gains the ending ", then try that action again" (D-432-4(i)).
-  - After the narration (`action_refusal_message(category, provider)`, new): `<Reason>. That action could not be completed, and no further actions from that response were applied. <Fix>, then continue.` It returns `None` for any other category and for a non-string.
+- **Step 2: one table, one function.** In `utils/provider_errors.py`, one private table maps each of `insufficient_quota`, `authentication_failed` and `model_access_denied` to a reason and a fix. These are the classes the player fixes on their own account or server (`:10-14`). `ACCOUNT_REFUSAL_CATEGORIES` is the table's key set. One function, `account_refusal_message(category, provider, moment)`, builds every account-refusal text from the table and returns `None` for any other category. `classify_provider_error` also returns the `provider` it resolved (`_provider_of`, `:47-56`), so every caller uses one provider definition (SP10-5).
+
+  | Moment | Template | Used by |
+  |---|---|---|
+  | `turn` | `<Reason>. Nothing in your game was changed. <Fix>, then try that action again.` | `classify_provider_error`'s `player_message` (the turn loop; callers unchanged) |
+  | `after_narration` | `<Reason>. That action could not be completed, and no further actions from that response were applied. <Fix>, then continue.` | the Step 4 selector |
+  | `welcome` | `<Reason>. Nothing in your game was changed. <Fix>, then tell the DM what you do next.` | the Step 5 welcome display; no player action exists yet (PX10-2) |
 
   | Category | Reason | Fix |
   |---|---|---|
   | `insufficient_quota` | `<Name> refused the request: your account is out of funds or quota` | `Add credit or raise the quota on that account` |
   | `authentication_failed` | `<Name> rejected your API key` | `Check that the key is correct and still active, update it in Settings (the gear icon)` |
   | `model_access_denied` | `Your API key does not have access to the AI model this game uses` | `Enable that model on your provider account, or use a key that can reach it` |
+  | `model_access_denied`, provider `lmstudio` | `Your local model server has no model loaded that this game uses` | `Load that model in your local model server` |
 
-  - `<Name>` comes only from the fixed `provider_display_name` table (`:37-39`; an unknown id reads "the AI provider"). The first letter is capitalized as today (`_sentence`).
+  - The local-server row exists because LM Studio with no model loaded answers 404 `model_not_found` (owner log `modules/logs/game_errors.log:6786-6787`). That classifies as `model_access_denied`, and the account wording is false for a local server (PX10-1). The row also corrects today's turn-loop text for that case.
+  - The turn-loop texts for quota and API key stay byte-identical to today (`:223-226`, `:245-249`). The model-access text gains ", then try that action again" (D-432-4(i)).
+  - `<Name>` comes only from the fixed `provider_display_name` table (`:37-39`), capitalized by `_sentence` as today. Each reason and each fix stays on one source line, so the R3 greps can count them (COMPAT10-4).
   - The after-narration text never says "Nothing in your game was changed", because earlier actions from the same response may already be applied.
-- **Step 3: the character-update catch records the class.** In `core/ai/action_handler.py:3854-3863`, when the caught exception is a `LiveProviderCompletedError`, call the existing `classify_provider_error` on it. Add `provider_refusal` (its `category`) and `provider_refusal_provider` (the envelope's `provider`, or empty) to `response_data`, both copied unmodified (NL9-2). The log line, the print and `status=error` are unchanged. Supersession and every other exception take the same path as today. There is one gate, in the selector (LEAN9-1).
+- **Step 3: the character-update catch records the class.** In `core/ai/action_handler.py:3854-3863`, when the caught exception is a `LiveProviderCompletedError`, call the existing `classify_provider_error` on it. Add `provider_refusal` (its `category`) and `provider_refusal_provider` (its `provider`) to `response_data`, both copied unmodified (NL9-2).
+  - Imports: `LiveProviderCompletedError` joins the existing `utils.capture.live_provider_call` import (`:67`), and `classify_provider_error` is imported from `utils.provider_errors` (LEAN10-3).
+  - The class test is needed: the classifier also matches free text, so an `EffectsRuntimeError` lock timeout would otherwise classify (LEAN9-1 R2).
+  - The log line, the print and `status=error` are unchanged. Supersession and every other exception take the same path as today.
 - **Step 4: the selector, and the two sites that key on the generic text.**
-  - The selector, `main.py::_action_failure_player_message` (`:4925-4937`). After the `recovery_required` check, it computes `text = action_refusal_message(response_data.get("provider_refusal"), response_data.get("provider_refusal_provider"))` and returns `text` when it is not `None`; otherwise it returns the generic line, as today. `_handle_ordinary_action_failure` (`:4971-5018`) and `_safe_action_failure_result` (`:4940`) already call it.
-  - The terminal line (`main.py:9695-9699`, 715732d5). It replaces any `player_message` other than the generic line with the generic line. A terminal player has no output sink (`web/shared_state.py:65-66`; sinks are installed only by `web/web_interface.py:2877`, `:3510` and `core/headless/session.py:143`, `:179`), so this print is all they see. They would never learn the reason (COMPAT9-1, SP9-1, GL9-1(a), PX9-2, CUST9-2). The line now prints the result's `player_message` when the result's `message_id` starts with `action-failure:`, and the generic line otherwise. Only `_ordinary_action_failure_message_id` produces that prefix (`main.py:4922`), and only `_safe_action_failure_result` attaches it. This also ends the existing override of the recovery line (f225afc9).
-  - The retry-stable failure id (`_ordinary_action_failure_message_id`, `main.py:4889-4900`). It drops a trailing failure line only when its content equals the generic line. The content test is removed; the `system` role and the `action-failure:` prefix remain, so every curated failure line is recognized by structure, not text (SP9-2, COMPAT9-2, GL9-1(b), CUST9-7). No path that re-enters with the failure line last was found (NEQ-REVIEW-12: none named), so this closes a latent gap rather than an observed one.
-  - The comment at `web/shared_state.py:18-19` and the selector's docstring are updated: a curated category text may be shown; raw provider text still never reaches the player.
-- **Step 5: the startup welcome's generation refusal (PX9-1, D-432-4(iv)).**
-  - In `_welcome_worker_main` (`main.py:370-412`): the caught exception may be a `LiveProviderCompletedError` whose `classify_provider_error` category is in `ACCOUNT_REFUSAL_CATEGORIES`. If so, store that classification's `player_message` (the turn-loop text: nothing has run yet, so "Nothing in your game was changed" is true) in `lifecycle.error`, and set `lifecycle.review_failure_status = "account_refusal"`. Every other exception keeps today's raw `lifecycle.error`, which is never shown.
-  - The final FAILED branch (`main.py:619-624`) displays `lifecycle.error` for `"account_refusal"` as it already does for `"travel_content_unavailable"`, under the same receipt and supersession conditions.
-  - The first failure still takes the one forced recovery (`:586-608`), so the player sees the text after the second refused generation.
+  - **The selector** (`main.py::_action_failure_player_message`, `:4925-4937`). A result with no `response_data` gives `source_data = None`: the "raised unexpectedly" results at `main.py:5554` and `:6666`. Today's `recovery_required` check guards that with `isinstance(source_data, dict)` (`:4935`).
+    - Only when `source_data` is a dict does the selector compute `text = account_refusal_message(source_data.get("provider_refusal"), source_data.get("provider_refusal_provider"), "after_narration")`. It returns `text` when that is not `None`, and otherwise the generic line, as today (FF10-1, LEAN10-1).
+    - `_handle_ordinary_action_failure` (`:4971-5018`) and `_safe_action_failure_result` (`:4940`) already call it.
+    - The imports at `main.py:282-283` gain `account_refusal_message` and `ACCOUNT_REFUSAL_CATEGORIES` (LEAN10-3).
+  - **The turn loop's terminal line** (`main.py:9695-9700`, 715732d5; the print is at `:9700`). It replaces any `player_message` other than the generic line with the generic line. A terminal player has no output sink (`web/shared_state.py:65-66`; sinks are installed only by `web/web_interface.py:2877`, `:3510` and `core/headless/session.py:143`, `:179`), so this print is all they see, and they would never learn the reason (COMPAT9-1, SP9-1, GL9-1(a), PX9-2, CUST9-2).
+    - The line now prints the result's `player_message` when the result's `message_id` starts with `action-failure:`, and the generic line otherwise.
+    - Only `_ordinary_action_failure_message_id` produces that prefix (`main.py:4922`), and only `_safe_action_failure_result` attaches it.
+    - This also ends the turn loop's override of the recovery line (f225afc9), which terminal players now see (D-432-4(i); CUST10-2, LEAN10-2).
+  - **The retry-stable failure id** (`_ordinary_action_failure_message_id`, `main.py:4889-4900`). It drops a trailing failure line only when its content equals the generic line (SP9-2, COMPAT9-2, GL9-1(b), CUST9-7).
+    - The content test and its now-unused `SAFE_ACTION_FAILURE_MESSAGE` import (`main.py:4889`) are removed (COMPAT10-3).
+    - The `system` role and the `action-failure:` prefix remain, so every curated failure line is recognized by structure, not text.
+    - No path that re-enters with the failure line last was found (NEQ-REVIEW-12: none named), so this closes a latent gap rather than an observed one.
+  - **Comments.** The comment at `web/shared_state.py:18-19` and the selector's docstring are updated: a curated category text may be shown; raw provider text still never reaches the player.
+- **Step 5: the startup welcome's refusal, one status and one rule (PX9-1, SP10-1, D-432-4(iv)).**
+  - **The review owner** `_review_dm_candidate` (`main.py:9972`; its refusal return at `:10647-10648`) adds `category` and `provider` from its classification to the `{"status": "provider_error", "player_message": ...}` result. Its three turn-loop readers (`main.py:8544-8545`, `:9706-9711`, `:9811-9821`) read only `status` and `player_message`, so they are unchanged.
+  - **The welcome lifecycle** (`main.py:340-350`) gains `refusal_category` and `refusal_provider`, both `None` initially. Each spawn builds a fresh lifecycle (`:1036`).
+  - **In `_welcome_worker_main`** (`main.py:370-412`):
+    - The review path (`:393-396`) also stores the result's `category` and `provider`.
+    - The generation path (`:401-405`) keeps today's raw `lifecycle.error`. So the startup warning (`:614-617`) and the saved `last_error` keep the exception class and status (CUST10-3, GL10-3, COMPAT10-2).
+    - When that exception is a `LiveProviderCompletedError`, the generation path also classifies it and sets `review_failure_status = "provider_error"` with the same two fields: the same shape the review path writes.
+    - The local import at `:372` gains `LiveProviderCompletedError`.
+  - **The final FAILED branch** (`main.py:619-624`), under its existing receipt and supersession conditions:
+    - `travel_content_unavailable` displays `lifecycle.error`, as today.
+    - `provider_error` displays `account_refusal_message(refusal_category, refusal_provider, "welcome")` when that is not `None`.
+    - One rule covers both origins, generation and review, so the welcome part of I-13 closes. Other provider-error categories stay silent there, as today (LEAN10-5).
+  - The first failure still takes the one forced recovery (`:586-608`), so the player sees the text after the second refused generation (FS-1 row).
 - **Why the stop is safe (CODE-PROVEN; checked by A5).**
   - Every refusal that reaches the character-update catch is raised before the sheet commit:
     - T078 runs before T079 (`effects_runtime.py:119` -> `:130`).
@@ -282,7 +310,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
     - The #357 T051 pre-repair works in memory (`:1519-1549`).
     - The post-commit validators swallow their own errors and return success (`:2452-2454`, `:2470-2472`).
     - So the refused update leaves the character file untouched.
-  - There is one exception, the I-4 post-commit fork. On the ordinary path a post-save diagnostics exception (`:2380-2382`) is counted and T079 is reissued after the commit. If the account is refused on that reissue, the line says "could not be completed" over a committed update. This needs both a diagnostics exception and a refusal between two calls about a second apart (FF9-3, PX9-3, CUST9-5; I-4).
+  - The exception is the I-4 post-commit fork, at two sites. On the ordinary path a post-save diagnostics exception is counted and T079 is reissued after the commit: the save-result diagnostic at `:2330-2334` and the post-save diagnostics at `:2380-2382` (FF10-5). If the account is refused on that reissue, the line says "could not be completed" over a committed update. This needs both a diagnostics exception and a refusal between two calls about a second apart (FF9-3, PX9-3, CUST9-5; I-4).
   - Later actions in the response are skipped, and the narration and the line are persisted once (`main.py:6671-6682`, existing).
   - The game accepts the next input. If the account is still refused, the next turn's DM call stops through the turn loop's classification before any action runs (`main.py:10636-10648`).
 - **Disclosed limits.**
@@ -291,16 +319,19 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
     - other action handlers that call providers;
     - the combat entry (`action_handler.py:3214`);
     - level-up (`level_up_manager.py:221-222`), whose "Say 'retry'" (`:777-785`) is futile on an out-of-credit account.
-  - Non-live entrants (I-8): a refusal there arrives as `ProviderCallError`, is counted, and ends with the generic line (FF9-5).
-  - A refusal of the welcome's candidate review stays silent. This happens when the credit runs out between generation and review: `reviewed["status"] == "provider_error"` is not displayed at `:619-624` (I-13).
-  - The legacy T078 on unmigrated campaigns (Step 5) swallows a refusal after the T079 commit, and the update reports success (I-14).
+  - Terminal delivery of an action failure is done per caller (I-16, SP10-2). Step 4 fixes the turn loop's line. The resumed-combat post-combat narration prints its own pause line (`main.py:8552-8561`), so a terminal player there sees that line while the history holds the refusal text.
+  - Non-live entrants (I-8; FF10-4):
+    - The reversal entrant shows no line; its claim is released to pending (`update_character_effects.py:541-558`).
+    - The terminal-mode kickoff persists the line to history but prints nothing. Its own generation refusal is recorded only as a marker (`main.py:1116`, `:1135-1140`, `:1232-1245`, `:8713-8725`), so a terminal player learns the reason on the first turn (PX10-3, GL10-5, COMPAT10-1).
+  - The legacy T078 on unmigrated campaigns (Task 3 Step 5) swallows a refusal after the T079 commit, and the update reports success (I-14).
   - `bad_request` (400), `stream_ended` and other deterministic errors outside the three categories keep the generic line: the player cannot fix them on their account (I-7).
 - **R3 checks.**
   - `grep -n "processing_error != SAFE_ACTION_FAILURE_MESSAGE" main.py` and `grep -n 'get("content") == SAFE_ACTION_FAILURE_MESSAGE' main.py` return nothing.
   - `grep -rn "provider_refusal" --include=*.py .` hits only `core/ai/action_handler.py` and `main.py`.
-  - `grep -c '"account_refusal"' main.py` returns 2.
-  - Each fix phrase (`Add credit or raise the quota on that account`, `update it in Settings (the gear icon)`, `or use a key that can reach it`) appears once in `utils/provider_errors.py`.
-  - For provider `openai`, the six texts are printed from the module and pasted into the A5 evidence. The two unchanged turn-loop texts are compared byte for byte with 7b20bc7d.
+  - `grep -n '"account_refusal"' main.py` returns nothing: there is one status value (SP10-1).
+  - `pyflakes main.py core/ai/action_handler.py utils/provider_errors.py` adds no new unused-import or undefined-name line.
+  - Each reason and each fix phrase appears once in `utils/provider_errors.py`. The claim covers the table only. `reissue_notice`'s quota sentence (`:71-75`) is worded differently and cannot be reached for a quota code, because quota codes are deterministic (`live_provider_call.py:785-791`); it is noted under I-5 (SP10-3).
+  - For providers `openai` and `lmstudio`, every category and moment text is printed from the module and pasted into the A5 evidence. The two unchanged turn-loop texts are compared byte for byte with 7b20bc7d.
 
 ## 6. GL-1 Behavioral Contract
 
@@ -316,12 +347,13 @@ Dispositions use GL-1 tokens.
 | Schema-invalid branch and correction notes (`:2267-2288`) | f5e84dd5; notes 31f5e8db | Never commit an invalid sheet; give actionable feedback | UNCHANGED except that it counts as `bounded_failure` |
 | Completeness regex (`:1151-1259`) | 715732d5 lineage | Stop partial application of coupled changes | UNCHANGED; no longer called a `{}` safeguard (I-2) |
 | Success consumers of a confirmed no-change: `effects_runtime.py:137-147` (rest lifecycle, keyed on prose) and `:101-104`; reversal claim completion at `update_character_effects.py:563-568` (COMPAT-3) | 3525150b lineage | Run the lifecycle after a successful update; complete a reversal claim on success | PRESERVED (they run on every success); proving check: A4. The prose keying is issue I-2. The reversal-claim effect of a wrong confirmed `{}` is disclosed in D-432-2. |
-| T078 catch-all (`effects_agent.py:260-266`) | 3525150b | Retry a contract failure once with a correction; give callers one contract error | PRESERVED for contract failures; proving check: the Step 5 grep. RETIRED for `LiveProviderCompletedError` (D-432-1(ii) class as coded, D-432-4(iii); #240 contract; proving check: A5(b)). RETIRED for `LiveProviderSuperseded` (D-432-4(iii); CODE-PROVEN only; the player sees the same line as today, I-9). |
-| One static failure message (`web/shared_state.py:18-19`) and its two text-keyed sites: the terminal line (`main.py:9695-9699`) and the failure id (`:4889-4900`) | 715732d5 (the rule, the terminal line and the id's text test; empty commit body, no issue) | (1) action failures show one static message; (2) provider details stay in the server logs | (1) RETIRED in part: curated category texts, as f225afc9 already did for the recovery line (D-432-4(i)). The terminal line and the failure id recognize a curated line by the `action-failure:` id, not by its text. (2) PRESERVED: every text shown is a constant built from the table; proving check: the Task 6 R3 greps and A5(a). |
-| `_action_failure_player_message` (`main.py:4925-4937`) | f225afc9 (E2E 2e/W3) | Curated player text only; never raw internal or provider text | PRESERVED: selection is a table lookup on a category slug; the texts are constants; the provider id selects only a fixed display name (Task 6); proving check: A5(a). |
-| updateCharacterInfo catch (`action_handler.py:3854-3863`) | 3525150b added the two `status=error` returns; the log line dates from e1d27db4 (GL9-2) | Stop the response and apply no partial effect when an update raises | PRESERVED; adds two unmodified `response_data` fields for a refusal (Task 6 Step 3); proving check: A5(a) (the FAILURE line, `status=error`, no later action) and the Task 6 R3 grep. |
-| Turn-loop account texts (`provider_errors.py:220-267`) | 3e6dbb6f, 31b053c2 (#240) | Tell the player the account reason when the DM call is refused | PRESERVED; built from the shared table; byte-identical for quota and API key. The model-access text gains ", then try that action again" (D-432-4(i)). Proving check: the Task 6 R3 comparison and A5(d). |
-| Welcome generation failure (`main.py:401-405`, `:619-624`) | 1f25546c (#214 D, off-thread welcome); the display condition from fdf01773 | Never show raw exception text; show the travel-content line | PRESERVED for raw text, which is still never shown. EXTENDED: an account refusal shows the turn-loop text (D-432-4(iv)); proving check: A5(d). |
+| T078 catch-all (`effects_agent.py:260-266`) | 3525150b (subject line only, no issue; GL10-2) | Retry a contract failure once with a correction; give callers one contract error | PRESERVED for contract failures; proving check: the Step 5 grep. RETIRED for `LiveProviderCompletedError` (D-432-1(ii) class as coded, D-432-4(iii); #240 contract; proving check: A5(b)). RETIRED for `LiveProviderSuperseded` (D-432-4(iii); CODE-PROVEN only; the player sees the same line as today, I-9). |
+| One static failure message (`web/shared_state.py:18-19`) and its two text-keyed sites: the turn loop's terminal line (`main.py:9695-9700`) and the failure id (`:4889-4900`) | 715732d5 (the rule, the terminal line and the id's text test; empty commit body, no issue) | (1) action failures show one static message; (2) provider details stay in the server logs | (1) RETIRED in part: curated category texts, as f225afc9 already did for the recovery line in web and headless; terminal players now also see the recovery line (D-432-4(i)). The terminal line and the failure id recognize a curated line by the `action-failure:` id, not by its text. (2) PRESERVED: every text shown is a constant built from the table; proving check: the Task 6 R3 greps and A5(a). |
+| `_action_failure_player_message` (`main.py:4925-4937`) | f225afc9 (E2E 2e/W3) | Curated player text only; never raw internal or provider text | PRESERVED: selection is a table lookup on a category slug, read only from a dict `response_data`; the texts are constants; the provider id selects only a fixed display name (Task 6); proving check: A5(a). |
+| updateCharacterInfo catch (`action_handler.py:3854-3863`) | 3525150b added the two `status=error` returns (subject line only, no issue); the log line dates from e1d27db4 (GL9-2, GL10-2) | Stop the response and apply no partial effect when an update raises | PRESERVED; adds two unmodified `response_data` fields for a refusal (Task 6 Step 3); proving check: A5(a) (the FAILURE line, `status=error`, no later action) and the Task 6 R3 grep. |
+| Turn-loop account texts (`provider_errors.py:220-267`) | 3e6dbb6f (#240), 31b053c2 (#284) (GL10-1) | Tell the player the account reason when the DM call is refused | PRESERVED; built from the shared table; byte-identical for quota and API key. The model-access text gains ", then try that action again", and a local model server gets its own model-access text (D-432-4(i); PX10-1). Proving check: the Task 6 R3 comparison and A5(d). |
+| Review owner's refusal result (`main.py:10647-10648`) | 3e6dbb6f (#240) | Stop the response and hand back the classified player text | PRESERVED; adds `category` and `provider`, which its three readers ignore (Task 6 Step 5). |
+| Welcome failure handling (`main.py:401-405`, `:619-624`) | 1f25546c (#214 D, off-thread welcome); the display condition from fdf01773 (subject line only, no issue; GL10-2) | Never show raw exception text; show the travel-content line; keep the failure's diagnostics | PRESERVED: raw text is still never shown, and `lifecycle.error` keeps the raw text for the warning and `last_error` (CUST10-3). EXTENDED: an account refusal, from generation or review, shows the welcome text (D-432-4(iv)); proving check: A5(d). |
 
 Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedError` retries, supersession reissues, and T078's retries of both (Task 3 Step 5).
 
@@ -338,6 +370,7 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
 | OpenAI SDK default `max_retries=2` on the non-live path (`utils/openai_client.py:86-89`; zeroed only with a timeout, `api_client.py:800-801`) | `ProviderCallError` becomes `bounded_failure` | Inherited; flagged, not added. This non-live retry stack parallels the live transport's reissue and is owned by I-8 and #300 (SP3b-2) |
 | `.effects.lock` 30 s (`update_character_info.py:1412-1422`; `effects_runtime.py:109-115`, `:283-287`) | Busy turned into a refusal | Inherited B2-ii; #324 comment, I-3 |
 | T078 `classify_effect` loop (`max_attempts=2`, `effects_agent.py:220-266`) | `EffectsAgentContractError` after 2 attempts; refusal and supersession leave at once (Task 3 Step 5) | TERMINATES. The bound for contract failures is unchanged. The refusal exit is legal only with D-432-1(ii) (class as coded) and D-432-4(iii) (FF9-2) |
+| Welcome forced recovery (`main.py:586-608`, `recovery_used`) | Inherited: one retry of any failure class, then FAILED; an account refusal is futile to retry | TERMINATES after 2 generations. Task 6 Step 5 displays the account text at that terminal (D-432-4(iv); FF10-3, CUST10-4). Keeping the retry is leaner than adding a class test (LEAN10-6) |
 | T051 pre-repair (`update_character_info.py:1524-1548`; `character_validator.py:2035`, `:2116`, `:2131`) | Inherited: the unscoped validator retries a provider refusal up to 3 times and returns a failed result; the update continues to T079, whose refusal then gives the Task 6 line | Inherited and count-keyed on a deterministic class. It works in memory, so the stop stays safe. Reported on #357 with the A2a result (Task 4; FF9-4) |
 
 ## 8. Acceptance (NEQ-ACCEPT-01..03; evidence block NEQ-EVIDENCE-04 on every row)
@@ -371,11 +404,11 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
   "status": "fallback"
   LiveProviderSuperseded
   That action could not be completed, and no further actions
+  then tell the DM what you do next
   Nothing in your game was changed
-  account_refusal
   ```
 
-  Zero hits are stated as zero.
+  Zero hits are stated as zero. Hits for `Nothing in your game was changed` are matched against the full texts, because seven texts carry it (ACC10-4).
 
 - **Status duration.** Record the "Updating character info..." status duration per update.
 
@@ -462,38 +495,41 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
 
 - **A5. Refusal stop and explanation (Task 3 Step 5, Task 6).** This is a controlled-error check in the D-NPC-PARTY-5 form, not NEQ-ACCEPT-01 player-experience evidence. It needs D-432-4(ii) (ACC9-6).
   - **Setup.**
-    - A1's fixture, with capture on (`NEQ_MULTI_MODEL_CAPTURE=1`) and the existing evaluation override (`NEQ_MODEL_EVAL_PRIMARY=incumbent`, `utils/capture/multi_model_capture.py:63-84`).
+    - A1's fixture, driven by `run_headless.py serve --debug`: the `[SYSTEM]` echo reaches the stream only as a debug event (CUST10-1). Capture is on (`NEQ_MULTI_MODEL_CAPTURE=1`), with the existing evaluation override (`NEQ_MODEL_EVAL_PRIMARY=incumbent`, `utils/capture/multi_model_capture.py:63-84`).
     - The capture config's `primary_overrides` holds one entry per production openai rung for every id in `model_registry.EXPECTED_TASK_IDS`: `model_config.resolve_callsite_config(task_id, "openai", n)` for each rung `n` of the binding, limited to `model` and `reasoning_effort`. So no retry ladder changes (ACC9-6, LEAN9-5).
     - The one task under test instead gets a model id that does not exist (`neq-refusal-probe`) on every rung.
     - No code, prompt or schema file changes; the env and the config are recorded.
-  - **Evidence for a refused call.** A refused call writes no capture entry: `multi_model_capture.py:469` raises before `:593` (FF9-1, ACC9-1, CUST9-3). Its envelope is logged to `debug/api_captures/api_calls_master.jsonl` by `utils/api_logger.py::log_live_provider_envelope`, with `endpoint`, `model`, `metadata.kind`, `metadata.disposition` and `metadata.errorCode`. The status OpenAI returns is recorded, not assumed (ACC9-2).
-  - **Probe validity.** The recorded envelope must classify as `model_access_denied` under `classify_provider_error` (the `model_not_found` code, `provider_errors.py:253-267`). Otherwise the probe failed, not the product: the item is NOT-REACHED and escalate:@owner.
-  - **The update's window** runs from its `Processing updateCharacterInfo` line to its `FAILURE: Exception in character update` line.
+  - **Evidence for a refused call.** A refused call writes no capture entry: `multi_model_capture.py:469` raises before `:593` (FF9-1, ACC9-1, CUST9-3). Its envelope is logged to `debug/api_captures/api_calls_master.jsonl` by `utils/api_logger.py::log_live_provider_envelope`, with `endpoint`, `model`, `metadata.kind`, `metadata.disposition`, `metadata.errorCode` and `metadata.httpStatus`. The status is recorded, not assumed (ACC9-2, ACC10-5).
+  - **Probe validity.** The recorded envelope must classify as `model_access_denied` under `classify_provider_error` (the `model_not_found` code, `provider_errors.py:253-267`). Otherwise the probe failed, not the product: the item is NOT-REACHED and escalate:@owner. On the (e) control arms, which show no Task 6 line, validity comes from the recorded `httpStatus` and `errorCode` alone.
+  - **The update's window** runs from its `STATE_CHANGE: Processing updateCharacterInfo action` debug line (`action_handler.py:3807`) to its `FAILURE: Exception in character update` line.
   - **(a) T079 under test (branch).** PASSED when all of these hold for the first `updateCharacterInfo` of the run:
-    - the window holds exactly one master-log record with `endpoint` T079, `metadata.kind` error, `metadata.disposition` deterministic and model `neq-refusal-probe`, and there are zero T079 capture entries in it;
+    - the window holds exactly one master-log record with `endpoint` T079, `metadata.kind` error, `metadata.disposition` deterministic and model `neq-refusal-probe`, and zero T079 capture entries;
     - `game_debug.log` holds exactly one `STATE_CHANGE: Attempt` line for the update, and there is one `T079 provider refused <name> (deterministic, <recorded status>)` line;
     - one `FAILURE: Exception in character update` line carries `LiveProviderCompletedError`;
-    - the player transcript shows the Task 6 `model_access_denied` after-narration text exactly once, and `conversation_history.json` holds it once, as a `system` message after the narration;
-    - the `[SYSTEM]` debug echo carries the same text. That echo is the terminal line's own print (`main.py:9699`), so it also proves the Step 4 terminal change, which in terminal mode is the only line the player sees (COMPAT9-1);
-    - the character file's content is the same before and after, compared value by value;
-    - no action after the refused one in that response ran (its handler's log lines are absent). The response's action count is recorded; when the refused action is the last one, this item is NOT-REACHED (FF9-5, ACC9-5);
-    - the game accepts the next input.
+    - the Task 6 after-narration `model_access_denied` text appears exactly once among the non-debug events (PX10-5), and `conversation_history.json` holds it once, as a `system` message after the narration;
+    - the `[SYSTEM]` debug echo carries the same text. That echo is the terminal line's own print (`main.py:9700`), so it also proves the Step 4 terminal change; in terminal mode that line is the only one the player sees (COMPAT9-1);
+    - the character file's content matches its baseline, compared value by value. The baseline is the product backup `<name>.backup_update_<ts>.json` written inside the window (`update_character_info.py:1553`, name format `:900`) (ACC10-2);
+    - no action after the refused one in that response ran (its handler's log lines are absent). The response's action count is recorded. When the refused action is the last one, (a) is recorded PASSED with this one bullet NOT-REACHED (FF9-5, ACC9-5, ACC10-3);
+    - the game accepts the next input: the next `prompt` event arrives.
   - **(b) T078 under test (branch).** The same as (a), except:
     - the window holds exactly one such T078 master-log record and zero T079 master-log records, and there are zero T078 and zero T079 capture entries;
     - there is no `T079 provider refused` line and no `STATE_CHANGE: Attempt` line for the update;
-    - the `FAILURE: Exception in character update` line carries `LiveProviderCompletedError` with the message prefix `T078 provider request completed`. Before Step 5 it carried `EffectsAgentContractError: T078 failed after retries` (`effects_agent.py:266`) (FF9-1).
-  - **(c)** If the first `updateCharacterInfo` of an (a) or (b) run comes from the startup welcome, the same criteria apply and the welcome's terminal is recorded.
-  - **(d) T067 under test, startup welcome (branch; Task 6 Step 5).** The boot runs a welcome, which is recorded; NOT-REACHED if it runs none. PASSED when all of these hold:
+    - the `FAILURE: Exception in character update` line carries `LiveProviderCompletedError` with the message prefix `T078 provider request completed`. Before Step 5 it carried `EffectsAgentContractError: T078 failed after retries` (`effects_agent.py:266`) (FF9-1);
+    - T078 raises before any backup is written, so the baseline is a copy of the sheet the driver takes on the window's first line (ACC10-2).
+  - **(c) Welcome origin.** If the first `updateCharacterInfo` of an (a) or (b) run comes from the startup welcome, the same criteria apply except the `[SYSTEM]` echo, which only the turn loop prints. Its evidence is instead the warning `INITIALIZATION: Startup welcome apply failed` (`main.py:841`) and the welcome ending FAILED (FF10-2).
+  - **(d) T067 under test, startup welcome (branch; Task 6 Step 5).** The driver sends nothing until the welcome's final end, using A3(e)'s wait rule: it keeps waiting after `startup_watchdog_forced_kickoff` (ACC10-1). Player input would otherwise cancel the welcome (`main.py:957-967`). The window runs from boot to the next `prompt` event after that end. PASSED when all of these hold in the window:
     - two T067 master-log records with disposition deterministic: the first generation and the one forced recovery (`main.py:586-608`);
-    - the welcome ends FAILED;
-    - the turn-loop `model_access_denied` text is displayed once as DM narration (`main.py:624`), and no raw exception text reaches the transcript;
-    - the game accepts input.
+    - one `startup_watchdog_forced_kickoff` event and no `startup_kickoff_done` event;
+    - the FAILED artifacts: the warning `INITIALIZATION: Startup welcome failed after recovery` (`main.py:615`) and the startup state's `status` `kickoff_failed` (`utils/startup_handoff_state.py:286`);
+    - the welcome `model_access_denied` text (ending "then tell the DM what you do next") appears once as DM narration (`main.py:624`), and no raw exception text reaches the transcript;
+    - the next `prompt` event arrives.
+    - NOT-REACHED if the boot runs no welcome, if a `startup_kickoff_done` event arrives, or if no forced recovery runs.
   - **(e) Control arms on main (ACC9-3; optional under D-432-4(ii)).** The same setups run on an origin/main checkout. Each arm is recorded, not judged; it shows that the branch's difference is observed (AP-5). Expected from the code:
     - (a) three T079 error records, three `FAILURE: Error during update (attempt N)` lines carrying `LiveProviderCompletedError`, the `after 3 attempts` line, the `action_handler.py:3846` line and the generic line;
     - (b) two T078 error records, `EffectsAgentContractError: T078 failed after retries` in the `:3854` line, and the generic line;
     - (d) two T067 error records, the welcome ends FAILED, and nothing is displayed.
-  - **(f) The quota and API-key texts: CODE-PROVEN only.** They share Steps 3 and 4 with (a); only the category differs. `insufficient_quota` is keyed on the structured error code (`live_provider_call.py:786-791`, `provider_errors.py:210-230`), and `authentication_failed` on HTTP 401 (`provider_errors.py:232-251`) (ACC9-7). No real out-of-credit account is used. D-432-3 applies.
-  - Items (a) and (b) are NOT-REACHED if the run reaches no `updateCharacterInfo`.
+  - **(f) The quota and API-key texts: CODE-PROVEN only.** They share Steps 3 and 4 with (a); only the category differs. `insufficient_quota` is keyed on the structured error code (`live_provider_call.py:785-791`, `provider_errors.py:210-230`), and `authentication_failed` on HTTP 401 (`provider_errors.py:232-251`) (ACC9-7, ACC10-5). No real out-of-credit account is used.
+  - **Verdict route.** D-432-3 applies to A5(a), (b), (d) and (f), and merge waits for each ruling (ACC10-3). Items (a) and (b) are NOT-REACHED if the run reaches no `updateCharacterInfo`.
 
 - **Hygiene.**
   - ASCII only in touched Python.
@@ -553,17 +589,17 @@ Recommendation: ratify. The alternative, unbounded correction on the ordinary pa
 - close that item on CODE-PROVEN evidence. For (a) this may cite the owner-checkout quota record (`modules/logs/game_errors.log:3354-3452`), noting that it is from 2025-09-07 on the old raw-SDK path and shows only that retrying the class is futile;
 - authorize one isolated controlled-error check for that item in the D-NPC-PARTY-5 form.
 
-Merge waits for every such ruling. From r11 it also covers A5(f).
+Merge waits for every such ruling. From r13 it also covers A5(a), (b), (d) and (f) (ACC10-3).
 
-**D-432-4: a stopped update is safe and says why (owner direction, 2026-09-24; codified in #193 Part 5).** r11-r12 add Task 3 Step 5 and Task 6. After the amendment's review, the owner rules on:
+**D-432-4: a stopped update is safe and says why (owner direction, 2026-09-24; codified in #193 Part 5).** r11-r13 add Task 3 Step 5 and Task 6. After the amendment's review, the owner rules on:
 
-- **(i) The account-refusal texts** (Task 6 Step 2) and their category set: out of funds or quota, API key rejected, no model access. All are built from one table. Every other refusal keeps the generic line. The turn loop's model-access text gains ", then try that action again". Taste questions for the owner (PX9-4):
-  - headless has no Settings gear: the key comes from `OPENAI_API_KEY` (`core/headless/bootstrap.py:64-68`), and the turn loop already says the same;
+- **(i) The account-refusal texts** (Task 6 Step 2): three moments (a normal turn, after the narration, the welcome) and three categories (out of funds or quota, API key rejected, no model access), all built from one table, plus a local-model-server text for a missing model. Every other refusal keeps the generic line. The turn loop's model-access text gains ", then try that action again". Terminal players now also see the curated failure lines that web and headless already show, including the module-recovery line (CUST10-2). Taste questions for the owner (PX9-4, PX10-4):
+  - headless and terminal have no Settings gear. Headless reads the key from `OPENAI_API_KEY` (`core/headless/bootstrap.py:64-68`), and terminal's first-run text says to edit `config.py` (`main.py:10678-10681`). The turn loop already gives the same advice;
   - whether the after-narration text should add "The change that narration describes was not recorded";
   - "Enable that model" is impossible advice when the model id no longer exists.
-- **(ii) The A5 controlled-error check.** One isolated headless run per item (a), (b) and (d) on the branch, plus the optional (e) control arms on main. Each binds the task under test to a model id that does not exist through the existing evaluation override. No real out-of-credit account exists for testing, so the quota and API-key texts are CODE-PROVEN (A5(f), D-432-3).
+- **(ii) The A5 controlled-error check.** One isolated headless run per item (a), (b) and (d) on the branch, plus the optional (e) control arms on main. Each binds the task under test to a model id that does not exist through the existing evaluation override. No real out-of-credit account exists for testing, so the quota and API-key texts are CODE-PROVEN (A5(f)). D-432-3 covers A5(a), (b), (d) and (f).
 - **(iii) T078** stops on the same deterministic class as T079 (D-432-1(ii) as coded), so a `stream_ended` T078 answer now gets 1 attempt instead of 2 (I-7). T078 also lets supersession through; the player sees the same line as today (I-9). CODE-PROVEN only (CUST9-1, GL9-3).
-- **(iv) The startup welcome's generation refusal** shows the turn-loop account text after the one forced recovery (Task 6 Step 5, PX9-1). A refusal of the welcome's candidate review stays silent (I-13).
+- **(iv) The startup welcome's refusal**, from generation or review, shows the welcome account text after the one forced recovery (Task 6 Step 5, PX9-1, SP10-1). Other refusal categories stay silent there, as today. The terminal-mode kickoff stays silent (I-8).
 
 **Issue authorizations.** New public issues need the owner (standing rule). The bodies are drafted in `agent-room-fleet-kit/local-data/432-433/issue-drafts-I1-I6.md`, plus the r3 additions below. File each one, yes or no:
 
@@ -571,7 +607,7 @@ Merge waits for every such ruling. From r11 it also covers A5(f).
 - **I-2:** T079 completeness and the rest lifecycle infer from prose (AP-7). Includes the negated-mention example "wishes for a long rest but presses on" (CUST-3/GL-7/CUST2-3).
 - **I-3:** `.effects.lock` 30 s busy-refusal in `effects_runtime.py` (FF-6).
 - **I-4:** `structural_reissue` termination fork plus the dormant `commit_guard` mode. Includes the post-commit fork: `:2484`/`:2509` return True only in guarded mode; on the ordinary path, a post-save diagnostics exception (`:2380-2382`) is counted and T079 is reissued after the commit (SP-3/SP2-2/GL2-4). The staged half is unreachable on main until #241 (CUST3-2).
-- **I-5:** two provider-error classifiers with divergent verdicts (SP-4). Task 6 is a new consumer of `classify_provider_error`, on structured envelope fields only (CUST9-8).
+- **I-5:** two provider-error classifiers with divergent verdicts (SP-4). Task 6 is a new consumer of `classify_provider_error`, on structured envelope fields only (CUST9-8). `reissue_notice`'s quota sentence (`provider_errors.py:71-75`) cannot be reached for a quota code (SP10-3).
 - **I-6:** same-character staged siblings return `blocked_conflict` (FF-7/COMPAT2-4). Moot until #241.
 - **I-7 (new, r3):** the live `_error_disposition` falls through to `deterministic` for unrecognized errors, including `stream_ended`. A truncated stream is a lost response and may belong in `retryable_transport` (FF2-1).
 - **I-8 (new, r3):** the terminal-mode startup kickoff runs provider calls outside any live scope (`main.py:8680-8683`, `8713-8717` -> `1165`), so there is no transport reissue and no supersession (FF2-2). Addenda: deterministic refusals outside a scope are also retried to the caller's bound (SP3-1), and the non-live retry stack (SDK `max_retries`, `_fire_primary_with_retry`) parallels the live transport. It would become dead code for T079's entrants once they run live; other non-live tasks such as T022 (`area_generator.py:223`) still use it, so removing it is a separate change (SP3b-2, SP5-1).
@@ -580,13 +616,15 @@ Merge waits for every such ruling. From r11 it also covers A5(f).
 
 - **I-11 (optional, r5):** T079 deltas that reduce to no change commit as success without the no-change confirmation (the `temporaryEffects` pop at `:2074-2077`; the XP-decrease drop at `:1086-1088`). Expected: the same handling as a literal `{}` (LEAN3-5).
 - **I-12 (new, r6; folded into Task 3 Step 5 and Task 6 in r11, not filed):** the T078 classifier `classify_effect` (`core/ai/effects_agent.py:220-266`) catches both `LiveProviderCompletedError` and `LiveProviderSuperseded` at `:260`, retries them, then re-wraps them as `EffectsAgentContractError` (`:266`), which discards the envelope and `http_status`. T078 runs just before T079 in the same entrant (`effects_runtime.py:119` -> `:130`) (SP5-2, COMPAT5-4, N2). After #432, one update would treat these two errors differently in its two stages, and I-10 could never show a provider message for a refusal during T078. Direction: the same class-keyed exit as this plan's Steps 1 and 2 (SP4-1).
-- **I-13 (new, r11; extended r12):** Several paths turn a refusal into their own generic line, because their catches do not carry the exception. The player learns the account reason only on the next turn's DM call. The paths are (Task 6 disclosed limits; LEAN9-2, PX9-1):
+- **I-13 (new, r11; extended r12; welcome part closed r13):** Several paths turn a refusal into their own generic line, because their catches do not carry the exception. The player learns the account reason only on the next turn's DM call. The paths are (Task 6 disclosed limits; LEAN9-2):
   - action handlers other than `updateCharacterInfo` that call providers;
   - the combat entry (`action_handler.py:3214`);
-  - level-up (`level_up_manager.py:221-222`), whose "Say 'retry'" (`:777-785`) is futile on an out-of-credit account;
-  - the welcome's candidate-review refusal (`main.py:388-395`, displayed only for `travel_content_unavailable` and `account_refusal` at `:619-624`).
-- **I-14 (new, r12):** Unmigrated campaigns keep a second, older T078 (`updates/update_character_effects.py:325-366`, `analyze_effect_with_ai`, with its own provider branch at `:326-333`). It runs after the T079 commit and swallows every exception, including refusal and supersession. Expected: retire it into `core/ai/effects_agent.py::classify_effect` (SP9-4; NEQ-LEDGER-09 pre-existing split).
-- **I-15 (new, r12):** `core/ai/effects_agent.py:211` stores a classifier-authored effect's `change` as `str(change_description)[:500]`. The stored effect goes back to T078 as `currentEffectiveSheet` (`effects_runtime.py:119-124`), so the truncation reaches later model input: a pre-existing NEQ-LEDGER-08 pattern (NL9-1).
+  - level-up (`level_up_manager.py:221-222`), whose "Say 'retry'" (`:777-785`) is futile on an out-of-credit account.
+  The welcome's candidate-review refusal, listed in r12, is covered by Task 6 Step 5 from r13.
+- **I-14 (new, r12):** Unmigrated campaigns keep a second, older T078 (`updates/update_character_effects.py`, `analyze_effect_with_ai` from `:249`, with its own provider branch at `:324-332`). Its call and the catch-all that swallows every exception, including refusal and supersession, are at `:334-366`. It runs after the T079 commit. Expected: retire it into `core/ai/effects_agent.py::classify_effect` (SP9-4, SP10-4; NEQ-LEDGER-09 pre-existing split).
+- **I-15 (new, r12):** `core/ai/effects_agent.py:211` stores a classifier-authored effect's `change` as `str(change_description)[:500]`. The stored effect goes back to T078 as `currentEffectiveSheet` (`effects_runtime.py:119-124`), so the truncation reaches later model input: a pre-existing NEQ-LEDGER-08 pattern (NL9-1). Addendum (NL10-2): `web/web_interface.py:4749` caps text-to-speech input at `text[:4096]`.
+- **I-16 (new, r13):** Terminal delivery of an action failure is done separately by each caller. The web and headless sink is written once, in `_handle_ordinary_action_failure` (`main.py:5005`). The resumed-combat post-combat narration (`main.py:8548-8562`) prints its own pause line, so a terminal player there never sees the refusal text. Expected: print once from the handler when `emit_player_output` returns False (`web/shared_state.py:64-66`) (SP10-2).
+- **I-17 (new, r13):** `_ordinary_action_failure_message_id` keys the duplicate-save check (`main.py:4987-4991`) on a sha256 digest of the history prefix, the response and the action (`:4909-4922`). That breaks the "values, never digests" rule (#157 scar). Pre-existing (CUST10-6).
 - **Addenda (r6):** I-2 also covers the unmigrated rest-phrase check at `updates/update_character_effects.py:720`, which matches negated mentions such as "doesn't take a rest" (PX4-3). I-9 also covers the startup welcome handback: player input, Exit, Reset or Load during the welcome's T079 shows and persists the safe-failure line before the welcome ends as SUPERSEDED (COMPAT4-1, PX4-4). The I-8 draft body now carries the non-live retry stack text (SP4-2).
 
 Two findings went to existing issues instead of new ones: the staged `classify_effect` TypeError to #241, and the silent rest-bound reversal wait to #300 (comments posted 2026-09-24).
@@ -597,7 +635,7 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 - #357: the A2a result.
 - #241: the staged path.
 - #324, #431, #367, #300.
-- I-1..I-9, I-11 and I-13..I-15: `escalate:@owner` until filed (I-11 optional). I-10 and I-12 are folded into this plan (r11).
+- I-1..I-9, I-11 and I-13..I-17: `escalate:@owner` until filed (I-11 optional). I-10 and I-12 are folded into this plan (r11).
 
 ## 11. Resolution ledger
 
@@ -831,7 +869,7 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 | 9 | Acceptance, Leanness | ACC9-2, LEAN9-5(ii): the 404 status is HYPOTHESIS | code-class (test) | task-5 (status recorded; probe validity judged by category) |
 | 9 | Acceptance | ACC9-3: no control arm on main | code-class (doubt) | escalate:@owner (A5(e), optional under D-432-4(ii)) |
 | 9 | Fail-Forward, Leanness, Custodian, Legacy-Contract | FF9-2, LEAN9-4, CUST9-1, GL9-3: T078's whole-class and supersession exit had no owner ruling and no `stream_ended` disclosure | code-class | escalate:@owner (D-432-4(iii)); the FS-1 and GL-1 rows cite it; Step 5 proving grep |
-| 9 | Player-Experience | PX9-1: the welcome's generation refusal is silent, and it is the most likely out-of-credit moment | plan-polish, with an owner choice | task-6 (Step 5, folded in under D-432-4(iv)) |
+| 9 | Player-Experience | PX9-1: the welcome's generation refusal is silent, and it is the most likely out-of-credit moment | code-class (reclassified in r13, CUST10-5) | task-6 (Step 5, folded in under D-432-4(iv); re-verified round 10, redesigned in r13) |
 | 9 | Fail-Forward, Player-Experience, Custodian | FF9-3, PX9-3, CUST9-5: the I-4 post-commit fork contradicts "no refusal after the commit" | plan-polish | fixed-inline (the safety bullet names the exception) |
 | 9 | Fail-Forward | FF9-4: the T051 pre-repair retry is missing from FS-1 | plan-polish | fixed-inline (inherited FS-1 row; #357 comment in Task 4) |
 | 9 | Fail-Forward, Acceptance | FF9-5, ACC9-5: "no later action" passes trivially for a last action; non-live entrants are undisclosed | plan-polish | fixed-inline |
@@ -849,3 +887,45 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 | 9 | Player-Experience | PX9-4: taste (headless Settings; an unrecorded-change sentence; impossible model advice) | fyi | escalate:@owner (D-432-4(i)) |
 | 9 | Single-Path, Custodian | SP9-5, CUST9-8: Task 6 is an I-5 consumer | fyi | fixed-inline (I-5 note) |
 | 9 | Consumer/Compat | COMPAT9-3: the rest of the sweep is clean | fyi | defensible |
+
+**Round 10** (nine seats on r12, 359baff4, Linux-side copy).
+
+- Verdicts: PASS/LGTM from No-Limits, Legacy-Contract and Consumer/Compat. BLOCKING from Player-Experience, Single-Path, Custodian, Fail-Forward, Leanness and Acceptance.
+- R2: every round-9 code-class row was re-verified RESOLVED by the seat that raised it.
+- Every round-10 finding is resolved in r13. Round 11 re-verifies the code-class rows.
+
+| Round | Seat | Finding | Class | Resolution |
+|---|---|---|---|---|
+| 10 | Fail-Forward, Leanness | FF10-1, LEAN10-1: the selector text reads `.get` from a `response_data` that can be `None`, which would crash the failure handler | code-class | task-6 (Step 4: read only when `source_data` is a dict) |
+| 10 | Player-Experience | PX10-1: the model-access text is false for a local model server with no model loaded (observed 404 `model_not_found`) | code-class | task-6 (Step 2: local-server row); D-432-4(i) |
+| 10 | Player-Experience, Fail-Forward, Legacy-Contract, Consumer/Compat | PX10-2, FF10-6, GL10-4: the welcome text says "try that action again" when there was no action | code-class (doubt) | task-6 (Step 2: the `welcome` moment) |
+| 10 | Single-Path, Leanness | SP10-1, LEAN10-5: two status values and two category rules for a welcome refusal | code-class | task-6 (Step 5: one `provider_error` value carrying category and provider; one display rule; the review owner adds the two keys) |
+| 10 | Custodian | CUST10-1: A5's echo needs `serve --debug` | code-class (test) | task-5 (A5 setup) |
+| 10 | Fail-Forward | FF10-2: the A5(c) welcome origin has no `[SYSTEM]` echo | code-class (test) | task-5 (A5(c) evidence) |
+| 10 | Acceptance | ACC10-1: A5(d) cannot reach FAILED with a driver that types at the first prompt, and its counts had no window | code-class (test) | task-5 (A5(d) wait rule, window and FAILED artifacts) |
+| 10 | Acceptance | ACC10-2: A5(b) had no baseline | code-class (test) | task-5 (driver snapshot for (b); product backup for (a)) |
+| 10 | Acceptance | ACC10-3: no ruling route when an A5 item ends NOT-REACHED | code-class (doubt) | task-5; escalate:@owner (D-432-3 covers A5(a), (b), (d) and (f)) |
+| 10 | Custodian, Leanness | CUST10-2, LEAN10-2: the terminal recovery-line change was not in D-432-4(i) | plan-polish | fixed-inline |
+| 10 | Custodian, Legacy-Contract, Consumer/Compat, No-Limits | CUST10-3, GL10-3, COMPAT10-2, NL10-1: overwriting `lifecycle.error` loses the diagnostics | plan-polish | fixed-inline (moot: r13 keeps `lifecycle.error` raw) |
+| 10 | Custodian, Fail-Forward | CUST10-4, FF10-3: FS-1 lacks the welcome forced recovery | plan-polish | fixed-inline (FS-1 row) |
+| 10 | Custodian | CUST10-5: the PX9-1 row's class | plan-polish | fixed-inline (reclassified code-class) |
+| 10 | Custodian | CUST10-6: the failure id is a sha256 digest (pre-existing) | fyi | escalate:@owner (I-17) |
+| 10 | Single-Path | SP10-2: terminal delivery is split per caller; the resumed-combat post-combat line | plan-polish | fixed-inline (limits); escalate:@owner (I-16) |
+| 10 | Single-Path | SP10-3: the unreachable quota sentence in `reissue_notice` | fyi | fixed-inline (R3 scope; I-5 note) |
+| 10 | Single-Path | SP10-4: I-14 cites | plan-polish | fixed-inline |
+| 10 | Single-Path | SP10-5: one provider definition | fyi | fixed-inline (the classifier returns `provider`) |
+| 10 | Fail-Forward | FF10-4: non-live disclosure wording | plan-polish | fixed-inline |
+| 10 | Fail-Forward | FF10-5: the second I-4 fork site | plan-polish | fixed-inline |
+| 10 | Legacy-Contract | GL10-1: 31b053c2 is #284 | plan-polish | fixed-inline |
+| 10 | Legacy-Contract | GL10-2: origins with a subject line only | plan-polish | fixed-inline |
+| 10 | Legacy-Contract, Player-Experience, Consumer/Compat | GL10-5, PX10-3, COMPAT10-1: a terminal-mode kickoff refusal is silent | plan-polish | fixed-inline (limits; I-8) |
+| 10 | Player-Experience | PX10-4: the Settings advice reaches terminal | plan-polish | escalate:@owner (D-432-4(i) taste list) |
+| 10 | Player-Experience | PX10-5: the headless transcript carries the line twice | plan-polish | fixed-inline (count non-debug events) |
+| 10 | Leanness | LEAN10-3: imports and the `:9700` cite | plan-polish | fixed-inline |
+| 10 | Leanness | LEAN10-4: zero-callers audit | fyi | defensible |
+| 10 | Leanness | LEAN10-6: the futile forced recovery is kept | fyi | defensible |
+| 10 | Consumer/Compat | COMPAT10-3: an unused import once the content test is removed | plan-polish | fixed-inline |
+| 10 | Consumer/Compat | COMPAT10-4: the phrase greps assume one source line | plan-polish | fixed-inline |
+| 10 | Acceptance | ACC10-4: item-4 grep strings | plan-polish | fixed-inline |
+| 10 | Acceptance | ACC10-5: `httpStatus`, control-arm validity, a cite | plan-polish | fixed-inline |
+| 10 | No-Limits | NL10-2: text-to-speech input cap (pre-existing) | fyi | escalate:@owner (I-15 addendum) |
