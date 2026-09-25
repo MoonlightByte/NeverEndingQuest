@@ -1139,9 +1139,12 @@ def commit_character_sheet(character_path, updated_data, *, commit_guard=None, e
 
 
 def _is_meaningful_character_delta(updates, schema):
-    """Return whether T079 produced at least one recognized field update."""
-    if not isinstance(updates, dict) or not updates:
+    """Return whether T079 produced a usable delta: {} (the typed "no change"
+    answer, confirmed by the caller) or at least one recognized field update."""
+    if not isinstance(updates, dict):
         return False
+    if not updates:
+        return True
     properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
     return isinstance(properties, dict) and any(
         field in properties for field in updates
@@ -1968,6 +1971,12 @@ Character Role: {character_role}
     primary_committed = False
     validation_success = None
     last_update_error = None
+    # The engine-owned effect operation is itself the change, so an empty
+    # delta beside it needs no confirmation.
+    engine_owned_change = declarative_effects and managed_effect_operation
+    # A {} answer is accepted only when the immediately preceding T079 answer
+    # in this update was also {} (#432): the first one is asked to confirm.
+    previous_answer_was_empty = False
     while structural_reissue or attempt <= max_attempts:
         try:
             if commit_guard is not None:
@@ -1990,7 +1999,9 @@ Character Role: {character_role}
                     pass
             
             raw_response = response.choices[0].message.content.strip()
-            
+            prior_answer_was_empty = previous_answer_was_empty
+            previous_answer_was_empty = False
+
             # Log the raw LLM response for debugging ammunition issues
             if "ammunition" in changes.lower() or "bolt" in changes.lower() or "arrow" in changes.lower():
                 debug(f"LLM_RESPONSE for ammunition update: {raw_response[:500]}...", category="character_updates")
@@ -2066,11 +2077,32 @@ Character Role: {character_role}
             clean_response = clean_response.strip()
             updates = json.loads(clean_response)
             if not _is_meaningful_character_delta(updates, schema) and not (
-                declarative_effects and managed_effect_operation
+                engine_owned_change
             ):
                 raise ValueError(
                     "T079 returned an empty or unrecognized character delta"
                 )
+            if updates == {}:
+                previous_answer_was_empty = True
+                if not engine_owned_change:
+                    if not prior_answer_was_empty:
+                        confirmation_note = (
+                            "\n\nYour previous answer was {} (no character-sheet "
+                            "field changes). If the described change alters any "
+                            "field on this sheet (hit points, spell slots, "
+                            "equipment, ammunition, currency, experience, "
+                            "conditions or any other field), return those fields "
+                            "now. Narrative descriptions that no rule tracks, such "
+                            "as being wet or muddy, are not sheet changes. If it "
+                            "changes nothing on the sheet, return {} again."
+                        )
+                        messages[-1]["content"] += confirmation_note
+                        attempt += 1
+                        continue
+                    info(
+                        f"T079 confirmed no mechanical change for {character_name}",
+                        category="character_updates",
+                    )
 
             if declarative_effects:
                 # T079 is never an effects authority after cutover, even when a
