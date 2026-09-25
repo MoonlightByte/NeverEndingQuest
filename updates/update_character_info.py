@@ -107,7 +107,10 @@ from jsonschema import validate, ValidationError
 import config
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-from utils.capture.live_provider_call import LiveProviderSuperseded
+from utils.capture.live_provider_call import (
+    LiveProviderCompletedError,
+    LiveProviderSuperseded,
+)
 register_callsite("T079", "updates/update_character_info.py", 1692)
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Dict, Any, Optional
@@ -1921,7 +1924,11 @@ Character Role: {character_role}
             "content": f"Accepted action context (current_index identifies this step, not a commit receipt):\n{json.dumps(action_context, indent=2)}",
         })
     
-    max_attempts = 3
+    # #432 (D-432-1): only unusable answers count toward the bound. A provider
+    # refusal and a supersession leave the loop at once; a confirmation
+    # request for a {} answer is not a failure.
+    bounded_failure_limit = 3
+    bounded_failure_count = 0
     attempt = 1
     
     # T079 MIGRATION NOTE: Gemini requires response_schema forcing on this callsite.
@@ -1977,12 +1984,16 @@ Character Role: {character_role}
     # A {} answer is accepted only when the immediately preceding T079 answer
     # in this update was also {} (#432): the first one is asked to confirm.
     previous_answer_was_empty = False
-    while structural_reissue or attempt <= max_attempts:
+    while structural_reissue or bounded_failure_count < bounded_failure_limit:
         try:
             if commit_guard is not None:
                 with commit_guard():
                     pass
-            debug(f"STATE_CHANGE: Attempt {attempt} of {max_attempts}", category="character_updates")
+            debug(
+                f"STATE_CHANGE: Attempt {attempt} (bounded failures "
+                f"{bounded_failure_count} of {bounded_failure_limit})",
+                category="character_updates",
+            )
 
             response = capture_and_fanout("T079", api_client.create_completion,
                 _request_provider=MODEL_PROVIDER,
@@ -2144,12 +2155,7 @@ Character Role: {character_role}
                     "requested_fields_complete": False,
                     "missing_requested_fields": missing_fields,
                 }
-                if attempt == max_attempts and not structural_reissue:
-                    error(
-                        "FAILURE: Max attempts reached with an incomplete character delta.",
-                        category="character_updates",
-                    )
-                    return False
+                bounded_failure_count += 1
                 attempt += 1
                 continue
             
@@ -2271,9 +2277,7 @@ Please provide the CORRECT currency values:
                 safe_write_json("debug/debug_critical_field_loss.json", debug_info)
                 debug("FILE_OP: Debug info saved to debug/debug_critical_field_loss.json", category="file_operations")
                 
-                if attempt == max_attempts and not structural_reissue:
-                    error("FAILURE: Max attempts reached. Update failed to preserve critical data.", category="character_validation")
-                    return False
+                bounded_failure_count += 1
                 attempt += 1
                 continue
             
@@ -2298,9 +2302,7 @@ Please provide the CORRECT currency values:
             
             if not is_valid:
                 error(f"VALIDATION: Validation failed: {error_msg}", category="character_validation")
-                if attempt == max_attempts and not structural_reissue:
-                    error("FAILURE: Max attempts reached. Reverting changes.", category="character_updates")
-                    return False
+                bounded_failure_count += 1
                 
                 # Add validation error feedback to the prompt for next attempt
                 if "item_subtype" in error_msg and "is not one of" in error_msg:
@@ -2518,6 +2520,7 @@ Please provide the CORRECT currency values:
                     pass
                 return True
             error(f"FAILURE: JSON decode error (attempt {attempt})", exception=e, category="ai_processing")
+            bounded_failure_count += 1
             debug(f"AI_CALL: Raw response: {raw_response}", category="ai_processing")
             # print(f"\n[DEBUG ERROR] JSON decode error for {character_name}")
             # print(f"Raw response that failed to parse: {raw_response}")
@@ -2535,7 +2538,16 @@ Please provide the CORRECT currency values:
             debug(f"JSON parse error details saved to: {debug_error_file}", category="character_updates")
             
         except Exception as e:
-            if commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+            if isinstance(e, LiveProviderCompletedError):
+                # A deterministic provider refusal cannot heal by reissuing the
+                # same request (#240); hand it to the caller with its envelope.
+                error(
+                    f"FAILURE: T079 provider refused {character_name} "
+                    f"(deterministic, {e.http_status})",
+                    category="character_updates",
+                )
+                raise
+            if isinstance(e, LiveProviderSuperseded):
                 raise
             last_update_error = e
             if commit_guard is not None and primary_committed:
@@ -2543,6 +2555,7 @@ Please provide the CORRECT currency values:
                     pass
                 return True
             error(f"FAILURE: Error during update (attempt {attempt})", exception=e, category="character_updates")
+            bounded_failure_count += 1
             
             # Update debug data with exception details
             if 'debug_data' in locals():
@@ -2581,11 +2594,8 @@ Please provide the CORRECT currency values:
             #     print(f"AI response received: {raw_response[:500]}...")
             # print(f"Stack trace will be in logs\n")
         
-        if structural_reissue or attempt < max_attempts:
-            attempt += 1
-            time.sleep(1)
-        else:
-            break
+        attempt += 1
+        time.sleep(1)
     
     # Log failure state
     if 'debug_data' in locals():
@@ -2598,7 +2608,11 @@ Please provide the CORRECT currency values:
         safe_write_json(debug_log_file, debug_log)
         debug(f"Debug log updated: {debug_log_file}", category="character_updates")
     
-    error(f"FAILURE: Failed to update character {character_name} after {max_attempts} attempts", category="character_updates")
+    error(
+        f"FAILURE: T079 answers stayed invalid for {character_name} "
+        f"({bounded_failure_count} bounded failures)",
+        category="character_updates",
+    )
     error(f"FAILURE: Last validation error was: {error_msg if 'error_msg' in locals() else 'Unknown error'}", category="character_updates")
     return False
 
