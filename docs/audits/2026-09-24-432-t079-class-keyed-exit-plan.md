@@ -1,12 +1,12 @@
 # #432 T079 character writer: class-keyed exit, confirmed no-change answers, supersession
 
-Status: PLAN r16 (2026-09-25). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5); rounds 9-13 reviewed it, and r12-r16 fold the findings in (section 11); round 14 confirms. Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
+Status: PLAN r17 (2026-09-25). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5); rounds 9-14 reviewed it, and r12-r17 fold the findings in (section 11). Round 14 returned PASS/LGTM from all nine seats with plan-polish only, so the amendment review is CONVERGED (NEQ-REVIEW-11 plan-polish termination) and awaits the owner's rulings (NEQ-REVIEW-13). Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
 
 ## 0. Provenance (captured dynamically; evidence, never authority)
 
 | Item | Value |
 |---|---|
-| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0, r7 3ab190f8, r8 1c9be032, r9 35ede40e, r10 b4442681, r11 3ecdd911, r12 359baff4, r13 dc388da8, r14 1a43ff3d, r15 8aacf8ae. Code: Task 1 at 7231d28d, Task 3 Step 0 at 9021ed87, Task 3 Steps 1-4 at 87c41b76. |
+| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0, r7 3ab190f8, r8 1c9be032, r9 35ede40e, r10 b4442681, r11 3ecdd911, r12 359baff4, r13 dc388da8, r14 1a43ff3d, r15 8aacf8ae, r16 e7026fc3. Code: Task 1 at 7231d28d, Task 3 Step 0 at 9021ed87, Task 3 Steps 1-4 at 87c41b76. |
 | Base revision | `origin/main` = 7b20bc7d. Ancestor check: `git merge-base --is-ancestor HEAD origin/main` at plan time. |
 | #193 epoch | v3.1, `updatedAt` 2026-09-18T18:20:12Z. Re-checked before implementation (NEQ-OPS-03). |
 | Provider / model | `openai`. T079, T078 and T051 resolve to `gpt-5.6-luna` with `reasoning_effort: none` (`model_registry.py:390-397`, `:460-477`). Never the legacy GPT-4.1 provider. |
@@ -159,7 +159,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 
 ## 5. Tasks
 
-**Task 0: rollback point.** The plan-only commits (r1-r16; hashes in section 0) come before any code change.
+**Task 0: rollback point.** The plan-only commits (r1-r17; hashes in section 0) come before any code change.
 
 **Task 1: `{}` is a typed "no change" answer, confirmed once. Fixes O1/O2 (D-432-2 option A).**
 
@@ -335,7 +335,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
   - `grep -rn "provider_refusal" --include=*.py .` hits only `core/ai/action_handler.py` and `main.py`.
   - `grep -n '"account_refusal"' main.py` returns nothing: there is one status value (SP10-1).
   - `grep -rn ACCOUNT_REFUSAL_CATEGORIES --include=*.py .` returns nothing (LEAN11-1).
-  - `grep -c '"lmstudio"' utils/provider_errors.py` returns 4 after Step 2: the three hits at 7b20bc7d (the display name `:33` and the two existing `local` checks `:70`, `:194`) plus the table's one override key. Any new `"lmstudio"` literal raises the count, and `grep -c 'if local' utils/provider_errors.py` stays 2 (`:87`, `:326`), which catches a branch that reuses the existing `local` flag (SP13-1, GL13-1) (SP11-2; SP12-1, LEAN12-1).
+  - `grep -c '"lmstudio"' utils/provider_errors.py` returns 4 after Step 2: the three hits at 7b20bc7d (the display name `:33` and the two existing `local` checks `:70`, `:194`) plus the table's one override key. Any new `"lmstudio"` literal raises the count, and `grep -nE '\b(if|and|or|not) local\b|\blocal =' utils/provider_errors.py` returns exactly `:70`, `:87`, `:194` and `:326` (the flag's two definitions and its two uses at 7b20bc7d), which catches a branch that reuses the existing `local` flag in any form (SP13-1, GL13-1; GL14-1, SP14-1) (SP11-2; SP12-1, LEAN12-1).
   - Local untracked tests under the owner's `tests/` are grepped for `classify_provider_error`, `_action_failure_player_message`, `_ordinary_action_failure_message_id`, `classify_effect`, `_review_dm_candidate`, `_welcome_worker_main`, `_apply_welcome`, `[SYSTEM]`, the character-update catch's `error_message` string and the old model-access text, and updated locally (D-9; COMPAT11 H-1).
   - `pyflakes main.py core/ai/action_handler.py utils/provider_errors.py` adds no new unused-import or undefined-name line.
   - Each reason and each fix phrase appears once in `utils/provider_errors.py`. The claim covers the table only. `reissue_notice`'s quota sentence (`:71-75`) is worded differently and cannot be reached for a quota code, because quota codes are deterministic (`live_provider_call.py:785-791`); it is noted under I-5 (SP10-3).
@@ -507,7 +507,7 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
     - The capture config's `primary_overrides` holds one entry per production openai rung for every id in `model_registry.EXPECTED_TASK_IDS`: `model_config.resolve_callsite_config(task_id, "openai", n)` for each rung `n` of the binding, limited to `model` and `reasoning_effort`. So no retry ladder changes (ACC9-6, LEAN9-5).
     - The one task under test instead gets a model id that does not exist (`neq-refusal-probe`) on every rung.
     - No code, prompt or schema file changes; the env and the config are recorded.
-  - **Driver input rule (ACC13-3).** In every A5 run the driver sends its scenario input only after the startup welcome has ended, using A3(e)'s wait rule. So a welcome-origin update is never superseded (`main.py:957-967`) and no input queues behind it (`core/headless/streams.py:152-160`). An accepted input emits no `result` event; the only `result` an input can produce is a rejection with `ok: false` (`core/headless/session.py:400-411`) (ACC13-1).
+  - **Driver input rule (ACC13-3).** In every A5 run the driver sends its scenario input only after the startup welcome has ended, importing only A3(e)'s end detection: it waits for `startup_kickoff_done` or for the welcome's end (the empty `welcome_progress` event, with the forced-recovery exception), and it does not stop the run when the welcome ends FAILED, because (c) and (d) continue after a FAILED end. On a boot that runs no welcome, (a) and (b) send the scenario input at the first `prompt` (FF14-1, COMPAT14-1, ACC14-1). So a welcome-origin update is never superseded (`main.py:957-967`) and no input queues behind it (`core/headless/streams.py:152-160`). An accepted input emits no `result` event; the only `result` an input can produce is a rejection with `ok: false` (`core/headless/session.py:400-411`; a malformed line gets the same `ok: false` result, `run_headless.py:95-97`) (ACC13-1, ACC14-2).
   - **Evidence for a refused call.** A refused call writes no capture entry: `multi_model_capture.py:469` raises before `:593` (FF9-1, ACC9-1, CUST9-3). Its envelope is logged to `debug/api_captures/api_calls_master.jsonl` by `utils/api_logger.py::log_live_provider_envelope`, with `endpoint`, `model`, `metadata.kind`, `metadata.disposition`, `metadata.errorCode` and `metadata.httpStatus`. The status is recorded, not assumed (ACC9-2, ACC10-5).
   - **Probe validity.** The recorded envelope must classify as `model_access_denied` under `classify_provider_error` (the `model_not_found` code, `provider_errors.py:253-267`). Otherwise the probe failed, not the product: the item is NOT-REACHED and escalate:@owner. On the (e) control arms, which show no Task 6 line, validity comes from the recorded `httpStatus` and `errorCode` alone.
   - **The update's window** runs from its `STATE_CHANGE: Processing updateCharacterInfo action` debug line (`action_handler.py:3807`) to its `FAILURE: Exception in character update` line. Both bounds are the NDJSON `ts` of those debug events, and the master log's `timestamp` is compared against them (ACC11-3(ii)). The master log's `timestamp` is naive local time (`utils/api_logger.py:77`) and NDJSON `ts` is epoch seconds with millisecond precision (`core/headless/protocol.py:58`, `:67`); the offset is calibrated from a `startup` event, which carries both (ACC12-3). Every text count in (a)-(c) runs from the window's first line to the next `prompt` event, and the driver stops there (ACC11-2).
@@ -533,7 +533,7 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
     - the welcome `model_access_denied` text (ending "then tell the DM what you do next") appears once as DM narration (`main.py:624`), and no raw exception text reaches the non-debug events (grep `provider request completed`, `live_provider_call.py:161`; ACC11-3(iv));
     - after the window, the driver's one input gets no `result` with `ok: false`, and the next `prompt` event arrives (ACC13-1).
     - The welcome text's review origin is not reached here, because the refused generation ends the welcome first; it is CODE-PROVEN only (GL11-2).
-    - NOT-REACHED if the boot runs no welcome, if a `startup_kickoff_done` event arrives, or if no forced recovery runs. A skipped recovery shows as a `startup_kickoff_skipped` event after the forced marker (`main.py:1019-1025`; a lease `lock_timeout`, `utils/startup_handoff_state.py:214-215`); then no `:615` warning arrives and the item is NOT-REACHED (ACC12-2).
+    - NOT-REACHED if the boot runs no welcome, if a `startup_kickoff_done` event arrives, or if no forced recovery runs. A skipped recovery shows as a `startup_kickoff_skipped` event after the forced marker (`main.py:1020-1026`; a lease `lock_timeout`, `utils/startup_handoff_state.py:214-215`); then no `:615` warning arrives and the item is NOT-REACHED (ACC12-2).
   - **(e) Control arms on main (ACC9-3; optional under D-432-4(ii)).** The same setups run on an origin/main checkout. Each arm is recorded, not judged; it shows that the branch's difference is observed (AP-5). Expected from the code:
     - (a) three T079 error records, three `FAILURE: Error during update (attempt N)` lines carrying `LiveProviderCompletedError`, the `after 3 attempts` line, the `action_handler.py:3846` line and the generic line;
     - (b) two T078 error records, `EffectsAgentContractError: T078 failed after retries` in the `:3854` line, and the generic line;
@@ -1024,3 +1024,16 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 | 13 | Consumer/Compat | COMPAT13-2: the local-tests grep omits the welcome lifecycle and the catch's text | plan-polish | fixed-inline |
 | 13 | Player-Experience | PX13-1: any 403 classifies as model access, so the local or custom server text fires on hosted 403s | taste | escalate:@owner (D-432-4(i)) |
 | 13 | No-Limits | NL13-1..6: every scan hit pre-existing and outside the hunks | fyi | defensible |
+
+**Round 14** (confirmation pass on r16, e7026fc3; nine seats on the Linux-side copy, scope = the r16 edits).
+
+- Verdicts: PASS/LGTM from all nine seats. ACC13-1 and every round-13 row were re-verified RESOLVED against the code (an accepted input emits no `result`, `core/headless/session.py:399-416`).
+- Every round-14 finding is plan-polish or fyi and is fixed inline in r17. Plan-polish termination applies (NEQ-REVIEW-11): the D-432-4 amendment review is CONVERGED. Execution of Task 3 Step 5 and Task 6 still needs the owner's rulings (NEQ-REVIEW-13).
+
+| Round | Seat | Finding | Class | Resolution |
+|---|---|---|---|---|
+| 14 | Fail-Forward, Consumer/Compat, Acceptance | FF14-1, COMPAT14-1, ACC14-1: the driver input rule imported all of A3(e)'s wait rule, including its stop on a FAILED end | plan-polish | fixed-inline (end detection only; (c) and (d) continue; no-welcome boots send at the first prompt) |
+| 14 | Acceptance | ACC14-2: the parse-error `result` is also `ok: false` | plan-polish | fixed-inline |
+| 14 | Legacy-Contract, Single-Path | GL14-1, SP14-1: `grep -c 'if local'` misses `and local` / `not local` | plan-polish | fixed-inline (word-bounded grep returns `:70`, `:87`, `:194`, `:326`; verified on 7b20bc7d) |
+| 14 | Custodian, Legacy-Contract | CUST14-1, GL14-2: two cites for the skip emit | plan-polish | fixed-inline (`main.py:1020-1026`) |
+| 14 | No-Limits, Leanness, Player-Experience | NL14-1..3, LEAN14-1, PX14-1 | fyi | defensible |
