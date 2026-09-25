@@ -1,12 +1,12 @@
 # #432 T079 character writer: class-keyed exit, confirmed no-change answers, supersession
 
-Status: PLAN r6 (2026-09-24), after Part 3 rounds 1-4 (nine seats each; round 3 re-run on r4 after a filesystem interruption; round 4 returned PASS/LGTM from every seat; resolution ledger in section 11). Nothing implemented. Execution needs convergence and the owner's approval (NEQ-REVIEW-13).
+Status: PLAN r7 (2026-09-24), after Part 3 rounds 1-5 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4 and 5 returned PASS/LGTM from every seat except one narrow round-5 block; resolution ledger in section 11). Nothing implemented. Execution needs convergence and the owner's approval (NEQ-REVIEW-13).
 
 ## 0. Provenance (captured dynamically; evidence, never authority)
 
 | Item | Value |
 |---|---|
-| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f. Code is unchanged from base; only this plan differs. |
+| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0. Code is unchanged from base; only this plan differs. |
 | Base revision | `origin/main` = 7b20bc7d. Ancestor check: `git merge-base --is-ancestor HEAD origin/main` at plan time. |
 | #193 epoch | v3.1, `updatedAt` 2026-09-18T18:20:12Z. Re-checked before implementation (NEQ-OPS-03). |
 | Provider / model | `openai`. T079, T078 and T051 resolve to `gpt-5.6-luna` with `reasoning_effort: none` (`model_registry.py:390-397`, `:460-477`). Never the legacy GPT-4.1 provider. |
@@ -144,7 +144,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 | 2 | Confirmed no change (`{}`, note, `{}`) | The unchanged sheet flows through the existing preparation and commit. The post-commit validators run as for any update. On disk, only differences attributable to normalization or to T051/effects validation appear. | Narration, with no failure line. Startup welcome (web/headless): the welcome completes as APPLIED. |
 | 3 | `bounded_failure` at the D-432-1 bound | `False` | Ordinary action: `SAFE_ACTION_FAILURE_MESSAGE` after the narration, and the narrated change is absent from the sheet. Combat end: log only, and the narrated change is absent with no player line (I-1). Time-bound effect reversal: released to pending and re-claimed on the next expiry scan (`update_character_effects.py:525-528`, `:553-558`). Rest-bound reversal (unmigrated rest entrant, `effects_runtime.py:98-104`): released to pending, re-claimed only at the next qualifying rest, with no player line (`:597`; #300 comment). Startup welcome (web/headless): the safe-failure line, then the kickoff is marked failed and the welcome note removed (`main.py:808-845`). Terminal kickoff: its caller's existing handling (I-8). When the last counted failure comes through the JSON or generic handler, the tail's 1 s pause delays this end state by 1 s (LEAN3-3, disclosed). |
 | 4 | `provider_deterministic` | Raises `LiveProviderCompletedError` at once | Every caller's existing catch-all gives the same terminals as end state 3: ordinary action (`action_handler.py:3854-3863`, generic line, no provider-specific message, I-10), combat end (`combat_manager.py:5741`, log only, I-1), reversal (`update_character_effects.py:541-547`, released to pending), startup welcome (`main.py:808-845`). |
-| 5 | `superseded` | Raises | `action_handler.py:3854-3863` turns it into `status=error`, so the safe-failure line appears during the Load (I-9). `combat_manager.py:5741` logs it and the loop continues. `update_character_effects.py:541-547` releases the claim to pending. Startup welcome (web/headless): the same catch shows and persists the safe-failure line (`main.py:6674` -> `_handle_ordinary_action_failure`, `:4971-5013`), then `:794-795` raises and `:818-820` ends the welcome as SUPERSEDED. The welcome's supersession controls stay open until `main.py:444`, so the triggers are Load, player input (`web_interface.py:2946`) and Exit (`:4377`) (I-9 addendum; CUST4-2, PX4-4, COMPAT4-1). |
+| 5 | `superseded` | Raises | `action_handler.py:3854-3863` turns it into `status=error`, so the safe-failure line appears during the Load (I-9). `combat_manager.py:5741` logs it and the loop continues. `update_character_effects.py:541-547` releases the claim to pending. Startup welcome (web/headless): the same catch shows and persists the safe-failure line (`main.py:6674` -> `_handle_ordinary_action_failure`, `:4971-5013`), then `:794-795` raises and `:818-820` ends the welcome as SUPERSEDED. The welcome's supersession controls stay open until `main.py:444`, so the triggers are Load, Reset (`web/web_interface.py:3291`, `claim_destructive_operation`; headless reset and quit at `core/headless/session.py:492-495`), player input (`web/web_interface.py:2946`) and Exit (`:4377`) (I-9 addendum; CUST4-2, PX4-4, COMPAT4-1, COMPAT5-1). |
 
 **Part 2 pages cited.**
 
@@ -159,7 +159,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 
 ## 5. Tasks
 
-**Task 0: rollback point.** The plan-only commits (r1-r5; hashes in section 0) come before any code change.
+**Task 0: rollback point.** The plan-only commits (r1-r7; hashes in section 0) come before any code change.
 
 **Task 1: `{}` is a typed "no change" answer, confirmed once. Fixes O1/O2 (D-432-2 option A).**
 
@@ -196,7 +196,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
   - `update_character_effects.py:740` (live, through `effects_runtime.py:104`);
   - the terminal-mode kickoff path (non-live: `main.py:8713-8717` -> `1165`);
   - the zero-caller wrappers `updatePlayerInfo`, `updateNPCInfo`, `update_multiple_characters_parallel`, `update_party_parallel` (`:2574-2830`);
-  - the startup welcome handback in web/headless mode (live: `_apply_welcome` sets the welcome scope, `main.py:752`; terminals `main.py:797`, `:808-845`) (COMPAT3-2).
+  - the startup welcome handback in web/headless mode (live: `_apply_welcome` sets the welcome scope, `main.py:752`; terminals: FAILED at `main.py:808-845`, SUPERSEDED at `:818-820`) (COMPAT3-2, COMPAT5-1).
 - **Step 1.** Add `LiveProviderCompletedError` to the import at `:110` (LEAN4-4). In the loop-level generic handler (`:2505-2507`), before anything is counted, re-raise `LiveProviderCompletedError` after logging `FAILURE: T079 provider refused <name> (deterministic, <http_status>)`. There is no nested `try` around the call. The exception, with its envelope and `http_status`, reaches the caller unchanged, which is the handback shape the #240 contract prescribes and the data I-10 needs (LEAN3-4). Every caller's existing catch-all turns it into the end state 4 terminals.
 - **Step 2.** In the same handler, re-raise `LiveProviderSuperseded` unconditionally by dropping `commit_guard is not None and`.
   - The post-commit handlers at `:2451` and `:2469` keep their condition. They run after the primary commit, and raising there would report a committed update as failed.
@@ -233,7 +233,7 @@ Dispositions use GL-1 tokens.
 
 | Changed element | Origin | Goals | Disposition |
 |---|---|---|---|
-| `{}` rejection (`:1143-1144`, raise `:2068-2073`) | 715732d5 (first in 36bd7ed0, not on main, no issue); goal from 12ddb548 (HIGH-6, not on main); engine-effect exemption 3525150b | (a) never report success when a real change produced nothing; (b) reject dicts with only unknown keys; (c) no silent no-op on Gemini narration | (a) RETIRED in part (D-432-2): one typed confirmation, after which T079 is the authority. (b) PRESERVED (`:1146-1148`); proving check: `grep -n "any(field in properties for field in updates)"` still hits. (c) PRESERVED: narration fails `json.loads` or yields unknown keys; the schema-None guard at `:1952-1965` is unchanged; proving check: `grep -n 'MODEL_PROVIDER == "gemini" and char_update_config.get("response_schema") is None'` still hits. |
+| `{}` rejection (`:1143-1144`, raise `:2068-2073`) | 715732d5 (first in 36bd7ed0, not on main, no issue); goal from 12ddb548 (HIGH-6, not on main); engine-effect exemption 3525150b | (a) never report success when a real change produced nothing; (b) reject dicts with only unknown keys; (c) no silent no-op on Gemini narration | (a) RETIRED in part (D-432-2): one typed confirmation, after which T079 is the authority. (b) PRESERVED (`:1146-1148`); proving check: `grep -n "field in properties for field in updates" updates/update_character_info.py` hits `:1147` exactly once (the expression spans `:1146-1147`, so the one-line `any(...)` pattern never matches; GL5-1). (c) PRESERVED: narration fails `json.loads` or yields unknown keys; the schema-None guard at `:1952-1965` is unchanged; proving check: `grep -n 'MODEL_PROVIDER == "gemini" and char_update_config.get("response_schema") is None'` still hits. |
 | Single `attempt <= max_attempts` budget (`:1921-1922`, `:1971`, `:2115`, `:2242`, `:2269`, `:2552-2556`) | f5e84dd5 (2025-05-31; moved in 2c472143). Per-site exits: incomplete-delta exit 715732d5 (`:2116-2120`); schema-invalid exit message f5e84dd5 (moved in 2c472143); critical-field exit c4097669 (2025-06-13, "Fix character spell data corruption and add spell slot tracking"; goal: never commit critical-field or spell loss, PRESERVED because the branch still refuses to commit and now counts); b7f7a863 added only `and not structural_reissue` (GL3-6, GL4-2). Deleted log lines: the three `FAILURE: Max attempts reached ...` strings at `:2117`, `:2243`, `:2270`; a repo grep finds no consumer | Every update terminates and returns; the reversal caller relies on the return | PRESERVED for `bounded_failure` (D-432-1(i)); proving checks: A3(f) and the Step 3 R3 greps. RETIRED for `LiveProviderCompletedError` retries (D-432-1(ii); #240 contract; the class is observed futile to retry on the old 2025-09-07 raw-SDK path, and the changed path is CODE-PROVEN). RETIRED for supersession counting (D-432-1(iii)). |
 | `structural_reissue` bypass (`:1971` and the exits) | b7f7a863; `commit_guard` wiring at `:1429/:1438` from 2e6ad1f8 with zero production callers | A required staged sibling is fixed before movement | PRESERVED for `bounded_failure` by the loop condition (Step 3); proving check: `grep -n "while structural_reissue or bounded_failure_count < bounded_failure_limit"` hits once. No acceptance check is possible: the staged path is unreachable on main (#241). |
 | Supersession re-raise condition (`:2506`) | 2e6ad1f8 (#323 baseline, "No behavior change") | Re-raise for the #323 guarded caller | RETIRED for unguarded T079 callers (D-432-1(iii)); proving check: A3(e). `save-load-reset-lifecycle.md:197-199` concerns `safe_json_dump` and is unchanged (Task 4). |
@@ -348,23 +348,23 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
 - **A2b. Parity.** The A2a scenario on the branch. Every T079 call is judged by the verdict rules and A4.
 
 - **A3. Gate polarity.** Each item is PASSED if reached on the branch. Otherwise it is NOT-REACHED, stated per item. No synthetic probe is added. D-432-3 applies item by item to A1 and to each of (a), (e), (f) and (g) that ends NOT-REACHED, and merge waits for every such ruling (ACC3-2, ACC4-4).
-  - (a) `provider_deterministic`: one `T079 provider refused` line, then end state 4. The `FAILURE: Exception in character update` line (`action_handler.py:3854-3855`) carries `LiveProviderCompletedError` with its `http_status` (`live_provider_call.py:158-163`). There is no `action_handler.py:3845` line and no second T079 call for that update. The game accepts the next input (ACC4-3).
+  - (a) `provider_deterministic`: one `T079 provider refused` line, then end state 4. The `FAILURE: Exception in character update` line (`action_handler.py:3854-3855`) carries `LiveProviderCompletedError` with its `http_status` (`live_provider_call.py:158-163`). There is no `FAILURE: Failed to update character info for <name>` line (`action_handler.py:3846`, in `game_errors.log`) and no second T079 call for that update. The game accepts the next input (ACC4-3, P1).
   - (b) The completeness INCOMPLETE correction still fires.
   - (c) Staged travel sibling: NOT-REACHED (unreachable on main, #241). Not attempted.
   - (d) Combat-end entrant: NOT-REACHED unless the fixture holds an active legacy-mode encounter, and none is named. New encounters are built agentic (`combat_builder.py:589-593`), and `combat_manager.py:5734` runs only for a legacy-mode encounter created earlier (`combat_state.py:621-624`). O2's class is accepted at the shared loop through A1 (ACC3-3). If a legacy encounter is reached, PASSED when all of these hold: `{}`, the note, `{}`; the confirmed log line; no `Final consolidated update failed` line (`combat_manager.py:5735-5736`).
   - (e) Supersession on the ordinary path. Trigger: send the restore command while T079 is in flight.
-    - Driver: `serve --debug`. The driver sends `list_saves` then `restore` when it sees the NDJSON debug event `STATE_CHANGE: Attempt`, and records that event's seq and timestamp.
+    - Driver: `serve --debug`. The driver arms its trigger only after the scenario input is sent, so the startup welcome's T079 is excluded. It fires on the first NDJSON debug event whose content contains `STATE_CHANGE: Attempt` (the logger adds a `[Script]` tag and a `DEBUG:NeverEndingQuest:` echo follows; the echo is ignored), sends `list_saves` then `restore`, and records that event's seq and timestamp. Precondition: `list_saves` is non-empty; otherwise the row is NOT-REACHED (P3).
     - In-flight proof (ACC3-1, ACC4-1): the traceback of the `FAILURE: Exception in character update` line (`action_handler.py:3854`, logged with `exception=e`) runs through `_update_character_info_unlocked` at the T079 `capture_and_fanout` statement into `call_live_provider`, and this update has no T079 capture entry for that call. A supersession from any other origin (for example `classify_effect`) is NOT-REACHED, and so is a restore that lands after the update returned.
-    - Control arm on main, run before Step 2 lands (the AP-5 observation): the same traceback test on the first `FAILURE: Error during update (attempt 1)` line carrying `LiveProviderSuperseded`. It then shows that line repeated, then `FAILURE: Failed to update character <name> after 3 attempts` in `modules/logs/game_errors.log`.
+    - Control arm on main, run before Step 2 lands (the AP-5 observation): the same traceback test on the first `FAILURE: Error during update (attempt` line carrying `LiveProviderSuperseded` (an earlier attempt may have failed for another reason, ACC5-1). It then shows such lines repeated, then `FAILURE: Failed to update character <name> after 3 attempts` in `modules/logs/game_errors.log`.
     - Branch arm PASSED when all of these hold:
       - the in-flight proof;
       - one `FAILURE: Exception in character update` line carrying `LiveProviderSuperseded` (`action_handler.py:3854-3855`);
-      - in `modules/logs/game_errors.log`, no `FAILURE: Error during update (attempt`, no `FAILURE: Failed to update character <name> after` and no `FAILURE: T079 answers stayed invalid` line for that update. The `print("ERROR: Failed to update character info:", ...)` at `action_handler.py:3857` is expected on this path and is not a failure signal (COMPAT4-3);
+      - in `modules/logs/game_errors.log`, no `FAILURE: Error during update (attempt` line carrying `LiveProviderSuperseded` for that update, no `FAILURE: Failed to update character <name> after` line and no `FAILURE: T079 answers stayed invalid` line for that update. An earlier `Error during update` line carrying another exception (for example the unrecognized-delta `ValueError`) does not fail the row (COMPAT5-2, ACC5-1). The `print("ERROR: Failed to update character info:", ...)` at `action_handler.py:3857` is expected on this path and is not a failure signal (COMPAT4-3);
       - the Load completes and the transcript shows the restore;
       - `ps --ppid <serve pid>` after the result shows no live-provider child.
     - The safe-failure line during the Load is expected on both arms (I-9) and is recorded, not judged.
     - The staged arm is NOT-REACHED (unreachable on main, #241).
-  - (f) `bounded_failure` at the bound: exactly three counted-failure lines for the update, then one `FAILURE: T079 answers stayed invalid for <name> (3 bounded failures)`, then the `action_handler.py:3845` line; end state 3; and the game accepts the next input (ACC4-2).
+  - (f) `bounded_failure` at the bound: exactly three counted-failure lines for the update in `game_errors.log`, then one `FAILURE: T079 answers stayed invalid for <name> (3 bounded failures)`, then `FAILURE: Failed to update character info for <name>` (`action_handler.py:3846`); the last `STATE_CHANGE: Attempt` line for the update reads `(bounded failures 2 of 3)`; end state 3; and the game accepts the next input (ACC4-2, P1, P2). Counted-failure lines are: `T079 incomplete delta on attempt` (`:2108`), `FAILURE: Aborting update to prevent data loss` (`:2227`), `VALIDATION: Validation failed:` (`:2268`), `FAILURE: JSON decode error (attempt` (`:2488`) and `FAILURE: Error during update (attempt` (`:2513`).
   - (g) Confirmation gate: the note appears verbatim as the suffix of the last `input.messages` entry (`Changes to make: ...`) of the next T079 request, and the game continues.
 
 - **A4. Parity across A1, A2b and A3.**
@@ -406,14 +406,14 @@ Recommendation: ratify. The alternative, unbounded correction on the ordinary pa
 **D-432-2: the no-change answer.** The trade in player terms: today a correct "nothing changed" produces a visible false failure (O1, OBSERVED). After the change, a wrong "nothing changed" would leave a narrated change off the sheet with no line shown. That second case is unobserved: across 7 debug logs and 65 T079 answers, the only `{}` answers were O1's correct ones.
 
 - **(A) Confirm once, then accept** (Task 1, as written).
-  - Cost: one extra T079 call per no-change request, about 2-3 s (O1 measured 1.8-2.8 s per call). The worst case is 6 calls (confirmations alternating with invalid answers) instead of today's 3, which is about 11-17 s of "Updating character info..." before the same failure line. When every answer is `{}` the worst case is 4.
+  - Cost: one extra T079 call per no-change request, about 2-3 s (O1 measured 1.8-2.8 s per call). The worst case is 6 calls (confirmations alternating with invalid answers) instead of today's 3, which is about 11-20 s of "Updating character info..." before the same failure line (six calls at 1.8-2.8 s each, plus up to three 1 s tail pauses after handler-counted failures; PX5-1, N1, CUST5-1, COMPAT5-3). When every answer is `{}` the worst case is 4.
   - Coverage is partial. The check tests key presence only. `{"hitPoints": <current value>}` for "takes 8 damage" passes today and would still pass.
   - The note lists field types, so a second answer may write a change that no narration explained. Acceptance fails any such change, and the note tells the model that narrative descriptions are not sheet changes (PX3-1(a), PX3-2).
 - **(B) Accept the first `{}`.** This retires goal (a) entirely by owner ruling and costs no extra calls.
 - **Under both options:**
   - An accepted `{}` runs the existing success consumers. For change text that mentions a rest without taking one ("considers a long rest but presses on"), the prose-keyed rest clear runs for the whole party (`effects_runtime.py:137-147`, `:415`; I-2). Today that input shows the false-failure line instead (PX3-1(b)).
   - On an unmigrated campaign, an accepted `{}` also runs `update_character_effects` (`effects_runtime.py:101-104`). Its phrase check (`update_character_effects.py:720`) matches "take a rest" even in "doesn't take a rest", so it can claim and reverse that character's rest-bound effects, ending a buff with no rest taken and no line shown (PX4-3(a); I-2 addendum).
-  - For an effect reversal, an accepted wrong `{}` completes the reversal claim. The completed reversal removes its tracker entry (`update_character_effects.py:520`), so the expired effect stays on the sheet permanently, with nothing left to reverse it (COMPAT-3, PX4-3(b)).
+  - For an effect reversal, an accepted wrong `{}` completes the reversal claim. The completed reversal removes its tracker entry (`update_character_effects.py:521`), so the expired effect stays on the sheet permanently, with nothing left to reverse it (COMPAT-3, PX4-3(b)).
   - Two other no-change paths already succeed without any confirmation, and this plan leaves them unchanged: a `temporaryEffects`-only answer on a migrated campaign with no managed operation is popped to `{}` (`:2074-2077`), and a lower `experience_points` is dropped (`:1086-1088`). The owner may track them as optional issue I-11 (LEAN3-5).
 - **Today's side of the trade:** the false failure also drops every later action in the same response (`main.py:6671`) (PX3-1(c)).
 - Recommendation: (A).
@@ -434,12 +434,12 @@ Merge waits for every such ruling.
 - **I-5:** two provider-error classifiers with divergent verdicts (SP-4).
 - **I-6:** same-character staged siblings return `blocked_conflict` (FF-7/COMPAT2-4). Moot until #241.
 - **I-7 (new, r3):** the live `_error_disposition` falls through to `deterministic` for unrecognized errors, including `stream_ended`. A truncated stream is a lost response and may belong in `retryable_transport` (FF2-1).
-- **I-8 (new, r3):** the terminal-mode startup kickoff runs provider calls outside any live scope (`main.py:8680-8683`, `8713-8717` -> `1165`), so there is no transport reissue and no supersession (FF2-2). Addenda: deterministic refusals outside a scope are also retried to the caller's bound (SP3-1), and the non-live retry stack (SDK `max_retries`, `_fire_primary_with_retry`) parallels the live transport and would become dead code once the entrants run live (SP3b-2).
+- **I-8 (new, r3):** the terminal-mode startup kickoff runs provider calls outside any live scope (`main.py:8680-8683`, `8713-8717` -> `1165`), so there is no transport reissue and no supersession (FF2-2). Addenda: deterministic refusals outside a scope are also retried to the caller's bound (SP3-1), and the non-live retry stack (SDK `max_retries`, `_fire_primary_with_retry`) parallels the live transport. It would become dead code for T079's entrants once they run live; other non-live tasks such as T022 (`area_generator.py:223`) still use it, so removing it is a separate change (SP3b-2, SP5-1).
 - **I-9 (new, r3):** `action_handler.py:3854` catches supersession as an action failure, so the safe-failure line appears between "Load accepted" and the restore, and `main.py:6655` is dead for character updates (PX2-2/COMPAT2-2/FF2-4).
 - **I-10 (new, r3):** the T079 deterministic stop shows the generic line. The provider's own message (`provider_errors.py:71-80`, for example "add credit") never reaches the player (PX2-3).
 
 - **I-11 (optional, r5):** T079 deltas that reduce to no change commit as success without the no-change confirmation (the `temporaryEffects` pop at `:2074-2077`; the XP-decrease drop at `:1086-1088`). Expected: the same handling as a literal `{}` (LEAN3-5).
-- **I-12 (new, r6):** the T078 classifier `classify_effect` (`core/ai/effects_agent.py:220-275`) catches both `LiveProviderCompletedError` and `LiveProviderSuperseded` at `:260`, retries them, then re-wraps them as `EffectsAgentContractError` (`:275`), which discards the envelope and `http_status`. T078 runs just before T079 in the same entrant (`effects_runtime.py:120` -> `:130`). After #432, one update would treat these two errors differently in its two stages, and I-10 could never show a provider message for a refusal during T078. Direction: the same class-keyed exit as this plan's Steps 1 and 2 (SP4-1).
+- **I-12 (new, r6):** the T078 classifier `classify_effect` (`core/ai/effects_agent.py:220-266`) catches both `LiveProviderCompletedError` and `LiveProviderSuperseded` at `:260`, retries them, then re-wraps them as `EffectsAgentContractError` (`:266`), which discards the envelope and `http_status`. T078 runs just before T079 in the same entrant (`effects_runtime.py:119` -> `:130`) (SP5-2, COMPAT5-4, N2). After #432, one update would treat these two errors differently in its two stages, and I-10 could never show a provider message for a refusal during T078. Direction: the same class-keyed exit as this plan's Steps 1 and 2 (SP4-1).
 - **Addenda (r6):** I-2 also covers the unmigrated rest-phrase check at `updates/update_character_effects.py:720`, which matches negated mentions such as "doesn't take a rest" (PX4-3). I-9 also covers the startup welcome handback: player input, Exit or Load during the welcome's T079 shows and persists the safe-failure line before the welcome ends as SUPERSEDED (COMPAT4-1, PX4-4). The I-8 draft body now carries the non-live retry stack text (SP4-2).
 
 Two findings went to existing issues instead of new ones: the staged `classify_effect` TypeError to #241, and the silent rest-bound reversal wait to #300 (comments posted 2026-09-24).
@@ -580,22 +580,44 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 
 | Round | Seat | Finding | Class | Resolution |
 |---|---|---|---|---|
-| 4 | Leanness, Legacy-Contract, Fail-Forward, Player-Experience, Custodian, Consumer/Compat | Worst case is 6 calls (2 x limit), not 4 (LEAN4-1, GL4-1, FF4-1, PX4-1, CUST4-1, COMPAT4-2) | plan-polish (disclosure) | task-1 item 4; D-432-2(A); FS-1 confirmation row |
-| 4 | Leanness | LEAN4-2: the previous-answer value must be reset before the parse, or an unparseable reply is skipped | code-class | task-1 item 3 (reset at `:1992`, set after a successful parse) |
-| 4 | Leanness, Fail-Forward, Single-Path | LEAN4-3, FF4-2, SP4-3: the confirmation `continue` must advance `attempt` | code-class | task-1 item 3 |
-| 4 | Leanness | LEAN4-4: Step 1 needs a new import | plan-polish | task-3 step 1 |
-| 4 | Legacy-Contract | GL4-1: the `continue` count R3 check | code-class | task-1 item 3 (four `continue` statements) |
-| 4 | Legacy-Contract | GL4-2: critical-field exit origin c4097669; proving checks; deleted log strings | plan-polish | GL-1 rows 1, 2, 3 |
-| 4 | Custodian, Player-Experience, Consumer/Compat | CUST4-2, PX4-4, COMPAT4-1: the welcome SUPERSEDED path is `:794-795` -> `:818-820` after the safe-failure line; triggers include input and Exit | plan-polish + PRE_EXISTING_OUT | end state 5; I-9 addendum |
-| 4 | Custodian | CUST4-3: the critical-field branch has no note | plan-polish | task-3 step 3 |
-| 4 | Player-Experience | PX4-2: drop "tired" from the note (exhaustion is tracked) | code-class (prompt text) | task-1 note |
-| 4 | Player-Experience | PX4-3: two more player consequences for D-432-2 | plan-polish (disclosure) + PRE_EXISTING_OUT | D-432-2; I-2 addendum |
+| 4 | Leanness, Legacy-Contract, Fail-Forward, Player-Experience, Custodian, Consumer/Compat | Worst case is 6 calls (2 x limit), not 4 (LEAN4-1, GL4-1, FF4-1, PX4-1, CUST4-1, COMPAT4-2) | plan-polish (disclosure) | fixed-inline (task-1 item 4; D-432-2(A); FS-1 confirmation row) |
+| 4 | Leanness | LEAN4-2: the previous-answer value must be reset before the parse, or an unparseable reply is skipped | code-class | task-1 (item 3: reset at `:1992`, set after a successful parse) |
+| 4 | Leanness, Fail-Forward, Single-Path | LEAN4-3, FF4-2, SP4-3: the confirmation `continue` must advance `attempt` | code-class | task-1 (item 3) |
+| 4 | Leanness | LEAN4-4: Step 1 needs a new import | plan-polish | fixed-inline (task-3 step 1) |
+| 4 | Legacy-Contract | GL4-1: the `continue` count R3 check | code-class | task-1 (item 3: four `continue` statements) |
+| 4 | Legacy-Contract | GL4-2: critical-field exit origin c4097669; proving checks; deleted log strings | plan-polish | fixed-inline (GL-1 rows 1, 2, 3) |
+| 4 | Custodian, Player-Experience, Consumer/Compat | CUST4-2, PX4-4, COMPAT4-1: the welcome SUPERSEDED path is `:794-795` -> `:818-820` after the safe-failure line; triggers include input and Exit | plan-polish + PRE_EXISTING_OUT | fixed-inline (end state 5); escalate:@owner (I-9 addendum) |
+| 4 | Custodian | CUST4-3: the critical-field branch has no note | plan-polish | fixed-inline (task-3 step 3) |
+| 4 | Player-Experience | PX4-2: drop "tired" from the note (exhaustion is tracked) | code-class (prompt text) | task-1 (note text) |
+| 4 | Player-Experience | PX4-3: two more player consequences for D-432-2 | plan-polish (disclosure) + PRE_EXISTING_OUT | fixed-inline (D-432-2); escalate:@owner (I-2 addendum) |
 | 4 | Single-Path | SP4-1: T078 `classify_effect` retries and re-wraps the #240 handback and supersession | PRE_EXISTING_OUT | escalate:@owner (I-12) |
-| 4 | Single-Path | SP4-2: the I-8 draft body lacks the retry-stack text | plan-polish | drafts file; I-8 addendum line |
-| 4 | Consumer/Compat | COMPAT4-3: "Failed to update character" also matches the expected print at `action_handler.py:3857` | code-class (test) | A3(e) criteria pinned to `game_errors.log` strings |
-| 4 | Acceptance | ACC4-1: in-flight proof keyed on send time; `STATE_CHANGE` names no character | code-class (test) | A3(e) traceback-origin proof; `serve --debug` driver trigger |
-| 4 | Acceptance | ACC4-2: A3(f) must identify the bound firing | code-class (test) | A3(f) |
-| 4 | Acceptance | ACC4-3: A3(a) must separate re-raise from return False | code-class (test) | A3(a) |
-| 4 | Acceptance | ACC4-4: A1 verdict for `{}`, note, correct answer; A1 under D-432-3 | code-class (test) | A1; A3 header; D-432-3 |
-| 4 | Acceptance | ACC4-5: name the condition list | code-class (test) | verdict rule (schema `condition.enum`) |
-| 4 | No-Limits | NL4-1: A1b sends 10 messages, not 9 | plan-polish | A1b disclosure |
+| 4 | Single-Path | SP4-2: the I-8 draft body lacks the retry-stack text | plan-polish | fixed-inline (drafts file; I-8 addendum line) |
+| 4 | Consumer/Compat | COMPAT4-3: "Failed to update character" also matches the expected print at `action_handler.py:3857` | code-class (test) | task-5 (A3(e) criteria pinned to `game_errors.log` strings) |
+| 4 | Acceptance | ACC4-1: in-flight proof keyed on send time; `STATE_CHANGE` names no character | code-class (test) | task-5 (A3(e) traceback-origin proof; `serve --debug` driver trigger) |
+| 4 | Acceptance | ACC4-2: A3(f) must identify the bound firing | code-class (test) | task-5 (A3(f)) |
+| 4 | Acceptance | ACC4-3: A3(a) must separate re-raise from return False | code-class (test) | task-5 (A3(a)) |
+| 4 | Acceptance | ACC4-4: A1 verdict for `{}`, note, correct answer; A1 under D-432-3 | code-class (test) | task-5 (A1; A3 header); D-432-3 |
+| 4 | Acceptance | ACC4-5: name the condition list | code-class (test) | task-5 (verdict rule, schema `condition.enum`) |
+| 4 | No-Limits | NL4-1: A1b sends 10 messages, not 9 | plan-polish | fixed-inline (A1b disclosure) |
+
+
+**Round 5** (confirmation pass; nine seats on r6, ce2911b0, Linux-side copy).
+
+- PASS/LGTM: No-Limits, Player-Experience, Fail-Forward, Leanness, Single-Path, Custodian, Consumer/Compat, Acceptance.
+- BLOCKING (narrow): Legacy-Contract (GL5-1).
+- Every round-4 row re-verified in code: RESOLVED.
+- Two rows are code-class (GL5-1, COMPAT5-2 = ACC5-1). Round 6 re-verifies them.
+
+| Round | Seat | Finding | Class | Resolution |
+|---|---|---|---|---|
+| 5 | Legacy-Contract | GL5-1: the row 1(b) proving grep spans two lines and matches nothing | code-class (check) | fixed-inline (GL-1 row 1: single-line pattern, hits `:1147` once; verified by controller) |
+| 5 | Consumer/Compat, Acceptance | COMPAT5-2, ACC5-1: an earlier non-supersession `Error during update` line fails a correct A3(e) run | code-class (test) | task-5 (A3(e) branch and control criteria name `LiveProviderSuperseded`) |
+| 5 | Consumer/Compat | COMPAT5-1: Reset is also a welcome trigger; Step 0 terminal cites `:797` | plan-polish | fixed-inline (end state 5; Step 0 row); escalate:@owner (I-9 addendum) |
+| 5 | Player-Experience, Leanness, Custodian, Consumer/Compat | PX5-1, N1, CUST5-1, COMPAT5-3: worst-case time omits the tail pauses | plan-polish (disclosure) | fixed-inline (D-432-2(A): about 11-20 s) |
+| 5 | Player-Experience | PX5-2: `web/web_interface.py` path; tracker removal at `:521` | plan-polish | fixed-inline (end state 5; D-432-2) |
+| 5 | Single-Path, Leanness, Consumer/Compat | SP5-2, N2, COMPAT5-4: I-12 cites (`effects_agent.py:266`, `effects_runtime.py:119`) | plan-polish | fixed-inline (section 9; drafts file; verified `:266` by controller) |
+| 5 | Single-Path | SP5-1: the non-live retry stack is not dead code for other tasks (T022) | plan-polish | fixed-inline (section 9 I-8 line; drafts file) |
+| 5 | Custodian | CUST5-2: round-4 ledger rows lack resolution tokens; Task 0 range | plan-polish | fixed-inline (round-4 table tokens; Task 0) |
+| 5 | Acceptance | P1: A3(a)/(f) cite `:3845` (an `else:`) | plan-polish | fixed-inline (the `:3846` FAILURE line) |
+| 5 | Acceptance | P2: A3(f) counted-failure lines undefined | plan-polish | fixed-inline (A3(f) lists the five strings and the last `STATE_CHANGE` count) |
+| 5 | Acceptance | P3: driver trigger match, arming and precondition | plan-polish | fixed-inline (A3(e) driver) |
