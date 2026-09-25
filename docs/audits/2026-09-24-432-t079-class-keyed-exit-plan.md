@@ -1,6 +1,6 @@
 # #432 T079 character writer: class-keyed exit, confirmed no-change answers, supersession
 
-Status: PLAN r3 (2026-09-24), after Part 3 rounds 1 and 2 (nine seats each; resolution ledger in section 11). Nothing implemented. Execution needs convergence and the owner's approval (NEQ-REVIEW-13).
+Status: PLAN r4 (2026-09-24), after Part 3 rounds 1 and 2 (nine seats each) and the one completed seat of the interrupted round 3 (resolution ledger in section 11). Nothing implemented. Execution needs convergence and the owner's approval (NEQ-REVIEW-13).
 
 ## 0. Provenance (captured dynamically; evidence, never authority)
 
@@ -202,8 +202,8 @@ The confirmation flag:
 - **Step 3.** Replace the counting.
   - `bounded_failure_count` counts every `bounded_failure` and is never reset.
   - The loop condition at `:1971` becomes `while structural_reissue or bounded_failure_count < BOUND`.
-  - The per-site `return False` exits at `:2115`, `:2242` and `:2269` are deleted, so the bound is checked in one place.
-  - The tail at `:2552-2556` reads the same count.
+  - The per-site `return False` exits at `:2115`, `:2242` and `:2269` are deleted.
+  - The tail at `:2552-2556` no longer tests anything. It advances the `attempt` ordinal and keeps the existing 1 s pause. The `while` condition is the only place the bound is checked (SP3-2).
   - `attempt` stays only as the debug call ordinal (`:2001`, `:2015`).
   - R3 check: after the change, `grep -nE "attempt (<=|<|==) max_attempts" updates/update_character_info.py` returns nothing.
 - **Step 4.** The terminal line at `:2569` becomes `FAILURE: T079 answers stayed invalid for <name> (<n> bounded failures)`.
@@ -382,6 +382,7 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
 - **(i) Bound.** On the ordinary path, 3 `bounded_failure` outcomes in total end the update with `False`. The terminals are exactly end state 3.
   - Non-live provider errors stay in this bound, as today. Their transient class belongs to a live scope for the terminal kickoff (I-8) and to #300 for the reversal entrant, which already resumes.
   - This departs from #432's literal "transient failures reissue" only for those two non-live entrants. Inside a live scope, the transport already reissues.
+  - The same two entrants also keep today's handling of deterministic refusals. A quota 429 or other 4xx there still spends the bound on futile identical tries, because the #240 handback (`LiveProviderCompletedError`) exists only inside a live scope. Giving those entrants a live scope (I-8, #300) collapses this asymmetry (SP3-1).
 - **(ii) Deterministic stop.** `LiveProviderCompletedError` ends the update at once. The class is exactly what the live transport hands back as deterministic (`live_provider_call.py:781-813`):
   - HTTP 4xx other than 408/409/429;
   - quota codes;
@@ -501,3 +502,11 @@ The staged `classify_effect` TypeError was added to existing #241 on 2026-09-24 
 | 2 | Single-Path | SP2-3: cite #300 | plan-polish | fixed-inline (sections 1, 3) |
 | 2 | Single-Path | SP2-4: single bound site | GENUINE_FIX | task-3 step 3 |
 | 2 | Single-Path | fyi: gate predicate in one local variable | fyi | task-1 item 2 |
+
+**Round 3** (nine seats dispatched on r3, 20679781; interrupted 2026-09-24 when the WSL `/mnt/c` mount failed with I/O errors). Only Single-Path returned: provisional PASS, no CRITICAL. The other eight seats were stopped with no report and are re-dispatched on r4.
+
+| Round | Seat | Finding | Reconciliation (NEQ-REVIEW-14) | Resolution |
+|---|---|---|---|---|
+| 3 | Single-Path | SP3-1: non-live deterministic refusals (quota, 4xx) still get the bound's futile tries; the #240 handback exists only in scope | GENUINE_FIX (disclosure) | D-432-1(i) states the asymmetry and its owners; I-8 draft extended |
+| 3 | Single-Path | SP3-2: "checked in one place" is contradicted by the tail at `:2552` | plan-polish | fixed-inline (task-3 step 3: the tail no longer tests) |
+| 3 | Single-Path | N1 (not checked, I/O error): other T079 call sites or a shared `LiveProviderCompletedError` handler would make Step 1 a duplicate | verified by controller | `git grep` at 7b20bc7d: one T079 call site (`update_character_info.py:1978`); the only other handler is level-up's own caller boundary (`level_up_manager.py:221`), the per-caller shape the #240 contract prescribes. Not a duplicate. |
