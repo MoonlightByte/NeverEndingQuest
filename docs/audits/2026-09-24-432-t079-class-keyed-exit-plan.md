@@ -197,6 +197,21 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
   - the terminal-mode kickoff path (non-live: `main.py:8713-8717` -> `1165`);
   - the zero-caller wrappers `updatePlayerInfo`, `updateNPCInfo`, `update_multiple_characters_parallel`, `update_party_parallel` (`:2574-2830`);
   - the startup welcome handback in web/headless mode (live: `_apply_welcome` sets the welcome scope, `main.py:752`; terminals: FAILED at `main.py:807-817` -> `:821-845`, SUPERSEDED at `:794-795` -> `:818-820`) (COMPAT3-2, COMPAT5-1, P6-2).
+
+  **Step 0 result (implementation audit, 2026-09-24, at 7231d28d; before any Task 3 code).** Every call site of `update_character_info`, `_update_character_info_unlocked` and `update_character_with_effects` outside tests was re-listed by grep; no entrant beyond the rows above exists. Line numbers in `update_character_info.py` are after Task 1.
+
+  | Caller | file:line | Live scope? | Reachable? | Terminal on `False` | Terminal on a raised `LiveProviderCompletedError` | Terminal on supersession |
+  |---|---|---|---|---|---|---|
+  | Ordinary action, migrated campaign | `action_handler.py:3835` -> `effects_runtime.py:130` | yes (turn scope) | yes | `status=error` (`action_handler.py:3845-3853`), safe-failure line (`main.py:6671-6682`) | catch-all `action_handler.py:3854-3863`, safe-failure line (Task 6 adds the account line) | same catch, safe-failure line during the Load (I-9) |
+  | Ordinary action, unmigrated campaign | `action_handler.py:3835` -> `effects_runtime.py:98` | yes | recovery fallback only | same | same | same |
+  | Staged travel sibling | `effects_runtime.py:253` | n/a | NO: `:241` raises `TypeError` (#241) | n/a | n/a | n/a |
+  | Combat end, legacy-mode encounter | `combat_manager.py:5734` | yes (`:3303-3305`) | legacy-mode encounters only (`combat_state.py:621-624`) | log `Final consolidated update failed` (`:5736`) | log only (`:5741`, I-1) | log only (`:5741`); the combat loop continues |
+  | Time-bound reversal expiry | `process_effect_expirations.py:54` <- `main.py:8810` | NO (before the scope at `:9414`) | unmigrated campaigns (#300) | released to pending (`update_character_effects.py:541-553`) | not raised outside a scope | not raised outside a scope |
+  | Rest reversal helper | `process_effect_expirations.py:101` | n/a | NO: zero production callers | n/a | n/a | n/a |
+  | Rest-bound reversal | `update_character_effects.py:740` <- `effects_runtime.py:104` | yes (inside the ordinary action) | unmigrated campaigns | released to pending, no line | caught at `update_character_effects.py:541-546`, released | same |
+  | Terminal-mode kickoff | `main.py:8713-8717` -> `:1165` `process_ai_response` -> the action handler | NO | terminal mode only | the action handler's terminal | not raised outside a scope | not raised outside a scope |
+  | Zero-caller wrappers | `updatePlayerInfo` (`update_character_info.py:2606`), `updateNPCInfo` (`:2610`), `update_multiple_characters_parallel` (`:2656`), `update_party_parallel` (`:2830`) | n/a | NO: callers exist only inside this file (examples and wrapper-to-wrapper) | n/a | n/a | n/a |
+  | Startup welcome handback (web/headless) | `_apply_welcome` (`main.py:452`; scope at `:752`) -> `process_ai_response` -> the action handler | yes | yes | safe-failure line; FAILED at `main.py:807-817` -> `:821-845` | same as `False` | safe-failure line; `:794-795` raises and `:818-820` ends the welcome as SUPERSEDED |
 - **Step 1.** Add `LiveProviderCompletedError` to the import at `:110` (LEAN4-4). In the loop-level generic handler (`:2505-2507`), before anything is counted, re-raise `LiveProviderCompletedError` after logging `FAILURE: T079 provider refused <name> (deterministic, <http_status>)`. There is no nested `try` around the call. The exception, with its envelope and `http_status`, reaches the caller unchanged, which is the handback shape the #240 contract prescribes and the data I-10 needs (LEAN3-4). Every caller's existing catch-all turns it into the end state 4 terminals.
 - **Step 2.** In the same handler, re-raise `LiveProviderSuperseded` unconditionally by dropping `commit_guard is not None and`.
   - The post-commit handlers at `:2451` and `:2469` keep their condition. They run after the primary commit, and raising there would report a committed update as failed.
