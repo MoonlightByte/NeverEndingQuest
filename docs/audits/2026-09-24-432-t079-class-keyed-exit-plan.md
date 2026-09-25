@@ -1,12 +1,12 @@
 # #432 T079 character writer: class-keyed exit, confirmed no-change answers, supersession
 
-Status: PLAN r8 (2026-09-24), after Part 3 rounds 1-6 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4 and 6 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; resolution ledger in section 11). Nothing implemented. Execution needs convergence and the owner's approval (NEQ-REVIEW-13).
+Status: PLAN r9 (2026-09-24), after Part 3 rounds 1-7 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6 and 7 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; resolution ledger in section 11). Nothing implemented. Execution needs convergence and the owner's approval (NEQ-REVIEW-13).
 
 ## 0. Provenance (captured dynamically; evidence, never authority)
 
 | Item | Value |
 |---|---|
-| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0, r7 3ab190f8. Code is unchanged from base; only this plan differs. |
+| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0, r7 3ab190f8, r8 1c9be032. Code is unchanged from base; only this plan differs. |
 | Base revision | `origin/main` = 7b20bc7d. Ancestor check: `git merge-base --is-ancestor HEAD origin/main` at plan time. |
 | #193 epoch | v3.1, `updatedAt` 2026-09-18T18:20:12Z. Re-checked before implementation (NEQ-OPS-03). |
 | Provider / model | `openai`. T079, T078 and T051 resolve to `gpt-5.6-luna` with `reasoning_effort: none` (`model_registry.py:390-397`, `:460-477`). Never the legacy GPT-4.1 provider. |
@@ -159,7 +159,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 
 ## 5. Tasks
 
-**Task 0: rollback point.** The plan-only commits (r1-r8; hashes in section 0) come before any code change.
+**Task 0: rollback point.** The plan-only commits (r1-r9; hashes in section 0) come before any code change.
 
 **Task 1: `{}` is a typed "no change" answer, confirmed once. Fixes O1/O2 (D-432-2 option A).**
 
@@ -196,7 +196,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
   - `update_character_effects.py:740` (live, through `effects_runtime.py:104`);
   - the terminal-mode kickoff path (non-live: `main.py:8713-8717` -> `1165`);
   - the zero-caller wrappers `updatePlayerInfo`, `updateNPCInfo`, `update_multiple_characters_parallel`, `update_party_parallel` (`:2574-2830`);
-  - the startup welcome handback in web/headless mode (live: `_apply_welcome` sets the welcome scope, `main.py:752`; terminals: FAILED at `main.py:808-815` -> `:821-845`, SUPERSEDED at `:794-795` -> `:818-820`) (COMPAT3-2, COMPAT5-1, P6-2).
+  - the startup welcome handback in web/headless mode (live: `_apply_welcome` sets the welcome scope, `main.py:752`; terminals: FAILED at `main.py:807-817` -> `:821-845`, SUPERSEDED at `:794-795` -> `:818-820`) (COMPAT3-2, COMPAT5-1, P6-2).
 - **Step 1.** Add `LiveProviderCompletedError` to the import at `:110` (LEAN4-4). In the loop-level generic handler (`:2505-2507`), before anything is counted, re-raise `LiveProviderCompletedError` after logging `FAILURE: T079 provider refused <name> (deterministic, <http_status>)`. There is no nested `try` around the call. The exception, with its envelope and `http_status`, reaches the caller unchanged, which is the handback shape the #240 contract prescribes and the data I-10 needs (LEAN3-4). Every caller's existing catch-all turns it into the end state 4 terminals.
 - **Step 2.** In the same handler, re-raise `LiveProviderSuperseded` unconditionally by dropping `commit_guard is not None and`.
   - The post-commit handlers at `:2451` and `:2469` keep their condition. They run after the primary commit, and raising there would report a committed update as failed.
@@ -353,8 +353,8 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
   - (c) Staged travel sibling: NOT-REACHED (unreachable on main, #241). Not attempted.
   - (d) Combat-end entrant: NOT-REACHED unless the fixture holds an active legacy-mode encounter, and none is named. New encounters are built agentic (`combat_builder.py:589-593`), and `combat_manager.py:5734` runs only for a legacy-mode encounter created earlier (`combat_state.py:621-624`). O2's class is accepted at the shared loop through A1 (ACC3-3). If a legacy encounter is reached, PASSED when all of these hold: `{}`, the note, `{}`; the confirmed log line; no `Final consolidated update failed` line (`combat_manager.py:5735-5736`).
   - (e) Supersession on the ordinary path. Trigger: send the restore command while T079 is in flight.
-    - Driver: `serve --debug`. The driver sends the scenario input only after the `startup` event with `phase: startup_kickoff_done` (any result; kit `marsh-raw-1.ndjson` seq 135), and arms its trigger only after that input is sent. It fires on the first NDJSON debug event whose content contains `STATE_CHANGE: Attempt` (the logger adds a `[Script]` tag and a `DEBUG:NeverEndingQuest:` echo follows; the echo is ignored), sends `list_saves` then `restore`, and records that event's seq and timestamp. Precondition: `list_saves` is non-empty; otherwise the row is NOT-REACHED (P3).
-    - In-flight proof (ACC3-1, ACC4-1): the traceback of the `FAILURE: Exception in character update` line (`action_handler.py:3854`, logged with `exception=e`) runs through `_update_character_info_unlocked` at the T079 `capture_and_fanout` statement into `call_live_provider`, does not pass through `_apply_welcome` (`main.py:452`, the handback call at `:756`), and this update has no T079 capture entry for that call (COMPAT6-1). A supersession from any other origin (for example `classify_effect`) is NOT-REACHED, and so is a restore that lands after the update returned.
+    - Driver: `serve --debug`. The driver sends the scenario input only after the `startup` event with `phase: startup_kickoff_done` (any `result`; kit `marsh-raw-1.ndjson` seq 135). Every emit of that event follows the welcome's handback apply (`main.py:535`, `:561`, `:658`, `:874`), so the welcome's own T079 calls have finished. If that event does not arrive because the welcome ended another way (skipped, stale-discarded, FAILED or SUPERSEDED; `main.py:526`, `:625`, `:818-845`, `:1022`), the operator stops the driver and A3(e) is NOT-REACHED for that run (round-7 Leanness, Fail-Forward, Consumer/Compat, Acceptance). The driver arms its trigger only after the scenario input is sent. It fires on the first NDJSON debug event whose content contains `STATE_CHANGE: Attempt` (the logger adds a `[Script]` tag and a `DEBUG:NeverEndingQuest:` echo follows; the echo is ignored), sends `list_saves` then `restore`, and records that event's seq and timestamp. Precondition: `list_saves` is non-empty; otherwise the row is NOT-REACHED (P3).
+    - In-flight proof (ACC3-1, ACC4-1): the traceback of the `FAILURE: Exception in character update` line (`action_handler.py:3854`, logged with `exception=e`) runs through `_update_character_info_unlocked` at the T079 `capture_and_fanout` statement into `call_live_provider`, and this update has no T079 capture entry for that call. The evidence records the `startup_kickoff_done` seq and the trigger event's seq, and the trigger's is the later one. (A logged traceback holds only the frames below the catch at `action_handler.py:3854`, so it can never show the welcome caller; the kickoff wait above is what excludes the welcome's T079, COMPAT6-1.) A supersession from any other origin (for example `classify_effect`) is NOT-REACHED, and so is a restore that lands after the update returned.
     - Control arm on main, run before Step 2 lands (the AP-5 observation): the same traceback test on the first `FAILURE: Error during update (attempt` line carrying `LiveProviderSuperseded` (an earlier attempt may have failed for another reason, ACC5-1). It then shows such lines repeated, then `FAILURE: Failed to update character <name> after 3 attempts` in `modules/logs/game_errors.log`.
     - Branch arm PASSED when all of these hold:
       - the in-flight proof;
@@ -606,7 +606,7 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 - PASS/LGTM: No-Limits, Player-Experience, Fail-Forward, Leanness, Single-Path, Custodian, Consumer/Compat, Acceptance.
 - BLOCKING (narrow): Legacy-Contract (GL5-1).
 - Every round-4 row re-verified in code: RESOLVED.
-- Two rows are code-class (GL5-1, COMPAT5-2 = ACC5-1). Round 6 re-verifies them.
+- Four rows are code-class: GL5-1, COMPAT5-2 = ACC5-1, and P2 and P3 (reclassified in r8). Round 6 re-verified them.
 
 | Round | Seat | Finding | Class | Resolution |
 |---|---|---|---|---|
@@ -626,16 +626,29 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 
 - PASS/LGTM from all nine seats. No-Limits, Single-Path, Player-Experience and Leanness reported no findings.
 - Every round-5 row re-verified in code: RESOLVED (CUST5-2 PARTIAL, completed below).
-- One code-class row (COMPAT6-1) plus two acceptance-text tightenings that only make A3(e)/(f) stricter. Round 7 checks the r8 edits.
+- Four code-class rows: COMPAT6-1, the A3(e) driver row, the A3(f) row, and PP6-1 (reclassified in r9). Round 7 re-verified them.
 
 | Round | Seat | Finding | Class | Resolution |
 |---|---|---|---|---|
 | 6 | Consumer/Compat | COMPAT6-1: a queued scenario input can arm the A3(e) trigger during the startup welcome's T079 | code-class (test) | task-5 (in-flight proof excludes tracebacks through `_apply_welcome`) |
 | 6 | Acceptance | A3(e) driver: send the scenario input only after `startup_kickoff_done`; scope the one-line criterion to the named update | code-class (test) | task-5 (A3(e) driver and branch criterion; kickoff event verified at kit seq 135) |
 | 6 | Acceptance | A3(f): `STATE_CHANGE` lines live in `game_debug.log`, not `game_errors.log` | code-class (test) | task-5 (A3(f) span defined in `game_debug.log`) |
-| 6 | Legacy-Contract | PP6-1..3: grep file operands; `:1147` will shift; spans `:1146-1148` and `:1952-1966` | plan-polish | fixed-inline (GL-1 rows 1 and 3) |
+| 6 | Legacy-Contract | PP6-1..3: grep file operands; `:1147` will shift; spans `:1146-1148` and `:1952-1966` | PP6-1 code-class (check); PP6-2, PP6-3 plan-polish | task-1 (GL-1 rows 1 and 3 proving checks; re-verified round 7 by Legacy-Contract and Custodian); fixed-inline (spans) |
 | 6 | Fail-Forward, Consumer/Compat | P6-1, COMPAT6-2: the I-9 draft cites `session.py:738`, which is a maintenance Save, not a welcome trigger | plan-polish | fixed-inline (drafts file: headless Load `:973`, web Reset claim `:3322`) |
 | 6 | Fail-Forward, Custodian | P6-2 and Custodian 4: Step 0 welcome terminal ranges overlap; Reset cite points at a comment | plan-polish | fixed-inline (Step 0 row; end state 5 cite `:3322`) |
 | 6 | Custodian | Ledger classes: GL5-1 code-class needs a task token; P2, P3 change acceptance text | plan-polish | fixed-inline (round-5 rows now `task-1` / `task-5`) |
 | 6 | Custodian | Worst-case time omits about 2.3 s before the first T079 call | plan-polish (disclosure) | fixed-inline (D-432-2(A): about 13-22 s) |
 | 6 | Custodian | The section 9 I-9 addendum line omits Reset | plan-polish | fixed-inline (section 9 addenda line) |
+
+**Round 7** (narrow check of the r8 edits; nine seats on r8, 1c9be032, Linux-side copy).
+
+- PASS/LGTM from all nine seats. Legacy-Contract, No-Limits, Single-Path and Player-Experience reported no findings.
+- Every round-6 row re-verified in code: RESOLVED. The GL-1 proving greps were re-run by Legacy-Contract and Custodian: row 1(b) hits `:1147` once, row 1(c) hits `:1960` once, and row 3 hits zero today by design.
+- Two test-text rows are code-class under the doubt rule. Both can only turn a hang or a no-op check into NOT-REACHED or a recorded fact, never into a false PASS. Round 8 checks the r9 edits.
+
+| Round | Seat | Finding | Class | Resolution |
+|---|---|---|---|---|
+| 7 | Acceptance, Consumer/Compat | The A3(e) clause "does not pass through `_apply_welcome`" can never fail: a logged traceback holds only frames below the catch | code-class (test) | task-5 (clause replaced by recorded seq ordering; the kickoff wait closes COMPAT6-1) |
+| 7 | Leanness, Fail-Forward, Consumer/Compat, Acceptance | The driver hangs when the welcome ends without `startup_kickoff_done` | code-class (test) | task-5 (the operator stops the driver; A3(e) is NOT-REACHED for that run) |
+| 7 | Custodian | Round-5 and round-6 headers undercount code-class rows; PP6-1 fixes a proving grep, so it is code-class | plan-polish | fixed-inline (headers; PP6-1 row reclassified with a task-1 token) |
+| 7 | Fail-Forward, Consumer/Compat, Player-Experience | Step 0 FAILED range starts at the `if (` on `main.py:807` and the raise ends at `:817` | plan-polish | fixed-inline (Step 0 row `:807-817`) |
