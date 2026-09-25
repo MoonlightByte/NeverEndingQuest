@@ -1,12 +1,12 @@
 # #432 T079 character writer: class-keyed exit, confirmed no-change answers, supersession
 
-Status: PLAN r10 (2026-09-24), CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). Nothing implemented. Execution needs the owner's approval (NEQ-REVIEW-13).
+Status: PLAN r11 (2026-09-24). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5), which is in Part 3 review. Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
 
 ## 0. Provenance (captured dynamically; evidence, never authority)
 
 | Item | Value |
 |---|---|
-| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0, r7 3ab190f8, r8 1c9be032, r9 35ede40e. Code is unchanged from base; only this plan differs. |
+| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0, r7 3ab190f8, r8 1c9be032, r9 35ede40e, r10 b4442681. Code is unchanged from base; only this plan differs. |
 | Base revision | `origin/main` = 7b20bc7d. Ancestor check: `git merge-base --is-ancestor HEAD origin/main` at plan time. |
 | #193 epoch | v3.1, `updatedAt` 2026-09-18T18:20:12Z. Re-checked before implementation (NEQ-OPS-03). |
 | Provider / model | `openai`. T079, T078 and T051 resolve to `gpt-5.6-luna` with `reasoning_effort: none` (`model_registry.py:390-397`, `:460-477`). Never the legacy GPT-4.1 provider. |
@@ -17,7 +17,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 
 ## 1. Scope
 
-**In scope:** the T079 retry loop in `updates/update_character_info.py::_update_character_info_unlocked` (1444-2571), including its exception handlers, and the empty-delta check `_is_meaningful_character_delta` (1141-1148).
+**In scope:** the T079 retry loop in `updates/update_character_info.py::_update_character_info_unlocked` (1444-2571), including its exception handlers, and the empty-delta check `_is_meaningful_character_delta` (1141-1148). From r11 (D-432-4): the T078 classifier's provider-error exits (`core/ai/effects_agent.py:220-266`), and the player line for a refused character update (`core/ai/action_handler.py:3854-3863`, `main.py:4925-4937`, `utils/provider_errors.py`).
 
 **Not in scope.** Each item is tracked in an issue or in a drafted issue waiting for owner authorization (section 9).
 
@@ -143,7 +143,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 | 1 | Success with a change | Sheet committed; `True` | Narration, and the sheet matches it |
 | 2 | Confirmed no change (`{}`, note, `{}`) | The unchanged sheet flows through the existing preparation and commit. The post-commit validators run as for any update. On disk, only differences attributable to normalization or to T051/effects validation appear. | Narration, with no failure line. Startup welcome (web/headless): the welcome completes as APPLIED. |
 | 3 | `bounded_failure` at the D-432-1 bound | `False` | Ordinary action: `SAFE_ACTION_FAILURE_MESSAGE` after the narration, and the narrated change is absent from the sheet. Combat end: log only, and the narrated change is absent with no player line (I-1). Time-bound effect reversal: released to pending and re-claimed on the next expiry scan (`update_character_effects.py:525-528`, `:553-558`). Rest-bound reversal (unmigrated rest entrant, `effects_runtime.py:98-104`): released to pending, re-claimed only at the next qualifying rest, with no player line (`:597`; #300 comment). Startup welcome (web/headless): the safe-failure line, then the kickoff is marked failed and the welcome note removed (`main.py:807-845`). Terminal kickoff: its caller's existing handling (I-8). When the last counted failure comes through the JSON or generic handler, the tail's 1 s pause delays this end state by 1 s (LEAN3-3, disclosed). |
-| 4 | `provider_deterministic` | Raises `LiveProviderCompletedError` at once | Every caller's existing catch-all gives the same terminals as end state 3: ordinary action (`action_handler.py:3854-3863`, generic line, no provider-specific message, I-10), combat end (`combat_manager.py:5741`, log only, I-1), reversal (`update_character_effects.py:541-547`, released to pending), startup welcome (`main.py:807-845`). |
+| 4 | `provider_deterministic` | Raises `LiveProviderCompletedError` at once | Every caller's existing catch-all gives the same terminals as end state 3: ordinary action (`action_handler.py:3854-3863`; the Task 6 line for an out-of-funds, API-key or model-access refusal, the generic line otherwise), combat end (`combat_manager.py:5741`, log only, I-1), reversal (`update_character_effects.py:541-547`, released to pending), startup welcome (`main.py:807-845`). |
 | 5 | `superseded` | Raises | `action_handler.py:3854-3863` turns it into `status=error`, so the safe-failure line appears during the Load (I-9). `combat_manager.py:5741` logs it and the loop continues. `update_character_effects.py:541-547` releases the claim to pending. Startup welcome (web/headless): the same catch shows and persists the safe-failure line (`main.py:6674` -> `_handle_ordinary_action_failure`, `:4971-5013`), then `:794-795` raises and `:818-820` ends the welcome as SUPERSEDED. The welcome's supersession controls stay open until `main.py:444`, so the triggers are Load, Reset (`web/web_interface.py:3322`, `claim_destructive_operation`; headless reset and quit at `core/headless/session.py:492-495`), player input (`web/web_interface.py:2946`) and Exit (`:4377`) (I-9 addendum; CUST4-2, PX4-4, COMPAT4-1, COMPAT5-1). |
 
 **Part 2 pages cited.**
@@ -159,7 +159,7 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 
 ## 5. Tasks
 
-**Task 0: rollback point.** The plan-only commits (r1-r10; hashes in section 0) come before any code change.
+**Task 0: rollback point.** The plan-only commits (r1-r11; hashes in section 0) come before any code change.
 
 **Task 1: `{}` is a typed "no change" answer, confirmed once. Fixes O1/O2 (D-432-2 option A).**
 
@@ -212,10 +212,11 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
 - **Step 4.** Log lines.
   - The debug line at `:1976` keeps its `STATE_CHANGE: Attempt` prefix and becomes `STATE_CHANGE: Attempt <attempt> (bounded failures <n> of <limit>)` (GL3-3, COMPAT3-3). A3(e) relies on that prefix.
   - The terminal line at `:2569` becomes `FAILURE: T079 answers stayed invalid for <name> (<n> bounded failures)`.
+- **Step 5 (r11, D-432-4): T078 lets refusal and supersession through.** In `classify_effect` (`core/ai/effects_agent.py:220-266`), add `except (LiveProviderCompletedError, LiveProviderSuperseded): raise` before the catch-all at `:260`, importing both from `utils.capture.live_provider_call`. Both classes then leave T078 at once with the envelope intact, and T079 never runs for that update. Other failures keep the two attempts with a correction and the `EffectsAgentContractError` wrap (`:266`). T078 is a required live task (`live_provider_call.py:47`), so inside a live scope a deterministic refusal reaches it as `LiveProviderCompletedError` (`:1695-1698`). The only other caller, `effects_runtime.py:241`, is unreachable on main (#241).
 
 **Task 4: documentation.**
 
-- `docs/architecture/provider-routing.md`: leave `:54` (the dated #323 delta about Gemini `usage`) unchanged. Add a dated "#432 T079 exit delta (2026-09-24)" section, following the file's dated-delta convention, that states the class-keyed exit, the deterministic re-raise and the confirmed `{}` contract (CUST3-1).
+- `docs/architecture/provider-routing.md`: leave `:54` (the dated #323 delta about Gemini `usage`) unchanged. Add a dated "#432 T079 exit delta (2026-09-24)" section, following the file's dated-delta convention, that states the class-keyed exit, the deterministic re-raise, the confirmed `{}` contract, T078's refusal exit and the Task 6 refusal line (CUST3-1).
 - `docs/architecture/save-load-reset-lifecycle.md`: leave `:197-199` unchanged; that sentence is about `safe_json_dump` callers and stays true. Add a dated "#432 T079 exit delta" note, following the file's convention: unguarded T079 callers now propagate pre-commit supersession out of the loop; post-commit validator supersession (`:2451`, `:2469`) is still swallowed when unguarded; the #323 guarded text at `:33-40` is unchanged. R3 check: `grep -c "unguarded callers keep their existing behavior" docs/architecture/save-load-reset-lifecycle.md` still returns 1 (GL3-1, COMPAT3-1, NL3-2).
 - `docs/architecture/travel-transitions.md`: no change. Its staged-sibling flow is unreachable on main until #241 is fixed, and this plan does not change that terminal (CUST2-1).
 - #193 Part 5: append D-432-1..3 once ruled (NEQ-LEDGER-01).
@@ -226,6 +227,32 @@ Line numbers below are at 7b20bc7d and are re-verified at implementation time.
   - #300: the reversal entrant's handling (the round-3 rest-reversal comment is already posted).
 
 **Task 5: acceptance (section 8).** Serial, one operation at a time.
+
+**Task 6 (r11, owner direction D-432-4): a refused update stops safely and says why.** Folds the player-facing half of I-10 and I-12.
+
+- **Why it is needed.** After Task 3, a provider refusal ends the update at once, but the player still sees only the generic safe-failure line. On a migrated campaign the refusal usually arrives at T078 first, which today retries it and re-wraps it as `EffectsAgentContractError`, discarding the envelope (I-12), so no caller can tell the player why. The turn loop already explains the same refusal when it hits the DM call (`main.py:10636-10648`, from #240, 3e6dbb6f). The character update is the gap.
+- **Step 1.** Task 3 Step 5 (T078 lets the refusal through).
+- **Step 2: curated texts.** In `utils/provider_errors.py`, add `ACCOUNT_REFUSAL_CATEGORIES`, holding `insufficient_quota`, `authentication_failed` and `model_access_denied` (the classes the player fixes on their own account, the rule stated at `:10-14`), and `action_refusal_message(category, provider)`, which returns the text below for those three and `None` otherwise. The provider id only picks a name from the fixed `provider_display_name` table (`:37-39`; an unknown id reads "the AI provider"). `<Name>` below is that name.
+
+  ```
+  insufficient_quota:    That action could not be completed: <Name> refused the request because your account is out of funds or quota. No further actions from that response were applied. Add credit or raise the quota on that account, then continue.
+  authentication_failed: That action could not be completed: <Name> rejected your API key. No further actions from that response were applied. Check that the key is correct and still active, update it in Settings (the gear icon), then continue.
+  model_access_denied:   That action could not be completed: your API key does not have access to an AI model this game uses. No further actions from that response were applied. Enable that model on your provider account, or use a key that can reach it, then continue.
+  ```
+
+  The texts never say "Nothing in your game was changed" (the turn loop's wording), because earlier actions from the same response may already be applied. Each keeps the two facts of the safe-failure line.
+- **Step 3: the character-update catch reports the class.** In `core/ai/action_handler.py:3854-3863`, when the caught exception is a `LiveProviderCompletedError`, call the existing `classify_provider_error` on it (the classifier the turn loop uses). When the category is in `ACCOUNT_REFUSAL_CATEGORIES`, add `provider_refusal` (the category) and `provider_refusal_provider` (the envelope's `provider`, or empty) to `response_data`. The log line, the print and `status=error` are unchanged. Supersession and every other exception take the same path as today.
+- **Step 4: the one selector picks the text.** In `main.py::_action_failure_player_message` (`:4925-4937`), after the `recovery_required` check: when `response_data["provider_refusal"]` is in `ACCOUNT_REFUSAL_CATEGORIES`, return `action_refusal_message(...)`; otherwise return the generic line, as today. `_handle_ordinary_action_failure` (`:4971-5013`, shown and persisted once) and `_safe_action_failure_result` (`:4940`, the headless `player_message`) already call this selector, so the web transcript, the saved history and the headless result carry the same text. The comment at `web/shared_state.py:18-19` and the selector's docstring are updated: a curated category text may be shown; raw provider text still never reaches the player.
+- **Why the stop is safe (CODE-PROVEN; checked by A5).**
+  - Every refusal that reaches this catch is raised before the sheet commit. T078 runs before T079 (`effects_runtime.py:119` -> `:130`). The T079 call precedes `commit_character_sheet` (`:2327`). The #357 T051 pre-repair works in memory (`:1519-1549`). The post-commit validators swallow their own errors and return success (`:2452-2454`, `:2470-2472`), so no refusal after the commit reaches the caller. The refused update therefore leaves the character file untouched.
+  - Later actions in the response are skipped, and the narration and the line are persisted once (`main.py:6671-6682`, existing).
+  - The game accepts the next input. If the account is still refused, the next turn's DM call stops through the turn loop's existing classification before any action runs (`main.py:10636-10648`).
+- **Disclosed limits.**
+  - Combat end stays log-only (I-1).
+  - Other action handlers that call providers keep the generic line, because their catches do not carry the exception (new draft I-13).
+  - `bad_request` (400), `stream_ended` and other deterministic errors outside the three categories keep the generic line: the player cannot fix them on their account (I-7).
+  - Level-up keeps its own hand-back (`level_up_manager.py:221-222`).
+- **R3 checks.** `grep -ln "provider_refusal" core/ai/action_handler.py main.py utils/provider_errors.py` lists `core/ai/action_handler.py` and `main.py` only. The three texts are pasted verbatim into the A5 evidence.
 
 ## 6. GL-1 Behavioral Contract
 
@@ -241,8 +268,11 @@ Dispositions use GL-1 tokens.
 | Schema-invalid branch and correction notes (`:2267-2288`) | f5e84dd5; notes 31f5e8db | Never commit an invalid sheet; give actionable feedback | UNCHANGED except that it counts as `bounded_failure` |
 | Completeness regex (`:1151-1259`) | 715732d5 lineage | Stop partial application of coupled changes | UNCHANGED; no longer called a `{}` safeguard (I-2) |
 | Success consumers of a confirmed no-change: `effects_runtime.py:137-147` (rest lifecycle, keyed on prose) and `:101-104`; reversal claim completion at `update_character_effects.py:563-568` (COMPAT-3) | 3525150b lineage | Run the lifecycle after a successful update; complete a reversal claim on success | PRESERVED (they run on every success); proving check: A4. The prose keying is issue I-2. The reversal-claim effect of a wrong confirmed `{}` is disclosed in D-432-2. |
+| T078 catch-all (`effects_agent.py:260-266`) | 3525150b | Retry a contract failure once with a correction; give callers one contract error | PRESERVED for contract failures (2 attempts, `EffectsAgentContractError`). RETIRED for `LiveProviderCompletedError` and `LiveProviderSuperseded` (Task 3 Step 5; #240 contract); proving check: A5(b). |
+| `_action_failure_player_message` (`main.py:4925-4937`) | f225afc9 (E2E 2e/W3) | Curated player text only; never raw internal or provider text | PRESERVED: selection by a whitelisted category; the texts are constants; the provider id selects only a fixed display name (Task 6); proving check: A5(a). |
+| updateCharacterInfo catch (`action_handler.py:3854-3863`) | 715732d5 | Turn any update exception into one safe `status=error` | PRESERVED; adds two whitelisted `response_data` fields for account refusals only (Task 6 Step 3). |
 
-Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedError` retries, and supersession reissues.
+Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedError` retries, supersession reissues, and T078's retries of both (Task 3 Step 5).
 
 ## 7. FS-1
 
@@ -256,6 +286,7 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
 | `_fire_primary_with_retry(max_attempts=3)` for non-live empties (`multi_model_capture.py:350-377`) | `ProviderEmptyResponse` becomes `bounded_failure` | Inherited. CONTINUES at the reversal entrant; TERMINATES at the kickoff (I-8). |
 | OpenAI SDK default `max_retries=2` on the non-live path (`utils/openai_client.py:86-89`; zeroed only with a timeout, `api_client.py:800-801`) | `ProviderCallError` becomes `bounded_failure` | Inherited; flagged, not added. This non-live retry stack parallels the live transport's reissue and is owned by I-8 and #300 (SP3b-2) |
 | `.effects.lock` 30 s (`update_character_info.py:1412-1422`; `effects_runtime.py:109-115`, `:283-287`) | Busy turned into a refusal | Inherited B2-ii; #324 comment, I-3 |
+| T078 `classify_effect` loop (`max_attempts=2`, `effects_agent.py:220-266`) | `EffectsAgentContractError` after 2 attempts; refusal and supersession leave at once (Task 3 Step 5) | TERMINATES; the bound for contract failures is unchanged |
 
 ## 8. Acceptance (NEQ-ACCEPT-01..03; evidence block NEQ-EVIDENCE-04 on every row)
 
@@ -287,6 +318,9 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
   blocked_conflict
   "status": "fallback"
   LiveProviderSuperseded
+  out of funds or quota
+  rejected your API key
+  does not have access to an AI model
   ```
 
   Zero hits are stated as zero.
@@ -348,7 +382,7 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
 - **A2b. Parity.** The A2a scenario on the branch. Every T079 call is judged by the verdict rules and A4.
 
 - **A3. Gate polarity.** Each item is PASSED if reached on the branch. Otherwise it is NOT-REACHED, stated per item. No synthetic probe is added. D-432-3 applies item by item to A1 and to each of (a), (e), (f) and (g) that ends NOT-REACHED, and merge waits for every such ruling (ACC3-2, ACC4-4).
-  - (a) `provider_deterministic`: one `T079 provider refused` line, then end state 4. The `FAILURE: Exception in character update` line (`action_handler.py:3854-3855`) carries `LiveProviderCompletedError` with its `http_status` (`live_provider_call.py:158-163`). There is no `FAILURE: Failed to update character info for <name>` line (`action_handler.py:3846`, in `game_errors.log`) and no second T079 call for that update. The game accepts the next input (ACC4-3, P1).
+  - (a) `provider_deterministic`: one `T079 provider refused` line, then end state 4. The `FAILURE: Exception in character update` line (`action_handler.py:3854-3855`) carries `LiveProviderCompletedError` with its `http_status` (`live_provider_call.py:158-163`). There is no `FAILURE: Failed to update character info for <name>` line (`action_handler.py:3846`, in `game_errors.log`) and no second T079 call for that update. The game accepts the next input (ACC4-3, P1). The player line is the Task 6 text when the category is an account refusal, else the generic line.
   - (b) The completeness INCOMPLETE correction still fires.
   - (c) Staged travel sibling: NOT-REACHED (unreachable on main, #241). Not attempted.
   - (d) Combat-end entrant: NOT-REACHED unless the fixture holds an active legacy-mode encounter, and none is named. New encounters are built agentic (`combat_builder.py:589-593`), and `combat_manager.py:5734` runs only for a legacy-mode encounter created earlier (`combat_state.py:621-624`). O2's class is accepted at the shared loop through A1 (ACC3-3). If a legacy encounter is reached, PASSED when all of these hold: `{}`, the note, `{}`; the confirmed log line; no `Final consolidated update failed` line (`combat_manager.py:5735-5736`).
@@ -374,6 +408,20 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
   - Unclaimed changes are FAILED.
   - Any effect-reversal T079 call is tagged with its claim record before and after (`update_character_effects.py:563-568`). NOT-REACHED if none occur.
 
+- **A5. Refusal stop and explanation (Task 3 Step 5, Task 6; needs D-432-4(ii)).**
+  - Setup: A1's fixture on the branch, with capture on (`NEQ_MULTI_MODEL_CAPTURE=1`) and the existing evaluation override (`NEQ_MODEL_EVAL_PRIMARY=incumbent`, `utils/capture/multi_model_capture.py:63-84`). The capture config's `primary_overrides` holds, for every id in `model_registry.EXPECTED_TASK_IDS`, the production openai profile from `model_config.resolve_callsite_config(task_id, "openai", 0)`, limited to `model` and `reasoning_effort`. The one task under test instead gets a model id that does not exist (`neq-refusal-probe`). No code, prompt or schema file changes; the env and the config are recorded. OpenAI answers that task with a real 404 `model_not_found`, which the live transport hands back as deterministic (`live_provider_call.py:781-813`) and `classify_provider_error` reads as `model_access_denied` (`provider_errors.py:245-262`).
+  - (a) T079 under test. PASSED when all of these hold for the first `updateCharacterInfo` of the run:
+    - one `T079 provider refused <name> (deterministic, 404)` line and exactly one T079 capture entry for the update;
+    - one `FAILURE: Exception in character update` line carrying `LiveProviderCompletedError`;
+    - the player transcript shows the Task 6 `model_access_denied` text exactly once, and `conversation_history.json` holds it once, as a `system` message after the narration;
+    - the character file's content is the same before and after the update, compared value by value;
+    - no action after the refused one in that response ran (its handler's log lines are absent);
+    - the game accepts the next input.
+  - (b) T078 under test. The same, except that T079 never runs: exactly one T078 capture entry for the update (no second T078 attempt), no T079 capture entry for it, and no `T079 provider refused` line.
+  - If the first `updateCharacterInfo` comes from the startup welcome, the same criteria apply and the welcome's terminal is recorded.
+  - (c) The quota and API-key texts: CODE-PROVEN only. They share Steps 3 and 4 with (a); only the category differs, and `insufficient_quota` is keyed on the structured error code (`live_provider_call.py:786-791`, `provider_errors.py:210-228`). No real out-of-credit account is used. D-432-3 applies.
+  - NOT-REACHED if the run reaches no `updateCharacterInfo`.
+
 - **Hygiene.**
   - ASCII only in touched Python.
   - `pyflakes` undefined-name check on changed files.
@@ -381,6 +429,14 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
   - The local untracked test `/mnt/c/dungeon_master_v1/tests/test_t079_same_character_serialization.py:13` asserts the old `{}` rejection. It is updated locally (D-9: not tracked).
 
 ## 9. Owner decisions (execution blocked until ruled, NEQ-REVIEW-09)
+
+**Owner rulings recorded (2026-09-24).** After the r10 presentation (plain-language restatement included), the owner said: "yes continue ad make sure the game stopped is safe and explains why...otu of credits".
+
+- D-432-1: ratified as written.
+- D-432-2: option (A), confirm once (the presented recommendation).
+- D-432-3: open item by item; ruled when an item ends NOT-REACHED.
+- Execution: Task 1 and Task 3 Steps 0-4 run under this approval, one item at a time. Task 3 Step 5 and Task 6 (the r11 amendment for D-432-4) wait for the amendment's Part 3 convergence and presentation (D-378-U2 precedent).
+- Issue authorizations below: not yet given issue by issue; still open.
 
 **D-432-1: T079 class-keyed exit.** A new ledger class, like D-VR-15 and D-VS-12. Ratify all three:
 
@@ -423,7 +479,12 @@ Recommendation: ratify. The alternative, unbounded correction on the ordinary pa
 - close that item on CODE-PROVEN evidence. For (a) this may cite the owner-checkout quota record (`modules/logs/game_errors.log:3354-3452`), noting that it is from 2025-09-07 on the old raw-SDK path and shows only that retrying the class is futile;
 - authorize one isolated controlled-error check for that item in the D-NPC-PARTY-5 form.
 
-Merge waits for every such ruling.
+Merge waits for every such ruling. From r11 it also covers A5(c).
+
+**D-432-4: a stopped update is safe and says why (owner direction, 2026-09-24).** r11 adds Task 3 Step 5 and Task 6. After the amendment's review, the owner rules on:
+
+- **(i)** the three account-refusal texts and the category set (out of funds or quota, API key rejected, no model access). Every other refusal keeps the generic line.
+- **(ii)** the A5 controlled-error check, in the D-NPC-PARTY-5 form: one isolated headless run for each of A5(a) and A5(b). The existing evaluation override binds the task under test to a model id that does not exist, so OpenAI returns a real refusal. No real out-of-credit account exists for testing, so the quota text is CODE-PROVEN (A5(c), D-432-3).
 
 **Issue authorizations.** New public issues need the owner (standing rule). The bodies are drafted in `agent-room-fleet-kit/local-data/432-433/issue-drafts-I1-I6.md`, plus the r3 additions below. File each one, yes or no:
 
@@ -436,10 +497,11 @@ Merge waits for every such ruling.
 - **I-7 (new, r3):** the live `_error_disposition` falls through to `deterministic` for unrecognized errors, including `stream_ended`. A truncated stream is a lost response and may belong in `retryable_transport` (FF2-1).
 - **I-8 (new, r3):** the terminal-mode startup kickoff runs provider calls outside any live scope (`main.py:8680-8683`, `8713-8717` -> `1165`), so there is no transport reissue and no supersession (FF2-2). Addenda: deterministic refusals outside a scope are also retried to the caller's bound (SP3-1), and the non-live retry stack (SDK `max_retries`, `_fire_primary_with_retry`) parallels the live transport. It would become dead code for T079's entrants once they run live; other non-live tasks such as T022 (`area_generator.py:223`) still use it, so removing it is a separate change (SP3b-2, SP5-1).
 - **I-9 (new, r3):** `action_handler.py:3854` catches supersession as an action failure, so the safe-failure line appears between "Load accepted" and the restore, and `main.py:6655` is dead for character updates (PX2-2/COMPAT2-2/FF2-4).
-- **I-10 (new, r3):** the T079 deterministic stop shows the generic line. The provider's own message (`provider_errors.py:71-80`, for example "add credit") never reaches the player (PX2-3).
+- **I-10 (new, r3; folded into Task 6 in r11, not filed):** the T079 deterministic stop shows the generic line. The provider's own message (`provider_errors.py:71-80`, for example "add credit") never reaches the player (PX2-3).
 
 - **I-11 (optional, r5):** T079 deltas that reduce to no change commit as success without the no-change confirmation (the `temporaryEffects` pop at `:2074-2077`; the XP-decrease drop at `:1086-1088`). Expected: the same handling as a literal `{}` (LEAN3-5).
-- **I-12 (new, r6):** the T078 classifier `classify_effect` (`core/ai/effects_agent.py:220-266`) catches both `LiveProviderCompletedError` and `LiveProviderSuperseded` at `:260`, retries them, then re-wraps them as `EffectsAgentContractError` (`:266`), which discards the envelope and `http_status`. T078 runs just before T079 in the same entrant (`effects_runtime.py:119` -> `:130`) (SP5-2, COMPAT5-4, N2). After #432, one update would treat these two errors differently in its two stages, and I-10 could never show a provider message for a refusal during T078. Direction: the same class-keyed exit as this plan's Steps 1 and 2 (SP4-1).
+- **I-12 (new, r6; folded into Task 3 Step 5 and Task 6 in r11, not filed):** the T078 classifier `classify_effect` (`core/ai/effects_agent.py:220-266`) catches both `LiveProviderCompletedError` and `LiveProviderSuperseded` at `:260`, retries them, then re-wraps them as `EffectsAgentContractError` (`:266`), which discards the envelope and `http_status`. T078 runs just before T079 in the same entrant (`effects_runtime.py:119` -> `:130`) (SP5-2, COMPAT5-4, N2). After #432, one update would treat these two errors differently in its two stages, and I-10 could never show a provider message for a refusal during T078. Direction: the same class-keyed exit as this plan's Steps 1 and 2 (SP4-1).
+- **I-13 (new, r11):** action handlers other than `updateCharacterInfo` that call providers turn a refusal into the generic safe-failure line, because their catches do not carry the exception. The player is not told the account reason on those paths; the next turn's DM call is (Task 6 disclosed limits).
 - **Addenda (r6):** I-2 also covers the unmigrated rest-phrase check at `updates/update_character_effects.py:720`, which matches negated mentions such as "doesn't take a rest" (PX4-3). I-9 also covers the startup welcome handback: player input, Exit, Reset or Load during the welcome's T079 shows and persists the safe-failure line before the welcome ends as SUPERSEDED (COMPAT4-1, PX4-4). The I-8 draft body now carries the non-live retry stack text (SP4-2).
 
 Two findings went to existing issues instead of new ones: the staged `classify_effect` TypeError to #241, and the silent rest-bound reversal wait to #300 (comments posted 2026-09-24).
@@ -450,7 +512,7 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 - #357: the A2a result.
 - #241: the staged path.
 - #324, #431, #367, #300.
-- I-1..I-12: `escalate:@owner` until filed (I-11 optional).
+- I-1..I-9, I-11 and I-13: `escalate:@owner` until filed (I-11 optional). I-10 and I-12 are folded into this plan (r11).
 
 ## 11. Resolution ledger
 
