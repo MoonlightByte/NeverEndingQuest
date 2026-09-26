@@ -15,7 +15,9 @@ module_progress_queue = queue.Queue()
 # Reentrant because captured diagnostic output may flush a pending DM message.
 message_cache_lock = threading.RLock()
 
-# Player-facing action failures use one static message. Internal/provider
+# Player-facing action failures use curated messages: this generic line, the
+# module-recovery line below, or an account-refusal line chosen by category
+# (utils/provider_errors.account_refusal_message, #432). Raw internal/provider
 # details stay in server logs and are never promoted into game output.
 SAFE_ACTION_FAILURE_MESSAGE = (
     "That action could not be completed safely. No further actions from "

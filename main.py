@@ -279,6 +279,7 @@ from utils.provider_errors import (  # noqa: E402
     PROVIDER_MAX_FAILURES,
     PROVIDER_RETRY_BASE_DELAY,
     PROVIDER_RETRY_MAX_DELAY,
+    account_refusal_message,
     classify_provider_error,
     provider_failure_policy,
     provider_retry_delay,
@@ -4886,14 +4887,13 @@ def _reload_conversation_history_if_safe(
 
 def _ordinary_action_failure_message_id(response, action, conversation_history):
     """Derive one retry-stable identity from the accepted turn prefix."""
-    from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
-
     prefix = list(conversation_history)
+    # A trailing failure line is recognized by its id, not its text: curated
+    # failure lines differ by cause (#432).
     if (
         prefix
         and isinstance(prefix[-1], dict)
         and prefix[-1].get("role") == "system"
-        and prefix[-1].get("content") == SAFE_ACTION_FAILURE_MESSAGE
         and str(prefix[-1].get("message_id", "")).startswith(
             "action-failure:"
         )
@@ -4925,8 +4925,9 @@ def _ordinary_action_failure_message_id(response, action, conversation_history):
 def _action_failure_player_message(result):
     """Pick the CURATED player message for a terminal action error. A module
     lifecycle recovery-required failure gets a specific, actionable message
-    (E2E 2e/W3); everything else gets the generic safe text. Selection is by the
-    whitelisted `recovery_required` boolean only -- never raw internal text."""
+    (E2E 2e/W3); a provider refusal the player can fix on their account gets
+    its account text (#432); everything else gets the generic safe text.
+    Selection is by whitelisted values only -- never raw internal text."""
     from web.shared_state import (
         SAFE_ACTION_FAILURE_MESSAGE,
         MODULE_RECOVERY_FAILURE_MESSAGE,
@@ -4934,6 +4935,14 @@ def _action_failure_player_message(result):
     source_data = result.get("response_data") if isinstance(result, dict) else {}
     if isinstance(source_data, dict) and source_data.get("recovery_required") is True:
         return MODULE_RECOVERY_FAILURE_MESSAGE
+    if isinstance(source_data, dict):
+        refusal_text = account_refusal_message(
+            source_data.get("provider_refusal"),
+            source_data.get("provider_refusal_provider"),
+            "after_narration",
+        )
+        if refusal_text is not None:
+            return refusal_text
     return SAFE_ACTION_FAILURE_MESSAGE
 
 
@@ -9694,9 +9703,13 @@ def _main_game_loop(startup_authority, turn_authority):
             ):
                 from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
 
-                processing_error = final_result.get("player_message")
-                if processing_error != SAFE_ACTION_FAILURE_MESSAGE:
-                    processing_error = SAFE_ACTION_FAILURE_MESSAGE
+                # Only the one selector's result carries an action-failure
+                # id; its text is curated. Anything else gets the generic line.
+                processing_error = SAFE_ACTION_FAILURE_MESSAGE
+                if str(final_result.get("message_id", "")).startswith(
+                    "action-failure:"
+                ) and final_result.get("player_message"):
+                    processing_error = final_result["player_message"]
                 print(f"[SYSTEM] {processing_error}")
                 warning(
                     "Response processing failed safely",
