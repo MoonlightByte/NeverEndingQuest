@@ -1,6 +1,6 @@
 # Save, Load, and Reset Lifecycle
 
-## #432 T079 exit delta (2026-09-25; acceptance pending)
+## #432 T079 exit delta (2026-09-25; headless acceptance recorded 2026-09-25, `agent-room-fleet-kit/local-data/432-433/acceptance/ACCEPTANCE-SUMMARY.md`)
 
 Unguarded T079 callers now propagate pre-commit supersession out of the writer
 loop instead of counting it as a failed attempt; the ordinary action handler

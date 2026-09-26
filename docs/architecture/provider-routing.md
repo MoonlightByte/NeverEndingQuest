@@ -1,6 +1,6 @@
 # Provider Routing
 
-## #432 T079 exit delta (2026-09-25; acceptance pending)
+## #432 T079 exit delta (2026-09-25; headless acceptance recorded 2026-09-25, `agent-room-fleet-kit/local-data/432-433/acceptance/ACCEPTANCE-SUMMARY.md`)
 
 The T079 character writer (`updates/update_character_info.py::_update_character_info_unlocked`)
 exits by failure class, not by one shared count (D-432-1). Only unusable answers

@@ -1,6 +1,6 @@
 # Startup and Boot
 
-## #432 welcome refusal delta (2026-09-25; acceptance pending)
+## #432 welcome refusal delta (2026-09-25; headless acceptance recorded 2026-09-25, `agent-room-fleet-kit/local-data/432-433/acceptance/ACCEPTANCE-SUMMARY.md`)
 
 When the startup welcome's generation or candidate review is refused for an
 account reason (out of funds or quota, API key rejected, no model access), the

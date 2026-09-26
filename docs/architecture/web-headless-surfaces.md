@@ -1,6 +1,6 @@
 # Web, Headless, and Terminal Surfaces
 
-## #432 refusal line delta (2026-09-25; acceptance pending)
+## #432 refusal line delta (2026-09-25; headless acceptance recorded 2026-09-25, `agent-room-fleet-kit/local-data/432-433/acceptance/ACCEPTANCE-SUMMARY.md`)
 
 When a provider refuses a character update after the narration was shown, the
 updateCharacterInfo catch records the refusal's category and provider, and the

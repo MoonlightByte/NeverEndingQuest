@@ -1,12 +1,12 @@
 # #432 T079 character writer: class-keyed exit, confirmed no-change answers, supersession
 
-Status: PLAN r19 (2026-09-25). Owner rulings recorded (section 9); implementation landed and acceptance run (results before section 9). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5); rounds 9-14 reviewed it, and r12-r17 fold the findings in (section 11). Round 14 returned PASS/LGTM from all nine seats with plan-polish only, so the amendment review is CONVERGED (NEQ-REVIEW-11 plan-polish termination) and awaits the owner's rulings (NEQ-REVIEW-13). Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
+Status: PLAN r20 (2026-09-25). Owner rulings recorded (section 9); implementation landed, acceptance run (results before section 9), post-implementation audit done (section 11); merge awaits the owner's remaining rulings (A3(f), issue filing). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5); rounds 9-14 reviewed it, and r12-r17 fold the findings in (section 11). Round 14 returned PASS/LGTM from all nine seats with plan-polish only, so the amendment review is CONVERGED (NEQ-REVIEW-11 plan-polish termination) and awaits the owner's rulings (NEQ-REVIEW-13). Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
 
 ## 0. Provenance (captured dynamically; evidence, never authority)
 
 | Item | Value |
 |---|---|
-| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0, r7 3ab190f8, r8 1c9be032, r9 35ede40e, r10 b4442681, r11 3ecdd911, r12 359baff4, r13 dc388da8, r14 1a43ff3d, r15 8aacf8ae, r16 e7026fc3. Code: Task 1 at 7231d28d, Task 3 Step 0 at 9021ed87, Task 3 Steps 1-4 at 87c41b76. |
+| Branch | `fix/432-433-count-keyed-giveups`, created from `origin/main`. r1 6639a6f9, r2 09bfbbed, r3 20679781, r4 e566a175, r5 68a4a35f, r6 ce2911b0, r7 3ab190f8, r8 1c9be032, r9 35ede40e, r10 b4442681, r11 3ecdd911, r12 359baff4, r13 dc388da8, r14 1a43ff3d, r15 8aacf8ae, r16 e7026fc3, r17 73a552c9, r18 48483ef0, r19 3aa5cd16. Code: Task 1 at 7231d28d, Task 3 Step 0 at 9021ed87, Task 3 Steps 1-4 at 87c41b76, Task 3 Step 5 at 1531f304, Task 6 Steps 2-5 at 9c7495d0, 7bae9b8a, 6f0e7adc and 947a067a, Task 4 docs at 3d64fe9d. |
 | Base revision | `origin/main` = 7b20bc7d. Ancestor check: `git merge-base --is-ancestor HEAD origin/main` at plan time. |
 | #193 epoch | v3.1, `updatedAt` 2026-09-18T18:20:12Z. Re-checked before implementation (NEQ-OPS-03). |
 | Provider / model | `openai`. T079, T078 and T051 resolve to `gpt-5.6-luna` with `reasoning_effort: none` (`model_registry.py:390-397`, `:460-477`). Never the legacy GPT-4.1 provider. |
@@ -549,7 +549,7 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
 
 **Acceptance results (2026-09-25, code 3d64fe9d).** Full table and artifacts: `agent-room-fleet-kit/local-data/432-433/acceptance/ACCEPTANCE-SUMMARY.md`.
 
-- PASSED: A2b (end state 2 observed live: `{}`, note, `{}`, "T079 confirmed no mechanical change for Scout Kira", committed), A3(a) (via A5(a)), A3(e) (main control recorded), A3(g) (A2b), A4, A5(a), A5(b), A5(d), hygiene.
+- PASSED: A2b (end state 2 observed live: `{}`, note, `{}`, "T079 confirmed no mechanical change for Scout Kira", committed), A3(a) (reached through the A5(a) controlled-error check, D-432-4(ii); owner confirmation requested), A3(e) (main control recorded), A3(g) (A2b), A4, A5(a), A5(b), A5(d), hygiene.
 - Recorded: A0; A2a (#357 pre-repair healed dex_limit 99 before T079 on main); A5(e) control arms.
 - NOT-REACHED: A1 x5 (closed CODE-PROVEN, D-432-3); A3(b), A3(c) (by design), A3(d), A5(c); A3(f) needs an owner ruling under D-432-3.
 - CODE-PROVEN: A5(f) (D-432-4(ii)).
@@ -665,7 +665,7 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 ## 10. Tracked follow-ups
 
 - #433: separate plan.
-- #357: the A2a result.
+- #357 (closed): record-only; the A2a result is posted there as a comment.
 - #241: the staged path.
 - #324, #431, #367, #300.
 - I-1..I-9, I-11 and I-13..I-17: `escalate:@owner` until filed (I-11 optional). I-10 and I-12 are folded into this plan (r11).
@@ -718,7 +718,7 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 | 2 | Legacy-Contract | GL2-4: post-commit diagnostics exception reissues T079 after commit | PRE_EXISTING_OUT (HYPOTHESIS reachability) | escalate:@owner (I-4 extended) |
 | 2 | Legacy-Contract | Nits: GL tokens; 12ddb548/36bd7ed0 off main; `:1429/:1438`; row 8 cross-ref | plan-polish | fixed-inline (section 6) |
 | 2 | Player-Experience | PX2-2 = FF2-4 | PRE_EXISTING_OUT | I-9 |
-| 2 | Player-Experience | PX2-3: quota message never reaches the player | PRE_EXISTING_OUT | D-432-1(ii) disclosure; escalate:@owner (I-10) |
+| 2 | Player-Experience | PX2-3: quota message never reaches the player | PRE_EXISTING_OUT | D-432-1(ii) disclosure; I-10 folded in: task-6 (landed 9c7495d0..947a067a, D-432-4) |
 | 2 | Player-Experience | PX2-4: D-432-2 in player terms | plan-polish | fixed-inline (D-432-2) |
 | 2 | Consumer/Compat | COMPAT2-2 = FF2-4 | PRE_EXISTING_OUT | I-9 |
 | 2 | Consumer/Compat | COMPAT2-3: `after` also shaped by #357/T051/validators | GENUINE_FIX | end state 2; A1 attribution rule |
@@ -808,7 +808,7 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 | 4 | Custodian | CUST4-3: the critical-field branch has no note | plan-polish | fixed-inline (task-3 step 3) |
 | 4 | Player-Experience | PX4-2: drop "tired" from the note (exhaustion is tracked) | code-class (prompt text) | task-1 (note text) |
 | 4 | Player-Experience | PX4-3: two more player consequences for D-432-2 | plan-polish (disclosure) + PRE_EXISTING_OUT | fixed-inline (D-432-2); escalate:@owner (I-2 addendum) |
-| 4 | Single-Path | SP4-1: T078 `classify_effect` retries and re-wraps the #240 handback and supersession | PRE_EXISTING_OUT | escalate:@owner (I-12) |
+| 4 | Single-Path | SP4-1: T078 `classify_effect` retries and re-wraps the #240 handback and supersession | PRE_EXISTING_OUT | I-12 folded in: task-3 Step 5 (landed 1531f304, D-432-4(iii)) |
 | 4 | Single-Path | SP4-2: the I-8 draft body lacks the retry-stack text | plan-polish | fixed-inline (drafts file; I-8 addendum line) |
 | 4 | Consumer/Compat | COMPAT4-3: "Failed to update character" also matches the expected print at `action_handler.py:3857` | code-class (test) | task-5 (A3(e) criteria pinned to `game_errors.log` strings) |
 | 4 | Acceptance | ACC4-1: in-flight proof keyed on send time; `STATE_CHANGE` names no character | code-class (test) | task-5 (A3(e) traceback-origin proof; `serve --debug` driver trigger) |
@@ -1054,3 +1054,12 @@ Two findings went to existing issues instead of new ones: the staged `classify_e
 | 14 | Legacy-Contract, Single-Path | GL14-1, SP14-1: `grep -c 'if local'` misses `and local` / `not local` | plan-polish | fixed-inline (word-bounded grep returns `:70`, `:87`, `:194`, `:326`; verified on 7b20bc7d) |
 | 14 | Custodian, Legacy-Contract | CUST14-1, GL14-2: two cites for the skip emit | plan-polish | fixed-inline (`main.py:1020-1026`) |
 | 14 | No-Limits, Leanness, Player-Experience | NL14-1..3, LEAN14-1, PX14-1 | fyi | defensible |
+
+**Post-implementation audit (NEQ-REVIEW-15, 2026-09-25; non-author, on the shipped tree 3aa5cd16, Linux-side copy).**
+
+- (1) Spec coverage: PASS. Every task has a landed commit; every changed behavior fits a GL-1 row; nothing dropped.
+- (2) Ledger closure: NEEDS-OWNER. Unfiled `escalate:@owner` drafts I-1..I-9, I-11 and I-13..I-17 need a filing decision. The D-432-4 rows are ruled.
+- (3) Tracked follow-ups: #241, #300, #324, #367, #431, #433 open and accurate; #357 closed (record-only). New candidates reported, not filed: welcome/turn progress text before a refusal; the failure line persisted in the leading system block (PX transcript review PXA-1, HYPOTHESIS that the next turn does not reconcile); the I-9 premise did not hold headless (recorded in A3e-verdict.md and the I-9 draft).
+- (4) Falsifiable checks re-run on the shipped tree: PASS (every R3, GL-1 and sentinel check; 54 texts, 0 problems; pyflakes counts unchanged; ASCII clean). The raw local-tests grep is now pasted in hygiene-scans.txt.
+- (5) Acceptance at the bug's layer: NEEDS-OWNER for A3(f) (NOT-REACHED; D-432-3 ruling) and confirmation that A3(a) is reached through the A5(a) controlled-error check; the A5(a) history-position criterion correction is disclosed. Player-Experience transcript review: PASS/LGTM (no blocking finding).
+- No code-level blocking defect. Non-blocking fixes applied in r20: doc headings record the acceptance, section 0 lists every commit, the I-10/I-12 ledger rows are re-tokened to the landed tasks, #357 is marked record-only, the evidence block (item-4 greps, status spans, prompt digests, A4 side-by-side) is in `acceptance/evidence-block.txt`.
