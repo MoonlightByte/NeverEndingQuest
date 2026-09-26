@@ -1,6 +1,6 @@
 # #432 T079 character writer: class-keyed exit, confirmed no-change answers, supersession
 
-Status: PLAN r17 (2026-09-25). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5); rounds 9-14 reviewed it, and r12-r17 fold the findings in (section 11). Round 14 returned PASS/LGTM from all nine seats with plan-polish only, so the amendment review is CONVERGED (NEQ-REVIEW-11 plan-polish termination) and awaits the owner's rulings (NEQ-REVIEW-13). Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
+Status: PLAN r18 (2026-09-25). Owner rulings on the converged amendment recorded (section 9). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5); rounds 9-14 reviewed it, and r12-r17 fold the findings in (section 11). Round 14 returned PASS/LGTM from all nine seats with plan-polish only, so the amendment review is CONVERGED (NEQ-REVIEW-11 plan-polish termination) and awaits the owner's rulings (NEQ-REVIEW-13). Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
 
 ## 0. Provenance (captured dynamically; evidence, never authority)
 
@@ -557,6 +557,15 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
 - Execution, as the controller reads "continue" (CUST9-4): Task 1 and Task 3 Steps 0-4 run under the r10 approval, one item at a time, with D-432-4 deferred for those steps. Their code text is unchanged by the amendment, and the interim player line equals today's. This reading is confirmed at the next presentation. D-378-U2 supports only the second half: the amendment (Task 3 Step 5, Task 6) waits for its own Part 3 convergence and presentation.
 - NEQ-LEDGER-01: D-432-1, D-432-2 and the D-432-4 direction were appended to #193 Part 5 on 2026-09-24 (the edit is visible in the issue history). Process miss, logged in section 11 round 9: the append came after Task 1 ran.
 - Issue authorizations below: not yet given issue by issue; still open.
+
+**Owner rulings on the converged amendment (2026-09-25).** After presentation of r17 (73a552c9), the owner said: "yes to all your recommendations, try b first". Codified in #193 Part 5 as D-432-3/4 the same session.
+
+- D-432-4 (i): the account-refusal texts as presented; the taste alternatives are not adopted.
+- D-432-4 (ii): the A5 controlled-error check, items (a), (b) and (d) on the branch plus the (e) control arms on main.
+- D-432-4 (iii): T078's class-keyed exit, including `stream_ended` at 1 attempt and supersession pass-through.
+- D-432-4 (iv): the welcome refusal display after the one forced recovery, with the disclosed silent cases.
+- D-432-3 for A1: first rerun the A1 marsh scenario with `COMPRESSION_ENABLED = False`, matching O1's disclosed setting (a disclosed configuration difference from the plan's default); if still NOT-REACHED, close A1 on the CODE-PROVEN evidence.
+- Execution: Task 3 Step 5 and Task 6 are authorized, one item at a time, then Task 4 and the approved acceptance runs. Issue filing is not covered by this ruling and stays open.
 
 **D-432-1: T079 class-keyed exit.** A new ledger class, like D-VR-15 and D-VS-12. Ratify all three:
 
