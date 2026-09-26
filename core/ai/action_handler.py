@@ -64,7 +64,11 @@ from uuid import uuid4
 from core.ai import api_client
 import model_config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-from utils.capture.live_provider_call import LiveProviderSuperseded
+from utils.capture.live_provider_call import (
+    LiveProviderCompletedError,
+    LiveProviderSuperseded,
+)
+from utils.provider_errors import classify_provider_error
 from core.combat.invocation import InvocationSupersededError
 register_callsite("T013", "core/ai/action_handler.py", 1255)
 register_callsite("T012", "core/ai/action_handler.py", 676)
@@ -3855,12 +3859,16 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 error(f"FAILURE: Exception in character update", exception=e, category="character_updates")
                 # Use print with separate arguments to avoid format string interpretation
                 print("ERROR: Failed to update character info:", str(e))
-                return create_return(
-                    status="error",
-                    response_data={
-                        "error_message": "Character effect classification or update failed safely."
-                    },
-                )
+                response_data = {
+                    "error_message": "Character effect classification or update failed safely."
+                }
+                if isinstance(e, LiveProviderCompletedError):
+                    # A provider refusal (#240): record its class so the one
+                    # failure-message selector can tell the player why (#432).
+                    refusal = classify_provider_error(e)
+                    response_data["provider_refusal"] = refusal["category"]
+                    response_data["provider_refusal_provider"] = refusal["provider"]
+                return create_return(status="error", response_data=response_data)
             finally:
                 # Always reset status after character update completes
                 try:
