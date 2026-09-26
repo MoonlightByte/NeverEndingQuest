@@ -346,6 +346,8 @@ class _WelcomeLifecycle:
         self.slot = None
         self.error = None
         self.review_failure_status = None
+        self.refusal_category = None
+        self.refusal_provider = None
         self.provider_complete = threading.Event()
         self.live_history = None  # the loop's live list; set before input parks
         self.worker = None
@@ -371,7 +373,10 @@ def _welcome_status(message):
 
 def _welcome_worker_main(lifecycle):
     """Worker: detached generation and applicable review, no history/state writes."""
-    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.capture.live_provider_call import (
+        LiveProviderCompletedError,
+        LiveProviderSuperseded,
+    )
     try:
         _welcome_status("The DM is recalling your journey...")
         content = _get_ai_response_impl(
@@ -394,6 +399,9 @@ def _welcome_worker_main(lifecycle):
             else:
                 lifecycle.error = reviewed["player_message"]
                 lifecycle.review_failure_status = reviewed["status"]
+                if reviewed["status"] == "provider_error":
+                    lifecycle.refusal_category = reviewed.get("category")
+                    lifecycle.refusal_provider = reviewed.get("provider")
                 lifecycle.disposition = "FAILED"
     except LiveProviderSuperseded:
         with lifecycle.lock:
@@ -404,6 +412,12 @@ def _welcome_worker_main(lifecycle):
             lifecycle.error = "%s: %s" % (type(exc).__name__, exc)
             if lifecycle.disposition is None:
                 lifecycle.disposition = "FAILED"
+            if isinstance(exc, LiveProviderCompletedError):
+                # Shown at the FAILED end when it is an account refusal (#432).
+                refusal = classify_provider_error(exc)
+                lifecycle.review_failure_status = "provider_error"
+                lifecycle.refusal_category = refusal["category"]
+                lifecycle.refusal_provider = refusal["provider"]
     finally:
         with lifecycle.lock:
             if lifecycle.phase == "GENERATING":
@@ -618,11 +632,19 @@ def _apply_welcome(lifecycle):
             category="startup",
         )
         if (
-            lifecycle.review_failure_status == "travel_content_unavailable"
-            and failed_receipt.get("status") == "updated"
+            failed_receipt.get("status") == "updated"
             and not lifecycle.scope.is_superseded()
         ):
-            display_dm_narration(lifecycle.error)
+            if lifecycle.review_failure_status == "travel_content_unavailable":
+                display_dm_narration(lifecycle.error)
+            elif lifecycle.review_failure_status == "provider_error":
+                refusal_text = account_refusal_message(
+                    lifecycle.refusal_category,
+                    lifecycle.refusal_provider,
+                    "welcome",
+                )
+                if refusal_text is not None:
+                    display_dm_narration(refusal_text)
         _finish_welcome(lifecycle, "FAILED")
         return
 
@@ -10658,7 +10680,12 @@ def _review_dm_candidate(
                 exception=response_error, category="ai_validation",
             )
             if decision["stop"]:
-                return {"status": "provider_error", "player_message": decision["player_message"]}
+                return {
+                    "status": "provider_error",
+                    "player_message": decision["player_message"],
+                    "category": classification["category"],
+                    "provider": classification["provider"],
+                }
             if decision["notice"]:
                 review_status(decision["notice"])
                 provider_retry_notice_shown = True
