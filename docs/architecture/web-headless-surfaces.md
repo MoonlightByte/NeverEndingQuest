@@ -1,5 +1,20 @@
 # Web, Headless, and Terminal Surfaces
 
+## #432 refusal line delta (2026-09-25; acceptance pending)
+
+When a provider refuses a character update after the narration was shown, the
+updateCharacterInfo catch records the refusal's category and provider, and the
+one failure-message selector (`main.py::_action_failure_player_message`) shows
+the account-refusal text for out of funds or quota, API key rejected, or no
+model access; every other failure keeps the generic safe line. Web and headless
+receive it through the output sink. Terminal players receive it through the turn
+loop's `[SYSTEM]` line, which now prints a result's curated `player_message`
+when its `message_id` carries the `action-failure:` prefix, and the generic
+line otherwise. The retry-stable failure id recognizes a trailing failure line
+by role and id prefix, not by text. The terminal-mode kickoff and the
+resumed-combat post-combat pause line do not carry the refusal text (tracked
+separately).
+
 ## #378 ordinary action ordering trial (2026-09-12; acceptance pending)
 
 The #385/#386 correction trial threads a detached complete executable action
