@@ -1,6 +1,6 @@
 # #432 T079 character writer: class-keyed exit, confirmed no-change answers, supersession
 
-Status: PLAN r18 (2026-09-25). Owner rulings on the converged amendment recorded (section 9). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5); rounds 9-14 reviewed it, and r12-r17 fold the findings in (section 11). Round 14 returned PASS/LGTM from all nine seats with plan-polish only, so the amendment review is CONVERGED (NEQ-REVIEW-11 plan-polish termination) and awaits the owner's rulings (NEQ-REVIEW-13). Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
+Status: PLAN r19 (2026-09-25). Owner rulings recorded (section 9); implementation landed and acceptance run (results before section 9). r10 CONVERGED after Part 3 rounds 1-8 (nine seats each; round 3 re-run on r4 after a filesystem interruption; rounds 4, 6, 7 and 8 returned PASS/LGTM from every seat, round 5 from eight with one narrow block; round 8 found plan-polish only, so review terminated; resolution ledger in section 11). The owner approved r10 on 2026-09-24 and added a requirement (D-432-4, section 9). r11 adds that amendment (Task 3 Step 5, Task 6, row A5); rounds 9-14 reviewed it, and r12-r17 fold the findings in (section 11). Round 14 returned PASS/LGTM from all nine seats with plan-polish only, so the amendment review is CONVERGED (NEQ-REVIEW-11 plan-polish termination) and awaits the owner's rulings (NEQ-REVIEW-13). Task 1 and Task 3 Steps 0-4 execute under the approval; the amendment waits for its own convergence and presentation (NEQ-REVIEW-13).
 
 ## 0. Provenance (captured dynamically; evidence, never authority)
 
@@ -546,6 +546,14 @@ Removed retry patterns, listed as the r1 audit requires: `LiveProviderCompletedE
   - `pyflakes` undefined-name check on changed files.
   - No-Limits and Single-Path sentinel greps over the diff, pasted raw.
   - The local untracked test `/mnt/c/dungeon_master_v1/tests/test_t079_same_character_serialization.py:13` asserts the old `{}` rejection. It is updated locally (D-9: not tracked).
+
+**Acceptance results (2026-09-25, code 3d64fe9d).** Full table and artifacts: `agent-room-fleet-kit/local-data/432-433/acceptance/ACCEPTANCE-SUMMARY.md`.
+
+- PASSED: A2b (end state 2 observed live: `{}`, note, `{}`, "T079 confirmed no mechanical change for Scout Kira", committed), A3(a) (via A5(a)), A3(e) (main control recorded), A3(g) (A2b), A4, A5(a), A5(b), A5(d), hygiene.
+- Recorded: A0; A2a (#357 pre-repair healed dex_limit 99 before T079 on main); A5(e) control arms.
+- NOT-REACHED: A1 x5 (closed CODE-PROVEN, D-432-3); A3(b), A3(c) (by design), A3(d), A5(c); A3(f) needs an owner ruling under D-432-3.
+- CODE-PROVEN: A5(f) (D-432-4(ii)).
+- Disclosed acceptance-design correction: A5(a)'s "after the narration" assumed a history position; the history rebuild keeps system lines in the leading system block (O1 on the old code does the same).
 
 ## 9. Owner decisions (execution blocked until ruled, NEQ-REVIEW-09)
 
