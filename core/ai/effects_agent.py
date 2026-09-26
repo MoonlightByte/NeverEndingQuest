@@ -15,6 +15,10 @@ import json
 from core.ai import api_client
 from core.effects.clock import display_iso_from_scalar
 from core.effects.model import normalize_effect, validate_effect
+from utils.capture.live_provider_call import (
+    LiveProviderCompletedError,
+    LiveProviderSuperseded,
+)
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.character_sheet_contract import extract_json_object
 
@@ -257,6 +261,11 @@ def classify_effect(character_name, change_description, sheet, now_scalar, max_a
                     result["effect"], now_scalar, character_name, change_description
                 )
             return result
+        except (LiveProviderCompletedError, LiveProviderSuperseded):
+            # A provider refusal cannot heal by reissuing the same request
+            # (#240), and a supersession must reach the caller; neither is a
+            # contract failure to correct (#432, D-432-4(iii)).
+            raise
         except Exception as exc:
             last_error = exc
             correction = (
