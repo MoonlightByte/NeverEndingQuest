@@ -44,6 +44,60 @@ def _sentence(text):
     return text[:1].upper() + text[1:] if text else text
 
 
+# Account refusals the player fixes on their own account or server (#240,
+# #284, #432). One table holds each reason and fix; account_refusal_message
+# renders them for the moment the refusal reaches the player. Each reason and
+# fix stays on one source line.
+_ACCOUNT_REFUSALS = {
+    "insufficient_quota": {
+        "reason": "%(name)s refused the request: your account is out of funds or quota",
+        "fix": "Add credit or raise the quota on that account",
+    },
+    "authentication_failed": {
+        "reason": "%(name)s rejected your API key",
+        "fix": "Check that the key is correct and still active, update it in Settings (the gear icon)",
+    },
+    "model_access_denied": {
+        "reason": "Your API key does not have access to one of the AI models this game uses",
+        "fix": "Enable that model on your provider account, or use a key that can reach it",
+        # A local or custom server has no account to fix: LM Studio with no
+        # model loaded answers model_not_found.
+        "overrides": {
+            "lmstudio": {
+                "reason": "Your local or custom model server does not offer the AI model this game uses",
+                "fix": "Load or select that model on that server",
+            },
+        },
+    },
+}
+
+_ACCOUNT_REFUSAL_MOMENTS = {
+    # The turn loop's DM call: nothing from the turn has run yet.
+    "turn": "%s. Nothing in your game was changed. %s, then try that action again.",
+    # After the narration was shown: earlier actions may already be applied.
+    "after_narration": "%s. That action could not be completed, and no further actions from that response were applied. %s, then continue.",
+    # The startup welcome: no player action exists yet.
+    "welcome": "%s. Nothing in your game was changed. %s, then tell the DM what you do next.",
+}
+
+
+def account_refusal_message(category, provider, moment):
+    """Curated player text for an account refusal at ``moment``, or None.
+
+    ``category`` is a classify_provider_error slug; any category outside the
+    table (and any non-string) returns None so callers keep their own line.
+    """
+    if not isinstance(category, str):
+        return None
+    entry = _ACCOUNT_REFUSALS.get(category)
+    template = _ACCOUNT_REFUSAL_MOMENTS.get(moment)
+    if entry is None or template is None:
+        return None
+    entry = entry.get("overrides", {}).get(str(provider or "").lower(), entry)
+    reason = entry["reason"] % {"name": provider_display_name(provider)}
+    return _sentence(template % (reason, entry["fix"]))
+
+
 def _provider_of(exc):
     """Provider id carried by a provider exception or a child envelope, or ''."""
     for item in _provider_error_chain(exc):
@@ -184,6 +238,7 @@ def classify_provider_error(exc):
                        for unclassified errors (which keep the existing safe
                        failure message)
       retry_notice   - text to show the player before backing off, or None
+      provider       - the provider id the classification used ('' if none)
     """
     status = None
     codes = []
@@ -220,13 +275,11 @@ def classify_provider_error(exc):
         return {
             "category": "insufficient_quota",
             "retryable": False,
-            "player_message": _sentence(
-                "%s refused the request: your account is out of funds or "
-                "quota. Nothing in your game was changed. Add credit or raise "
-                "the quota on that account, then try that action again."
-                % name
+            "player_message": account_refusal_message(
+                "insufficient_quota", provider, "turn"
             ),
             "retry_notice": None,
+            "provider": provider,
         }
 
     if (
@@ -242,12 +295,11 @@ def classify_provider_error(exc):
         return {
             "category": "authentication_failed",
             "retryable": False,
-            "player_message": _sentence(
-                "%s rejected your API key. Nothing in your game was changed. "
-                "Check that the key is correct and still active, update it in "
-                "Settings (the gear icon), then try that action again." % name
+            "player_message": account_refusal_message(
+                "authentication_failed", provider, "turn"
             ),
             "retry_notice": None,
+            "provider": provider,
         }
 
     if (
@@ -258,12 +310,11 @@ def classify_provider_error(exc):
         return {
             "category": "model_access_denied",
             "retryable": False,
-            "player_message": (
-                "Your API key does not have access to the AI model this game "
-                "uses. Nothing in your game was changed. Enable that model on "
-                "your provider account, or use a key that can reach it."
+            "player_message": account_refusal_message(
+                "model_access_denied", provider, "turn"
             ),
             "retry_notice": None,
+            "provider": provider,
         }
 
     if status == 400 or matches("badrequesterror", "invalid_request_error"):
@@ -271,6 +322,7 @@ def classify_provider_error(exc):
         # heal it (#240): stop now and let the player change what they asked.
         return {
             "category": "bad_request",
+            "provider": provider,
             "retryable": False,
             "player_message": _sentence(
                 "%s refused that request as malformed. Nothing in your game "
@@ -287,6 +339,7 @@ def classify_provider_error(exc):
     ):
         return {
             "category": "rate_limited",
+            "provider": provider,
             "retryable": True,
             "player_message": _sentence(
                 "%s is rate limiting your key and did not answer in time. "
@@ -316,6 +369,7 @@ def classify_provider_error(exc):
     ):
         return {
             "category": "provider_unavailable",
+            "provider": provider,
             "retryable": True,
             "player_message": (
                 (
@@ -337,6 +391,7 @@ def classify_provider_error(exc):
 
     return {
         "category": "unclassified",
+        "provider": provider,
         "retryable": True,
         "player_message": None,
         "retry_notice": None,

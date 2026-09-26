@@ -1,5 +1,17 @@
 # Startup and Boot
 
+## #432 welcome refusal delta (2026-09-25; headless acceptance recorded 2026-09-25, `agent-room-fleet-kit/local-data/432-433/acceptance/ACCEPTANCE-SUMMARY.md`)
+
+When the startup welcome's generation or candidate review is refused for an
+account reason (out of funds or quota, API key rejected, no model access), the
+lifecycle records the refusal's category and provider under the single
+`provider_error` status. The final FAILED end, after the one forced recovery,
+displays the welcome-moment account text as DM narration ("... then tell the DM
+what you do next"). The raw exception text stays in `lifecycle.error` for the
+startup warning and the saved `last_error`. A skipped recovery (lease timeout),
+a refused follow-up during the welcome apply, and the terminal-mode kickoff
+stay silent; the first turn's DM call then explains.
+
 ## #340 console-stream delta (2026-09-09; candidate)
 
 Terminal setup configures UTF-8 in place on Python's original Windows output

@@ -1,5 +1,14 @@
 # Save, Load, and Reset Lifecycle
 
+## #432 T079 exit delta (2026-09-25; headless acceptance recorded 2026-09-25, `agent-room-fleet-kit/local-data/432-433/acceptance/ACCEPTANCE-SUMMARY.md`)
+
+Unguarded T079 callers now propagate pre-commit supersession out of the writer
+loop instead of counting it as a failed attempt; the ordinary action handler
+still turns it into the safe-failure line during the Load (tracked separately).
+Post-commit validator supersession is still swallowed when the caller is
+unguarded. T078 (`classify_effect`) also lets supersession through instead of
+re-wrapping it. The #323 guarded text below is unchanged.
+
 ## #220 module discovery (2026-09-09; native revalidation passed)
 
 Phase2 selects immediate module directories by existing structural artifacts:

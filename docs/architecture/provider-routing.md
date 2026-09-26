@@ -1,5 +1,24 @@
 # Provider Routing
 
+## #432 T079 exit delta (2026-09-25; headless acceptance recorded 2026-09-25, `agent-room-fleet-kit/local-data/432-433/acceptance/ACCEPTANCE-SUMMARY.md`)
+
+The T079 character writer (`updates/update_character_info.py::_update_character_info_unlocked`)
+exits by failure class, not by one shared count (D-432-1). Only unusable answers
+count toward the bound of three: an incomplete delta, critical-field loss, a
+schema-invalid merged sheet, a JSON decode error, or another loop exception. A
+completed deterministic provider error (`LiveProviderCompletedError`, the #240
+handback) is logged and re-raised at once with its envelope, and pre-commit
+supersession always propagates. `{}` is the typed "no change" answer: the first
+`{}` in an update is asked once to confirm, and a `{}` that follows a `{}` is
+accepted (D-432-2). T078 (`core/ai/effects_agent.py::classify_effect`) lets the
+same two classes through at once; contract failures keep two attempts
+(D-432-4(iii)). `utils/provider_errors.py` holds one table of account-refusal
+reasons and fixes (out of funds or quota, API key rejected, no model access,
+plus a local or custom server model-access text), rendered by
+`account_refusal_message(category, provider, moment)` for the turn loop, after
+the narration, and the startup welcome. `classify_provider_error` builds its
+account texts from that table and returns the provider it used (D-432-4(i)).
+
 ## Issue 400 compression delta (2026-09-14; live evidence in the PR)
 
 T084 now asks the model for `{"text": "..."}` only: a numbered list of the
