@@ -3,8 +3,10 @@
 ## #432 T079 exit delta (2026-09-25; headless acceptance recorded 2026-09-25, `agent-room-fleet-kit/local-data/432-433/acceptance/ACCEPTANCE-SUMMARY.md`)
 
 Unguarded T079 callers now propagate pre-commit supersession out of the writer
-loop instead of counting it as a failed attempt; the ordinary action handler
-still turns it into the safe-failure line during the Load (tracked separately).
+loop instead of counting it as a failed attempt. The ordinary action handler's
+catch still converts it into an error result; in headless acceptance the Load's
+restart ended the session before any failure line was shown (a web-mode
+safe-failure line during the Load is unconfirmed and not filed).
 Post-commit validator supersession is still swallowed when the caller is
 unguarded. T078 (`classify_effect`) also lets supersession through instead of
 re-wrapping it. The #323 guarded text below is unchanged.

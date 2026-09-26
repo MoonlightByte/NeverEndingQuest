@@ -11,9 +11,10 @@ receive it through the output sink. Terminal players receive it through the turn
 loop's `[SYSTEM]` line, which now prints a result's curated `player_message`
 when its `message_id` carries the `action-failure:` prefix, and the generic
 line otherwise. The retry-stable failure id recognizes a trailing failure line
-by role and id prefix, not by text. The terminal-mode kickoff and the
-resumed-combat post-combat pause line do not carry the refusal text (tracked
-separately).
+by role and id prefix, not by text. The terminal-mode kickoff (#214) and the
+resumed-combat post-combat pause line (#442) do not carry the refusal text;
+other action handlers, the combat entry and level-up still show a generic line
+(#442).
 
 ## #378 ordinary action ordering trial (2026-09-12; acceptance pending)
 
