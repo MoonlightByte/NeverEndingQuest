@@ -292,8 +292,25 @@ def resolve_creature_controller(creature, combat_state=None):
     return "actor_agent"
 
 
-def all_hostiles_resolved(encounter):
+def victory_hostiles(encounter):
+    """Return the hostiles the victory rule counts.
+
+    A typed encounter commits which participants may act in
+    ``sceneFacts.participants`` (``initiativeEligible``). A hostile outside
+    that membership (observer, hidden, unaware, departed) never receives a
+    turn, so play can never defeat it; counting it would leave the fight
+    unable to end (#446). Legacy and pre-typed encounters keep counting
+    every hostile, byte-identical to the previous rule.
+    """
     hostiles = [c for c in encounter.get("creatures", []) if is_hostile(c)]
+    if combat_provenance(encounter) != "typed":
+        return hostiles
+    eligible = initiative_eligible_ids(encounter)
+    return [c for c in hostiles if c.get("combatantId") in eligible]
+
+
+def all_hostiles_resolved(encounter):
+    hostiles = victory_hostiles(encounter)
     return bool(hostiles) and all(
         normalize_status(c.get("status")) in RESOLVED_HOSTILE_STATUSES
         or (isinstance(c.get("currentHitPoints"), (int, float)) and c["currentHitPoints"] <= 0)
