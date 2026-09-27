@@ -201,12 +201,16 @@ class AICharacterEffectsValidator:
                 if (item.get('equipped', False) and 
                     item.get('item_type') == 'armor' and 
                     item.get('armor_category') == 'shield'):
+                    # A shield record keeps its +2 in ac_base; ac_bonus is the
+                    # enchantment on top of it (schemas/char_schema.json). Reading
+                    # ac_bonus alone produced "Shield provides +0 AC" (#387).
+                    shield_ac = int(item.get('ac_base') or 2) + int(item.get('ac_bonus') or 0)
                     equipment_effects.append({
                         'name': 'Shield AC Bonus',
                         'type': 'bonus',
                         'target': 'AC',
-                        'value': item.get('ac_bonus', 2),
-                        'description': f"Shield provides +{item.get('ac_bonus', 2)} AC",
+                        'value': shield_ac,
+                        'description': f"Shield provides +{shield_ac} AC",
                         'source': item['item_name']
                     })
         
