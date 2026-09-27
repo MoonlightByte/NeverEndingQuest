@@ -131,11 +131,15 @@ class StorageProcessor:
         # Format existing storage for context
         existing_storage_info = []
         for storage in context.get("existing_storage", []):
+            # The exact stored names are what retrieve_item matches on (#458).
             existing_storage_info.append({
                 "id": storage["id"],
                 "name": storage["deviceName"],
                 "type": storage["deviceType"],
-                "contents_count": len(storage.get("contents", []))
+                "contents": [
+                    {"name": item.get("item_name", "Unknown"), "quantity": item.get("quantity", 1)}
+                    for item in storage.get("contents", [])
+                ]
             })
             
         system_prompt = f"""You are a storage operations specialist for a 5th Edition RPG system. Your task is to convert natural language storage descriptions into valid JSON operations that match the provided schema.
@@ -169,7 +173,8 @@ INSTRUCTIONS:
 OUTPUT REQUIREMENTS:
 - Return ONLY valid JSON that matches the storage action schema
 - Include all required fields for the detected action type
-- Use EXACT item names from character inventory (never modify or assume item names)
+- Use EXACT item names from character inventory for store operations (never modify or assume item names)
+- For retrieve operations, use the EXACT item name as listed in that storage's "contents" (same spelling and capitalization); the player's wording may differ
 - Extract the specific item name mentioned in the player's request
 - Use the exact quantity requested, or 1 if not specified
 - Reference existing storage IDs when applicable
