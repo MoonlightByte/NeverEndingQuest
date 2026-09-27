@@ -20,7 +20,7 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 | Route and topology | Request-bound `ApprovedTransitionPlan` from active-module disk | Identity reverified under transition lock before movement |
 | Current location | `party_tracker.json.worldConditions` | Atomic destination write occurs before departure effects/prose |
 | Recovery progress | `pending_location_transition.json` v2 checkpoint | Receipt advances after each durable step; removed after completion |
-| Origin departure | Checkpoint preimages plus canonical origin area/journal | Receipt-based reconcile after movement |
+| Origin departure | Checkpoint preimages plus canonical origin area/journal | Receipt-based reconcile after movement; T091 also reconciles the current location's `monsters[]` when a fight ends |
 | Player-facing travel prose | Committed destination/roster and retained narration identity | T013/T063/T064 retained, projection-checked, then published |
 | Conversation atlas | Fresh rendering of current module area files | Advisory T067 context only; not movement authorization |
 | Cross-module target | Canonical target-module projection | Root checkpoint then party-module transition publication |

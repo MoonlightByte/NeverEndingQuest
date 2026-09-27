@@ -110,7 +110,7 @@ immediately. In-combat `pendingTurn` remains initiative-owned and unchanged.
 2. Completion exits the combat effect clock and applies XP once.
 3. T041 builds the combat summary; area/history summary receipts are persisted.
 4. The deterministic transcript archive is written before active combat is cleared.
-5. `action_handler` emits the historical no-reapply record and `needs_post_combat_narration`.
+5. `action_handler` (normal flow) or the resumed-startup flow in `main.py` emits the historical no-reapply record via `combat_manager.render_combat_record_marker`, then runs the T091 location reconcile (`reconcile_location_state.run`) on the fight's "Combat Summary:" line so the location's `monsters[]` drops what the fight resolved; the normal flow then returns `needs_post_combat_narration`.
 6. Main rebuilds authoritative history and T067 handles the immediate post-combat beat.
 
 ## State and atomicity

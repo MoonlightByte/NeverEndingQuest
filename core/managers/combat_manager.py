@@ -1906,6 +1906,24 @@ def _append_combat_encounter_to_current_area(current_location_id, new_encounter)
         return True
 
 
+def render_combat_record_marker(summary_line):
+    """Return the historical combat record appended to the main history.
+
+    ``summary_line`` is the "Combat Summary: ..." line. The normal flow and the
+    resumed-combat flow both append this exact text so the DM treats the fight
+    as history and does not re-award its changes (#253).
+    """
+    return (
+        "[COMBAT CONCLUDED - HISTORICAL RECORD]\n"
+        + summary_line
+        + "\n[END OF COMBAT RECORD - Please continue the narrative after this combat]"
+        "\n\nIMPORTANT: This historical record describes character changes already "
+        "applied by the combat system, including HP, spell slots, effects, XP, "
+        "treasure, currency, items, and other rewards. Do not re-emit "
+        "updateCharacterInfo actions for those changes."
+    )
+
+
 def summarize_dialogue(
     conversation_history_param,
     location_data,
