@@ -3174,7 +3174,9 @@ Common armor types:
 - Chain Mail: 16 (no Dex)
 - Plate: 18 (no Dex)
 
-Report your arithmetic in the "breakdown" object with integer parts and an integer "total_ac".
+Report your arithmetic in the "breakdown" object: "base_armor" names the armor (or "No armor"), "base_ac" is that
+armor's base number (10 when unarmored), and dex_modifier, shield_bonus, fighting_style_bonus and total_ac are integers
+with total_ac = base_ac + dex_modifier + shield_bonus + fighting_style_bonus.
 "calculated_ac" is the CORRECT Armor Class you derived and must equal breakdown.total_ac.
 "current_ac" is the armorClass on the sheet. Set correction_needed true only when calculated_ac differs
 from current_ac; when the sheet is already correct set correction_needed false and calculated_ac equal to current_ac.
@@ -3213,7 +3215,8 @@ Return a single JSON response with all corrections:
     "calculated_ac": 17,
     "correction_needed": true,
     "breakdown": {
-      "base_armor": "Scale Mail: 14",
+      "base_armor": "Scale Mail",
+      "base_ac": 14,
       "dex_modifier": 1,
       "shield_bonus": 2,
       "fighting_style_bonus": 0,
@@ -3252,7 +3255,7 @@ Return a single JSON response with all corrections:
 
 When the sheet's AC is already correct, ac_validation looks like:
 {"current_ac": 13, "calculated_ac": 13, "correction_needed": false,
- "breakdown": {"base_armor": "No armor: 10", "dex_modifier": 1, "shield_bonus": 2, "fighting_style_bonus": 0, "total_ac": 13},
+ "breakdown": {"base_armor": "No armor", "base_ac": 10, "dex_modifier": 1, "shield_bonus": 2, "fighting_style_bonus": 0, "total_ac": 13},
  "corrections": []}
 
 IMPORTANT: Perform ALL FOUR validations and return results for each in the combined JSON response.
@@ -3404,6 +3407,16 @@ Remember to return a single JSON response with all four validation results."""
             "T053: ac_validation.breakdown.total_ac",
             minimum=1,
         )
+        parts_total = 0
+        for part in ('base_ac', 'dex_modifier', 'shield_bonus', 'fighting_style_bonus'):
+            parts_total += _require_contract_integer(
+                breakdown.get(part),
+                f"T053: ac_validation.breakdown.{part}",
+            )
+        if breakdown_total != parts_total:
+            raise CharacterValidationResponseError(
+                "T053: breakdown total_ac must equal the sum of its parts"
+            )
         expected_total = calculated_ac if 'calculated_ac' in ac_result else source_ac
         if breakdown_total != expected_total:
             raise CharacterValidationResponseError(

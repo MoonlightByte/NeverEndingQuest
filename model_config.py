@@ -512,6 +512,7 @@ _T053_COMBINED_VALIDATION_SCHEMA = {
                     "type": "object",
                     "properties": {
                         "base_armor": {"type": "string"},
+                        "base_ac": {"type": "integer"},
                         "dex_modifier": {"type": "integer"},
                         "shield_bonus": {"type": "integer"},
                         "fighting_style_bonus": {"type": "integer"},
