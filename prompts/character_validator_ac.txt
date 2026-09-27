@@ -39,6 +39,10 @@ AC = Base Armor + Dex Modifier (limited by armor type) + Shield Bonus + Fighting
 - Only ONE shield can be equipped
 - Multiple armor pieces of same type = conflict (keep highest AC)
 
+### Unequipped Armor:
+- Armor with `"equipped": false` contributes nothing; it is the player's choice and must stay unequipped
+- Unarmored AC = 10 + Dex modifier (+ shield bonus if a shield is equipped)
+
 ## VALIDATION EXAMPLES
 
 ### Example 1: Fighter with Chain Mail and Shield
@@ -82,7 +86,28 @@ Calculation:
 Correction Needed: AC should be 15, not 14
 ```
 
-### Example 3: Equipment Conflict Resolution
+### Example 3: Armor Taken Off (no conflict)
+```json
+Character Data:
+{
+  "armorClass": 15,
+  "abilities": {"dexterity": 13},
+  "equipment": [
+    {"item_name": "Scale Mail", "item_type": "armor", "equipped": false},
+    {"item_name": "Shield", "item_type": "armor", "equipped": true}
+  ]
+}
+
+Calculation:
+- No base armor worn (Scale Mail is unequipped; leave it unequipped): 10
+- Dex Modifier: +1
+- Shield: +2
+- Correct AC: 10 + 1 + 2 = 13
+
+Correction Needed: AC should be 13, not 15. Scale Mail stays unequipped.
+```
+
+### Example 4: Equipment Conflict Resolution
 ```json
 Character Data:
 {
@@ -96,6 +121,32 @@ Problem: Two base armor pieces equipped
 Solution: Keep Chain Mail (16 AC), unequip Scale Mail (14 AC)
 ```
 
+## WHAT YOU MAY CHANGE (CONTRACT)
+
+The character data you receive is an AC-only projection of the sheet. Your reply is checked against these
+rules and rejected as a whole if any one is broken, so follow them exactly:
+
+1. In `validated_character_data`, only `armorClass` and `equipment` may differ from the input. Every other
+   field (name, class, race, abilities, proficiencies, equipment_effects, classFeatures, racialTraits, feats,
+   and anything else present) must be echoed exactly as received or omitted. Never add a field that was not
+   in the input.
+2. `equipment_effects` is read-only context. If an effect looks wrong (for example a shield effect that says
+   +0 AC), compute the correct AC from the equipment records anyway and mention the discrepancy in
+   `corrections_made`. Do not edit, add or remove effects.
+3. Each `equipment` entry must reference an input item by its exact `item_name`. You may change only
+   `ac_base`, `ac_bonus`, `dex_limit`, `armor_category`, `stealth_disadvantage` and (within rule 4) `equipped`.
+   Never change `item_type`, `description` or `quantity`. Never add new items and never list the same item
+   twice. Items you do not change may be omitted from `equipment`.
+4. The player decides what is worn. An unequipped armor or shield is not a mistake to repair: the player took
+   it off (for example to store it), and the correct AC is then computed without it (unarmored AC is 10 + Dex
+   modifier, plus a shield if one is still equipped, plus Unarmored Defense where the class grants it).
+   Never change `equipped` from false to true. Set `equipped` to false only to resolve a real conflict: two
+   base armors or two shields equipped at once (keep the higher AC item).
+5. `armorClass` and `ac_calculation_breakdown.total_ac` are plain integers (for example `17`, not
+   `"14 + 1 + 2 = 17"`) and must be equal to each other.
+6. `corrections_made` must contain at least one entry whenever `armorClass` or any equipment field differs
+   from the input, and may be empty only when nothing changed.
+
 ## RESPONSE FORMAT
 
 You must respond with a JSON object containing:
@@ -103,20 +154,25 @@ You must respond with a JSON object containing:
 ```json
 {
   "validated_character_data": {
-    // Complete corrected character data with proper AC
+    "armorClass": 17,
+    "equipment": [
+      {"item_name": "Scale Mail", "equipped": true, "ac_base": 14, "dex_limit": 2, "armor_category": "medium", "stealth_disadvantage": true}
+    ]
   },
   "corrections_made": [
-    "List of specific corrections made"
+    "AC corrected from 16 to 17: Scale Mail 14 + Dex +1 (medium armor, max +2) + Shield +2"
   ],
   "ac_calculation_breakdown": {
-    "base_armor": "Name and AC value",
-    "dex_modifier": "Value applied", 
-    "shield_bonus": "Value applied",
-    "fighting_style_bonus": "Value applied",
-    "total_ac": "Final calculated AC"
+    "base_armor": "Scale Mail (14)",
+    "dex_modifier": "+1",
+    "shield_bonus": "+2",
+    "fighting_style_bonus": "+0",
+    "total_ac": 17
   }
 }
 ```
+
+`validated_character_data` may also echo the unchanged input fields; the example omits them for brevity.
 
 ## INSTRUCTIONS
 
@@ -124,7 +180,7 @@ You must respond with a JSON object containing:
 2. **Auto-populate missing armor properties** using the reference table above
 3. **Resolve equipment conflicts** per 5th edition rules
 4. **Calculate correct AC** using the formula and rules
-5. **Update character data** with corrections
-6. **Provide detailed breakdown** of the calculation
+5. **Update character data** with corrections, touching only the fields the contract above allows
+6. **Provide detailed breakdown** of the calculation with an integer `total_ac` equal to `armorClass`
 
 Be thorough but concise. Focus on accuracy and rule compliance.
