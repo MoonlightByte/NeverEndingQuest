@@ -3082,17 +3082,19 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         attempt = 1
         corrections_before = copy.deepcopy(self.corrections_made)
         last_error: BaseException = RuntimeError("T053 validation attempts exhausted")
+        messages = [
+            {"role": "system", "content": self.get_combined_validator_system_prompt()},
+            {"role": "user", "content": validation_prompt}
+        ]
         while attempt <= max_attempts:
+            ai_response = None
             try:
                 response = capture_and_fanout("T053", api_client.create_completion,
                     _detached_scope=self.provider_scope,
                     _detached_status=self.provider_status,
                     _live_selected='advisory' if self.provider_scope is not None else None,
                     _request_provider=MODEL_PROVIDER,
-                    messages=[
-                        {"role": "system", "content": self.get_combined_validator_system_prompt()},
-                        {"role": "user", "content": validation_prompt}
-                    ],
+                    messages=messages,
                     model=batch_config["model"],
                     temperature=0.1,
                     **{k: v for k, v in batch_config.items() if k != "model"})
@@ -3118,6 +3120,18 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
                 self.corrections_made = copy.deepcopy(corrections_before)
                 self.logger.error(f"Batched AI validation failed (attempt {attempt}/{max_attempts}): {str(e)}")
                 attempt += 1
+                # Retry with the rejection reason (same pattern as T051) instead
+                # of resending identical messages.
+                if isinstance(ai_response, str):
+                    messages = messages + [
+                        {"role": "assistant", "content": ai_response},
+                        {"role": "user", "content": (
+                            f"VALIDATION ERROR: {e}. Return the complete JSON object again "
+                            "with all four sections. Correct the stated defect and preserve "
+                            "valid fields; ac_validation.calculated_ac must equal "
+                            "ac_validation.breakdown.total_ac."
+                        )},
+                    ]
 
         # All attempts exhausted: fail open -- return the character unchanged.
         return _failed_validation_result(character_data, last_error)
@@ -3160,6 +3174,13 @@ Common armor types:
 - Chain Mail: 16 (no Dex)
 - Plate: 18 (no Dex)
 
+Report your arithmetic in the "breakdown" object: "base_armor" names the armor (or "No armor"), "base_ac" is that
+armor's base number (10 when unarmored), and dex_modifier, shield_bonus, fighting_style_bonus and total_ac are integers
+with total_ac = base_ac + dex_modifier + shield_bonus + fighting_style_bonus.
+"calculated_ac" is the CORRECT Armor Class you derived and must equal breakdown.total_ac.
+"current_ac" is the armorClass on the sheet. Set correction_needed true only when calculated_ac differs
+from current_ac; when the sheet is already correct set correction_needed false and calculated_ac equal to current_ac.
+
 ## TASK 2: INVENTORY CATEGORIZATION
 
 """ + self.get_inventory_validator_system_prompt() + """
@@ -3190,10 +3211,17 @@ Rules:
 Return a single JSON response with all corrections:
 {
   "ac_validation": {
-    "current_ac": 17,
-    "calculated_ac": 16,
+    "current_ac": 16,
+    "calculated_ac": 17,
     "correction_needed": true,
-    "breakdown": "Scale Mail (14) + Dex mod (+1) + Shield (+2) = 17",
+    "breakdown": {
+      "base_armor": "Scale Mail",
+      "base_ac": 14,
+      "dex_modifier": 1,
+      "shield_bonus": 2,
+      "fighting_style_bonus": 0,
+      "total_ac": 17
+    },
     "corrections": ["AC should be 17, not 16"]
   },
   "inventory_corrections": {
@@ -3224,6 +3252,11 @@ Return a single JSON response with all corrections:
     "features_to_remove": ["Channel Divinity (1/rest)"]
   }
 }
+
+When the sheet's AC is already correct, ac_validation looks like:
+{"current_ac": 13, "calculated_ac": 13, "correction_needed": false,
+ "breakdown": {"base_armor": "No armor", "base_ac": 10, "dex_modifier": 1, "shield_bonus": 2, "fighting_style_bonus": 0, "total_ac": 13},
+ "corrections": []}
 
 IMPORTANT: Perform ALL FOUR validations and return results for each in the combined JSON response.
 """
@@ -3331,6 +3364,7 @@ Remember to return a single JSON response with all four validation results."""
             ac_result.get('corrections', []),
             "T053: ac_validation.corrections",
         )
+        calculated_ac = None
         if ac_result['correction_needed']:
             if 'calculated_ac' not in ac_result:
                 raise CharacterValidationResponseError(
@@ -3360,9 +3394,33 @@ Remember to return a single JSON response with all four validation results."""
                 raise CharacterValidationResponseError(
                     "T053: calculated_ac conflicts with correction_needed=false"
                 )
-        if 'breakdown' in ac_result and not isinstance(ac_result['breakdown'], str):
+        # The breakdown ties the returned number to the model's own arithmetic
+        # (#392): total_ac must equal calculated_ac, or the source AC when no
+        # correction is claimed. Mirrors the T051 check.
+        breakdown = ac_result.get('breakdown')
+        if not isinstance(breakdown, dict):
             raise CharacterValidationResponseError(
-                "T053: ac_validation.breakdown must be a string"
+                "T053: ac_validation.breakdown must be an object with total_ac"
+            )
+        breakdown_total = _require_contract_integer(
+            breakdown.get('total_ac'),
+            "T053: ac_validation.breakdown.total_ac",
+            minimum=1,
+        )
+        parts_total = 0
+        for part in ('base_ac', 'dex_modifier', 'shield_bonus', 'fighting_style_bonus'):
+            parts_total += _require_contract_integer(
+                breakdown.get(part),
+                f"T053: ac_validation.breakdown.{part}",
+            )
+        if breakdown_total != parts_total:
+            raise CharacterValidationResponseError(
+                "T053: breakdown total_ac must equal the sum of its parts"
+            )
+        expected_total = calculated_ac if 'calculated_ac' in ac_result else source_ac
+        if breakdown_total != expected_total:
+            raise CharacterValidationResponseError(
+                "T053: breakdown total_ac must match calculated_ac"
             )
         correction_messages.extend(ac_corrections)
 
