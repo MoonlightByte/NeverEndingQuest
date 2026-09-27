@@ -58,6 +58,7 @@ from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
 from core.validation.character_validator import AICharacterValidator
+from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
@@ -186,6 +187,20 @@ class StorageManager:
         new_item["quantity"] = quantity
         equipment.append(new_item)
         
+    def _validate_character_before_write(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Run the same contract repair and AI validation that
+        validate_character_file_safe performs, on the in-memory sheet, so the
+        character and storage files can be written together (#391).
+        Provider failure keeps the deterministic repairs (fail-open, as before)."""
+        repaired, _repair_changes = repair_required_ammunition_field(character_data)
+        result = self.character_validator.validate_and_correct_character_with_result(repaired)
+        if not result.success:
+            warning(
+                f"Character validation failed open before storage write: {result.error or 'validation unavailable'}",
+                category="storage_operations",
+            )
+        return result.data
+
     def _find_storage_at_location(self, location_id: str) -> List[Dict[str, Any]]:
         """Find all storage containers at a specific location"""
         storage_data = safe_read_json(self.storage_file)
@@ -435,14 +450,14 @@ class StorageManager:
                     "timestamp": datetime.now().isoformat()
                 })
             
+            # Validate the debited sheet in memory (#391): the model validation
+            # runs before either file is touched, so the character and the
+            # container are written back to back instead of ~20 s apart.
+            character_data = self._validate_character_before_write(character_data)
+
             # Save updated character data
             if not safe_write_json(character_file, character_data):
                 raise Exception("Failed to save character data")
-            
-            # Validate and save character data with AI validation
-            validated_character_data, validation_success = self.character_validator.validate_character_file_safe(character_file)
-            if not validation_success:
-                raise Exception("Character validation failed after store operation")
             
             # Save updated storage data
             if not safe_write_json(self.storage_file, storage_data):
@@ -585,14 +600,12 @@ class StorageManager:
                     "timestamp": datetime.now().isoformat()
                 })
             
+            # Validate the credited sheet in memory (#391) before both writes.
+            character_data = self._validate_character_before_write(character_data)
+
             # Save updated character data
             if not safe_write_json(character_file, character_data):
                 raise Exception("Failed to save character data")
-            
-            # Validate and save character data with AI validation
-            validated_character_data, validation_success = self.character_validator.validate_character_file_safe(character_file)
-            if not validation_success:
-                raise Exception("Character validation failed after retrieve operation")
             
             # Save updated storage data
             if not safe_write_json(self.storage_file, storage_data):
