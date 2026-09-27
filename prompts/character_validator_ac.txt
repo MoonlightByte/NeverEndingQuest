@@ -39,6 +39,10 @@ AC = Base Armor + Dex Modifier (limited by armor type) + Shield Bonus + Fighting
 - Only ONE shield can be equipped
 - Multiple armor pieces of same type = conflict (keep highest AC)
 
+### Unequipped Armor:
+- Armor with `"equipped": false` contributes nothing; it is the player's choice and must stay unequipped
+- Unarmored AC = 10 + Dex modifier (+ shield bonus if a shield is equipped)
+
 ## VALIDATION EXAMPLES
 
 ### Example 1: Fighter with Chain Mail and Shield
@@ -82,7 +86,28 @@ Calculation:
 Correction Needed: AC should be 15, not 14
 ```
 
-### Example 3: Equipment Conflict Resolution
+### Example 3: Armor Taken Off (no conflict)
+```json
+Character Data:
+{
+  "armorClass": 15,
+  "abilities": {"dexterity": 13},
+  "equipment": [
+    {"item_name": "Scale Mail", "item_type": "armor", "equipped": false},
+    {"item_name": "Shield", "item_type": "armor", "equipped": true}
+  ]
+}
+
+Calculation:
+- No base armor worn (Scale Mail is unequipped; leave it unequipped): 10
+- Dex Modifier: +1
+- Shield: +2
+- Correct AC: 10 + 1 + 2 = 13
+
+Correction Needed: AC should be 13, not 15. Scale Mail stays unequipped.
+```
+
+### Example 4: Equipment Conflict Resolution
 ```json
 Character Data:
 {
@@ -109,12 +134,17 @@ rules and rejected as a whole if any one is broken, so follow them exactly:
    +0 AC), compute the correct AC from the equipment records anyway and mention the discrepancy in
    `corrections_made`. Do not edit, add or remove effects.
 3. Each `equipment` entry must reference an input item by its exact `item_name`. You may change only
-   `equipped`, `ac_base`, `ac_bonus`, `dex_limit`, `armor_category` and `stealth_disadvantage`. Never change
-   `item_type`, `description` or `quantity`. Never add new items and never list the same item twice.
-   Items you do not change may be omitted from `equipment`.
-4. `armorClass` and `ac_calculation_breakdown.total_ac` are plain integers (for example `17`, not
+   `ac_base`, `ac_bonus`, `dex_limit`, `armor_category`, `stealth_disadvantage` and (within rule 4) `equipped`.
+   Never change `item_type`, `description` or `quantity`. Never add new items and never list the same item
+   twice. Items you do not change may be omitted from `equipment`.
+4. The player decides what is worn. An unequipped armor or shield is not a mistake to repair: the player took
+   it off (for example to store it), and the correct AC is then computed without it (unarmored AC is 10 + Dex
+   modifier, plus a shield if one is still equipped, plus Unarmored Defense where the class grants it).
+   Never change `equipped` from false to true. Set `equipped` to false only to resolve a real conflict: two
+   base armors or two shields equipped at once (keep the higher AC item).
+5. `armorClass` and `ac_calculation_breakdown.total_ac` are plain integers (for example `17`, not
    `"14 + 1 + 2 = 17"`) and must be equal to each other.
-5. `corrections_made` must contain at least one entry whenever `armorClass` or any equipment field differs
+6. `corrections_made` must contain at least one entry whenever `armorClass` or any equipment field differs
    from the input, and may be empty only when nothing changed.
 
 ## RESPONSE FORMAT
