@@ -90,6 +90,7 @@ CHARACTER_VALIDATOR_SCHEMA = {
             "type": "object",
             "required": [
                 "base_armor",
+                "base_ac",
                 "dex_modifier",
                 "shield_bonus",
                 "fighting_style_bonus",
@@ -97,6 +98,7 @@ CHARACTER_VALIDATOR_SCHEMA = {
             ],
             "properties": {
                 "base_armor": {"type": "string"},
+                "base_ac": {"type": ["string", "integer", "number"]},
                 "dex_modifier": {"type": ["string", "integer", "number"]},
                 "shield_bonus": {"type": ["string", "integer", "number"]},
                 "fighting_style_bonus": {"type": ["string", "integer", "number"]},
@@ -2051,7 +2053,9 @@ class AICharacterValidator:
                         {"role": "user", "content": (
                             f"VALIDATION ERROR: {objection}. Return the complete JSON "
                             "object again. Ensure validated_character_data.armorClass "
-                            "exactly equals ac_calculation_breakdown.total_ac and that "
+                            "exactly equals ac_calculation_breakdown.total_ac, that total_ac "
+                            "equals base_ac + dex_modifier + shield_bonus + "
+                            "fighting_style_bonus (all integers), and that "
                             "corrections_made accurately describes any changed value.")},
                     ])
             try:
@@ -2138,7 +2142,9 @@ class AICharacterValidator:
                             "content": (
                                 f"VALIDATION ERROR: {e}. Return the complete JSON "
                                 "object again. Ensure validated_character_data.armorClass "
-                                "exactly equals ac_calculation_breakdown.total_ac and that "
+                                "exactly equals ac_calculation_breakdown.total_ac, that total_ac "
+                            "equals base_ac + dex_modifier + shield_bonus + "
+                            "fighting_style_bonus (all integers), and that "
                                 "corrections_made accurately describes any changed value."
                             ),
                         },
@@ -2543,6 +2549,19 @@ Provide the corrected character data with proper AC calculation."""
             "T051: ac_calculation_breakdown.total_ac",
             minimum=1,
         )
+        # The breakdown's integer parts must add up to total_ac, so the number
+        # written to the sheet is tied to the arithmetic the model showed
+        # (mirrors the T053 check; a string breakdown let 14+1+2 be accepted as 18).
+        parts_total = 0
+        for part in ('base_ac', 'dex_modifier', 'shield_bonus', 'fighting_style_bonus'):
+            parts_total += _require_contract_integer(
+                breakdown[part],
+                f"T051: ac_calculation_breakdown.{part}",
+            )
+        if breakdown_total != parts_total:
+            raise CharacterValidationResponseError(
+                "T051: breakdown total_ac must equal the sum of its parts"
+            )
         if breakdown_total != corrected_ac:
             raise CharacterValidationResponseError(
                 "T051: breakdown total_ac must match validated armorClass"

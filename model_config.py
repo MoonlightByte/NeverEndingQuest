@@ -473,9 +473,10 @@ _T051_AC_VALIDATION_SCHEMA = {
             "type": "object",
             "properties": {
                 "base_armor": {"type": "string"},
-                "dex_modifier": {"type": "string"},
-                "shield_bonus": {"type": "string"},
-                "fighting_style_bonus": {"type": "string"},
+                "base_ac": {"type": "integer"},
+                "dex_modifier": {"type": "integer"},
+                "shield_bonus": {"type": "integer"},
+                "fighting_style_bonus": {"type": "integer"},
                 "total_ac": {"type": "integer"},
             },
         },
