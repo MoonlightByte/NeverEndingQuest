@@ -113,7 +113,7 @@ except:
     def track_response(r): pass
 
 # Import other necessary modules (config is now patched)
-from core.managers.combat_manager import run_combat_simulation
+from core.managers.combat_manager import run_combat_simulation, render_combat_record_marker
 from core.combat.down_scene import (
     MAIN_DOWN_BANNER,
     MAIN_DOWN_SINK_LINE,
@@ -8509,17 +8509,25 @@ def _main_game_loop(startup_authority, turn_authority):
         # ** CRITICAL FIX: Integrate the combat summary into the main conversation history **
         if dialogue_summary and not combat_still_active:
             # We create a clear, systemic message indicating combat is over.
-            # This mimics the handoff from action_handler.
-            combat_summary_message = (
-                "[COMBAT CONCLUDED] The encounter has ended. The following "
-                "is a summary of events:\n\n%s\n\nIMPORTANT: This historical "
-                "summary describes changes already applied by the combat "
-                "system. Do not re-emit updateCharacterInfo actions for them."
-                % dialogue_summary
+            # The same record text as the handoff from action_handler (#253).
+            combat_summary_message = render_combat_record_marker(
+                "Combat Summary: " + dialogue_summary
             )
             conversation_history.append({"role": "user", "content": combat_summary_message})
             debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
             save_conversation_history(conversation_history)
+            if isinstance(dialogue_summary, str):
+                # #253: reconcile the location's monster list from this fight
+                # before the post-combat narration is requested.
+                from utils import reconcile_location_state
+                world_resume = (party_tracker_data or {}).get("worldConditions", {})
+                reconcile_location_state.run(
+                    area_id=world_resume.get("currentAreaId"),
+                    location_id=world_resume.get("currentLocationId"),
+                    conversation_history_segment=[
+                        {"role": "assistant", "content": "Combat Summary: " + dialogue_summary}
+                    ],
+                )
 
         # ** CRITICAL FIX: Get a new AI response for post-combat narration **
         # This makes the resumed flow behave exactly like the normal flow.

@@ -3297,9 +3297,10 @@ def process_action(
                 if combat_summary:
                     print("[DEBUG ACTION_HANDLER] Found combat summary, appending to conversation history")
                     # Add clear historical marker to prevent Combat Commitment Point confusion
+                    from core.managers.combat_manager import render_combat_record_marker
                     modified_combat_summary = {
                         "role": "user",
-                        "content": "[COMBAT CONCLUDED - HISTORICAL RECORD]\n" + combat_summary["content"] + "\n[END OF COMBAT RECORD - Please continue the narrative after this combat]\n\nIMPORTANT: This historical record describes character changes already applied by the combat system, including HP, spell slots, effects, XP, treasure, currency, items, and other rewards. Do not re-emit updateCharacterInfo actions for those changes."
+                        "content": render_combat_record_marker(combat_summary["content"])
                     }
                     conversation_history.append(modified_combat_summary)
                     # Import save_conversation_history from main
@@ -3309,6 +3310,19 @@ def process_action(
 
                     from main import save_conversation_history
                     save_conversation_history(conversation_history)
+                    if isinstance(dialogue_summary, str) and dialogue_summary:
+                        # #253: reconcile the location's monster list from this
+                        # fight before the post-combat narration is requested,
+                        # so a won fight is not offered again.
+                        from utils import reconcile_location_state
+                        world = (authoritative_party or party_tracker_data).get("worldConditions", {})
+                        reconcile_location_state.run(
+                            area_id=world.get("currentAreaId"),
+                            location_id=world.get("currentLocationId"),
+                            conversation_history_segment=[
+                                {"role": "assistant", "content": "Combat Summary: " + dialogue_summary}
+                            ],
+                        )
                     print("[DEBUG ACTION_HANDLER] Returning with status='needs_post_combat_narration' - main loop will get follow-up from AI")
                     print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END ==========\n")
                     # SIGNAL-BASED ARCHITECTURE: This return value is crucial for maintaining chronological history.
