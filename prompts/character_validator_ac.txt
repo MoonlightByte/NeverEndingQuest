@@ -142,8 +142,11 @@ rules and rejected as a whole if any one is broken, so follow them exactly:
    modifier, plus a shield if one is still equipped, plus Unarmored Defense where the class grants it).
    Never change `equipped` from false to true. Set `equipped` to false only to resolve a real conflict: two
    base armors or two shields equipped at once (keep the higher AC item).
-5. `armorClass` and `ac_calculation_breakdown.total_ac` are plain integers (for example `17`, not
-   `"14 + 1 + 2 = 17"`) and must be equal to each other.
+5. In `ac_calculation_breakdown`, `base_armor` is a label (armor name, or "No armor") and `base_ac`,
+   `dex_modifier`, `shield_bonus`, `fighting_style_bonus` and `total_ac` are plain integers (for example `17`,
+   not `"+1"` or `"14 + 1 + 2 = 17"`). `base_ac` is the armor's base number (10 when unarmored, or the
+   Unarmored Defense base). `total_ac` must equal `base_ac + dex_modifier + shield_bonus + fighting_style_bonus`,
+   and `armorClass` must equal `total_ac`. Add the four numbers before you write the total.
 6. `corrections_made` must contain at least one entry whenever `armorClass` or any equipment field differs
    from the input, and may be empty only when nothing changed.
 
@@ -163,10 +166,11 @@ You must respond with a JSON object containing:
     "AC corrected from 16 to 17: Scale Mail 14 + Dex +1 (medium armor, max +2) + Shield +2"
   ],
   "ac_calculation_breakdown": {
-    "base_armor": "Scale Mail (14)",
-    "dex_modifier": "+1",
-    "shield_bonus": "+2",
-    "fighting_style_bonus": "+0",
+    "base_armor": "Scale Mail",
+    "base_ac": 14,
+    "dex_modifier": 1,
+    "shield_bonus": 2,
+    "fighting_style_bonus": 0,
     "total_ac": 17
   }
 }
@@ -181,6 +185,6 @@ You must respond with a JSON object containing:
 3. **Resolve equipment conflicts** per 5th edition rules
 4. **Calculate correct AC** using the formula and rules
 5. **Update character data** with corrections, touching only the fields the contract above allows
-6. **Provide detailed breakdown** of the calculation with an integer `total_ac` equal to `armorClass`
+6. **Provide detailed breakdown** of the calculation with integer parts whose sum is `total_ac`, equal to `armorClass`
 
 Be thorough but concise. Focus on accuracy and rule compliance.
