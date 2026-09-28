@@ -1,19 +1,20 @@
 # SPDX-FileCopyrightText: 2024 MoonlightByte
 # SPDX-License-Identifier: Fair-Source-1.0
 # License: See LICENSE file in the repository root
-"""Build an NQL world from character sheets (genesis).
+"""Build an NQL world from character sheets and storage containers (genesis).
 
-Only typed sheet fields are read: ``abilities.dexterity``, ``proficiencies.armor``,
+Only typed fields are read: ``abilities.dexterity``, ``proficiencies.armor``,
 ``classFeatures[].name`` (exact feature names), and the equipment entries'
-``item_name``, ``item_type``, ``armor_category``, ``ac_base``, ``ac_bonus``,
-``dex_limit``, ``quantity``, ``equipped`` and ``nql_id``. Descriptions and any
-other prose are never inspected. Anything the engine cannot represent is reported
-in ``Genesis.gaps`` rather than silently approximated.
+``item_name``, ``nql_id``, ``item_type``, ``armor_category``, ``ac_base``,
+``ac_bonus``, ``dex_limit``, ``quantity`` and ``equipped``. Descriptions and any
+other prose are never inspected. Anything the engine cannot represent is
+reported in ``Genesis.gaps`` rather than silently approximated.
 
-Every ``item`` and ``character`` in the world carries a stable identity. A sheet
-entry that already has ``nql_id`` keeps it; otherwise one is minted from the
-entry's name and position and returned in ``Genesis.item_ids`` so the caller can
-persist it. Display names are not identities: duplicate names are allowed.
+Every item and character carries a stable identity. ``assign_ids`` writes a
+``nql_id`` onto each equipment entry that lacks one (schema field, owner
+decision D8); ``build_world`` uses that id, or mints a temporary one for an
+entry that still lacks it, and returns the id of every entry so callers can map
+engine facts back to sheet entries. Display names are not identities.
 """
 import json
 import re
@@ -36,8 +37,11 @@ _ARMOR_TRAINING = {
 @dataclass
 class Genesis:
     source: str
-    character_ids: Dict[str, str] = field(default_factory=dict)   # sheet name -> char id
-    item_ids: Dict[str, Dict[int, str]] = field(default_factory=dict)  # char id -> equipment index -> item id
+    location: str
+    character_ids: Dict[str, str] = field(default_factory=dict)          # sheet name -> char id
+    item_ids: Dict[str, Dict[int, str]] = field(default_factory=dict)      # char id -> equipment index -> item id
+    container_ids: Dict[str, str] = field(default_factory=dict)           # storage id -> container item id
+    content_ids: Dict[str, Dict[int, str]] = field(default_factory=dict)   # storage id -> contents index -> item id
     gaps: List[str] = field(default_factory=list)
 
 
@@ -59,18 +63,49 @@ def character_id(sheet: Dict[str, Any]) -> str:
     return "char:" + slug(sheet.get("name", ""))
 
 
-def _item_id(entry: Dict[str, Any], owner: str, index: int) -> str:
+def location_id(location: str) -> str:
+    return "loc:" + slug(location)
+
+
+def container_id(storage_id: str) -> str:
+    return "container:" + slug(storage_id)
+
+
+def _mint(entry: Dict[str, Any], scope: str, index: int) -> str:
+    return f"item:{slug(entry.get('item_name', ''))}:{scope}:{index}"
+
+
+def _entry_id(entry: Dict[str, Any], scope: str, index: int) -> str:
     existing = entry.get("nql_id")
     if isinstance(existing, str) and existing.startswith("item:"):
         return existing
-    return f"item:{slug(entry.get('item_name', ''))}:{owner.split(':', 1)[1]}:{index}"
+    return _mint(entry, scope, index)
+
+
+def assign_ids(sheet: Dict[str, Any]) -> bool:
+    """Write a nql_id onto every equipment entry that lacks one. Returns True if any was added."""
+    changed = False
+    seen = set()
+    scope = slug(sheet.get("name", ""))
+    for index, entry in enumerate(sheet.get("equipment") or []):
+        if not isinstance(entry, dict) or not entry.get("item_name"):
+            continue
+        current = entry.get("nql_id")
+        if not (isinstance(current, str) and current.startswith("item:")) or current in seen:
+            candidate = _mint(entry, scope, index)
+            while candidate in seen:
+                index += 1000
+                candidate = _mint(entry, scope, index)
+            entry["nql_id"] = candidate
+            changed = True
+        seen.add(entry["nql_id"])
+    return changed
 
 
 def _training(sheet: Dict[str, Any]) -> List[str]:
     out: List[str] = []
     for label in (sheet.get("proficiencies") or {}).get("armor") or []:
-        key = str(label).strip().lower()
-        cond = _ARMOR_TRAINING.get(key)
+        cond = _ARMOR_TRAINING.get(str(label).strip().lower())
         if cond and cond not in out:
             out.append(cond)
     return out
@@ -117,17 +152,60 @@ def _armor_definition(def_id: str, entry: Dict[str, Any], gaps: List[str]) -> Op
     )
 
 
-def build_world(sheets: List[Dict[str, Any]], location_id: str, location_name: str = "") -> Genesis:
-    """Return the NQL world source for these sheets at one location."""
+def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: bool,
+               definitions: List[str], gaps: List[str], cid: str) -> Tuple[str, Optional[str]]:
+    """One item declaration. Returns (line, mode-if-held)."""
+    quantity = _int(entry.get("quantity"))
+    item_type = entry.get("item_type")
+    definition = None
+    mode = None
+    if item_type == "armor":
+        def_id = "gear:" + iid.split(":", 1)[1]
+        text = _armor_definition(def_id, entry, gaps)
+        if text is not None:
+            definitions.append(text)
+            definition, mode = def_id, ("held" if entry.get("armor_category") == "shield" else "worn")
+        else:
+            definition, mode = "gear:worn", "worn"
+    elif item_type == "weapon":
+        definition, mode = "gear:held", "held"
+    elif worn:
+        definition, mode = "gear:worn", "worn"
+    if worn and quantity not in (None, 1):
+        gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, item left unworn")
+        worn = False
+    fields = [f"owner {_q(owner)};", custody]
+    if worn:
+        fields.append(f"wearer {_q(cid)};")
+    if definition:
+        fields.append(f"definition {_q(definition)};")
+    if worn and mode:
+        fields.append(f"mode {_q(mode)};")
+    if quantity is not None and quantity != 1:
+        fields.append(f"quantity {quantity};")
+    return f"item {_q(iid)} named {_q(entry['item_name'])} {{ {' '.join(fields)} }}", (mode if worn else None)
+
+
+def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str = "",
+                containers: Optional[List[Dict[str, Any]]] = None, contents_owner: Optional[str] = None) -> Genesis:
+    """Return the NQL world source for these sheets and storage containers at one location.
+
+    ``containers`` are player_storage.json container records at this location. Their
+    contents are declared in the container's custody and owned by ``contents_owner``
+    (a character id; legacy storage records no owner and the acting character is the
+    only party that can retrieve, so the caller passes that character).
+    """
     gaps: List[str] = []
-    loc = "loc:" + slug(location_id)
+    loc = location_id(location)
     lines: List[str] = [
         "// Generated by core/nql/genesis.py from character sheets. Typed fields only.",
         "rules { transfer unequips; wear any; }",
-        f"location {_q(loc)} named {_q(location_name or location_id)};",
+        f"location {_q(loc)} named {_q(location_name or location)};",
     ]
     character_ids: Dict[str, str] = {}
     item_ids: Dict[str, Dict[int, str]] = {}
+    container_ids: Dict[str, str] = {}
+    content_ids: Dict[str, Dict[int, str]] = {}
     conditions: List[str] = []
     # Declared for every world: armor definitions reference it with `requires`,
     # which is legal only for a declared type. A character gets the instance
@@ -138,6 +216,7 @@ def build_world(sheets: List[Dict[str, Any]], location_id: str, location_name: s
         ' definition "gear:worn" named "Worn item" { description "Worn, occupies no slot."; default "worn"; mode "worn" { } }\n',
     ]
     items: List[str] = []
+    all_ids: set = set()
 
     for sheet in sheets:
         cid = character_id(sheet)
@@ -161,53 +240,54 @@ def build_world(sheets: List[Dict[str, Any]], location_id: str, location_name: s
             conditions.append(
                 f"condition {_q(DEFENSE_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(DEFENSE_STYLE_CONDITION)} to {_q(cid)};"
             )
-
         ids: Dict[int, str] = {}
         hands = 0
+        scope = cid.split(":", 1)[1]
         for index, entry in enumerate(sheet.get("equipment") or []):
             if not isinstance(entry, dict) or not entry.get("item_name"):
                 gaps.append(f"{cid}: equipment[{index}] has no item_name; skipped")
                 continue
-            iid = _item_id(entry, cid, index)
-            if iid in {v for m in item_ids.values() for v in m.values()} or iid in ids.values():
+            iid = _entry_id(entry, scope, index)
+            if iid in all_ids:
                 gaps.append(f"{cid}: duplicate item id {iid} at equipment[{index}]; skipped")
                 continue
+            all_ids.add(iid)
             ids[index] = iid
-            quantity = _int(entry.get("quantity"))
-            worn = entry.get("equipped") is True
-            item_type = entry.get("item_type")
-            definition = None
-            mode = None
-            if item_type == "armor":
-                def_id = "gear:" + iid.split(":", 1)[1]
-                text = _armor_definition(def_id, entry, gaps)
-                if text is not None:
-                    definitions.append(text)
-                    definition, mode = def_id, ("held" if entry.get("armor_category") == "shield" else "worn")
-                else:
-                    definition, mode = "gear:worn", "worn"
-            elif item_type == "weapon":
-                definition, mode = "gear:held", "held"
-            elif worn:
-                definition, mode = "gear:worn", "worn"
-            if worn and quantity not in (None, 1):
-                gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, quantity kept and item left unworn")
-                worn = False
-            if worn and mode == "held":
+            line, held = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
+                                    entry.get("equipped") is True, definitions, gaps, cid)
+            items.append(line)
+            if held == "held":
                 hands += 1
-            fields = [f"owner {_q(cid)};"]
-            if worn:
-                fields.append(f"wearer {_q(cid)};")
-            if definition:
-                fields.append(f"definition {_q(definition)};")
-            if worn and mode:
-                fields.append(f"mode {_q(mode)};")
-            if quantity is not None and quantity != 1:
-                fields.append(f"quantity {quantity};")
-            items.append(f"item {_q(iid)} named {_q(entry['item_name'])} {{ {' '.join(fields)} }}")
         if hands > 2:
             gaps.append(f"{cid}: {hands} held items equipped; the engine allows two hands, genesis will be refused")
         item_ids[cid] = ids
+
+    owner = contents_owner or next(iter(character_ids.values()), None)
+    for container in containers or []:
+        sid = str(container.get("id", ""))
+        if not sid:
+            gaps.append("storage container without id skipped")
+            continue
+        conid = container_id(sid)
+        container_ids[sid] = conid
+        items.append(f"item {_q(conid)} named {_q(container.get('deviceName') or sid)} {{ container true; custody location {_q(loc)}; }}")
+        ids = {}
+        for index, entry in enumerate(container.get("contents") or []):
+            if not isinstance(entry, dict) or not entry.get("item_name"):
+                gaps.append(f"{sid}: contents[{index}] has no item_name; skipped")
+                continue
+            iid = _entry_id(entry, slug(sid), index)
+            if iid in all_ids:
+                gaps.append(f"{sid}: duplicate item id {iid} at contents[{index}]; skipped")
+                continue
+            if owner is None:
+                gaps.append(f"{sid}: contents need an owner character; none in world")
+                break
+            all_ids.add(iid)
+            ids[index] = iid
+            line, _ = _item_line(iid, entry, owner, f"custody item {_q(conid)};", False, definitions, gaps, owner)
+            items.append(line)
+        content_ids[sid] = ids
 
     for cond in condition_types:
         lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
@@ -218,7 +298,8 @@ def build_world(sheets: List[Dict[str, Any]], location_id: str, location_name: s
     lines.extend(d.rstrip("\n") for d in definitions)
     lines.append("}")
     lines.extend(items)
-    return Genesis(source="\n".join(lines) + "\n", character_ids=character_ids, item_ids=item_ids, gaps=gaps)
+    return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
+                   container_ids=container_ids, content_ids=content_ids, gaps=gaps)
 
 
 def expected_armor_class(sheet: Dict[str, Any]) -> Tuple[Optional[int], List[str]]:
