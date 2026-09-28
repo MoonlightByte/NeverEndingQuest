@@ -1,0 +1,262 @@
+# SPDX-FileCopyrightText: 2024 MoonlightByte
+# SPDX-License-Identifier: Fair-Source-1.0
+# License: See LICENSE file in the repository root
+"""Build an NQL world from character sheets (genesis).
+
+Only typed sheet fields are read: ``abilities.dexterity``, ``proficiencies.armor``,
+``classFeatures[].name`` (exact feature names), and the equipment entries'
+``item_name``, ``item_type``, ``armor_category``, ``ac_base``, ``ac_bonus``,
+``dex_limit``, ``quantity``, ``equipped`` and ``nql_id``. Descriptions and any
+other prose are never inspected. Anything the engine cannot represent is reported
+in ``Genesis.gaps`` rather than silently approximated.
+
+Every ``item`` and ``character`` in the world carries a stable identity. A sheet
+entry that already has ``nql_id`` keeps it; otherwise one is minted from the
+entry's name and position and returned in ``Genesis.item_ids`` so the caller can
+persist it. Display names are not identities: duplicate names are allowed.
+"""
+import json
+import re
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
+
+EQUIPMENT_VERSION = "nql-equipment-v1"
+DEFENSE_STYLE_FEATURE = "Fighting Style: Defense"
+DEFENSE_STYLE_CONDITION = "feature:defense-style"
+
+_ARMOR_TRAINING = {
+    "light": "training:light",
+    "medium": "training:medium",
+    "heavy": "training:heavy",
+    "shield": "training:shield",
+    "shields": "training:shield",
+}
+
+
+@dataclass
+class Genesis:
+    source: str
+    character_ids: Dict[str, str] = field(default_factory=dict)   # sheet name -> char id
+    item_ids: Dict[str, Dict[int, str]] = field(default_factory=dict)  # char id -> equipment index -> item id
+    gaps: List[str] = field(default_factory=list)
+
+
+def _q(value: str) -> str:
+    """NQL strings use JSON escapes."""
+    return json.dumps(str(value), ensure_ascii=True)
+
+
+def slug(text: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", str(text).lower()).strip("-")
+    return s or "x"
+
+
+def _int(value: Any) -> Optional[int]:
+    return value if type(value) is int else None
+
+
+def character_id(sheet: Dict[str, Any]) -> str:
+    return "char:" + slug(sheet.get("name", ""))
+
+
+def _item_id(entry: Dict[str, Any], owner: str, index: int) -> str:
+    existing = entry.get("nql_id")
+    if isinstance(existing, str) and existing.startswith("item:"):
+        return existing
+    return f"item:{slug(entry.get('item_name', ''))}:{owner.split(':', 1)[1]}:{index}"
+
+
+def _training(sheet: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+    for label in (sheet.get("proficiencies") or {}).get("armor") or []:
+        key = str(label).strip().lower()
+        cond = _ARMOR_TRAINING.get(key)
+        if cond and cond not in out:
+            out.append(cond)
+    return out
+
+
+def _has_defense_style(sheet: Dict[str, Any]) -> bool:
+    return any(f.get("name") == DEFENSE_STYLE_FEATURE for f in sheet.get("classFeatures") or [] if isinstance(f, dict))
+
+
+def _armor_definition(def_id: str, entry: Dict[str, Any], gaps: List[str]) -> Optional[str]:
+    """One immutable definition per armor entry, from its typed fields only."""
+    category = entry.get("armor_category")
+    base = _int(entry.get("ac_base"))
+    bonus = _int(entry.get("ac_bonus")) or 0
+    name = entry.get("item_name", "")
+    if category == "shield":
+        amount = (base if base is not None else 2) + bonus
+        return (
+            f' definition {_q(def_id)} named {_q(name)} {{\n'
+            f'  description "Shield.";\n  default "held";\n'
+            f'  mode "held" {{ occupy "hand" by 1; occupy "shield" by 1; '
+            f'modifier "defense" stat "defense" add {amount} requires "training:shield"; }}\n }}\n'
+        )
+    if base is None:
+        gaps.append(f"armor without ac_base: {name!r}; treated as a worn item with no defense")
+        return None
+    constant = base + bonus
+    style = f'   modifier "style" stat "defense" add 1 requires {_q(DEFENSE_STYLE_CONDITION)};\n'
+    if category == "light":
+        term = '   term stat "dexterity" offset -10 divide 2;\n'
+    elif category == "medium":
+        limit = _int(entry.get("dex_limit"))
+        term = f'   term stat "dexterity" offset -10 divide 2 ceiling {limit if limit is not None else 2};\n'
+    elif category == "heavy":
+        term = ""
+    else:
+        gaps.append(f"armor with unknown armor_category {category!r}: {name!r}; treated as light")
+        term = '   term stat "dexterity" offset -10 divide 2;\n'
+    return (
+        f' definition {_q(def_id)} named {_q(name)} {{\n'
+        f'  description "Body armor.";\n  default "worn";\n'
+        f'  mode "worn" {{\n   occupy "body" by 1;\n'
+        f'   base stat "defense" {{\n    constant {constant};\n{term}   }}\n{style}  }}\n }}\n'
+    )
+
+
+def build_world(sheets: List[Dict[str, Any]], location_id: str, location_name: str = "") -> Genesis:
+    """Return the NQL world source for these sheets at one location."""
+    gaps: List[str] = []
+    loc = "loc:" + slug(location_id)
+    lines: List[str] = [
+        "// Generated by core/nql/genesis.py from character sheets. Typed fields only.",
+        "rules { transfer unequips; wear any; }",
+        f"location {_q(loc)} named {_q(location_name or location_id)};",
+    ]
+    character_ids: Dict[str, str] = {}
+    item_ids: Dict[str, Dict[int, str]] = {}
+    conditions: List[str] = []
+    # Declared for every world: armor definitions reference it with `requires`,
+    # which is legal only for a declared type. A character gets the instance
+    # only when the sheet lists the exact feature name.
+    condition_types: List[str] = [DEFENSE_STYLE_CONDITION]
+    definitions: List[str] = [
+        ' definition "gear:held" named "Held item" { description "Occupies one hand."; default "held"; mode "held" { occupy "hand" by 1; } }\n',
+        ' definition "gear:worn" named "Worn item" { description "Worn, occupies no slot."; default "worn"; mode "worn" { } }\n',
+    ]
+    items: List[str] = []
+
+    for sheet in sheets:
+        cid = character_id(sheet)
+        if cid in character_ids.values():
+            gaps.append(f"duplicate character id {cid}; second sheet skipped")
+            continue
+        character_ids[sheet.get("name", "")] = cid
+        dex = _int((sheet.get("abilities") or {}).get("dexterity"))
+        if dex is None:
+            gaps.append(f"{cid}: abilities.dexterity is not an integer; defense recipe uses 10")
+            dex = 10
+        lines.append(
+            f"character {_q(cid)} named {_q(sheet.get('name', ''))} at {_q(loc)} {{\n"
+            f' stat "dexterity" = {dex};\n stat "defense" = 10;\n}}'
+        )
+        for cond in _training(sheet):
+            if cond not in condition_types:
+                condition_types.append(cond)
+            conditions.append(f"condition {_q(cond + ':' + cid.split(':', 1)[1])} of {_q(cond)} to {_q(cid)};")
+        if _has_defense_style(sheet):
+            conditions.append(
+                f"condition {_q(DEFENSE_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(DEFENSE_STYLE_CONDITION)} to {_q(cid)};"
+            )
+
+        ids: Dict[int, str] = {}
+        hands = 0
+        for index, entry in enumerate(sheet.get("equipment") or []):
+            if not isinstance(entry, dict) or not entry.get("item_name"):
+                gaps.append(f"{cid}: equipment[{index}] has no item_name; skipped")
+                continue
+            iid = _item_id(entry, cid, index)
+            if iid in {v for m in item_ids.values() for v in m.values()} or iid in ids.values():
+                gaps.append(f"{cid}: duplicate item id {iid} at equipment[{index}]; skipped")
+                continue
+            ids[index] = iid
+            quantity = _int(entry.get("quantity"))
+            worn = entry.get("equipped") is True
+            item_type = entry.get("item_type")
+            definition = None
+            mode = None
+            if item_type == "armor":
+                def_id = "gear:" + iid.split(":", 1)[1]
+                text = _armor_definition(def_id, entry, gaps)
+                if text is not None:
+                    definitions.append(text)
+                    definition, mode = def_id, ("held" if entry.get("armor_category") == "shield" else "worn")
+                else:
+                    definition, mode = "gear:worn", "worn"
+            elif item_type == "weapon":
+                definition, mode = "gear:held", "held"
+            elif worn:
+                definition, mode = "gear:worn", "worn"
+            if worn and quantity not in (None, 1):
+                gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, quantity kept and item left unworn")
+                worn = False
+            if worn and mode == "held":
+                hands += 1
+            fields = [f"owner {_q(cid)};"]
+            if worn:
+                fields.append(f"wearer {_q(cid)};")
+            if definition:
+                fields.append(f"definition {_q(definition)};")
+            if worn and mode:
+                fields.append(f"mode {_q(mode)};")
+            if quantity is not None and quantity != 1:
+                fields.append(f"quantity {quantity};")
+            items.append(f"item {_q(iid)} named {_q(entry['item_name'])} {{ {' '.join(fields)} }}")
+        if hands > 2:
+            gaps.append(f"{cid}: {hands} held items equipped; the engine allows two hands, genesis will be refused")
+        item_ids[cid] = ids
+
+    for cond in condition_types:
+        lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
+    lines.extend(conditions)
+    lines.append(f"equipment {_q(EQUIPMENT_VERSION)} {{")
+    lines.append(' slot "hand" capacity 2;\n slot "body" capacity 1;\n slot "shield" capacity 1;')
+    lines.append(' derive stat "defense" { term stat "dexterity" offset -10 divide 2; }')
+    lines.extend(d.rstrip("\n") for d in definitions)
+    lines.append("}")
+    lines.extend(items)
+    return Genesis(source="\n".join(lines) + "\n", character_ids=character_ids, item_ids=item_ids, gaps=gaps)
+
+
+def expected_armor_class(sheet: Dict[str, Any]) -> Tuple[Optional[int], List[str]]:
+    """The armor class the SRD rule gives for this sheet's typed fields.
+
+    Used only as a test oracle next to the engine's explanation; it is not a
+    gameplay writer and must never replace the engine's value.
+    """
+    dex = _int((sheet.get("abilities") or {}).get("dexterity"))
+    if dex is None:
+        return None, ["no dexterity"]
+    mod = (dex - 10) // 2
+    parts = [f"dex {mod}"]
+    body = None
+    shield = 0
+    for entry in sheet.get("equipment") or []:
+        if not isinstance(entry, dict) or entry.get("equipped") is not True or entry.get("item_type") != "armor":
+            continue
+        cat = entry.get("armor_category")
+        base = _int(entry.get("ac_base"))
+        bonus = _int(entry.get("ac_bonus")) or 0
+        if cat == "shield":
+            shield += (base if base is not None else 2) + bonus
+        elif base is not None:
+            if body is not None:
+                return None, ["two body armors equipped"]
+            limit = _int(entry.get("dex_limit"))
+            if cat == "medium":
+                body = base + bonus + min(mod, limit if limit is not None else 2)
+            elif cat == "heavy":
+                body = base + bonus
+            else:
+                body = base + bonus + mod
+            parts.append(f"{entry.get('item_name')} {base}+{bonus}")
+    total = (body if body is not None else 10 + mod) + shield
+    if shield:
+        parts.append(f"shield {shield}")
+    if _has_defense_style(sheet) and body is not None:
+        total += 1
+        parts.append("style 1")
+    return total, parts
