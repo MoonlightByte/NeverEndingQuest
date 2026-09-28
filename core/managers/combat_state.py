@@ -202,15 +202,35 @@ def is_turn_eligible(creature):
     return creature.get("effectIncapacitated") is not True
 
 
+def has_left_fight(creature):
+    """Return whether a party member left the fight on their feet (#466).
+
+    A ``flee`` or ``yield`` intent marks its actor ``defeated`` without
+    touching hit points. For a party member that value with hit points above
+    zero can only mean "out of the fight": attacks never produce it (a party
+    member at zero is ``unconscious``, D-242-1). Decided from the roster
+    values, never from a name or entity type.
+    """
+    if not isinstance(creature, dict) or not is_party_member(creature):
+        return False
+    if normalize_status(creature.get("status")) != "defeated":
+        return False
+    hit_points = creature.get("currentHitPoints")
+    return not isinstance(hit_points, (int, float)) or hit_points > 0
+
+
 def is_down(creature):
     """Return whether an encounter creature is down (D-242 house rule).
 
-    Exactly the complement of ``is_combatant_targetable`` so the boundary that
-    speaks to a downed human and the windows that skip that human can never
-    disagree. Rescuability is not part of this value: the down-scene rules
-    text renders each member's status verbatim.
+    The complement of ``is_combatant_targetable`` so the boundary that speaks
+    to a downed human and the windows that skip that human can never
+    disagree, except that a party member who left the fight on their feet
+    (``has_left_fight``) is not down. Rescuability is not part of this value:
+    the down-scene rules text renders each member's status verbatim.
     """
-    return isinstance(creature, dict) and not is_combatant_targetable(creature)
+    if not isinstance(creature, dict) or is_combatant_targetable(creature):
+        return False
+    return not has_left_fight(creature)
 
 
 def sheet_is_down(sheet):
@@ -318,6 +338,29 @@ def all_hostiles_resolved(encounter):
     )
 
 
+def party_withdrawn(encounter):
+    """Return whether the fight ended because the party left it (#466).
+
+    True when at least one party member left the fight on their feet and no
+    party member can still act. The remaining hostiles are untouched: the
+    encounter completes as a withdrawal, not a victory or a defeat.
+    """
+    party = [
+        creature
+        for creature in encounter.get("creatures", [])
+        if is_party_member(creature)
+    ]
+    if not any(has_left_fight(creature) for creature in party):
+        return False
+    return not any(is_combatant_targetable(creature) for creature in party)
+
+
+def combat_resolved(encounter):
+    """Return whether the fight is over: every actable hostile is resolved,
+    or the party has withdrawn (#446, #466)."""
+    return all_hostiles_resolved(encounter) or party_withdrawn(encounter)
+
+
 def player_control_unavailable(encounter):
     """Return whether the encounter's player is physically down.
 
@@ -359,11 +402,15 @@ def player_control_unavailable(encounter):
 
 
 def all_party_resolved(encounter):
-    """Return whether every player/NPC combatant is physically down."""
+    """Return whether every player/NPC combatant is physically down.
+
+    A party member who left the fight on their feet (#466) is neither down
+    nor still fighting, so it is left out of the count.
+    """
     party = [
         creature
         for creature in encounter.get("creatures", [])
-        if is_party_member(creature)
+        if is_party_member(creature) and not has_left_fight(creature)
     ]
     return bool(party) and all(
         normalize_status(creature.get("status")) != ACTIVE_STATUS
@@ -1024,7 +1071,7 @@ def commit_turn(encounter, turn_id, applied_event_ids):
         )
     state["pendingTurn"] = None
     state["revision"] += 1
-    if all_hostiles_resolved(encounter):
+    if combat_resolved(encounter):
         state["phase"] = "complete"
         state["completion"]["status"] = "complete"
     else:
