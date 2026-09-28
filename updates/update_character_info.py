@@ -1100,6 +1100,21 @@ def prepare_character_delta(character_data, updates, character_role, schema,
               'schema_valid': False, 'error_message': None}
     if critical_warnings:
         return updates, updated_data, checks
+    if isinstance(updates.get('equipment'), list):
+        # Equipment is engine-owned (core/nql): the merged delta becomes equip,
+        # unequip, consume and create operations on the sheet's world. A refusal
+        # is reported like a schema failure so the model can correct its delta.
+        from core.nql import equipment as nql_equipment
+
+        outcome = nql_equipment.reconcile(character_data, updated_data)
+        if not outcome.ok:
+            checks.update(error_message=(
+                "the equipment change was refused by the rules engine: "
+                f"{outcome.reason}. Operations attempted: {' '.join(outcome.operations)}"))
+            return updates, updated_data, checks
+        updated_data['equipment'] = outcome.equipment
+        for gap in outcome.gaps:
+            debug(f"[Equipment Engine] {character_name}: {gap}", category="character_updates")
     updated_data = normalize_status_and_condition(updated_data, character_role)
     updated_data, removed_fields = purge_invalid_fields(updated_data, schema, character_name)
     is_valid, error_msg = validate_character_data(updated_data, schema, character_name)

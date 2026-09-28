@@ -187,7 +187,8 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
 
 
 def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str = "",
-                containers: Optional[List[Dict[str, Any]]] = None, contents_owner: Optional[str] = None) -> Genesis:
+                containers: Optional[List[Dict[str, Any]]] = None, contents_owner: Optional[str] = None,
+                definition_entries: Optional[List[Tuple[str, Dict[str, Any]]]] = None) -> Genesis:
     """Return the NQL world source for these sheets and storage containers at one location.
 
     ``containers`` are player_storage.json container records at this location. Their
@@ -288,6 +289,14 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             line, _ = _item_line(iid, entry, owner, f"custody item {_q(conid)};", False, definitions, gaps, owner)
             items.append(line)
         content_ids[sid] = ids
+
+    # Definitions for items that do not exist yet (a later create item in the
+    # same world needs its equipment definition declared at genesis).
+    for iid, entry in definition_entries or []:
+        if isinstance(entry, dict) and entry.get("item_type") == "armor":
+            text = _armor_definition("gear:" + iid.split(":", 1)[1], entry, gaps)
+            if text is not None:
+                definitions.append(text)
 
     for cond in condition_types:
         lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
