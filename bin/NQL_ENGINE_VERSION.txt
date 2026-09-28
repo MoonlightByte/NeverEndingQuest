@@ -1,0 +1,2 @@
+NQL engine 39abaee + cmd/nql-apply (NQL PR #4, commit 82cd484)
+built 2026-09-27 from /mnt/c/NQL with Go 1.23 stdlib, GOOS=linux and GOOS=windows amd64
