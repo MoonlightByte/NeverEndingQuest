@@ -360,7 +360,17 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             sequence,
         )
         intent.pop("mode", None)
-        if mode == "known":
+        if intent.get("action") in ("flee", "yield"):
+            # Leaving the fight is the same act in either mode (#466): a
+            # player's flee/yield arrives adjudicated and must not be dropped.
+            resolution = resolve_intent(
+                next_encounter,
+                next_characters,
+                intent,
+                roll_source,
+                event_id,
+            )
+        elif mode == "known":
             resolution = resolve_intent(
                 next_encounter,
                 next_characters,
