@@ -6,7 +6,7 @@ You must validate that each item in the character's inventory has the correct it
 
 ### VALID ITEM TYPES (use these EXACTLY):
 - "weapon" - swords, bows, daggers, melee and ranged weapons
-- "armor" - armor pieces, shields, cloaks, boots, gloves, protective wear
+- "armor" - body armor and shields only (entries the rules engine computes AC from); never cloaks, boots, gloves, rings or amulets
 - "ammunition" - arrows, bolts, sling bullets, thrown weapon ammo
 - "consumable" - potions, scrolls, food, rations, anything consumed when used
 - "equipment" - tools, torches, rope, containers, utility items
@@ -40,12 +40,11 @@ You must validate that each item in the character's inventory has the correct it
 - Any item with attack bonus or damage dice
 
 #### ARMOR -> "armor"  
-- All armor (leather, chain, plate, etc.)
-- Shields of any type
-- Helmets, gauntlets, boots IF they provide AC bonus
-- Cloaks IF they provide AC or protection
-- Robes IF they provide magical protection
-- NOTE: Regular gloves are NOT armor unless they're gauntlets with AC bonus
+- Body armor only (leather, studded, chain shirt, scale, chain mail, plate, etc.) and shields of any type
+- An "armor" entry is one the rules engine computes Armor Class from: it carries armor_category and ac_base
+- Helmets, gauntlets, boots, cloaks, robes, rings, amulets, bracers and charms are NEVER "armor", even when
+  they grant an AC bonus or protection: they are "miscellaneous" (with an item_subtype where one fits), and
+  a numeric AC bonus they grant is recorded in the item's effects list, not by typing them as armor
 
 #### AMMUNITION -> "ammunition"
 - Arrows, Bolts, Bullets, Darts
@@ -126,20 +125,20 @@ You must validate that each item in the character's inventory has the correct it
 12. SPECIAL CASES FOR GLOVES:
     - Sturdy gloves -> "miscellaneous" (protective but no AC bonus)
     - Work gloves -> "equipment" (utility gloves for tasks)
-    - Gauntlets -> "armor" (combat protection with AC bonus)
+    - Gauntlets -> "miscellaneous" (an AC bonus belongs in the item's effects, not in item_type)
 13. SPECIAL CASES FOR BOOTS AND CLOAKS:
     - Regular boots (Sturdy Boots, Leather Boots, etc.) -> "equipment" (worn but no AC bonus)
     - Regular cloaks (Woolen Cloak, Travel Cloak, etc.) -> "equipment" (worn but no AC bonus)
-    - Armored boots or magical boots with AC -> "armor"
-    - Cloaks of protection or with AC bonus -> "armor"
+    - Armored boots or magical boots with AC -> "miscellaneous" (bonus in effects)
+    - Cloaks of protection or with AC bonus -> "miscellaneous" (bonus in effects)
 14. SPECIAL CASES FOR OTHER WEARABLES:
     - Regular belts, sashes -> "equipment" (utility items)
     - Regular clothing (tunics, shirts, vests) -> "equipment" (worn but no AC)
     - Regular hats, hoods -> "equipment" (worn but no AC)
-    - Helmets or hats with AC bonus -> "armor"
-    - Magical robes with protection -> "armor"
+    - Helmets or hats with AC bonus -> "miscellaneous" (bonus in effects)
+    - Magical robes with protection -> "miscellaneous" (bonus in effects)
     - Bracers without AC bonus -> "equipment"
-    - Bracers of defense or with AC bonus -> "armor"
+    - Bracers of defense or with AC bonus -> "miscellaneous" (bonus in effects)
 
 ### OUTPUT FORMAT:
 Return a JSON object with ONLY the changes needed:

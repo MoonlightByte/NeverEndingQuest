@@ -22,6 +22,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 EQUIPMENT_VERSION = "nql-equipment-v1"
+# Typed values an item effect may use to name armor class as its target. This
+# is a fixed vocabulary of field values, not a search over prose.
+AC_EFFECT_TARGETS = ("AC", "armorClass", "armor class", "Armor Class")
 DEFENSE_STYLE_FEATURE = "Fighting Style: Defense"
 DEFENSE_STYLE_CONDITION = "feature:defense-style"
 
@@ -152,6 +155,23 @@ def _armor_definition(def_id: str, entry: Dict[str, Any], gaps: List[str]) -> Op
     )
 
 
+def ac_effect_lines(iid: str, entry: Dict[str, Any]) -> List[str]:
+    """Worn-item defense effects from the entry's typed effects list.
+
+    An effect of type "bonus" whose target names armor class and whose value is
+    an integer becomes a while-worn engine effect on the item, so a ring of
+    protection counts only while worn and is explained by its item.
+    """
+    out: List[str] = []
+    for index, effect in enumerate(entry.get("effects") or []):
+        if (isinstance(effect, dict) and effect.get("type") == "bonus"
+                and effect.get("target") in AC_EFFECT_TARGETS and type(effect.get("value")) is int
+                and effect["value"] != 0):
+            eid = f"effect:{iid.split(':', 1)[1]}:ac:{index}"
+            out.append(f'effect {_q(eid)} from item {_q(iid)} on worn {_q(iid)} stat "defense" add {effect["value"]};')
+    return out
+
+
 def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: bool,
                definitions: List[str], gaps: List[str], cid: str) -> Tuple[str, Optional[str]]:
     """One item declaration. Returns (line, mode-if-held)."""
@@ -159,6 +179,9 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
     item_type = entry.get("item_type")
     definition = None
     mode = None
+    if ac_effect_lines(iid, entry) and item_type not in ("armor", "weapon"):
+        # An item with a while-worn defense effect must be a typed worn item.
+        definition, mode = "gear:worn", "worn"
     if item_type == "armor":
         def_id = "gear:" + iid.split(":", 1)[1]
         text = _armor_definition(def_id, entry, gaps)
@@ -217,6 +240,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         ' definition "gear:worn" named "Worn item" { description "Worn, occupies no slot."; default "worn"; mode "worn" { } }\n',
     ]
     items: List[str] = []
+    effects: List[str] = []
     all_ids: set = set()
 
     for sheet in sheets:
@@ -257,6 +281,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             line, held = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
                                     entry.get("equipped") is True, definitions, gaps, cid)
             items.append(line)
+            effects.extend(ac_effect_lines(iid, entry))
             if held == "held":
                 hands += 1
         if hands > 2:
@@ -307,6 +332,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     lines.extend(d.rstrip("\n") for d in definitions)
     lines.append("}")
     lines.extend(items)
+    lines.extend(effects)
     return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
                    container_ids=container_ids, content_ids=content_ids, gaps=gaps)
 

@@ -135,8 +135,13 @@ rules and rejected as a whole if any one is broken, so follow them exactly:
    `corrections_made`. Do not edit, add or remove effects.
 3. Each `equipment` entry must reference an input item by its exact `item_name`. You may change only
    `ac_base`, `ac_bonus`, `dex_limit`, `armor_category`, `stealth_disadvantage` and (within rule 4) `equipped`.
-   Never change `item_type`, `description` or `quantity`. Never add new items and never list the same item
+   Never change `description` or `quantity`. Never add new items and never list the same item
    twice. Items you do not change may be omitted from `equipment`.
+   `item_type` may change in exactly one case: an entry typed "armor" that has neither `armor_category`
+   nor `ac_base` is malformed and must be classified. If it is body armor or a shield, keep "armor" and
+   supply `armor_category` and `ac_base` (and `dex_limit` for medium armor). If it is not armor (an amulet,
+   ring, cloak, robe, charm, bracer or any item with no armor base), set `item_type` to "miscellaneous";
+   a magic AC bonus it grants is not an armor base and does not make it armor.
 4. The player decides what is worn. An unequipped armor or shield is not a mistake to repair: the player took
    it off (for example to store it), and the correct AC is then computed without it (unarmored AC is 10 + Dex
    modifier, plus a shield if one is still equipped, plus Unarmored Defense where the class grants it).
