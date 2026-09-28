@@ -181,45 +181,28 @@ class AICharacterEffectsValidator:
                         }
                         equipment_effects.append(equipment_effect)
         
-        # Add class feature effects that are always active
-        if 'classFeatures' in character_data:
-            for feature in character_data['classFeatures']:
-                # Check for passive bonuses like Fighting Style: Defense
-                if 'Fighting Style: Defense' in feature.get('name', ''):
-                    equipment_effects.append({
-                        'name': 'Fighting Style: Defense',
-                        'type': 'bonus',
-                        'target': 'AC',
-                        'value': 1,
-                        'description': '+1 to AC when wearing armor',
-                        'source': 'Class Feature'
-                    })
-        
-        # Check for shield bonus
-        if 'equipment' in character_data:
-            for item in character_data['equipment']:
-                if (item.get('equipped', False) and 
-                    item.get('item_type') == 'armor' and 
-                    item.get('armor_category') == 'shield'):
-                    # A shield record keeps its +2 in ac_base; ac_bonus is the
-                    # enchantment on top of it (schemas/char_schema.json). Reading
-                    # ac_bonus alone produced "Shield provides +0 AC" (#387).
-                    shield_ac = int(item.get('ac_base') or 2) + int(item.get('ac_bonus') or 0)
-                    equipment_effects.append({
-                        'name': 'Shield AC Bonus',
-                        'type': 'bonus',
-                        'target': 'AC',
-                        'value': shield_ac,
-                        'description': f"Shield provides +{shield_ac} AC",
-                        'source': item['item_name']
-                    })
-        
+        # Armor class contributors (shield, fighting style, armor base) are
+        # engine-owned: core/nql/armor_class.py rewrites armorClass and the
+        # AC-target entries after the prose entries above are collected. The
+        # former shield and Fighting Style arithmetic here is retired.
         # Update character data
         character_data['equipment_effects'] = equipment_effects
         
         if len(equipment_effects) > 0:
             self.corrections_made.append(f"Calculated {len(equipment_effects)} equipment effects")
-        
+
+        from core.nql import armor_class
+
+        projection = armor_class.project(character_data)
+        if projection.applied:
+            if projection.changed:
+                self.corrections_made.append(
+                    f"armorClass {projection.previous_armor_class} -> {projection.armor_class} (engine explanation)")
+            ac_entries = [e for e in projection.sheet.get('equipment_effects', []) if e.get('target') == armor_class.AC_TARGET]
+            if ac_entries:
+                self.corrections_made.append(f"Engine explained {len(ac_entries)} AC contributor(s)")
+            return projection.sheet
+        self.logger.warning("AC projection left the sheet unchanged: %s", projection.reason)
         return character_data
     
     def expire_temporary_effects(self, character_data: Dict[str, Any], game_time: Dict[str, Any]) -> Dict[str, Any]:
