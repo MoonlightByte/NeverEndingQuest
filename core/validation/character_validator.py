@@ -1791,10 +1791,10 @@ class AICharacterValidator:
         currency_data = self.extract_currency_consolidation_data(character_data)
         currency_hash = self._compute_currency_hash(currency_data)
         
-        # Check cache for each
-        if not self._is_ac_validation_cached(character_name, ac_hash, ac_data):
-            needs_validation['ac'] = True
-            debug(f"[Smart Batch] {character_name} needs AC validation", category="character_validation")
+        # Armor class is engine-owned: the projection is a local call with no
+        # provider cost, so it always runs (a stale cache entry must never keep
+        # a wrong number on the sheet). The AC hash cache is no longer consulted.
+        needs_validation['ac'] = True
         
         if len(inventory_data['equipment']) > 0 and not self._is_inventory_validation_cached(character_name, inventory_hash):
             needs_validation['inventory'] = True

@@ -1228,7 +1228,9 @@ def infer_requested_character_update_fields(changes):
         )
     )
     if shield_destroyed:
-        required.update(("equipment", "armorClass", "equipment_effects"))
+        # armorClass and equipment_effects are engine-owned (core/nql); only
+        # the equipment change itself is a required part of the delta.
+        required.add("equipment")
 
     weapon_swap = re.search(
         r"\b(?:swapped?|replaced|exchanged)\b.{0,100}\b"
@@ -1663,17 +1665,14 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 
 4. **For Complex Updates Affecting Multiple Systems:**
    - When an action affects multiple character aspects, you MUST include ALL affected fields in your minimal JSON response.
-   - Equipment removal/damage affecting AC: Always include the updated `armorClass`.
    - Weapon changes: Always include updated `attacksAndSpellcasting` array entries for the affected weapons.
-   - Shield/armor changes: Include `armorClass` and any affected `equipment_effects`.
+   - Armor class: do NOT include `armorClass` or `equipment_effects`. The rules engine computes both from the equipped items' typed fields (`armor_category`, `ac_base`, `ac_bonus`, `dex_limit`) after your delta is applied. Give new armor those fields instead.
    - Status changes: Always synchronize `status`, `condition`, and `condition_affected`.
 
    - **Example - Shield is destroyed:**
      ```json
      {{
-       "equipment": [{{ "item_name": "Shield", "quantity": 0, "equipped": false }}],
-       "armorClass": 15,
-       "equipment_effects": [{{ "name": "Shield AC Bonus", "value": 0 }}]
+       "equipment": [{{ "item_name": "Shield", "quantity": 0, "equipped": false }}]
      }}
      ```
    - **Example - Swapping from a Mace to a Longsword:**
@@ -1711,7 +1710,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
    - Always use plural form for consistency
 
 **CRITICAL EDGE CASES:**
-- When equipment that affects AC (shields, armor, rings of protection) is added, removed, equipped, or unequipped, you **MUST** calculate and return the new total `armorClass`.
+- When equipment that affects AC is added, removed, equipped, or unequipped, return only the `equipment` change; the rules engine recomputes `armorClass` and `equipment_effects`. The engine refuses illegal states (two shields, three held weapons); if told a change was refused, propose a legal one.
 - When a weapon is changed, you **MUST** update the relevant entry in the `attacksAndSpellcasting` array.
 - When a temporary effect is added or removed, you **MUST** return the **complete** `temporaryEffects` array, containing only the effects that should remain active. This is the one exception to the delta-only rule for lists.
 - Down/unconscious (house rule, NO death saves): at 0 HP set `hitPoints` to 0 and `status` to "unconscious"; never write death saves; a character at 0 dies only if the whole party falls; a heal, potion, Medicine, or rest that restores them sets `hitPoints` above 0 and `status` to "alive"
