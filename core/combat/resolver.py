@@ -357,8 +357,8 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
         resolution["creatureDeltas"][actor["combatantId"]] = {
             "status": "defeated"
         }
-        if actor.get("type") == "npc" and actor.get("name") in (characters or {}):
-            resolution["charDeltas"][actor["name"]] = {"status": "defeated"}
+        # Leaving the fight is an encounter fact only (#466): the sheet keeps
+        # its own status so the character is not treated as down afterwards.
         return resolution
 
     if intent.get("action") != "attack":
@@ -1178,6 +1178,9 @@ def resolution_from_event(encounter, characters, event):
         creature = combatant_by_id(encounter, combatant_id)
         if (creature is not None and creature.get("type") in ("player", "npc")
                 and creature.get("name") in (characters or {})):
+            if (event.get("outcome") or {}).get("kind") in ("flee", "yield"):
+                # Same as the live path (#466): no sheet delta for leaving.
+                continue
             delta = {"hitPoints": int(record["hpAfter"])}
             if record["statusAfter"] != normalize_status(creature.get("status")):
                 delta["status"] = record["statusAfter"]

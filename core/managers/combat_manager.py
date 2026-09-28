@@ -154,6 +154,7 @@ from core.managers.combat_state import (
     all_party_resolved,
     all_hostiles_resolved,
     combat_provenance,
+    combat_resolved,
     combatant_by_id,
     combatant_presentation_name,
     ensure_combat_state,
@@ -4188,7 +4189,7 @@ This is narration only. Do not advance the round or apply any combat action."""
            and (encounter_data.get("combatState") or {}).get(
                "pendingDelivery"
            ) is None
-           and all_hostiles_resolved(encounter_data)
+           and combat_resolved(encounter_data)
        ):
            character_paths, _context_sheets = _agentic_combat_context(
                encounter_data,
@@ -5011,7 +5012,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                    invocation_claim=invocation_claim,
                )
 
-           if all_hostiles_resolved(encounter_data):
+           if combat_resolved(encounter_data):
                try:
                    final_result = _complete_agentic_combat(
                        encounter_data,

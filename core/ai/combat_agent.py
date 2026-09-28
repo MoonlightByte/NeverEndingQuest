@@ -286,8 +286,17 @@ Return one JSON object with stateVersion and intents. Return EXACTLY one intent
 for every actorId in requiredActorIds, in that exact order. Do not add or omit
 actors, even if an earlier action might defeat a later actor; code skips them.
 
+Any actor may end its part in the fight: action='yield' (surrenders, stands
+down, accepts a demand) or action='flee' (leaves the fight on its feet). Choose
+one when the scene calls for it: broken morale, a demand the actor accepts, a
+goal already won or lost, no reason left to fight. Mindless, bound or driven
+creatures rarely do either. A player whose input is to run, withdraw, escape,
+surrender or stand down gets action='flee' or action='yield'. Code marks that
+actor out of the fight and keeps its hit points; the fight ends when every
+hostile that can act is down or has left, or when the whole party has left.
+
 For NPC/enemy actors, use mode='known' for a listed weapon/action and provide action='attack',
-ability, and targetId, or for defend/dodge/disengage/dash/hide/help. For a
+ability, and targetId, or for defend/dodge/disengage/dash/hide/help/flee/yield. For a
 known attack, ability MUST be the exact listed weapon/action name from the
 actor's sheet (for example 'Longbow' or 'Claws'), never an ability score such
 as dexterity/strength and never a skill name. Use
