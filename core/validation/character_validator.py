@@ -1717,6 +1717,7 @@ class AICharacterValidator:
                 corrected_data,
             )
         corrected_data = self._apply_deterministic_validations(ai_result.data)
+        corrected_data = self._project_armor_class(corrected_data)
         
         # Future: Add other AI validations here
         # - Temporary effects expiration  
@@ -1744,6 +1745,24 @@ class AICharacterValidator:
 
         return self.validate_and_correct_character_with_result(character_data).data
     
+    def _project_armor_class(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Rewrite armorClass and the AC entries of equipment_effects from the
+        engine's defense explanation. Unchanged data on any failure (logged)."""
+        from core.nql import armor_class
+
+        projection = armor_class.project(character_data)
+        name = character_data.get('name', 'Unknown')
+        if not projection.applied:
+            warning(f"[AC Projection] {name}: sheet left unchanged: {projection.reason}",
+                    category="character_validation")
+            return character_data
+        if projection.changed:
+            self.corrections_made.append(
+                f"armorClass {projection.previous_armor_class} -> {projection.armor_class} (engine explanation)")
+            info(f"[AC Projection] {name}: armorClass {projection.previous_armor_class} -> {projection.armor_class}",
+                 category="character_validation")
+        return projection.sheet
+
     def check_validation_needs(self, character_data: Dict[str, Any]) -> Dict[str, bool]:
         """
         Check which validations actually need API calls (not cached)
@@ -1772,10 +1791,10 @@ class AICharacterValidator:
         currency_data = self.extract_currency_consolidation_data(character_data)
         currency_hash = self._compute_currency_hash(currency_data)
         
-        # Check cache for each
-        if not self._is_ac_validation_cached(character_name, ac_hash, ac_data):
-            needs_validation['ac'] = True
-            debug(f"[Smart Batch] {character_name} needs AC validation", category="character_validation")
+        # Armor class is engine-owned: the projection is a local call with no
+        # provider cost, so it always runs (a stale cache entry must never keep
+        # a wrong number on the sheet). The AC hash cache is no longer consulted.
+        needs_validation['ac'] = True
         
         if len(inventory_data['equipment']) > 0 and not self._is_inventory_validation_cached(character_name, inventory_hash):
             needs_validation['inventory'] = True
@@ -1839,10 +1858,11 @@ class AICharacterValidator:
             )
 
         if needs['ac']:
-            result = self.ai_validate_armor_class_with_result(corrected_data)
-            if not result.success:
-                return failed_after_deterministic(result, "T051")
-            corrected_data = result.data
+            # Armor class is engine-owned (core/nql): the engine explains
+            # defense from the sheet's typed fields and code writes the number.
+            # T051 is no longer asked; an unapplied projection leaves the sheet
+            # as it was and is logged, never handed to a model to guess.
+            corrected_data = self._project_armor_class(corrected_data)
         
         if needs['inventory']:
             result = self.ai_validate_inventory_categories_with_result(corrected_data)
@@ -3146,9 +3166,8 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
                         {"role": "assistant", "content": ai_response},
                         {"role": "user", "content": (
                             f"VALIDATION ERROR: {e}. Return the complete JSON object again "
-                            "with all four sections. Correct the stated defect and preserve "
-                            "valid fields; ac_validation.calculated_ac must equal "
-                            "ac_validation.breakdown.total_ac."
+                            "with all three sections. Correct the stated defect and preserve "
+                            "valid fields."
                         )},
                     ]
 
@@ -3168,47 +3187,24 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         System prompt for combined validation tasks
         """
         return """You are an expert character validator for the 5th edition of the world's most popular role playing game. 
-You must perform FOUR validation tasks in a single response:
+You must perform THREE validation tasks in a single response:
 
-1. ARMOR CLASS VALIDATION
-2. INVENTORY CATEGORIZATION
-3. CURRENCY CONSOLIDATION
-4. CLASS FEATURE VALIDATION
+1. INVENTORY CATEGORIZATION
+2. CURRENCY CONSOLIDATION
+3. CLASS FEATURE VALIDATION
 
-## TASK 1: ARMOR CLASS VALIDATION
+Armor Class is not your task: the game engine computes armorClass from the equipped items' typed fields.
+Do not report, recompute or correct armorClass.
 
-Validate the Armor Class calculation based on equipped armor, shields, and abilities.
-
-AC Calculation Rules:
-- Base AC = 10 + Dexterity modifier (if no armor)
-- With armor: Use armor's base AC + allowed Dexterity modifier
-- Shield: +2 AC (if equipped)
-- Special abilities may add bonuses
-
-Common armor types:
-- Leather Armor: 11 + Dex modifier
-- Studded Leather: 12 + Dex modifier  
-- Chain Shirt: 13 + Dex modifier (max 2)
-- Scale Mail: 14 + Dex modifier (max 2)
-- Chain Mail: 16 (no Dex)
-- Plate: 18 (no Dex)
-
-Report your arithmetic in the "breakdown" object: "base_armor" names the armor (or "No armor"), "base_ac" is that
-armor's base number (10 when unarmored), and dex_modifier, shield_bonus, fighting_style_bonus and total_ac are integers
-with total_ac = base_ac + dex_modifier + shield_bonus + fighting_style_bonus.
-"calculated_ac" is the CORRECT Armor Class you derived and must equal breakdown.total_ac.
-"current_ac" is the armorClass on the sheet. Set correction_needed true only when calculated_ac differs
-from current_ac; when the sheet is already correct set correction_needed false and calculated_ac equal to current_ac.
-
-## TASK 2: INVENTORY CATEGORIZATION
+## TASK 1: INVENTORY CATEGORIZATION
 
 """ + self.get_inventory_validator_system_prompt() + """
 
-## TASK 3: CURRENCY CONSOLIDATION
+## TASK 2: CURRENCY CONSOLIDATION
 
 """ + self.get_inventory_consolidation_system_prompt() + """
 
-## TASK 4: CLASS FEATURE VALIDATION
+## TASK 3: CLASS FEATURE VALIDATION
 
 Check for duplicate or outdated class features that should have been replaced during level up.
 
@@ -3229,20 +3225,6 @@ Rules:
 
 Return a single JSON response with all corrections:
 {
-  "ac_validation": {
-    "current_ac": 16,
-    "calculated_ac": 17,
-    "correction_needed": true,
-    "breakdown": {
-      "base_armor": "Scale Mail",
-      "base_ac": 14,
-      "dex_modifier": 1,
-      "shield_bonus": 2,
-      "fighting_style_bonus": 0,
-      "total_ac": 17
-    },
-    "corrections": ["AC should be 17, not 16"]
-  },
   "inventory_corrections": {
     "corrections_made": ["List of inventory corrections"],
     "equipment": [
@@ -3272,12 +3254,7 @@ Return a single JSON response with all corrections:
   }
 }
 
-When the sheet's AC is already correct, ac_validation looks like:
-{"current_ac": 13, "calculated_ac": 13, "correction_needed": false,
- "breakdown": {"base_armor": "No armor", "base_ac": 10, "dex_modifier": 1, "shield_bonus": 2, "fighting_style_bonus": 0, "total_ac": 13},
- "corrections": []}
-
-IMPORTANT: Perform ALL FOUR validations and return results for each in the combined JSON response.
+IMPORTANT: Perform ALL THREE validations and return results for each in the combined JSON response.
 """
     
     def build_combined_validation_prompt(self, character_data: Dict[str, Any]) -> str:
@@ -3286,8 +3263,7 @@ IMPORTANT: Perform ALL FOUR validations and return results for each in the combi
         """
         character_name = character_data.get('name', 'Unknown')
         
-        # Get individual prompts
-        ac_prompt = self.build_ac_validation_prompt(character_data)
+        # Get individual prompts (armor class is engine-owned; not asked)
         inventory_prompt = self.build_inventory_validation_prompt(character_data)
         consolidation_prompt = self.build_inventory_consolidation_prompt(character_data)
         
@@ -3295,22 +3271,19 @@ IMPORTANT: Perform ALL FOUR validations and return results for each in the combi
 
 CHARACTER NAME: {character_name}
 
-=== TASK 1: ARMOR CLASS VALIDATION ===
-{ac_prompt}
-
-=== TASK 2: INVENTORY CATEGORIZATION ===
+=== TASK 1: INVENTORY CATEGORIZATION ===
 {inventory_prompt}
 
-=== TASK 3: CURRENCY CONSOLIDATION ===
+=== TASK 2: CURRENCY CONSOLIDATION ===
 {consolidation_prompt}
 
-=== TASK 4: CLASS FEATURE VALIDATION ===
+=== TASK 3: CLASS FEATURE VALIDATION ===
 Class Features:
 {json.dumps(character_data.get('classFeatures', []), indent=2)}
 
 Check for duplicate features that should have been replaced during level up (e.g., "Channel Divinity (1/rest)" vs "Channel Divinity (2/rest)").
 
-Remember to return a single JSON response with all four validation results."""
+Remember to return a single JSON response with all three validation results."""
         
         return combined_prompt
     
@@ -3320,11 +3293,17 @@ Remember to return a single JSON response with all four validation results."""
         """
         parsed_response = _load_response_object(ai_response, "T053")
         required_sections = {
-            'ac_validation',
             'inventory_corrections',
             'currency_consolidation',
             'class_feature_validation',
         }
+        # Armor class is engine-owned. A model that still sends the retired
+        # ac_validation section is not rejected for it; the section is ignored
+        # and armorClass is never written from it.
+        if 'ac_validation' in parsed_response:
+            debug("T053: ignoring retired ac_validation section (armor class is engine-owned)",
+                  category="character_validation")
+            parsed_response = {k: v for k, v in parsed_response.items() if k != 'ac_validation'}
         missing_sections = required_sections.difference(parsed_response)
         if missing_sections:
             raise CharacterValidationResponseError(
@@ -3350,98 +3329,9 @@ Remember to return a single JSON response with all four validation results."""
             reject_duplicates=True,
         )
 
-        # Process AC validation
-        ac_result = parsed_response['ac_validation']
-        allowed_ac_fields = {
-            'current_ac', 'calculated_ac', 'correction_needed', 'breakdown',
-            'corrections',
-        }
-        if set(ac_result).difference(allowed_ac_fields):
-            raise CharacterValidationResponseError(
-                "T053: ac_validation contains unsupported fields"
-            )
-        if type(ac_result.get('correction_needed')) is not bool:
-            raise CharacterValidationResponseError(
-                "T053: ac_validation.correction_needed must be a boolean"
-            )
-        source_ac = _require_contract_integer(
-            original_data.get('armorClass', 10),
-            "T053: source armorClass",
-            minimum=1,
-        )
-        if 'current_ac' in ac_result:
-            reported_current_ac = _require_contract_integer(
-                ac_result['current_ac'],
-                "T053: ac_validation.current_ac",
-                minimum=1,
-            )
-            if reported_current_ac != source_ac:
-                raise CharacterValidationResponseError(
-                    "T053: ac_validation.current_ac must match source armorClass"
-                )
-        ac_corrections = _require_string_list(
-            ac_result.get('corrections', []),
-            "T053: ac_validation.corrections",
-        )
-        calculated_ac = None
-        if ac_result['correction_needed']:
-            if 'calculated_ac' not in ac_result:
-                raise CharacterValidationResponseError(
-                    "T053: calculated_ac is required when correction_needed is true"
-                )
-            calculated_ac = _require_contract_integer(
-                ac_result['calculated_ac'],
-                "T053: ac_validation.calculated_ac",
-                minimum=1,
-            )
-            if calculated_ac > 100:
-                raise CharacterValidationResponseError(
-                    "T053: ac_validation.calculated_ac exceeds 100"
-                )
-            if not ac_corrections:
-                raise CharacterValidationResponseError(
-                    "T053: an AC change requires a correction description"
-                )
-            result_data['armorClass'] = calculated_ac
-        elif 'calculated_ac' in ac_result:
-            calculated_ac = _require_contract_integer(
-                ac_result['calculated_ac'],
-                "T053: ac_validation.calculated_ac",
-                minimum=1,
-            )
-            if calculated_ac != source_ac:
-                raise CharacterValidationResponseError(
-                    "T053: calculated_ac conflicts with correction_needed=false"
-                )
-        # The breakdown ties the returned number to the model's own arithmetic
-        # (#392): total_ac must equal calculated_ac, or the source AC when no
-        # correction is claimed. Mirrors the T051 check.
-        breakdown = ac_result.get('breakdown')
-        if not isinstance(breakdown, dict):
-            raise CharacterValidationResponseError(
-                "T053: ac_validation.breakdown must be an object with total_ac"
-            )
-        breakdown_total = _require_contract_integer(
-            breakdown.get('total_ac'),
-            "T053: ac_validation.breakdown.total_ac",
-            minimum=1,
-        )
-        parts_total = 0
-        for part in ('base_ac', 'dex_modifier', 'shield_bonus', 'fighting_style_bonus'):
-            parts_total += _require_contract_integer(
-                breakdown.get(part),
-                f"T053: ac_validation.breakdown.{part}",
-            )
-        if breakdown_total != parts_total:
-            raise CharacterValidationResponseError(
-                "T053: breakdown total_ac must equal the sum of its parts"
-            )
-        expected_total = calculated_ac if 'calculated_ac' in ac_result else source_ac
-        if breakdown_total != expected_total:
-            raise CharacterValidationResponseError(
-                "T053: breakdown total_ac must match calculated_ac"
-            )
-        correction_messages.extend(ac_corrections)
+        # Armor class is engine-owned (core/nql/armor_class.py); the retired
+        # ac_validation section, if present, was dropped above and no AC value
+        # is read from the model response.
 
         # Process inventory corrections
         inv_result = parsed_response['inventory_corrections']

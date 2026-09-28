@@ -57,6 +57,7 @@ import jsonschema
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
+from core.nql import storage as nql_storage
 from core.validation.character_validator import AICharacterValidator
 from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -353,6 +354,8 @@ class StorageManager:
                 items_to_store.append((operation["item_name"], operation["quantity"], item_data))
 
             # Equipment changes belong to the character tool, before ownership moves.
+            # (The engine also refuses to place a worn item; this early check keeps
+            # the DM-facing facts contract without touching any file.)
             equipped_items = [
                 {"item_name": item_data["item_name"], "quantity": quantity, "equipped": True}
                 for name, quantity, item_data in items_to_store
@@ -402,33 +405,16 @@ class StorageManager:
             if not storage_container:
                 raise Exception(f"Storage container {storage_id} not found")
                 
-            # Process all items for storage
-            storage_contents = storage_container["contents"]
-            stored_item_names = []
-            
-            for item_name, quantity, item_data in items_to_store:
-                # Remove item from character
-                if not self._remove_item_from_character(character_data, item_name, quantity):
-                    raise Exception(f"Failed to remove {item_name} from character")
-                
-                # Add item to storage
-                # Check if item already exists in storage
-                item_found = False
-                for stored_item in storage_contents:
-                    if stored_item["item_name"] == item_name:
-                        stored_item["quantity"] = stored_item.get("quantity", 1) + quantity
-                        item_found = True
-                        break
-                        
-                if not item_found:
-                    # Add new item to storage - preserve ALL metadata from character equipment
-                    stored_item = item_data.copy()  # Copy complete item object
-                    stored_item["quantity"] = quantity  # Override quantity
-                    # Set equipped to False when storing (items in storage are not equipped)
-                    stored_item["equipped"] = False
-                    storage_contents.append(stored_item)
-                
-                stored_item_names.append(f"{quantity} {item_name}")
+            # The engine moves the stock (core/nql/storage.py): it checks stock,
+            # worn state and location, commits once, and both records below are
+            # rewritten from its custody facts. No quantity is computed here.
+            outcome = nql_storage.transact(character_data, storage_data, storage_container, operation)
+            if not outcome.ok:
+                raise Exception(outcome.reason)
+            character_data = outcome.character
+            storage_container.clear()
+            storage_container.update(outcome.container)
+            stored_item_names = [f"{quantity} {item_name}" for item_name, quantity in outcome.moved]
                 
             # Update access log
             storage_container["lastAccessed"] = datetime.now().isoformat()
@@ -564,21 +550,14 @@ class StorageManager:
                     
                 items_to_retrieve.append((operation["item_name"], operation["quantity"], stored_item))
             
-            # Process all items for retrieval
-            retrieved_item_names = []
-            
-            for item_name, quantity, stored_item in items_to_retrieve:
-                # Remove item from storage
-                available_quantity = stored_item.get("quantity", 1)
-                if available_quantity == quantity:
-                    storage_container["contents"].remove(stored_item)
-                else:
-                    stored_item["quantity"] = available_quantity - quantity
-                    
-                # Add item to character
-                self._add_item_to_character(character_data, stored_item, quantity)
-                
-                retrieved_item_names.append(f"{quantity} {item_name}")
+            # The engine moves the stock back (core/nql/storage.py); see store_item.
+            outcome = nql_storage.transact(character_data, storage_data, storage_container, operation)
+            if not outcome.ok:
+                raise Exception(outcome.reason)
+            character_data = outcome.character
+            storage_container.clear()
+            storage_container.update(outcome.container)
+            retrieved_item_names = [f"{quantity} {item_name}" for item_name, quantity in outcome.moved]
             
             # Update access log
             storage_container["lastAccessed"] = datetime.now().isoformat()
@@ -754,52 +733,23 @@ class StorageManager:
                         "quantity": operation.get("quantity"),
                     }
                 ]
-            moved_names = []
             for item_request in requested:
                 item_name = item_request.get("item_name")
                 quantity = item_request.get("quantity")
                 if not isinstance(item_name, str) or not isinstance(quantity, int) or quantity <= 0:
                     raise ValueError("storage item and quantity must be exact")
-                if action == "store_item":
-                    has_item, available, item_data = self._find_item_in_character(
-                        character_after, item_name, quantity
-                    )
-                    if not has_item or available < quantity:
-                        raise ValueError("character does not own the requested storage quantity")
-                    if not self._remove_item_from_character(character_after, item_name, quantity):
-                        raise RuntimeError("could not stage character inventory removal")
-                    stored = next(
-                        (
-                            item
-                            for item in container["contents"]
-                            if item.get("item_name") == item_name
-                        ),
-                        None,
-                    )
-                    if stored is None:
-                        stored = copy.deepcopy(item_data)
-                        stored["quantity"] = quantity
-                        stored["equipped"] = False
-                        container["contents"].append(stored)
-                    else:
-                        stored["quantity"] = stored.get("quantity", 1) + quantity
-                else:
-                    stored = next(
-                        (
-                            item
-                            for item in container["contents"]
-                            if item.get("item_name") == item_name
-                        ),
-                        None,
-                    )
-                    if stored is None or stored.get("quantity", 1) < quantity:
-                        raise ValueError("storage does not own the requested quantity")
-                    if stored.get("quantity", 1) == quantity:
-                        container["contents"].remove(stored)
-                    else:
-                        stored["quantity"] = stored.get("quantity", 1) - quantity
-                    self._add_item_to_character(character_after, stored, quantity)
-                moved_names.append("%s %s" % (quantity, item_name))
+            # The engine stages the move (core/nql/storage.py): same transaction
+            # as the immediate path, applied to the working copies.
+            outcome = nql_storage.transact(character_after, storage_working, container, operation,
+                                           request_id="storage:%s" % operation_id)
+            if not outcome.ok:
+                if outcome.worn_items:
+                    raise ValueError("selected items are still equipped")
+                raise ValueError(outcome.reason)
+            character_after = outcome.character
+            container.clear()
+            container.update(outcome.container)
+            moved_names = ["%s %s" % (quantity, item_name) for item_name, quantity in outcome.moved]
 
             event_action = "store_items" if action == "store_item" else "retrieve_items"
             container["lastAccessed"] = timestamp

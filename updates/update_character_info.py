@@ -1100,6 +1100,21 @@ def prepare_character_delta(character_data, updates, character_role, schema,
               'schema_valid': False, 'error_message': None}
     if critical_warnings:
         return updates, updated_data, checks
+    if isinstance(updates.get('equipment'), list):
+        # Equipment is engine-owned (core/nql): the merged delta becomes equip,
+        # unequip, consume and create operations on the sheet's world. A refusal
+        # is reported like a schema failure so the model can correct its delta.
+        from core.nql import equipment as nql_equipment
+
+        outcome = nql_equipment.reconcile(character_data, updated_data)
+        if not outcome.ok:
+            checks.update(error_message=(
+                "the equipment change was refused by the rules engine: "
+                f"{outcome.reason}. Operations attempted: {' '.join(outcome.operations)}"))
+            return updates, updated_data, checks
+        updated_data['equipment'] = outcome.equipment
+        for gap in outcome.gaps:
+            debug(f"[Equipment Engine] {character_name}: {gap}", category="character_updates")
     updated_data = normalize_status_and_condition(updated_data, character_role)
     updated_data, removed_fields = purge_invalid_fields(updated_data, schema, character_name)
     is_valid, error_msg = validate_character_data(updated_data, schema, character_name)
@@ -1213,7 +1228,9 @@ def infer_requested_character_update_fields(changes):
         )
     )
     if shield_destroyed:
-        required.update(("equipment", "armorClass", "equipment_effects"))
+        # armorClass and equipment_effects are engine-owned (core/nql); only
+        # the equipment change itself is a required part of the delta.
+        required.add("equipment")
 
     weapon_swap = re.search(
         r"\b(?:swapped?|replaced|exchanged)\b.{0,100}\b"
@@ -1648,17 +1665,14 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 
 4. **For Complex Updates Affecting Multiple Systems:**
    - When an action affects multiple character aspects, you MUST include ALL affected fields in your minimal JSON response.
-   - Equipment removal/damage affecting AC: Always include the updated `armorClass`.
    - Weapon changes: Always include updated `attacksAndSpellcasting` array entries for the affected weapons.
-   - Shield/armor changes: Include `armorClass` and any affected `equipment_effects`.
+   - Armor class: do NOT include `armorClass` or `equipment_effects`. The rules engine computes both from the equipped items' typed fields (`armor_category`, `ac_base`, `ac_bonus`, `dex_limit`) after your delta is applied. Give new armor those fields instead.
    - Status changes: Always synchronize `status`, `condition`, and `condition_affected`.
 
    - **Example - Shield is destroyed:**
      ```json
      {{
-       "equipment": [{{ "item_name": "Shield", "quantity": 0, "equipped": false }}],
-       "armorClass": 15,
-       "equipment_effects": [{{ "name": "Shield AC Bonus", "value": 0 }}]
+       "equipment": [{{ "item_name": "Shield", "quantity": 0, "equipped": false }}]
      }}
      ```
    - **Example - Swapping from a Mace to a Longsword:**
@@ -1696,7 +1710,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
    - Always use plural form for consistency
 
 **CRITICAL EDGE CASES:**
-- When equipment that affects AC (shields, armor, rings of protection) is added, removed, equipped, or unequipped, you **MUST** calculate and return the new total `armorClass`.
+- When equipment that affects AC is added, removed, equipped, or unequipped, return only the `equipment` change; the rules engine recomputes `armorClass` and `equipment_effects`. The engine refuses illegal states (two shields, three held weapons); if told a change was refused, propose a legal one.
 - When a weapon is changed, you **MUST** update the relevant entry in the `attacksAndSpellcasting` array.
 - When a temporary effect is added or removed, you **MUST** return the **complete** `temporaryEffects` array, containing only the effects that should remain active. This is the one exception to the delta-only rule for lists.
 - Down/unconscious (house rule, NO death saves): at 0 HP set `hitPoints` to 0 and `status` to "unconscious"; never write death saves; a character at 0 dies only if the whole party falls; a heal, potion, Medicine, or rest that restores them sets `hitPoints` above 0 and `status` to "alive"
