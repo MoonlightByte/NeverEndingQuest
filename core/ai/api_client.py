@@ -363,6 +363,9 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     # Observational transport-phase callback from the live-provider child
     # (#409): never forwarded to a provider, never affects routing.
     _phase_emit = kwargs.pop("_phase_emit", None)
+    # Per-callsite output ceiling (OpenAI only; set by the capture layer from
+    # model_registry.OPENAI_OUTPUT_CEILING_CHARS). Never forwarded to a provider.
+    _output_ceiling = kwargs.pop("_output_ceiling_chars", None)
 
     # create_completion() is a thin routing layer. It does NOT inject
     # reasoning_effort, thinking_level, or other params. The callsite
@@ -383,6 +386,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     request_provider,
                     response_format=_response_format,
                     phase_emit=_phase_emit,
+                    output_ceiling=_output_ceiling,
                     **kwargs,
                 )
             except Exception as exc:
@@ -396,6 +400,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     request_provider,
                     response_format=_response_format,
                     phase_emit=_phase_emit,
+                    output_ceiling=_output_ceiling,
                     **kwargs,
                 )
         else:  # gemini
@@ -590,15 +595,25 @@ RUNAWAY_STREAM_CODE = "runaway_output"
 
 
 class _RunawayGuard:
-    """Counts the trailing run of whitespace-only output across stream deltas."""
+    """Counts the trailing run of whitespace-only output across stream deltas,
+    and the total output against the callsite's ceiling.
 
-    def __init__(self, limit=RUNAWAY_WHITESPACE_CHARS):
+    ``ceiling`` is the per-callsite output ceiling in characters
+    (model_registry.OPENAI_OUTPUT_CEILING_CHARS: four times the 95th
+    percentile of the callsite's captured answers). An answer past it is
+    aberrant by measurement, never a longer-than-usual real answer, and is
+    abandoned so the identical request is reissued (prompt cache intact).
+    """
+
+    def __init__(self, limit=RUNAWAY_WHITESPACE_CHARS, ceiling=None):
         self.limit = limit
+        self.ceiling = ceiling if isinstance(ceiling, int) and ceiling > 0 else None
         self.run = 0
         self.total = 0
+        self.why = None
 
     def feed(self, text):
-        """Return True when the stream has become a whitespace runaway."""
+        """Return True when the stream has become a runaway."""
         if not text:
             return False
         self.total += len(text)
@@ -607,22 +622,26 @@ class _RunawayGuard:
             self.run = len(text) - len(stripped)
         else:
             self.run += len(text)
-        return self.run >= self.limit
+        if self.run >= self.limit:
+            self.why = "%d whitespace characters in a row after %d characters of output" % (
+                self.run, self.total)
+            return True
+        if self.ceiling is not None and self.total > self.ceiling:
+            self.why = "%d characters of output, past the callsite ceiling of %d" % (
+                self.total, self.ceiling)
+            return True
+        return False
 
 
 def _abandon_runaway(stream, guard, phase_emit):
-    _phase(phase_emit, "runaway", guard.run)
+    _phase(phase_emit, "runaway", guard.total)
     close = getattr(stream, "close", None)
     if callable(close):
         try:
             close()
         except Exception:
             pass
-    raise ResponsesStreamFailed(
-        RUNAWAY_STREAM_CODE,
-        "%d whitespace characters in a row after %d characters of output"
-        % (guard.run, guard.total),
-    )
+    raise ResponsesStreamFailed(RUNAWAY_STREAM_CODE, guard.why or "runaway output")
 
 
 def _phase(phase_emit, phase, detail=None):
@@ -663,7 +682,7 @@ def _responses_text_format(response_format):
 
 
 def _responses_stream_completion(client, messages, model, temperature, strip_temp,
-                                 response_format, phase_emit, **kwargs):
+                                 response_format, phase_emit, output_ceiling=None, **kwargs):
     """One streamed Responses request assembled into a ChatCompletion-shaped
     answer. The stream is consumed here only for liveness (D-PROVIDER-
     LIVENESS): nothing partial leaves this function.
@@ -699,7 +718,7 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
     parts = []
     final = None
     last_receiving = 0.0
-    runaway = _RunawayGuard()
+    runaway = _RunawayGuard(ceiling=output_ceiling)
     for event in stream:
         kind = getattr(event, "type", "")
         if kind == "response.created":
@@ -757,7 +776,7 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
     )
 
 
-def _chat_stream_completion(client, call_kwargs, phase_emit):
+def _chat_stream_completion(client, call_kwargs, phase_emit, output_ceiling=None):
     """One streamed Chat Completions request (legacy OpenAI models, LM Studio
     and other OpenAI-compatible servers) assembled into the completed answer.
     The first chunk is the acknowledgment; content deltas are progress."""
@@ -773,7 +792,7 @@ def _chat_stream_completion(client, call_kwargs, phase_emit):
     reported_model = ""
     acknowledged = False
     last_receiving = 0.0
-    runaway = _RunawayGuard()
+    runaway = _RunawayGuard(ceiling=output_ceiling)
     for chunk in stream:
         if not acknowledged:
             _phase(phase_emit, "acknowledged")
@@ -814,7 +833,7 @@ def _chat_stream_completion(client, call_kwargs, phase_emit):
 
 
 def _openai_completion(messages, model, temperature, provider, response_format=_UNSET,
-                       phase_emit=None, **kwargs):
+                       phase_emit=None, output_ceiling=None, **kwargs):
     """Execute a completion via the OpenAI-compatible API."""
     client = get_openai_client(provider=provider)
 
@@ -862,7 +881,7 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
         # Chat Completions cannot give.
         return _responses_stream_completion(
             client, messages, model, temperature, strip_temp, response_format,
-            phase_emit, **kwargs,
+            phase_emit, output_ceiling=output_ceiling, **kwargs,
         )
 
     call_kwargs = {"model": model, "messages": messages}
@@ -881,7 +900,7 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
     # Forward remaining kwargs (reasoning_effort, max_tokens, etc.)
     call_kwargs.update(kwargs)
 
-    return _chat_stream_completion(client, call_kwargs, phase_emit)
+    return _chat_stream_completion(client, call_kwargs, phase_emit, output_ceiling=output_ceiling)
 
 
 # ---------------------------------------------------------------------------

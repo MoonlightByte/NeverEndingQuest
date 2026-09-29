@@ -1354,6 +1354,7 @@ def call_live_provider(
     elif task_id not in _NO_WATCHDOG_ADVISORY_TASK_IDS:
         frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
     failure_count = 0
+    runaway_trips = 0
     logical_started = time.monotonic()
     notices_shown = set()
     player_turn = scope is not None and scope is get_live_turn_scope()
@@ -1656,6 +1657,20 @@ def call_live_provider(
 
         failure_count += 1
         envelope = envelope if isinstance(envelope, dict) else {}
+        if envelope.get("error_code") == "runaway_output":
+            # The stream consumer abandoned the answer (whitespace runaway or
+            # past the callsite's output ceiling) and the identical request
+            # is reissued. A ceiling that trips twice on the same request is
+            # judging a real answer, not a runaway: lift it for the rest of
+            # this logical call so the turn cannot loop (fail-forward). The
+            # whitespace guard is unconditional and stays.
+            runaway_trips += 1
+            if runaway_trips >= 2 and "_output_ceiling_chars" in frozen_kwargs:
+                _LOGGER.warning(
+                    "LIVE_PROVIDER_CEILING_LIFTED task=%s ceiling=%s trips=%d",
+                    task_id, frozen_kwargs.get("_output_ceiling_chars"), runaway_trips,
+                )
+                frozen_kwargs.pop("_output_ceiling_chars", None)
         if (
             policy == "advisory"
             and completion_required
