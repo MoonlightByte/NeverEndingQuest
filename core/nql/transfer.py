@@ -58,6 +58,33 @@ def _find_entry(entries: List[Dict[str, Any]], ids: Dict[int, str], name: str) -
     return None, None
 
 
+_STACK_IDENTITY = ("item_name", "item_type", "item_subtype", "magical", "armor_category", "ac_base", "ac_bonus")
+
+
+def _matching_stack(receiver: Dict[str, Any], ids: Dict[int, str], entry: Dict[str, Any]) -> Optional[str]:
+    """The receiver's engine item id for an entry of the same typed identity, or None."""
+    if entry.get("equipped") is True or entry.get("effects"):
+        return None
+    for index, other in enumerate(receiver.get("equipment") or []):
+        if not isinstance(other, dict) or index not in ids or other is entry:
+            continue
+        if other.get("equipped") is True or other.get("effects"):
+            continue
+        if all(_identity_value(other, k) == _identity_value(entry, k) for k in _STACK_IDENTITY):
+            return ids[index]
+    return None
+
+
+def _identity_value(entry: Dict[str, Any], key: str) -> Any:
+    """Typed identity with the schema defaults applied (unset magical is False, unset subtype is other)."""
+    value = entry.get(key)
+    if key == "magical":
+        return bool(value)
+    if key == "item_subtype" and value in (None, ""):
+        return "other"
+    return value
+
+
 def transact(giver: Dict[str, Any], receiver: Dict[str, Any], item_name: str, quantity: int, *,
              location: str = "party", request_id: Optional[str] = None,
              binary: Optional[str] = None) -> TransferOutcome:
@@ -100,6 +127,14 @@ def transact(giver: Dict[str, Any], receiver: Dict[str, Any], item_name: str, qu
         actions.append(f"split {_q(iid)} quantity {quantity} into {_q(move_id)} by {_q(gid)};")
     actions.append(f"transfer {_q(move_id)} from {_q(gid)} to {_q(rid)};")
     actions.append(f"place {_q(move_id)} from character {_q(gid)} to character {_q(rid)} by {_q(gid)};")
+    # Same stock on the receiver: fold the arriving units into that entry in
+    # the same request (consume the arrival, add to the existing stack), so a
+    # sheet never carries two entries for one kind of thing. Only an unworn,
+    # unequipped entry with the same typed identity merges.
+    merge_id = _matching_stack(receiver, world.item_ids.get(rid, {}), entry)
+    if merge_id is not None:
+        actions.append(f"consume {_q(move_id)} from {_q(rid)} by {quantity};")
+        actions.append(f"add {_q(merge_id)} to {_q(rid)} by {quantity};")
 
     try:
         response = apply.call({"world": world.source, "world_name": "transfer-genesis.nql",
@@ -134,6 +169,8 @@ def transact(giver: Dict[str, Any], receiver: Dict[str, Any], item_name: str, qu
             rebuilt = copy.deepcopy(base)
             rebuilt["nql_id"] = item["id"]
             rebuilt["quantity"] = item.get("quantity", 1) if type(item.get("quantity")) is int else 1
+            if rebuilt["quantity"] <= 0:
+                continue   # depleted by a merge: its units live in the matching stack
             if item.get("wearer") != cid and rebuilt.get("equipped") is True:
                 rebuilt["equipped"] = False
             out.append(rebuilt)

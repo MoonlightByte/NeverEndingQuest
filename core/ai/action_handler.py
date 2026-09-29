@@ -4575,6 +4575,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 result = execute_currency_split(
                     parameters.get("fromCharacter", ""), parameters.get("toCharacters"),
                     parameters.get("giverKeepsShare", True), party_tracker_data,
+                    coins=parameters.get("coins") or None,
                 )
             if result.get("success"):
                 info(f"SUCCESS: {result.get('message')}", category="storage_operations")
@@ -4615,7 +4616,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 info(f"SUCCESS: {result.get('message')}", category="character_updates")
                 conversation_history.append({"role": "user", "content": f"Rest: {result.get('message')}"})
                 if result.get("effects_note"):
-                    conversation_history.append({"role": "user", "content": result["effects_note"]})
+                    # process_effect_lifecycle returns a complete message
+                    # ({"role": "system", "content": ...}); append it as is.
+                    conversation_history.append(result["effects_note"])
                 needs_conversation_history_update = True
             else:
                 print(f"ERROR: rest failed: {result.get('error')}")

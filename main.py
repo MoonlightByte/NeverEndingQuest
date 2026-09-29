@@ -3976,6 +3976,15 @@ def remove_duplicate_messages(conversation_history):
     
     for i, msg in enumerate(conversation_history):
         content = msg.get("content", "")
+        if isinstance(content, dict) and isinstance(content.get("content"), str):
+            # A message record nested as another record's content (written
+            # by the rest action before 2026-09-29): unwrap it so the game
+            # loads instead of failing at startup on a saved conversation.
+            msg = dict(content)
+            content = msg.get("content", "")
+        if not isinstance(content, str):
+            content = "" if content is None else str(content)
+            msg = dict(msg, content=content)
         
         # Check if this is a combat-related system message
         is_combat_system_msg = content.startswith("[SYSTEM: Combat")
