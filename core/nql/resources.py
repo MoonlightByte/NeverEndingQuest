@@ -28,7 +28,12 @@ from core.nql import apply, genesis
 HP_DELTA = "hpDelta"
 SLOT_DELTA = "spellSlotDelta"
 USE_DELTA = "featureUseDelta"
-DELTA_KEYS = (HP_DELTA, SLOT_DELTA, USE_DELTA)
+# Temporary hit points are granted, never healed or spent: a positive whole
+# number sets the buffer to max(current, amount); damage drains it first
+# (engine buffer). Loss is only through damage, so a negative value is refused.
+TEMP_HP_GRANT = "tempHpGrant"
+DELTA_KEYS = (HP_DELTA, SLOT_DELTA, USE_DELTA, TEMP_HP_GRANT)
+TEMP_HP = genesis.TEMP_HP_RESOURCE
 
 
 @dataclass
@@ -87,6 +92,16 @@ def normalize(sheet: Dict[str, Any], updates: Dict[str, Any]) -> Tuple[Optional[
             return None, "the sheet has no hitPoints to change"
         if amount:
             out["hp"] = amount
+    if TEMP_HP_GRANT in updates:
+        amount, reason = _signed("temporary hit point", updates[TEMP_HP_GRANT])
+        if amount is None:
+            return None, reason
+        if "hitPoints" not in sheet:
+            return None, "the sheet has no hitPoints; temporary hit points need a character with hit points"
+        if amount < 0:
+            return None, "temporary hit points are lost only through damage; a grant must be a positive whole number"
+        if amount:
+            out[TEMP_HP] = amount
     slots = updates.get(SLOT_DELTA)
     if slots is not None:
         if not isinstance(slots, dict):
@@ -120,6 +135,8 @@ def _label(sheet: Dict[str, Any], rid: str) -> str:
     """A sheet-facing name for a resource id (used only in refusal reasons)."""
     if rid == "hp":
         return "hit points"
+    if rid == TEMP_HP:
+        return "temporary hit points"
     if rid.startswith("slot:"):
         return f"level {rid[5:]} spell slots"
     for name, _ in _feature_pools(sheet):
@@ -133,6 +150,8 @@ def lines(cid: str, deltas: Dict[str, int]) -> List[str]:
     for rid, amount in deltas.items():
         if amount < 0:
             verb = "damage" if rid == "hp" else "spend"
+        elif rid == TEMP_HP:
+            verb = "grant"
         else:
             verb = "heal"
         out.append(f'{verb} {_q(cid)} resource {_q(rid)} by {abs(amount)};')
@@ -152,6 +171,9 @@ def _write_back(sheet: Dict[str, Any], status: Dict[str, Any]) -> Optional[str]:
         if value is None:
             return "engine returned no hit points"
         sheet["hitPoints"] = value
+        temp = current(TEMP_HP)
+        if temp is not None and (temp or "temporaryHitPoints" in sheet):
+            sheet["temporaryHitPoints"] = temp
     slots = (sheet.get("spellcasting") or {}).get("spellSlots") if isinstance(sheet.get("spellcasting"), dict) else None
     if isinstance(slots, dict):
         for key, pool in slots.items():
@@ -258,6 +280,8 @@ def rest_lines(sheet: Dict[str, Any], kind: str, gaps: List[str]) -> List[Tuple[
     out: List[Tuple[str, str]] = []
     if kind == "long" and "hp" in declared:
         out.append(("hp", "hit points"))
+    if kind == "long" and TEMP_HP in declared:
+        out.append((TEMP_HP, "temporary hit points (cleared)"))
     slots_refill = kind == "long" or any(c in SHORT_REST_SLOT_CLASSES for c in _class_names(sheet))
     if slots_refill:
         for rid in sorted(r for r in declared if r.startswith("slot:")):

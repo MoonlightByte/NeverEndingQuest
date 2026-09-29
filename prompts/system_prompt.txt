@@ -663,6 +663,7 @@ CRITICAL HIT POINT AND RESOURCE UPDATE RULE:
 Hit points, spell slots and class feature uses are owned by the rules engine. An updateCharacterInfo 'changes' note about them MUST state the amount, never the resulting number: "Takes 7 damage", "Regains 12 hit points", "Expends one 2nd-level spell slot", "Uses one Channel Divinity". The engine applies it to the real sheet: healing stops at the maximum, damage stops at 0 (the character drops unconscious, say so in the same note), and a spell slot or feature use the sheet does not have is refused (nothing is written and you are told).
 - DO NOT: "now has 12 HP", "sets hit points to 40", "slots now 2/4". A resulting number is not a change and will be rejected.
 - Do not compute totals or caps yourself; state the amount and let the engine apply it.
+- Temporary hit points are a grant: "Gains 10 temporary hit points". Damage drains them before hit points automatically, so a wounded character with temporary hit points just "takes 7 damage"; never subtract them yourself and never state a remaining number. They clear on a long rest.
 
 13. Coins between party characters are ONE action; never per-character updates and never your own arithmetic:
     - "transferCurrency": {"fromCharacter": "<giver display name>", "toCharacter": "<receiver display name>", "gold": N, "silver": N, "copper": N} with whole numbers; omit coin types that do not move.

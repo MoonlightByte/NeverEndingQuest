@@ -29,6 +29,11 @@ AC_EFFECT_TARGETS = ("AC", "armorClass", "armor class", "Armor Class")
 # floor of zero, so an overdraft is refused rather than clamped or reset.
 COIN_TYPES = ("gold", "silver", "copper")
 COIN_MAX = 1_000_000_000_000
+# Temporary hit points: an engine buffer pool in front of hp (no maximum in the
+# rules; damage drains it first, a grant replaces a smaller one, a long rest
+# clears it). Declared for every character that declares hp.
+TEMP_HP_RESOURCE = "temp-hp"
+TEMP_HP_MAX = 1_000_000_000
 DEFENSE_STYLE_FEATURE = "Fighting Style: Defense"
 DEFENSE_STYLE_CONDITION = "feature:defense-style"
 
@@ -142,6 +147,12 @@ def pool_resources(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, in
         hp = _pool(cid, "hitPoints", sheet.get("hitPoints"), sheet.get("maxHitPoints"), gaps)
         if hp is not None:
             out.append(("hp", hp[0], hp[1]))
+            temp = _int(sheet.get("temporaryHitPoints"))
+            if temp is None or temp < 0:
+                if "temporaryHitPoints" in sheet:
+                    gaps.append(f"{cid}: temporaryHitPoints is not a non-negative integer; treated as 0")
+                temp = 0
+            out.append((TEMP_HP_RESOURCE, min(temp, TEMP_HP_MAX), TEMP_HP_MAX))
     slots = (sheet.get("spellcasting") or {}).get("spellSlots") if isinstance(sheet.get("spellcasting"), dict) else None
     for key, pool in sorted((slots or {}).items()) if isinstance(slots, dict) else []:
         if not (isinstance(pool, dict) and str(key).startswith("level")):
@@ -325,8 +336,11 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 gaps.append(f"{cid}: currency.{coin} is not a non-negative integer; resource starts at 0")
                 amount = 0
             resources.append(f' resource {_q(coin)} = {amount} min 0 max {COIN_MAX};')
-        for rid, current, maximum in pool_resources(sheet, gaps):
+        pools = pool_resources(sheet, gaps)
+        for rid, current, maximum in pools:
             resources.append(f' resource {_q(rid)} = {current} min 0 max {maximum};')
+        if any(rid == TEMP_HP_RESOURCE for rid, _, _ in pools):
+            resources.append(f' buffer {_q(TEMP_HP_RESOURCE)} before "hp";')
         lines.append(
             f"character {_q(cid)} named {_q(sheet.get('name', ''))} at {_q(loc)} {{\n"
             f' stat "dexterity" = {dex};\n stat "defense" = 10;\n' + "\n".join(resources) + "\n}"

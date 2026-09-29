@@ -77,6 +77,11 @@
     "maxHitPoints": {
       "type": "integer"
     },
+    "temporaryHitPoints": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Temporary hit points (engine-owned buffer): damage drains these before hitPoints; a new grant replaces a smaller one; cleared by a long rest. Absent means 0."
+    },
     "armorClass": {
       "type": "integer"
     },

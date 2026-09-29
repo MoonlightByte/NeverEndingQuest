@@ -15,7 +15,7 @@ A refusal is returned with the engine's reason so the caller can hand it back
 to the model as feedback. Nothing here parses prose or computes a stat.
 
 Not modelled by the engine (left as the merged value and reported in ``gaps``):
-a larger stock of an existing item (there is no add-stock operation).
+(nothing: a larger stock of an existing item is an ``add`` since engine ae3ad48).
 """
 import copy
 import uuid
@@ -79,7 +79,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
     ops: List[str] = []
     gaps: List[str] = list(world.gaps)
 
-    # Removed or reduced stock: consume. Increased stock: not representable (gap).
+    # Removed or reduced stock: consume. Increased stock: add (refill, loot, purchase).
     for iid, e in old.items():
         if iid not in new:
             ops.append(f"consume {_q(iid)} from {_q(cid)} by {_stock(e)};")
@@ -90,7 +90,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
                 ops.append(f"unequip {_q(iid)};")
             ops.append(f"consume {_q(iid)} from {_q(cid)} by {-delta};")
         elif delta > 0:
-            gaps.append(f"{new[iid].get('item_name')!r}: stock {_stock(e)} -> {_stock(new[iid])} accepted as merged; the engine has no add-stock operation")
+            ops.append(f"add {_q(iid)} to {_q(cid)} by {delta};")
     # New items: create, then equip if the merged entry says so.
     for iid, e in created:
         fields = [f"owner {_q(cid)};", f"custody character {_q(cid)};"]

@@ -481,6 +481,7 @@ Pool Delta Examples (signed change, never a resulting count):
 {"hpDelta": -7}
 {"spellSlotDelta": {"level2": -1}}
 {"featureUseDelta": {"Channel Divinity (2/rest)": -1}}
+{"tempHpGrant": 10}
 
 Ammunition Example:
 [{"name": "Arrows", "quantity": 20, "description": "Standard arrows"}]
@@ -1087,6 +1088,7 @@ ENGINE_DELTA_FIELDS = {
     'hpDelta': 'hitPoints',
     'spellSlotDelta': 'spellcasting',
     'featureUseDelta': 'classFeatures',
+    'tempHpGrant': 'temporaryHitPoints',
 }
 ENGINE_DELTA_KEYS = tuple(ENGINE_DELTA_FIELDS)
 
@@ -1101,6 +1103,9 @@ def _engine_owned_total(character_data, updates):
     """
     if 'hitPoints' in updates:
         return "hitPoints totals are not accepted; report the change as hpDelta (signed whole number)"
+    if 'temporaryHitPoints' in updates:
+        return ("temporaryHitPoints totals are not accepted; report a grant as tempHpGrant (positive whole "
+                "number); damage drains them automatically")
     slots = updates.get('spellcasting', {}).get('spellSlots') if isinstance(updates.get('spellcasting'), dict) else None
     if isinstance(slots, dict):
         for key, pool in slots.items():
@@ -1124,6 +1129,8 @@ def _copy_engine_pools(engine_sheet, target):
     """Write the engine's pool values (hit points, slot and use counts) onto the merged sheet."""
     if 'hitPoints' in engine_sheet:
         target['hitPoints'] = engine_sheet['hitPoints']
+    if 'temporaryHitPoints' in engine_sheet:
+        target['temporaryHitPoints'] = engine_sheet['temporaryHitPoints']
     engine_slots = (engine_sheet.get('spellcasting') or {}).get('spellSlots') \
         if isinstance(engine_sheet.get('spellcasting'), dict) else None
     target_slots = (target.get('spellcasting') or {}).get('spellSlots') \
@@ -1191,7 +1198,8 @@ def prepare_character_delta(character_data, updates, character_role, schema,
     # (core/nql/resources): signed changes go through the engine, which clamps
     # healing at the effective maximum, drops a character to zero, and refuses
     # a spend the pool cannot cover. The engine's values replace the merged ones.
-    resource_updates = {k: updates.pop(k) for k in ('hpDelta', 'spellSlotDelta', 'featureUseDelta') if k in updates}
+    resource_updates = {k: updates.pop(k) for k in ('hpDelta', 'spellSlotDelta', 'featureUseDelta', 'tempHpGrant')
+                        if k in updates}
     engine_pools = None
     if resource_updates:
         from core.effects.effective import effective_sheet
@@ -1873,6 +1881,9 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 - Feature uses: return {{"featureUseDelta": {{"<exact stored feature name>": -1}}}} for the resource-owning feature (a shared option spends
   its parent's pool). NEVER return `usage.current`; the engine refuses a use beyond the pool and you are told.
 - Refills ("regains one use", "recovers two 1st-level slots") are positive amounts; the engine stops at each maximum.
+- Temporary hit points: "gains 10 temporary hit points" -> {{"tempHpGrant": 10}} (positive only). NEVER return
+  `temporaryHitPoints`. Damage drains temporary hit points before hit points automatically: report the damage taken
+  as hpDelta and nothing else; never subtract temporary hit points yourself. A long rest clears them.
 - Only the pools the note names, only the amounts it states. A cast note with no healing amount ("Expends one 1st-level
   spell slot to cast Cure Wounds") is the slot change only; never infer a heal from a spell's name or an earlier wound.
 
