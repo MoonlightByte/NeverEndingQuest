@@ -34,6 +34,7 @@ register_callsite("T121", "core/managers/level_up_session.py", 0)
 _PROMPT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                        "prompts", "leveling", "level_up_agent.txt")
 _MAX_CORRECTIONS_PER_TURN = 2
+_MAX_AGENT_FAILURES = 3
 
 
 def _spell_index() -> Dict[str, Dict[str, Any]]:
@@ -69,6 +70,7 @@ class LevelUpSession:
         self._spells = _spell_index()
         self._last_turn: Optional[LevelUpTurn] = None
         self.is_player = False
+        self._failures = 0
 
     # ---- surface -------------------------------------------------------------
     def commit_guard(self):
@@ -105,7 +107,16 @@ class LevelUpSession:
                 pass
             answer = self._ask_agent(corrections)
             if answer is None:
+                self._failures += 1
+                if self._failures >= _MAX_AGENT_FAILURES:
+                    return self._terminal("not_applied", "Your level-up has not been applied: the level-up guide could "
+                                          "not be reached. Nothing changed; ask to level up again later.")
                 return self._interview("I could not reach the level-up rules just now. Say 'retry' to try again.")
+            self._failures = 0
+            if answer.get("abort") is True:
+                return self._terminal("not_applied", (str(answer.get("narration") or "").strip() or
+                                      "Understood, we will leave the level-up for later.") +
+                                      " Your level-up has not been applied; nothing on your sheet changed.")
             problems = self._take_choices(answer.get("choices") or {})
             for name, text in (answer.get("features") or {}).items():
                 if isinstance(text, str) and text.strip():
