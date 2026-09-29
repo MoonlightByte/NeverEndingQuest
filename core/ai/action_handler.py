@@ -3874,14 +3874,16 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         },
                     )
             except EngineRefusedChange as refusal:
-                # The rules engine refused the change (E6: coins). Nothing was
-                # written; the model hears why and answers again, and later
-                # actions from this response do not run.
+                # The rules engine refused the change (coins, hit points, spell
+                # slots or feature uses). Nothing was written; the model hears
+                # why and answers again, and later actions from this response
+                # do not run.
                 print(f"ERROR: Engine refused character update for {character_name}: {refusal.reason}")
                 conversation_history.append({"role": "user", "content": (
-                    f"Currency Error: {refusal.reason}. Nothing changed on {character_name}'s sheet. Later actions from "
-                    "this response have not executed. Do not repeat earlier completed actions; propose a payment the "
-                    "character can cover or narrate why it cannot happen.")})
+                    f"Rules Error: {refusal.reason}. Nothing changed on {character_name}'s sheet. Later actions from "
+                    "this response have not executed. Do not repeat earlier completed actions; propose a change the "
+                    "sheet can cover (a payment, a spell slot or a feature use that is still available) or narrate "
+                    "why it cannot happen.")})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
             except Exception as e:

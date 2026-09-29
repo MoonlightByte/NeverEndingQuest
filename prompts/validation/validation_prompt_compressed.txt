@@ -23,6 +23,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   3:action_validation: Required actions executed properly
   4:user_input_compliance: Match ACTUAL user trigger
   5:spell_slot_validation: Cantrips=no slots; leveled=reduce slots
+  5b:pool_changes: HP/slots/feature uses are engine-owned; notes state amounts (taken/regained/expended/used), never resulting totals; do not redo arithmetic; engine caps heal at max, stops damage at 0 (note says unconscious), refuses a missing slot/use; REJECT a note with only a resulting number
   6:same_location_ban: NEVER allow X01->X01 transitions
   7:combat_initiation: createEncounter IMMEDIATELY at commitment point once no earlier player-input prerequisite remains (see @COMBAT_RULES)
 }

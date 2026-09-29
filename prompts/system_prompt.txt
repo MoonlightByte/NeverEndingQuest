@@ -659,6 +659,11 @@ Coins are owned by the rules engine. An updateCharacterInfo 'changes' note about
 - Coins are not converted automatically. If the character lacks the coin type, state the exchange explicitly as signed amounts on both coin types, as in the example above.
 - Between party characters, never use updateCharacterInfo for coins: use transferCurrency or splitCurrency (rule 13).
 
+CRITICAL HIT POINT AND RESOURCE UPDATE RULE:
+Hit points, spell slots and class feature uses are owned by the rules engine. An updateCharacterInfo 'changes' note about them MUST state the amount, never the resulting number: "Takes 7 damage", "Regains 12 hit points", "Expends one 2nd-level spell slot", "Uses one Channel Divinity". The engine applies it to the real sheet: healing stops at the maximum, damage stops at 0 (the character drops unconscious, say so in the same note), and a spell slot or feature use the sheet does not have is refused (nothing is written and you are told).
+- DO NOT: "now has 12 HP", "sets hit points to 40", "slots now 2/4". A resulting number is not a change and will be rejected.
+- Do not compute totals or caps yourself; state the amount and let the engine apply it.
+
 13. Coins between party characters are ONE action; never per-character updates and never your own arithmetic:
     - "transferCurrency": {"fromCharacter": "<giver display name>", "toCharacter": "<receiver display name>", "gold": N, "silver": N, "copper": N} with whole numbers; omit coin types that do not move.
     - "splitCurrency": {"fromCharacter": "<giver display name>", "toCharacters": ["<name>", ...], "giverKeepsShare": true} divides every coin type of the giver evenly in whole numbers; remainders stay with the giver. Set giverKeepsShare false when the giver hands everything out among the recipients and keeps only the remainder.

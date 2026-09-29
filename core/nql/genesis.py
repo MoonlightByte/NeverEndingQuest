@@ -109,6 +109,61 @@ def assign_ids(sheet: Dict[str, Any]) -> bool:
     return changed
 
 
+def feature_resource_id(name: str) -> str:
+    return "use:" + slug(name)
+
+
+def slot_resource_id(level_key: str) -> str:
+    """spellSlots key 'level3' -> 'slot:3'."""
+    return "slot:" + str(level_key)[5:]
+
+
+def _pool(cid: str, label: str, current: Any, maximum: Any, gaps: List[str]) -> Optional[Tuple[int, int]]:
+    cur, mx = _int(current), _int(maximum)
+    if cur is None or mx is None or cur < 0 or mx < 0:
+        gaps.append(f"{cid}: {label} current/max are not non-negative integers; not an engine resource")
+        return None
+    if cur > mx:
+        gaps.append(f"{cid}: {label} current {cur} above max {mx}; clamped to max at genesis")
+        cur = mx
+    return cur, mx
+
+
+def pool_resources(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, int, int]]:
+    """(resource id, current, max) for hit points, spell slots and feature use pools.
+
+    Typed fields only: ``hitPoints``/``maxHitPoints``, ``spellcasting.spellSlots.levelN``
+    ``{current, max}`` and ``classFeatures[].usage {current, max}``. A pool the sheet
+    does not carry is simply absent; a spend against it is then a compile refusal.
+    """
+    cid = character_id(sheet)
+    out: List[Tuple[str, int, int]] = []
+    if "hitPoints" in sheet or "maxHitPoints" in sheet:
+        hp = _pool(cid, "hitPoints", sheet.get("hitPoints"), sheet.get("maxHitPoints"), gaps)
+        if hp is not None:
+            out.append(("hp", hp[0], hp[1]))
+    slots = (sheet.get("spellcasting") or {}).get("spellSlots") if isinstance(sheet.get("spellcasting"), dict) else None
+    for key, pool in sorted((slots or {}).items()) if isinstance(slots, dict) else []:
+        if not (isinstance(pool, dict) and str(key).startswith("level")):
+            continue
+        p = _pool(cid, f"spellSlots.{key}", pool.get("current"), pool.get("max"), gaps)
+        if p is not None:
+            out.append((slot_resource_id(key), p[0], p[1]))
+    seen: set = set()
+    for feature in sheet.get("classFeatures") or []:
+        if not isinstance(feature, dict) or not isinstance(feature.get("usage"), dict) or not feature.get("name"):
+            continue
+        rid = feature_resource_id(feature["name"])
+        if rid in seen:
+            gaps.append(f"{cid}: feature {feature['name']!r} shares a resource id with another feature; skipped")
+            continue
+        p = _pool(cid, f"usage of {feature['name']!r}", feature["usage"].get("current"), feature["usage"].get("max"), gaps)
+        if p is not None:
+            seen.add(rid)
+            out.append((rid, p[0], p[1]))
+    return out
+
+
 def _training(sheet: Dict[str, Any]) -> List[str]:
     out: List[str] = []
     for label in (sheet.get("proficiencies") or {}).get("armor") or []:
@@ -270,6 +325,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 gaps.append(f"{cid}: currency.{coin} is not a non-negative integer; resource starts at 0")
                 amount = 0
             resources.append(f' resource {_q(coin)} = {amount} min 0 max {COIN_MAX};')
+        for rid, current, maximum in pool_resources(sheet, gaps):
+            resources.append(f' resource {_q(rid)} = {current} min 0 max {maximum};')
         lines.append(
             f"character {_q(cid)} named {_q(sheet.get('name', ''))} at {_q(loc)} {{\n"
             f' stat "dexterity" = {dex};\n stat "defense" = 10;\n' + "\n".join(resources) + "\n}"
