@@ -264,7 +264,7 @@ def prepare_character_update(character_name, changes, party_tracker_data=None):
         from core.validation.character_validator import AICharacterValidator
 
         validation = AICharacterValidator().validate_and_correct_character_smart_with_result(
-            deepcopy(receipt["after"]), max_attempts=1
+            deepcopy(receipt["after"]), before=deepcopy(receipt["before"]), max_attempts=1
         )
         receipt["after"] = validation.data
         receipt["advisory_validation"] = {
