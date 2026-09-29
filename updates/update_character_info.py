@@ -1900,6 +1900,8 @@ Your primary goal is to generate the smallest possible valid JSON object that re
    - To **REMOVE** an item entirely: Set its quantity to 0 (or quantityDelta minus the whole stack)
      - *Example:* `{{ "equipment": [{{ "item_name": "Shield", "quantity": 0 }}] }}`
    - `quantity` on an item already on the sheet is refused unless it is 0. Stock changes are always `quantityDelta`, the same way coins are currencyDelta and hit points are hpDelta.
+   - When the change names a number, send exactly that number as the delta, even if the sheet holds fewer. NEVER clamp it or turn it into quantity 0: the engine refuses using more than the character has and the DM is told. `quantity: 0` is only for a change that removes the item entirely without naming a number ("sold the shield", "lost all the arrows").
+     - *Example:* sheet has Gemstones x5, change says "Remove 9 Gemstones" -> `{{ "equipment": [{{ "item_name": "Gemstones", "quantityDelta": -9 }}] }}` (NOT quantity 0, NOT quantityDelta -5)
 
 3. **For Nested Objects (like `currency` or `spellcasting.spellSlots`):**
    - Only return the specific key-value pairs that were modified.
@@ -2528,6 +2530,13 @@ Character Role: {character_role}
             
             if not is_valid:
                 error(f"VALIDATION: Validation failed: {error_msg}", category="character_validation")
+                if last_engine_refusal:
+                    # The engine refused the amount the change stated (not
+                    # enough coins, stock, slots or uses). T079 must not
+                    # reinterpret the amount: a retry that sees the refusal
+                    # clamps it to what the sheet holds (observed live). The
+                    # DM decides what happens instead; nothing was written.
+                    raise EngineRefusedChange(last_engine_refusal)
                 bounded_failure_count += 1
                 
                 # Add validation error feedback to the prompt for next attempt
