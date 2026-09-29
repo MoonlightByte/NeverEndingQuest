@@ -262,7 +262,10 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
             definition, mode = "gear:worn", "worn"
     elif item_type == "weapon":
         definition, mode = "gear:held", "held"
-    elif worn:
+    elif definition is None:
+        # Every other item can be worn or carried ready (a lantern, a holy
+        # symbol, a cloak): it occupies no slot. Declared whether or not it is
+        # equipped now, so a later equip has a typed definition to use.
         definition, mode = "gear:worn", "worn"
     if worn and quantity not in (None, 1):
         gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, item left unworn")
