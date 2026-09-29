@@ -712,6 +712,58 @@ def _build_bindings():
 
 
 CALLSITE_BINDINGS: Mapping[str, CallsiteBinding] = _build_bindings()
+
+# Per-callsite output ceilings for OpenAI answers, in characters of streamed
+# output: four times the 95th percentile of that callsite's captured answers
+# (owner rule, 2026-09-29; measured over the kit captures, see the table's
+# source note). A streamed answer that passes its ceiling is aberrant by
+# measurement (the observed runaway was 55 times the largest real T067
+# answer), so the stream is closed and the identical request is reissued.
+# Callsites without an entry have no ceiling. Never sent to a provider.
+OPENAI_OUTPUT_CEILING_CHARS: Mapping[str, int] = {
+    # Source: kit captures scanned 2026-09-29 (OpenAI answers only; callsites with
+    # fewer than 30 answers are not listed). T067 max excludes the 170,922-char runaway.
+    "T013": 3560,  # n=55 p95=890 max=1003
+    "T015": 35244,  # n=43 p95=8811 max=9749
+    "T016": 6652,  # n=43 p95=1663 max=2129
+    "T034": 5540,  # n=32 p95=1385 max=1386
+    "T040": 3344,  # n=31 p95=836 max=949
+    "T042": 13512,  # n=90 p95=3378 max=3798
+    "T044": 5416,  # n=31 p95=1354 max=1535
+    "T047": 12060,  # n=58 p95=3015 max=3348
+    "T048": 4252,  # n=42 p95=1063 max=2558
+    "T049": 1168,  # n=60 p95=292 max=309
+    "T051": 14628,  # n=117 p95=3657 max=3906
+    "T052": 4204,  # n=38 p95=1051 max=1518
+    "T053": 10568,  # n=39 p95=2642 max=2690
+    "T063": 4680,  # n=55 p95=1170 max=1226
+    "T064": 7960,  # n=56 p95=1990 max=2012
+    "T065": 1564,  # n=706 p95=391 max=584
+    "T067": 5528,  # n=1368 p95=1382 max=3099
+    "T077": 1072,  # n=73 p95=268 max=322
+    "T078": 176,  # n=85 p95=44 max=44
+    "T079": 3576,  # n=100 p95=894 max=2415
+    "T082": 960,  # n=356 p95=240 max=276
+    "T084": 18448,  # n=3830 p95=4612 max=7811
+    "T090": 5892,  # n=73 p95=1473 max=1580
+    "T092": 18808,  # n=34 p95=4702 max=4747
+    "T096": 7412,  # n=353 p95=1853 max=1896
+    "T097": 3012,  # n=122 p95=753 max=826
+    "T105": 2776,  # n=477 p95=694 max=1275
+    "T107": 5372,  # n=858 p95=1343 max=1884
+    "T112": 376,  # n=102 p95=94 max=175
+    "T115": 70596,  # n=139 p95=17649 max=18283
+    "T116": 16460,  # n=36 p95=4115 max=4936
+    "T117": 23192,  # n=80 p95=5798 max=6774
+    "T118": 11128,  # n=32 p95=2782 max=3118
+    "T119": 38248,  # n=104 p95=9562 max=11583
+}
+
+
+def openai_output_ceiling(task_id):
+    """The output ceiling for one callsite on the openai provider, or None."""
+    value = OPENAI_OUTPUT_CEILING_CHARS.get(task_id)
+    return value if isinstance(value, int) and value > 0 else None
 # Reviewed source inventory: 75 register_callsite IDs plus enabled T104, plus the
 # NPC-voice family T105 (voice+affinity) and T107 (profile seed). Keep this
 # independent from _DECLARATIONS so deleting/adding a binding cannot make the

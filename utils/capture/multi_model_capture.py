@@ -344,6 +344,15 @@ def _resolve_effective_callsite_kwargs(task_id, provider, kwargs, attempt=0):
     for option in ("max_tokens", "max_completion_tokens"):
         if option in selected:
             effective[option] = copy.deepcopy(selected[option])
+    # Per-callsite output ceiling, OpenAI only: a streamed answer past it is
+    # abandoned and the identical request reissued (core/ai/api_client).
+    effective.pop("_output_ceiling_chars", None)
+    if provider == "openai":
+        from model_registry import openai_output_ceiling
+
+        ceiling = openai_output_ceiling(task_id)
+        if ceiling:
+            effective["_output_ceiling_chars"] = ceiling
     return effective
 
 
