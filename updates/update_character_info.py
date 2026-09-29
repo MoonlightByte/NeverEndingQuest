@@ -2445,7 +2445,7 @@ Character Role: {character_role}
                         # Use smart validation that checks cache first
                         validation_result = (
                             validator.validate_and_correct_character_smart_with_result(
-                                char_data
+                                char_data, before=persisted_character_data
                             )
                         )
                         validated_data = validation_result.data

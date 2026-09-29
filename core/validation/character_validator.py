@@ -346,6 +346,7 @@ _CONTAINER_STRUCTURED_CONTENT_FIELDS = ("contents", "contained_items")
 _DESTRUCTIVE_SOURCE_BASE_FIELDS = frozenset({
     "item_name",
     "item_type",
+    "nql_id",
     "description",
     "quantity",
     "equipped",
@@ -412,7 +413,7 @@ def _require_destructively_safe_source_item(
         raise CharacterValidationResponseError(
             f"{path} conservation rejects magical value-bearing metadata"
         )
-    if item.get("item_subtype") not in (None, ""):
+    if item.get("item_subtype") not in (None, "", "other"):
         raise CharacterValidationResponseError(
             f"{path} conservation rejects non-discardable item_subtype metadata"
         )
@@ -1318,12 +1319,15 @@ class AICharacterValidator:
         equipment = character_data.get('equipment', [])
         
         # Filter to items most likely to need validation
+        focus_names = getattr(self, '_focus_names', None)
         for item in equipment:
+            if focus_names is not None and str(item.get('item_name')) not in focus_names:
+                continue
             item_name = item.get('item_name', '').lower()
             item_type = item.get('item_type', '').lower()
             description = item.get('description', '').lower()
             
-            include = False
+            include = item_type not in VALID_INVENTORY_ITEM_TYPES
             
             # 1. Check miscellaneous items (but exclude high-confidence ones)
             if item_type == 'miscellaneous':
@@ -1426,6 +1430,9 @@ class AICharacterValidator:
             # The prompt builder exposes only the four fields it needs, while
             # the parser retains this complete private source row so a safe
             # container rename cannot discard unrelated item metadata.
+            focus_names = getattr(self, '_focus_names', None)
+            if focus_names is not None and str(item.get('item_name')) not in focus_names:
+                continue
             candidate = copy.deepcopy(item)
             try:
                 supported_rename = _supported_container_rename(candidate)
@@ -1696,66 +1703,19 @@ class AICharacterValidator:
     def validate_and_correct_character_with_result(
         self,
         character_data: Dict[str, Any],
+        before: Optional[Dict[str, Any]] = None,
+        max_attempts: Optional[int] = None,
     ) -> CharacterValidationResult:
-        """
-        AI-powered validation and correction of character data
-        
-        Args:
-            character_data: Character JSON data
-            
-        Returns:
-            AI-corrected character data with proper AC calculation
-        """
-        self.corrections_made = []
-        
-        # Log activation message for user visibility in debug window
-        character_name = character_data.get('name', 'Unknown')
-        # Use print for immediate visibility in debug tab
-        print(f"DEBUG: [AI Validator] Activating character validator for {character_name}...")
-        info(f"[AI Validator] Activating character validator for {character_name}...", category="character_validation")
-        
-        # Keep an untouched snapshot. Provider work and deterministic repairs
-        # always operate on copies so outcome comparison remains authoritative.
-        original_snapshot = copy.deepcopy(character_data)
+        """One validation entry for every caller (E7).
 
-        # OPTIMIZATION: Batch all validations into a single AI call
-        ai_result = self.ai_validate_all_batched_with_result(
-            copy.deepcopy(original_snapshot)
+        The combined three-task call (T053) is retired: armor class is the
+        engine's, and categorization and consolidation run only for entries a
+        write introduced or left untyped when ``before`` is supplied. Callers
+        without a pre-write sheet keep the content-cache gate.
+        """
+        return self.validate_and_correct_character_smart_with_result(
+            character_data, before=before, max_attempts=max_attempts,
         )
-        if not ai_result.success:
-            warning(
-                f"[AI Validator] Character validation failed for {character_name}: "
-                f"{ai_result.error}",
-                category="character_validation",
-            )
-            corrected_data = self._apply_deterministic_validations(
-                original_snapshot
-            )
-            return _failed_validation_result(
-                character_data,
-                RuntimeError(ai_result.error or "T053 validation failed"),
-                corrected_data,
-            )
-        corrected_data = self._apply_deterministic_validations(ai_result.data)
-        corrected_data = self._project_armor_class(corrected_data)
-        
-        # Future: Add other AI validations here
-        # - Temporary effects expiration  
-        # - Attack bonus calculation
-        # - Saving throw bonuses
-        
-        # Log completion message
-        if self.corrections_made:
-            print(f"DEBUG: [AI Validator] Character validation complete for {character_name}: {len(self.corrections_made)} corrections made")
-            info(f"[AI Validator] Character validation complete for {character_name}: {len(self.corrections_made)} corrections made", category="character_validation")
-            for correction in self.corrections_made:
-                print(f"DEBUG:   - {correction}")
-                info(f"  - {correction}", category="character_validation")
-        else:
-            print(f"DEBUG: [AI Validator] Character validation complete for {character_name}: No corrections needed")
-            info(f"[AI Validator] Character validation complete for {character_name}: No corrections needed", category="character_validation")
-        
-        return _validation_result(character_data, corrected_data)
 
     def validate_and_correct_character(
         self,
@@ -1783,7 +1743,34 @@ class AICharacterValidator:
                  category="character_validation")
         return projection.sheet
 
-    def check_validation_needs(self, character_data: Dict[str, Any]) -> Dict[str, bool]:
+    def _entries_needing_typing(self, before: Dict[str, Any], after: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Equipment entries the write introduced or left untyped (typed facts only).
+
+        An entry is new when its nql_id was not on the sheet before, or, for an
+        entry that has no id yet, when no entry of that item_name was. An entry
+        is untyped when its item_type is not one the schema lists. Nothing
+        else on the sheet asks the categorization or consolidation models for
+        an opinion (E7).
+        """
+        before_ids = set()
+        before_names = set()
+        for entry in before.get('equipment') or []:
+            if isinstance(entry, dict):
+                if isinstance(entry.get('nql_id'), str):
+                    before_ids.add(entry['nql_id'])
+                before_names.add(str(entry.get('item_name', '')))
+        focus = []
+        for entry in after.get('equipment') or []:
+            if not isinstance(entry, dict) or not entry.get('item_name'):
+                continue
+            nql_id = entry.get('nql_id')
+            is_new = (nql_id not in before_ids) if isinstance(nql_id, str) else (str(entry['item_name']) not in before_names)
+            untyped = str(entry.get('item_type', '')).lower() not in VALID_INVENTORY_ITEM_TYPES
+            if is_new or untyped:
+                focus.append(entry)
+        return focus
+
+    def check_validation_needs(self, character_data: Dict[str, Any], before: Optional[Dict[str, Any]] = None) -> Dict[str, bool]:
         """
         Check which validations actually need API calls (not cached)
         
@@ -1794,6 +1781,12 @@ class AICharacterValidator:
             Dictionary indicating which validations need API calls
         """
         character_name = character_data.get('name', 'Unknown')
+        # With the pre-write sheet in hand, only entries the write introduced
+        # or left untyped are offered to the models; a storage move, a payment
+        # or a coin handoff offers none and makes no call.
+        self._focus_names = None
+        if before is not None:
+            self._focus_names = {str(e.get('item_name')) for e in self._entries_needing_typing(before, character_data)}
         needs_validation = {
             'ac': False,
             'inventory': False,
@@ -1832,6 +1825,8 @@ class AICharacterValidator:
     def validate_and_correct_character_smart_with_result(
         self,
         character_data: Dict[str, Any],
+        before: Optional[Dict[str, Any]] = None,
+        max_attempts: Optional[int] = None,
     ) -> CharacterValidationResult:
         """
         Smart validation that only calls validators that need updates
@@ -1850,7 +1845,7 @@ class AICharacterValidator:
         original_snapshot = copy.deepcopy(character_data)
 
         # Check what needs validation
-        needs = self.check_validation_needs(original_snapshot)
+        needs = self.check_validation_needs(original_snapshot, before=before)
 
         # Count how many validations are needed
         needed_count = sum(1 for v in needs.values() if v)
@@ -3817,6 +3812,41 @@ Remember to return a single JSON response with all three validation results."""
         # No corrections needed
         return character_data
     
+    def _apply_consolidation_through_engine(
+        self,
+        character_data: Dict[str, Any],
+        updates: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Execute a parsed T054 proposal: removals and coin credits through the
+        engine, then the non-engine parts (ammunition rows, container renames)
+        merged by name. A refusal raises the validator's contract error so the
+        loop retries or fails open with the sheet unchanged."""
+        from core.nql import consolidate as nql_consolidate
+        from updates.update_character_info import deep_merge_dict
+
+        directives = updates.get('equipment') or []
+        removals = [d['item_name'] for d in directives if isinstance(d, dict) and d.get('_remove') is True]
+        host_equipment = [d for d in directives if isinstance(d, dict) and d.get('_remove') is not True]
+        current = character_data.get('currency') if isinstance(character_data.get('currency'), dict) else {}
+        delta = {}
+        for coin, total in (updates.get('currency') or {}).items():
+            change = int(total) - int(current.get(coin, 0) or 0)
+            if change:
+                delta[coin] = change
+        outcome = nql_consolidate.transact(character_data, removals, delta)
+        for gap in outcome.gaps:
+            debug(f"[Consolidation Engine] {character_data.get('name')}: {gap}", category="character_validation")
+        if not outcome.ok:
+            raise CharacterValidationResponseError(
+                f"T054: the rules engine refused the consolidation: {outcome.reason}"
+            )
+        host = {}
+        if host_equipment:
+            host['equipment'] = host_equipment
+        if updates.get('ammunition'):
+            host['ammunition'] = updates['ammunition']
+        return deep_merge_dict(outcome.sheet, host) if host else outcome.sheet
+
     def ai_consolidate_inventory_with_result(
         self,
         character_data: Dict[str, Any],
@@ -3946,9 +3976,10 @@ Remember to return a single JSON response with all three validation results."""
                 )
                 
                 if consolidation_updates:
-                    # Apply updates using deep merge (same pattern as main character updater)
-                    from updates.update_character_info import deep_merge_dict
-                    corrected_data = deep_merge_dict(character_data, consolidation_updates)
+                    # The engine consumes the source entries and credits the
+                    # coins in one request (core/nql/consolidate); ammunition
+                    # rows and container renames are merged by name after it.
+                    corrected_data = self._apply_consolidation_through_engine(character_data, consolidation_updates)
                 else:
                     # No consolidation needed
                     corrected_data = character_data
