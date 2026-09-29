@@ -37,13 +37,13 @@
 # - temporaryEffects: Complete array replacement (not merged)
 # - Equipment: Smart merging by item_name
 # - Ammunition: Additive updates (+20 arrows, -10 bolts)
-# - Currency: Always return final values after transactions
+# - Currency: engine-owned (core/nql/currency); T079 returns currencyDelta (signed per coin), never totals
 # 
 # COMMON ISSUES & SOLUTIONS:
 # =========================
 # 1. "Invalid format specifier" - Check debug log for malformed AI response
 # 2. Effects not clearing - Verify temporaryEffects is in complete_replacement_arrays
-# 3. Currency not updating - Ensure all denominations (gold/silver/copper) returned
+# 3. Currency not updating - T079 must return currencyDelta; a 'currency' totals object is refused
 # 4. Equipment not merging - Check item_name matches exactly
 # 
 # This module provides secure, validated character data updates using AI to
@@ -474,8 +474,8 @@ Enhanced Item Type Mappings:
 Equipment Array Example:
 [{"item_name": "Sword", "item_type": "weapon", "description": "Sharp blade", "quantity": 1}]
 
-Currency Example: 
-{"gold": 50, "silver": 10, "copper": 25}
+Currency Delta Example (signed change per coin, never totals):
+{"currencyDelta": {"gold": -50, "silver": 10}}
 
 Ammunition Example:
 [{"name": "Arrows", "quantity": 20, "description": "Standard arrows"}]
@@ -1089,6 +1089,29 @@ def prepare_character_delta(character_data, updates, character_role, schema,
     if ('experience_points' in updates and
             updates['experience_points'] < character_data.get('experience_points', 0)):
         del updates['experience_points']
+    # Coins are engine-owned (core/nql/currency): the model reports a signed
+    # change per coin type and the engine produces the balance, refusing a
+    # payment the sheet cannot cover. A totals object is refused so the next
+    # attempt states the change instead of a balance.
+    currency_delta = updates.pop('currencyDelta', None)
+    if 'currency' in updates:
+        return updates, character_data, {
+            'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
+            'error_message': ("currency totals are not accepted; report the change as "
+                              "currencyDelta {gold, silver, copper} signed whole numbers"),
+        }
+    if currency_delta is not None:
+        from core.nql import currency as nql_currency
+
+        outcome = nql_currency.apply_delta(character_data, currency_delta)
+        if not outcome.ok:
+            return updates, character_data, {
+                'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
+                'error_message': f"the currency change was refused by the rules engine: {outcome.reason}",
+            }
+        updates['currency'] = dict(outcome.sheets[0]['currency'])
+        for gap in outcome.gaps:
+            debug(f"[Currency Engine] {character_name}: {gap}", category="character_updates")
     updated_data = deep_merge_dict(character_data, updates)
     if managed_effect_operation:
         from core.effects.lifecycle import apply_effect_ops
@@ -1165,7 +1188,7 @@ def _is_meaningful_character_delta(updates, schema):
         return True
     properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
     return isinstance(properties, dict) and any(
-        field in properties for field in updates
+        field in properties or field == 'currencyDelta' for field in updates
     )
 
 
@@ -1278,6 +1301,8 @@ def validate_requested_character_update_completeness(changes, updates):
     """Return ``(is_complete, missing_fields)`` for explicit T079 requests."""
     required = infer_requested_character_update_fields(changes)
     present = set(updates) if isinstance(updates, dict) else set()
+    if 'currencyDelta' in present:
+        present.add('currency')
     missing = sorted(required - present)
     return not missing, missing
 
@@ -1660,7 +1685,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 
 3. **For Nested Objects (like `currency` or `spellcasting.spellSlots`):**
    - Only return the specific key-value pairs that were modified.
-   - *Example (Spending Gold):* `{{ "currency": {{ "gold": 125 }} }}` (Do NOT include silver and copper if they are unchanged).
+   - *Example (Spending Gold):* `{{ "currencyDelta": {{ "gold": -12 }} }}` (signed change per coin type; never a total, never a `currency` object; omit unchanged coins).
    - *Example (Using a Spell Slot):* `{{ "spellcasting": {{ "spellSlots": {{ "level1": {{ "current": 3 }} }} }} }}` (Do NOT include other spell slot levels).
 
 4. **For Complex Updates Affecting Multiple Systems:**
@@ -1801,19 +1826,17 @@ CRITICAL INSTRUCTIONS:
 10. HIT DICE RULE: IGNORE all references to hit dice, Hit Dice, HD, or hit dice restoration. Do NOT add hitDice, hitDiceRestored, or maxHitDice fields. The system does not track hit dice.
 11. REST HEALING: For long rests, simply restore hitPoints to maxHitPoints and restore spell slots. For short rests, restore some hitPoints based on the description. Do not implement hit dice mechanics.
 12. CURRENCY MANAGEMENT - CRITICAL RULES:
-    a) ALWAYS return the FINAL currency values after ANY transaction
-    b) NEVER return just the change amount or partial currency objects
-    c) Include ALL currency types (gold, silver, copper) even if unchanged
-    
-    TRANSACTION TYPES:
-    - SPENDING/PAYING: Subtract from current amount
-      Example: Has 367 gold, pays 100 gold -> Return {{"currency": {{"gold": 267, "silver": 61, "copper": 14}}}}
-    - RECEIVING/FINDING: Add to current amount  
-      Example: Has 267 gold, finds 50 gold -> Return {{"currency": {{"gold": 317, "silver": 61, "copper": 14}}}}
-    - TRADING/EXCHANGING: Update all affected denominations
-      Example: Trades 100 silver for 10 gold -> Calculate and return new totals
-    
-    CRITICAL: Look at the current currency values in the character data and calculate the FINAL amount after the transaction. Do NOT return the amount found/paid, return the TOTAL after adding/subtracting.
+    a) Coins are owned by the rules engine. Report the CHANGE, never the balance: return
+       {{"currencyDelta": {{"gold": <signed int>, "silver": <signed int>, "copper": <signed int>}}}}
+       with only the coin types that change. Negative = paid or given away, positive = received or found.
+    b) NEVER return a "currency" object and never compute a final total; the engine applies the delta to
+       the sheet's real balance and refuses a payment the character cannot cover.
+    c) A payment in a coin the character lacks is two signed entries the DM stated (e.g. change a gold
+       piece: {{"currencyDelta": {{"gold": -1, "silver": 8}}}} for a 2 silver fee). Do not invent a conversion
+       the request did not describe.
+    d) Examples: pays 100 gold -> {{"currencyDelta": {{"gold": -100}}}}; finds 50 gold and 20 silver ->
+       {{"currencyDelta": {{"gold": 50, "silver": 20}}}}; "kept 38 gold" is a balance statement, not a change:
+       return {{}} and let the request be corrected rather than guessing a delta.
 13. STATUS-CONDITION SYNCHRONIZATION: Always maintain consistency between status, condition, and hitPoints fields:
     - When status changes to "alive" and hitPoints > 0, automatically set condition to "none" and clear condition_affected array
     - When hitPoints > 0 and status is "alive", condition cannot be "unconscious"
@@ -2197,58 +2220,8 @@ Character Role: {character_role}
             #     print(f"[DEBUG] Ammunition updates: {updates['ammunition']}")
             
             
-            # Currency reduction validation
-            if 'currency' in updates:
-                current_currency = character_data.get('currency', {})
-                new_currency = updates.get('currency', {})
-                needs_verification = False
-                reduction_details = []
-                
-                for coin_type in ['gold', 'silver', 'copper']:
-                    current_val = current_currency.get(coin_type, 0)
-                    new_val = new_currency.get(coin_type, current_val)
-                    
-                    if new_val < current_val:
-                        needs_verification = True
-                        reduction_amount = current_val - new_val
-                        reduction_details.append(f"{coin_type}: {current_val} -> {new_val} (-{reduction_amount})")
-                
-                if needs_verification:
-                    print(f"DEBUG: [Currency Update] Currency reduction detected for {character_name}: {', '.join(reduction_details)}")
-                    warning(f"CURRENCY REDUCTION: {character_name} - {', '.join(reduction_details)}", category="character_updates")
-                    
-                    # Create verification prompt
-                    verification_prompt = f"""CURRENCY REDUCTION VERIFICATION REQUIRED:
-
-Character: {character_name}
-Detected reductions: {', '.join(reduction_details)}
-Original request: {changes}
-
-IMPORTANT: Currency should ONLY be reduced in these cases:
-- Making a purchase or trade
-- Giving money away intentionally
-- Losing money (theft, gambling, penalties)
-- Explicit command to remove currency
-
-Currency should NOT be reduced when:
-- Finding coins in containers/coffers
-- Receiving rewards or payment
-- Looting enemies or discovering treasure
-- Opening chests with coins inside
-
-Based on the context, is this currency reduction correct?
-If this was FINDING coins, you should ADD to existing currency, not replace it.
-
-Please provide the CORRECT currency values:
-- Current gold: {current_currency.get('gold', 0)}, silver: {current_currency.get('silver', 0)}, copper: {current_currency.get('copper', 0)}
-- If adding found coins, return the sum of current + found amounts"""
-                    
-                    # Currency validation: Allow the transaction but monitor it
-                    info(f"CURRENCY TRANSACTION: Allowing currency change for {character_name}", category="character_updates")
-                    info(f"CURRENCY TRANSACTION: Details - {', '.join(reduction_details)}", category="character_updates")
-                    
-                    # The improved prompting should prevent calculation errors
-                    # We allow the transaction to proceed per the agentic approach
+            # Currency is engine-owned: prepare_character_delta applies a
+            # currencyDelta through core/nql/currency and refuses totals.
             
             # Debug HP changes BEFORE merge
             if 'hitPoints' in updates:
