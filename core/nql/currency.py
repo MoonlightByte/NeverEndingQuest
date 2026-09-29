@@ -137,8 +137,12 @@ def transfer(giver: Dict[str, Any], receiver: Dict[str, Any], amounts: Any, *, l
 
 
 def split(giver: Dict[str, Any], receivers: List[Dict[str, Any]], *, giver_keeps_share: bool = True,
-          location: str = "party", request_id: Optional[str] = None, binary: Optional[str] = None) -> CurrencyOutcome:
-    """Divide every coin type of the giver evenly; remainders stay with the giver.
+          coins: Optional[List[str]] = None, location: str = "party", request_id: Optional[str] = None,
+          binary: Optional[str] = None) -> CurrencyOutcome:
+    """Divide the giver's coins evenly; remainders stay with the giver.
+
+    ``coins`` limits the split to the named coin types ("split my silver");
+    None or empty means every coin type.
 
     Each receiver gets the giver's balance divided (whole numbers) by the number
     of shares: the receivers plus the giver when ``giver_keeps_share`` is true
@@ -152,8 +156,12 @@ def split(giver: Dict[str, Any], receivers: List[Dict[str, Any]], *, giver_keeps
     if gid in rids or len(set(rids)) != len(rids):
         return CurrencyOutcome(False, reason="split recipients must be distinct characters other than the giver")
     balance = _balance(giver)
+    selected = [str(c).strip().lower() for c in (coins or []) if str(c).strip()]
+    if any(c not in COIN_TYPES for c in selected):
+        return CurrencyOutcome(False, reason=f"unknown coin type in {coins!r}; use gold, silver, copper")
+    kinds = selected or list(COIN_TYPES)
     shares = len(receivers) + (1 if giver_keeps_share else 0)
-    share = {c: balance[c] // shares for c in COIN_TYPES}
+    share = {c: balance[c] // shares for c in kinds}
     share = {c: v for c, v in share.items() if v}
     if not share:
         return CurrencyOutcome(False, reason="the giver has too few coins to split")

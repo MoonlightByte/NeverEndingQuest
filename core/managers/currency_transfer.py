@@ -88,8 +88,14 @@ def execute_currency_transfer(from_character: str, to_character: str, amounts: D
 
 
 def execute_currency_split(from_character: str, to_characters: List[str], giver_keeps_share: bool = True,
-                           party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Split the giver's coins evenly with the named party characters."""
+                           party_tracker: Optional[Dict[str, Any]] = None, coins=None) -> Dict[str, Any]:
+    """Split the giver's coins evenly with the named party characters.
+
+    ``coins`` (a list of coin types) limits the split to those types; None
+    means every coin type.
+    """
+    if coins is not None and not isinstance(coins, list):
+        return {"success": False, "error": "splitCurrency 'coins' must be a list of coin types"}
     if not isinstance(to_characters, list) or not to_characters:
         return {"success": False, "error": "splitCurrency needs a list of recipients"}
     giver_path = _resolve(from_character)
@@ -103,14 +109,15 @@ def execute_currency_split(from_character: str, to_characters: List[str], giver_
         paths.append(path)
     result = _run(paths,
                   lambda sheets, loc: nql_currency.split(sheets[0], sheets[1:], giver_keeps_share=bool(giver_keeps_share),
-                                                         location=loc),
+                                                         coins=coins, location=loc),
                   party_tracker)
     if not result.get("success"):
         return result
     outcome, before = result["outcome"], result["sheets"]
     after = outcome.sheets
     shares = "; ".join(f"{s.get('name')} received {_coins(outcome.moved.get(str(s.get('name')), {}))}" for s in before[1:])
-    message = (f"{before[0].get('name')} split coins evenly: {shares}. Balances now: "
+    what = " and ".join(str(c) for c in coins) if coins else "coins"
+    message = (f"{before[0].get('name')} split {what} evenly: {shares}. Balances now: "
                + "; ".join(f"{s.get('name')} {_coins(a['currency'])}" for s, a in zip(before, after)))
     info(f"SUCCESS: {message}", category="storage_operations")
     return {"success": True, "message": message}
