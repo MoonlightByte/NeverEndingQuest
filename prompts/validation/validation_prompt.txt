@@ -240,7 +240,10 @@ The parameters object MUST contain exactly the one key "narrative", whose value 
    - Create new storage ("I make a lockbox for valuables")
    - View storage contents ("What's in our storage?", "Check the chest")
    Requires "description" parameter with natural language description and "characterName" for the character performing the action.
-"transferItem": The sole authority for an item passing between two party characters (player or party NPC): giving, trading, sharing, lending, returning. One action per item with "fromCharacter", "toCharacter" (display names), "itemName" exactly as on the giver's supplied sheet, and an integer "quantity". The engine moves that stock and rewrites both sheets together or refuses and moves nothing; a worn item arrives unequipped. REJECT a handoff expressed as updateCharacterInfo on either character, as a storageInteraction, or as a one-sided action. A trade is two transferItem actions. Coins are not items: currency changes hands with updateCharacterInfo delta language on both characters.
+"transferItem": The sole authority for an item passing between two party characters (player or party NPC): giving, trading, sharing, lending, returning. One action per item with "fromCharacter", "toCharacter" (display names), "itemName" exactly as on the giver's supplied sheet, and an integer "quantity". The engine moves that stock and rewrites both sheets together or refuses and moves nothing; a worn item arrives unequipped. REJECT a handoff expressed as updateCharacterInfo on either character, as a storageInteraction, or as a one-sided action. A trade is two transferItem actions. Coins are not items: between party characters they move with transferCurrency or splitCurrency; a payment to or from a non-party character is an updateCharacterInfo change in delta language.
+"transferCurrency": The sole authority for coins passing between two party characters (player or party NPC): "fromCharacter", "toCharacter" (display names) and whole-number "gold"/"silver"/"copper" amounts (omit coin types that do not move). The engine moves the coins across both sheets or refuses and moves nothing. REJECT coins between party characters expressed as updateCharacterInfo on either character.
+"splitCurrency": Divides a party character's coins evenly among named party characters: "fromCharacter", "toCharacters" (list of display names), optional "giverKeepsShare" (default true: the giver takes an equal share; false: everything is handed out among the recipients). Whole-number division per coin type, remainders stay with the giver, computed by the engine. REJECT a split expressed as per-character updateCharacterInfo arithmetic.
+PLAYER COIN INSTRUCTIONS STAND: when the player plainly gives or splits their own coins, the transferCurrency/splitCurrency action is required in that same response and must not be withheld for confirmation or because a companion objects. A companion may object in the narration; that objection is words, not a reason to remove or shrink the action, and the narration must not claim the coins were refused or handed back in this turn (a companion returns coins on a later turn with its own transferCurrency). REJECT a response that pauses or refuses on a companion's behalf; correct it by emitting the action and keeping the objection as dialogue.
 "updatePartyTracker": Used when party module or location information needs updating. This action can trigger automatic conversation archiving and module summarization when module changes are detected. Required for inter-module travel. Should be used when players express intent to:
    - Travel to other modules ("I travel to [Module Name]", "Let's go to [Region]")
    - Change current module or location information
@@ -394,14 +397,14 @@ Important clarifications:
    6. Ignore user messages with "Location transition:" as they are notes to the DM on an action already taken and not actual player interactions.
    7. transitionLocation should not be taken unless the party or DM deliberly states the action. Questions about maps, areas, directions, etc are not changes in location so don't prompt the model to submit a transitionLocation for these questions.
    8. createEncounter should not be used for traps unless the trap involves monsters starting combat.
-   9. ALWAYS pay close attention to when trading occurs between the player and the party NPCs: every item that changes hands needs its own transferItem action and any coins need updateCharacterInfo deltas on both characters.
+   9. ALWAYS pay close attention to when trading occurs between the player and the party NPCs: every item that changes hands needs its own transferItem action and coins between party characters need transferCurrency or splitCurrency (never updateCharacterInfo on both).
    10. rollSkillCheck is not a valid action.
    11. RITUAL MATERIALS: When a character performs a ritual that consumes material components, the model MUST use updateCharacterInfo to remove those materials from inventory. If ritual materials are not removed after a ritual is performed, the response is invalid.
    12. LOCATION TRANSITIONS: For transitionLocation action, only use "newLocation" parameter with location ID:
        - ALL moves use location ID only (e.g., "newLocation": "C07", "newLocation": "B01")
        - NO "areaConnectivityId" parameter needed - system auto-detects area changes
        - Location ID must be valid format (letter + 2 digits like A01, B05, C03, etc.)
-   13. Character-to-character item handoff = ONE transferItem action per item (fromCharacter, toCharacter, itemName exactly as on the giver's supplied sheet, integer quantity); a trade is two transferItem actions. REJECT a handoff expressed as updateCharacterInfo on either character, as a storageInteraction, or one-sided; never demand a container. A container operation followed by a handoff of the retrieved items is two distinct movements: storageInteraction, then transferItem. Coins change hands with updateCharacterInfo delta language.
+   13. Character-to-character item handoff = ONE transferItem action per item (fromCharacter, toCharacter, itemName exactly as on the giver's supplied sheet, integer quantity); a trade is two transferItem actions. REJECT a handoff expressed as updateCharacterInfo on either character, as a storageInteraction, or one-sided; never demand a container. A container operation followed by a handoff of the retrieved items is two distinct movements: storageInteraction, then transferItem. Coins between party characters change hands with transferCurrency or splitCurrency.
 
 Here are examples of acceptable model assistant responses:
 
@@ -780,16 +783,15 @@ STORAGE TRANSACTION VALIDATION:
 
 When you see storage operations with fees, validate:
 
-1. CURRENCY MATH ACCURACY:
-   - Check if character has sufficient total currency value
-   - Verify gold/silver/copper conversion math (1 gold = 10 silver = 100 copper)
-   - Confirm final currency amounts are correct
-   - Ensure no negative balances
+1. CURRENCY CHANGE STATED:
+   - The fee note must state the coins paid as a change (delta language), never a resulting balance
+   - Coins are not converted automatically; paying in a coin type the character lacks must be stated as signed amounts on both coin types (e.g. gold -1, silver +8)
+   - The rules engine applies the change to the real balance and refuses an overdraft; do not redo the arithmetic or demand conversion math
 
 2. ACTION SEQUENCE CORRECTNESS:
    - Currency payment (updateCharacterInfo) MUST come before storage (storageInteraction)
    - Both actions must reference the same character
-   - Currency changes must show clear conversion math
+   - Currency changes must be stated as changes, not balances
    - storageInteraction itself owns removal/addition of the stored items
    - REJECT a redundant updateCharacterInfo that adds or removes the same items handled by storageInteraction; updateCharacterInfo is permitted here only for a distinct fee or unrelated character change
    - A character-to-character handoff is never a storageInteraction; require transferItem and REJECT a storageInteraction or updateCharacterInfo used for it
@@ -800,28 +802,26 @@ When you see storage operations with fees, validate:
 
 EXAMPLE VALIDATION:
 Player has 156 gold, 0 silver, wants to pay 2 silver:
-VALID: "Convert 1 gold to 10 silver (155 gold + 10 silver), then pay 2 silver (final: 155 gold, 8 silver)"
-INVALID: "Deduct 2 silver" (would create negative silver)
+VALID: "Pay 2 silver for the fee, changing 1 gold for silver: gold -1, silver +8"
+INVALID: "Pay the fee; now has 155 gold and 8 silver" (a balance, not a change)
 
 COMMON STORAGE TRANSACTION ERRORS TO CATCH:
 
-1. "Currency deduction without conversion": 
-   - REJECT if trying to deduct silver when character has 0 silver but has gold
-   - REQUIRE proper gold-to-silver conversion math
+1. "Balance instead of change":
+   - REJECT a fee note that states a resulting balance ("now has", "kept", "final")
+   - REQUIRE the coins paid as signed changes
 
 2. "Wrong action order":
    - REJECT if storageInteraction comes before updateCharacterInfo for paid storage
    - REQUIRE currency payment first
 
-3. "Missing currency math":
-   - REJECT if changes don't show conversion calculations
-   - REQUIRE explicit "X gold becomes Y gold + Z silver" format
+3. "Silent conversion":
+   - REJECT a payment in a coin type the DM Note shows the character lacks unless the exchange is stated as signed amounts on both coin types
 
 4. "Insufficient funds":
-   - REJECT if total currency value insufficient for cost
-   - CALCULATE: (gold times 10) + silver + (copper divided by 10) must be greater than or equal to cost
+   - REJECT if the DM Note balance clearly cannot cover the stated change; the engine refuses an overdraft as well
 
-If currency math is wrong or sequence is incorrect, REJECT the response and explain the proper format with correct calculations.
+If the coin change is stated as a balance or the sequence is incorrect, REJECT the response and explain the proper format.
 
 
 ## EXPERIENCE POINT (XP) VALIDATION RULES

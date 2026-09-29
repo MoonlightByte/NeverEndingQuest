@@ -166,6 +166,8 @@ ACTION_CREATE_NEW_MODULE = "createNewModule"
 ACTION_ESTABLISH_HUB = "establishHub"
 ACTION_STORAGE_INTERACTION = "storageInteraction"
 ACTION_TRANSFER_ITEM = "transferItem"
+ACTION_TRANSFER_CURRENCY = "transferCurrency"
+ACTION_SPLIT_CURRENCY = "splitCurrency"
 ACTION_UPDATE_PARTY_TRACKER = "updatePartyTracker"
 ACTION_MOVE_BACKGROUND_NPC = "moveBackgroundNPC"
 ACTION_SAVE_GAME = "saveGame"
@@ -3849,6 +3851,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             debug(f"STATE_CHANGE: Updating character info for {character_name}", category="character_updates")
             try:
                 from core.managers.effects_runtime import update_character_with_effects
+                from updates.update_character_info import EngineRefusedChange
 
                 debug(f"STATE_CHANGE: Calling effects-aware character update for {character_name}", category="character_updates")
                 success = update_character_with_effects(
@@ -3870,6 +3873,17 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                             "error_message": "Character update failed safely; no partial effect was applied."
                         },
                     )
+            except EngineRefusedChange as refusal:
+                # The rules engine refused the change (E6: coins). Nothing was
+                # written; the model hears why and answers again, and later
+                # actions from this response do not run.
+                print(f"ERROR: Engine refused character update for {character_name}: {refusal.reason}")
+                conversation_history.append({"role": "user", "content": (
+                    f"Currency Error: {refusal.reason}. Nothing changed on {character_name}'s sheet. Later actions from "
+                    "this response have not executed. Do not repeat earlier completed actions; propose a payment the "
+                    "character can cover or narrate why it cannot happen.")})
+                needs_conversation_history_update = True
+                return create_return(status="needs_response", needs_update=True)
             except Exception as e:
                 error(f"FAILURE: Exception in character update", exception=e, category="character_updates")
                 # Use print with separate arguments to avoid format string interpretation
@@ -4535,6 +4549,51 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             import traceback
             traceback.print_exc()
             error_message = "Transfer System Error: An unexpected error occurred while handing the item over. Nothing moved. Later actions from this response have not executed; check current state before proposing further changes. Do not repeat earlier completed actions."
+            conversation_history.append({"role": "user", "content": error_message})
+            needs_conversation_history_update = True
+            return create_return(status="needs_response", needs_update=True)
+
+    elif action_type in (ACTION_TRANSFER_CURRENCY, ACTION_SPLIT_CURRENCY):
+        # Coins between party characters as one engine transaction across every
+        # sheet involved (core/nql/currency.py); all sheets are written together
+        # or none is.
+        debug(f"STATE_CHANGE: Processing {action_type} action", category="storage_operations")
+        status_updating_character()
+        try:
+            from core.managers.currency_transfer import execute_currency_split, execute_currency_transfer
+
+            if action_type == ACTION_TRANSFER_CURRENCY:
+                amounts = {coin: parameters.get(coin) for coin in ("gold", "silver", "copper")
+                           if parameters.get(coin) not in (None, "", 0)}
+                result = execute_currency_transfer(
+                    parameters.get("fromCharacter", ""), parameters.get("toCharacter", ""), amounts, party_tracker_data,
+                )
+            else:
+                result = execute_currency_split(
+                    parameters.get("fromCharacter", ""), parameters.get("toCharacters"),
+                    parameters.get("giverKeepsShare", True), party_tracker_data,
+                )
+            if result.get("success"):
+                info(f"SUCCESS: {result.get('message')}", category="storage_operations")
+                conversation_history.append({"role": "user", "content": f"Currency: {result.get('message')}"})
+                needs_conversation_history_update = True
+            else:
+                print(f"ERROR: {action_type} failed: {result.get('error')}")
+                error_message = (
+                    f"Currency Error: {result.get('error', 'the coin transfer was refused')}. No coins moved; every "
+                    "sheet is unchanged. Later actions from this response have not executed. Do not repeat earlier "
+                    "completed actions; propose the transfer again from the current balances or narrate why it cannot happen."
+                )
+                conversation_history.append({"role": "user", "content": error_message})
+                needs_conversation_history_update = True
+                return create_return(status="needs_response", needs_update=True)
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
+        except Exception as e:
+            print(f"ERROR: Exception while processing {action_type}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            error_message = "Currency System Error: An unexpected error occurred while moving coins. No coins moved. Later actions from this response have not executed; check current state before proposing further changes. Do not repeat earlier completed actions."
             conversation_history.append({"role": "user", "content": error_message})
             needs_conversation_history_update = True
             return create_return(status="needs_response", needs_update=True)

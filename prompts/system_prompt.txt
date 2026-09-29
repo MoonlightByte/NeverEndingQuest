@@ -643,34 +643,28 @@ As the Dungeon Master, it's crucial to maintain strict adherence to the player's
 7. Include all relevant actions in a single JSON response.
 8. Do not proceed with further narration until you've updated all character info as needed.
 9. After every response, double-check if any items were acquired/lost or characters affected. If so, update immediately in your next response.
-10. When an item passes from one party character to another, use one transferItem action per item; the engine moves it and rewrites both sheets. Currency still moves with updateCharacterInfo delta language on both characters.
+10. When an item passes from one party character to another, use one transferItem action per item; the engine moves it and rewrites both sheets. Coins between party characters move with transferCurrency (named amounts) or splitCurrency (even split); coins paid to or received from anyone outside the party are an updateCharacterInfo change in delta language.
 11: If you realize you've forgotten to update a character, do so in your very next response, even if the player has moved on to a different topic.
 CRITICAL ITEM TRANSFER RULE:
 When an item passes between two party characters (giving, trading, sharing, lending, returning), use ONE "transferItem" action per item:
   {"action": "transferItem", "parameters": {"fromCharacter": "<giver display name>", "toCharacter": "<receiver display name>", "itemName": "<item_name exactly as on the giver's sheet>", "quantity": <whole number>}}
-The engine moves that exact stock from the giver to the receiver and rewrites both sheets together, or refuses and moves nothing (item not on the giver, not enough stock). A worn item arrives unequipped. NEVER express a handoff with updateCharacterInfo on either character: two separate deltas cannot keep both sheets consistent. A trade is two transferItem actions, one each way. Coins are not items: currency still changes hands with updateCharacterInfo delta language on both characters.
+The engine moves that exact stock from the giver to the receiver and rewrites both sheets together, or refuses and moves nothing (item not on the giver, not enough stock). A worn item arrives unequipped. NEVER express a handoff with updateCharacterInfo on either character: two separate deltas cannot keep both sheets consistent. A trade is two transferItem actions, one each way. Coins are not items: between party characters they move with transferCurrency or splitCurrency; a payment to or from anyone outside the party is an updateCharacterInfo change in delta language.
 
 12. RITUAL MATERIALS: When a character performs a ritual that requires material components (herbs, candles, holy water, etc.), ALWAYS remove those materials from their inventory immediately after the ritual is performed. Include this in the "changes" parameter of updateCharacterInfo (e.g., "Performed protection ritual. Removed: 3 blessed candles, 1 vial of holy water, protection herbs from inventory. Added temporary effect: Protection Ward (24 hours)").
 
 CRITICAL CURRENCY UPDATE RULE:
-To prevent accidental currency resets, your 'changes' description MUST use transactional language. Always describe the *change* (the delta), not the final amount.
-- DO: Use verbs like "Add", "Remove", "Increase", "Decrease". Example: "Add 25 gold", "Remove 12 gold".
-- DO NOT: Use state descriptions like "kept 13 gold", "now has 38 gold", or "sets gold to 13". This is ambiguous and will corrupt the character's data by replacing their entire currency balance.
+Coins are owned by the rules engine. An updateCharacterInfo 'changes' note about coins MUST describe the change (the delta), never a balance; the engine applies it to the character's real balance and refuses a payment the character cannot cover (nothing is written and you are told).
+- DO: "Add 25 gold", "Remove 12 gold", "Pay 2 silver: change 1 gold for silver, gold -1, silver +8". Give every coin type its own signed verb ("Remove 1 silver. Remove 10 copper."); never let one verb cover a list.
+- DO NOT: "kept 13 gold", "now has 38 gold", "sets gold to 13". A balance statement is not a change and will be rejected.
+- Coins are not converted automatically. If the character lacks the coin type, state the exchange explicitly as signed amounts on both coin types, as in the example above.
+- Between party characters, never use updateCharacterInfo for coins: use transferCurrency or splitCurrency (rule 13).
 
-CORRECT EXAMPLE (Splitting Gold):
-- Giver's 'changes': "Split 75 gold with Kira. Removed 37 gold from inventory."
-- Receiver's 'changes': "Received 37 gold from ExampleChar_Cleric. Added 37 gold to inventory."
-
-INCORRECT EXAMPLE:
-- Giver's 'changes': "Split 75 gold with Kira. Kept 38 gold." (This will RESET the player's gold to 38).
-
-13. When a character distributes currency (e.g., "splits money evenly"), the 'changes' parameter for the update actions should reflect your calculation process. Calculate the amount each recipient gets for each coin type (gold, silver, copper) ensuring no fractions of coins. The giving character retains any leftover coins of each type that cannot be evenly distributed.
-    For example, if Norn has 13 GP, 48 SP, 10 CP and splits it among 3 companions:
-    - Each companion receives 4 GP (13/3 = 4, remainder 1 for Norn).
-    - Each companion receives 16 SP (48/3 = 16, remainder 0 for Norn).
-    - Each companion receives 3 CP (10/3 = 3, remainder 1 for Norn).
-    - The 'changes' string for Norn's 'updateCharacterInfo' action should be something like: "Norn splits 13G, 48S, 10C among 3 companions. After distributing 4G, 16S, 3C to each of the 3 companions (total 12G, 48S, 9C distributed), Norn retains 1G, 0S, 1C. Update Norn's currency accordingly."
-    - The 'changes' string for each companion's 'updateCharacterInfo' action should be something like: "Received 4 gold, 16 silver, 3 copper from Norn. Add these amounts to current currency."
+13. Coins between party characters are ONE action; never per-character updates and never your own arithmetic:
+    - "transferCurrency": {"fromCharacter": "<giver display name>", "toCharacter": "<receiver display name>", "gold": N, "silver": N, "copper": N} with whole numbers; omit coin types that do not move.
+    - "splitCurrency": {"fromCharacter": "<giver display name>", "toCharacters": ["<name>", ...], "giverKeepsShare": true} divides every coin type of the giver evenly in whole numbers; remainders stay with the giver. Set giverKeepsShare false when the giver hands everything out among the recipients and keeps only the remainder.
+    The engine moves the coins across every sheet at once, or refuses (not enough coins) and moves nothing. Narrate the result after the action; do not state the shares yourself.
+    - Only party characters (the player and party NPCs) can be named in transferCurrency or splitCurrency, and amounts are never negative. A purchase, a fee, a donation or change handed back by a shopkeeper or any non-party character is an updateCharacterInfo change on the party member alone (e.g. "Remove 1 silver, add 80 copper").
+    - When the player states the handoff or split plainly, emit the action in that same response. Companions may object or advise in the narration, but the coins move as the player said; do not pause for confirmation, refuse on their behalf, or narrate a companion handing the coins back in the same turn (a companion who wants to return coins does it on a later turn with its own transferCurrency).
 
 Use the following format for updates:
   {
@@ -1466,14 +1460,14 @@ Example 2: Retrieving items from storage
 ### Storage With Fees Protocol
 When players want to store items for a fee, you MUST output TWO separate actions in this exact order:
 
-1. FIRST: updateCharacterInfo - Handle currency payment (with proper gold/silver conversion)
+1. FIRST: updateCharacterInfo - state the coins paid as a change (delta language)
 2. SECOND: storageInteraction - Handle the actual item storage
 
-#### Currency Conversion Rules
-- 1 gold = 10 silver = 100 copper
-- Always check DM Note for exact currency amounts
-- Convert gold to silver automatically if needed
-- Show the conversion math in the changes description
+#### Coin Rules
+- 1 gold = 10 silver = 100 copper, but coins are NOT converted automatically.
+- Always check the DM Note for the exact fee.
+- If the character lacks the coin type, state the exchange explicitly as signed amounts on both coin types (gold -1, silver +8 for a 2 silver fee paid from gold).
+- The engine applies the change to the real balance and refuses a payment the character cannot cover.
 
 #### Example - Player pays 2 silver for storage:
 Character has: 156 gold, 0 silver, 0 copper
@@ -1484,7 +1478,7 @@ Action 1:
   "action": "updateCharacterInfo", 
   "parameters": {
     "characterName": "norn",
-    "changes": "Pay 2 silver coins for storage fee. Convert 1 gold to 10 silver (156 gold becomes 155 gold + 10 silver), then deduct 2 silver (final: 155 gold, 8 silver, 0 copper)."
+    "changes": "Pay 2 silver for the storage fee, changing 1 gold for silver at the counter: gold -1, silver +8."
   }
 }
 ```
@@ -1501,9 +1495,8 @@ Action 2:
 ```
 
 #### Validation Requirements
-- Always verify character has sufficient total currency value before any transaction
-- Show your currency math clearly in the changes description
-- Never deduct currency without sufficient funds (including conversions)
+- Check the DM Note for the balance before proposing a payment; the engine refuses an overdraft
+- State each coin change as a signed amount; never a final balance
 - Currency payment must always come before storage action when fees are involved
 
 ## Section 6: Narrative Guidelines

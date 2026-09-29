@@ -25,6 +25,10 @@ EQUIPMENT_VERSION = "nql-equipment-v1"
 # Typed values an item effect may use to name armor class as its target. This
 # is a fixed vocabulary of field values, not a search over prose.
 AC_EFFECT_TARGETS = ("AC", "armorClass", "armor class", "Armor Class")
+# Coins are engine resources on the character: exact integer balances with a
+# floor of zero, so an overdraft is refused rather than clamped or reset.
+COIN_TYPES = ("gold", "silver", "copper")
+COIN_MAX = 1_000_000_000_000
 DEFENSE_STYLE_FEATURE = "Fighting Style: Defense"
 DEFENSE_STYLE_CONDITION = "feature:defense-style"
 
@@ -258,9 +262,17 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         if dex is None:
             gaps.append(f"{cid}: abilities.dexterity is not an integer; defense recipe uses 10")
             dex = 10
+        coins = sheet.get("currency") if isinstance(sheet.get("currency"), dict) else {}
+        resources = []
+        for coin in COIN_TYPES:
+            amount = _int(coins.get(coin))
+            if amount is None or amount < 0:
+                gaps.append(f"{cid}: currency.{coin} is not a non-negative integer; resource starts at 0")
+                amount = 0
+            resources.append(f' resource {_q(coin)} = {amount} min 0 max {COIN_MAX};')
         lines.append(
             f"character {_q(cid)} named {_q(sheet.get('name', ''))} at {_q(loc)} {{\n"
-            f' stat "dexterity" = {dex};\n stat "defense" = 10;\n}}'
+            f' stat "dexterity" = {dex};\n stat "defense" = 10;\n' + "\n".join(resources) + "\n}"
         )
         for cond in _training(sheet):
             if cond not in condition_types:

@@ -68,7 +68,10 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   createNewModule: ONLY after specific commitment ("Yes investigate barrow")
   exitGame: end session
   storageInteraction: Judge item movement from the player's intent and accepted scene. Leaving owned items at the current location for later recovery is location storage, including an improvised cache or hiding place; it does not require a pre-existing container record or a purchased/manufactured box. Use storageInteraction for that deposit or retrieval (store/retrieve/create/view); do not demand a separate create action when the storage request already describes creating/using the cache. Narration, updatePlot, or an updateCharacterInfo change note alone does not create a retrievable stored item. It owns the item movement; never replace it with, or duplicate it by, an updateCharacterInfo removal or addition of the same items, so REJECT a duplicate updateCharacterInfo for the same stored items; a distinct fee update may precede it. NEVER for handing, giving, trading or sharing items between characters (player or party NPC): that is transferItem (@CLARIFICATIONS 17) and a storageInteraction proposed for it is INVALID (no container is involved; it cannot perform the requested giver-to-receiver movement)
-  transferItem: sole authority for an item passing between two party characters (player or party NPC): give/trade/share/lend/return. {fromCharacter, toCharacter (display names), itemName exactly as on the giver's supplied sheet, quantity integer}; ONE per item; the engine moves the stock and rewrites both sheets or refuses. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided. Coins still move with updateCharacterInfo deltas.
+  transferItem: sole authority for an item passing between two party characters (player or party NPC): give/trade/share/lend/return. {fromCharacter, toCharacter (display names), itemName exactly as on the giver's supplied sheet, quantity integer}; ONE per item; the engine moves the stock and rewrites both sheets or refuses. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided. Coins between party characters move with transferCurrency or splitCurrency.
+  transferCurrency: sole authority for coins between two party characters {fromCharacter, toCharacter, gold/silver/copper whole numbers}; engine moves or refuses. REJECT coins between party characters as updateCharacterInfo on either character
+  splitCurrency: even whole-number split of a party character's coins among named party characters {fromCharacter, toCharacters, giverKeepsShare}; remainder stays with the giver; engine computes. REJECT per-character split arithmetic
+  coin_instruction_stands: player plainly gives/splits own coins -> the transferCurrency/splitCurrency action is REQUIRED in that response; a companion's objection is dialogue only, never a reason to withhold/shrink the action or narrate coins refused/handed back this turn (a companion returns coins on a later turn with its own transferCurrency). REJECT a pause/refusal on a companion's behalf; correction = emit the action, keep the objection as words
   updatePartyTracker: module/location updates; triggers archiving
   moveBackgroundNPC: NPCs not in party (captured/killed/relocated)
   updatePartyNPCs: add/remove traveling companions
@@ -139,7 +142,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
 }
 
 @STORAGE_VALIDATION={
-  currency_math: Check sufficient funds; verify conversion (1g=10s=100c)
+  currency_change: fee notes state coin changes (signed), never balances; no automatic conversion (a coin exchange = two signed amounts); the engine applies the change and refuses an overdraft, so do not redo arithmetic
   action_order: updateCharacterInfo(payment) BEFORE storageInteraction
   common_errors: deduction_without_conversion, wrong_order, missing_math
 }
@@ -243,7 +246,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   6:Ignore "Location transition:" user messages--system notes
   7:Questions about maps/areas/directions != transitionLocation
   8:createEncounter for monster combat ONLY--not solo traps
-  9:Trading: each item that changes hands = one transferItem; coins = updateCharacterInfo deltas on both characters
+  9:Trading: each item that changes hands = one transferItem; coins between party characters = transferCurrency or splitCurrency, never updateCharacterInfo on both
   10:Ritual materials MUST be removed via updateCharacterInfo
   11:transitionLocation uses location ID ONLY (A01,B05,C03)
   12:Historical combat "[COMBAT CONCLUDED]" exempt from rules
@@ -251,7 +254,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   14:createEncounter.monsters MUST be array of strings (["Bandit","Bandit"] not ["2 Bandits"])
   15:MULTIPLE updateCharacterInfo OK in actions array. Each updates ONE character. NEVER comma-separated names
   16:Actions go in "actions" array, NOT numbered keys like updateCharacterInfo_2, updateCharacterInfo_3
-  17:Character-to-character item handoff = ONE transferItem per item (fromCharacter, toCharacter, itemName exactly as on the giver's supplied sheet, integer quantity); a trade = two transferItem actions. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided; never demand a container. Container operation then handoff of the retrieved items = storageInteraction then transferItem. Coins change hands with updateCharacterInfo delta language.
+  17:Character-to-character item handoff = ONE transferItem per item (fromCharacter, toCharacter, itemName exactly as on the giver's supplied sheet, integer quantity); a trade = two transferItem actions. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided; never demand a container. Container operation then handoff of the retrieved items = storageInteraction then transferItem. Coins between party characters change hands with transferCurrency or splitCurrency.
 }
 
 Evaluate last assistant response. Return JSON validation result.
