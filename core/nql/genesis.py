@@ -231,10 +231,15 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     container_ids: Dict[str, str] = {}
     content_ids: Dict[str, Dict[int, str]] = {}
     conditions: List[str] = []
-    # Declared for every world: armor definitions reference it with `requires`,
-    # which is legal only for a declared type. A character gets the instance
-    # only when the sheet lists the exact feature name.
+    # Declared for every world: armor definitions reference these with
+    # `requires`, which is legal only for a declared type, and a character may
+    # carry armor it is not trained for (a shield handed to an untrained
+    # companion). A character gets an instance only when the sheet lists the
+    # proficiency or the exact feature name.
     condition_types: List[str] = [DEFENSE_STYLE_CONDITION]
+    for cond in _ARMOR_TRAINING.values():
+        if cond not in condition_types:
+            condition_types.append(cond)
     definitions: List[str] = [
         ' definition "gear:held" named "Held item" { description "Occupies one hand."; default "held"; mode "held" { occupy "hand" by 1; } }\n',
         ' definition "gear:worn" named "Worn item" { description "Worn, occupies no slot."; default "worn"; mode "worn" { } }\n',
