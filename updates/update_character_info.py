@@ -477,6 +477,11 @@ Equipment Array Example:
 Currency Delta Example (signed change per coin, never totals):
 {"currencyDelta": {"gold": -50, "silver": 10}}
 
+Pool Delta Examples (signed change, never a resulting count):
+{"hpDelta": -7}
+{"spellSlotDelta": {"level2": -1}}
+{"featureUseDelta": {"Channel Divinity (2/rest)": -1}}
+
 Ammunition Example:
 [{"name": "Arrows", "quantity": 20, "description": "Standard arrows"}]
 """
@@ -1075,15 +1080,84 @@ def repair_character_data(character_data):
     return character_data
 
 
+# Engine-owned pools a model reports as signed changes (core/nql/currency and
+# core/nql/resources). The value is the sheet field the engine writes for it.
+ENGINE_DELTA_FIELDS = {
+    'currencyDelta': 'currency',
+    'hpDelta': 'hitPoints',
+    'spellSlotDelta': 'spellcasting',
+    'featureUseDelta': 'classFeatures',
+}
+ENGINE_DELTA_KEYS = tuple(ENGINE_DELTA_FIELDS)
+
+
+def _engine_owned_total(character_data, updates):
+    """The reason a model-authored delta states a pool total instead of a change, or None.
+
+    Hit points, spell slot counts and feature use counts are engine resources:
+    the model reports the change and the engine produces the value. A stated
+    total is refused so the next attempt states the change. Only counts are
+    refused; maximums, new pools and usage:null corrections pass unchanged.
+    """
+    if 'hitPoints' in updates:
+        return "hitPoints totals are not accepted; report the change as hpDelta (signed whole number)"
+    slots = updates.get('spellcasting', {}).get('spellSlots') if isinstance(updates.get('spellcasting'), dict) else None
+    if isinstance(slots, dict):
+        for key, pool in slots.items():
+            if isinstance(pool, dict) and 'current' in pool:
+                return ("spell slot totals are not accepted; report the change as spellSlotDelta "
+                        "{levelN: signed whole number}")
+    stored = {f.get('name'): f.get('usage') for f in character_data.get('classFeatures') or []
+              if isinstance(f, dict)}
+    for feature in updates.get('classFeatures') or [] if isinstance(updates.get('classFeatures'), list) else []:
+        if not isinstance(feature, dict) or not isinstance(feature.get('usage'), dict):
+            continue
+        before = stored.get(feature.get('name'))
+        if isinstance(before, dict) and 'current' in feature['usage'] and \
+                feature['usage'].get('current') != before.get('current'):
+            return ("feature use totals are not accepted; report the change as featureUseDelta "
+                    "{\"<exact feature name>\": signed whole number}")
+    return None
+
+
+def _copy_engine_pools(engine_sheet, target):
+    """Write the engine's pool values (hit points, slot and use counts) onto the merged sheet."""
+    if 'hitPoints' in engine_sheet:
+        target['hitPoints'] = engine_sheet['hitPoints']
+    engine_slots = (engine_sheet.get('spellcasting') or {}).get('spellSlots') \
+        if isinstance(engine_sheet.get('spellcasting'), dict) else None
+    target_slots = (target.get('spellcasting') or {}).get('spellSlots') \
+        if isinstance(target.get('spellcasting'), dict) else None
+    if isinstance(engine_slots, dict) and isinstance(target_slots, dict):
+        for key, pool in engine_slots.items():
+            if isinstance(pool, dict) and isinstance(target_slots.get(key), dict):
+                target_slots[key]['current'] = pool['current']
+    engine_uses = {f['name']: f['usage']['current'] for f in engine_sheet.get('classFeatures') or []
+                   if isinstance(f, dict) and isinstance(f.get('usage'), dict) and f.get('name')}
+    for feature in target.get('classFeatures') or []:
+        if isinstance(feature, dict) and isinstance(feature.get('usage'), dict) and feature.get('name') in engine_uses:
+            feature['usage']['current'] = engine_uses[feature['name']]
+
+
 def prepare_character_delta(character_data, updates, character_role, schema,
-                            character_name, managed_effect_operation=None):
+                            character_name, managed_effect_operation=None,
+                            model_authored=False):
     """Shared provider-free stored-value preparation (#323 D-323-10).
 
     Ordinary T079 input joins after effective-to-base normalization. Typed
     level-up input joins in its stored frame. No model calls or persistence;
     callers retain their different pre/postcommit review obligations.
+    ``model_authored`` marks T079 output: pool totals are then refused in
+    favour of the signed delta keys (level-up keeps its typed totals).
     """
     updates = fix_injury_types(fix_item_types(copy.deepcopy(updates)))
+    if model_authored:
+        total_reason = _engine_owned_total(character_data, updates)
+        if total_reason:
+            return updates, character_data, {
+                'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
+                'error_message': total_reason,
+            }
     if 'hitPoints' in updates and updates['hitPoints'] < 0:
         updates['hitPoints'] = 0
     if ('experience_points' in updates and
@@ -1113,7 +1187,32 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         updates['currency'] = dict(outcome.sheets[0]['currency'])
         for gap in outcome.gaps:
             debug(f"[Currency Engine] {character_name}: {gap}", category="character_updates")
+    # Hit points, spell slots and feature uses are engine-owned pools
+    # (core/nql/resources): signed changes go through the engine, which clamps
+    # healing at the effective maximum, drops a character to zero, and refuses
+    # a spend the pool cannot cover. The engine's values replace the merged ones.
+    resource_updates = {k: updates.pop(k) for k in ('hpDelta', 'spellSlotDelta', 'featureUseDelta') if k in updates}
+    engine_pools = None
+    if resource_updates:
+        from core.effects.effective import effective_sheet
+        from core.nql import resources as nql_resources
+
+        effective_max = effective_sheet(character_data).get('maxHitPoints')
+        outcome = nql_resources.apply_deltas(
+            character_data, resource_updates,
+            max_hp=effective_max if type(effective_max) is int else None)
+        if not outcome.ok:
+            return updates, character_data, {
+                'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
+                'error_message': f"the change was refused by the rules engine: {outcome.reason}",
+                'engine_refusal': outcome.reason,
+            }
+        engine_pools = outcome.sheet
+        for gap in outcome.gaps:
+            debug(f"[Resource Engine] {character_name}: {gap}", category="character_updates")
     updated_data = deep_merge_dict(character_data, updates)
+    if engine_pools is not None:
+        _copy_engine_pools(engine_pools, updated_data)
     if managed_effect_operation:
         from core.effects.lifecycle import apply_effect_ops
         updated_data = apply_effect_ops(updated_data, [managed_effect_operation])
@@ -1198,7 +1297,7 @@ def _is_meaningful_character_delta(updates, schema):
         return True
     properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
     return isinstance(properties, dict) and any(
-        field in properties or field == 'currencyDelta' for field in updates
+        field in properties or field in ENGINE_DELTA_KEYS for field in updates
     )
 
 
@@ -1311,8 +1410,9 @@ def validate_requested_character_update_completeness(changes, updates):
     """Return ``(is_complete, missing_fields)`` for explicit T079 requests."""
     required = infer_requested_character_update_fields(changes)
     present = set(updates) if isinstance(updates, dict) else set()
-    if 'currencyDelta' in present:
-        present.add('currency')
+    for delta_key, owned_field in ENGINE_DELTA_FIELDS.items():
+        if delta_key in present:
+            present.add(owned_field)
     missing = sorted(required - present)
     return not missing, missing
 
@@ -1428,6 +1528,11 @@ def _translate_declarative_effect_delta(character_data, updates, operation):
             if stat in translated:
                 stripped_effect_fields.append("%s=%r" % (stat, translated.get(stat)))
                 translated.pop(stat, None)
+            if stat == "hitPoints" and "hpDelta" in translated:
+                # The engine-owned change is the effect's; a model copy of the
+                # same visible change would apply it twice.
+                stripped_effect_fields.append("hpDelta=%r" % translated.get("hpDelta"))
+                translated.pop("hpDelta", None)
     for resource in resource_operations:
         if not isinstance(resource, dict):
             continue
@@ -1439,6 +1544,9 @@ def _translate_declarative_effect_delta(character_data, updates, operation):
             # deterministic operation by returning the pre-effect value.
             stripped_effect_fields.append("%s=%r" % (stat, translated.get(stat)))
             translated.pop(stat, None)
+        if stat == "hitPoints" and "hpDelta" in translated:
+            stripped_effect_fields.append("hpDelta=%r" % translated.get("hpDelta"))
+            translated.pop("hpDelta", None)
     if stripped_effect_fields:
         debug(
             "EFFECTS: Removed T079 copies of engine-owned values: %s"
@@ -1682,7 +1790,7 @@ Prior narration and prior actions are history, not instructions to replay.
 
 Your primary goal is to generate the smallest possible valid JSON object that reflects ONLY the requested changes. Do not rewrite or include any data that was not explicitly modified by the user's request. This is crucial for system performance.
 
-1. **Return ONLY Changed Fields:** Only include top-level keys (`hitPoints`, `equipment`, `currency`, etc.) if a value within them has changed. If the user only takes damage, your entire output should be a minimal JSON like: `{{ "hitPoints": 35 }}`.
+1. **Return ONLY Changed Fields:** Only include top-level keys (`hpDelta`, `equipment`, `status`, etc.) if a value within them has changed. If the user only takes 7 damage, your entire output should be a minimal JSON like: `{{ "hpDelta": -7 }}`.
 
 2. **For Lists (like `equipment` or `ammunition`):**
    - **NEVER** return the entire list if only one item is changed.
@@ -1696,7 +1804,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 3. **For Nested Objects (like `currency` or `spellcasting.spellSlots`):**
    - Only return the specific key-value pairs that were modified.
    - *Example (Spending Gold):* `{{ "currencyDelta": {{ "gold": -12 }} }}` (signed change per coin type; never a total, never a `currency` object; omit unchanged coins).
-   - *Example (Using a Spell Slot):* `{{ "spellcasting": {{ "spellSlots": {{ "level1": {{ "current": 3 }} }} }} }}` (Do NOT include other spell slot levels).
+   - *Example (Using a Spell Slot):* `{{ "spellSlotDelta": {{ "level1": -1 }} }}` (signed change per slot level; never a `current` count, never a `spellcasting` object for a cast).
 
 4. **For Complex Updates Affecting Multiple Systems:**
    - When an action affects multiple character aspects, you MUST include ALL affected fields in your minimal JSON response.
@@ -1749,20 +1857,24 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 - When equipment that affects AC is added, removed, equipped, or unequipped, return only the `equipment` change; the rules engine recomputes `armorClass` and `equipment_effects`. The engine refuses illegal states (two shields, three held weapons); if told a change was refused, propose a legal one.
 - When a weapon is changed, you **MUST** update the relevant entry in the `attacksAndSpellcasting` array.
 - When a temporary effect is added or removed, you **MUST** return the **complete** `temporaryEffects` array, containing only the effects that should remain active. This is the one exception to the delta-only rule for lists.
-- Down/unconscious (house rule, NO death saves): at 0 HP set `hitPoints` to 0 and `status` to "unconscious"; never write death saves; a character at 0 dies only if the whole party falls; a heal, potion, Medicine, or rest that restores them sets `hitPoints` above 0 and `status` to "alive"
+- Down/unconscious (house rule, NO death saves): damage that reaches 0 is an `hpDelta` (the engine stops at 0) plus `status` "unconscious"; never write death saves; a character at 0 dies only if the whole party falls; a heal, potion, Medicine, or rest that restores them is a positive `hpDelta` plus `status` "alive"
 - Conditions: Always update BOTH `condition` and `condition_affected` when applying conditions
 
 **Your adherence to these delta-only rules is paramount. Generate the most minimal, targeted JSON possible while ensuring ALL logically affected fields are included.**
 
 **CRITICAL: The examples above are for learning purposes only. Do NOT include example JSON in your response. Only return the specific updates needed for the requested changes.**
 
-**HEALING AND DAMAGE CALCULATIONS:**
-- When a character "regains X hit points" or "is healed for X hit points": ADD X to their current hitPoints value (capped at maxHitPoints)
-- When a character "takes X damage" or "loses X hit points": SUBTRACT X from their current hitPoints value (minimum 0)
-- NEVER return the current HP value when healing is mentioned - always calculate the new value
-- Example: If character has 22 HP and "regains 13 hit points", return {{"hitPoints": 35}} NOT {{"hitPoints": 22}}
-- Example: If character has 31 HP out of 40 max and "regains 13 hit points", return {{"hitPoints": 40}} (capped at max)
-- Always respect maxHitPoints as the upper limit for healing
+**HIT POINTS, SPELL SLOTS AND FEATURE USES ARE ENGINE-OWNED (report the change, never the count):**
+- Hit points: return {{"hpDelta": <signed int>}}. "takes 7 damage" / "loses 7 hit points" -> -7; "regains 13 hit points" / "healed for 13" -> 13.
+  NEVER return `hitPoints`: the engine applies the change to the real sheet, stops healing at the maximum and stops damage at 0.
+  A note that only states a resulting total ("now at 12 HP") with no amount is a balance statement: return {{}} and let it be corrected rather than guessing.
+- Spell slots: return {{"spellSlotDelta": {{"levelN": -1}}}} per leveled spell cast (cantrips: nothing). NEVER return a slot `current`;
+  the engine refuses a cast with no slot left and you are told.
+- Feature uses: return {{"featureUseDelta": {{"<exact stored feature name>": -1}}}} for the resource-owning feature (a shared option spends
+  its parent's pool). NEVER return `usage.current`; the engine refuses a use beyond the pool and you are told.
+- Refills ("regains one use", "recovers two 1st-level slots") are positive amounts; the engine stops at each maximum.
+- Only the pools the note names, only the amounts it states. A cast note with no healing amount ("Expends one 1st-level
+  spell slot to cast Cure Wounds") is the slot change only; never infer a heal from a spell's name or an earlier wound.
 
 {schema_info}
 
@@ -1831,10 +1943,10 @@ CRITICAL INSTRUCTIONS:
 5. Maintain data integrity and consistency
 6. IMPORTANT: When updating nested objects like 'spellcasting', include ALL existing subfields to prevent data loss
 7. NEVER return partial nested objects that would delete existing important data
-8. If updating spell slots, always include ability, spellSaveDC, spellAttackBonus, and spells fields
+8. Spell slot counts never appear inside 'spellcasting'; a cast or a refill is spellSlotDelta. Edit 'spellcasting' only for spells known/prepared, DC or bonus, and then include ability, spellSaveDC, spellAttackBonus, and spells fields
 9. SPELL SLOT RULE: Cantrips (0-level spells) do NOT consume spell slots. Only deduct spell slots for leveled spells (1st-9th level).
 10. HIT DICE RULE: IGNORE all references to hit dice, Hit Dice, HD, or hit dice restoration. Do NOT add hitDice, hitDiceRestored, or maxHitDice fields. The system does not track hit dice.
-11. REST HEALING: For long rests, simply restore hitPoints to maxHitPoints and restore spell slots. For short rests, restore some hitPoints based on the description. Do not implement hit dice mechanics.
+11. REST HEALING: Rests are applied by the rest action, not by you. A rest note reaching you carries only an extra narrated amount ("Regains 9 hit points"): return it as a positive hpDelta. Never refill slots or pools from a rest note; the engine already did. Do not implement hit dice mechanics.
 12. CURRENCY MANAGEMENT - CRITICAL RULES:
     a) Coins are owned by the rules engine. Report the CHANGE, never the balance: return
        {{"currencyDelta": {{"gold": <signed int>, "silver": <signed int>, "copper": <signed int>}}}}
@@ -1850,18 +1962,18 @@ CRITICAL INSTRUCTIONS:
     e) Examples: pays 100 gold -> {{"currencyDelta": {{"gold": -100}}}}; finds 50 gold and 20 silver ->
        {{"currencyDelta": {{"gold": 50, "silver": 20}}}}; "kept 38 gold" is a balance statement, not a change:
        return {{}} and let the request be corrected rather than guessing a delta.
-13. STATUS-CONDITION SYNCHRONIZATION: Always maintain consistency between status, condition, and hitPoints fields:
-    - When status changes to "alive" and hitPoints > 0, automatically set condition to "none" and clear condition_affected array
-    - When hitPoints > 0 and status is "alive", condition cannot be "unconscious"
+13. STATUS-CONDITION SYNCHRONIZATION: Always maintain consistency between status, condition, and the character's hit points:
+    - When status changes to "alive" and hit points are above 0, automatically set condition to "none" and clear condition_affected array
+    - When hit points are above 0 and status is "alive", condition cannot be "unconscious"
     - When status is "unconscious", condition must be "unconscious" and condition_affected must include "unconscious"
     - When healing an unconscious character above 0 HP, clear unconscious from both condition and condition_affected fields
 14. RESOURCE TRACKING RULES:
-    - "spell slot" or "expends [level] spell slot" -> Update spellSlots only
+    - "spell slot" or "expends [level] spell slot" -> spellSlotDelta only
     - For an ability, read its actual cost and identify the exact resource-owning feature in the current sheet. A shared option spends its parent's classFeatures[].usage, not an independent option counter.
-    - If ability description mentions "expending a spell slot" -> ONLY update spellSlots
+    - If ability description mentions "expending a spell slot" -> ONLY spellSlotDelta
 15. CLASS FEATURE USAGE TRACKING:
     When updating ability uses (not spell slots):
-    a) Match the exact stored resource-owning feature name. Preserve genuine independent pools and shared pools with complete current/max/refreshOn objects.
+    a) Spend or refill with featureUseDelta on the exact stored resource-owning feature name. A classFeatures usage object is only for a structural correction (a missing real pool, or usage:null); never for a count.
     b) Omitted usage preserves the saved value. Explicit usage:null is saved as no independent use pool, NOT free/unlimited use or a deletion operator. Emit it only when the requested rules-grounded correction explicitly calls for removing that obsolete independent counter; never clear a real pool by default.
     c) An option with usage:null describes its exact parent and cost. Spend that parent's counter. Do not create an option counter or rename an entry to evade the merge. Add a missing real independent pool only when the requested change and actual rules establish it, never from an old label alone.
     d) refreshOn is a trigger tag, not recovery amount or exclusivity. Preserve the description's actual partial/full recovery rules; use longRest for an applicable full reset. Do not refill resources during level-up or spend spell slots unless the actual cost requires them.
@@ -1869,13 +1981,13 @@ CRITICAL INSTRUCTIONS:
 16. RESOURCE UPDATE EXAMPLES:
     Current: Pool has usage {{"current": 1, "max": 2, "refreshOn": "longRest"}}; Option has usage:null and description "Spend one use of Pool."
     Input: "Uses Option, spending one use of Pool"
-    Update: {{"classFeatures": [{{"name": "Pool", "usage": {{"current": 0, "max": 2, "refreshOn": "longRest"}}}}]}}
+    Update: {{"featureUseDelta": {{"Pool": -1}}}}
     
     Input: "Expends one 1st-level spell slot"  
-    Update: {{"spellcasting": {{"spellSlots": {{"level1": {{"current": [reduced by 1]}}}}}}}}
+    Update: {{"spellSlotDelta": {{"level1": -1}}}}
     
     Input: "Uses Divine Smite by expending a 2nd-level spell slot"
-    Update: {{"spellcasting": {{"spellSlots": {{"level2": {{"current": [reduced by 1]}}}}}}}}
+    Update: {{"spellSlotDelta": {{"level2": -1}}}}
     Note: Do NOT update any Divine Smite usage counter - only the spell slot
 17. AMMUNITION MANAGEMENT - CRITICAL:
     - When ADDING ammunition: Return the quantity to ADD as a positive number
@@ -1904,8 +2016,8 @@ SAFE EXAMPLE:
 {{"spellcasting": {{"ability": "wisdom", "spellSaveDC": 13, "spellAttackBonus": 5, "spells": {{...}}, "spellSlots": {{...}}}}}} // This preserves all data
 
 CONDITION MANAGEMENT EXAMPLES:
-CORRECT (healing unconscious character): {{"hitPoints": 12, "status": "alive", "condition": "none", "condition_affected": []}}
-WRONG (inconsistent state): {{"hitPoints": 12, "status": "alive", "condition": "unconscious"}} // Condition contradicts status!
+CORRECT (healing unconscious character): {{"hpDelta": 12, "status": "alive", "condition": "none", "condition_affected": []}}
+WRONG (inconsistent state): {{"hpDelta": 12, "status": "alive", "condition": "unconscious"}} // Condition contradicts status!
 
 RESOURCE TRACKING EXAMPLES:
 
@@ -1918,13 +2030,13 @@ Pool remains at 1/2 because it is omitted. Option's explicit null persists and p
 Example 2 - Regular Spell:
 Changes: "Casts Cure Wounds, expending one 1st-level spell slot"
 Current spellSlots: {{"level1": {{"current": 3, "max": 3}}}}
-Update: {{"spellcasting": {{"spellSlots": {{"level1": {{"current": 2, "max": 3}}}}}}}}
+Update: {{"spellSlotDelta": {{"level1": -1}}}}
 
 Example 3 - Ability Using Spell Slots:
 Changes: "Uses Divine Smite by expending a 2nd-level spell slot for extra damage"
 Current spellSlots: {{"level2": {{"current": 2, "max": 2}}}}
-Update: {{"spellcasting": {{"spellSlots": {{"level2": {{"current": 1, "max": 2}}}}}}}}
-Note: Divine Smite is an ability that costs spell slots - update ONLY the spell slots, not any ability usage
+Update: {{"spellSlotDelta": {{"level2": -1}}}}
+Note: Divine Smite is an ability that costs spell slots - only the slot delta, no featureUseDelta
 
 AMMUNITION EXAMPLES:
 Example 1 - Adding ammunition:
@@ -2249,6 +2361,7 @@ Character Role: {character_role}
             updates, updated_data, preparation_checks = prepare_character_delta(
                 character_data, updates, character_role, schema, character_name,
                 managed_effect_operation if declarative_effects else None,
+                model_authored=True,
             )
             
             # Debug HP changes AFTER merge

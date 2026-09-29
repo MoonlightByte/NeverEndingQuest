@@ -14,6 +14,7 @@ CRITICAL VALIDATION PRIORITIES:
 3. ACTION VALIDATION: Determine whether required actions were executed properly
 4. USER INPUT COMPLIANCE: Pay special attention to the user's ACTUAL INPUT that triggered the assistant's response
 5. SPELL SLOT VALIDATION: Cantrips (0-level spells) do NOT consume spell slots and can be cast unlimited times. Only leveled spells (1st-9th level) should reduce spell slots via updateCharacterInfo actions.
+5b. HIT POINT AND RESOURCE CHANGES: hit points, spell slots and feature uses are engine-owned. An updateCharacterInfo note that states the amount taken, regained, expended or used is valid; do not redo the arithmetic, demand a resulting total, or reject a heal for exceeding the maximum (the engine caps it) or damage for going below 0 (the engine stops at 0 and the note should say unconscious). REJECT a note that only states a resulting number ("now at 12 HP", "slots set to 2/4") with no amount.
 6. LOCATION PATH VALIDATION: When validating transitionLocation actions, check the "Path Validation" section in the context. ONLY allow movement along valid, connected paths. Reject any transitions that show "WARNING" or "No valid path" messages.
 7. SAME-LOCATION TRANSITION VALIDATION: NEVER allow transitionLocation from a location to itself (e.g., "Town Square (X01) to Town Square (X01)"). This is ALWAYS invalid. If a player immediately leaves after arriving, the DM should roleplay the scene without transitioning, or clarify where the player actually wants to go.
 8. COMBAT INITIATION VALIDATION: Review each turn for the Combat Commitment Point. If a hostile action occurred that alerted enemies and no earlier player-input prerequisite remains, was createEncounter called IMMEDIATELY? If any intervening combat actions were resolved narratively after enemies became aware, mark as INVALID. EARLIER PLAYER-INPUT PRIORITY: Reject a candidate that requests an unanswered player roll/choice needed before combat proceeds while also emitting createEncounter, dependent consequences, or intervening combat actions. Request a corrected candidate that asks for the input and waits; do not also demand immediate createEncounter on that waiting response. This priority applies to a grounded, already-triggered prerequisite, not an invented delay or an untriggered authored hazard. Once the required input and consequence are resolved, require ordinary immediate combat entry. Preserve all other agency, canonical evidence, action-shape and combat checks. EXCEPTION: Messages marked with [COMBAT CONCLUDED - HISTORICAL RECORD] are exempt from this rule as they represent already-resolved combat.
@@ -243,6 +244,7 @@ The parameters object MUST contain exactly the one key "narrative", whose value 
 "transferItem": The sole authority for an item passing between two party characters (player or party NPC): giving, trading, sharing, lending, returning. One action per item with "fromCharacter", "toCharacter" (display names), "itemName" exactly as on the giver's supplied sheet, and an integer "quantity". The engine moves that stock and rewrites both sheets together or refuses and moves nothing; a worn item arrives unequipped. REJECT a handoff expressed as updateCharacterInfo on either character, as a storageInteraction, or as a one-sided action. A trade is two transferItem actions. Coins are not items: between party characters they move with transferCurrency or splitCurrency; a payment to or from a non-party character is an updateCharacterInfo change in delta language.
 "transferCurrency": The sole authority for coins passing between two party characters (player or party NPC): "fromCharacter", "toCharacter" (display names) and whole-number "gold"/"silver"/"copper" amounts (omit coin types that do not move). The engine moves the coins across both sheets or refuses and moves nothing. REJECT coins between party characters expressed as updateCharacterInfo on either character.
 "splitCurrency": Divides a party character's coins evenly among named party characters: "fromCharacter", "toCharacters" (list of display names), optional "giverKeepsShare" (default true: the giver takes an equal share; false: everything is handed out among the recipients). Whole-number division per coin type, remainders stay with the giver, computed by the engine. REJECT a split expressed as per-character updateCharacterInfo arithmetic.
+"rest": The sole authority for rest recovery: {"restType": "short"|"long"} for the whole party, after updateTime. The engine refills per character what that rest recovers and writes every sheet. REJECT recovery expressed as updateCharacterInfo notes.
 PLAYER COIN INSTRUCTIONS STAND: when the player plainly gives or splits their own coins, the transferCurrency/splitCurrency action is required in that same response and must not be withheld for confirmation or because a companion objects. A companion may object in the narration; that objection is words, not a reason to remove or shrink the action, and the narration must not claim the coins were refused or handed back in this turn (a companion returns coins on a later turn with its own transferCurrency). REJECT a response that pauses or refuses on a companion's behalf; correct it by emitting the action and keeping the objection as dialogue.
 "updatePartyTracker": Used when party module or location information needs updating. This action can trigger automatic conversation archiving and module summarization when module changes are detected. Required for inter-module travel. Should be used when players express intent to:
    - Travel to other modules ("I travel to [Module Name]", "Let's go to [Region]")
@@ -292,38 +294,12 @@ PLAYER COIN INSTRUCTIONS STAND: when the player plainly gives or splits their ow
 
 ## REST MANAGEMENT VALIDATION RULES
 
-When characters take a short rest or long rest, the following validation rules MUST be enforced:
-
-### Short Rest Validation (1 hour):
-- REQUIRED: updateTime action with timeEstimate: 60 (minimum)
-- REQUIRED: updateCharacterInfo for ANY character benefits received
-- INVALID: Spell slot recovery for most classes (only Warlocks recover spell slots on short rest)
-- VALID: Hit Dice spending for HP recovery
-- VALID: Class feature recharge (Fighter's Second Wind/Action Surge, Monk's Ki, etc.)
-- CHECK: Character class matches recovery rules
-
-### Long Rest Validation (8 hours):
-- REQUIRED: updateTime action with timeEstimate: 480 (minimum)
-- REQUIRED: updateCharacterInfo for ALL characters resting
-- REQUIRED: Full HP recovery for all characters
-- REQUIRED: All spell slot recovery (per class rules)
-- REQUIRED: Half Hit Dice recovery (minimum 1)
-- VALID: All class features recharge
-- CHECK: Safe location and proper rest conditions
-
-### Class-Specific Recovery Validation:
-**WIZARD:** Short rest = Arcane Recovery once per day (spell slots = half level rounded up)
-**WARLOCK:** Short rest = ALL spell slots recover (unique)
-**FIGHTER:** Short rest = Second Wind + Action Surge recharge
-**MONK:** Short rest = All Ki points recover
-**ALL OTHER CLASSES:** Short rest = NO spell slot recovery
-
-### Rest Validation Failures:
-- Missing updateTime action for rest duration
-- Missing updateCharacterInfo for recovery benefits
-- Incorrect spell slot recovery for character class
-- Short rest described but long rest benefits applied
-- Long rest described but missing full recovery
+Rests are one "rest" action for the whole party: {"restType": "short"} or {"restType": "long"}. The engine refills what that rest recovers on every sheet (long: all hit points, all spell slots, every feature pool; short: the pools tagged for a short rest and, for a Warlock, spell slots) and records it. Hit dice are not tracked.
+- REQUIRED: updateTime for the rest duration (short at least 60, long at least 480) and the rest action with the matching restType.
+- REJECT: recovery written as updateCharacterInfo notes ("restored all hit points", "recovered spell slots", "regained Second Wind"); the rest action is the sole authority for recovery.
+- REJECT: a long rest claimed without at least 8 hours passing, or a short rest without at least 1 hour.
+- Do not check per-class recovery rules or totals; the engine applies them. Do not demand hit dice.
+- VALID: an extra updateCharacterInfo stating an amount regained during a short rest ("Regains 9 hit points") after the rest action.
 
 ## LOCATION AND NPC REFERENCE VALIDATION RULES
 
@@ -599,71 +575,32 @@ Here are examples of acceptable model assistant responses:
 
 // Example 13: CORRECT Long Rest Implementation
 {
-  "narration": "After securing the chamber, your party settles in for a well-deserved long rest. Eight hours later, you wake refreshed and restored. Elen stretches, feeling much better, and checks her spell components. 'I have all my magic back,' she says with relief.",
+  "narration": "After securing the chamber, your party settles in for a well-deserved long rest. Eight hours later, you wake refreshed and restored.",
   "actions": [
-    {
-      "action": "updateTime",
-      "parameters": {
-        "timeEstimate": 480
-      }
-    },
-    {
-      "action": "updateCharacterInfo",
-      "parameters": {
-        "characterName": "norn",
-        "changes": "Long rest completed. Restored all hit points to maximum. Recovered all spent Hit Dice (half of total). Restored all spell slots to maximum."
-      }
-    },
-    {
-      "action": "updateCharacterInfo",
-      "parameters": {
-        "characterName": "elen",
-        "changes": "Long rest completed. Restored all hit points to maximum (42/42). Recovered all spent Hit Dice. Restored all spell slots: Level 1 slots to 4/4, Level 2 slots to 2/2."
-      }
-    }
+    { "action": "updateTime", "parameters": { "timeEstimate": 480 } },
+    { "action": "rest", "parameters": { "restType": "long" } }
   ]
 }
 
-// Example 14: CORRECT Short Rest Implementation (Warlock)
+// Example 14: CORRECT Short Rest Implementation
 {
-  "narration": "You find a safe alcove and rest for an hour. As a Warlock, your patron's power flows back to you, restoring your spell slots. You also spend a Hit Die to recover some health.",
+  "narration": "You find a safe alcove and rest for an hour, binding wounds and catching your breath.",
   "actions": [
-    {
-      "action": "updateTime",
-      "parameters": {
-        "timeEstimate": 60
-      }
-    },
-    {
-      "action": "updateCharacterInfo",
-      "parameters": {
-        "characterName": "zareth",
-        "changes": "Short rest completed. Spent 1 Hit Die, gained 8 hit points (1d8+3). Recovered all Warlock spell slots (2 level 2 slots restored)."
-      }
-    }
+    { "action": "updateTime", "parameters": { "timeEstimate": 60 } },
+    { "action": "rest", "parameters": { "restType": "short" } },
+    { "action": "updateCharacterInfo", "parameters": { "characterName": "zareth", "changes": "Regains 8 hit points from binding wounds during the short rest." } }
   ]
 }
 
-// Example 15: INVALID Short Rest - Incorrect spell slot recovery for non-Warlock
+// Example 15: INVALID Rest - recovery written as a character update
 {
-  "narration": "You rest for an hour. As a Ranger, you feel refreshed and your magic returns.",
+  "narration": "You rest for an hour and feel your magic return.",
   "actions": [
-    {
-      "action": "updateTime",
-      "parameters": {
-        "timeEstimate": 60
-      }
-    },
-    {
-      "action": "updateCharacterInfo",
-      "parameters": {
-        "characterName": "elen",
-        "changes": "Short rest completed. Recovered all spell slots."
-      }
-    }
+    { "action": "updateTime", "parameters": { "timeEstimate": 60 } },
+    { "action": "updateCharacterInfo", "parameters": { "characterName": "elen", "changes": "Short rest completed. Recovered all spell slots." } }
   ]
 }
-// INVALID REASON: Rangers do NOT recover spell slots on short rest - only Warlocks do
+// INVALID REASON: recovery is the rest action's job; the engine decides what a short rest restores per character, and a note claiming recovery is rejected
 
 // Example 16: CORRECT Multi-Area Travel Implementation
 {
