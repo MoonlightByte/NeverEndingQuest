@@ -67,7 +67,8 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   establishHub: gain base ownership
   createNewModule: ONLY after specific commitment ("Yes investigate barrow")
   exitGame: end session
-  storageInteraction: Judge item movement from the player's intent and accepted scene. Leaving owned items at the current location for later recovery is location storage, including an improvised cache or hiding place; it does not require a pre-existing container record or a purchased/manufactured box. Use storageInteraction for that deposit or retrieval (store/retrieve/create/view); do not demand a separate create action when the storage request already describes creating/using the cache. Narration, updatePlot, or an updateCharacterInfo change note alone does not create a retrievable stored item. It owns the item movement; never replace it with, or duplicate it by, an updateCharacterInfo removal or addition of the same items, so REJECT a duplicate updateCharacterInfo for the same stored items; a distinct fee update may precede it. NEVER for handing, giving, trading or sharing items between characters (player or party NPC): that is updateCharacterInfo per character (@CLARIFICATIONS 17) and a storageInteraction proposed for it is INVALID (no container is involved; it cannot perform the requested giver-to-receiver movement)
+  storageInteraction: Judge item movement from the player's intent and accepted scene. Leaving owned items at the current location for later recovery is location storage, including an improvised cache or hiding place; it does not require a pre-existing container record or a purchased/manufactured box. Use storageInteraction for that deposit or retrieval (store/retrieve/create/view); do not demand a separate create action when the storage request already describes creating/using the cache. Narration, updatePlot, or an updateCharacterInfo change note alone does not create a retrievable stored item. It owns the item movement; never replace it with, or duplicate it by, an updateCharacterInfo removal or addition of the same items, so REJECT a duplicate updateCharacterInfo for the same stored items; a distinct fee update may precede it. NEVER for handing, giving, trading or sharing items between characters (player or party NPC): that is transferItem (@CLARIFICATIONS 17) and a storageInteraction proposed for it is INVALID (no container is involved; it cannot perform the requested giver-to-receiver movement)
+  transferItem: sole authority for an item passing between two party characters (player or party NPC): give/trade/share/lend/return. {fromCharacter, toCharacter (display names), itemName exactly as on the giver's supplied sheet, quantity integer}; ONE per item; the engine moves the stock and rewrites both sheets or refuses. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided. Coins still move with updateCharacterInfo deltas.
   updatePartyTracker: module/location updates; triggers archiving
   moveBackgroundNPC: NPCs not in party (captured/killed/relocated)
   updatePartyNPCs: add/remove traveling companions
@@ -180,8 +181,8 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   true_inventory_check: {"valid":true,"reason":"Player asks 'How many arrows?' - correctly narrates counts without updateCharacterInfo"}
   true_module_travel: {"valid":true,"reason":"Correctly uses updatePartyTracker with module parameter for inter-module travel"}
   true_multiple_chars: {"valid":true,"reason":"Multiple updateCharacterInfo actions in array, each with single character name"}
-  true_character_handoff: {"valid":true,"reason":"Giver removes N of an owned item and receiver adds N via two updateCharacterInfo actions; no container involved"}
-  false_handoff_as_storage: {"valid":false,"reason":"Character-to-character handoff proposed as storageInteraction. No container is involved; use two updateCharacterInfo actions: remove from giver, add to receiver"}
+  true_character_handoff: {"valid":true,"reason":"One transferItem from giver to receiver for the exact item and quantity on the giver's sheet; no container involved"}
+  false_handoff_as_storage: {"valid":false,"reason":"Character-to-character handoff proposed as storageInteraction. No container is involved; use one transferItem from giver to receiver"}
   true_correct_action_format: {"valid":true,"reason":"Actions correctly formatted with 'action' and 'parameters' keys inside actions array"}
   false_missing: {"valid":false,"reason":"Describes pickup but no updateCharacterInfo. Try again with action"}
   false_hallucination: {"valid":false,"reason":"References 'Tomas' not in module. Use only: Elen, Mirna, Fenwick"}
@@ -238,11 +239,11 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   2:NEVER ask player to roll for NPCs--DM rolls them
   3:transitionLocation REQUIRED for actual chosen movement; not for discussion/questions/plans/quotes/negation. Supplied accepted Travel Agent stop/no-route/roster_change_in_place facts govern the destination or honest no-transition exception (roster_change_in_place: party stays, no transitionLocation; cancellation != membership authority/commit; retain genuine authorized leaving/rejoining or discard unauthorized roster proposal/narration)
   4:INVENTORY QUERIES: "How many arrows?" / "Check inventory" = NO updateCharacterInfo needed (just narrate counts)
-  5:updateCharacterInfo remains REQUIRED for actual consumption, destruction, loss, sale, or any other inventory removal not owned by location storage, and for equipment-state changes while the item stays with the character; direct character-to-character handoffs still require separate giver/receiver updates, never storageInteraction. It is not the replacement for a recoverable location deposit (leaving owned items at the current location for later recovery = location storage = storageInteraction). Judge an ambiguous drop by actual intent/context, not the word used; do not invent permanent loss, storage or a recipient the player did not choose
+  5:updateCharacterInfo remains REQUIRED for actual consumption, destruction, loss, sale, or any other inventory removal not owned by location storage, and for equipment-state changes while the item stays with the character; a direct character-to-character handoff is transferItem, never updateCharacterInfo and never storageInteraction. It is not the replacement for a recoverable location deposit (leaving owned items at the current location for later recovery = location storage = storageInteraction). Judge an ambiguous drop by actual intent/context, not the word used; do not invent permanent loss, storage or a recipient the player did not choose
   6:Ignore "Location transition:" user messages--system notes
   7:Questions about maps/areas/directions != transitionLocation
   8:createEncounter for monster combat ONLY--not solo traps
-  9:Trading MUST update ALL parties' inventories
+  9:Trading: each item that changes hands = one transferItem; coins = updateCharacterInfo deltas on both characters
   10:Ritual materials MUST be removed via updateCharacterInfo
   11:transitionLocation uses location ID ONLY (A01,B05,C03)
   12:Historical combat "[COMBAT CONCLUDED]" exempt from rules
@@ -250,7 +251,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   14:createEncounter.monsters MUST be array of strings (["Bandit","Bandit"] not ["2 Bandits"])
   15:MULTIPLE updateCharacterInfo OK in actions array. Each updates ONE character. NEVER comma-separated names
   16:Actions go in "actions" array, NOT numbered keys like updateCharacterInfo_2, updateCharacterInfo_3
-  17:Character-to-character item handoff = EXACTLY TWO updateCharacterInfo actions (remove N from giver, add N to receiver, delta language, exact item as on the giver's supplied sheet); never storageInteraction, never one-sided, never demand a container. A container operation followed by a handoff of the retrieved items is two distinct movements and needs both
+  17:Character-to-character item handoff = ONE transferItem per item (fromCharacter, toCharacter, itemName exactly as on the giver's supplied sheet, integer quantity); a trade = two transferItem actions. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided; never demand a container. Container operation then handoff of the retrieved items = storageInteraction then transferItem. Coins change hands with updateCharacterInfo delta language.
 }
 
 Evaluate last assistant response. Return JSON validation result.

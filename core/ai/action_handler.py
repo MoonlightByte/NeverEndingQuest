@@ -165,6 +165,7 @@ ACTION_UPDATE_PARTY_NPCS = "updatePartyNPCs"
 ACTION_CREATE_NEW_MODULE = "createNewModule"
 ACTION_ESTABLISH_HUB = "establishHub"
 ACTION_STORAGE_INTERACTION = "storageInteraction"
+ACTION_TRANSFER_ITEM = "transferItem"
 ACTION_UPDATE_PARTY_TRACKER = "updatePartyTracker"
 ACTION_MOVE_BACKGROUND_NPC = "moveBackgroundNPC"
 ACTION_SAVE_GAME = "saveGame"
@@ -4493,6 +4494,47 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             
             # Add error message to conversation
             error_message = f"Storage System Error: An unexpected error occurred while processing your storage request. Later actions from this response have not executed; check current state before proposing further changes. Do not repeat earlier completed actions."
+            conversation_history.append({"role": "user", "content": error_message})
+            needs_conversation_history_update = True
+            return create_return(status="needs_response", needs_update=True)
+
+    elif action_type == ACTION_TRANSFER_ITEM:
+        # One typed handoff between two party characters. The engine moves the
+        # stock (core/nql/transfer.py) and both sheets are written together or
+        # not at all, replacing the two independent updateCharacterInfo deltas.
+        debug("STATE_CHANGE: Processing transferItem action", category="storage_operations")
+        status_updating_character()
+        try:
+            from core.managers.item_transfer import execute_transfer
+
+            result = execute_transfer(
+                parameters.get("fromCharacter", ""),
+                parameters.get("toCharacter", ""),
+                parameters.get("itemName", ""),
+                parameters.get("quantity", 1),
+                party_tracker_data,
+            )
+            if result.get("success"):
+                info(f"SUCCESS: {result.get('message')}", category="storage_operations")
+                conversation_history.append({"role": "user", "content": f"Transfer: {result.get('message')}"})
+                needs_conversation_history_update = True
+            else:
+                print(f"ERROR: Transfer failed: {result.get('error')}")
+                error_message = (
+                    f"Transfer Error: {result.get('error', 'the handoff was refused')}. Nothing moved; both sheets are "
+                    "unchanged. Later actions from this response have not executed. Do not repeat earlier completed "
+                    "actions; propose the handoff again from the current sheets or narrate why it cannot happen."
+                )
+                conversation_history.append({"role": "user", "content": error_message})
+                needs_conversation_history_update = True
+                return create_return(status="needs_response", needs_update=True)
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
+        except Exception as e:
+            print(f"ERROR: Exception while processing transferItem: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            error_message = "Transfer System Error: An unexpected error occurred while handing the item over. Nothing moved. Later actions from this response have not executed; check current state before proposing further changes. Do not repeat earlier completed actions."
             conversation_history.append({"role": "user", "content": error_message})
             needs_conversation_history_update = True
             return create_return(status="needs_response", needs_update=True)
