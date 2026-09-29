@@ -1873,6 +1873,8 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 - Feature uses: return {{"featureUseDelta": {{"<exact stored feature name>": -1}}}} for the resource-owning feature (a shared option spends
   its parent's pool). NEVER return `usage.current`; the engine refuses a use beyond the pool and you are told.
 - Refills ("regains one use", "recovers two 1st-level slots") are positive amounts; the engine stops at each maximum.
+- Only the pools the note names, only the amounts it states. A cast note with no healing amount ("Expends one 1st-level
+  spell slot to cast Cure Wounds") is the slot change only; never infer a heal from a spell's name or an earlier wound.
 
 {schema_info}
 
