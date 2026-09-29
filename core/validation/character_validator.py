@@ -1004,6 +1004,20 @@ _T051_ARMOR_FIELDS = (
 )
 
 
+def malformed_armor_entry(item: Dict[str, Any]) -> bool:
+    """An entry typed armor with neither armor_category nor an integer ac_base.
+
+    Such an entry is not modelled armor (the engine gives it no defense) and
+    is the one case in which the T051 field agent may change item_type.
+    """
+    return (
+        isinstance(item, dict)
+        and item.get('item_type') == 'armor'
+        and item.get('armor_category') is None
+        and type(item.get('ac_base')) is not int
+    )
+
+
 def armor_contract_errors(
     items: List[Dict[str, Any]],
     item_schema: Dict[str, Any],
@@ -1018,6 +1032,12 @@ def armor_contract_errors(
     errors: List[str] = []
     field_schemas = item_schema['properties']
     for item in items:
+        if malformed_armor_entry(item):
+            errors.append(
+                f"equipment '{item.get('item_name')}' is typed armor but carries no "
+                "armor_category and no ac_base; it must be classified: body armor or a "
+                "shield gets armor_category and ac_base, anything else is not item_type armor"
+            )
         for field in _T051_ARMOR_FIELDS:
             if field not in item:
                 continue
@@ -2613,6 +2633,13 @@ Provide the corrected character data with proper AC calculation."""
             )
             seen_names = set()
             immutable_equipment_fields = {'item_type', 'description', 'quantity'}
+            # A malformed armor entry (typed armor, no armor fields) may be
+            # reclassified by the model to a non-armor type; every other
+            # entry keeps its item_type.
+            reclassifiable = {
+                name for name, entry in source_equipment.items()
+                if malformed_armor_entry(entry)
+            }
             allowed_equipment_fields = {
                 'item_name', 'item_type', 'equipped', 'description',
                 'ac_base', 'ac_bonus', 'dex_limit', 'armor_category',
@@ -2640,7 +2667,14 @@ Provide the corrected character data with proper AC calculation."""
                     )
                 seen_names.add(normalized_name)
                 source_item = source_equipment[normalized_name]
+                reclassified = (
+                    normalized_name in reclassifiable
+                    and 'item_type' in item
+                    and item['item_type'] != 'armor'
+                )
                 for immutable_field in immutable_equipment_fields:
+                    if immutable_field == 'item_type' and reclassified:
+                        continue
                     if (
                         immutable_field in item
                         and item[immutable_field] != source_item.get(immutable_field)
@@ -2661,6 +2695,8 @@ Provide the corrected character data with proper AC calculation."""
                     )
 
                 normalized_update = {'item_name': source_item['item_name']}
+                if reclassified:
+                    normalized_update['item_type'] = item['item_type']
                 for mutable_field in _T051_ARMOR_FIELDS:
                     if (
                         mutable_field in item

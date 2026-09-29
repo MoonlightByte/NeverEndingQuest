@@ -82,10 +82,14 @@ def _ac_entries(explanation: Dict[str, Any], names_by_id: Dict[str, str]) -> Lis
 def project(sheet: Dict[str, Any], *, binary: Optional[str] = None) -> Projection:
     """Return the sheet with engine-owned AC fields rewritten, or unchanged with a reason."""
     previous = sheet.get("armorClass") if type(sheet.get("armorClass")) is int else None
+    world = genesis.build_world([sheet], PROJECTION_LOCATION)
+    # An entry typed armor with no ac_base is not modelled armor: genesis
+    # treats it as a worn item with no defense and reports it in gaps. The
+    # pre-update armor-field repair (T051, #357) is asked to classify such
+    # entries; until it has, the projection uses the typed fields as they are.
     missing = _equipped_armor_without_base(sheet)
     if missing:
-        return Projection(sheet, False, f"equipped armor without ac_base: {missing}", previous_armor_class=previous)
-    world = genesis.build_world([sheet], PROJECTION_LOCATION)
+        world.gaps.append(f"equipped armor without ac_base projected as worn items with no defense: {missing}")
     cid = genesis.character_id(sheet)
     try:
         response = apply.genesis(world.source, explain=[{"character": cid, "stat": "defense"}], binary=binary)
