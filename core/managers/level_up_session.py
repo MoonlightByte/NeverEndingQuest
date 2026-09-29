@@ -180,7 +180,7 @@ class LevelUpSession:
         return {
             "mode": "player" if self.is_player else "companion",
             "character": {
-                "name": sheet.get("name"), "class": sheet.get("class"), "subclass": sheet.get("subclass"),
+                "name": sheet.get("name"), "class": sheet.get("class"), "subclass": s.subclass,
                 "race": sheet.get("race"), "level": s.new_level - 1, "new_level": s.new_level,
                 "abilities": sheet.get("abilities"), "feats": sheet.get("feats"),
                 "features": [f.get("name") for f in sheet.get("classFeatures") or [] if isinstance(f, dict)],
@@ -307,8 +307,12 @@ class LevelUpSession:
         changes.update(tables.derived_numbers(sheet, s.new_level, abilities))
         if feats != (sheet.get("feats") or []):
             changes["feats"] = feats
+        chosen_subclass = self._choices.get("subclass") or s.subclass
+        if chosen_subclass and chosen_subclass != sheet.get("subclass"):
+            changes["subclass"] = chosen_subclass
         if self._choices.get("subclass"):
-            changes["subclass"] = self._choices["subclass"]
+            # the chosen subclass's features at this level join the gained list
+            s.features = tables.features_for(cls, chosen_subclass, s.new_level)
         # 2. features: new ones with the agent's text, pools resized from the table
         existing = {f.get("name"): f for f in sheet.get("classFeatures") or [] if isinstance(f, dict)}
         # A pool's feature may carry a suffix on the sheet ("Channel Divinity (2/rest)"):

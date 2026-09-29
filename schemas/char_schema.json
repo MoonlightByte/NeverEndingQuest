@@ -77,6 +77,10 @@
     "maxHitPoints": {
       "type": "integer"
     },
+    "subclass": {
+      "type": ["string", "null"],
+      "description": "SRD subclass name (e.g. Life Domain, Champion). Chosen at the class's subclass level; inferred from subclass features on older sheets."
+    },
     "temporaryHitPoints": {
       "type": "integer",
       "minimum": 0,

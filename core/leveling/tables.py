@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional, Tuple
 _DATA = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                      "data", "srd", "progression.json")
 _TABLES: Optional[Dict[str, Any]] = None
+_SUBCLASSES: Optional[Dict[str, Any]] = None
+_SUBCLASS_DATA = os.path.join(os.path.dirname(_DATA), "subclasses.json")
 
 SKILL_ABILITY = {
     "athletics": "strength", "acrobatics": "dexterity", "sleight_of_hand": "dexterity", "stealth": "dexterity",
@@ -46,6 +48,58 @@ def tables() -> Dict[str, Any]:
         with open(_DATA, "r", encoding="utf-8") as handle:
             _TABLES = json.load(handle)
     return _TABLES
+
+
+def subclasses() -> Dict[str, Any]:
+    global _SUBCLASSES
+    if _SUBCLASSES is None:
+        with open(_SUBCLASS_DATA, "r", encoding="utf-8") as handle:
+            _SUBCLASSES = json.load(handle)
+    return _SUBCLASSES
+
+
+def _feature_key(name: Any) -> str:
+    return str(name).split("(")[0].strip().lower()
+
+
+def subclass_options(cls: str) -> List[str]:
+    entry = (subclasses().get("classes") or {}).get(cls) or {}
+    return [sc["name"] for sc in entry.get("subclasses") or []]
+
+
+def infer_subclass(sheet: Dict[str, Any], cls: str) -> Optional[str]:
+    """The subclass whose features the sheet already carries (typed feature names), or None.
+
+    The sheet's ``subclass`` field wins when present. Otherwise every classFeatures
+    name is looked up in the SRD feature index for this class; the subclass with
+    the most matches is the answer, ties or no matches give None.
+    """
+    recorded = sheet.get("subclass")
+    if isinstance(recorded, str) and recorded.strip():
+        return recorded.strip()
+    index = subclasses().get("feature_index") or {}
+    keyed = {_feature_key(name): rows for name, rows in index.items()}
+    votes: Dict[str, int] = {}
+    for feature in sheet.get("classFeatures") or []:
+        if not isinstance(feature, dict):
+            continue
+        for row in keyed.get(_feature_key(feature.get("name")), []):
+            if row.get("class") == cls:
+                votes[row["subclass"]] = votes.get(row["subclass"], 0) + 1
+    if not votes:
+        return None
+    best = sorted(votes.items(), key=lambda kv: -kv[1])
+    if len(best) > 1 and best[0][1] == best[1][1]:
+        return None
+    return best[0][0]
+
+
+def subclass_features(cls: str, subclass: Optional[str], level: int) -> List[str]:
+    entry = (subclasses().get("classes") or {}).get(cls) or {}
+    for sc in entry.get("subclasses") or []:
+        if sc["name"] == subclass:
+            return list((sc.get("features_by_level") or {}).get(str(level), []))
+    return []
 
 
 def class_key(sheet: Dict[str, Any]) -> Optional[str]:
@@ -156,10 +210,10 @@ def choice_points(sheet: Dict[str, Any], cls: str, new_level: int) -> List[Dict[
                        "prompt": "Ability Score Improvement: raise one ability by 2 or two abilities by 1 (cap 20), "
                                  "or take a feat.",
                        "options": ["asi", "feat"], "abilities": dict(sheet.get("abilities") or {}), "cap": ABILITY_CAP})
-    if (new_level == int(c.get("subclass_level") or 3) or "Subclass feature" in features_gained(cls, new_level)) \
-            and not sheet.get("subclass"):
+    grants_subclass = any(n == "Subclass feature" or n.endswith(" Subclass") for n in features_gained(cls, new_level))
+    if (new_level == int(c.get("subclass_level") or 3) or grants_subclass) and infer_subclass(sheet, cls) is None:
         points.append({"id": "subclass", "kind": "subclass", "prompt": f"Choose your {c['name']} subclass.",
-                       "options": list((c.get("subclasses") or {}).keys()) or None})
+                       "options": subclass_options(cls) or None})
     if new_level == int(c.get("epic_boon_level") or 19):
         points.append({"id": "epic_boon", "kind": "epic_boon", "prompt": "Choose an Epic Boon feat.", "options": None})
     counts_now, counts_before = spell_counts(cls, new_level), spell_counts(cls, new_level - 1)
@@ -190,16 +244,29 @@ class Settled:
     spell_counts: Dict[str, Optional[int]]
     exp_required_for_next_level: int
     choice_points: List[Dict[str, Any]] = field(default_factory=list)
+    subclass: Optional[str] = None
+
+
+def features_for(cls: str, subclass: Optional[str], level: int) -> List[str]:
+    """Class features at ``level`` with the subclass's own features in place of the placeholder."""
+    out = []
+    for name in features_gained(cls, level):
+        if name == "Subclass feature" or name.endswith(" Subclass"):
+            out.extend(subclass_features(cls, subclass, level) or [name])
+        else:
+            out.append(name)
+    return out
 
 
 def settle(sheet: Dict[str, Any], new_level: int) -> Settled:
     cls = class_key(sheet)
     if cls is None:
         raise ValueError("not an SRD class")
+    subclass = infer_subclass(sheet, cls)
     return Settled(
         cls=cls, new_level=new_level, proficiency_bonus=proficiency_bonus(new_level),
         hp_gain_fixed=fixed_hp_gain(cls), hit_die=hit_die(cls), slot_targets=slot_maxima(cls, new_level),
-        features=features_gained(cls, new_level), pools=pool_sizes(cls, new_level),
+        features=features_for(cls, subclass, new_level), pools=pool_sizes(cls, new_level), subclass=subclass,
         spell_counts=spell_counts(cls, new_level),
         exp_required_for_next_level=xp_threshold(new_level + 1) if new_level < 20 else xp_threshold(20),
         choice_points=choice_points(sheet, cls, new_level),
