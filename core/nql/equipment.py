@@ -131,8 +131,16 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
     if not response.get("ok"):
         fault = response.get("fault")
         detail = response.get("diagnostics") or fault or response.get("error")
-        return EquipmentOutcome(False, operations=ops, fault=fault,
-                                reason=f"engine refused at {response.get('phase')}: {detail}", gaps=gaps)
+        reason = f"engine refused at {response.get('phase')}: {detail}"
+        if isinstance(fault, dict) and fault.get("code") == "E_QUANTITY":
+            iid = str(fault.get("subject") or "")
+            entry = old.get(iid) or new.get(iid) or {}
+            have = _stock(old[iid]) if iid in old else None
+            want = have - _stock(new[iid]) if iid in old and iid in new else None
+            if have is not None and want is not None:
+                reason = (f"{before.get('name')} has {have} of {entry.get('item_name', iid)!r} and cannot "
+                          f"use or lose {want} (not enough stock)")
+        return EquipmentOutcome(False, operations=ops, fault=fault, reason=reason, gaps=gaps)
 
     views = {v["at"]["id"]: v["items"] for v in response.get("items_at", [])}
     result: List[Dict[str, Any]] = []
