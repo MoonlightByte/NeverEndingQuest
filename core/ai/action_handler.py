@@ -3851,6 +3851,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             debug(f"STATE_CHANGE: Updating character info for {character_name}", category="character_updates")
             try:
                 from core.managers.effects_runtime import update_character_with_effects
+                from updates.update_character_info import EngineRefusedChange
 
                 debug(f"STATE_CHANGE: Calling effects-aware character update for {character_name}", category="character_updates")
                 success = update_character_with_effects(
@@ -3872,6 +3873,17 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                             "error_message": "Character update failed safely; no partial effect was applied."
                         },
                     )
+            except EngineRefusedChange as refusal:
+                # The rules engine refused the change (E6: coins). Nothing was
+                # written; the model hears why and answers again, and later
+                # actions from this response do not run.
+                print(f"ERROR: Engine refused character update for {character_name}: {refusal.reason}")
+                conversation_history.append({"role": "user", "content": (
+                    f"Currency Error: {refusal.reason}. Nothing changed on {character_name}'s sheet. Later actions from "
+                    "this response have not executed. Do not repeat earlier completed actions; propose a payment the "
+                    "character can cover or narrate why it cannot happen.")})
+                needs_conversation_history_update = True
+                return create_return(status="needs_response", needs_update=True)
             except Exception as e:
                 error(f"FAILURE: Exception in character update", exception=e, category="character_updates")
                 # Use print with separate arguments to avoid format string interpretation

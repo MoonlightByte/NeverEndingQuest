@@ -1108,6 +1108,7 @@ def prepare_character_delta(character_data, updates, character_role, schema,
             return updates, character_data, {
                 'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
                 'error_message': f"the currency change was refused by the rules engine: {outcome.reason}",
+                'engine_refusal': outcome.reason,
             }
         updates['currency'] = dict(outcome.sheets[0]['currency'])
         for gap in outcome.gaps:
@@ -1145,6 +1146,15 @@ def prepare_character_delta(character_data, updates, character_role, schema,
     if is_valid:
         updated_data = repair_character_data(updated_data)
     return updates, updated_data, checks
+
+
+class EngineRefusedChange(Exception):
+    """The rules engine refused the requested change and the model could not
+    restate it (E6): the update did not happen and the caller reports why."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
 
 
 class CharacterSnapshotChanged(ValueError):
@@ -2022,6 +2032,10 @@ Character Role: {character_role}
     # A {} answer is accepted only when the immediately preceding T079 answer
     # in this update was also {} (#432): the first one is asked to confirm.
     previous_answer_was_empty = False
+    # An engine refusal that the model then abandons with {} (or that outlasts
+    # the attempt bound) is reported to the caller as a refusal, not accepted
+    # as "no change".
+    last_engine_refusal = None
     while structural_reissue or bounded_failure_count < bounded_failure_limit:
         try:
             if commit_guard is not None:
@@ -2132,6 +2146,8 @@ Character Role: {character_role}
                     "T079 returned an empty or unrecognized character delta"
                 )
             if updates == {}:
+                if last_engine_refusal:
+                    raise EngineRefusedChange(last_engine_refusal)
                 previous_answer_was_empty = True
                 if not engine_owned_change:
                     if not prior_answer_was_empty:
@@ -2279,6 +2295,7 @@ Character Role: {character_role}
             # print(f"[DEBUG] About to validate character data against schema")
             is_valid = preparation_checks['schema_valid']
             error_msg = preparation_checks['error_message']
+            last_engine_refusal = preparation_checks.get('engine_refusal') if not is_valid else None
             # print(f"[DEBUG] Schema validation completed. Valid: {is_valid}, Error: {error_msg}")
             
             # Update debug data with validation results
@@ -2525,6 +2542,8 @@ Character Role: {character_role}
                 f.write(f"Clean response attempt:\n{clean_response if 'clean_response' in locals() else 'Not extracted'}\n")
             debug(f"JSON parse error details saved to: {debug_error_file}", category="character_updates")
             
+        except EngineRefusedChange:
+            raise
         except Exception as e:
             if isinstance(e, LiveProviderCompletedError):
                 # A deterministic provider refusal cannot heal by reissuing the
@@ -2585,6 +2604,9 @@ Character Role: {character_role}
         attempt += 1
         time.sleep(1)
     
+    if last_engine_refusal:
+        raise EngineRefusedChange(last_engine_refusal)
+
     # Log failure state
     if 'debug_data' in locals():
         debug_data["final_outcome"] = "failure"
