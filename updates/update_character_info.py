@@ -1844,7 +1844,10 @@ CRITICAL INSTRUCTIONS:
     c) A payment in a coin the character lacks is two signed entries the DM stated (e.g. change a gold
        piece: {{"currencyDelta": {{"gold": -1, "silver": 8}}}} for a 2 silver fee). Do not invent a conversion
        the request did not describe.
-    d) Examples: pays 100 gold -> {{"currencyDelta": {{"gold": -100}}}}; finds 50 gold and 20 silver ->
+    d) A verb governs every coin listed after it: "Remove 1 silver and 10 copper" is silver -1 AND copper -10;
+       a coin is positive only when its own verb says add/receive/find/take back. "Pay 1 silver, take 8 copper
+       in change" is silver -1, copper +8. Never flip a sign to make a transaction "balance".
+    e) Examples: pays 100 gold -> {{"currencyDelta": {{"gold": -100}}}}; finds 50 gold and 20 silver ->
        {{"currencyDelta": {{"gold": 50, "silver": 20}}}}; "kept 38 gold" is a balance statement, not a change:
        return {{}} and let the request be corrected rather than guessing a delta.
 13. STATUS-CONDITION SYNCHRONIZATION: Always maintain consistency between status, condition, and hitPoints fields:
