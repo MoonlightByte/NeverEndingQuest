@@ -121,7 +121,9 @@ _ACK_BACKSTOP_SECONDS = 30.0
 _ACK_ENDPOINTS = frozenset({"responses"})
 # httpcore trace events -> transport phases (the child observes them through
 # the library's own logging trace; nothing is patched).
-_RETRYABLE_STREAM_ERROR_CODES = frozenset({"server_error", "rate_limit_exceeded"})
+# "runaway_output": the stream consumer abandoned a whitespace-only runaway
+# (core/ai/api_client.RUNAWAY_STREAM_CODE); reissued like a provider fault.
+_RETRYABLE_STREAM_ERROR_CODES = frozenset({"server_error", "rate_limit_exceeded", "runaway_output"})
 _HTTPCORE_PHASES = (
     ("connect_tcp.started", "connecting"),
     ("connect_tcp.complete", "connected"),
