@@ -1,0 +1,3501 @@
+{
+ "schema": "srd-progression/1",
+ "ruleset": "SRD 5.2.1",
+ "sources": {
+  "document": "System Reference Document 5.2.1 (SRD_CC_v5.2.1.pdf)",
+  "pdf_sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
+  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.",
+  "xp_thresholds": {
+   "section": "Character Creation > Level Advancement > Character Advancement table",
+   "page": 23
+  },
+  "proficiency_bonus": {
+   "section": "Character Creation > Level Advancement > Character Advancement table",
+   "page": 23
+  },
+  "hp_at_first_level": {
+   "section": "Character Creation > Level 1 Hit Points by Class table",
+   "page": 22
+  },
+  "hp_per_level_average": {
+   "section": "Character Creation > Level Advancement > Fixed Hit Points by Class table",
+   "page": 23
+  },
+  "classes": {
+   "barbarian": {
+    "features_table": {
+     "section": "Classes > Barbarian > Barbarian Features table",
+     "page": 28
+    },
+    "hit_die": {
+     "section": "Classes > Barbarian > Core Barbarian Traits table",
+     "page": 28
+    }
+   },
+   "bard": {
+    "features_table": {
+     "section": "Classes > Bard > Bard Features table",
+     "page": 31
+    },
+    "hit_die": {
+     "section": "Classes > Bard > Core Bard Traits table",
+     "page": 31
+    }
+   },
+   "cleric": {
+    "features_table": {
+     "section": "Classes > Cleric > Cleric Features table",
+     "page": 36
+    },
+    "hit_die": {
+     "section": "Classes > Cleric > Core Cleric Traits table",
+     "page": 36
+    }
+   },
+   "druid": {
+    "features_table": {
+     "section": "Classes > Druid > Druid Features table",
+     "page": 41
+    },
+    "hit_die": {
+     "section": "Classes > Druid > Core Druid Traits table",
+     "page": 41
+    }
+   },
+   "fighter": {
+    "features_table": {
+     "section": "Classes > Fighter > Fighter Features table",
+     "page": 47
+    },
+    "hit_die": {
+     "section": "Classes > Fighter > Core Fighter Traits table",
+     "page": 47
+    }
+   },
+   "monk": {
+    "features_table": {
+     "section": "Classes > Monk > Monk Features table",
+     "page": 50
+    },
+    "hit_die": {
+     "section": "Classes > Monk > Core Monk Traits table",
+     "page": 49
+    }
+   },
+   "paladin": {
+    "features_table": {
+     "section": "Classes > Paladin > Paladin Features table",
+     "page": 53
+    },
+    "hit_die": {
+     "section": "Classes > Paladin > Core Paladin Traits table",
+     "page": 53
+    }
+   },
+   "ranger": {
+    "features_table": {
+     "section": "Classes > Ranger > Ranger Features table",
+     "page": 58
+    },
+    "hit_die": {
+     "section": "Classes > Ranger > Core Ranger Traits table",
+     "page": 57
+    }
+   },
+   "rogue": {
+    "features_table": {
+     "section": "Classes > Rogue > Rogue Features table",
+     "page": 62
+    },
+    "hit_die": {
+     "section": "Classes > Rogue > Core Rogue Traits table",
+     "page": 61
+    }
+   },
+   "sorcerer": {
+    "features_table": {
+     "section": "Classes > Sorcerer > Sorcerer Features table",
+     "page": 65
+    },
+    "hit_die": {
+     "section": "Classes > Sorcerer > Core Sorcerer Traits table",
+     "page": 64
+    }
+   },
+   "warlock": {
+    "features_table": {
+     "section": "Classes > Warlock > Warlock Features table",
+     "page": 71
+    },
+    "hit_die": {
+     "section": "Classes > Warlock > Core Warlock Traits table",
+     "page": 70
+    }
+   },
+   "wizard": {
+    "features_table": {
+     "section": "Classes > Wizard > Wizard Features table",
+     "page": 77
+    },
+    "hit_die": {
+     "section": "Classes > Wizard > Core Wizard Traits table",
+     "page": 77
+    }
+   }
+  }
+ },
+ "notes": [
+  "Per-level data is keyed by level as a string, \"1\" to \"20\".",
+  "Text is ASCII: curly apostrophes and quotes became straight ones; an em dash (none) became an empty feature list, a null column value or a 0 slot count.",
+  "SRD 5.2.1 gives every caster a fixed Prepared Spells count per level; it has no spells-known lists and no preparation formulas.",
+  "Paladin and Ranger gain Spellcasting at level 1 in SRD 5.2.1, with two level 1 slots.",
+  "Ability Score Improvement levels are 4, 8, 12 and 16 for every class, plus 6 and 14 for Fighter and 10 for Rogue. Level 19 grants Epic Boon (a feat), not an Ability Score Improvement.",
+  "No SRD 5.2.1 class is a third caster; caster_kind third is unused.",
+  "Subclass features appear as the SRD's 'Subclass feature' entry; subclass tables are not included.",
+  "table_columns holds the class table's other columns (for example Rages or Sneak Attack) exactly as printed."
+ ],
+ "xp_thresholds": {
+  "1": 0,
+  "2": 300,
+  "3": 900,
+  "4": 2700,
+  "5": 6500,
+  "6": 14000,
+  "7": 23000,
+  "8": 34000,
+  "9": 48000,
+  "10": 64000,
+  "11": 85000,
+  "12": 100000,
+  "13": 120000,
+  "14": 140000,
+  "15": 165000,
+  "16": 195000,
+  "17": 225000,
+  "18": 265000,
+  "19": 305000,
+  "20": 355000
+ },
+ "proficiency_bonus": {
+  "1": 2,
+  "2": 2,
+  "3": 2,
+  "4": 2,
+  "5": 3,
+  "6": 3,
+  "7": 3,
+  "8": 3,
+  "9": 4,
+  "10": 4,
+  "11": 4,
+  "12": 4,
+  "13": 5,
+  "14": 5,
+  "15": 5,
+  "16": 5,
+  "17": 6,
+  "18": 6,
+  "19": 6,
+  "20": 6
+ },
+ "classes": {
+  "barbarian": {
+   "name": "Barbarian",
+   "hit_die": "d12",
+   "hp_at_first_level": "12 + Con modifier",
+   "hp_at_first_level_base": 12,
+   "hp_per_level_average": 7,
+   "hp_per_level_rule": "7 + Con modifier, or roll 1d12 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "none",
+   "spellcasting_feature": null,
+   "spell_slots_by_level": null,
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": null,
+   "prepared_spells_by_level": null,
+   "features_by_level": {
+    "1": [
+     "Rage",
+     "Unarmored Defense",
+     "Weapon Mastery"
+    ],
+    "2": [
+     "Danger Sense",
+     "Reckless Attack"
+    ],
+    "3": [
+     "Barbarian Subclass",
+     "Primal Knowledge"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [
+     "Extra Attack",
+     "Fast Movement"
+    ],
+    "6": [
+     "Subclass feature"
+    ],
+    "7": [
+     "Feral Instinct",
+     "Instinctive Pounce"
+    ],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [
+     "Brutal Strike"
+    ],
+    "10": [
+     "Subclass feature"
+    ],
+    "11": [
+     "Relentless Rage"
+    ],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [
+     "Improved Brutal Strike"
+    ],
+    "14": [
+     "Subclass feature"
+    ],
+    "15": [
+     "Persistent Rage"
+    ],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [
+     "Improved Brutal Strike"
+    ],
+    "18": [
+     "Indomitable Might"
+    ],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Primal Champion"
+    ]
+   },
+   "table_columns": {
+    "Rages": {
+     "1": 2,
+     "2": 2,
+     "3": 3,
+     "4": 3,
+     "5": 3,
+     "6": 4,
+     "7": 4,
+     "8": 4,
+     "9": 4,
+     "10": 4,
+     "11": 4,
+     "12": 5,
+     "13": 5,
+     "14": 5,
+     "15": 5,
+     "16": 5,
+     "17": 6,
+     "18": 6,
+     "19": 6,
+     "20": 6
+    },
+    "Rage Damage": {
+     "1": "+2",
+     "2": "+2",
+     "3": "+2",
+     "4": "+2",
+     "5": "+2",
+     "6": "+2",
+     "7": "+2",
+     "8": "+2",
+     "9": "+3",
+     "10": "+3",
+     "11": "+3",
+     "12": "+3",
+     "13": "+3",
+     "14": "+3",
+     "15": "+3",
+     "16": "+4",
+     "17": "+4",
+     "18": "+4",
+     "19": "+4",
+     "20": "+4"
+    },
+    "Weapon Mastery": {
+     "1": 2,
+     "2": 2,
+     "3": 2,
+     "4": 3,
+     "5": 3,
+     "6": 3,
+     "7": 3,
+     "8": 3,
+     "9": 3,
+     "10": 4,
+     "11": 4,
+     "12": 4,
+     "13": 4,
+     "14": 4,
+     "15": 4,
+     "16": 4,
+     "17": 4,
+     "18": 4,
+     "19": 4,
+     "20": 4
+    }
+   }
+  },
+  "bard": {
+   "name": "Bard",
+   "hit_die": "d8",
+   "hp_at_first_level": "8 + Con modifier",
+   "hp_at_first_level_base": 8,
+   "hp_per_level_average": 5,
+   "hp_per_level_rule": "5 + Con modifier, or roll 1d8 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "full",
+   "spellcasting_feature": "Spellcasting",
+   "spell_slots_by_level": {
+    "1": {
+     "level1": 2,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "2": {
+     "level1": 3,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "3": {
+     "level1": 4,
+     "level2": 2,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "4": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "5": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 2,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "6": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "7": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 1,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "8": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 2,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "9": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 1,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "10": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "11": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "12": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "13": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 0,
+     "level9": 0
+    },
+    "14": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 0,
+     "level9": 0
+    },
+    "15": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 0
+    },
+    "16": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 0
+    },
+    "17": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "18": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "19": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 2,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "20": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 2,
+     "level7": 2,
+     "level8": 1,
+     "level9": 1
+    }
+   },
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": {
+    "1": 2,
+    "2": 2,
+    "3": 2,
+    "4": 3,
+    "5": 3,
+    "6": 3,
+    "7": 3,
+    "8": 3,
+    "9": 3,
+    "10": 4,
+    "11": 4,
+    "12": 4,
+    "13": 4,
+    "14": 4,
+    "15": 4,
+    "16": 4,
+    "17": 4,
+    "18": 4,
+    "19": 4,
+    "20": 4
+   },
+   "prepared_spells_by_level": {
+    "1": 4,
+    "2": 5,
+    "3": 6,
+    "4": 7,
+    "5": 9,
+    "6": 10,
+    "7": 11,
+    "8": 12,
+    "9": 14,
+    "10": 15,
+    "11": 16,
+    "12": 16,
+    "13": 17,
+    "14": 17,
+    "15": 18,
+    "16": 18,
+    "17": 19,
+    "18": 20,
+    "19": 21,
+    "20": 22
+   },
+   "features_by_level": {
+    "1": [
+     "Bardic Inspiration",
+     "Spellcasting"
+    ],
+    "2": [
+     "Expertise",
+     "Jack of All Trades"
+    ],
+    "3": [
+     "Bard Subclass"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [
+     "Font of Inspiration"
+    ],
+    "6": [
+     "Subclass feature"
+    ],
+    "7": [
+     "Countercharm"
+    ],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [
+     "Expertise"
+    ],
+    "10": [
+     "Magical Secrets"
+    ],
+    "11": [],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [],
+    "14": [
+     "Subclass feature"
+    ],
+    "15": [],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [],
+    "18": [
+     "Superior Inspiration"
+    ],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Words of Creation"
+    ]
+   },
+   "table_columns": {
+    "Bardic Die": {
+     "1": "D6",
+     "2": "D6",
+     "3": "D6",
+     "4": "D6",
+     "5": "D8",
+     "6": "D8",
+     "7": "D8",
+     "8": "D8",
+     "9": "D8",
+     "10": "D10",
+     "11": "D10",
+     "12": "D10",
+     "13": "D10",
+     "14": "D10",
+     "15": "D12",
+     "16": "D12",
+     "17": "D12",
+     "18": "D12",
+     "19": "D12",
+     "20": "D12"
+    }
+   }
+  },
+  "cleric": {
+   "name": "Cleric",
+   "hit_die": "d8",
+   "hp_at_first_level": "8 + Con modifier",
+   "hp_at_first_level_base": 8,
+   "hp_per_level_average": 5,
+   "hp_per_level_rule": "5 + Con modifier, or roll 1d8 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "full",
+   "spellcasting_feature": "Spellcasting",
+   "spell_slots_by_level": {
+    "1": {
+     "level1": 2,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "2": {
+     "level1": 3,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "3": {
+     "level1": 4,
+     "level2": 2,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "4": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "5": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 2,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "6": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "7": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 1,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "8": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 2,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "9": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 1,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "10": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "11": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "12": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "13": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 0,
+     "level9": 0
+    },
+    "14": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 0,
+     "level9": 0
+    },
+    "15": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 0
+    },
+    "16": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 0
+    },
+    "17": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "18": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "19": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 2,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "20": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 2,
+     "level7": 2,
+     "level8": 1,
+     "level9": 1
+    }
+   },
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": {
+    "1": 3,
+    "2": 3,
+    "3": 3,
+    "4": 4,
+    "5": 4,
+    "6": 4,
+    "7": 4,
+    "8": 4,
+    "9": 4,
+    "10": 5,
+    "11": 5,
+    "12": 5,
+    "13": 5,
+    "14": 5,
+    "15": 5,
+    "16": 5,
+    "17": 5,
+    "18": 5,
+    "19": 5,
+    "20": 5
+   },
+   "prepared_spells_by_level": {
+    "1": 4,
+    "2": 5,
+    "3": 6,
+    "4": 7,
+    "5": 9,
+    "6": 10,
+    "7": 11,
+    "8": 12,
+    "9": 14,
+    "10": 15,
+    "11": 16,
+    "12": 16,
+    "13": 17,
+    "14": 17,
+    "15": 18,
+    "16": 18,
+    "17": 19,
+    "18": 20,
+    "19": 21,
+    "20": 22
+   },
+   "features_by_level": {
+    "1": [
+     "Spellcasting",
+     "Divine Order"
+    ],
+    "2": [
+     "Channel Divinity"
+    ],
+    "3": [
+     "Cleric Subclass"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [
+     "Sear Undead"
+    ],
+    "6": [
+     "Subclass feature"
+    ],
+    "7": [
+     "Blessed Strikes"
+    ],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [],
+    "10": [
+     "Divine Intervention"
+    ],
+    "11": [],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [],
+    "14": [
+     "Improved Blessed Strikes"
+    ],
+    "15": [],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [
+     "Subclass feature"
+    ],
+    "18": [],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Greater Divine Intervention"
+    ]
+   },
+   "table_columns": {
+    "Channel Divinity": {
+     "1": null,
+     "2": 2,
+     "3": 2,
+     "4": 2,
+     "5": 2,
+     "6": 3,
+     "7": 3,
+     "8": 3,
+     "9": 3,
+     "10": 3,
+     "11": 3,
+     "12": 3,
+     "13": 3,
+     "14": 3,
+     "15": 3,
+     "16": 3,
+     "17": 3,
+     "18": 4,
+     "19": 4,
+     "20": 4
+    }
+   }
+  },
+  "druid": {
+   "name": "Druid",
+   "hit_die": "d8",
+   "hp_at_first_level": "8 + Con modifier",
+   "hp_at_first_level_base": 8,
+   "hp_per_level_average": 5,
+   "hp_per_level_rule": "5 + Con modifier, or roll 1d8 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "full",
+   "spellcasting_feature": "Spellcasting",
+   "spell_slots_by_level": {
+    "1": {
+     "level1": 2,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "2": {
+     "level1": 3,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "3": {
+     "level1": 4,
+     "level2": 2,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "4": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "5": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 2,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "6": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "7": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 1,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "8": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 2,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "9": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 1,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "10": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "11": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "12": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "13": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 0,
+     "level9": 0
+    },
+    "14": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 0,
+     "level9": 0
+    },
+    "15": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 0
+    },
+    "16": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 0
+    },
+    "17": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "18": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "19": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 2,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "20": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 2,
+     "level7": 2,
+     "level8": 1,
+     "level9": 1
+    }
+   },
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": {
+    "1": 2,
+    "2": 2,
+    "3": 2,
+    "4": 3,
+    "5": 3,
+    "6": 3,
+    "7": 3,
+    "8": 3,
+    "9": 3,
+    "10": 4,
+    "11": 4,
+    "12": 4,
+    "13": 4,
+    "14": 4,
+    "15": 4,
+    "16": 4,
+    "17": 4,
+    "18": 4,
+    "19": 4,
+    "20": 4
+   },
+   "prepared_spells_by_level": {
+    "1": 4,
+    "2": 5,
+    "3": 6,
+    "4": 7,
+    "5": 9,
+    "6": 10,
+    "7": 11,
+    "8": 12,
+    "9": 14,
+    "10": 15,
+    "11": 16,
+    "12": 16,
+    "13": 17,
+    "14": 17,
+    "15": 18,
+    "16": 18,
+    "17": 19,
+    "18": 20,
+    "19": 21,
+    "20": 22
+   },
+   "features_by_level": {
+    "1": [
+     "Spellcasting",
+     "Druidic",
+     "Primal Order"
+    ],
+    "2": [
+     "Wild Shape",
+     "Wild Companion"
+    ],
+    "3": [
+     "Druid Subclass"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [
+     "Wild Resurgence"
+    ],
+    "6": [
+     "Subclass feature"
+    ],
+    "7": [
+     "Elemental Fury"
+    ],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [],
+    "10": [
+     "Subclass feature"
+    ],
+    "11": [],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [],
+    "14": [
+     "Subclass feature"
+    ],
+    "15": [
+     "Improved Elemental Fury"
+    ],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [],
+    "18": [
+     "Beast Spells"
+    ],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Archdruid"
+    ]
+   },
+   "table_columns": {
+    "Wild Shape": {
+     "1": null,
+     "2": 2,
+     "3": 2,
+     "4": 2,
+     "5": 2,
+     "6": 3,
+     "7": 3,
+     "8": 3,
+     "9": 3,
+     "10": 3,
+     "11": 3,
+     "12": 3,
+     "13": 3,
+     "14": 3,
+     "15": 3,
+     "16": 3,
+     "17": 4,
+     "18": 4,
+     "19": 4,
+     "20": 4
+    }
+   }
+  },
+  "fighter": {
+   "name": "Fighter",
+   "hit_die": "d10",
+   "hp_at_first_level": "10 + Con modifier",
+   "hp_at_first_level_base": 10,
+   "hp_per_level_average": 6,
+   "hp_per_level_rule": "6 + Con modifier, or roll 1d10 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    6,
+    8,
+    12,
+    14,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "none",
+   "spellcasting_feature": null,
+   "spell_slots_by_level": null,
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": null,
+   "prepared_spells_by_level": null,
+   "features_by_level": {
+    "1": [
+     "Fighting Style",
+     "Second Wind",
+     "Weapon Mastery"
+    ],
+    "2": [
+     "Action Surge (one use)",
+     "Tactical Mind"
+    ],
+    "3": [
+     "Fighter Subclass"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [
+     "Extra Attack",
+     "Tactical Shift"
+    ],
+    "6": [
+     "Ability Score Improvement"
+    ],
+    "7": [
+     "Subclass feature"
+    ],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [
+     "Indomitable (one use)",
+     "Tactical Master"
+    ],
+    "10": [
+     "Subclass feature"
+    ],
+    "11": [
+     "Two Extra Attacks"
+    ],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [
+     "Indomitable (two uses)",
+     "Studied Attacks"
+    ],
+    "14": [
+     "Ability Score Improvement"
+    ],
+    "15": [
+     "Subclass feature"
+    ],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [
+     "Action Surge (two uses)",
+     "Indomitable (three uses)"
+    ],
+    "18": [
+     "Subclass feature"
+    ],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Three Extra Attacks"
+    ]
+   },
+   "table_columns": {
+    "Second Wind": {
+     "1": 2,
+     "2": 2,
+     "3": 2,
+     "4": 3,
+     "5": 3,
+     "6": 3,
+     "7": 3,
+     "8": 3,
+     "9": 3,
+     "10": 4,
+     "11": 4,
+     "12": 4,
+     "13": 4,
+     "14": 4,
+     "15": 4,
+     "16": 4,
+     "17": 4,
+     "18": 4,
+     "19": 4,
+     "20": 4
+    },
+    "Weapon Mastery": {
+     "1": 3,
+     "2": 3,
+     "3": 3,
+     "4": 4,
+     "5": 4,
+     "6": 4,
+     "7": 4,
+     "8": 4,
+     "9": 4,
+     "10": 5,
+     "11": 5,
+     "12": 5,
+     "13": 5,
+     "14": 5,
+     "15": 5,
+     "16": 6,
+     "17": 6,
+     "18": 6,
+     "19": 6,
+     "20": 6
+    }
+   }
+  },
+  "monk": {
+   "name": "Monk",
+   "hit_die": "d8",
+   "hp_at_first_level": "8 + Con modifier",
+   "hp_at_first_level_base": 8,
+   "hp_per_level_average": 5,
+   "hp_per_level_rule": "5 + Con modifier, or roll 1d8 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "none",
+   "spellcasting_feature": null,
+   "spell_slots_by_level": null,
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": null,
+   "prepared_spells_by_level": null,
+   "features_by_level": {
+    "1": [
+     "Martial Arts",
+     "Unarmored Defense"
+    ],
+    "2": [
+     "Monk's Focus",
+     "Unarmored Movement",
+     "Uncanny Metabolism"
+    ],
+    "3": [
+     "Deflect Attacks",
+     "Monk Subclass"
+    ],
+    "4": [
+     "Ability Score Improvement",
+     "Slow Fall"
+    ],
+    "5": [
+     "Extra Attack",
+     "Stunning Strike"
+    ],
+    "6": [
+     "Empowered Strikes",
+     "Subclass feature"
+    ],
+    "7": [
+     "Evasion"
+    ],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [
+     "Acrobatic Movement"
+    ],
+    "10": [
+     "Heightened Focus",
+     "Self-Restoration"
+    ],
+    "11": [
+     "Subclass feature"
+    ],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [
+     "Deflect Energy"
+    ],
+    "14": [
+     "Disciplined Survivor"
+    ],
+    "15": [
+     "Perfect Focus"
+    ],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [
+     "Subclass feature"
+    ],
+    "18": [
+     "Superior Defense"
+    ],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Body and Mind"
+    ]
+   },
+   "table_columns": {
+    "Martial Arts": {
+     "1": "1d6",
+     "2": "1d6",
+     "3": "1d6",
+     "4": "1d6",
+     "5": "1d8",
+     "6": "1d8",
+     "7": "1d8",
+     "8": "1d8",
+     "9": "1d8",
+     "10": "1d8",
+     "11": "1d10",
+     "12": "1d10",
+     "13": "1d10",
+     "14": "1d10",
+     "15": "1d10",
+     "16": "1d10",
+     "17": "1d12",
+     "18": "1d12",
+     "19": "1d12",
+     "20": "1d12"
+    },
+    "Focus Points": {
+     "1": null,
+     "2": 2,
+     "3": 3,
+     "4": 4,
+     "5": 5,
+     "6": 6,
+     "7": 7,
+     "8": 8,
+     "9": 9,
+     "10": 10,
+     "11": 11,
+     "12": 12,
+     "13": 13,
+     "14": 14,
+     "15": 15,
+     "16": 16,
+     "17": 17,
+     "18": 18,
+     "19": 19,
+     "20": 20
+    },
+    "Unarmored Movement": {
+     "1": null,
+     "2": "+10 ft.",
+     "3": "+10 ft.",
+     "4": "+10 ft.",
+     "5": "+10 ft.",
+     "6": "+15 ft.",
+     "7": "+15 ft.",
+     "8": "+15 ft.",
+     "9": "+15 ft.",
+     "10": "+20 ft.",
+     "11": "+20 ft.",
+     "12": "+20 ft.",
+     "13": "+20 ft.",
+     "14": "+25 ft.",
+     "15": "+25 ft.",
+     "16": "+25 ft.",
+     "17": "+25 ft.",
+     "18": "+30 ft.",
+     "19": "+30 ft.",
+     "20": "+30 ft."
+    }
+   }
+  },
+  "paladin": {
+   "name": "Paladin",
+   "hit_die": "d10",
+   "hp_at_first_level": "10 + Con modifier",
+   "hp_at_first_level_base": 10,
+   "hp_per_level_average": 6,
+   "hp_per_level_rule": "6 + Con modifier, or roll 1d10 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "half",
+   "spellcasting_feature": "Spellcasting",
+   "spell_slots_by_level": {
+    "1": {
+     "level1": 2,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "2": {
+     "level1": 2,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "3": {
+     "level1": 3,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "4": {
+     "level1": 3,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "5": {
+     "level1": 4,
+     "level2": 2,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "6": {
+     "level1": 4,
+     "level2": 2,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "7": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "8": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "9": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 2,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "10": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 2,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "11": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "12": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "13": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 1,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "14": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 1,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "15": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 2,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "16": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 2,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "17": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 1,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "18": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 1,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "19": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "20": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    }
+   },
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": null,
+   "prepared_spells_by_level": {
+    "1": 2,
+    "2": 3,
+    "3": 4,
+    "4": 5,
+    "5": 6,
+    "6": 6,
+    "7": 7,
+    "8": 7,
+    "9": 9,
+    "10": 9,
+    "11": 10,
+    "12": 10,
+    "13": 11,
+    "14": 11,
+    "15": 12,
+    "16": 12,
+    "17": 14,
+    "18": 14,
+    "19": 15,
+    "20": 15
+   },
+   "features_by_level": {
+    "1": [
+     "Lay On Hands",
+     "Spellcasting",
+     "Weapon Mastery"
+    ],
+    "2": [
+     "Fighting Style",
+     "Paladin's Smite"
+    ],
+    "3": [
+     "Channel Divinity",
+     "Paladin Subclass"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [
+     "Extra Attack",
+     "Faithful Steed"
+    ],
+    "6": [
+     "Aura of Protection"
+    ],
+    "7": [
+     "Subclass feature"
+    ],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [
+     "Abjure Foes"
+    ],
+    "10": [
+     "Aura of Courage"
+    ],
+    "11": [
+     "Radiant Strikes"
+    ],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [],
+    "14": [
+     "Restoring Touch"
+    ],
+    "15": [
+     "Subclass feature"
+    ],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [],
+    "18": [
+     "Aura Expansion"
+    ],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Subclass feature"
+    ]
+   },
+   "table_columns": {
+    "Channel Divinity": {
+     "1": null,
+     "2": null,
+     "3": 2,
+     "4": 2,
+     "5": 2,
+     "6": 2,
+     "7": 2,
+     "8": 2,
+     "9": 2,
+     "10": 2,
+     "11": 3,
+     "12": 3,
+     "13": 3,
+     "14": 3,
+     "15": 3,
+     "16": 3,
+     "17": 3,
+     "18": 3,
+     "19": 3,
+     "20": 3
+    }
+   }
+  },
+  "ranger": {
+   "name": "Ranger",
+   "hit_die": "d10",
+   "hp_at_first_level": "10 + Con modifier",
+   "hp_at_first_level_base": 10,
+   "hp_per_level_average": 6,
+   "hp_per_level_rule": "6 + Con modifier, or roll 1d10 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "half",
+   "spellcasting_feature": "Spellcasting",
+   "spell_slots_by_level": {
+    "1": {
+     "level1": 2,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "2": {
+     "level1": 2,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "3": {
+     "level1": 3,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "4": {
+     "level1": 3,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "5": {
+     "level1": 4,
+     "level2": 2,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "6": {
+     "level1": 4,
+     "level2": 2,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "7": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "8": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "9": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 2,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "10": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 2,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "11": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "12": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "13": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 1,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "14": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 1,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "15": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 2,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "16": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 2,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "17": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 1,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "18": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 1,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "19": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "20": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    }
+   },
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": null,
+   "prepared_spells_by_level": {
+    "1": 2,
+    "2": 3,
+    "3": 4,
+    "4": 5,
+    "5": 6,
+    "6": 6,
+    "7": 7,
+    "8": 7,
+    "9": 9,
+    "10": 9,
+    "11": 10,
+    "12": 10,
+    "13": 11,
+    "14": 11,
+    "15": 12,
+    "16": 12,
+    "17": 14,
+    "18": 14,
+    "19": 15,
+    "20": 15
+   },
+   "features_by_level": {
+    "1": [
+     "Spellcasting",
+     "Favored Enemy",
+     "Weapon Mastery"
+    ],
+    "2": [
+     "Deft Explorer",
+     "Fighting Style"
+    ],
+    "3": [
+     "Ranger Subclass"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [
+     "Extra Attack"
+    ],
+    "6": [
+     "Roving"
+    ],
+    "7": [
+     "Subclass feature"
+    ],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [
+     "Expertise"
+    ],
+    "10": [
+     "Tireless"
+    ],
+    "11": [
+     "Subclass feature"
+    ],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [
+     "Relentless Hunter"
+    ],
+    "14": [
+     "Nature's Veil"
+    ],
+    "15": [
+     "Subclass feature"
+    ],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [
+     "Precise Hunter"
+    ],
+    "18": [
+     "Feral Senses"
+    ],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Foe Slayer"
+    ]
+   },
+   "table_columns": {
+    "Favored Enemy": {
+     "1": 2,
+     "2": 2,
+     "3": 2,
+     "4": 2,
+     "5": 3,
+     "6": 3,
+     "7": 3,
+     "8": 3,
+     "9": 4,
+     "10": 4,
+     "11": 4,
+     "12": 4,
+     "13": 5,
+     "14": 5,
+     "15": 5,
+     "16": 5,
+     "17": 6,
+     "18": 6,
+     "19": 6,
+     "20": 6
+    }
+   }
+  },
+  "rogue": {
+   "name": "Rogue",
+   "hit_die": "d8",
+   "hp_at_first_level": "8 + Con modifier",
+   "hp_at_first_level_base": 8,
+   "hp_per_level_average": 5,
+   "hp_per_level_rule": "5 + Con modifier, or roll 1d8 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    10,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "none",
+   "spellcasting_feature": null,
+   "spell_slots_by_level": null,
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": null,
+   "prepared_spells_by_level": null,
+   "features_by_level": {
+    "1": [
+     "Expertise",
+     "Sneak Attack",
+     "Thieves' Cant",
+     "Weapon Mastery"
+    ],
+    "2": [
+     "Cunning Action"
+    ],
+    "3": [
+     "Rogue Subclass",
+     "Steady Aim"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [
+     "Cunning Strike",
+     "Uncanny Dodge"
+    ],
+    "6": [
+     "Expertise"
+    ],
+    "7": [
+     "Evasion",
+     "Reliable Talent"
+    ],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [
+     "Subclass feature"
+    ],
+    "10": [
+     "Ability Score Improvement"
+    ],
+    "11": [
+     "Improved Cunning Strike"
+    ],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [
+     "Subclass feature"
+    ],
+    "14": [
+     "Devious Strikes"
+    ],
+    "15": [
+     "Slippery Mind"
+    ],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [
+     "Subclass feature"
+    ],
+    "18": [
+     "Elusive"
+    ],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Stroke of Luck"
+    ]
+   },
+   "table_columns": {
+    "Sneak Attack": {
+     "1": "1d6",
+     "2": "1d6",
+     "3": "2d6",
+     "4": "2d6",
+     "5": "3d6",
+     "6": "3d6",
+     "7": "4d6",
+     "8": "4d6",
+     "9": "5d6",
+     "10": "5d6",
+     "11": "6d6",
+     "12": "6d6",
+     "13": "7d6",
+     "14": "7d6",
+     "15": "8d6",
+     "16": "8d6",
+     "17": "9d6",
+     "18": "9d6",
+     "19": "10d6",
+     "20": "10d6"
+    }
+   }
+  },
+  "sorcerer": {
+   "name": "Sorcerer",
+   "hit_die": "d6",
+   "hp_at_first_level": "6 + Con modifier",
+   "hp_at_first_level_base": 6,
+   "hp_per_level_average": 4,
+   "hp_per_level_rule": "4 + Con modifier, or roll 1d6 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "full",
+   "spellcasting_feature": "Spellcasting",
+   "spell_slots_by_level": {
+    "1": {
+     "level1": 2,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "2": {
+     "level1": 3,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "3": {
+     "level1": 4,
+     "level2": 2,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "4": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "5": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 2,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "6": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "7": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 1,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "8": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 2,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "9": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 1,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "10": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "11": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "12": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "13": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 0,
+     "level9": 0
+    },
+    "14": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 0,
+     "level9": 0
+    },
+    "15": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 0
+    },
+    "16": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 0
+    },
+    "17": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "18": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "19": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 2,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "20": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 2,
+     "level7": 2,
+     "level8": 1,
+     "level9": 1
+    }
+   },
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": {
+    "1": 4,
+    "2": 4,
+    "3": 4,
+    "4": 5,
+    "5": 5,
+    "6": 5,
+    "7": 5,
+    "8": 5,
+    "9": 5,
+    "10": 6,
+    "11": 6,
+    "12": 6,
+    "13": 6,
+    "14": 6,
+    "15": 6,
+    "16": 6,
+    "17": 6,
+    "18": 6,
+    "19": 6,
+    "20": 6
+   },
+   "prepared_spells_by_level": {
+    "1": 2,
+    "2": 4,
+    "3": 6,
+    "4": 7,
+    "5": 9,
+    "6": 10,
+    "7": 11,
+    "8": 12,
+    "9": 14,
+    "10": 15,
+    "11": 16,
+    "12": 16,
+    "13": 17,
+    "14": 17,
+    "15": 18,
+    "16": 18,
+    "17": 19,
+    "18": 20,
+    "19": 21,
+    "20": 22
+   },
+   "features_by_level": {
+    "1": [
+     "Spellcasting",
+     "Innate Sorcery"
+    ],
+    "2": [
+     "Font of Magic",
+     "Metamagic"
+    ],
+    "3": [
+     "Sorcerer Subclass"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [
+     "Sorcerous Restoration"
+    ],
+    "6": [
+     "Subclass feature"
+    ],
+    "7": [
+     "Sorcery Incarnate"
+    ],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [],
+    "10": [
+     "Metamagic"
+    ],
+    "11": [],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [],
+    "14": [
+     "Subclass feature"
+    ],
+    "15": [],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [
+     "Metamagic"
+    ],
+    "18": [
+     "Subclass feature"
+    ],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Arcane Apotheosis"
+    ]
+   },
+   "table_columns": {
+    "Sorcery Points": {
+     "1": null,
+     "2": 2,
+     "3": 3,
+     "4": 4,
+     "5": 5,
+     "6": 6,
+     "7": 7,
+     "8": 8,
+     "9": 9,
+     "10": 10,
+     "11": 11,
+     "12": 12,
+     "13": 13,
+     "14": 14,
+     "15": 15,
+     "16": 16,
+     "17": 17,
+     "18": 18,
+     "19": 19,
+     "20": 20
+    }
+   }
+  },
+  "warlock": {
+   "name": "Warlock",
+   "hit_die": "d8",
+   "hp_at_first_level": "8 + Con modifier",
+   "hp_at_first_level_base": 8,
+   "hp_per_level_average": 5,
+   "hp_per_level_rule": "5 + Con modifier, or roll 1d8 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "pact",
+   "spellcasting_feature": "Pact Magic",
+   "spell_slots_by_level": null,
+   "pact_slots_by_level": {
+    "1": {
+     "slots": 1,
+     "slot_level": 1
+    },
+    "2": {
+     "slots": 2,
+     "slot_level": 1
+    },
+    "3": {
+     "slots": 2,
+     "slot_level": 2
+    },
+    "4": {
+     "slots": 2,
+     "slot_level": 2
+    },
+    "5": {
+     "slots": 2,
+     "slot_level": 3
+    },
+    "6": {
+     "slots": 2,
+     "slot_level": 3
+    },
+    "7": {
+     "slots": 2,
+     "slot_level": 4
+    },
+    "8": {
+     "slots": 2,
+     "slot_level": 4
+    },
+    "9": {
+     "slots": 2,
+     "slot_level": 5
+    },
+    "10": {
+     "slots": 2,
+     "slot_level": 5
+    },
+    "11": {
+     "slots": 3,
+     "slot_level": 5
+    },
+    "12": {
+     "slots": 3,
+     "slot_level": 5
+    },
+    "13": {
+     "slots": 3,
+     "slot_level": 5
+    },
+    "14": {
+     "slots": 3,
+     "slot_level": 5
+    },
+    "15": {
+     "slots": 3,
+     "slot_level": 5
+    },
+    "16": {
+     "slots": 3,
+     "slot_level": 5
+    },
+    "17": {
+     "slots": 4,
+     "slot_level": 5
+    },
+    "18": {
+     "slots": 4,
+     "slot_level": 5
+    },
+    "19": {
+     "slots": 4,
+     "slot_level": 5
+    },
+    "20": {
+     "slots": 4,
+     "slot_level": 5
+    }
+   },
+   "cantrips_known_by_level": {
+    "1": 2,
+    "2": 2,
+    "3": 2,
+    "4": 3,
+    "5": 3,
+    "6": 3,
+    "7": 3,
+    "8": 3,
+    "9": 3,
+    "10": 4,
+    "11": 4,
+    "12": 4,
+    "13": 4,
+    "14": 4,
+    "15": 4,
+    "16": 4,
+    "17": 4,
+    "18": 4,
+    "19": 4,
+    "20": 4
+   },
+   "prepared_spells_by_level": {
+    "1": 2,
+    "2": 3,
+    "3": 4,
+    "4": 5,
+    "5": 6,
+    "6": 7,
+    "7": 8,
+    "8": 9,
+    "9": 10,
+    "10": 10,
+    "11": 11,
+    "12": 11,
+    "13": 12,
+    "14": 12,
+    "15": 13,
+    "16": 13,
+    "17": 14,
+    "18": 14,
+    "19": 15,
+    "20": 15
+   },
+   "features_by_level": {
+    "1": [
+     "Eldritch Invocations",
+     "Pact Magic"
+    ],
+    "2": [
+     "Magical Cunning"
+    ],
+    "3": [
+     "Warlock Subclass"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [],
+    "6": [
+     "Subclass feature"
+    ],
+    "7": [],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [
+     "Contact Patron"
+    ],
+    "10": [
+     "Subclass feature"
+    ],
+    "11": [
+     "Mystic Arcanum (level 6 spell)"
+    ],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [
+     "Mystic Arcanum (level 7 spell)"
+    ],
+    "14": [
+     "Subclass feature"
+    ],
+    "15": [
+     "Mystic Arcanum (level 8 spell)"
+    ],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [
+     "Mystic Arcanum (level 9 spell)"
+    ],
+    "18": [],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Eldritch Master"
+    ]
+   },
+   "table_columns": {
+    "Eldritch Invocations": {
+     "1": 1,
+     "2": 3,
+     "3": 3,
+     "4": 3,
+     "5": 5,
+     "6": 5,
+     "7": 6,
+     "8": 6,
+     "9": 7,
+     "10": 7,
+     "11": 7,
+     "12": 8,
+     "13": 8,
+     "14": 8,
+     "15": 9,
+     "16": 9,
+     "17": 9,
+     "18": 10,
+     "19": 10,
+     "20": 10
+    }
+   }
+  },
+  "wizard": {
+   "name": "Wizard",
+   "hit_die": "d6",
+   "hp_at_first_level": "6 + Con modifier",
+   "hp_at_first_level_base": 6,
+   "hp_per_level_average": 4,
+   "hp_per_level_rule": "4 + Con modifier, or roll 1d6 + Con modifier (minimum 1)",
+   "asi_levels": [
+    4,
+    8,
+    12,
+    16
+   ],
+   "epic_boon_level": 19,
+   "subclass_level": 3,
+   "caster_kind": "full",
+   "spellcasting_feature": "Spellcasting",
+   "spell_slots_by_level": {
+    "1": {
+     "level1": 2,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "2": {
+     "level1": 3,
+     "level2": 0,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "3": {
+     "level1": 4,
+     "level2": 2,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "4": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 0,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "5": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 2,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "6": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 0,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "7": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 1,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "8": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 2,
+     "level5": 0,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "9": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 1,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "10": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 0,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "11": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "12": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 0,
+     "level8": 0,
+     "level9": 0
+    },
+    "13": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 0,
+     "level9": 0
+    },
+    "14": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 0,
+     "level9": 0
+    },
+    "15": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 0
+    },
+    "16": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 0
+    },
+    "17": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 2,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "18": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 1,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "19": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 2,
+     "level7": 1,
+     "level8": 1,
+     "level9": 1
+    },
+    "20": {
+     "level1": 4,
+     "level2": 3,
+     "level3": 3,
+     "level4": 3,
+     "level5": 3,
+     "level6": 2,
+     "level7": 2,
+     "level8": 1,
+     "level9": 1
+    }
+   },
+   "pact_slots_by_level": null,
+   "cantrips_known_by_level": {
+    "1": 3,
+    "2": 3,
+    "3": 3,
+    "4": 4,
+    "5": 4,
+    "6": 4,
+    "7": 4,
+    "8": 4,
+    "9": 4,
+    "10": 5,
+    "11": 5,
+    "12": 5,
+    "13": 5,
+    "14": 5,
+    "15": 5,
+    "16": 5,
+    "17": 5,
+    "18": 5,
+    "19": 5,
+    "20": 5
+   },
+   "prepared_spells_by_level": {
+    "1": 4,
+    "2": 5,
+    "3": 6,
+    "4": 7,
+    "5": 9,
+    "6": 10,
+    "7": 11,
+    "8": 12,
+    "9": 14,
+    "10": 15,
+    "11": 16,
+    "12": 16,
+    "13": 17,
+    "14": 18,
+    "15": 19,
+    "16": 21,
+    "17": 22,
+    "18": 23,
+    "19": 24,
+    "20": 25
+   },
+   "features_by_level": {
+    "1": [
+     "Spellcasting",
+     "Ritual Adept",
+     "Arcane Recovery"
+    ],
+    "2": [
+     "Scholar"
+    ],
+    "3": [
+     "Wizard Subclass"
+    ],
+    "4": [
+     "Ability Score Improvement"
+    ],
+    "5": [
+     "Memorize Spell"
+    ],
+    "6": [
+     "Subclass feature"
+    ],
+    "7": [],
+    "8": [
+     "Ability Score Improvement"
+    ],
+    "9": [],
+    "10": [
+     "Subclass feature"
+    ],
+    "11": [],
+    "12": [
+     "Ability Score Improvement"
+    ],
+    "13": [],
+    "14": [
+     "Subclass feature"
+    ],
+    "15": [],
+    "16": [
+     "Ability Score Improvement"
+    ],
+    "17": [],
+    "18": [
+     "Spell Mastery"
+    ],
+    "19": [
+     "Epic Boon"
+    ],
+    "20": [
+     "Signature Spells"
+    ]
+   },
+   "table_columns": {}
+  }
+ }
+}
