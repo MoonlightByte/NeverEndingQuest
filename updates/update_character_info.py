@@ -471,8 +471,11 @@ Enhanced Item Type Mappings:
     
     if character_role == 'player':
         schema_info += """
-Equipment Array Example:
+Equipment Array Example (a NEW item: quantity = how many were acquired):
 [{"item_name": "Sword", "item_type": "weapon", "description": "Sharp blade", "quantity": 1}]
+
+Equipment Stock Change Example (an item ALREADY on the sheet: signed change, never the new count):
+[{"item_name": "Travel Ration", "quantityDelta": 3}]   or   [{"item_name": "Torch", "quantityDelta": -1}]
 
 Currency Delta Example (signed change per coin, never totals):
 {"currencyDelta": {"gold": -50, "silver": 10}}
@@ -488,8 +491,11 @@ Ammunition Example:
 """
     else:
         schema_info += """
-Equipment Array Example:
+Equipment Array Example (a NEW item: quantity = how many were acquired):
 [{"item_name": "Chain Mail", "item_type": "armor", "description": "Heavy armor", "quantity": 1}]
+
+Equipment Stock Change Example (an item ALREADY on the sheet: signed change, never the new count):
+[{"item_name": "Travel Ration", "quantityDelta": -1}]
 
 AttacksAndSpellcasting vs Actions:
 - Use attacksAndSpellcasting for standard attack format
@@ -1125,6 +1131,71 @@ def _engine_owned_total(character_data, updates):
     return None
 
 
+def _stored_item_name(character_data, name):
+    """The stored equipment name for a delta entry: exact, then unique case-insensitive."""
+    names = [e.get('item_name') for e in character_data.get('equipment') or []
+             if isinstance(e, dict) and e.get('item_name')]
+    if name in names:
+        return name, None
+    folded = [n for n in names if str(n).strip().lower() == str(name).strip().lower()]
+    if len(folded) == 1:
+        return folded[0], None
+    if folded:
+        return None, f"{name!r} matches several equipment entries; name it exactly as on the sheet"
+    return None, None
+
+
+def _split_equipment_quantity_deltas(character_data, updates, model_authored):
+    """Pull ``quantityDelta`` out of equipment entries before the merge.
+
+    Stock is engine-owned (core/nql/equipment): the model reports how many
+    of an item were gained or lost, never the resulting stack. Returns
+    (pending {stored name: signed delta}, error or None). An entry for an item
+    not yet on the sheet with a positive delta becomes a new item of that many.
+    A model-authored ``quantity`` on an existing item other than 0 (remove all)
+    is refused so the next attempt states the change.
+    """
+    pending = {}
+    entries = updates.get('equipment')
+    if not isinstance(entries, list):
+        return pending, None
+    stock = {e.get('item_name'): e.get('quantity', 1) for e in character_data.get('equipment') or []
+             if isinstance(e, dict) and e.get('item_name')}
+    for entry in entries:
+        if not isinstance(entry, dict) or not entry.get('item_name'):
+            continue
+        stored, ambiguous = _stored_item_name(character_data, entry['item_name'])
+        if ambiguous:
+            return pending, ambiguous
+        if 'quantityDelta' in entry:
+            delta = entry.pop('quantityDelta')
+            if type(delta) is bool or type(delta) is not int:
+                return pending, f"quantityDelta for {entry['item_name']!r} must be a signed whole number"
+            if 'quantity' in entry:
+                return pending, (f"{entry['item_name']!r} has both quantity and quantityDelta; for an item "
+                                 "already on the sheet send only quantityDelta")
+            if stored is None:
+                if delta <= 0:
+                    return pending, (f"{entry['item_name']!r} is not on the sheet, so it cannot lose stock; "
+                                     "use the exact item_name from the sheet")
+                entry['quantity'] = delta          # a new item: the number acquired
+                continue
+            entry['item_name'] = stored
+            if delta:
+                pending[stored] = pending.get(stored, 0) + delta
+        elif stored is not None and 'quantity' in entry:
+            if entry['quantity'] == 0:
+                entry['item_name'] = stored        # remove all: unambiguous
+            elif entry['quantity'] == stock.get(stored):
+                entry.pop('quantity')              # unchanged count restated: no stock change
+                entry['item_name'] = stored
+            elif model_authored:
+                return pending, (f"equipment quantity totals are not accepted for items already on the sheet "
+                                 f"({entry['item_name']!r}); report the change as quantityDelta (signed whole "
+                                 "number), or quantity 0 to remove it entirely")
+    return pending, None
+
+
 def _copy_engine_pools(engine_sheet, target):
     """Write the engine's pool values (hit points, slot and use counts) onto the merged sheet."""
     if 'hitPoints' in engine_sheet:
@@ -1165,6 +1236,12 @@ def prepare_character_delta(character_data, updates, character_role, schema,
                 'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
                 'error_message': total_reason,
             }
+    stock_deltas, stock_reason = _split_equipment_quantity_deltas(character_data, updates, model_authored)
+    if stock_reason:
+        return updates, character_data, {
+            'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
+            'error_message': stock_reason,
+        }
     if 'hitPoints' in updates and updates['hitPoints'] < 0:
         updates['hitPoints'] = 0
     if ('experience_points' in updates and
@@ -1221,6 +1298,14 @@ def prepare_character_delta(character_data, updates, character_role, schema,
     updated_data = deep_merge_dict(character_data, updates)
     if engine_pools is not None:
         _copy_engine_pools(engine_pools, updated_data)
+    if stock_deltas:
+        # The requested change reaches the engine unclamped: a stack that
+        # would go below zero stays in the merged sheet so the engine sees
+        # the exact consume and refuses it (never silently emptied).
+        for entry in updated_data.get('equipment') or []:
+            if isinstance(entry, dict) and entry.get('item_name') in stock_deltas:
+                base = entry.get('quantity', 1) if type(entry.get('quantity')) is int else 1
+                entry['quantity'] = base + stock_deltas.pop(entry['item_name'])
     if managed_effect_operation:
         from core.effects.lifecycle import apply_effect_ops
         updated_data = apply_effect_ops(updated_data, [managed_effect_operation])
@@ -1242,6 +1327,9 @@ def prepare_character_delta(character_data, updates, character_role, schema,
             checks.update(error_message=(
                 "the equipment change was refused by the rules engine: "
                 f"{outcome.reason}. Operations attempted: {' '.join(outcome.operations)}"))
+            if (outcome.fault or {}).get('code') == 'E_QUANTITY':
+                # Not enough stock: a restated delta cannot fix it, the DM must.
+                checks['engine_refusal'] = outcome.reason
             return updates, updated_data, checks
         updated_data['equipment'] = outcome.equipment
         for gap in outcome.gaps:
@@ -1804,10 +1892,16 @@ Your primary goal is to generate the smallest possible valid JSON object that re
    - **NEVER** return the entire list if only one item is changed.
    - To **MODIFY** an existing item: Return an array containing an object with the item's identifier (`item_name` for equipment, `name` for ammunition) and ONLY the fields that changed.
      - *Example:* `{{ "equipment": [{{ "item_name": "Shield", "equipped": false }}] }}`
-   - To **ADD** a new item: Return an array containing an object with the full details of ONLY the new item.
+   - To **ADD** a new item (its name is NOT on the sheet): Return an array containing an object with the full details of ONLY the new item; `quantity` is how many were acquired.
      - *Example:* `{{ "equipment": [{{ "item_name": "Potion of Healing", "item_type": "consumable", "quantity": 1 }}] }}`
-   - To **REMOVE** an item: Set its quantity to 0
+   - To **CHANGE HOW MANY** of an item already on the sheet (bought more, found more, used some, gave some away): `quantityDelta` = the signed change, with the `item_name` exactly as on the sheet. NEVER compute or return the new count; the engine applies the change to the real stack and refuses using more than the character has.
+     - *Example:* sheet has Travel Ration x1, change says "Add 3 Travel Ration" -> `{{ "equipment": [{{ "item_name": "Travel Ration", "quantityDelta": 3 }}] }}` (NOT quantity 3, NOT quantity 4)
+     - *Example:* "Uses 1 torch" -> `{{ "equipment": [{{ "item_name": "Torch", "quantityDelta": -1 }}] }}`
+   - To **REMOVE** an item entirely: Set its quantity to 0 (or quantityDelta minus the whole stack)
      - *Example:* `{{ "equipment": [{{ "item_name": "Shield", "quantity": 0 }}] }}`
+   - `quantity` on an item already on the sheet is refused unless it is 0. Stock changes are always `quantityDelta`, the same way coins are currencyDelta and hit points are hpDelta.
+   - When the change names a number, send exactly that number as the delta, even if the sheet holds fewer. NEVER clamp it or turn it into quantity 0: the engine refuses using more than the character has and the DM is told. `quantity: 0` is only for a change that removes the item entirely without naming a number ("sold the shield", "lost all the arrows").
+     - *Example:* sheet has Gemstones x5, change says "Remove 9 Gemstones" -> `{{ "equipment": [{{ "item_name": "Gemstones", "quantityDelta": -9 }}] }}` (NOT quantity 0, NOT quantityDelta -5)
 
 3. **For Nested Objects (like `currency` or `spellcasting.spellSlots`):**
    - Only return the specific key-value pairs that were modified.
@@ -2018,6 +2112,8 @@ CRITICAL INSTRUCTIONS:
 
 EQUIPMENT UPDATE EXAMPLES:
 CORRECT (updating one item): {{"equipment": [{{"item_name": "Jeweled dagger", "description": "updated description", "magical": true}}]}}
+CORRECT (more of an item already carried): {{"equipment": [{{"item_name": "Travel Ration", "quantityDelta": 3}}]}}
+WRONG (states a count for an item already carried): {{"equipment": [{{"item_name": "Travel Ration", "quantity": 4}}]}}
 WRONG (would delete all other items): {{"equipment": [...]}} with multiple items
 
 DANGEROUS EXAMPLE (DO NOT DO):
@@ -2434,6 +2530,13 @@ Character Role: {character_role}
             
             if not is_valid:
                 error(f"VALIDATION: Validation failed: {error_msg}", category="character_validation")
+                if last_engine_refusal:
+                    # The engine refused the amount the change stated (not
+                    # enough coins, stock, slots or uses). T079 must not
+                    # reinterpret the amount: a retry that sees the refusal
+                    # clamps it to what the sheet holds (observed live). The
+                    # DM decides what happens instead; nothing was written.
+                    raise EngineRefusedChange(last_engine_refusal)
                 bounded_failure_count += 1
                 
                 # Add validation error feedback to the prompt for next attempt

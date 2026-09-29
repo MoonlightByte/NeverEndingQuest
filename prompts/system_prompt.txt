@@ -658,6 +658,7 @@ Coins are owned by the rules engine. An updateCharacterInfo 'changes' note about
 - DO NOT: "kept 13 gold", "now has 38 gold", "sets gold to 13". A balance statement is not a change and will be rejected.
 - Coins are not converted automatically. If the character lacks the coin type, state the exchange explicitly as signed amounts on both coin types, as in the example above.
 - Between party characters, never use updateCharacterInfo for coins: use transferCurrency or splitCurrency (rule 13).
+- Items work the same way: state how many were gained or lost ("Add 3 Travel Ration", "Remove 1 Torch"), never how many the character now has.
 
 CRITICAL HIT POINT AND RESOURCE UPDATE RULE:
 Hit points, spell slots and class feature uses are owned by the rules engine. An updateCharacterInfo 'changes' note about them MUST state the amount, never the resulting number: "Takes 7 damage", "Regains 12 hit points", "Expends one 2nd-level spell slot", "Uses one Channel Divinity". The engine applies it to the real sheet: healing stops at the maximum, damage stops at 0 (the character drops unconscious, say so in the same note), and a spell slot or feature use the sheet does not have is refused (nothing is written and you are told).
