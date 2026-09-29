@@ -1,2 +1,3 @@
-NQL engine 39abaee + cmd/nql-apply (NQL PR #4, commit 82cd484)
-built 2026-09-27 from /mnt/c/NQL with Go 1.23 stdlib, GOOS=linux and GOOS=windows amd64
+NQL engine d667d7b (private/nql-neq-rebuild, includes PR #4 nql-apply and PR #6 world entity caps)
+built 2026-09-28 from /mnt/c/NQL with Go go1.27.1 stdlib, GOOS=linux and GOOS=windows amd64
+caps: characters 4096, items 32768, locations 4096, condition definitions 4096, conditions 32768, equipment definitions 4096; genesis record limit 1 MiB unchanged
