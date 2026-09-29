@@ -578,6 +578,53 @@ class ResponsesStreamFailed(Exception):
         super().__init__("%s: %s" % (code, message))
 
 
+# A degenerate stream: the model keeps emitting whitespace and nothing else.
+# Observed 2026-09-28 (T067, gpt-5.6-luna): a malformed JSON string followed by
+# 170 KB of tabs and spaces, 128,000 output tokens over 15 minutes, until the
+# provider's own output cap ended it. Every delta counted as liveness progress,
+# so the inactivity backstop never fired. No real answer, JSON or prose, carries
+# this much whitespace in a row; the stream is closed and the generation is
+# reissued through the existing retry path (code below is retryable).
+RUNAWAY_WHITESPACE_CHARS = 4096
+RUNAWAY_STREAM_CODE = "runaway_output"
+
+
+class _RunawayGuard:
+    """Counts the trailing run of whitespace-only output across stream deltas."""
+
+    def __init__(self, limit=RUNAWAY_WHITESPACE_CHARS):
+        self.limit = limit
+        self.run = 0
+        self.total = 0
+
+    def feed(self, text):
+        """Return True when the stream has become a whitespace runaway."""
+        if not text:
+            return False
+        self.total += len(text)
+        stripped = text.rstrip()
+        if stripped:
+            self.run = len(text) - len(stripped)
+        else:
+            self.run += len(text)
+        return self.run >= self.limit
+
+
+def _abandon_runaway(stream, guard, phase_emit):
+    _phase(phase_emit, "runaway", guard.run)
+    close = getattr(stream, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            pass
+    raise ResponsesStreamFailed(
+        RUNAWAY_STREAM_CODE,
+        "%d whitespace characters in a row after %d characters of output"
+        % (guard.run, guard.total),
+    )
+
+
 def _phase(phase_emit, phase, detail=None):
     if phase_emit is None:
         return
@@ -652,6 +699,7 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
     parts = []
     final = None
     last_receiving = 0.0
+    runaway = _RunawayGuard()
     for event in stream:
         kind = getattr(event, "type", "")
         if kind == "response.created":
@@ -659,7 +707,11 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
         elif kind == "response.output_text.delta":
             # Every delta is progress; report it at most once a second so a
             # long answer keeps refreshing the last-progress clock without a
-            # frame per token (audit F2).
+            # frame per token (audit F2). A delta that only extends a run of
+            # whitespace is not an answer arriving: past the bound the
+            # stream is abandoned and reissued.
+            if runaway.feed(event.delta):
+                _abandon_runaway(stream, runaway, phase_emit)
             if not parts or time.monotonic() - last_receiving >= 1.0:
                 _phase(phase_emit, "receiving")
                 last_receiving = time.monotonic()
@@ -721,6 +773,7 @@ def _chat_stream_completion(client, call_kwargs, phase_emit):
     reported_model = ""
     acknowledged = False
     last_receiving = 0.0
+    runaway = _RunawayGuard()
     for chunk in stream:
         if not acknowledged:
             _phase(phase_emit, "acknowledged")
@@ -736,6 +789,8 @@ def _chat_stream_completion(client, call_kwargs, phase_emit):
         delta = getattr(choice, "delta", None)
         text = getattr(delta, "content", None) if delta is not None else None
         if text:
+            if runaway.feed(text):
+                _abandon_runaway(stream, runaway, phase_emit)
             if not parts or time.monotonic() - last_receiving >= 1.0:
                 _phase(phase_emit, "receiving")
                 last_receiving = time.monotonic()

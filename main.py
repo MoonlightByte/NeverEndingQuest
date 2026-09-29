@@ -7401,7 +7401,19 @@ def _get_ai_response_impl(
     else:
         selected_config = full_config
 
-    print(f"DEBUG: [MAIN.PY] Using model: {selected_config['model']} (provider: {MODEL_PROVIDER})")
+    # The registry binding for T067 is what the provider receives (see the
+    # HONESTY note below); report it, not the unused mini/full choice.
+    try:
+        from model_config import resolve_callsite_config as _resolve_t067
+
+        _t067_binding = _resolve_t067("T067", MODEL_PROVIDER, 0)
+        _t067_model = "%s|%s" % (
+            _t067_binding.get("model"),
+            _t067_binding.get("reasoning_effort", _t067_binding.get("thinking_level", "-")),
+        )
+    except Exception:
+        _t067_model = "%s (unresolved binding)" % selected_config["model"]
+    print(f"DEBUG: [MAIN.PY] Using model: {_t067_model} (provider: {MODEL_PROVIDER}, T067 registry binding)")
     # HONESTY (2026-09-04): selected_config above no longer reaches the
     # provider. capture_and_fanout overwrites model AND reasoning_effort from
     # the registry binding for T067 (_resolve_effective_callsite_kwargs,
