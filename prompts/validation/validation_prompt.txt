@@ -240,6 +240,7 @@ The parameters object MUST contain exactly the one key "narrative", whose value 
    - Create new storage ("I make a lockbox for valuables")
    - View storage contents ("What's in our storage?", "Check the chest")
    Requires "description" parameter with natural language description and "characterName" for the character performing the action.
+"transferItem": The sole authority for an item passing between two party characters (player or party NPC): giving, trading, sharing, lending, returning. One action per item with "fromCharacter", "toCharacter" (display names), "itemName" exactly as on the giver's supplied sheet, and an integer "quantity". The engine moves that stock and rewrites both sheets together or refuses and moves nothing; a worn item arrives unequipped. REJECT a handoff expressed as updateCharacterInfo on either character, as a storageInteraction, or as a one-sided action. A trade is two transferItem actions. Coins are not items: currency changes hands with updateCharacterInfo delta language on both characters.
 "updatePartyTracker": Used when party module or location information needs updating. This action can trigger automatic conversation archiving and module summarization when module changes are detected. Required for inter-module travel. Should be used when players express intent to:
    - Travel to other modules ("I travel to [Module Name]", "Let's go to [Region]")
    - Change current module or location information
@@ -389,18 +390,18 @@ Important clarifications:
    2. The player character should never be asked to roll the dice for an NPC so don't invalidate an assistants response for not asking the player to roll for an NPC.
    3. If the player actually chooses to transition, the response must use transitionLocation and narrate only the destination authorized by any supplied accepted Travel Agent facts. Discussion, questions, plans, quotations, and negated movement do not require it. Accepted no-valid-route facts instead require an honest no-transition continuation, and accepted roster_change_in_place facts require no transitionLocation at all: the party stays. Those facts do not authorize or commit membership; preserve genuine authorized leaving/rejoining, or discard an unauthorized roster proposal and its narration.
    4. The action updateCharacterInfo (or legacy updatePlayerInfo/updateNPCInfo) is not used when the model is only checking a character's inventory.
-   5. "updateCharacterInfo" (with the appropriate characterName) remains required for actual consumption, destruction, loss, sale, or any other inventory removal not owned by location storage, and for equipment-state changes while the item stays with the character. Direct character-to-character handoffs still require separate giver/receiver updates. It is not the replacement for a recoverable location deposit: leaving owned items at the current location for later recovery is location storage and uses storageInteraction, which owns that item movement. Judge an ambiguous drop by actual intent/context, not the word used; do not invent permanent loss, storage or a recipient the player did not choose. Character-to-character handoffs retain the separate giver/receiver updates, never storageInteraction.
+   5. "updateCharacterInfo" (with the appropriate characterName) remains required for actual consumption, destruction, loss, sale, or any other inventory removal not owned by location storage, and for equipment-state changes while the item stays with the character. A direct character-to-character handoff is a transferItem action, never updateCharacterInfo. It is not the replacement for a recoverable location deposit: leaving owned items at the current location for later recovery is location storage and uses storageInteraction, which owns that item movement. Judge an ambiguous drop by actual intent/context, not the word used; do not invent permanent loss, storage or a recipient the player did not choose. Character-to-character handoffs use transferItem, never storageInteraction and never updateCharacterInfo.
    6. Ignore user messages with "Location transition:" as they are notes to the DM on an action already taken and not actual player interactions.
    7. transitionLocation should not be taken unless the party or DM deliberly states the action. Questions about maps, areas, directions, etc are not changes in location so don't prompt the model to submit a transitionLocation for these questions.
    8. createEncounter should not be used for traps unless the trap involves monsters starting combat.
-   9. ALWAYS pay close attention to when trading occurs between the player and the party NPCs to ensure all actions are taken to update the player and party inventories.
+   9. ALWAYS pay close attention to when trading occurs between the player and the party NPCs: every item that changes hands needs its own transferItem action and any coins need updateCharacterInfo deltas on both characters.
    10. rollSkillCheck is not a valid action.
    11. RITUAL MATERIALS: When a character performs a ritual that consumes material components, the model MUST use updateCharacterInfo to remove those materials from inventory. If ritual materials are not removed after a ritual is performed, the response is invalid.
    12. LOCATION TRANSITIONS: For transitionLocation action, only use "newLocation" parameter with location ID:
        - ALL moves use location ID only (e.g., "newLocation": "C07", "newLocation": "B01")
        - NO "areaConnectivityId" parameter needed - system auto-detects area changes
        - Location ID must be valid format (letter + 2 digits like A01, B05, C03, etc.)
-   13. Character-to-character item handoff = EXACTLY TWO updateCharacterInfo actions (remove N from giver, add N to receiver, delta language, exact item as on the giver's supplied sheet); never storageInteraction, never one-sided, never demand a container. A container operation followed by a handoff of the retrieved items is two distinct movements and needs both
+   13. Character-to-character item handoff = ONE transferItem action per item (fromCharacter, toCharacter, itemName exactly as on the giver's supplied sheet, integer quantity); a trade is two transferItem actions. REJECT a handoff expressed as updateCharacterInfo on either character, as a storageInteraction, or one-sided; never demand a container. A container operation followed by a handoff of the retrieved items is two distinct movements: storageInteraction, then transferItem. Coins change hands with updateCharacterInfo delta language.
 
 Here are examples of acceptable model assistant responses:
 
@@ -740,17 +741,21 @@ Here are examples of acceptable model assistant responses:
   "narration": "You hand Lyra a silver dagger, which she expertly twirls before sheathing. In exchange, she gives you a small vial of glowing liquid.",
   "actions": [
     {
-      "action": "updateCharacterInfo",
+      "action": "transferItem",
       "parameters": {
-        "characterName": "norn",
-        "changes": "Removed 'Silver Dagger' from inventory. Added 'Glowing Vial' to inventory."
+        "fromCharacter": "Norn",
+        "toCharacter": "Lyra",
+        "itemName": "Silver Dagger",
+        "quantity": 1
       }
     },
     {
-      "action": "updateCharacterInfo",
+      "action": "transferItem",
       "parameters": {
-        "characterName": "lyra",
-        "changes": "Added 'Silver Dagger' to inventory. Removed 'Glowing Vial' from inventory."
+        "fromCharacter": "Lyra",
+        "toCharacter": "Norn",
+        "itemName": "Glowing Vial",
+        "quantity": 1
       }
     },
     {
@@ -787,7 +792,7 @@ When you see storage operations with fees, validate:
    - Currency changes must show clear conversion math
    - storageInteraction itself owns removal/addition of the stored items
    - REJECT a redundant updateCharacterInfo that adds or removes the same items handled by storageInteraction; updateCharacterInfo is permitted here only for a distinct fee or unrelated character change
-   - A character-to-character handoff is never a storageInteraction; require two updateCharacterInfo actions (remove from giver, add to receiver) and REJECT a storageInteraction used for it
+   - A character-to-character handoff is never a storageInteraction; require transferItem and REJECT a storageInteraction or updateCharacterInfo used for it
 
 3. ITEM VALIDATION:
    - Verify character actually possesses the items being stored

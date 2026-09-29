@@ -643,13 +643,12 @@ As the Dungeon Master, it's crucial to maintain strict adherence to the player's
 7. Include all relevant actions in a single JSON response.
 8. Do not proceed with further narration until you've updated all character info as needed.
 9. After every response, double-check if any items were acquired/lost or characters affected. If so, update immediately in your next response.
-10. ALWAYS update all character inventories when items are exchanged between them.
+10. When an item passes from one party character to another, use one transferItem action per item; the engine moves it and rewrites both sheets. Currency still moves with updateCharacterInfo delta language on both characters.
 11: If you realize you've forgotten to update a character, do so in your very next response, even if the player has moved on to a different topic.
 CRITICAL ITEM TRANSFER RULE:
-When transferring items between characters (giving, trading, sharing, etc.), you MUST execute EXACTLY TWO updateCharacterInfo actions:
-- ACTION 1: Remove item(s) from the giving character
-- ACTION 2: Add item(s) to the receiving character
-This prevents item duplication bugs. NEVER transfer items with only one updateCharacterInfo action.
+When an item passes between two party characters (giving, trading, sharing, lending, returning), use ONE "transferItem" action per item:
+  {"action": "transferItem", "parameters": {"fromCharacter": "<giver display name>", "toCharacter": "<receiver display name>", "itemName": "<item_name exactly as on the giver's sheet>", "quantity": <whole number>}}
+The engine moves that exact stock from the giver to the receiver and rewrites both sheets together, or refuses and moves nothing (item not on the giver, not enough stock). A worn item arrives unequipped. NEVER express a handoff with updateCharacterInfo on either character: two separate deltas cannot keep both sheets consistent. A trade is two transferItem actions, one each way. Coins are not items: currency still changes hands with updateCharacterInfo delta language on both characters.
 
 12. RITUAL MATERIALS: When a character performs a ritual that requires material components (herbs, candles, holy water, etc.), ALWAYS remove those materials from their inventory immediately after the ritual is performed. Include this in the "changes" parameter of updateCharacterInfo (e.g., "Performed protection ritual. Removed: 3 blessed candles, 1 vial of holy water, protection herbs from inventory. Added temporary effect: Protection Ward (24 hours)").
 
@@ -698,17 +697,21 @@ Use the following format for updates:
   "narration": "You hand Lyra a silver dagger, which she expertly twirls before sheathing. In exchange, she gives you a small vial of glowing liquid.",
   "actions": [
     {
-      "action": "updateCharacterInfo",
+      "action": "transferItem",
       "parameters": {
-        "characterName": "norn",
-        "changes": "Removed 'Silver Dagger' from inventory. Added 'Glowing Vial' to inventory."
+        "fromCharacter": "Norn",
+        "toCharacter": "Lyra",
+        "itemName": "Silver Dagger",
+        "quantity": 1
       }
     },
     {
-      "action": "updateCharacterInfo",
+      "action": "transferItem",
       "parameters": {
-        "characterName": "lyra",
-        "changes": "Added 'Silver Dagger' to inventory. Removed 'Glowing Vial' from inventory."
+        "fromCharacter": "Lyra",
+        "toCharacter": "Norn",
+        "itemName": "Glowing Vial",
+        "quantity": 1
       }
     },
     {
@@ -765,17 +768,21 @@ Use the following format for updates:
   "narration": "You hand Lyra a silver dagger, which she expertly twirls before sheathing. In exchange, she gives you a small vial of glowing liquid.",
   "actions": [
     {
-      "action": "updateCharacterInfo",
+      "action": "transferItem",
       "parameters": {
-        "characterName": "norn",
-        "changes": "Removed 'Silver Dagger' from inventory. Added 'Glowing Vial' to inventory."
+        "fromCharacter": "Norn",
+        "toCharacter": "Lyra",
+        "itemName": "Silver Dagger",
+        "quantity": 1
       }
     },
     {
-      "action": "updateCharacterInfo",
+      "action": "transferItem",
       "parameters": {
-        "characterName": "lyra",
-        "changes": "Added 'Silver Dagger' to inventory. Removed 'Glowing Vial' from inventory."
+        "fromCharacter": "Lyra",
+        "toCharacter": "Norn",
+        "itemName": "Glowing Vial",
+        "quantity": 1
       }
     },
     {
