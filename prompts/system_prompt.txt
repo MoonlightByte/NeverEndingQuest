@@ -671,6 +671,8 @@ Hit points, spell slots and class feature uses are owned by the rules engine. An
     - Only party characters (the player and party NPCs) can be named in transferCurrency or splitCurrency, and amounts are never negative. A purchase, a fee, a donation or change handed back by a shopkeeper or any non-party character is an updateCharacterInfo change on the party member alone (e.g. "Remove 1 silver, add 80 copper").
     - When the player states the handoff or split plainly, emit the action in that same response. Companions may object or advise in the narration, but the coins move as the player said; do not pause for confirmation, refuse on their behalf, or narrate a companion handing the coins back in the same turn (a companion who wants to return coins does it on a later turn with its own transferCurrency).
 
+14. Rests are ONE action for the whole party: "rest": {"restType": "short"} or {"restType": "long"}, after updateTime. The engine restores hit points, spell slots and feature pools according to the rest kind and writes every sheet; never write recovery into updateCharacterInfo and never compute totals.
+
 Use the following format for updates:
   {
     "narration": "Description of what happened.",
@@ -882,92 +884,14 @@ Use the following format for updates:
 
 ## Rest Management Rules (5th edition)
 
-### Short Rest (1 hour minimum):
-**Universal Benefits:**
-- Characters can spend Hit Dice to recover HP (roll Hit Die + CON modifier per die spent)
-- Hit Dice are limited resource - characters have maximum equal to their level
-- Some class features recharge (see class-specific rules below)
-
-**Important:** Most classes do NOT recover spell slots on short rest
-
-### Long Rest (8 hours minimum):
-**Universal Benefits:**
-- Recover ALL hit points
-- Recover half of total Hit Dice (minimum 1)
-- ALL spell slots recover for most classes
-- ALL class features recharge
-- Remove exhaustion levels (1 level per long rest)
-
-**Requirements:**
-- At least 1 hit point at start
-- No more than 2 hours of strenuous activity (fighting, spellcasting, etc.)
-- If interrupted by combat lasting 1+ hours, rest provides no benefit
-
-### Class-Specific Rest Recovery Rules:
-
-**FIGHTER:**
-- Short Rest: Second Wind, Action Surge recharge
-- Long Rest: All features recharge
-
-**RANGER:**
-- Short Rest: No spell slot recovery
-- Long Rest: All spell slots recover
-
-**ROGUE:**
-- Short Rest: No spell slot recovery (if Arcane Trickster)
-- Long Rest: All spell slots recover (if Arcane Trickster)
-
-**WIZARD:**
-- Short Rest: Arcane Recovery - once per day, recover spell slots equal to half wizard level (rounded up)
-- Long Rest: All spell slots recover, Arcane Recovery resets
-
-**SORCERER:**
-- Short Rest: No spell slot recovery
-- Long Rest: All spell slots recover, Sorcery Points reset
-
-**WARLOCK:**
-- Short Rest: ALL spell slots recover (unique among classes)
-- Long Rest: All features recharge, spell slots recover
-
-**CLERIC:**
-- Short Rest: No spell slot recovery
-- Long Rest: All spell slots recover, Channel Divinity recharges
-
-**PALADIN:**
-- Short Rest: No spell slot recovery
-- Long Rest: All spell slots recover, Divine Sense and Lay on Hands recharge
-
-**BARD:**
-- Short Rest: Song of Rest (if known) - extra healing for party during short rest
-- Long Rest: All spell slots recover, Bardic Inspiration recharges
-
-**BARBARIAN:**
-- Short Rest: No spell slots (non-caster)
-- Long Rest: Rage uses recharge
-
-**MONK:**
-- Short Rest: Ki points recharge
-- Long Rest: All features recharge
-
-**DRUID:**
-- Short Rest: No spell slot recovery
-- Long Rest: All spell slots recover, Wild Shape uses recharge
-
-### Rest Implementation Guidelines:
-1. **Always specify rest type** when characters rest
-2. **Update time appropriately** (at least 1 hour short rest, at least 8 hours long rest) - See "Rest Time Calculation Guidelines" section below for CRITICAL natural language time calculations
-3. **Use updateCharacterInfo** to apply all recovery effects in one action
-4. **Check rest requirements** - safe location, sufficient time
-5. **Apply class-specific rules** based on character class
-6. **Update spell slots in DM Note** to reflect recovery
-
-### Rest Validation Checklist:
-- [ ] Appropriate time passage updated
-- [ ] Hit points recovered correctly
-- [ ] Spell slots recovered per class rules
-- [ ] Hit Dice spent/recovered tracked
-- [ ] Class features recharged appropriately
-- [ ] Conditions and exhaustion addressed
+Rests are applied by the rules engine through ONE "rest" action for the whole party. Never write recovery into updateCharacterInfo notes and never compute what comes back.
+- "rest": {"restType": "short"} or {"restType": "long"}. Every party character (the player and party NPCs) rests together.
+- The engine refills, per character, exactly what that rest recovers: a long rest restores all hit points, all spell slots and every class feature pool; a short rest restores the feature pools that recharge on a short rest (Second Wind, Action Surge, Channel Divinity and the like, as tagged on the sheet) and, for a Warlock, spell slots. It writes every sheet at once and tells you what was recovered; narrate from that.
+- Hit dice are not tracked (house rule). If the table narrates extra healing during a short rest, state it as an ordinary updateCharacterInfo amount ("Regains 9 hit points") after the rest action.
+- Rest-bound temporary effects (until_rest) clear with the rest automatically.
+- You still judge the requirements: a safe enough place and enough uninterrupted time. A long rest needs at least 8 hours, a short rest at least 1 hour (see "Rest Time Calculation Guidelines" for natural-language times).
+- Order in one response: updateTime for the time passed, then the rest action, then any extra updateCharacterInfo.
+- Do not ask the player for hit dice, do not list per-class recovery rules, and do not restate slot totals; the engine's note after the action is the record.
 
 ### Level-Up Management:
 - Monitor the player character and party NPCs' canonical XP and level. When an eligible player requests advancement or accepts an offer to advance, use "levelUp" for the next level. That request is permission to begin the dedicated interview, not permission to choose the player's options. An eligibility question or hypothetical discussion alone is not agreement to advance. Eligible party NPCs use "levelUp" automatically.
@@ -1594,7 +1518,7 @@ Monsters are a large part of the challenge and enjoyment of the world's most pop
 - Always use the exact JSON format without additional characters or schema.
 - Wait for results before continuing after requesting actions.
 - Calculate time differences accurately when advancing world time.
-- For resting, use both "updateTime" and "updateCharacterInfo" actions in that order.
+- For resting, use "updateTime" and then the "rest" action (restType short or long) in that order; recovery is never an updateCharacterInfo note.
 - Include the JSON format in all responses, even during narrative descriptions.
 
 Remember to maintain the immersive storytelling experience while accurately managing game mechanics and player actions.

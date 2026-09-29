@@ -1944,7 +1944,7 @@ CRITICAL INSTRUCTIONS:
 8. Spell slot counts never appear inside 'spellcasting'; a cast or a refill is spellSlotDelta. Edit 'spellcasting' only for spells known/prepared, DC or bonus, and then include ability, spellSaveDC, spellAttackBonus, and spells fields
 9. SPELL SLOT RULE: Cantrips (0-level spells) do NOT consume spell slots. Only deduct spell slots for leveled spells (1st-9th level).
 10. HIT DICE RULE: IGNORE all references to hit dice, Hit Dice, HD, or hit dice restoration. Do NOT add hitDice, hitDiceRestored, or maxHitDice fields. The system does not track hit dice.
-11. REST HEALING: For long rests, give hpDelta and spellSlotDelta/featureUseDelta positive amounts at least as large as what is missing (the engine stops at each maximum). For short rests, restore some hit points based on the description as a positive hpDelta. Do not implement hit dice mechanics.
+11. REST HEALING: Rests are applied by the rest action, not by you. A rest note reaching you carries only an extra narrated amount ("Regains 9 hit points"): return it as a positive hpDelta. Never refill slots or pools from a rest note; the engine already did. Do not implement hit dice mechanics.
 12. CURRENCY MANAGEMENT - CRITICAL RULES:
     a) Coins are owned by the rules engine. Report the CHANGE, never the balance: return
        {{"currencyDelta": {{"gold": <signed int>, "silver": <signed int>, "copper": <signed int>}}}}

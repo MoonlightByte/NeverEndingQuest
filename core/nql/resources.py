@@ -217,3 +217,106 @@ def apply_deltas(sheet: Dict[str, Any], updates: Dict[str, Any], **kwargs: Any) 
     if deltas is None:
         return ResourceOutcome(False, reason=reason)
     return run(sheet, deltas, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Rests (E9): the engine restores pools to their maximum; nothing is computed.
+# ---------------------------------------------------------------------------
+REST_KINDS = ("short", "long")
+# usage.refreshOn values that a rest of each kind refills. A long rest refills
+# every pool the sheet carries (all features recharge); a short rest refills the
+# pools tagged for it. Slots refill on a long rest, or on a short rest for the
+# classes whose typed ``class`` field names a pact caster.
+SHORT_REST_REFRESH = ("shortRest",)
+SHORT_REST_SLOT_CLASSES = ("warlock",)
+
+
+@dataclass
+class RestOutcome:
+    ok: bool
+    sheets: List[Dict[str, Any]] = field(default_factory=list)   # new copies, same order as given
+    restored: Dict[str, List[str]] = field(default_factory=dict)  # sheet name -> what refilled
+    receipt: Optional[Dict[str, Any]] = None
+    reason: str = ""
+    gaps: List[str] = field(default_factory=list)
+
+
+def _class_names(sheet: Dict[str, Any]) -> List[str]:
+    names = [sheet.get("class")]
+    for entry in sheet.get("classes") or []:
+        if isinstance(entry, dict):
+            names.append(entry.get("name") or entry.get("class"))
+        else:
+            names.append(entry)
+    return [str(n).strip().lower() for n in names if isinstance(n, str) and n.strip()]
+
+
+def rest_lines(sheet: Dict[str, Any], kind: str, gaps: List[str]) -> List[Tuple[str, str]]:
+    """(resource id, sheet-facing label) the rest restores for this sheet."""
+    cid = genesis.character_id(sheet)
+    declared = {rid for rid, _, _ in genesis.pool_resources(sheet, gaps)}
+    out: List[Tuple[str, str]] = []
+    if kind == "long" and "hp" in declared:
+        out.append(("hp", "hit points"))
+    slots_refill = kind == "long" or any(c in SHORT_REST_SLOT_CLASSES for c in _class_names(sheet))
+    if slots_refill:
+        for rid in sorted(r for r in declared if r.startswith("slot:")):
+            out.append((rid, f"level {rid[5:]} spell slots"))
+    for name, feature in _feature_pools(sheet):
+        rid = genesis.feature_resource_id(name)
+        if rid not in declared:
+            continue
+        refresh = feature["usage"].get("refreshOn")
+        if kind == "long" or refresh in SHORT_REST_REFRESH:
+            out.append((rid, f"{name} uses"))
+    return out
+
+
+def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", request_id: Optional[str] = None,
+         binary: Optional[str] = None) -> RestOutcome:
+    """Refill every pool the rest recovers on every sheet, one engine request.
+
+    The engine's ``restore`` sets a pool to its maximum; a pool already full is
+    a no-op. All sheets are rebuilt from the engine's values together.
+    """
+    if kind not in REST_KINDS:
+        return RestOutcome(False, reason=f"unknown rest kind {kind!r}; use short or long")
+    sheets = [copy.deepcopy(s) for s in sheets]
+    if not sheets:
+        return RestOutcome(False, reason="no one is resting")
+    world = genesis.build_world(sheets, location)
+    ids = [genesis.character_id(s) for s in sheets]
+    if len(set(ids)) != len(ids):
+        return RestOutcome(False, reason="two of the characters resolve to the same engine id", gaps=world.gaps)
+    gaps = list(world.gaps)
+    actions: List[str] = []
+    labels: Dict[str, List[Tuple[str, str]]] = {}
+    for sheet, cid in zip(sheets, ids):
+        labels[cid] = rest_lines(sheet, kind, gaps)
+        actions.extend(f'restore {_q(cid)} resource {_q(rid)};' for rid, _ in labels[cid])
+    if not actions:
+        return RestOutcome(True, sheets=sheets, gaps=gaps)
+    try:
+        response = apply.call({"world": world.source, "world_name": "rest-genesis.nql",
+                               "actions": "\n".join(actions), "actions_name": "rest.nql",
+                               "actor": {"kind": "character", "id": ids[0]},
+                               "request": request_id or f"rest:{uuid.uuid4().hex}",
+                               "status": ids}, binary=binary)
+    except apply.EngineUnavailable as error:
+        return RestOutcome(False, reason=str(error), gaps=gaps)
+    if not response.get("ok"):
+        fault = response.get("fault") or {}
+        return RestOutcome(False, reason=f"engine refused at {response.get('phase')}: "
+                                         f"{response.get('diagnostics') or fault or response.get('error')}", gaps=gaps)
+    statuses = {s["character"]["id"]: s for s in response.get("status") or [] if isinstance(s.get("character"), dict)}
+    restored: Dict[str, List[str]] = {}
+    for sheet, cid in zip(sheets, ids):
+        before = {rid: cur for rid, cur, _ in genesis.pool_resources(sheet, [])}
+        if cid not in statuses:
+            return RestOutcome(False, reason="engine returned no status for a resting character", gaps=gaps)
+        problem = _write_back(sheet, statuses[cid])
+        if problem:
+            return RestOutcome(False, reason=problem, gaps=gaps)
+        after = {rid: cur for rid, cur, _ in genesis.pool_resources(sheet, [])}
+        restored[str(sheet.get("name"))] = [label for rid, label in labels[cid] if after.get(rid) != before.get(rid)]
+    return RestOutcome(True, sheets=sheets, restored=restored, receipt=response.get("receipt"), gaps=gaps)

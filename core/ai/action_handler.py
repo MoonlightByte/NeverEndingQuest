@@ -168,6 +168,7 @@ ACTION_STORAGE_INTERACTION = "storageInteraction"
 ACTION_TRANSFER_ITEM = "transferItem"
 ACTION_TRANSFER_CURRENCY = "transferCurrency"
 ACTION_SPLIT_CURRENCY = "splitCurrency"
+ACTION_REST = "rest"
 ACTION_UPDATE_PARTY_TRACKER = "updatePartyTracker"
 ACTION_MOVE_BACKGROUND_NPC = "moveBackgroundNPC"
 ACTION_SAVE_GAME = "saveGame"
@@ -4597,6 +4598,42 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             traceback.print_exc()
             error_message = "Currency System Error: An unexpected error occurred while moving coins. No coins moved. Later actions from this response have not executed; check current state before proposing further changes. Do not repeat earlier completed actions."
             conversation_history.append({"role": "user", "content": error_message})
+            needs_conversation_history_update = True
+            return create_return(status="needs_response", needs_update=True)
+
+    elif action_type == ACTION_REST:
+        # A short or long rest for the whole party: the engine refills every
+        # pool the rest recovers on every sheet in one request
+        # (core/managers/rest_manager.py), then rest-bound effects clear.
+        debug("STATE_CHANGE: Processing rest action", category="character_updates")
+        status_updating_character()
+        try:
+            from core.managers.rest_manager import execute_rest
+
+            result = execute_rest(parameters.get("restType"), party_tracker_data, conversation_history)
+            if result.get("success"):
+                info(f"SUCCESS: {result.get('message')}", category="character_updates")
+                conversation_history.append({"role": "user", "content": f"Rest: {result.get('message')}"})
+                if result.get("effects_note"):
+                    conversation_history.append({"role": "user", "content": result["effects_note"]})
+                needs_conversation_history_update = True
+            else:
+                print(f"ERROR: rest failed: {result.get('error')}")
+                conversation_history.append({"role": "user", "content": (
+                    f"Rest Error: {result.get('error', 'the rest was refused')}. No sheet changed. Later actions from "
+                    "this response have not executed. Do not repeat earlier completed actions; state the rest again "
+                    "with restType short or long, or narrate why the party cannot rest.")})
+                needs_conversation_history_update = True
+                return create_return(status="needs_response", needs_update=True)
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
+        except Exception as e:
+            print(f"ERROR: Exception while processing rest: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            conversation_history.append({"role": "user", "content": (
+                "Rest System Error: An unexpected error occurred while applying the rest. No sheet changed. Later "
+                "actions from this response have not executed; check current state before proposing further changes.")})
             needs_conversation_history_update = True
             return create_return(status="needs_response", needs_update=True)
 

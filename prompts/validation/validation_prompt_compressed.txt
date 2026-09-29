@@ -72,6 +72,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   transferItem: sole authority for an item passing between two party characters (player or party NPC): give/trade/share/lend/return. {fromCharacter, toCharacter (display names), itemName exactly as on the giver's supplied sheet, quantity integer}; ONE per item; the engine moves the stock and rewrites both sheets or refuses. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided. Coins between party characters move with transferCurrency or splitCurrency.
   transferCurrency: sole authority for coins between two party characters {fromCharacter, toCharacter, gold/silver/copper whole numbers}; engine moves or refuses. REJECT coins between party characters as updateCharacterInfo on either character
   splitCurrency: even whole-number split of a party character's coins among named party characters {fromCharacter, toCharacters, giverKeepsShare}; remainder stays with the giver; engine computes. REJECT per-character split arithmetic
+  rest: sole authority for rest recovery {restType: short|long}, whole party, after updateTime; REJECT recovery as updateCharacterInfo notes
   coin_instruction_stands: player plainly gives/splits own coins -> the transferCurrency/splitCurrency action is REQUIRED in that response; a companion's objection is dialogue only, never a reason to withhold/shrink the action or narrate coins refused/handed back this turn (a companion returns coins on a later turn with its own transferCurrency). REJECT a pause/refusal on a companion's behalf; correction = emit the action, keep the objection as words
   updatePartyTracker: module/location updates; triggers archiving
   moveBackgroundNPC: NPCs not in party (captured/killed/relocated)
@@ -116,15 +117,9 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
 }
 
 @REST_VALIDATION={
-  short: >=60m; updateTime+updateCharacterInfo REQUIRED
-    warlock: ALL slots recover
-    fighter: regain Action Surge and Second Wind on short rest
-    monk: regain all Ki points on short rest
-    others: NO spell slots (except wizard arcane recovery)
-    valid: Hit Dice, class features
-  long: >=8h; updateTime+updateCharacterInfo REQUIRED
-    required: Full HP, all slots, half Hit Dice
-  fail: Missing time/character updates, wrong recovery by class
+  action: updateTime (short >=60, long >=480) + rest {"restType": "short"|"long"} REQUIRED; engine refills per character (long: all HP/slots/pools; short: shortRest pools, Warlock slots)
+  reject: recovery in updateCharacterInfo notes; long rest under 8h; short under 1h
+  skip: per-class rules, totals, hit dice (not tracked); extra short-rest healing as an updateCharacterInfo amount after the rest is valid
 }
 
 @LOCATION_NPC_REFS={
