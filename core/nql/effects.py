@@ -105,6 +105,38 @@ def _write_back(sheet: Dict[str, Any], cid: str, status: Dict[str, Any], explana
     return None
 
 
+def _size_drain(sheet: Dict[str, Any], effect: Dict[str, Any], gaps: List[str]) -> None:
+    """Fit a maximum hit point drain to the room the sheet's maximum has.
+
+    The engine refuses a drain larger than maximum - minimum - active raises
+    (NQL #21). The stored maximum already includes the owned raises, so the
+    room is maxHitPoints minus their sum. A drain beyond it is stored and
+    applied at the room (a gap says so); nothing else on the effect changes.
+    """
+    drain = sum(v for k, v in (genesis.effect_engine_modifiers(effect) or []) if k == "hp-max" and v < 0)
+    if not drain or type(sheet.get("maxHitPoints")) is not int:
+        return
+    raises = 0
+    for other in owned_effects(sheet):
+        if other is effect:
+            continue
+        raises += sum(v for k, v in (genesis.effect_engine_modifiers(other) or []) if k == "hp-max" and v > 0)
+    room = max(0, sheet["maxHitPoints"] - raises)
+    if -drain <= room:
+        return
+    excess = -drain - room
+    for modifier in effect.get("modifiers") or []:
+        if not isinstance(modifier, dict) or type(modifier.get("value")) is not int or modifier["value"] >= 0:
+            continue
+        stat = modifier.get("stat")
+        if stat == "maxHitPoints" or (stat == "hitPoints" and modifier.get("affectsMax") is True):
+            take = min(excess, -modifier["value"])
+            modifier["value"] += take
+            excess -= take
+    gaps.append(f"{sheet.get('name')}: {effect.get('name')!r} drain of {-drain} sized to {room} (the maximum's room after active raises)")
+    effect["modifiers"] = [m for m in effect.get("modifiers") or [] if not (isinstance(m, dict) and m.get("value") == 0)]
+
+
 def reconcile(sheet: Dict[str, Any], removed: Optional[List[Dict[str, Any]]] = None, *,
               location: str = "sheet", request_id: Optional[str] = None,
               binary: Optional[str] = None) -> EffectsOutcome:
@@ -122,10 +154,15 @@ def reconcile(sheet: Dict[str, Any], removed: Optional[List[Dict[str, Any]]] = N
     applying = pending_effects(sheet)
     if not ending and not applying:
         return EffectsOutcome(True, sheet=sheet)
+    world_gaps_extra: List[str] = []
+    for effect in applying:
+        _size_drain(sheet, effect, gaps_out := [])
+        if gaps_out:
+            world_gaps_extra.extend(gaps_out)
     world_sheet = copy.deepcopy(sheet)
     world_sheet["temporaryEffects"] = list(sheet.get("temporaryEffects") or []) + [copy.deepcopy(e) for e in ending]
     world = genesis.build_world([world_sheet], location)
-    gaps = list(world.gaps)
+    gaps = list(world.gaps) + world_gaps_extra
     ops: List[str] = []
     for effect in ending:
         ops.append(f'remove condition {_q(genesis.effect_instance_id(effect))} from {_q(cid)};')
