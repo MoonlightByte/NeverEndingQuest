@@ -236,3 +236,80 @@ def store(sheet: Dict[str, Any], status: Dict[str, Any]) -> List[str]:
         from utils.enhanced_logger import info
         info(f"STATS: {sheet.get('name', '?')}: " + "; ".join(changes), category="character_updates")
     return changes
+
+
+DERIVED_FIELDS = ("proficiencyBonus", "initiative")
+FACT_FIELDS = ("level", "abilities", "skills", "savingThrows", EXPERTISE_FIELD, "feats", "classFeatures", "speed")
+
+
+def facts_changed(before: Dict[str, Any], after: Dict[str, Any]) -> bool:
+    """True when a fact the totals read differs between two sheets (values compared, not digests)."""
+    for key in FACT_FIELDS:
+        if before.get(key) != after.get(key):
+            return True
+    return casting_ability(before) != casting_ability(after)
+
+
+def refresh(sheet: Dict[str, Any], *, location: str = "sheet", binary: Optional[str] = None) -> Optional[str]:
+    """Ask the engine for this sheet's totals and store them; return a reason on failure, else None.
+
+    Genesis plus a status view: no action, no model. Used after a change of
+    facts that made no other engine request (a T079 delta adding a skill).
+    """
+    from core.nql import apply, genesis
+
+    world = genesis.build_world([sheet], location)
+    cid = genesis.character_id(sheet)
+    try:
+        response = apply.genesis(world.source, status=[cid], binary=binary)
+    except apply.EngineUnavailable as error:
+        return str(error)
+    if not response.get("ok"):
+        return f"engine refused the world at {response.get('phase')}: {response.get('diagnostics') or response.get('fault') or response.get('error')}"
+    for status in response.get("status") or []:
+        if isinstance(status.get("character"), dict) and status["character"].get("id") == cid:
+            store(sheet, status)
+            return None
+    return "engine returned no status for the character"
+
+
+def drop_model_totals(stored: Dict[str, Any], updates: Dict[str, Any]) -> List[str]:
+    """Remove derived totals from a model-authored delta; return what was dropped.
+
+    The engine derives proficiencyBonus, initiative, senses.passivePerception,
+    the skill bonuses and spellSaveDC/spellAttackBonus from the sheet's facts.
+    A value the model wrote for one of them is dropped here (the stored value
+    stays until the engine's next write). A skill the sheet did not have is
+    kept as a fact (a new proficiency) with its bonus left to the engine.
+    """
+    dropped: List[str] = []
+    for key in DERIVED_FIELDS:
+        if key in updates:
+            updates.pop(key)
+            dropped.append(key)
+    senses = updates.get("senses")
+    if isinstance(senses, dict) and "passivePerception" in senses:
+        senses.pop("passivePerception")
+        dropped.append("senses.passivePerception")
+        if not senses:
+            updates.pop("senses")
+    skills = updates.get("skills")
+    stored_skills = stored.get("skills") if isinstance(stored.get("skills"), dict) else {}
+    if isinstance(skills, dict):
+        for key in list(skills):
+            match = next((k for k in stored_skills if skill_id(k) == skill_id(key)), None)
+            if match is not None:
+                if skills[key] != stored_skills[match]:
+                    dropped.append(f"skills.{key}")
+                skills[key] = stored_skills[match]
+            elif skill_id(key) is not None:
+                skills[key] = 0  # a new proficiency: the engine writes the bonus
+    casting = updates.get("spellcasting")
+    stored_casting = stored.get("spellcasting") if isinstance(stored.get("spellcasting"), dict) else {}
+    if isinstance(casting, dict):
+        for key in ("spellSaveDC", "spellAttackBonus"):
+            if key in casting and casting[key] != stored_casting.get(key):
+                dropped.append(f"spellcasting.{key}")
+            if key in casting:
+                casting[key] = stored_casting.get(key, casting[key])
+    return dropped

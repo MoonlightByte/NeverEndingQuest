@@ -319,15 +319,25 @@ class LevelUpSession:
                                        "source": f"{sheet.get('class')} level {s.new_level}"})
         changes: Dict[str, Any] = {"level": s.new_level, "abilities": abilities,
                                    "exp_required_for_next_level": s.exp_required_for_next_level}
-        changes.update(tables.derived_numbers(sheet, s.new_level, abilities))
+        # Facts only: level, scores, and which skills carry proficiency or
+        # expertise. The engine derives the totals when the growth is applied
+        # (core/nql/leveling -> core/nql/stats).
         if skill_times:
-            skills = dict(changes.get("skills") or sheet.get("skills") or {})
+            from core.nql import stats as nql_stats
+            skills = sheet.get("skills")
+            skills = dict(skills) if isinstance(skills, dict) else {}
+            expertise = list(sheet.get(nql_stats.EXPERTISE_FIELD) or [])
             for key, times in skill_times.items():
-                stored = next((k for k in skills if str(k).lower() == key), key)
-                ability = tables.SKILL_ABILITY.get(key)
-                if ability:
-                    skills[stored] = tables.modifier(abilities.get(ability)) + times * s.proficiency_bonus
+                stored = next((k for k in skills if nql_stats.skill_id(k) == nql_stats.skill_id(key)), None)
+                if stored is None:
+                    skills[key] = 0  # a new proficiency; the engine writes the bonus
+                if times == 2:
+                    display = nql_stats._display(nql_stats.skill_id(key) or key)
+                    if display not in expertise:
+                        expertise.append(display)
             changes["skills"] = skills
+            if expertise != list(sheet.get(nql_stats.EXPERTISE_FIELD) or []):
+                changes[nql_stats.EXPERTISE_FIELD] = expertise
         if feats != (sheet.get("feats") or []):
             changes["feats"] = feats
         chosen_subclass = self._choices.get("subclass") or s.subclass
@@ -372,9 +382,6 @@ class LevelUpSession:
         casting = sheet.get("spellcasting") if isinstance(sheet.get("spellcasting"), dict) else None
         if casting:
             spell_changes: Dict[str, Any] = {}
-            if "spellSaveDC" in changes:
-                spell_changes["spellSaveDC"] = changes.pop("spellSaveDC")
-                spell_changes["spellAttackBonus"] = changes.pop("spellAttackBonus")
             if isinstance(self._choices.get("prepared_spells"), list):
                 spell_changes["preparedSpells"] = list(self._choices["prepared_spells"])
             if isinstance(self._choices.get("cantrips"), list):
@@ -387,9 +394,6 @@ class LevelUpSession:
                 spell_changes["spells"] = spells
             if spell_changes:
                 changes["spellcasting"] = spell_changes
-        else:
-            changes.pop("spellSaveDC", None)
-            changes.pop("spellAttackBonus", None)
         # 4. prepare (typed totals, level-up path), then engine growth, then commit atomically
         from updates.update_character_info import load_schema  # noqa: WPS433
         schema = load_schema()
