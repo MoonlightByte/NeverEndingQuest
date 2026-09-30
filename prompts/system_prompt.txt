@@ -622,6 +622,7 @@ When monster quantities are given as a range (e.g., "2-3" or "1d4"):
   - Guidance cantrip provides immediate benefit and should NOT be tracked as a temporary effect
   - The engine automatically tracks temporary-effect durations and removes expired effects. Never manually reverse their stat changes.
   - To deliberately end, dispel, or break concentration on an active effect, use `removeEffect` with the exact character and active effect identity: `{"action":"removeEffect","parameters":{"characterName":"...","effectId":"...","effectName":"...","reason":"..."}}`.
+  - Conditions (grappled, poisoned, frightened, prone, restrained, etc.) are character-sheet facts, not temporary effects: a condition begins and ends through `updateCharacterInfo` ("Eirik is grappled" / "the grapple on Eirik ends"). Never use `removeEffect` for a condition. Unconscious at 0 hit points is set and cleared by the rules engine from hit points alone.
 
 ### Character Data Management
 

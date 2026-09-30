@@ -195,6 +195,43 @@ def _resolve_effect_reference(effects, *, effect_id=None, name=None):
     return []
 
 
+def _condition_reference(sheet, *, effect_id=None, name=None):
+    """The stated condition a removeEffect reference names, or None (typed values compared, no prose).
+
+    A DM may end a grapple or a poisoning with removeEffect although a
+    condition is a sheet fact, not a temporary effect; the structured intent
+    is honoured by ending the condition the sheet actually states.
+    """
+    from core.nql import stats as nql_stats
+
+    listed = [c for c in sheet.get("condition_affected") or [] if isinstance(c, str)]
+    single = sheet.get("condition") if isinstance(sheet.get("condition"), str) else None
+    stated = {c.casefold() for c in listed} | ({single.casefold()} if single and single != "none" else set())
+    for reference in (effect_id, name):
+        if isinstance(reference, str) and reference.strip().casefold() in stated:
+            return reference.strip().casefold()
+    return None
+
+
+def _end_condition(sheet, condition):
+    """The sheet with one stated condition ended; the engine's view (status, speed) refreshed."""
+    from core.nql import stats as nql_stats
+
+    updated = deepcopy(sheet)
+    updated["condition_affected"] = [c for c in updated.get("condition_affected") or []
+                                     if not (isinstance(c, str) and c.casefold() == condition)]
+    if isinstance(updated.get("condition"), str) and updated["condition"].casefold() == condition:
+        updated["condition"] = updated["condition_affected"][0] if updated["condition_affected"] else "none"
+    problem = nql_stats.refresh(updated)
+    if problem:
+        warning(f"STATES: {sheet.get('name', '?')}: condition {condition!r} ended on the sheet; engine view not refreshed ({problem})",
+                category="character_updates")
+    else:
+        info(f"STATES: {sheet.get('name', '?')}: removeEffect named the condition {condition!r}; ended on the sheet",
+             category="character_updates")
+    return updated
+
+
 def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"):
     """Deterministically remove one uniquely identified active effect."""
     if not campaign_effects_migrated():
@@ -205,9 +242,9 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
     matches = _resolve_effect_reference(
         sheet.get("temporaryEffects", []) or [], effect_id=effect_id, name=name
     )
-    if not matches:
+    condition = None if matches else _condition_reference(sheet, effect_id=effect_id, name=name)
+    if not matches and condition is None:
         raise EffectsRuntimeError("removeEffect found no active effect to end")
-    effect = matches[0]
     operations = [
         {"op": "remove", "effectId": item.get("effectId"), "name": item.get("name")}
         for item in matches
@@ -219,9 +256,12 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
             current = safe_json_load(path)
             if not isinstance(current, dict):
                 raise EffectsRuntimeError("character sheet became unavailable")
-            updated = apply_effect_ops(current, operations)
+            updated = _end_condition(current, condition) if condition else apply_effect_ops(current, operations)
             if not safe_write_json(path, updated):
                 raise EffectsRuntimeError("effect removal could not be persisted")
+    if condition:
+        return {"owner": resolved, "effectId": condition, "name": condition, "reason": reason}
+    effect = matches[0]
     return {
         "owner": resolved,
         "effectId": effect.get("effectId"),
@@ -240,22 +280,24 @@ def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="
     matches = _resolve_effect_reference(
         sheet.get("temporaryEffects", []) or [], effect_id=effect_id, name=name
     )
-    if not matches:
+    condition = None if matches else _condition_reference(sheet, effect_id=effect_id, name=name)
+    if not matches and condition is None:
         raise EffectsRuntimeError("removeEffect found no active effect to end")
-    effect = matches[0]
     operations = [
         {"op": "remove", "effectId": item.get("effectId"), "name": item.get("name")}
         for item in matches
     ]
     # The whole sheet is frozen: ending an effect also changes the numbers
     # the engine holds for it (armor class, maximum and current hit points).
+    after = _end_condition(sheet, condition) if condition else apply_effect_ops(sheet, operations)
+    effect = {"effectId": condition, "name": condition} if condition else matches[0]
     return {
         "kind": "removeEffect",
         "owner": resolved,
         "role": role,
         "path": path,
         "before": deepcopy(sheet),
-        "after": apply_effect_ops(sheet, operations),
+        "after": after,
         "effectId": effect.get("effectId"),
         "name": effect.get("name"),
         "reason": reason,

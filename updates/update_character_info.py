@@ -1245,6 +1245,12 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         if dropped_totals:
             info(f"STATS: {character_name}: dropped model-written totals {dropped_totals}; the engine derives them",
                  category="character_updates")
+        # Unconscious at 0 hit points and alive on healing are the engine's
+        # (C1): a status the model wrote for them is dropped the same way.
+        dropped_states = nql_stats.drop_model_states(updates)
+        if dropped_states:
+            info(f"STATES: {character_name}: dropped model-written {dropped_states}; the engine sets unconscious and alive from hit points",
+                 category="character_updates")
     stock_deltas, stock_reason = _split_equipment_quantity_deltas(character_data, updates, model_authored)
     if stock_reason:
         return updates, character_data, {
@@ -1307,6 +1313,14 @@ def prepare_character_delta(character_data, updates, character_role, schema,
     updated_data = deep_merge_dict(character_data, updates)
     if engine_pools is not None:
         _copy_engine_pools(engine_pools, updated_data)
+        # The engine's unconscious/alive verdict for this hit point change
+        # (core/nql/stats) rides with the pools; the model's other condition
+        # edits in the same delta stay.
+        from core.nql import stats as nql_stats
+
+        carried = nql_stats.carry_states(engine_pools, updated_data)
+        if carried:
+            info(f"STATES: {character_name}: " + "; ".join(carried), category="character_updates")
     if stock_deltas:
         # The requested change reaches the engine unclamped: a stack that
         # would go below zero stays in the merged sheet so the engine sees
@@ -1498,9 +1512,6 @@ def infer_requested_character_update_fields(changes):
     )
     if poison_applied:
         required.update(("condition", "condition_affected"))
-
-    if hp_transition and re.search(r"\bunconscious\b", text):
-        required.update(("status", "condition", "condition_affected"))
 
     death_save_change = re.search(
         r"\b(?:first|second|third|\d+(?:st|nd|rd|th)?)\s+death\s+save\s+"
@@ -1956,7 +1967,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
    - Weapon changes: Always include updated `attacksAndSpellcasting` array entries for the affected weapons.
    - Armor class: do NOT include `armorClass` or `equipment_effects`. The rules engine computes both from the equipped items' typed fields (`armor_category`, `ac_base`, `ac_bonus`, `dex_limit`) after your delta is applied. Give new armor those fields instead.
    - Item typing: `item_type` "armor" is only for body armor and shields, and such an entry MUST carry `armor_category` and `ac_base` (plus `dex_limit` for medium armor). An amulet, ring, cloak, robe, bracer or charm that gives no armor base is "miscellaneous" with an `item_subtype`; a magic item that adds to AC states that in its `effects` list, not by being typed armor.
-   - Status changes: Always synchronize `status`, `condition`, and `condition_affected`.
+   - Status: never write `status` for hit point reasons. The rules engine sets "unconscious" when hit points reach 0 and "alive" when they rise above 0; `dead` is the DM's call.
 
    - **Example - Shield is destroyed:**
      ```json
@@ -1978,10 +1989,8 @@ Your primary goal is to generate the smallest possible valid JSON object that re
      ```
 
 5. **For Conditions and Status Effects:**
-   - When applying conditions (poisoned, frightened, paralyzed, etc.), update BOTH arrays:
-     - Add the condition name to the `condition_affected` array (e.g., ["poisoned"])
-     - Update the `condition` field with the condition name (e.g., "poisoned")
-   - For multiple conditions, `condition` should contain the most severe, while `condition_affected` lists all
+   - Conditions are facts you state: when a condition is gained or ends (poisoned, frightened, grappled, paralyzed, etc.), return the complete `condition_affected` list as it should now be, and `condition` naming the most severe entry ("none" when the list is empty). The rules engine holds each one and applies its numbers (speed, roll penalties).
+   - The engine adds and removes "unconscious" itself from hit points: never add it because damage reached 0 and never remove it because of healing.
    - **Example - Applying poisoned condition:**
      ```json
      {{
@@ -2002,8 +2011,8 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 - When equipment that affects AC is added, removed, equipped, or unequipped, return only the `equipment` change; the rules engine recomputes `armorClass` and `equipment_effects`. The engine refuses illegal states (two shields, three held weapons); if told a change was refused, propose a legal one.
 - When a weapon is changed, you **MUST** update the relevant entry in the `attacksAndSpellcasting` array.
 - When a temporary effect is added or removed, you **MUST** return the **complete** `temporaryEffects` array, containing only the effects that should remain active. This is the one exception to the delta-only rule for lists.
-- Down/unconscious (house rule, NO death saves): damage that reaches 0 is an `hpDelta` (the engine stops at 0) plus `status` "unconscious"; never write death saves; a character at 0 dies only if the whole party falls; a heal, potion, Medicine, or rest that restores them is a positive `hpDelta` plus `status` "alive"
-- Conditions: Always update BOTH `condition` and `condition_affected` when applying conditions
+- Down/unconscious (house rule, NO death saves): damage that reaches 0 is an `hpDelta` and nothing else; the engine stops at 0 and marks the character unconscious; never write death saves; a character at 0 dies only if the whole party falls; a heal, potion, Medicine, or rest that restores them is a positive `hpDelta` and nothing else (the engine wakes them)
+- Conditions: state the complete `condition_affected` list and the most severe `condition` whenever a condition (other than unconscious) is gained or ends
 
 **Your adherence to these delta-only rules is paramount. Generate the most minimal, targeted JSON possible while ensuring ALL logically affected fields are included.**
 
@@ -2110,11 +2119,7 @@ CRITICAL INSTRUCTIONS:
     e) Examples: pays 100 gold -> {{"currencyDelta": {{"gold": -100}}}}; finds 50 gold and 20 silver ->
        {{"currencyDelta": {{"gold": 50, "silver": 20}}}}; "kept 38 gold" is a balance statement, not a change:
        return {{}} and let the request be corrected rather than guessing a delta.
-13. STATUS-CONDITION SYNCHRONIZATION: Always maintain consistency between status, condition, and the character's hit points:
-    - When status changes to "alive" and hit points are above 0, automatically set condition to "none" and clear condition_affected array
-    - When hit points are above 0 and status is "alive", condition cannot be "unconscious"
-    - When status is "unconscious", condition must be "unconscious" and condition_affected must include "unconscious"
-    - When healing an unconscious character above 0 HP, clear unconscious from both condition and condition_affected fields
+13. STATUS AND HIT POINTS: `status` unconscious/alive follows hit points and is written by the rules engine, never by you. Report the `hpDelta` only. Conditions you state (poisoned, grappled...) stay until you remove them from `condition_affected`; a rest or the passing of time removes nothing by itself.
 14. RESOURCE TRACKING RULES:
     - "spell slot" or "expends [level] spell slot" -> spellSlotDelta only
     - For an ability, read its actual cost and identify the exact resource-owning feature in the current sheet. A shared option spends its parent's classFeatures[].usage, not an independent option counter.
@@ -2167,8 +2172,10 @@ SAFE EXAMPLE:
 {{"spellcasting": {{"ability": "wisdom", "spellSaveDC": 13, "spellAttackBonus": 5, "spells": {{...}}, "spellSlots": {{...}}}}}} // This preserves all data
 
 CONDITION MANAGEMENT EXAMPLES:
-CORRECT (healing unconscious character): {{"hpDelta": 12, "status": "alive", "condition": "none", "condition_affected": []}}
-WRONG (inconsistent state): {{"hpDelta": 12, "status": "alive", "condition": "unconscious"}} // Condition contradicts status!
+CORRECT (healing an unconscious character): {{"hpDelta": 12}} // the engine wakes them
+WRONG: {{"hpDelta": 12, "status": "alive", "condition": "none", "condition_affected": []}} // status is the engine's
+CORRECT (grappled by a bandit while already poisoned): {{"condition": "grappled", "condition_affected": ["grappled", "poisoned"]}}
+CORRECT (the bandit lets go): {{"condition": "poisoned", "condition_affected": ["poisoned"]}}
 
 RESOURCE TRACKING EXAMPLES:
 

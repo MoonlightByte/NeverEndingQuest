@@ -58,7 +58,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
 
 @ACTIONS={
   updateCharacterInfo: non-advancement stats/inventory/condition changes on EXISTING chars (NOT for checking/reporting current state); advancement uses levelUp
-  removeEffect: deliberately end/dispel one exact active temporary effect; automatic expiry needs no action
+  removeEffect: deliberately end/dispel one exact active temporary effect; automatic expiry needs no action; a condition (grappled, poisoned...) ends via updateCharacterInfo, removeEffect naming one is INVALID
   updateTime: activities >=5min
   createEncounter: initialize combat (NOT for traps unless monsters)
   updateEncounter: modify active encounter state
