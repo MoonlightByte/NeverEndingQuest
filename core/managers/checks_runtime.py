@@ -122,4 +122,5 @@ def check_results_note() -> str:
     lines = checks_state.consume_results()
     if not lines:
         return ""
-    return "\nCHECK RESULTS (scored by the rules engine since your last turn; narrate from these, never re-roll or re-add): " + " | ".join(lines) + "\n"
+    return ("\nCHECK RESULTS (the rules engine scored the attempts you left unresolved last turn; open this response by narrating "
+            "each outcome, then answer the new input; never re-roll or re-add): " + " | ".join(lines) + "\n")
