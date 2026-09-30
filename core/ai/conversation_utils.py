@@ -127,8 +127,17 @@ def _expertise_text(sheet):
 def _exhaustion_text(sheet):
     level = sheet.get('exhaustion')
     if type(level) is int and level > 0:
-        return f' | EXHAUSTION: level {level} (engine applies -{5 * level} ft speed and -{2 * level} on d20 rolls; a long rest removes one level)'
+        return f' | EXHAUSTION: level {level} (-{2 * level} on d20 rolls; a long rest removes one level)'
     return ''
+
+
+def _speed_text(sheet):
+    """The speed the engine holds now: the base fact, less 5 ft per exhaustion level (its rule)."""
+    level = sheet.get('exhaustion')
+    base = sheet.get('speed')
+    if type(level) is int and level > 0 and type(base) is int:
+        return f"{max(0, base - 5 * level)} ft NOW (base {base}, exhaustion level {level} costs {5 * level})"
+    return str(base)
 
 def _format_temporary_effects(character_data):
     values = []
@@ -1110,7 +1119,7 @@ def update_character_data(conversation_history, party_tracker_data):
                     formatted_data = f"""
 CHAR: {member_data['name']}
 TYPE: {member_data['character_type'].capitalize()} | LVL: {member_data['level']} | RACE: {member_data['race']} | CLASS: {member_data['class']} | ALIGN: {str(member_data['alignment']).upper()} | BG: {member_data['background']}
-AC: {member_data['armorClass']} | SPD: {member_data['speed']}
+AC: {member_data['armorClass']} | SPD: {_speed_text(member_data)}
 STATUS: {member_data['status']} | CONDITION: {member_data['condition']} | AFFECTED: {', '.join(member_data['condition_affected'])}
 STATS: STR {member_data['abilities']['strength']}, DEX {member_data['abilities']['dexterity']}, CON {member_data['abilities']['constitution']}, INT {member_data['abilities']['intelligence']}, WIS {member_data['abilities']['wisdom']}, CHA {member_data['abilities']['charisma']}
 SAVES: {', '.join(member_data['savingThrows'])}
@@ -1197,7 +1206,7 @@ FLAWS: {member_data['flaws']}
                     formatted_data = f"""
 NPC: {npc_data['name']}
 ROLE: {npc['role']} | TYPE: {npc_data['character_type'].capitalize()} | LVL: {npc_data['level']} | RACE: {npc_data['race']} | CLASS: {npc_data['class']} | ALIGN: {str(npc_data['alignment']).upper()} | BG: {npc_data['background']}
-AC: {npc_data['armorClass']} | SPD: {npc_data['speed']}
+AC: {npc_data['armorClass']} | SPD: {_speed_text(npc_data)}
 STATUS: {npc_data['status']} | CONDITION: {npc_data['condition']} | AFFECTED: {', '.join(npc_data['condition_affected'])}
 STATS: STR {npc_data['abilities']['strength']}, DEX {npc_data['abilities']['dexterity']}, CON {npc_data['abilities']['constitution']}, INT {npc_data['abilities']['intelligence']}, WIS {npc_data['abilities']['wisdom']}, CHA {npc_data['abilities']['charisma']}
 SAVES: {', '.join(npc_data['savingThrows'])}

@@ -342,6 +342,7 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
     restored: Dict[str, List[str]] = {}
     for sheet, cid in zip(sheets, ids):
         before = {rid: cur for rid, cur, _ in genesis.pool_resources(sheet, [])}
+        level_before = stats.exhaustion_level(sheet, [])
         if cid not in statuses:
             return RestOutcome(False, reason="engine returned no status for a resting character", gaps=gaps)
         problem = _write_back(sheet, statuses[cid])
@@ -349,4 +350,7 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
             return RestOutcome(False, reason=problem, gaps=gaps)
         after = {rid: cur for rid, cur, _ in genesis.pool_resources(sheet, [])}
         restored[str(sheet.get("name"))] = [label for rid, label in labels[cid] if after.get(rid) != before.get(rid)]
+        level_after = stats.exhaustion_level(sheet, [])
+        if level_after != level_before:
+            restored[str(sheet.get("name"))].append(f"exhaustion level {level_before} -> {level_after}")
     return RestOutcome(True, sheets=sheets, restored=restored, receipt=response.get("receipt"), gaps=gaps)
