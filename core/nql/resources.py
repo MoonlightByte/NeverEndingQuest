@@ -319,6 +319,11 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
     for sheet, cid in zip(sheets, ids):
         labels[cid] = rest_lines(sheet, kind, gaps)
         actions.extend(f'restore {_q(cid)} resource {_q(rid)};' for rid, _ in labels[cid])
+        level = stats.exhaustion_level(sheet, gaps)
+        if kind == "long" and level > 0:
+            # SRD: a Long Rest removes one level of exhaustion (the highest instance).
+            iid = stats.exhaustion_instance(level) + ":" + cid.split(":", 1)[1]
+            actions.append(f'remove condition {_q(iid)} from {_q(cid)};')
     if not actions:
         return RestOutcome(True, sheets=sheets, gaps=gaps)
     try:

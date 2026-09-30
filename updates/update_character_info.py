@@ -1991,6 +1991,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
 5. **For Conditions and Status Effects:**
    - Conditions are facts you state: when a condition is gained or ends (poisoned, frightened, grappled, paralyzed, etc.), return the complete `condition_affected` list as it should now be, and `condition` naming the most severe entry ("none" when the list is empty). The rules engine holds each one and applies its numbers (speed, roll penalties).
    - The engine adds and removes "unconscious" itself from hit points: never add it because damage reached 0 and never remove it because of healing.
+   - Exhaustion is a level, not a list entry: "gains a level of exhaustion" / "loses a level" -> return `exhaustion` as the new whole number (0-6) computed from the current sheet value. The engine lists it in `condition_affected`, applies the speed and d20 penalties, and removes one level at every Long Rest by itself (never do that from a rest note).
    - **Example - Applying poisoned condition:**
      ```json
      {{
@@ -2176,6 +2177,8 @@ CORRECT (healing an unconscious character): {{"hpDelta": 12}} // the engine wake
 WRONG: {{"hpDelta": 12, "status": "alive", "condition": "none", "condition_affected": []}} // status is the engine's
 CORRECT (grappled by a bandit while already poisoned): {{"condition": "grappled", "condition_affected": ["grappled", "poisoned"]}}
 CORRECT (the bandit lets go): {{"condition": "poisoned", "condition_affected": ["poisoned"]}}
+CORRECT (a forced march, current exhaustion 1): {{"exhaustion": 2}}
+WRONG: {{"condition_affected": ["exhaustion"]}} // exhaustion is the number, the engine lists it
 
 RESOURCE TRACKING EXAMPLES:
 
