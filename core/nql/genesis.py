@@ -468,6 +468,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             if cond not in condition_types:
                 condition_types.append(cond)
             conditions.append(f"condition {_q(cond + ':' + cid.split(':', 1)[1])} of {_q(cond)} to {_q(cid)};")
+        # C1: the SRD conditions the sheet states, one instance each
+        # (unconscious at 0 hp is held by the engine, not declared).
+        for kind in stats.state_instances(sheet, gaps):
+            conditions.append(f"condition {_q(kind + ':' + cid.split(':', 1)[1])} of {_q(kind)} to {_q(cid)};")
         if _has_defense_style(sheet):
             conditions.append(
                 f"condition {_q(DEFENSE_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(DEFENSE_STYLE_CONDITION)} to {_q(cid)};"
@@ -540,6 +544,9 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     for cond in srd_stats.CONDITION_TYPES:
         if cond not in condition_types:
             lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
+    # The SRD condition states (C1): declared for every world so a later
+    # `apply condition` has them and the engine can hold unconscious at 0 hp.
+    lines.append(srd_stats.STATE_TYPES.rstrip("\n"))
     lines.extend(effect_types)
     lines.extend(conditions)
     lines.append(f"equipment {_q(EQUIPMENT_VERSION)} {{")

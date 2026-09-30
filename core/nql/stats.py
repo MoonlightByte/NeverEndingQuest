@@ -16,6 +16,13 @@ without it gets the list inferred once from a stored skill value equal to
 the ability modifier plus twice the proficiency bonus (the only mark a
 legacy sheet carries), and ``write_back`` stores the list so the inference
 never runs again.
+
+SRD conditions (C1a): the sheet's ``condition_affected`` list (and ``condition``)
+states which conditions a character has; genesis declares one ``state:<name>``
+instance per entry. Unconscious at 0 hit points is the engine's own (held while
+hp is at its minimum, ended by healing), so it is never declared from the sheet
+then, and ``write_back`` copies the engine's view back: the list, the primary
+condition, and ``status`` unconscious/alive. ``dead`` stays the DM's word.
 """
 from __future__ import annotations
 
@@ -25,6 +32,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.nql import srd_stats
 
 EXPERTISE_FIELD = "expertise"
+STATE_FIELDS = ("status", "condition", "condition_affected")
+STATE_PREFIX = "state:"
 DEFAULT_SPEED = 30
 
 _CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
@@ -133,6 +142,47 @@ def condition_types(sheet: Dict[str, Any], gaps: List[str]) -> List[str]:
     return [kind for kind in out if kind in srd_stats.CONDITION_TYPES]
 
 
+def state_names(sheet: Dict[str, Any], gaps: List[str]) -> List[str]:
+    """The SRD condition names the sheet states: condition_affected plus condition, casefolded, known ones only."""
+    cid = sheet.get("name", "")
+    listed = sheet.get("condition_affected")
+    entries: List[Any] = list(listed) if isinstance(listed, list) else []
+    single = sheet.get("condition")
+    if isinstance(single, str) and single.strip().casefold() not in ("", "none"):
+        entries.append(single)
+    out: List[str] = []
+    for entry in entries:
+        name = entry.strip().casefold() if isinstance(entry, str) else None
+        if name is None or name not in srd_stats.STATE_NAMES:
+            gaps.append(f"{cid}: condition {entry!r} is not an SRD condition; no state declared")
+            continue
+        if name not in out:
+            out.append(name)
+    return out
+
+
+def state_instances(sheet: Dict[str, Any], gaps: List[str]) -> List[str]:
+    """The ``state:<name>`` types to instantiate for this sheet.
+
+    Unconscious is the engine's while hit points are 0 (held at the minimum
+    and ended by healing), so the sheet's entry is not declared then; at more
+    than 0 it is a stated fact (a magical sleep) and is declared like any other.
+    """
+    hp = _int(sheet.get("hitPoints"))
+    return [STATE_PREFIX + name for name in state_names(sheet, gaps)
+            if not (name == "unconscious" and hp is not None and hp <= 0)]
+
+
+def states_of(status: Dict[str, Any]) -> List[str]:
+    """Sorted SRD condition names present in a status record (declared instances and held ones)."""
+    names: List[str] = []
+    for record in list(status.get("conditions") or []) + list(status.get("held_conditions") or []):
+        kind = record.get("type") if isinstance(record, dict) else None
+        if isinstance(kind, str) and kind.startswith(STATE_PREFIX) and kind[len(STATE_PREFIX):] not in names:
+            names.append(kind[len(STATE_PREFIX):])
+    return sorted(names)
+
+
 def casting_ability(sheet: Dict[str, Any]) -> Optional[str]:
     casting = sheet.get("spellcasting")
     if not isinstance(casting, dict):
@@ -185,22 +235,23 @@ def totals(status: Dict[str, Any]) -> Dict[str, int]:
 
 
 def write_back(sheet: Dict[str, Any], status: Dict[str, Any]) -> List[str]:
-    """Store the engine's totals on the sheet; return the fields whose value changed."""
+    """Store the engine's totals and condition states on the sheet; return the fields whose value changed."""
+    changes: List[str] = []
+
+    def put(container: Dict[str, Any], key: str, value: Any, label: str) -> None:
+        if container.get(key) != value:
+            changes.append(f"{label} {container.get(key)!r} -> {value!r}")
+            container[key] = value
+
+    _write_back_states(sheet, status, put)
     values = totals(status)
     if "proficiency" not in values:
-        return []
-    changes: List[str] = []
+        return changes
     if not isinstance(sheet.get(EXPERTISE_FIELD), list):
         # Inferred from the stored values before the engine's replace them.
         inferred, _ = expertise_of(sheet)
         sheet[EXPERTISE_FIELD] = [_display(sid) for sid in inferred]
         changes.append(f"{EXPERTISE_FIELD} inferred {sheet[EXPERTISE_FIELD]}")
-
-    def put(container: Dict[str, Any], key: str, value: int, label: str) -> None:
-        if container.get(key) != value:
-            changes.append(f"{label} {container.get(key)!r} -> {value}")
-            container[key] = value
-
     put(sheet, "proficiencyBonus", values["proficiency"], "proficiencyBonus")
     if "initiative" in values:
         put(sheet, "initiative", values["initiative"], "initiative")
@@ -224,6 +275,77 @@ def write_back(sheet: Dict[str, Any], status: Dict[str, Any]) -> List[str]:
     return changes
 
 
+def _write_back_states(sheet: Dict[str, Any], status: Dict[str, Any], put) -> None:
+    """The engine's condition view onto status / condition / condition_affected.
+
+    Unconscious is present when the engine holds it (hp at 0) or the sheet
+    declared it; ``status`` follows it (unconscious, or alive again once it is
+    gone). A dead character is the DM's word and is left alone.
+    """
+    if "conditions" not in status or sheet.get("status") == "dead":
+        return
+    names = states_of(status)
+    put(sheet, "condition_affected", names, "condition_affected")
+    current = sheet.get("condition")
+    put(sheet, "condition", current if current in names else (names[0] if names else "none"), "condition")
+    if "unconscious" in names:
+        put(sheet, "status", "unconscious", "status")
+    elif sheet.get("status") == "unconscious":
+        put(sheet, "status", "alive", "status")
+
+
+def carry_states(engine_sheet: Dict[str, Any], target: Dict[str, Any]) -> List[str]:
+    """Copy the engine's unconscious verdict from a written-back sheet onto a merged one.
+
+    The merged sheet may carry the model's own condition edits (a grapple
+    stated in the same delta as the damage), so only the engine's part moves:
+    ``status`` (never dead) and the ``unconscious`` entry of the list.
+    """
+    changes: List[str] = []
+    if target.get("status") == "dead" or engine_sheet.get("status") not in ("alive", "unconscious"):
+        return changes
+    held = "unconscious" in (engine_sheet.get("condition_affected") or [])
+    listed = [c for c in target.get("condition_affected") or [] if isinstance(c, str)]
+    names = sorted(set(listed) | {"unconscious"}) if held else [c for c in listed if c != "unconscious"]
+    if names != listed:
+        changes.append(f"condition_affected {listed!r} -> {names!r}")
+        target["condition_affected"] = names
+    condition = target.get("condition") if target.get("condition") in names else (names[0] if names else "none")
+    if condition != target.get("condition"):
+        changes.append(f"condition {target.get('condition')!r} -> {condition!r}")
+        target["condition"] = condition
+    status = "unconscious" if held else ("alive" if target.get("status") == "unconscious" else target.get("status"))
+    if status != target.get("status"):
+        changes.append(f"status {target.get('status')!r} -> {status!r}")
+        target["status"] = status
+    return changes
+
+
+def drop_model_states(updates: Dict[str, Any]) -> List[str]:
+    """Remove hit-point-driven state writes from a model-authored delta; return what was dropped.
+
+    The engine sets unconscious at 0 hit points and alive on healing: a
+    model-written ``status`` of unconscious or alive is dropped (``dead`` is
+    the DM's and stays), and a delta that carries an hpDelta may not add or
+    remove ``unconscious`` in ``condition`` / ``condition_affected`` either.
+    Every other condition is a fact the model states.
+    """
+    dropped: List[str] = []
+    if updates.get("status") in ("unconscious", "alive"):
+        updates.pop("status")
+        dropped.append("status")
+    if "hpDelta" not in updates:
+        return dropped
+    if updates.get("condition") == "unconscious":
+        updates.pop("condition")
+        dropped.append("condition")
+    listed = updates.get("condition_affected")
+    if isinstance(listed, list) and "unconscious" in listed:
+        updates["condition_affected"] = [c for c in listed if c != "unconscious"]
+        dropped.append("condition_affected[unconscious]")
+    return dropped
+
+
 def _display(skill: str) -> str:
     """The schema's skill name for an engine skill id ('sleight-of-hand' -> 'Sleight of Hand')."""
     return " ".join(part if part == "of" else part.capitalize() for part in skill.split("-"))
@@ -239,11 +361,11 @@ def store(sheet: Dict[str, Any], status: Dict[str, Any]) -> List[str]:
 
 
 DERIVED_FIELDS = ("proficiencyBonus", "initiative")
-FACT_FIELDS = ("level", "abilities", "skills", "savingThrows", EXPERTISE_FIELD, "feats", "classFeatures", "speed")
+FACT_FIELDS = ("level", "abilities", "skills", "savingThrows", EXPERTISE_FIELD, "feats", "classFeatures", "speed") + STATE_FIELDS
 
 
 def facts_changed(before: Dict[str, Any], after: Dict[str, Any]) -> bool:
-    """True when a fact the totals read differs between two sheets (values compared, not digests)."""
+    """True when a fact the totals or states read differs between two sheets (values compared, not digests)."""
     for key in FACT_FIELDS:
         if before.get(key) != after.get(key):
             return True
