@@ -59,6 +59,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
 @ACTIONS={
   updateCharacterInfo: non-advancement stats/inventory/condition changes on EXISTING chars (NOT for checking/reporting current state); advancement uses levelUp
   removeEffect: deliberately end/dispel one exact active temporary effect; automatic expiry needs no action; a condition (grappled, poisoned...) ends via updateCharacterInfo, removeEffect naming one is INVALID
+  rollCheck: engine-scored check/save outside combat; player dice collected by the game before the next DM turn; result = CHECK RESULTS in the DM Note
   updateTime: activities >=5min
   createEncounter: initialize combat (NOT for traps unless monsters)
   updateEncounter: modify active encounter state
@@ -209,6 +210,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
 @ACTION_PARAMS={
   updateCharacterInfo: {"characterName":str,"changes":str} #SINGLE name only. Multiple chars = multiple actions in array
   removeEffect: {"characterName":str,"effectId":str,"effectName":str,"reason":str} #requires effectId or effectName
+  rollCheck: {"characterName":str,"check":str,"dc":int?,"mode":"advantage"|"disadvantage"?,"roller":"engine"?,"reason":str}
   updateTime: {"timeEstimate":int} #integer only, not string
   updatePlot: {"plotPointId":str,"newStatus":str,"plotImpact":str}
   updatePartyNPCs: {"operation":str,"npc":obj,"lifecycleContext":obj optional} #add: npc {"name","level","class"}. remove: npc {"name"} ONLY - NEVER demand level or class on a remove. lifecycleContext {"reason","departureKind","destination"} is optional on remove and its absence is NEVER a rejection
@@ -236,7 +238,8 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
 
 @CLARIFICATIONS={
   1:Empty actions OK if waiting for input/consent
-  2:NEVER ask player to roll for NPCs--DM rolls them
+  2:NEVER ask player to roll for NPCs--DM uses rollCheck roller engine for companions; narrates sheetless monsters
+  2b:rollCheck = the valid action for checks/saves outside combat. VALID: ask the check + rollCheck, narrate up to the attempt. INVALID: success/failure narrated with no CHECK RESULTS line in the DM Note; DM adds modifiers or compares DC itself; chat-typed number treated as dice; "roll and add your modifier" without rollCheck
   3:transitionLocation REQUIRED for actual chosen movement; not for discussion/questions/plans/quotes/negation. Supplied accepted Travel Agent stop/no-route/roster_change_in_place facts govern the destination or honest no-transition exception (roster_change_in_place: party stays, no transitionLocation; cancellation != membership authority/commit; retain genuine authorized leaving/rejoining or discard unauthorized roster proposal/narration)
   4:INVENTORY QUERIES: "How many arrows?" / "Check inventory" = NO updateCharacterInfo needed (just narrate counts)
   5:updateCharacterInfo remains REQUIRED for actual consumption, destruction, loss, sale, or any other inventory removal not owned by location storage, and for equipment-state changes while the item stays with the character; a direct character-to-character handoff is transferItem, never updateCharacterInfo and never storageInteraction. It is not the replacement for a recoverable location deposit (leaving owned items at the current location for later recovery = location storage = storageInteraction). Judge an ambiguous drop by actual intent/context, not the word used; do not invent permanent loss, storage or a recipient the player did not choose

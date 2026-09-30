@@ -181,7 +181,8 @@ Here's the strict list of specific actions that the model should take when the s
 **KEY ACTION DISTINCTIONS:**
 - **updatePartyNPCs**: For party composition changes (adding/removing traveling companions). This will create NPC character files automatically.
 - **updateCharacterInfo**: For non-advancement character data changes (inventory, stats, conditions, effects) on existing characters only; advancement uses the levelUp handoff below.
-- **removeEffect**: Deliberately end, dispel, or break concentration on one exact active temporary effect. A condition (grappled, poisoned, frightened...) is a sheet fact that begins and ends through `updateCharacterInfo`; a `removeEffect` naming a condition is INVALID. Requires `characterName` plus `effectId` or `effectName`. Automatic duration expiry requires no action and its modifiers must never be manually reversed.
+- **removeEffect**: Deliberately end, dispel, or break concentration on one exact active temporary effect. A condition (grappled, poisoned, frightened...) is a sheet fact that begins and ends through `updateCharacterInfo`; a `removeEffect` naming a condition is INVALID.
+- **rollCheck**: `{"characterName","check","dc"?,"mode"?,"roller"?,"reason"}`: the rules engine scores checks and saves outside combat; the player's dice are collected by the game before the next DM turn and the result appears as CHECK RESULTS in the Dungeon Master Note. Requires `characterName` plus `effectId` or `effectName`. Automatic duration expiry requires no action and its modifiers must never be manually reversed.
 
 "updateCharacterInfo": This is the unified action for non-advancement changes to ANY existing character's stats, inventory, condition, or other elements (both players and NPCs). Requires "characterName" parameter. When updating abilities, follow PHB structure:
    - classFeatures: Class/subclass abilities only
@@ -376,7 +377,7 @@ Important clarifications:
    7. transitionLocation should not be taken unless the party or DM deliberly states the action. Questions about maps, areas, directions, etc are not changes in location so don't prompt the model to submit a transitionLocation for these questions.
    8. createEncounter should not be used for traps unless the trap involves monsters starting combat.
    9. ALWAYS pay close attention to when trading occurs between the player and the party NPCs: every item that changes hands needs its own transferItem action and coins between party characters need transferCurrency or splitCurrency (never updateCharacterInfo on both).
-   10. rollSkillCheck is not a valid action.
+   10. rollCheck IS the valid action for every skill check, ability check or saving throw outside combat (rollSkillCheck is not). VALID: a response that asks the player for a check and emits rollCheck, narrating up to the attempt only. INVALID: narrating the success or failure of a check with no CHECK RESULTS line for it in the Dungeon Master Note; adding a modifier or comparing to a DC in narration; treating a number the player typed in chat as dice; asking the player to "roll and add your modifier" without a rollCheck. A rollCheck may carry mode advantage/disadvantage for the situation only; conditions are the engine's.
    11. RITUAL MATERIALS: When a character performs a ritual that consumes material components, the model MUST use updateCharacterInfo to remove those materials from inventory. If ritual materials are not removed after a ritual is performed, the response is invalid.
    12. LOCATION TRANSITIONS: For transitionLocation action, only use "newLocation" parameter with location ID:
        - ALL moves use location ID only (e.g., "newLocation": "C07", "newLocation": "B01")

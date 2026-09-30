@@ -161,6 +161,7 @@ ACTION_TRANSITION_LOCATION = "transitionLocation"
 ACTION_LEVEL_UP = "levelUp"
 ACTION_UPDATE_CHARACTER_INFO = "updateCharacterInfo"
 ACTION_REMOVE_EFFECT = "removeEffect"
+ACTION_ROLL_CHECK = "rollCheck"
 ACTION_UPDATE_PARTY_NPCS = "updatePartyNPCs"
 ACTION_CREATE_NEW_MODULE = "createNewModule"
 ACTION_ESTABLISH_HUB = "establishHub"
@@ -3917,6 +3918,21 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 status_ready()
             except Exception:
                 pass
+
+    elif action_type == ACTION_ROLL_CHECK:
+        # C2a: the DM names the check; the engine scores it. The player's own
+        # dice come from the roll prompt before the next DM turn; companions
+        # and engine-rolled checks resolve now. Results reach the next DM Note.
+        try:
+            from core.managers.checks_runtime import stage_roll_check
+
+            outcome = stage_roll_check(parameters)
+        except Exception as exc:
+            error("FAILURE: rollCheck failed safely", exception=exc, category="character_updates")
+            return create_return(status="error", response_data={"error_message": "The check could not be staged safely."})
+        if outcome.get("error"):
+            return create_return(status="error", response_data={"error_message": outcome["error"]})
+        return create_return()
 
     elif action_type == ACTION_REMOVE_EFFECT:
         status_updating_character()
