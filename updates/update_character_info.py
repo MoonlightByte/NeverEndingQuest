@@ -1306,9 +1306,13 @@ def prepare_character_delta(character_data, updates, character_role, schema,
             if isinstance(entry, dict) and entry.get('item_name') in stock_deltas:
                 base = entry.get('quantity', 1) if type(entry.get('quantity')) is int else 1
                 entry['quantity'] = base + stock_deltas.pop(entry['item_name'])
-    if managed_effect_operation:
-        from core.effects.lifecycle import apply_effect_ops
-        updated_data = apply_effect_ops(updated_data, [managed_effect_operation])
+    # Temporary effects: the classifier's add/remove operation, and any live
+    # effect the engine does not hold yet (a sheet written before E12), go
+    # through the lifecycle so the engine's armor class and maximum hit
+    # points are the stored values. No operation and nothing pending makes
+    # no engine call.
+    from core.effects.lifecycle import apply_effect_ops
+    updated_data = apply_effect_ops(updated_data, [managed_effect_operation] if managed_effect_operation else [])
     if 'hitPoints' in updated_data and updated_data['hitPoints'] < 0:
         updated_data['hitPoints'] = 0
     critical_warnings = validate_critical_fields_preserved(character_data, updated_data, character_name)

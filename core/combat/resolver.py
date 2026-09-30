@@ -1233,7 +1233,8 @@ def _apply_encounter_effect_operation(creature, operation):
             "maxHitPoints": int(creature.get("maxHitPoints", 0) or 0),
         }
     raw = _raw_combatant_sheet(None, None, creature)
-    updated = apply_effect_ops(raw, [operation])
+    # An encounter creature record is not a character sheet: no engine world.
+    updated = apply_effect_ops(raw, [operation], engine=False)
     creature["activeEffects"] = updated.get("temporaryEffects", [])
     rendered = effective_sheet(updated)
     for sheet_field, encounter_field in (

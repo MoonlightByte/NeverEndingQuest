@@ -103,7 +103,7 @@ def project(sheet: Dict[str, Any], *, binary: Optional[str] = None) -> Projectio
     if len(explanations) != 1 or type(explanations[0].get("effective")) is not int:
         return Projection(sheet, False, "engine returned no defense explanation", previous_armor_class=previous, gaps=world.gaps)
     explanation = explanations[0]
-    names_by_id = {}
+    names_by_id = dict(world.effect_names)
     for index, item_id in (world.item_ids.get(cid) or {}).items():
         entry = (sheet.get("equipment") or [])[index]
         names_by_id[item_id] = str(entry.get("item_name", item_id))

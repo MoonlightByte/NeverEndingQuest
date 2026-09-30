@@ -23,7 +23,7 @@ from core.combat import (
     ensure_agentic_roll_reserve,
     resolution_from_event,
 )
-from core.effects.lifecycle import enter_combat_effect, exit_combat_effect
+from core.effects.lifecycle import apply_effect_ops, enter_combat_effect, exit_combat_effect
 from core.effects.effective import effective_sheet
 from core.managers.combat_state import (
     CombatStateConflict,
@@ -1167,6 +1167,16 @@ def exit_effect_clock(
             return
         for name, path in (character_paths or {}).items():
             character = _load_object(path, "character %s" % name)
+            # An effect that ended in combat (no rounds left, or an encounter
+            # effect) leaves through the lifecycle operation so its onRemove
+            # change applies and the engine takes its numbers off the sheet.
+            ended = [
+                {"op": "remove", "effectId": effect.get("effectId"), "name": effect.get("name")}
+                for effect in character.get("temporaryEffects", []) or []
+                if isinstance(effect, dict) and exit_combat_effect(effect, now_scalar) is None
+            ]
+            if ended:
+                character = apply_effect_ops(character, ended)
             surviving = []
             for effect in character.get("temporaryEffects", []) or []:
                 converted = (

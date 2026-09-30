@@ -220,15 +220,15 @@ def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="
         "effectId": effect.get("effectId"),
         "name": effect.get("name"),
     }
+    # The whole sheet is frozen: ending an effect also changes the numbers
+    # the engine holds for it (armor class, maximum and current hit points).
     return {
         "kind": "removeEffect",
         "owner": resolved,
         "role": role,
         "path": path,
-        "before": deepcopy(sheet.get("temporaryEffects", []) or []),
-        "after": deepcopy(
-            apply_effect_ops(sheet, [operation]).get("temporaryEffects", []) or []
-        ),
+        "before": deepcopy(sheet),
+        "after": apply_effect_ops(sheet, [operation]),
         "effectId": effect.get("effectId"),
         "name": effect.get("name"),
         "reason": reason,
@@ -243,7 +243,6 @@ def prepare_character_update(character_name, changes, party_tracker_data=None):
         changes,
         effective_sheet(sheet),
         _world_scalar(party_tracker_data),
-        structural_reissue=True,
     )
     operation = None
     if result["operation"] == "add":
@@ -309,14 +308,11 @@ def apply_staged_remove_effect(receipt):
             current = safe_json_load(receipt["path"])
             if not isinstance(current, dict):
                 raise EffectsRuntimeError("character sheet became unavailable")
-            current_effects = current.get("temporaryEffects", []) or []
-            if current_effects == receipt["after"]:
+            if current == receipt["after"]:
                 return "already_committed"
-            if current_effects != receipt["before"]:
+            if current != receipt["before"]:
                 return "blocked_conflict"
-            updated = deepcopy(current)
-            updated["temporaryEffects"] = deepcopy(receipt["after"])
-            if not safe_write_json(receipt["path"], updated):
+            if not safe_write_json(receipt["path"], deepcopy(receipt["after"])):
                 raise EffectsRuntimeError("effect removal could not be persisted")
     return "committed"
 
