@@ -1236,6 +1236,15 @@ def prepare_character_delta(character_data, updates, character_role, schema,
                 'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
                 'error_message': total_reason,
             }
+    if model_authored:
+        # Derived totals are the engine's (core/nql/stats): a value the model
+        # wrote for one is dropped and the engine's stands.
+        from core.nql import stats as nql_stats
+
+        dropped_totals = nql_stats.drop_model_totals(character_data, updates)
+        if dropped_totals:
+            info(f"STATS: {character_name}: dropped model-written totals {dropped_totals}; the engine derives them",
+                 category="character_updates")
     stock_deltas, stock_reason = _split_equipment_quantity_deltas(character_data, updates, model_authored)
     if stock_reason:
         return updates, character_data, {
@@ -1340,6 +1349,17 @@ def prepare_character_delta(character_data, updates, character_role, schema,
             debug(f"[Equipment Engine] {character_name}: {gap}", category="character_updates")
     updated_data = normalize_status_and_condition(updated_data, character_role)
     updated_data, removed_fields = purge_invalid_fields(updated_data, schema, character_name)
+    if model_authored:
+        # A change of facts (level, abilities, proficiencies, expertise, feats,
+        # casting ability) with no other engine request in this delta: one
+        # genesis+status request stores the engine's totals.
+        from core.nql import stats as nql_stats
+
+        if nql_stats.facts_changed(character_data, updated_data):
+            problem = nql_stats.refresh(updated_data)
+            if problem:
+                warning(f"STATS: {character_name}: totals not refreshed ({problem}); stored values kept until the next engine touch",
+                        category="character_updates")
     is_valid, error_msg = validate_character_data(updated_data, schema, character_name)
     checks.update(schema_valid=is_valid, error_message=error_msg, removed_fields=removed_fields)
     if is_valid:
@@ -2066,7 +2086,7 @@ CRITICAL INSTRUCTIONS:
 5. Maintain data integrity and consistency
 6. IMPORTANT: When updating nested objects like 'spellcasting', include ALL existing subfields to prevent data loss
 7. NEVER return partial nested objects that would delete existing important data
-8. Spell slot counts never appear inside 'spellcasting'; a cast or a refill is spellSlotDelta. Edit 'spellcasting' only for spells known/prepared, DC or bonus, and then include ability, spellSaveDC, spellAttackBonus, and spells fields
+8. Spell slot counts never appear inside 'spellcasting'; a cast or a refill is spellSlotDelta. Edit 'spellcasting' only for spells known/prepared or a change of casting ability, and then include ability, spellSaveDC, spellAttackBonus, and spells fields as they are (the DC and bonus are derived by the rules engine; any value you write for them is replaced)
 9. SPELL SLOT RULE: Cantrips (0-level spells) do NOT consume spell slots. Only deduct spell slots for leveled spells (1st-9th level).
 10. HIT DICE RULE: IGNORE all references to hit dice, Hit Dice, HD, or hit dice restoration. Do NOT add hitDice, hitDiceRestored, or maxHitDice fields. The system does not track hit dice.
 11. REST HEALING: Rests are applied by the rest action, not by you. A rest note reaching you carries only an extra narrated amount ("Regains 9 hit points"): return it as a positive hpDelta. Never refill slots or pools from a rest note; the engine already did. Do not implement hit dice mechanics.
@@ -2126,6 +2146,7 @@ CRITICAL INSTRUCTIONS:
     - The experience_points field must NOT be included in level up changes
     - XP is managed separately and should never be altered during level advancement
     - IMPORTANT: This restriction ONLY applies to level up operations. You MUST update experience_points when explicitly requested (e.g., "Add 50 experience points", "Award XP")
+19. DERIVED TOTALS ARE THE ENGINE'S: proficiencyBonus, initiative, senses.passivePerception, every skill bonus, spellSaveDC and spellAttackBonus are computed by the rules engine from level, ability scores, proficiencies, expertise and feats. Never write them; a value you write is dropped. State the fact instead: a new skill proficiency is the skill added to 'skills' (any number), a new saving throw proficiency is the ability added to 'savingThrows', expertise is the skill added to 'expertise', a feat is added to 'feats', an ability score change is the new score in 'abilities'.
 {effects_update_rules}
 
 EQUIPMENT UPDATE EXAMPLES:

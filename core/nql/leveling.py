@@ -62,6 +62,11 @@ def grow(sheet: Dict[str, Any], hp_gain: int, slot_targets: Dict[str, int], *, l
             elif target < current_max:
                 gaps.append(f"{key} max {current_max} is above the table's {target}; left as is")
     if not lines:
+        # Nothing to expand, but the level and scores changed: the engine's
+        # totals for the new facts are stored from a genesis+status request.
+        problem = stats.refresh(sheet, location=location, binary=binary)
+        if problem:
+            return GrowthOutcome(False, reason=problem, gaps=gaps)
         return GrowthOutcome(True, sheet=sheet, gaps=gaps)
     try:
         response = apply.call({"world": world.source, "world_name": "levelup-genesis.nql",

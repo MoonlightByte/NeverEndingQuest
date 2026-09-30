@@ -283,40 +283,6 @@ def hp_gain(sheet: Dict[str, Any], cls: str, method: str, roll: Optional[int] = 
     return max(1, fixed_hp_gain(cls) + con), f"fixed {fixed_hp_gain(cls)} + {con} Con"
 
 
-def derived_numbers(sheet: Dict[str, Any], new_level: int, abilities: Dict[str, int]) -> Dict[str, Any]:
-    """Skill bonuses, saves-dependent values, DC and attack bonus from scores and the new proficiency.
-
-    A skill's proficiency multiplier (0, 1 or 2) is read back from the stored bonus
-    against the old proficiency bonus, then reapplied with the new one.
-    """
-    old_pb = sheet.get("proficiencyBonus") if type(sheet.get("proficiencyBonus")) is int else proficiency_bonus(sheet.get("level", 1))
-    new_pb = proficiency_bonus(new_level)
-    old_abilities = sheet.get("abilities") or {}
-    skills: Dict[str, int] = {}
-    for skill, bonus in (sheet.get("skills") or {}).items():
-        ability = SKILL_ABILITY.get(str(skill).lower())
-        if ability is None or type(bonus) is not int:
-            skills[skill] = bonus
-            continue
-        old_mod = modifier(old_abilities.get(ability))
-        times = 0 if old_pb == 0 else max(0, min(2, round((bonus - old_mod) / old_pb)))
-        skills[skill] = modifier(abilities.get(ability)) + times * new_pb
-    out: Dict[str, Any] = {"proficiencyBonus": new_pb, "skills": skills}
-    if "perception" in {str(k).lower() for k in skills}:
-        key = next(k for k in skills if str(k).lower() == "perception")
-        senses = dict(sheet.get("senses") or {})
-        senses["passivePerception"] = 10 + skills[key]
-        out["senses"] = senses
-    if "initiative" in sheet:
-        out["initiative"] = modifier(abilities.get("dexterity"))
-    casting = sheet.get("spellcasting") if isinstance(sheet.get("spellcasting"), dict) else None
-    if casting and casting.get("ability"):
-        mod = modifier(abilities.get(str(casting["ability"]).lower()))
-        out["spellSaveDC"] = 8 + new_pb + mod
-        out["spellAttackBonus"] = new_pb + mod
-    return out
-
-
 def apply_asi(abilities: Dict[str, int], increases: Dict[str, int]) -> Tuple[Dict[str, int], str]:
     """+2 to one ability or +1 to two, never above 20. Returns (new abilities, reason if refused)."""
     if not isinstance(increases, dict) or not increases:
