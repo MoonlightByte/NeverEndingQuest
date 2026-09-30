@@ -198,10 +198,13 @@ def effect_engine_modifiers(effect: Dict[str, Any]) -> Optional[List[Tuple[str, 
 
     Stored modifiers are normalized (``armorClass``, ``maxHitPoints``, or
     ``hitPoints`` with ``affectsMax``); other stats are not the engine's here.
-    None means the effect cannot be held by the engine (a maximum hit point
-    change that is not positive, which the engine refuses) and stays an overlay.
+    A negative maximum (a drain or curse) is held since engine aa49438; the
+    engine refuses a drain larger than the room the maximum has after active
+    raises, so ``core/nql/effects`` sizes it from the sheet before applying.
+    None is reserved for an effect the engine cannot hold at all.
     """
     out: List[Tuple[str, int]] = []
+    hp_max_total = 0
     for modifier in effect.get("modifiers") or []:
         if not isinstance(modifier, dict) or type(modifier.get("value")) is not int or modifier["value"] == 0:
             continue
@@ -209,9 +212,11 @@ def effect_engine_modifiers(effect: Dict[str, Any]) -> Optional[List[Tuple[str, 
         if stat == "armorClass":
             out.append(("defense", modifier["value"]))
         elif stat == "maxHitPoints" or (stat == "hitPoints" and modifier.get("affectsMax") is True):
-            if modifier["value"] < 0:
-                return None
             out.append(("hp-max", modifier["value"]))
+            hp_max_total += modifier["value"]
+    if hp_max_total and any(k == "hp-max" and (v > 0) != (hp_max_total > 0) for k, v in out):
+        # One instance's maximum modifiers must all raise or all drain.
+        return None
     return out
 
 
