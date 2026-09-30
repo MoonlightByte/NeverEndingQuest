@@ -32,7 +32,7 @@ from updates.update_character_info import (
     update_character_info,
 )
 from utils.encoding_utils import safe_json_load
-from utils.enhanced_logger import warning
+from utils.enhanced_logger import info, warning
 from utils.file_operations import safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
 
@@ -118,22 +118,12 @@ def update_character_with_effects(
             sheet = safe_json_load(path)
             if not isinstance(sheet, dict):
                 raise EffectsRuntimeError("character sheet became unavailable")
-            result = classify_effect(
-                resolved,
-                changes,
-                effective_sheet(sheet),
-                _world_scalar(party_tracker_data),
-            )
-            operation = None
-            if result["operation"] == "add":
-                operation = [{"op": "add", "effect": result["effect"]}]
-            elif result["operation"] == "remove":
-                operation = _remove_operation(result, sheet)
+            classifier = _lazy_classifier(resolved, changes, sheet, _world_scalar(party_tracker_data))
             success = _update_character_info_unlocked(
                 resolved,
                 changes,
                 character_role=role,
-                managed_effect_operation=operation,
+                managed_effect_operation=classifier,
                 action_context=action_context,
             )
     if success:
@@ -148,6 +138,43 @@ def update_character_with_effects(
         if rest_kind:
             process_effect_lifecycle(rest_kind=rest_kind)
     return success
+
+
+class _lazy_classifier:
+    """T078 on demand: the T079 loop calls this with each parsed delta.
+
+    The classifier runs only when the update model flagged an effect change
+    ("effectChange": true) or answered with an empty delta (an effect-only
+    change leaves T079 nothing else to say). One T078 result is kept across
+    T079 reissues. A pure number change never pays for the classifier.
+    """
+
+    def __init__(self, character_name, changes, sheet, now_scalar):
+        self._name = character_name
+        self._changes = changes
+        self._sheet = sheet
+        self._now = now_scalar
+        self.result = None
+        self.operation = None
+        self.skipped = False
+
+    def __call__(self, updates, effect_flag):
+        if self.result is None and (effect_flag is True or updates == {}):
+            self.result = classify_effect(
+                self._name, self._changes, effective_sheet(self._sheet), self._now
+            )
+            if self.result["operation"] == "add":
+                self.operation = [{"op": "add", "effect": self.result["effect"]}]
+            elif self.result["operation"] == "remove":
+                self.operation = _remove_operation(self.result, self._sheet)
+            self.skipped = False
+        elif self.result is None:
+            self.skipped = True
+            info(
+                f"T078 skipped for {self._name}: the update model reported no effect change",
+                category="effects_tracking",
+            )
+        return self.operation
 
 
 def _resolve_effect_reference(effects, *, effect_id=None, name=None):
@@ -238,22 +265,12 @@ def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="
 def prepare_character_update(character_name, changes, party_tracker_data=None):
     """Freeze required T078/T079 output and advisory sheet corrections."""
     resolved, role, _path, sheet = _resolve_character(character_name)
-    result = classify_effect(
-        resolved,
-        changes,
-        effective_sheet(sheet),
-        _world_scalar(party_tracker_data),
-    )
-    operation = None
-    if result["operation"] == "add":
-        operation = [{"op": "add", "effect": result["effect"]}]
-    elif result["operation"] == "remove":
-        operation = _remove_operation(result, sheet)
+    classifier = _lazy_classifier(resolved, changes, sheet, _world_scalar(party_tracker_data))
     receipt = _update_character_info_unlocked(
         resolved,
         changes,
         character_role=role,
-        managed_effect_operation=operation,
+        managed_effect_operation=classifier,
         prepare_only=True,
         structural_reissue=True,
     )
@@ -275,7 +292,7 @@ def prepare_character_update(character_name, changes, party_tracker_data=None):
             "status": "attempted_unavailable",
             "error": type(exc).__name__,
         }
-    receipt["effect_proposal"] = result
+    receipt["effect_proposal"] = classifier.result or {"operation": "none", "effect": {}, "remove": {}}
     return receipt
 
 

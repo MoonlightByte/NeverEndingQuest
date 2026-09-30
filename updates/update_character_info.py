@@ -1895,7 +1895,12 @@ def _update_character_info_unlocked(
     - NEVER return temporaryEffects.
     - Read the supplied effective values as the character's current player-visible values.
     - If the requested change adds or removes a temporary effect, return any other
-      one-time costs or permanent changes only. Do not manually reverse an expired effect."""
+      one-time costs or permanent changes only. Do not manually reverse an expired effect.
+    - When the change creates, ends or alters a temporary effect (a spell buff or debuff, a
+      potion's lasting effect, a curse, a blessing, a condition with a duration), include
+      "effectChange": true in your delta beside any other fields (or alone when nothing else
+      changes). Omit it for everything else: damage, healing, coins, items, experience, rests,
+      slot or resource spending with no lasting effect. The engine classifies the effect itself."""
     else:
         effects_update_rules = """19. TEMPORARY EFFECTS - CRITICAL RULES:
     - ONLY add effects with durations of 1 MINUTE OR LONGER to temporaryEffects
@@ -2289,6 +2294,12 @@ Character Role: {character_role}
     last_update_error = None
     # The engine-owned effect operation is itself the change, so an empty
     # delta beside it needs no confirmation.
+    # A callable operation is a lazy T078 classifier (core/managers/effects_runtime):
+    # it is resolved on each parsed T079 delta below and runs the classifier only
+    # when the delta carries "effectChange" or is empty.
+    lazy_classifier = managed_effect_operation if callable(managed_effect_operation) else None
+    if lazy_classifier is not None:
+        managed_effect_operation = None
     engine_owned_change = declarative_effects and managed_effect_operation
     # A {} answer is accepted only when the immediately preceding T079 answer
     # in this update was also {} (#432): the first one is asked to confirm.
@@ -2400,6 +2411,12 @@ Character Role: {character_role}
                 clean_response = clean_response[: -len("```")]
             clean_response = clean_response.strip()
             updates = json.loads(clean_response)
+            effect_flag = None
+            if isinstance(updates, dict):
+                effect_flag = updates.pop("effectChange", None)
+            if lazy_classifier is not None and isinstance(updates, dict):
+                managed_effect_operation = lazy_classifier(updates, effect_flag)
+                engine_owned_change = declarative_effects and managed_effect_operation
             if not _is_meaningful_character_delta(updates, schema) and not (
                 engine_owned_change
             ):
