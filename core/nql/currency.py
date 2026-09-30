@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.nql import apply, genesis
+from core.nql import apply, genesis, stats
 
 COIN_TYPES = genesis.COIN_TYPES
 
@@ -94,15 +94,18 @@ def _run(sheets: List[Dict[str, Any]], actions: List[str], actor: str, request_i
             reason = f"engine refused at {response.get('phase')}: {response.get('diagnostics') or fault or response.get('error')}"
         return CurrencyOutcome(False, reason=reason, fault=fault or None, gaps=world.gaps)
     balances = {}
+    statuses = {}
     for status in response.get("status") or []:
         who = status.get("character") if isinstance(status.get("character"), dict) else {}
         sid = who.get("id")
         resources = status.get("resources") or {}
         balances[sid] = {c: int(resources[c]["current"]) for c in COIN_TYPES if c in resources}
+        statuses[sid] = status
     for sheet, cid in zip(sheets, ids):
         if cid not in balances or len(balances[cid]) != len(COIN_TYPES):
             return CurrencyOutcome(False, reason="engine returned no balance for a character", gaps=world.gaps)
         sheet["currency"] = dict(balances[cid])
+        stats.store(sheet, statuses[cid])
     return CurrencyOutcome(True, sheets=sheets, receipt=response.get("receipt"), gaps=world.gaps)
 
 

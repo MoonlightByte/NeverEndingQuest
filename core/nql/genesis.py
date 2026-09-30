@@ -21,6 +21,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.nql import srd_stats, stats
+
 EQUIPMENT_VERSION = "nql-equipment-v1"
 # Typed values an item effect may use to name armor class as its target. This
 # is a fixed vocabulary of field values, not a search over prose.
@@ -454,11 +456,15 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             resources.append(f' resource {_q(rid)} = {current} min 0 max {maximum};')
         if any(rid == TEMP_HP_RESOURCE for rid, _, _ in pools):
             resources.append(f' buffer {_q(TEMP_HP_RESOURCE)} before "hp";')
+        # E13: the sheet's facts (abilities, level, speed) and every SRD total
+        # at its base; the engine derives the totals (core/nql/srd_stats.py).
         lines.append(
             f"character {_q(cid)} named {_q(sheet.get('name', ''))} at {_q(loc)} {{\n"
-            f' stat "dexterity" = {dex};\n stat "defense" = 10;\n' + "\n".join(resources) + "\n}"
+            f' stat "dexterity" = {dex};\n stat "defense" = 10;\n'
+            + "\n".join(stats.stat_lines(sheet, gaps)) + "\n"
+            + "\n".join(resources) + "\n}"
         )
-        for cond in _training(sheet):
+        for cond in _training(sheet) + stats.condition_types(sheet, gaps):
             if cond not in condition_types:
                 condition_types.append(cond)
             conditions.append(f"condition {_q(cond + ':' + cid.split(':', 1)[1])} of {_q(cond)} to {_q(cid)};")
@@ -529,11 +535,17 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
 
     for cond in condition_types:
         lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
+    # The SRD proficiency types are declared for every world: the derive rules
+    # below name them with `requires`, legal only for a declared type.
+    for cond in srd_stats.CONDITION_TYPES:
+        if cond not in condition_types:
+            lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
     lines.extend(effect_types)
     lines.extend(conditions)
     lines.append(f"equipment {_q(EQUIPMENT_VERSION)} {{")
     lines.append(' slot "hand" capacity 2;\n slot "body" capacity 1;\n slot "shield" capacity 1;')
     lines.append(' derive stat "defense" { term stat "dexterity" offset -10 divide 2; }')
+    lines.append(srd_stats.DERIVE_RULES.rstrip("\n"))
     lines.extend(d.rstrip("\n") for d in definitions)
     lines.append("}")
     lines.extend(items)

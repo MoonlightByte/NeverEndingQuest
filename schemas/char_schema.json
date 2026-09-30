@@ -138,6 +138,20 @@
     "proficiencyBonus": {
       "type": "integer"
     },
+    "expertise": {
+      "type": "array",
+      "description": "Skills in which the character has expertise (proficiency bonus counted twice). Stated by the agent; the rules engine derives the bonuses.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Acrobatics", "Animal Handling", "Arcana", "Athletics",
+          "Deception", "History", "Insight", "Intimidation",
+          "Investigation", "Medicine", "Nature", "Perception",
+          "Performance", "Persuasion", "Religion", "Sleight of Hand",
+          "Stealth", "Survival"
+        ]
+      }
+    },
     "senses": {
       "type": "object",
       "properties": {

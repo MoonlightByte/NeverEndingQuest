@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from core.nql import apply, genesis, resources
+from core.nql import apply, genesis, resources, stats
 
 
 @dataclass
@@ -89,4 +89,5 @@ def grow(sheet: Dict[str, Any], hp_gain: int, slot_targets: Dict[str, int], *, l
             if isinstance(pool, dict) and isinstance(r, dict):
                 pool["max"] = int(r.get("maximum", pool.get("max", 0)))
                 pool["current"] = int(r.get("current", pool.get("current", 0)))
+    stats.store(sheet, statuses[0])
     return GrowthOutcome(True, sheet=sheet, operations=lines, receipt=response.get("receipt"), gaps=gaps)
