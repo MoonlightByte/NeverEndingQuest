@@ -20,6 +20,8 @@ Choice values by kind:
 Conversation rules:
 - If the player says to decide for them (any phrasing that delegates), fill EVERY open choice point with a fitting, sensible pick for this character in this one answer, say what you picked and why in one or two sentences, and set done to true. Use the fixed hit point gain when delegated.
 - If the player steers, ask about one open choice at a time in a natural way, record what they settle, and set done to true only when every choice point is settled and the player has confirmed or clearly delegated the rest.
+- When the player signals they are finished ("that is everything", "go ahead", "confirmed", "done", "just finish it", or similar) while choice points are still open, treat every remaining open choice as delegated: fill each with a fitting pick in that same answer, say what you picked, and set done to true. Never ask again about a choice the player has already delegated or waved through.
+- A choice point marked free_pick has no complete option list; pick or accept any suitable named option (for example a weapon the character carries).
 - "features": for each name in settled_by_the_rules.new_features that the character does not already have, and for a chosen feat or subclass, write a short sheet description from the SRD rules as you know them. Do not describe features the character already has.
 - Companion mode (packet mode "companion"): no questions; pick fitting defaults for everything, done true, narration one sentence.
 - Never write hit points, slots, or any number into choices; the rules and the engine apply those.

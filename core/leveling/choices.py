@@ -143,9 +143,20 @@ def resolve_options(source: Any, sheet: Dict[str, Any], cls: str, new_level: int
             names = [n for n in names if n != args.get("except")]
         elif head == "spells":
             names = _spell_options(args, flags, sheet, cls, new_level)
+        elif head == "weapons":
+            # No SRD weapon table on the host yet: offer the weapons the sheet
+            # carries as the list, and accept any other named weapon (free pick).
+            names = sorted({str(e.get("item_name")) for e in sheet.get("equipment") or []
+                            if isinstance(e, dict) and e.get("item_type") == "weapon" and e.get("item_name")})
+            return _apply_filters(names, filters, sheet) or None
         else:
-            return None   # weapons, tools, beasts: the agent picks, code accepts a name
+            return None   # tools, beasts: the agent picks, code accepts a name
     return _apply_filters(names, filters, sheet)
+
+
+def free_pick(source: Any) -> bool:
+    """True when the host cannot enumerate the options, so any named pick is accepted."""
+    return isinstance(source, str) and source.split(":", 1)[0] in ("weapons", "tools", "beasts")
 
 
 def _spell_options(args: Dict[str, str], flags: set, sheet: Dict[str, Any], cls: str, new_level: int) -> List[str]:
@@ -213,6 +224,9 @@ def data_choice_points(sheet: Dict[str, Any], cls: str, new_level: int) -> List[
             "count": int(entry.get("count") or 1), "options": options,
             "prompt": str(entry.get("evidence") or entry.get("name") or ""),
         }
+        if free_pick(entry.get("option_source")):
+            point["free_pick"] = True
+            point["prompt"] += " (Options listed are what the character carries; any other suitable named choice is accepted.)"
         for key in ("named_option", "recommended", "alternatives", "then", "table_column"):
             if entry.get(key) is not None:
                 point[key] = entry[key]
@@ -251,7 +265,7 @@ def check_pick(point: Dict[str, Any], value: Any, sheet: Dict[str, Any], cls: st
         return False, f"{point['id']} needs exactly {point.get('count')} pick(s)"
     if len(set(p.lower() for p in picks)) != len(picks):
         return False, "an option is listed twice"
-    if options is not None:
+    if options is not None and not point.get("free_pick"):
         for p in picks:
             if p not in options:
                 return False, f"{p!r} is not one of the options for {point['id']}: {options}"
