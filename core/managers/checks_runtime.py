@@ -30,7 +30,12 @@ def stage_roll_check(parameters: Dict[str, Any]) -> Dict[str, Any]:
         return {"error": "rollCheck requires characterName."}
     stat = checks.stat_id(parameters.get("check"))
     if stat is None:
-        return {"error": f"rollCheck: {parameters.get('check')!r} is not a skill, an ability save/check or initiative."}
+        # Fail forward: the turn goes on and the DM reads why next turn.
+        line = (f"{name} check {parameters.get('check')!r}: not resolved (name a skill, an ability save, an ability check "
+                f"or initiative and issue rollCheck again)")
+        checks_state.add_result(line)
+        warning(f"CHECK: {line}", category="character_updates")
+        return {"resolved": line}
     dc = parameters.get("dc")
     if dc is not None and (type(dc) is not int or dc < 1):
         return {"error": "rollCheck: dc must be a positive whole number or omitted."}

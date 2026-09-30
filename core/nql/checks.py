@@ -30,11 +30,15 @@ def stat_id(check: Any) -> Optional[str]:
     if not isinstance(check, str):
         return None
     text = " ".join(check.strip().casefold().replace("_", " ").split())
-    if text == "initiative":
+    if text in ("initiative", "initiative check", "initiative roll"):
         return "initiative"
-    for suffix, prefix in (("saving throw", "save"), ("save", "save"), ("check", "check")):
+    for suffix, prefix in (("saving throw", "save"), ("save", "save"), ("skill check", "check"), ("check", "check"), ("roll", "check")):
         if text.endswith(" " + suffix):
-            ability = stats.ability_id(text[: -len(suffix) - 1])
+            head = text[: -len(suffix) - 1]
+            skill = stats.skill_id(head)
+            if skill and prefix == "check":
+                return "skill:" + skill
+            ability = stats.ability_id(head)
             return f"{prefix}:{ability}" if ability else None
     skill = stats.skill_id(text)
     if skill:
