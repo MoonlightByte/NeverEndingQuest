@@ -3583,6 +3583,14 @@ def validate_ai_response(
         "role": "system", "content": plot_context,
     }]
 
+    # Engine-scored checks delivered with this turn's DM note (the sanitized history has no notes).
+    from core.managers.checks_runtime import validation_context as _check_validation_context
+    check_context = _check_validation_context()
+    if check_context:
+        validation_messages_to_send = list(validation_messages_to_send) + [{
+            "role": "system", "content": check_context,
+        }]
+
     # Use the same detached location records as route preflight, not a name
     # index or the candidate's unapproved destination. Keep them uncompressed.
     scene_targets = [("origin", module_name, current_area_id, current_location_id)]

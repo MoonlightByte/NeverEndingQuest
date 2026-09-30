@@ -118,9 +118,25 @@ def take_player_rolls(read: Callable[[str], str]) -> None:
         print(line)
 
 
+LAST_NOTE = ""  # the CHECK RESULTS delivered with the current turn's DM note (the validator reviews against it)
+
+
 def check_results_note() -> str:
+    global LAST_NOTE
     lines = checks_state.consume_results()
     if not lines:
+        LAST_NOTE = ""
         return ""
-    return ("\nCHECK RESULTS (the rules engine scored the attempts you left unresolved last turn; open this response by narrating "
-            "each outcome, then answer the new input; never re-roll or re-add): " + " | ".join(lines) + "\n")
+    LAST_NOTE = ("\nCHECK RESULTS (the rules engine scored the attempts you left unresolved last turn; open this response by narrating "
+                 "each outcome, then answer the new input; never re-roll or re-add): " + " | ".join(lines) + "\n")
+    return LAST_NOTE
+
+
+def validation_context() -> str:
+    """What the validator must know: the engine already scored these checks and the DM was told to narrate them."""
+    if not LAST_NOTE:
+        return ""
+    return ("The Dungeon Master Note for this turn carried the rules engine's scored check results below. The candidate "
+            "is REQUIRED to narrate these outcomes as settled facts (dice, bonus, total and margin are the engine's, not "
+            "the DM's arithmetic); a candidate that calls such a check pending or unresolved, or asks for its dice again, "
+            "is invalid. Numbers the player typed in chat are not dice; only these lines are." + LAST_NOTE)
