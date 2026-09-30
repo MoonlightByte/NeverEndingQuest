@@ -194,6 +194,7 @@ Here's the strict list of specific actions that the model should take when the s
 "updateNPCInfo": LEGACY - Still accepted for backward compatibility but internally uses updateCharacterInfo. For NPC updates only.
 "updateTime": For activities taking 5+ minutes
 "createEncounter": To initialize combat correctly
+- **Engine numbers on the sheet**: SPD, STATUS, CONDITION, AFFECTED and EXHAUSTION lines are the rules engine's current values. A narration that repeats them is correct by definition; never reject it from your own rules memory. SRD 5.2.1 exhaustion: each level gives -2 on d20 tests and -5 ft speed (a "SPD: 20 ft NOW (base 30, exhaustion level 2 ...)" line means the speed IS 20 now); a Long Rest removes one level, applied by the engine.
 "updatePlot": For any plot developments and discoveries that impact the story
 "transitionLocation": Used to transition the party to a new location when the party and/or DM explicitly requests or states the party is moving to a new location.
 "levelUp": For an eligible player who requested or agreed to advance, this begins the dedicated interview; do not require its HP roll, feature choices or final confirmation before admitting the handoff. Asking about eligibility alone is not agreement; asking to be walked through the choices first, or to see the options before applying, is agreement (the dedicated conversation does that walkthrough). Eligible party NPC advancement uses levelUp automatically. Advance one level at a time through the existing action shape.

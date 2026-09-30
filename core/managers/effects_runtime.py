@@ -222,6 +222,8 @@ def _end_condition(sheet, condition):
                                      if not (isinstance(c, str) and c.casefold() == condition)]
     if isinstance(updated.get("condition"), str) and updated["condition"].casefold() == condition:
         updated["condition"] = updated["condition_affected"][0] if updated["condition_affected"] else "none"
+    if condition == "exhaustion":
+        updated[nql_stats.EXHAUSTION_FIELD] = 0  # ending exhaustion clears every level
     problem = nql_stats.refresh(updated)
     if problem:
         warning(f"STATES: {sheet.get('name', '?')}: condition {condition!r} ended on the sheet; engine view not refreshed ({problem})",

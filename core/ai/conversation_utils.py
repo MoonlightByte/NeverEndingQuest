@@ -123,6 +123,22 @@ def _expertise_text(sheet):
         return ' | EXPERTISE: ' + ', '.join(str(skill) for skill in expertise)
     return ''
 
+
+def _exhaustion_text(sheet):
+    level = sheet.get('exhaustion')
+    if type(level) is int and level > 0:
+        return f' | EXHAUSTION: level {level} (-{2 * level} on d20 rolls; a long rest removes one level)'
+    return ''
+
+
+def _speed_text(sheet):
+    """The speed the engine holds now: the base fact, less 5 ft per exhaustion level (its rule)."""
+    level = sheet.get('exhaustion')
+    base = sheet.get('speed')
+    if type(level) is int and level > 0 and type(base) is int:
+        return f"{max(0, base - 5 * level)} ft NOW (base {base}, exhaustion level {level} costs {5 * level})"
+    return str(base)
+
 def _format_temporary_effects(character_data):
     values = []
     for effect in character_data.get("temporaryEffects", []) or []:
@@ -1103,12 +1119,12 @@ def update_character_data(conversation_history, party_tracker_data):
                     formatted_data = f"""
 CHAR: {member_data['name']}
 TYPE: {member_data['character_type'].capitalize()} | LVL: {member_data['level']} | RACE: {member_data['race']} | CLASS: {member_data['class']} | ALIGN: {str(member_data['alignment']).upper()} | BG: {member_data['background']}
-AC: {member_data['armorClass']} | SPD: {member_data['speed']}
+AC: {member_data['armorClass']} | SPD: {_speed_text(member_data)}
 STATUS: {member_data['status']} | CONDITION: {member_data['condition']} | AFFECTED: {', '.join(member_data['condition_affected'])}
 STATS: STR {member_data['abilities']['strength']}, DEX {member_data['abilities']['dexterity']}, CON {member_data['abilities']['constitution']}, INT {member_data['abilities']['intelligence']}, WIS {member_data['abilities']['wisdom']}, CHA {member_data['abilities']['charisma']}
 SAVES: {', '.join(member_data['savingThrows'])}
 SKILLS: {skills_display}
-PROF BONUS: +{member_data['proficiencyBonus']} | INIT: {_signed(member_data.get('initiative'))} (final total; proficiency, feats and expertise are already included in INIT, SKILLS, SENSES and spell DC){_expertise_text(member_data)}
+PROF BONUS: +{member_data['proficiencyBonus']} | INIT: {_signed(member_data.get('initiative'))} (final total; proficiency, feats and expertise are already included in INIT, SKILLS, SENSES and spell DC){_expertise_text(member_data)}{_exhaustion_text(member_data)}
 SENSES: {', '.join(f"{sense} {value}" for sense, value in member_data['senses'].items())}
 LANGUAGES: {', '.join(member_data['languages'])}
 PROF: {', '.join([f"{cat}: {', '.join(items)}" for cat, items in member_data['proficiencies'].items()])}
@@ -1190,12 +1206,12 @@ FLAWS: {member_data['flaws']}
                     formatted_data = f"""
 NPC: {npc_data['name']}
 ROLE: {npc['role']} | TYPE: {npc_data['character_type'].capitalize()} | LVL: {npc_data['level']} | RACE: {npc_data['race']} | CLASS: {npc_data['class']} | ALIGN: {str(npc_data['alignment']).upper()} | BG: {npc_data['background']}
-AC: {npc_data['armorClass']} | SPD: {npc_data['speed']}
+AC: {npc_data['armorClass']} | SPD: {_speed_text(npc_data)}
 STATUS: {npc_data['status']} | CONDITION: {npc_data['condition']} | AFFECTED: {', '.join(npc_data['condition_affected'])}
 STATS: STR {npc_data['abilities']['strength']}, DEX {npc_data['abilities']['dexterity']}, CON {npc_data['abilities']['constitution']}, INT {npc_data['abilities']['intelligence']}, WIS {npc_data['abilities']['wisdom']}, CHA {npc_data['abilities']['charisma']}
 SAVES: {', '.join(npc_data['savingThrows'])}
 SKILLS: {npc_skills_display}
-PROF BONUS: +{npc_data['proficiencyBonus']} | INIT: {_signed(npc_data.get('initiative'))} (final total; proficiency, feats and expertise are already included in INIT, SKILLS, SENSES and spell DC){_expertise_text(npc_data)}
+PROF BONUS: +{npc_data['proficiencyBonus']} | INIT: {_signed(npc_data.get('initiative'))} (final total; proficiency, feats and expertise are already included in INIT, SKILLS, SENSES and spell DC){_expertise_text(npc_data)}{_exhaustion_text(npc_data)}
 SENSES: {', '.join(f"{sense} {value}" for sense, value in npc_data['senses'].items())}
 LANGUAGES: {', '.join(npc_data['languages'])}
 PROF: {', '.join([f"{cat}: {', '.join(items)}" for cat, items in npc_data['proficiencies'].items()])}

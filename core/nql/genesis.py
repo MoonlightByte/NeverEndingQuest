@@ -470,8 +470,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             conditions.append(f"condition {_q(cond + ':' + cid.split(':', 1)[1])} of {_q(cond)} to {_q(cid)};")
         # C1: the SRD conditions the sheet states, one instance each
         # (unconscious at 0 hp is held by the engine, not declared).
-        for kind in stats.state_instances(sheet, gaps):
-            conditions.append(f"condition {_q(kind + ':' + cid.split(':', 1)[1])} of {_q(kind)} to {_q(cid)};")
+        for prefix, kind in stats.state_instances(sheet, gaps):
+            conditions.append(f"condition {_q(prefix + ':' + cid.split(':', 1)[1])} of {_q(kind)} to {_q(cid)};")
         if _has_defense_style(sheet):
             conditions.append(
                 f"condition {_q(DEFENSE_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(DEFENSE_STYLE_CONDITION)} to {_q(cid)};"

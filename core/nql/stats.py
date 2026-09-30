@@ -33,6 +33,8 @@ from core.nql import srd_stats
 
 EXPERTISE_FIELD = "expertise"
 STATE_FIELDS = ("status", "condition", "condition_affected")
+EXHAUSTION_FIELD = "exhaustion"
+EXHAUSTION_MAX = 6
 STATE_PREFIX = "state:"
 DEFAULT_SPEED = 30
 
@@ -161,16 +163,49 @@ def state_names(sheet: Dict[str, Any], gaps: List[str]) -> List[str]:
     return out
 
 
-def state_instances(sheet: Dict[str, Any], gaps: List[str]) -> List[str]:
-    """The ``state:<name>`` types to instantiate for this sheet.
+def exhaustion_level(sheet: Dict[str, Any], gaps: List[str]) -> int:
+    """The typed ``exhaustion`` level (0..6). A legacy sheet listing "exhaustion" with no field is level 1."""
+    cid = sheet.get("name", "")
+    level = sheet.get(EXHAUSTION_FIELD)
+    if type(level) is int:
+        if 0 <= level <= EXHAUSTION_MAX:
+            return level
+        gaps.append(f"{cid}: exhaustion {level} is outside 0..{EXHAUSTION_MAX}; clamped")
+        return max(0, min(EXHAUSTION_MAX, level))
+    if level is not None:
+        gaps.append(f"{cid}: exhaustion {level!r} is not an integer; ignored")
+    return 1 if "exhaustion" in state_names(sheet, []) else 0
+
+
+def exhaustion_instance(level: int) -> str:
+    """The instance id prefix of one exhaustion level (genesis appends the character scope)."""
+    return f"{STATE_PREFIX}exhaustion:{level}"
+
+
+def state_instances(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, str]]:
+    """(instance id prefix, ``state:<name>`` type) pairs to instantiate for this sheet.
 
     Unconscious is the engine's while hit points are 0 (held at the minimum
     and ended by healing), so the sheet's entry is not declared then; at more
     than 0 it is a stated fact (a magical sleep) and is declared like any other.
+    Exhaustion is one instance per level of the typed field (each costs 5 feet
+    of speed and 2 on d20 rolls in the engine).
     """
     hp = _int(sheet.get("hitPoints"))
-    return [STATE_PREFIX + name for name in state_names(sheet, gaps)
-            if not (name == "unconscious" and hp is not None and hp <= 0)]
+    out: List[Tuple[str, str]] = []
+    for name in state_names(sheet, gaps):
+        if name == "exhaustion" or (name == "unconscious" and hp is not None and hp <= 0):
+            continue
+        out.append((STATE_PREFIX + name, STATE_PREFIX + name))
+    for level in range(1, exhaustion_level(sheet, gaps) + 1):
+        out.append((exhaustion_instance(level), STATE_PREFIX + "exhaustion"))
+    return out
+
+
+def exhaustion_of(status: Dict[str, Any]) -> int:
+    """The number of exhaustion instances in a status record."""
+    return sum(1 for record in status.get("conditions") or []
+               if isinstance(record, dict) and record.get("type") == STATE_PREFIX + "exhaustion")
 
 
 def states_of(status: Dict[str, Any]) -> List[str]:
@@ -284,6 +319,7 @@ def _write_back_states(sheet: Dict[str, Any], status: Dict[str, Any], put) -> No
     """
     if "conditions" not in status or sheet.get("status") == "dead":
         return
+    put(sheet, EXHAUSTION_FIELD, exhaustion_of(status), "exhaustion")
     names = states_of(status)
     put(sheet, "condition_affected", names, "condition_affected")
     current = sheet.get("condition")
@@ -361,7 +397,8 @@ def store(sheet: Dict[str, Any], status: Dict[str, Any]) -> List[str]:
 
 
 DERIVED_FIELDS = ("proficiencyBonus", "initiative")
-FACT_FIELDS = ("level", "abilities", "skills", "savingThrows", EXPERTISE_FIELD, "feats", "classFeatures", "speed") + STATE_FIELDS
+FACT_FIELDS = ("level", "abilities", "skills", "savingThrows", EXPERTISE_FIELD, "feats", "classFeatures", "speed",
+               EXHAUSTION_FIELD) + STATE_FIELDS
 
 
 def facts_changed(before: Dict[str, Any], after: Dict[str, Any]) -> bool:

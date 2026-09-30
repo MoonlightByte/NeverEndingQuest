@@ -131,7 +131,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     spd  = character.get('speed') or 30
     status = character.get('status') or 'alive'
     condition = character.get('condition') or 'none'
-    affected  = character.get('affected') or ''
+    affected  = ','.join(str(c) for c in character.get('condition_affected') or []) if isinstance(character.get('condition_affected'), list) else ''
 
     # Stats
     abilities = get_dict(character, 'abilities', 'STATS', 'stats')
@@ -335,11 +335,15 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
             f"{effect['name']}({duration})" if duration else str(effect['name'])
         )
 
+    exhaustion = character.get('exhaustion')
+    exhaustion_out = f" EXH={exhaustion}(-{2 * exhaustion}d20; long rest -1);" if type(exhaustion) is int and exhaustion > 0 else ""
+    if type(exhaustion) is int and exhaustion > 0 and type(spd) is int:
+        spd = f"{max(0, spd - 5 * exhaustion)}now(base{spd},exh-{5 * exhaustion})"
     out = []
     # LVL removed - already in DM Note party stats
     out.append(f"CHAR={name}; RACE={race}; CLASS={cls}; ALIGN={align}; BG={bg}; AC={ac}; SPD={spd}; STATUS={status}; CONDITION={condition}; AFFECTED={affected};")
     # STATS removed - already in DM Note party stats (STR:X DEX:X etc.)
-    out.append(f"SAVES={saves_out}; SKILLS={{{skills_out}}}; EXPERTISE={expertise_out}; PROF+{prof_bonus}; INIT={initiative}(final,prof+feats incl);")
+    out.append(f"SAVES={saves_out}; SKILLS={{{skills_out}}}; EXPERTISE={expertise_out}; PROF+{prof_bonus}; INIT={initiative}(final,prof+feats incl);{exhaustion_out}")
     out.append(f"SENSES={{darkvision:{darkv},PP:{pp}}}; LANG={langs_out};")
     out.append(f"PROF={{{prof_out}}};")
     out.append(f"VULN={vuln}; RES={res_out}; IMM=; COND_IMM={cimm_out};")
