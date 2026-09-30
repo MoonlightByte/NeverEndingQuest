@@ -3583,6 +3583,14 @@ def validate_ai_response(
         "role": "system", "content": plot_context,
     }]
 
+    # Engine-scored checks delivered with this turn's DM note (the sanitized history has no notes).
+    from core.managers.checks_runtime import validation_context as _check_validation_context
+    check_context = _check_validation_context()
+    if check_context:
+        validation_messages_to_send = list(validation_messages_to_send) + [{
+            "role": "system", "content": check_context,
+        }]
+
     # Use the same detached location records as route preflight, not a name
     # index or the candidate's unapproved destination. Keep them uncompressed.
     scene_targets = [("origin", module_name, current_area_id, current_location_id)]
@@ -8919,6 +8927,13 @@ def _main_game_loop(startup_authority, turn_authority):
             startup_ready_pending = False
         status_ready()
 
+        # C2a: a check the DM asked the player to roll is settled before the
+        # next free command. The roll prompt takes whole numbers (the player's
+        # dice) or a blank line (the game rolls); no words are read.
+        from core.managers.checks_runtime import take_player_rolls
+
+        take_player_rolls(input)
+
         # Display the prompt with the (now correct) stats.
         if player_data_current:
             current_hp = player_data_current.get("hitPoints", "N/A")
@@ -9437,8 +9452,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 "establishHub when the party gains ownership or control of a location that could serve as a base of operations (stronghold, tavern, keep, etc.) - example: establishHub('The Silver Swan Inn', {hubType: 'tavern', description: 'Our permanent base of operations', services: ['rest', 'information'], ownership: 'party'}), "
                 "exitGame for ending sessions, and "
                 "transitionLocation moves the party for actual party travel within the module, including multi-area travel under accepted route facts; companion scouting stays within the current location, and unsupported remote scouting must not be converted into dismissal or party travel; genuine leaving and rejoining use the existing party membership actions, "
-                "Always roleplay the NPC and NPC party rolls without asking the player. "
-                "Always ask the player character to roll for skill checks and other actions. "
+                "rollCheck for every skill check, ability check or saving throw outside combat: the engine scores it; the player's own dice are collected by the game before your next turn and every result appears under CHECK RESULTS. "
                 "Proactively narrate location NPCs, start conversations, and weave plot elements into the adventure. "
                 "Use party NPCs to narrate if possible instead of always narrating from the DM's perspective, but don't overdo it. "
                 "Maintain immersive and engaging storytelling similar to an adventure novel while accurately managing game mechanics. "
@@ -9448,6 +9462,11 @@ def _main_game_loop(startup_authority, turn_authority):
                 f"{module_creation_prompt}")
         else:
             dm_note = "Dungeon Master Note: Remember to take actions if necessary such as updating the plot, time, character sheets, and location if changes occur."
+
+        # C2a: every check resolved since the DM's last turn, then cleared.
+        from core.managers.checks_runtime import check_results_note
+
+        dm_note += check_results_note()
 
         # Resolve the named rule once. The same exact bounded block guides the
         # primary call, semantic validator, and any correction retry.

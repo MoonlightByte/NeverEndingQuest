@@ -389,7 +389,7 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
 def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str = "",
                 containers: Optional[List[Dict[str, Any]]] = None, contents_owner: Optional[str] = None,
                 definition_entries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
-                clock_tick: Optional[int] = None) -> Genesis:
+                clock_tick: Optional[int] = None, dice_seed: Optional[Tuple[int, int]] = None) -> Genesis:
     """Return the NQL world source for these sheets and storage containers at one location.
 
     ``containers`` are player_storage.json container records at this location. Their
@@ -408,6 +408,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     ]
     if clock_tick is not None:
         lines.append(f'clock "second" at {int(clock_tick)};')
+    if dice_seed is not None:
+        # The world's dice (C2): a check without the player's faces rolls from
+        # this seed; the host draws a fresh one from os.urandom per genesis.
+        lines.append(f'dice seed {int(dice_seed[0])} {int(dice_seed[1])};')
     lines.append(f"location {_q(loc)} named {_q(location_name or location)};")
     character_ids: Dict[str, str] = {}
     item_ids: Dict[str, Dict[int, str]] = {}

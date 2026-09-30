@@ -336,6 +336,8 @@ class HeadlessSession:
     def _classify_prompt(self, clean_prompt, snapshot):
         if "(Leveling Up)" in clean_prompt:
             return "levelup"
+        if "[ROLL]" in clean_prompt:
+            return "roll"
         if looks_like_prompt(clean_prompt) or clean_prompt.endswith(":"):
             combat = snapshot.get("combat") or {}
             if combat.get("active"):
