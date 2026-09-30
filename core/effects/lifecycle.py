@@ -27,6 +27,19 @@ def _apply_resource_operations(sheet, operations):
         sheet[stat] = after
 
 
+def _live_name(effect):
+    if not isinstance(effect, dict) or effect.get("authoredBy") not in ("engine", "classifier"):
+        return None
+    name = " ".join(str(effect.get("name") or "").split()).casefold()
+    return name or None
+
+
+def _same_live_name(current, proposed):
+    """Typed name equality between two runtime-managed effect records."""
+    name = _live_name(current)
+    return name is not None and name == _live_name(proposed)
+
+
 def _engine_holds(effect):
     """True when the engine can hold this effect's armor class / max HP numbers."""
     from core.nql import genesis
@@ -106,19 +119,43 @@ def apply_effect_ops(sheet, operations, *, engine=True):
                 None,
             )
             if index is None:
-                effect.pop(genesis.EFFECT_ENGINE_OWNED, None)
+                # The same spell or effect already active on this character
+                # does not stack (SRD, combining magical effects): a second
+                # record of the same name replaces the first. This also keeps
+                # a cast that arrives as two change notes from becoming two
+                # effects. Legacy display records are never matched.
+                index = next(
+                    (i for i, current in enumerate(effects)
+                     if _same_live_name(current, effect)),
+                    None,
+                )
+            effect.pop(genesis.EFFECT_ENGINE_OWNED, None)
+            effect.pop(genesis.EFFECT_EXPIRES_TICK, None)
+            if index is None:
                 effects.append(effect)
                 if not (engine and _engine_holds(effect)):
                     # The engine applies onApply for the effects it holds,
                     # after the condition line, in the same request.
                     _apply_resource_operations(result, effect.get("onApply", []))
             else:
-                # Same identity: the numbers already on the sheet stay the
-                # engine's; the record keeps its ownership marks.
                 current = effects[index] if isinstance(effects[index], dict) else {}
-                for mark in (genesis.EFFECT_ENGINE_OWNED, genesis.EFFECT_EXPIRES_TICK):
-                    if mark in current:
-                        effect[mark] = current[mark]
+                if current.get(genesis.EFFECT_ENGINE_OWNED) is True and (
+                    current.get("modifiers") == effect.get("modifiers")
+                ):
+                    # Same numbers: the engine already holds them; the record
+                    # keeps its ownership and takes the newer expiry.
+                    from core.nql import effects as nql_effects
+
+                    effect[genesis.EFFECT_ENGINE_OWNED] = True
+                    tick = nql_effects._expires_tick(effect)
+                    if tick is not None:
+                        effect[genesis.EFFECT_EXPIRES_TICK] = tick
+                    elif genesis.EFFECT_EXPIRES_TICK in current:
+                        effect[genesis.EFFECT_EXPIRES_TICK] = current[genesis.EFFECT_EXPIRES_TICK]
+                elif engine and current.get(genesis.EFFECT_ENGINE_OWNED) is True and _engine_holds(current):
+                    # Different numbers: the engine ends the old instance and
+                    # applies the new one in the same request.
+                    removed_owned.append(current)
                 effects[index] = effect
         else:
             effect_id = operation.get("effectId")

@@ -70,6 +70,10 @@ Return exactly:
 
 Use operation=none with effect={} and remove={} for instant damage/healing,
 permanent changes, inventory/currency/resource changes, and ordinary narration.
+A change that only spends a spell slot or a resource to cast something is
+none; the effect itself arrives as its own change. If currentEffectiveSheet
+already lists an active effect of the same name and the change does not end
+it, return none: the same spell on the same target does not stack.
 Use operation=remove when the change explicitly ends, dispels, replaces, or
 breaks concentration on an existing temporary effect. Copy its exact effectId
 and name from currentEffectiveSheet. Do not guess a removal target.

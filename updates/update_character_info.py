@@ -1312,7 +1312,7 @@ def prepare_character_delta(character_data, updates, character_role, schema,
     # points are the stored values. No operation and nothing pending makes
     # no engine call.
     from core.effects.lifecycle import apply_effect_ops
-    updated_data = apply_effect_ops(updated_data, [managed_effect_operation] if managed_effect_operation else [])
+    updated_data = apply_effect_ops(updated_data, _effect_operations(managed_effect_operation))
     if 'hitPoints' in updated_data and updated_data['hitPoints'] < 0:
         updated_data['hitPoints'] = 0
     critical_warnings = validate_critical_fields_preserved(character_data, updated_data, character_name)
@@ -1575,6 +1575,15 @@ def _get_character_update_lock(character_name, character_role=None):
         return lock
 
 
+def _effect_operations(operation):
+    """A managed effect operation as a list: one dict, a list of dicts, or none."""
+    if isinstance(operation, dict):
+        return [operation]
+    if isinstance(operation, list):
+        return [item for item in operation if isinstance(item, dict)]
+    return []
+
+
 def _translate_declarative_effect_delta(character_data, updates, operation):
     """Translate player-visible T079 values back to durable base storage.
 
@@ -1586,30 +1595,35 @@ def _translate_declarative_effect_delta(character_data, updates, operation):
     from core.effects.effective import storage_delta_from_effective
     from core.effects.lifecycle import apply_effect_ops
 
-    operation = copy.deepcopy(operation) if isinstance(operation, dict) else None
+    # One classification may carry several operations (a removal that ends
+    # every record of one name); each contributes its effect and hp changes.
+    operations = copy.deepcopy(_effect_operations(operation))
     resource_operations = []
-    managed_effect = None
-    if operation and operation.get("op") == "add":
-        managed_effect = operation.get("effect") or {}
-        resource_operations = managed_effect.get("onApply", []) or []
-    elif operation and operation.get("op") == "remove":
-        effect_id = operation.get("effectId")
-        name = operation.get("name")
-        for effect in character_data.get("temporaryEffects", []) or []:
-            if not isinstance(effect, dict):
-                continue
-            if (effect_id and effect.get("effectId") == effect_id) or (
-                not effect_id and name and effect.get("name") == name
-            ):
-                managed_effect = effect
-                resource_operations.extend(effect.get("onRemove", []) or [])
+    managed_effects = []
+    for item in operations:
+        if item.get("op") == "add":
+            managed_effect = item.get("effect") or {}
+            managed_effects.append(managed_effect)
+            resource_operations.extend(managed_effect.get("onApply", []) or [])
+        elif item.get("op") == "remove":
+            effect_id = item.get("effectId")
+            name = item.get("name")
+            for effect in character_data.get("temporaryEffects", []) or []:
+                if not isinstance(effect, dict):
+                    continue
+                if (effect_id and effect.get("effectId") == effect_id) or (
+                    not effect_id and name and effect.get("name") == name
+                ):
+                    managed_effects.append(effect)
+                    resource_operations.extend(effect.get("onRemove", []) or [])
 
-    preview = apply_effect_ops(character_data, [operation]) if operation else character_data
+    preview = apply_effect_ops(character_data, operations) if operations else character_data
     translated = storage_delta_from_effective(preview, updates)
     from core.effects.model import canonical_stat
 
     stripped_effect_fields = []
-    for modifier in (managed_effect or {}).get("modifiers", []) or []:
+    managed_modifiers = [m for e in managed_effects for m in (e.get("modifiers", []) or [])]
+    for modifier in managed_modifiers:
         stat = canonical_stat(modifier.get("stat")) if isinstance(modifier, dict) else None
         if stat and stat.startswith("abilities."):
             ability = stat.split(".", 1)[1]

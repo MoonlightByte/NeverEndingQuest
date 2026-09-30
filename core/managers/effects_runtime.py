@@ -77,14 +77,14 @@ def _remove_operation(result, sheet):
             or (not requested_id and requested_name and effect.get("name") == requested_name)
         )
     ]
-    if len(matches) != 1:
-        raise EffectsRuntimeError("effect removal did not identify exactly one active effect")
-    effect = matches[0]
-    return {
-        "op": "remove",
-        "effectId": effect.get("effectId"),
-        "name": effect.get("name"),
-    }
+    if not matches:
+        raise EffectsRuntimeError("effect removal did not identify an active effect")
+    # Several records of one name are the same effect (an earlier double
+    # classification); ending it ends them all.
+    return [
+        {"op": "remove", "effectId": effect.get("effectId"), "name": effect.get("name")}
+        for effect in matches
+    ]
 
 
 def update_character_with_effects(
@@ -126,7 +126,7 @@ def update_character_with_effects(
             )
             operation = None
             if result["operation"] == "add":
-                operation = {"op": "add", "effect": result["effect"]}
+                operation = [{"op": "add", "effect": result["effect"]}]
             elif result["operation"] == "remove":
                 operation = _remove_operation(result, sheet)
             success = _update_character_info_unlocked(
@@ -178,14 +178,13 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
     matches = _resolve_effect_reference(
         sheet.get("temporaryEffects", []) or [], effect_id=effect_id, name=name
     )
-    if len(matches) != 1:
-        raise EffectsRuntimeError("removeEffect requires exactly one active match")
+    if not matches:
+        raise EffectsRuntimeError("removeEffect found no active effect to end")
     effect = matches[0]
-    operation = {
-        "op": "remove",
-        "effectId": effect.get("effectId"),
-        "name": effect.get("name"),
-    }
+    operations = [
+        {"op": "remove", "effectId": item.get("effectId"), "name": item.get("name")}
+        for item in matches
+    ]
     with _get_character_update_lock(resolved):
         with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
             if locked is None:
@@ -193,7 +192,7 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
             current = safe_json_load(path)
             if not isinstance(current, dict):
                 raise EffectsRuntimeError("character sheet became unavailable")
-            updated = apply_effect_ops(current, [operation])
+            updated = apply_effect_ops(current, operations)
             if not safe_write_json(path, updated):
                 raise EffectsRuntimeError("effect removal could not be persisted")
     return {
@@ -214,14 +213,13 @@ def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="
     matches = _resolve_effect_reference(
         sheet.get("temporaryEffects", []) or [], effect_id=effect_id, name=name
     )
-    if len(matches) != 1:
-        raise EffectsRuntimeError("removeEffect requires exactly one active match")
+    if not matches:
+        raise EffectsRuntimeError("removeEffect found no active effect to end")
     effect = matches[0]
-    operation = {
-        "op": "remove",
-        "effectId": effect.get("effectId"),
-        "name": effect.get("name"),
-    }
+    operations = [
+        {"op": "remove", "effectId": item.get("effectId"), "name": item.get("name")}
+        for item in matches
+    ]
     # The whole sheet is frozen: ending an effect also changes the numbers
     # the engine holds for it (armor class, maximum and current hit points).
     return {
@@ -230,7 +228,7 @@ def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="
         "role": role,
         "path": path,
         "before": deepcopy(sheet),
-        "after": apply_effect_ops(sheet, [operation]),
+        "after": apply_effect_ops(sheet, operations),
         "effectId": effect.get("effectId"),
         "name": effect.get("name"),
         "reason": reason,
@@ -248,7 +246,7 @@ def prepare_character_update(character_name, changes, party_tracker_data=None):
     )
     operation = None
     if result["operation"] == "add":
-        operation = {"op": "add", "effect": result["effect"]}
+        operation = [{"op": "add", "effect": result["effect"]}]
     elif result["operation"] == "remove":
         operation = _remove_operation(result, sheet)
     receipt = _update_character_info_unlocked(
