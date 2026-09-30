@@ -148,15 +148,26 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
          'intelligence':'int','wisdom':'wis','charisma':'cha'}
     saves_out = ','.join(m.get(x.lower(), x[:3].lower()) for x in saves)
 
-    # Skills
-    skills = get_dict(character, 'skills', 'SKILLS')
-    skills_out = ','.join(f"{k[:3]}:{v}" for k,v in skills.items())
+    # Skills: the engine's bonuses from a dict; a legacy list names the
+    # proficient skills with no number. No arithmetic and no defaults here:
+    # proficiency, initiative and passive perception are engine-written
+    # (core/nql/stats) and print as stored.
+    skills_field = character.get('skills')
+    if isinstance(skills_field, dict):
+        skills_out = ','.join(f"{k[:3]}:{v}" for k,v in skills_field.items())
+    elif isinstance(skills_field, list):
+        skills_out = ','.join(str(k)[:3].lower() for k in skills_field)
+    else:
+        skills_out = ''
 
     # Proficiency bonus / Senses
-    prof_bonus = character.get('proficiencyBonus') or 3
+    prof_bonus = character.get('proficiencyBonus')
+    initiative = character.get('initiative')
     senses = get_dict(character, 'senses', 'SENSES')
     darkv = senses.get('darkvision') or 0
-    pp = senses.get('passivePerception') or 10
+    pp = senses.get('passivePerception')
+    expertise = character.get('expertise')
+    expertise_out = ','.join(str(k)[:3].lower() for k in expertise) if isinstance(expertise, list) else ''
 
     langs = character.get('languages') or []
     langs_out = ','.join(langs) if isinstance(langs, list) else str(langs)
@@ -272,8 +283,8 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     ability_short = {'strength':'str', 'dexterity':'dex', 'constitution':'con',
                      'intelligence':'int', 'wisdom':'wis', 'charisma':'cha'}
     ability = ability_short.get(ability.lower(), ability[:3].lower())
-    dc = sc.get('spellSaveDC') or 0
-    atk_bonus = sc.get('spellAttackBonus') or 0
+    dc = sc.get('spellSaveDC')
+    atk_bonus = sc.get('spellAttackBonus')
     spellcast_out = f"{{ability:{ability},DC:{dc},ATK:+{atk_bonus}}}"
 
     spells = sc.get('spells') or {}
@@ -328,7 +339,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     # LVL removed - already in DM Note party stats
     out.append(f"CHAR={name}; RACE={race}; CLASS={cls}; ALIGN={align}; BG={bg}; AC={ac}; SPD={spd}; STATUS={status}; CONDITION={condition}; AFFECTED={affected};")
     # STATS removed - already in DM Note party stats (STR:X DEX:X etc.)
-    out.append(f"SAVES={saves_out}; SKILLS={{{skills_out}}}; PROF+{prof_bonus};")
+    out.append(f"SAVES={saves_out}; SKILLS={{{skills_out}}}; EXPERTISE={expertise_out}; PROF+{prof_bonus}; INIT={initiative}(final,prof+feats incl);")
     out.append(f"SENSES={{darkvision:{darkv},PP:{pp}}}; LANG={langs_out};")
     out.append(f"PROF={{{prof_out}}};")
     out.append(f"VULN={vuln}; RES={res_out}; IMM=; COND_IMM={cimm_out};")
