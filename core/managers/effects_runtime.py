@@ -15,6 +15,7 @@ from core.ai.effects_agent import classify_effect
 from core.effects.clock import scalar_from_calendar
 from core.effects.effective import effective_sheet
 from core.effects.lifecycle import apply_effect_ops, plan_expirations, plan_rest_clears
+from core.effects.model import effect_identity
 from core.effects.outbox import build_message, delivered_ids, notification_id
 from core.managers.effects_state import (
     campaign_effects_migrated,
@@ -31,6 +32,7 @@ from updates.update_character_info import (
     update_character_info,
 )
 from utils.encoding_utils import safe_json_load
+from utils.enhanced_logger import warning
 from utils.file_operations import safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
 
@@ -359,8 +361,8 @@ def _queue_expiration_records(plans):
                         "identity": plan.get("identity"),
                         "name": plan.get("name"),
                     },
-                    "text": "%s: %s (%s)"
-                    % (plan.get("owner"), plan.get("name"), plan.get("reason")),
+                    "text": plan.get("text")
+                    or "%s: %s (%s)" % (plan.get("owner"), plan.get("name"), plan.get("reason")),
                 }
             )
             known.add(notice_id)
@@ -398,6 +400,42 @@ def _apply_outbox_records(paths):
                     candidate["status"] = "applied"
 
 
+def _engine_expirations(sheets, now_scalar):
+    """Remove plans for the owned timed effects the engine clock says are due.
+
+    One ``advance time`` request over the party decides what ended (the
+    engine's order and its ended_conditions record with the numbers each
+    effect was giving). The removal itself goes through the outbox like any
+    other expiry, so a crash between the decision and the write replays
+    safely; the note text carries the engine's before/after numbers.
+    """
+    from core.nql import effects as nql_effects
+
+    outcome = nql_effects.advance(sheets, now_scalar)
+    if not outcome.ok:
+        warning(
+            "[Effects Engine] time advance left to the next turn: %s" % outcome.reason,
+            category="effects_tracking",
+        )
+        return []
+    plans = []
+    for item in outcome.ended:
+        effect = item.effect
+        plans.append(
+            {
+                "owner": item.owner,
+                "op": "remove",
+                "effectId": effect.get("effectId"),
+                "identity": effect_identity(effect),
+                "name": effect.get("name"),
+                "reason": "expired",
+                "effect": deepcopy(effect),
+                "text": nql_effects.ended_text(item, outcome.sheets.get(item.owner) or {}),
+            }
+        )
+    return plans
+
+
 def process_effect_lifecycle(conversation_history=None, rest_kind=None):
     """Apply due expirations/rest clears and return one exactly-once DM note."""
     if not campaign_effects_migrated():
@@ -405,7 +443,9 @@ def process_effect_lifecycle(conversation_history=None, rest_kind=None):
     history = conversation_history if isinstance(conversation_history, list) else []
     party = safe_json_load("party_tracker.json") or {}
     sheets, paths = _party_sheets(party)
-    plans = plan_expirations(sheets, _world_scalar(party))
+    now_scalar = _world_scalar(party)
+    plans = plan_expirations(sheets, now_scalar)
+    plans.extend(_engine_expirations(sheets, now_scalar))
     if rest_kind in ("short_rest", "long_rest"):
         for owner, sheet in sheets.items():
             plans.extend(plan_rest_clears(owner, sheet, rest_kind))
