@@ -752,7 +752,7 @@ OPENAI_OUTPUT_CEILING_CHARS: Mapping[str, int] = {
     "T065": 1564,  # n=706 p95=391 max=584
     "T067": 5528,  # n=1368 p95=1382 max=3099
     "T077": 1072,  # n=73 p95=268 max=322
-    "T078": 176,  # n=85 p95=44 max=44
+    "T078": 1800,  # n=85 p95=44 max=44 were all "none" answers; a real add is 390-450 chars (E12a probe), 4x that
     "T079": 3576,  # n=100 p95=894 max=2415
     "T082": 960,  # n=356 p95=240 max=276
     "T084": 18448,  # n=3830 p95=4612 max=7811

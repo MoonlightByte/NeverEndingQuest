@@ -27,6 +27,11 @@ def modifier_total(sheet, stat):
         return 0
     total = 0
     for effect in _live_effects(sheet):
+        if canonical in ("armorClass", "maxHitPoints") and effect.get("engineOwned") is True:
+            # The rules engine holds this effect's armor class and maximum
+            # hit point numbers; they are already inside the stored fields
+            # (core/nql/effects). Speed and ability modifiers stay an overlay.
+            continue
         for modifier in effect.get("modifiers", []):
             if not isinstance(modifier, dict):
                 continue

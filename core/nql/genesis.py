@@ -36,6 +36,16 @@ TEMP_HP_RESOURCE = "temp-hp"
 TEMP_HP_MAX = 1_000_000_000
 DEFENSE_STYLE_FEATURE = "Fighting Style: Defense"
 DEFENSE_STYLE_CONDITION = "feature:defense-style"
+# Temporary effects (E12): a live classifier or combat-engine effect whose
+# armor class or maximum hit point modifiers the engine holds is marked
+# engineOwned on the sheet; its numbers are then inside the stored armorClass
+# and maxHitPoints, and genesis declares it as a condition instance the engine
+# takes as already applied. An effect without the mark is still rendered by
+# the read-time overlay (core/effects/effective.py). expiresTick is the engine
+# clock tick (game seconds) at which a timed effect ends.
+EFFECT_ENGINE_OWNED = "engineOwned"
+EFFECT_EXPIRES_TICK = "expiresTick"
+EFFECT_AUTHORS = ("engine", "classifier")
 
 _ARMOR_TRAINING = {
     "light": "training:light",
@@ -54,6 +64,7 @@ class Genesis:
     item_ids: Dict[str, Dict[int, str]] = field(default_factory=dict)      # char id -> equipment index -> item id
     container_ids: Dict[str, str] = field(default_factory=dict)           # storage id -> container item id
     content_ids: Dict[str, Dict[int, str]] = field(default_factory=dict)   # storage id -> contents index -> item id
+    effect_names: Dict[str, str] = field(default_factory=dict)            # condition instance id -> effect name
     gaps: List[str] = field(default_factory=list)
 
 
@@ -173,6 +184,83 @@ def pool_resources(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, in
             seen.add(rid)
             out.append((rid, p[0], p[1]))
     return out
+
+
+def live_effects(sheet: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The sheet's temporary effects that the runtime renders (typed author field)."""
+    return [e for e in sheet.get("temporaryEffects") or []
+            if isinstance(e, dict) and e.get("authoredBy") in EFFECT_AUTHORS
+            and isinstance(e.get("modifiers"), list) and isinstance(e.get("effectId"), str) and e["effectId"]]
+
+
+def effect_engine_modifiers(effect: Dict[str, Any]) -> Optional[List[Tuple[str, int]]]:
+    """The engine-representable modifiers of one effect: [("defense" | "hp-max", amount)].
+
+    Stored modifiers are normalized (``armorClass``, ``maxHitPoints``, or
+    ``hitPoints`` with ``affectsMax``); other stats are not the engine's here.
+    None means the effect cannot be held by the engine (a maximum hit point
+    change that is not positive, which the engine refuses) and stays an overlay.
+    """
+    out: List[Tuple[str, int]] = []
+    for modifier in effect.get("modifiers") or []:
+        if not isinstance(modifier, dict) or type(modifier.get("value")) is not int or modifier["value"] == 0:
+            continue
+        stat = modifier.get("stat")
+        if stat == "armorClass":
+            out.append(("defense", modifier["value"]))
+        elif stat == "maxHitPoints" or (stat == "hitPoints" and modifier.get("affectsMax") is True):
+            if modifier["value"] < 0:
+                return None
+            out.append(("hp-max", modifier["value"]))
+    return out
+
+
+def effect_type_id(effect: Dict[str, Any]) -> str:
+    return "effect:" + str(effect.get("effectId"))
+
+
+def effect_instance_id(effect: Dict[str, Any]) -> str:
+    return "fx:" + str(effect.get("effectId"))
+
+
+def effect_type_line(effect: Dict[str, Any], modifiers: List[Tuple[str, int]]) -> str:
+    parts = []
+    for index, (kind, amount) in enumerate(modifiers):
+        if kind == "defense":
+            parts.append(f'modifier "m{index}" stat "defense" add {amount};')
+        else:
+            parts.append(f'modifier "m{index}" resource "hp" maximum add {amount};')
+    return f"condition type {_q(effect_type_id(effect))} {{ instances unique; {' '.join(parts)} }}"
+
+
+def _effect_lines(sheet: Dict[str, Any], cid: str, gaps: List[str],
+                  names: Dict[str, str]) -> Tuple[List[str], List[str]]:
+    """(condition type lines, instance lines) for the sheet's effects.
+
+    A type is declared for every live effect the engine can hold, so a later
+    ``apply condition`` in the same world has it; an instance is declared only
+    for an effect marked engineOwned (already inside the stored numbers).
+    """
+    types: List[str] = []
+    instances: List[str] = []
+    seen: set = set()
+    for effect in live_effects(sheet):
+        modifiers = effect_engine_modifiers(effect)
+        if not modifiers:
+            if modifiers is None and effect.get(EFFECT_ENGINE_OWNED):
+                gaps.append(f"{cid}: effect {effect.get('name')!r} is marked engineOwned but the engine cannot hold its modifiers")
+            continue
+        tid = effect_type_id(effect)
+        if tid in seen:
+            gaps.append(f"{cid}: effect {effect.get('name')!r} repeats effectId {effect.get('effectId')!r}; second declaration skipped")
+            continue
+        seen.add(tid)
+        types.append(effect_type_line(effect, modifiers))
+        iid = effect_instance_id(effect)
+        names[iid] = str(effect.get("name") or effect.get("effectId"))
+        if effect.get(EFFECT_ENGINE_OWNED) is True:
+            instances.append(f"condition {_q(iid)} of {_q(tid)} to {_q(cid)};")
+    return types, instances
 
 
 def _training(sheet: Dict[str, Any]) -> List[str]:
@@ -319,6 +407,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     ]
     items: List[str] = []
     effects: List[str] = []
+    effect_types: List[str] = []
+    effect_names: Dict[str, str] = {}
     all_ids: set = set()
 
     for sheet in sheets:
@@ -356,6 +446,9 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             conditions.append(
                 f"condition {_q(DEFENSE_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(DEFENSE_STYLE_CONDITION)} to {_q(cid)};"
             )
+        types, instances = _effect_lines(sheet, cid, gaps, effect_names)
+        effect_types.extend(types)
+        conditions.extend(instances)
         ids: Dict[int, str] = {}
         hands = 0
         scope = cid.split(":", 1)[1]
@@ -416,6 +509,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
 
     for cond in condition_types:
         lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
+    lines.extend(effect_types)
     lines.extend(conditions)
     lines.append(f"equipment {_q(EQUIPMENT_VERSION)} {{")
     lines.append(' slot "hand" capacity 2;\n slot "body" capacity 1;\n slot "shield" capacity 1;')
@@ -425,7 +519,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     lines.extend(items)
     lines.extend(effects)
     return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
-                   container_ids=container_ids, content_ids=content_ids, gaps=gaps)
+                   container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps)
 
 
 def expected_armor_class(sheet: Dict[str, Any]) -> Tuple[Optional[int], List[str]]:
@@ -466,4 +560,11 @@ def expected_armor_class(sheet: Dict[str, Any]) -> Tuple[Optional[int], List[str
     if _has_defense_style(sheet) and body is not None:
         total += 1
         parts.append("style 1")
+    for effect in live_effects(sheet):
+        if effect.get(EFFECT_ENGINE_OWNED) is not True:
+            continue
+        for kind, amount in effect_engine_modifiers(effect) or []:
+            if kind == "defense":
+                total += amount
+                parts.append(f"{effect.get('name')} {amount:+d}")
     return total, parts
