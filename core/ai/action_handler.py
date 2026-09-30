@@ -3788,7 +3788,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
 
         try:
             # Import the session manager
-            from core.managers.level_up_manager import LevelUpSession
+            from core.managers.level_up_session import LevelUpSession
             
             # Find character file to get current level
             from updates.update_character_info import normalize_character_name

@@ -1,0 +1,888 @@
+{
+ "schema": "srd-subclasses/1",
+ "ruleset": "SRD 5.2.1",
+ "sources": {
+  "document": "System Reference Document 5.2.1 (SRD_CC_v5.2.1.pdf)",
+  "pdf_sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
+  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode."
+ },
+ "notes": [
+  "SRD 5.2.1 prints one subclass per class; each class's subclasses list is exactly what the SRD has.",
+  "features_by_level maps a class level (a string) to the subclass features gained there, in SRD order; only levels with features appear.",
+  "feature_levels maps each subclass feature to the class level that grants it, for reading a subclass off an existing sheet.",
+  "subclass_level is the class level of the '<Class> Subclass' choice; subclass_feature_levels are the levels where the class table says 'Subclass feature'. The subclass's feature levels are exactly subclass_level plus those.",
+  "feature_index maps every subclass feature name to the class, subclass and level that grant it.",
+  "Text is ASCII: curly apostrophes became straight ones."
+ ],
+ "classes": {
+  "barbarian": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    6,
+    10,
+    14
+   ],
+   "subclasses": [
+    {
+     "name": "Path of the Berserker",
+     "features_by_level": {
+      "3": [
+       "Frenzy"
+      ],
+      "6": [
+       "Mindless Rage"
+      ],
+      "10": [
+       "Retaliation"
+      ],
+      "14": [
+       "Intimidating Presence"
+      ]
+     },
+     "feature_levels": {
+      "Frenzy": 3,
+      "Mindless Rage": 6,
+      "Retaliation": 10,
+      "Intimidating Presence": 14
+     },
+     "source": {
+      "section": "Classes > Barbarian > Barbarian Subclass: Path of the Berserker",
+      "page": 30
+     }
+    }
+   ]
+  },
+  "bard": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    6,
+    14
+   ],
+   "subclasses": [
+    {
+     "name": "College of Lore",
+     "features_by_level": {
+      "3": [
+       "Bonus Proficiencies",
+       "Cutting Words"
+      ],
+      "6": [
+       "Magical Discoveries"
+      ],
+      "14": [
+       "Peerless Skill"
+      ]
+     },
+     "feature_levels": {
+      "Bonus Proficiencies": 3,
+      "Cutting Words": 3,
+      "Magical Discoveries": 6,
+      "Peerless Skill": 14
+     },
+     "source": {
+      "section": "Classes > Bard > Bard Subclass: College of Lore",
+      "page": 35
+     }
+    }
+   ]
+  },
+  "cleric": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    6,
+    17
+   ],
+   "subclasses": [
+    {
+     "name": "Life Domain",
+     "features_by_level": {
+      "3": [
+       "Disciple of Life",
+       "Life Domain Spells",
+       "Preserve Life"
+      ],
+      "6": [
+       "Blessed Healer"
+      ],
+      "17": [
+       "Supreme Healing"
+      ]
+     },
+     "feature_levels": {
+      "Disciple of Life": 3,
+      "Life Domain Spells": 3,
+      "Preserve Life": 3,
+      "Blessed Healer": 6,
+      "Supreme Healing": 17
+     },
+     "source": {
+      "section": "Classes > Cleric > Cleric Subclass: Life Domain",
+      "page": 40
+     }
+    }
+   ]
+  },
+  "druid": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    6,
+    10,
+    14
+   ],
+   "subclasses": [
+    {
+     "name": "Circle of the Land",
+     "features_by_level": {
+      "3": [
+       "Circle of the Land Spells",
+       "Land's Aid"
+      ],
+      "6": [
+       "Natural Recovery"
+      ],
+      "10": [
+       "Nature's Ward"
+      ],
+      "14": [
+       "Nature's Sanctuary"
+      ]
+     },
+     "feature_levels": {
+      "Circle of the Land Spells": 3,
+      "Land's Aid": 3,
+      "Natural Recovery": 6,
+      "Nature's Ward": 10,
+      "Nature's Sanctuary": 14
+     },
+     "source": {
+      "section": "Classes > Druid > Druid Subclass: Circle of the Land",
+      "page": 46
+     }
+    }
+   ]
+  },
+  "fighter": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    7,
+    10,
+    15,
+    18
+   ],
+   "subclasses": [
+    {
+     "name": "Champion",
+     "features_by_level": {
+      "3": [
+       "Improved Critical",
+       "Remarkable Athlete"
+      ],
+      "7": [
+       "Additional Fighting Style"
+      ],
+      "10": [
+       "Heroic Warrior"
+      ],
+      "15": [
+       "Superior Critical"
+      ],
+      "18": [
+       "Survivor"
+      ]
+     },
+     "feature_levels": {
+      "Improved Critical": 3,
+      "Remarkable Athlete": 3,
+      "Additional Fighting Style": 7,
+      "Heroic Warrior": 10,
+      "Superior Critical": 15,
+      "Survivor": 18
+     },
+     "source": {
+      "section": "Classes > Fighter > Fighter Subclass: Champion",
+      "page": 49
+     }
+    }
+   ]
+  },
+  "monk": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    6,
+    11,
+    17
+   ],
+   "subclasses": [
+    {
+     "name": "Warrior of the Open Hand",
+     "features_by_level": {
+      "3": [
+       "Open Hand Technique"
+      ],
+      "6": [
+       "Wholeness of Body"
+      ],
+      "11": [
+       "Fleet Step"
+      ],
+      "17": [
+       "Quivering Palm"
+      ]
+     },
+     "feature_levels": {
+      "Open Hand Technique": 3,
+      "Wholeness of Body": 6,
+      "Fleet Step": 11,
+      "Quivering Palm": 17
+     },
+     "source": {
+      "section": "Classes > Monk > Monk Subclass: Warrior of the Open Hand",
+      "page": 52
+     }
+    }
+   ]
+  },
+  "paladin": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    7,
+    15,
+    20
+   ],
+   "subclasses": [
+    {
+     "name": "Oath of Devotion",
+     "features_by_level": {
+      "3": [
+       "Oath of Devotion Spells",
+       "Sacred Weapon"
+      ],
+      "7": [
+       "Aura of Devotion"
+      ],
+      "15": [
+       "Smite of Protection"
+      ],
+      "20": [
+       "Holy Nimbus"
+      ]
+     },
+     "feature_levels": {
+      "Oath of Devotion Spells": 3,
+      "Sacred Weapon": 3,
+      "Aura of Devotion": 7,
+      "Smite of Protection": 15,
+      "Holy Nimbus": 20
+     },
+     "source": {
+      "section": "Classes > Paladin > Paladin Subclass: Oath of Devotion",
+      "page": 56
+     }
+    }
+   ]
+  },
+  "ranger": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    7,
+    11,
+    15
+   ],
+   "subclasses": [
+    {
+     "name": "Hunter",
+     "features_by_level": {
+      "3": [
+       "Hunter's Lore",
+       "Hunter's Prey"
+      ],
+      "7": [
+       "Defensive Tactics"
+      ],
+      "11": [
+       "Superior Hunter's Prey"
+      ],
+      "15": [
+       "Superior Hunter's Defense"
+      ]
+     },
+     "feature_levels": {
+      "Hunter's Lore": 3,
+      "Hunter's Prey": 3,
+      "Defensive Tactics": 7,
+      "Superior Hunter's Prey": 11,
+      "Superior Hunter's Defense": 15
+     },
+     "source": {
+      "section": "Classes > Ranger > Ranger Subclass: Hunter",
+      "page": 61
+     }
+    }
+   ]
+  },
+  "rogue": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    9,
+    13,
+    17
+   ],
+   "subclasses": [
+    {
+     "name": "Thief",
+     "features_by_level": {
+      "3": [
+       "Fast Hands",
+       "Second-Story Work"
+      ],
+      "9": [
+       "Supreme Sneak"
+      ],
+      "13": [
+       "Use Magic Device"
+      ],
+      "17": [
+       "Thief's Reflexes"
+      ]
+     },
+     "feature_levels": {
+      "Fast Hands": 3,
+      "Second-Story Work": 3,
+      "Supreme Sneak": 9,
+      "Use Magic Device": 13,
+      "Thief's Reflexes": 17
+     },
+     "source": {
+      "section": "Classes > Rogue > Rogue Subclass: Thief",
+      "page": 64
+     }
+    }
+   ]
+  },
+  "sorcerer": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    6,
+    14,
+    18
+   ],
+   "subclasses": [
+    {
+     "name": "Draconic Sorcery",
+     "features_by_level": {
+      "3": [
+       "Draconic Resilience",
+       "Draconic Spells"
+      ],
+      "6": [
+       "Elemental Affinity"
+      ],
+      "14": [
+       "Dragon Wings"
+      ],
+      "18": [
+       "Dragon Companion"
+      ]
+     },
+     "feature_levels": {
+      "Draconic Resilience": 3,
+      "Draconic Spells": 3,
+      "Elemental Affinity": 6,
+      "Dragon Wings": 14,
+      "Dragon Companion": 18
+     },
+     "source": {
+      "section": "Classes > Sorcerer > Sorcerer Subclass: Draconic Sorcery",
+      "page": 69
+     }
+    }
+   ]
+  },
+  "warlock": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    6,
+    10,
+    14
+   ],
+   "subclasses": [
+    {
+     "name": "Fiend Patron",
+     "features_by_level": {
+      "3": [
+       "Dark One's Blessing",
+       "Fiend Spells"
+      ],
+      "6": [
+       "Dark One's Own Luck"
+      ],
+      "10": [
+       "Fiendish Resilience"
+      ],
+      "14": [
+       "Hurl Through Hell"
+      ]
+     },
+     "feature_levels": {
+      "Dark One's Blessing": 3,
+      "Fiend Spells": 3,
+      "Dark One's Own Luck": 6,
+      "Fiendish Resilience": 10,
+      "Hurl Through Hell": 14
+     },
+     "source": {
+      "section": "Classes > Warlock > Warlock Subclass: Fiend Patron",
+      "page": 76
+     }
+    }
+   ]
+  },
+  "wizard": {
+   "subclass_level": 3,
+   "subclass_feature_levels": [
+    6,
+    10,
+    14
+   ],
+   "subclasses": [
+    {
+     "name": "Evoker",
+     "features_by_level": {
+      "3": [
+       "Evocation Savant",
+       "Potent Cantrip"
+      ],
+      "6": [
+       "Sculpt Spells"
+      ],
+      "10": [
+       "Empowered Evocation"
+      ],
+      "14": [
+       "Overchannel"
+      ]
+     },
+     "feature_levels": {
+      "Evocation Savant": 3,
+      "Potent Cantrip": 3,
+      "Sculpt Spells": 6,
+      "Empowered Evocation": 10,
+      "Overchannel": 14
+     },
+     "source": {
+      "section": "Classes > Wizard > Wizard Subclass: Evoker",
+      "page": 82
+     }
+    }
+   ]
+  }
+ },
+ "feature_index": {
+  "Additional Fighting Style": [
+   {
+    "class": "fighter",
+    "subclass": "Champion",
+    "level": 7
+   }
+  ],
+  "Aura of Devotion": [
+   {
+    "class": "paladin",
+    "subclass": "Oath of Devotion",
+    "level": 7
+   }
+  ],
+  "Blessed Healer": [
+   {
+    "class": "cleric",
+    "subclass": "Life Domain",
+    "level": 6
+   }
+  ],
+  "Bonus Proficiencies": [
+   {
+    "class": "bard",
+    "subclass": "College of Lore",
+    "level": 3
+   }
+  ],
+  "Circle of the Land Spells": [
+   {
+    "class": "druid",
+    "subclass": "Circle of the Land",
+    "level": 3
+   }
+  ],
+  "Cutting Words": [
+   {
+    "class": "bard",
+    "subclass": "College of Lore",
+    "level": 3
+   }
+  ],
+  "Dark One's Blessing": [
+   {
+    "class": "warlock",
+    "subclass": "Fiend Patron",
+    "level": 3
+   }
+  ],
+  "Dark One's Own Luck": [
+   {
+    "class": "warlock",
+    "subclass": "Fiend Patron",
+    "level": 6
+   }
+  ],
+  "Defensive Tactics": [
+   {
+    "class": "ranger",
+    "subclass": "Hunter",
+    "level": 7
+   }
+  ],
+  "Disciple of Life": [
+   {
+    "class": "cleric",
+    "subclass": "Life Domain",
+    "level": 3
+   }
+  ],
+  "Draconic Resilience": [
+   {
+    "class": "sorcerer",
+    "subclass": "Draconic Sorcery",
+    "level": 3
+   }
+  ],
+  "Draconic Spells": [
+   {
+    "class": "sorcerer",
+    "subclass": "Draconic Sorcery",
+    "level": 3
+   }
+  ],
+  "Dragon Companion": [
+   {
+    "class": "sorcerer",
+    "subclass": "Draconic Sorcery",
+    "level": 18
+   }
+  ],
+  "Dragon Wings": [
+   {
+    "class": "sorcerer",
+    "subclass": "Draconic Sorcery",
+    "level": 14
+   }
+  ],
+  "Elemental Affinity": [
+   {
+    "class": "sorcerer",
+    "subclass": "Draconic Sorcery",
+    "level": 6
+   }
+  ],
+  "Empowered Evocation": [
+   {
+    "class": "wizard",
+    "subclass": "Evoker",
+    "level": 10
+   }
+  ],
+  "Evocation Savant": [
+   {
+    "class": "wizard",
+    "subclass": "Evoker",
+    "level": 3
+   }
+  ],
+  "Fast Hands": [
+   {
+    "class": "rogue",
+    "subclass": "Thief",
+    "level": 3
+   }
+  ],
+  "Fiend Spells": [
+   {
+    "class": "warlock",
+    "subclass": "Fiend Patron",
+    "level": 3
+   }
+  ],
+  "Fiendish Resilience": [
+   {
+    "class": "warlock",
+    "subclass": "Fiend Patron",
+    "level": 10
+   }
+  ],
+  "Fleet Step": [
+   {
+    "class": "monk",
+    "subclass": "Warrior of the Open Hand",
+    "level": 11
+   }
+  ],
+  "Frenzy": [
+   {
+    "class": "barbarian",
+    "subclass": "Path of the Berserker",
+    "level": 3
+   }
+  ],
+  "Heroic Warrior": [
+   {
+    "class": "fighter",
+    "subclass": "Champion",
+    "level": 10
+   }
+  ],
+  "Holy Nimbus": [
+   {
+    "class": "paladin",
+    "subclass": "Oath of Devotion",
+    "level": 20
+   }
+  ],
+  "Hunter's Lore": [
+   {
+    "class": "ranger",
+    "subclass": "Hunter",
+    "level": 3
+   }
+  ],
+  "Hunter's Prey": [
+   {
+    "class": "ranger",
+    "subclass": "Hunter",
+    "level": 3
+   }
+  ],
+  "Hurl Through Hell": [
+   {
+    "class": "warlock",
+    "subclass": "Fiend Patron",
+    "level": 14
+   }
+  ],
+  "Improved Critical": [
+   {
+    "class": "fighter",
+    "subclass": "Champion",
+    "level": 3
+   }
+  ],
+  "Intimidating Presence": [
+   {
+    "class": "barbarian",
+    "subclass": "Path of the Berserker",
+    "level": 14
+   }
+  ],
+  "Land's Aid": [
+   {
+    "class": "druid",
+    "subclass": "Circle of the Land",
+    "level": 3
+   }
+  ],
+  "Life Domain Spells": [
+   {
+    "class": "cleric",
+    "subclass": "Life Domain",
+    "level": 3
+   }
+  ],
+  "Magical Discoveries": [
+   {
+    "class": "bard",
+    "subclass": "College of Lore",
+    "level": 6
+   }
+  ],
+  "Mindless Rage": [
+   {
+    "class": "barbarian",
+    "subclass": "Path of the Berserker",
+    "level": 6
+   }
+  ],
+  "Natural Recovery": [
+   {
+    "class": "druid",
+    "subclass": "Circle of the Land",
+    "level": 6
+   }
+  ],
+  "Nature's Sanctuary": [
+   {
+    "class": "druid",
+    "subclass": "Circle of the Land",
+    "level": 14
+   }
+  ],
+  "Nature's Ward": [
+   {
+    "class": "druid",
+    "subclass": "Circle of the Land",
+    "level": 10
+   }
+  ],
+  "Oath of Devotion Spells": [
+   {
+    "class": "paladin",
+    "subclass": "Oath of Devotion",
+    "level": 3
+   }
+  ],
+  "Open Hand Technique": [
+   {
+    "class": "monk",
+    "subclass": "Warrior of the Open Hand",
+    "level": 3
+   }
+  ],
+  "Overchannel": [
+   {
+    "class": "wizard",
+    "subclass": "Evoker",
+    "level": 14
+   }
+  ],
+  "Peerless Skill": [
+   {
+    "class": "bard",
+    "subclass": "College of Lore",
+    "level": 14
+   }
+  ],
+  "Potent Cantrip": [
+   {
+    "class": "wizard",
+    "subclass": "Evoker",
+    "level": 3
+   }
+  ],
+  "Preserve Life": [
+   {
+    "class": "cleric",
+    "subclass": "Life Domain",
+    "level": 3
+   }
+  ],
+  "Quivering Palm": [
+   {
+    "class": "monk",
+    "subclass": "Warrior of the Open Hand",
+    "level": 17
+   }
+  ],
+  "Remarkable Athlete": [
+   {
+    "class": "fighter",
+    "subclass": "Champion",
+    "level": 3
+   }
+  ],
+  "Retaliation": [
+   {
+    "class": "barbarian",
+    "subclass": "Path of the Berserker",
+    "level": 10
+   }
+  ],
+  "Sacred Weapon": [
+   {
+    "class": "paladin",
+    "subclass": "Oath of Devotion",
+    "level": 3
+   }
+  ],
+  "Sculpt Spells": [
+   {
+    "class": "wizard",
+    "subclass": "Evoker",
+    "level": 6
+   }
+  ],
+  "Second-Story Work": [
+   {
+    "class": "rogue",
+    "subclass": "Thief",
+    "level": 3
+   }
+  ],
+  "Smite of Protection": [
+   {
+    "class": "paladin",
+    "subclass": "Oath of Devotion",
+    "level": 15
+   }
+  ],
+  "Superior Critical": [
+   {
+    "class": "fighter",
+    "subclass": "Champion",
+    "level": 15
+   }
+  ],
+  "Superior Hunter's Defense": [
+   {
+    "class": "ranger",
+    "subclass": "Hunter",
+    "level": 15
+   }
+  ],
+  "Superior Hunter's Prey": [
+   {
+    "class": "ranger",
+    "subclass": "Hunter",
+    "level": 11
+   }
+  ],
+  "Supreme Healing": [
+   {
+    "class": "cleric",
+    "subclass": "Life Domain",
+    "level": 17
+   }
+  ],
+  "Supreme Sneak": [
+   {
+    "class": "rogue",
+    "subclass": "Thief",
+    "level": 9
+   }
+  ],
+  "Survivor": [
+   {
+    "class": "fighter",
+    "subclass": "Champion",
+    "level": 18
+   }
+  ],
+  "Thief's Reflexes": [
+   {
+    "class": "rogue",
+    "subclass": "Thief",
+    "level": 17
+   }
+  ],
+  "Use Magic Device": [
+   {
+    "class": "rogue",
+    "subclass": "Thief",
+    "level": 13
+   }
+  ],
+  "Wholeness of Body": [
+   {
+    "class": "monk",
+    "subclass": "Warrior of the Open Hand",
+    "level": 6
+   }
+  ]
+ }
+}

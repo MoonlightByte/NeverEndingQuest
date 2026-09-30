@@ -338,6 +338,17 @@ _declare(
     note="Retain incumbent: Terra-none was only 0.12s faster over four cases and offered no material accepted-result efficiency gain.",
 )
 _declare(
+    "T121",
+    _profiles(
+        "OPENAI_GPT56_LUNA_LOW",
+        "LEVELUP_CONV_GEMINI_FLASH_LOW",
+        "LEVELUP_CONV_LEGACY",
+        "LEVELUP_CONV_LMSTUDIO",
+    ),
+    note="L1 level-up agent (2026-09-29): the one conversational callsite of the table-driven level-up; "
+         "same Luna low binding as the T047 interview it replaces.",
+)
+_declare(
     "T047",
     _profiles(
         "OPENAI_GPT56_LUNA_LOW",
@@ -775,7 +786,7 @@ REGISTERED_TASK_IDS = tuple(
     "T054 T059 T063 T064 T065 T066 T067 T077 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T091 T092 T093 T094 T095 T096 T097 T098 "
     "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114 "
-    "T115 T116 T117 T118 T119 T120".split()
+    "T115 T116 T117 T118 T119 T120 T121".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 
