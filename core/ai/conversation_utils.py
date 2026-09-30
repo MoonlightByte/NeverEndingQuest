@@ -124,6 +124,24 @@ def _expertise_text(sheet):
     return ''
 
 
+def _saves_text(sheet):
+    """Saving throws for the DM: the engine's totals when stored, proficient abilities otherwise."""
+    totals = sheet.get('savingThrowBonuses')
+    proficient = sheet.get('savingThrows') if isinstance(sheet.get('savingThrows'), list) else []
+    if isinstance(totals, dict) and totals:
+        return ', '.join(f"{ability.capitalize()} {_signed(total)}" for ability, total in totals.items()) + (
+            f" (proficient: {', '.join(str(a) for a in proficient)})" if proficient else "")
+    return ', '.join(str(a) for a in proficient) if proficient else 'none'
+
+
+def _roll_modes_text(sheet):
+    """The engine's roll modes from conditions; the roll prompt applies them, this only forewarns the DM."""
+    modes = sheet.get('rollModes')
+    if isinstance(modes, dict) and modes:
+        return ' | ROLL MODES (engine applies at the roll prompt): ' + '; '.join(f"{what}: {mode}" for what, mode in modes.items())
+    return ''
+
+
 def _exhaustion_text(sheet):
     level = sheet.get('exhaustion')
     if type(level) is int and level > 0:
@@ -1122,9 +1140,9 @@ TYPE: {member_data['character_type'].capitalize()} | LVL: {member_data['level']}
 AC: {member_data['armorClass']} | SPD: {_speed_text(member_data)}
 STATUS: {member_data['status']} | CONDITION: {member_data['condition']} | AFFECTED: {', '.join(member_data['condition_affected'])}
 STATS: STR {member_data['abilities']['strength']}, DEX {member_data['abilities']['dexterity']}, CON {member_data['abilities']['constitution']}, INT {member_data['abilities']['intelligence']}, WIS {member_data['abilities']['wisdom']}, CHA {member_data['abilities']['charisma']}
-SAVES: {', '.join(member_data['savingThrows'])}
+SAVES: {_saves_text(member_data)}
 SKILLS: {skills_display}
-PROF BONUS: +{member_data['proficiencyBonus']} | INIT: {_signed(member_data.get('initiative'))} (final total; proficiency, feats and expertise are already included in INIT, SKILLS, SENSES and spell DC){_expertise_text(member_data)}{_exhaustion_text(member_data)}
+PROF BONUS: +{member_data['proficiencyBonus']} | INIT: {_signed(member_data.get('initiative'))} (final total; proficiency, feats and expertise are already included in INIT, SKILLS, SAVES, SENSES and spell DC){_expertise_text(member_data)}{_exhaustion_text(member_data)}{_roll_modes_text(member_data)}
 SENSES: {', '.join(f"{sense} {value}" for sense, value in member_data['senses'].items())}
 LANGUAGES: {', '.join(member_data['languages'])}
 PROF: {', '.join([f"{cat}: {', '.join(items)}" for cat, items in member_data['proficiencies'].items()])}
@@ -1209,9 +1227,9 @@ ROLE: {npc['role']} | TYPE: {npc_data['character_type'].capitalize()} | LVL: {np
 AC: {npc_data['armorClass']} | SPD: {_speed_text(npc_data)}
 STATUS: {npc_data['status']} | CONDITION: {npc_data['condition']} | AFFECTED: {', '.join(npc_data['condition_affected'])}
 STATS: STR {npc_data['abilities']['strength']}, DEX {npc_data['abilities']['dexterity']}, CON {npc_data['abilities']['constitution']}, INT {npc_data['abilities']['intelligence']}, WIS {npc_data['abilities']['wisdom']}, CHA {npc_data['abilities']['charisma']}
-SAVES: {', '.join(npc_data['savingThrows'])}
+SAVES: {_saves_text(npc_data)}
 SKILLS: {npc_skills_display}
-PROF BONUS: +{npc_data['proficiencyBonus']} | INIT: {_signed(npc_data.get('initiative'))} (final total; proficiency, feats and expertise are already included in INIT, SKILLS, SENSES and spell DC){_expertise_text(npc_data)}{_exhaustion_text(npc_data)}
+PROF BONUS: +{npc_data['proficiencyBonus']} | INIT: {_signed(npc_data.get('initiative'))} (final total; proficiency, feats and expertise are already included in INIT, SKILLS, SAVES, SENSES and spell DC){_roll_modes_text(npc_data)}{_expertise_text(npc_data)}{_exhaustion_text(npc_data)}
 SENSES: {', '.join(f"{sense} {value}" for sense, value in npc_data['senses'].items())}
 LANGUAGES: {', '.join(npc_data['languages'])}
 PROF: {', '.join([f"{cat}: {', '.join(items)}" for cat, items in npc_data['proficiencies'].items()])}

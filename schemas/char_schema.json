@@ -144,6 +144,16 @@
       "maximum": 6,
       "description": "Exhaustion level (SRD 5.2.1, 0-6). Stated by the agent as a whole number; the rules engine applies the speed and d20 penalties and a Long Rest removes one level."
     },
+    "savingThrowBonuses": {
+      "type": "object",
+      "description": "Saving throw totals per ability, written by the rules engine from the facts (never by the agent).",
+      "additionalProperties": {"type": "integer"}
+    },
+    "rollModes": {
+      "type": "object",
+      "description": "Roll modes the character's conditions impose right now (for example ability checks: disadvantage (poisoned)), written by the rules engine; empty when every roll is normal.",
+      "additionalProperties": {"type": "string"}
+    },
     "expertise": {
       "type": "array",
       "description": "Skills in which the character has expertise (proficiency bonus counted twice). Stated by the agent; the rules engine derives the bonuses.",

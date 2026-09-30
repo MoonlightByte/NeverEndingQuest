@@ -34,6 +34,8 @@ from core.nql import srd_stats
 EXPERTISE_FIELD = "expertise"
 STATE_FIELDS = ("status", "condition", "condition_affected")
 EXHAUSTION_FIELD = "exhaustion"
+SAVES_FIELD = "savingThrowBonuses"  # engine-written {ability: total}
+ROLL_MODES_FIELD = "rollModes"  # engine-written {what: "disadvantage (poisoned)"}; empty when every roll is normal
 EXHAUSTION_MAX = 6
 STATE_PREFIX = "state:"
 DEFAULT_SPEED = 30
@@ -269,6 +271,37 @@ def totals(status: Dict[str, Any]) -> Dict[str, int]:
     return out
 
 
+ROLL_LABELS = {"bonus:checks": "ability checks", "bonus:saves": "saving throws", "bonus:d20": "all d20 rolls",
+               "initiative": "initiative", "attack": "attack rolls"}
+
+
+def roll_modes_of(status: Dict[str, Any]) -> Dict[str, str]:
+    """{what: 'mode (causes)'} for every stat a condition targets directly with a roll mode.
+
+    Derived stats (a skill under Poisoned) inherit the mode through their terms
+    and are not listed twice; the engine still applies it when the check runs.
+    """
+    out: Dict[str, str] = {}
+    for record in status.get("stats") or []:
+        if not isinstance(record, dict) or not isinstance(record.get("stat"), str):
+            continue
+        mode = record.get("roll")
+        if not isinstance(mode, str) or mode == "normal":
+            continue
+        stat = record["stat"]
+        causes = sorted({str(src.get("type", "")).replace(STATE_PREFIX, "")
+                         for src in record.get("roll_sources") or []
+                         if isinstance(src, dict) and src.get("stat") == stat})
+        if not causes:
+            continue  # inherited from another stat's modifier
+        if stat.startswith("save:"):
+            label = stat[len("save:"):].capitalize() + " save"
+        else:
+            label = ROLL_LABELS.get(stat, stat)
+        out[label] = f"{mode} ({', '.join(causes)})"
+    return out
+
+
 def write_back(sheet: Dict[str, Any], status: Dict[str, Any]) -> List[str]:
     """Store the engine's totals and condition states on the sheet; return the fields whose value changed."""
     changes: List[str] = []
@@ -307,6 +340,10 @@ def write_back(sheet: Dict[str, Any], status: Dict[str, Any]) -> List[str]:
         casting = sheet["spellcasting"]
         put(casting, "spellSaveDC", values["spell-dc:" + ability], "spellcasting.spellSaveDC")
         put(casting, "spellAttackBonus", values["spell-attack:" + ability], "spellcasting.spellAttackBonus")
+    saves = {a: values["save:" + a] for a in srd_stats.ABILITIES if ("save:" + a) in values}
+    if len(saves) == len(srd_stats.ABILITIES):
+        put(sheet, SAVES_FIELD, saves, SAVES_FIELD)
+    put(sheet, ROLL_MODES_FIELD, roll_modes_of(status), ROLL_MODES_FIELD)
     return changes
 
 
@@ -396,7 +433,7 @@ def store(sheet: Dict[str, Any], status: Dict[str, Any]) -> List[str]:
     return changes
 
 
-DERIVED_FIELDS = ("proficiencyBonus", "initiative")
+DERIVED_FIELDS = ("proficiencyBonus", "initiative", SAVES_FIELD, ROLL_MODES_FIELD)
 FACT_FIELDS = ("level", "abilities", "skills", "savingThrows", EXPERTISE_FIELD, "feats", "classFeatures", "speed",
                EXHAUSTION_FIELD) + STATE_FIELDS
 
