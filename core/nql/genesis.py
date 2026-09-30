@@ -254,10 +254,13 @@ def _effect_lines(sheet: Dict[str, Any], cid: str, gaps: List[str],
     seen: set = set()
     for effect in live_effects(sheet):
         modifiers = effect_engine_modifiers(effect)
-        if not modifiers:
-            if modifiers is None and effect.get(EFFECT_ENGINE_OWNED):
+        if modifiers is None:
+            if effect.get(EFFECT_ENGINE_OWNED):
                 gaps.append(f"{cid}: effect {effect.get('name')!r} is marked engineOwned but the engine cannot hold its modifiers")
             continue
+        # An effect with no engine numbers (a potion's temp hit points, a
+        # condition, a speed bonus) is still an instance: the engine clock
+        # owns its expiry and a rest or removal ends it like any other.
         tid = effect_type_id(effect)
         if tid in seen:
             gaps.append(f"{cid}: effect {effect.get('name')!r} repeats effectId {effect.get('effectId')!r}; second declaration skipped")
