@@ -49,14 +49,14 @@ def _q(value: str) -> str:
 
 
 def pending_effects(sheet: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Live effects the engine can hold that it does not hold yet."""
+    """Live effects the engine does not hold yet (every live effect since E12d: numbers or not)."""
     return [e for e in genesis.live_effects(sheet)
-            if e.get(genesis.EFFECT_ENGINE_OWNED) is not True and genesis.effect_engine_modifiers(e)]
+            if e.get(genesis.EFFECT_ENGINE_OWNED) is not True and genesis.effect_engine_modifiers(e) is not None]
 
 
 def owned_effects(sheet: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [e for e in genesis.live_effects(sheet)
-            if e.get(genesis.EFFECT_ENGINE_OWNED) is True and genesis.effect_engine_modifiers(e)]
+            if e.get(genesis.EFFECT_ENGINE_OWNED) is True and genesis.effect_engine_modifiers(e) is not None]
 
 
 def _hp_lines(cid: str, operations: Any, sheet: Dict[str, Any]) -> List[str]:
@@ -150,7 +150,7 @@ def reconcile(sheet: Dict[str, Any], removed: Optional[List[Dict[str, Any]]] = N
     sheet = copy.deepcopy(sheet)
     cid = genesis.character_id(sheet)
     ending = [e for e in removed or [] if isinstance(e, dict)
-              and e.get(genesis.EFFECT_ENGINE_OWNED) is True and genesis.effect_engine_modifiers(e)]
+              and e.get(genesis.EFFECT_ENGINE_OWNED) is True and genesis.effect_engine_modifiers(e) is not None]
     applying = pending_effects(sheet)
     if not ending and not applying:
         return EffectsOutcome(True, sheet=sheet)

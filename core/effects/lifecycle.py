@@ -41,7 +41,7 @@ def _same_live_name(current, proposed):
 
 
 def _engine_holds(effect):
-    """True when the engine can hold this effect's armor class / max HP numbers."""
+    """True when the engine holds this effect (its numbers, if any, and its clock)."""
     from core.nql import genesis
 
     return bool(
@@ -49,7 +49,7 @@ def _engine_holds(effect):
         and effect.get("authoredBy") in genesis.EFFECT_AUTHORS
         and isinstance(effect.get("effectId"), str)
         and effect.get("effectId")
-        and genesis.effect_engine_modifiers(effect)
+        and genesis.effect_engine_modifiers(effect) is not None
     )
 
 
