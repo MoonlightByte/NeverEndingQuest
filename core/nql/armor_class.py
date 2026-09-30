@@ -17,7 +17,7 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from core.nql import apply, genesis
+from core.nql import apply, genesis, stats
 
 AC_TARGET = "AC"
 PROJECTION_LOCATION = "projection"
@@ -92,7 +92,7 @@ def project(sheet: Dict[str, Any], *, binary: Optional[str] = None) -> Projectio
         world.gaps.append(f"equipped armor without ac_base projected as worn items with no defense: {missing}")
     cid = genesis.character_id(sheet)
     try:
-        response = apply.genesis(world.source, explain=[{"character": cid, "stat": "defense"}], binary=binary)
+        response = apply.genesis(world.source, explain=[{"character": cid, "stat": "defense"}], status=[cid], binary=binary)
     except apply.EngineUnavailable as error:
         return Projection(sheet, False, str(error), previous_armor_class=previous, gaps=world.gaps)
     if not response.get("ok"):
@@ -110,6 +110,9 @@ def project(sheet: Dict[str, Any], *, binary: Optional[str] = None) -> Projectio
 
     result = copy.deepcopy(sheet)
     result["armorClass"] = explanation["effective"]
+    for status in response.get("status") or []:
+        if isinstance(status.get("character"), dict) and status["character"].get("id") == cid:
+            stats.store(result, status)
     kept = [e for e in result.get("equipment_effects") or []
             if not (isinstance(e, dict) and e.get("target") == AC_TARGET)]
     result["equipment_effects"] = kept + _ac_entries(explanation, names_by_id)

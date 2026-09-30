@@ -59,10 +59,13 @@ def call(document: Dict[str, Any], *, binary: Optional[str] = None, timeout: flo
     return response
 
 
-def genesis(world_source: str, *, explain: Optional[List[Dict[str, str]]] = None, **kwargs) -> Dict[str, Any]:
+def genesis(world_source: str, *, explain: Optional[List[Dict[str, str]]] = None,
+            status: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
     doc: Dict[str, Any] = {"world": world_source, "world_name": "genesis.nql"}
     if explain:
         doc["explain"] = explain
+    if status:
+        doc["status"] = status
     return call(doc, **kwargs)
 
 

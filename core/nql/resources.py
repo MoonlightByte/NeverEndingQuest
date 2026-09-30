@@ -23,7 +23,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.nql import apply, genesis
+from core.nql import apply, genesis, stats
 
 HP_DELTA = "hpDelta"
 SLOT_DELTA = "spellSlotDelta"
@@ -185,6 +185,7 @@ def _write_back(sheet: Dict[str, Any], status: Dict[str, Any]) -> Optional[str]:
         value = current(genesis.feature_resource_id(name))
         if value is not None:
             feature["usage"]["current"] = value
+    stats.store(sheet, status)
     return None
 
 
