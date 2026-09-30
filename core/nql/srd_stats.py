@@ -1,10 +1,10 @@
 """SRD 5.2.1 character-stat rules for the engine, copied verbatim from the NQL repository
-(examples/srd-stats/world.nql, conditions block at 10a267e, guide docs/CHARACTER_STATS.md). Three blocks: the
+(examples/srd-stats/world.nql, conditions block at 27e3089, with roll modes, guide docs/CHARACTER_STATS.md). Three blocks: the
 proficiency Condition types a world declares once, the SRD condition states (state:<name>, C1), and the
 derived-stat rules that go inside its equipment block.
 Do not edit by hand; regenerate from the NQL example when the engine changes."""
 NQL_COMMIT = "084cb0c"
-STATES_COMMIT = "10a267e"
+STATES_COMMIT = "27e3089"
 ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
 # skill id -> ability, SRD 5.2.1
 SKILLS = {
@@ -64,7 +64,7 @@ CONDITION_TYPES = (
     'feat:alert',
 )
 # The 45 derive rules (srd-stats:derive block), one line each, for the equipment block.
-# The 15 SRD condition states (srd-stats:srd-conditions block at 10a267e): the engine holds
+# The 15 SRD condition states (srd-stats:srd-conditions block at 27e3089, with roll modes): the engine holds
 # state:unconscious while hp is at its minimum, bounds speed for the immobilizing ones and
 # prices exhaustion per instance. Names are the sheet's condition_affected vocabulary.
 STATE_NAMES = (
@@ -91,15 +91,15 @@ condition type "state:deafened" { instances coexist; }
 condition type "state:exhaustion" { instances coexist; modifier "d20" stat "bonus:d20" add -2; modifier "speed" stat "speed" add -5; }
 condition type "state:frightened" { instances coexist; }
 condition type "state:grappled" { instances coexist; modifier "speed" stat "speed" at most 0; }
-condition type "state:incapacitated" { instances coexist; }
-condition type "state:invisible" { instances coexist; }
-condition type "state:paralyzed" { instances coexist; modifier "speed" stat "speed" at most 0; }
-condition type "state:petrified" { instances coexist; modifier "speed" stat "speed" at most 0; }
-condition type "state:poisoned" { instances coexist; }
+condition type "state:incapacitated" { instances coexist; modifier "initiative" stat "initiative" roll disadvantage; }
+condition type "state:invisible" { instances coexist; modifier "initiative" stat "initiative" roll advantage; }
+condition type "state:paralyzed" { instances coexist; modifier "speed" stat "speed" at most 0; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
+condition type "state:petrified" { instances coexist; modifier "speed" stat "speed" at most 0; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
+condition type "state:poisoned" { instances coexist; modifier "checks" stat "bonus:checks" roll disadvantage; }
 condition type "state:prone" { instances coexist; }
-condition type "state:restrained" { instances coexist; modifier "speed" stat "speed" at most 0; }
-condition type "state:stunned" { instances coexist; }
-condition type "state:unconscious" { instances coexist; held_at_minimum "hp"; modifier "speed" stat "speed" at most 0; }
+condition type "state:restrained" { instances coexist; modifier "speed" stat "speed" at most 0; modifier "save:dexterity" stat "save:dexterity" roll disadvantage; }
+condition type "state:stunned" { instances coexist; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
+condition type "state:unconscious" { instances coexist; held_at_minimum "hp"; modifier "speed" stat "speed" at most 0; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
 """
 
 DERIVE_RULES = """\
