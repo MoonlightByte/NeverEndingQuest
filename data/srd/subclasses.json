@@ -46,7 +46,7 @@
       "Intimidating Presence": 14
      },
      "source": {
-      "section": "Barbarian > Barbarian Subclass: Path of the Berserker",
+      "section": "Classes > Barbarian > Barbarian Subclass: Path of the Berserker",
       "page": 30
      }
     }
@@ -80,7 +80,7 @@
       "Peerless Skill": 14
      },
      "source": {
-      "section": "Bard > Bard Subclass: College of Lore",
+      "section": "Classes > Bard > Bard Subclass: College of Lore",
       "page": 35
      }
     }
@@ -116,7 +116,7 @@
       "Supreme Healing": 17
      },
      "source": {
-      "section": "Cleric > Cleric Subclass: Life Domain",
+      "section": "Classes > Cleric > Cleric Subclass: Life Domain",
       "page": 40
      }
     }
@@ -155,7 +155,7 @@
       "Nature's Sanctuary": 14
      },
      "source": {
-      "section": "Druid > Druid Subclass: Circle of the Land",
+      "section": "Classes > Druid > Druid Subclass: Circle of the Land",
       "page": 46
      }
     }
@@ -199,7 +199,7 @@
       "Survivor": 18
      },
      "source": {
-      "section": "Fighter > Fighter Subclass: Champion",
+      "section": "Classes > Fighter > Fighter Subclass: Champion",
       "page": 49
      }
     }
@@ -236,7 +236,7 @@
       "Quivering Palm": 17
      },
      "source": {
-      "section": "Monk > Monk Subclass: Warrior of the Open Hand",
+      "section": "Classes > Monk > Monk Subclass: Warrior of the Open Hand",
       "page": 52
      }
     }
@@ -275,7 +275,7 @@
       "Holy Nimbus": 20
      },
      "source": {
-      "section": "Paladin > Paladin Subclass: Oath of Devotion",
+      "section": "Classes > Paladin > Paladin Subclass: Oath of Devotion",
       "page": 56
      }
     }
@@ -314,7 +314,7 @@
       "Superior Hunter's Defense": 15
      },
      "source": {
-      "section": "Ranger > Ranger Subclass: Hunter",
+      "section": "Classes > Ranger > Ranger Subclass: Hunter",
       "page": 61
      }
     }
@@ -353,7 +353,7 @@
       "Thief's Reflexes": 17
      },
      "source": {
-      "section": "Rogue > Rogue Subclass: Thief",
+      "section": "Classes > Rogue > Rogue Subclass: Thief",
       "page": 64
      }
     }
@@ -392,7 +392,7 @@
       "Dragon Companion": 18
      },
      "source": {
-      "section": "Sorcerer > Sorcerer Subclass: Draconic Sorcery",
+      "section": "Classes > Sorcerer > Sorcerer Subclass: Draconic Sorcery",
       "page": 69
      }
     }
@@ -431,7 +431,7 @@
       "Hurl Through Hell": 14
      },
      "source": {
-      "section": "Warlock > Warlock Subclass: Fiend Patron",
+      "section": "Classes > Warlock > Warlock Subclass: Fiend Patron",
       "page": 76
      }
     }
@@ -470,7 +470,7 @@
       "Overchannel": 14
      },
      "source": {
-      "section": "Wizard > Wizard Subclass: Evoker",
+      "section": "Classes > Wizard > Wizard Subclass: Evoker",
       "page": 82
      }
     }

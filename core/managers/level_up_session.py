@@ -244,19 +244,10 @@ class LevelUpSession:
                 except ValueError as exc:
                     return False, str(exc)
             return True, ""
-        if kind == "asi_or_feat":
-            if isinstance(value, dict) and isinstance(value.get("asi"), dict):
-                _, why = tables.apply_asi(dict(self._sheet.get("abilities") or {}), value["asi"])
-                return (False, why) if why else (True, "")
-            if isinstance(value, dict) and isinstance(value.get("feat"), str) and value["feat"].strip():
-                return True, ""
-            return False, "ability_score_improvement must be {asi: {ability: +n}} or {feat: name}"
-        if kind in ("subclass", "epic_boon"):
-            if not isinstance(value, str) or not value.strip():
-                return False, f"{kind} must be a name"
-            if point.get("options") and value not in point["options"]:
-                return False, f"{value!r} is not one of {point['options']}"
-            return True, ""
+        if kind in ("asi_or_feat", "epic_boon", "subclass", "fighting_style", "expertise", "skill", "other_named"):
+            from core.leveling import choices as srd_choices
+
+            return srd_choices.check_pick(point, value, self._sheet, cls, self._settled.new_level)
         if kind in ("cantrips", "prepared_spells"):
             if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
                 return False, f"{kind} must be a list of spell names"
@@ -295,16 +286,48 @@ class LevelUpSession:
         hp_choice = self._choices.get("hit_points") or {"method": "fixed"}
         gain, how = tables.hp_gain(sheet, cls, hp_choice.get("method", "fixed"), hp_choice.get("roll"))
         abilities = dict(sheet.get("abilities") or {})
-        asi = self._choices.get("ability_score_improvement")
         feats = list(sheet.get("feats") or [])
-        if isinstance(asi, dict) and isinstance(asi.get("asi"), dict):
-            abilities, _ = tables.apply_asi(abilities, asi["asi"])
-        elif isinstance(asi, dict) and asi.get("feat"):
-            feats.append({"name": asi["feat"], "description": self._features_text.get(asi["feat"], ""),
-                          "source": f"{sheet.get('class')} level {s.new_level}"})
+        extra_features: List[Dict[str, Any]] = []
+        skill_times: Dict[str, int] = {}
+        by_id = {c["id"]: c for c in s.choice_points}
+        for cid, value in self._choices.items():
+            point = by_id.get(cid) or {}
+            kind = point.get("kind")
+            if kind in ("asi_or_feat", "epic_boon"):
+                if isinstance(value, dict) and isinstance(value.get("asi"), dict):
+                    abilities, _ = tables.apply_asi(abilities, value["asi"])
+                else:
+                    name = value.get("feat") if isinstance(value, dict) else value
+                    feats.append({"name": name, "description": self._features_text.get(name, ""),
+                                  "source": f"{sheet.get('class')} level {s.new_level}"})
+            elif kind == "fighting_style":
+                for name in (value if isinstance(value, list) else [value]):
+                    extra_features.append({"name": f"Fighting Style: {name}",
+                                           "description": self._features_text.get(name, self._features_text.get(f"Fighting Style: {name}", "")),
+                                           "source": f"{sheet.get('class')} level {s.new_level}"})
+            elif kind == "expertise":
+                for name in (value if isinstance(value, list) else [value]):
+                    skill_times[str(name).lower().replace(" ", "_")] = 2
+            elif kind == "skill":
+                for name in (value if isinstance(value, list) else [value]):
+                    skill_times.setdefault(str(name).lower().replace(" ", "_"), 1)
+            elif kind == "other_named":
+                picks = value if isinstance(value, list) else [value]
+                label = str(point.get("feature") or point.get("name"))
+                extra_features.append({"name": f"{label}: {', '.join(picks)}" if picks else label,
+                                       "description": self._features_text.get(label, "") or f"Chosen: {', '.join(picks)}.",
+                                       "source": f"{sheet.get('class')} level {s.new_level}"})
         changes: Dict[str, Any] = {"level": s.new_level, "abilities": abilities,
                                    "exp_required_for_next_level": s.exp_required_for_next_level}
         changes.update(tables.derived_numbers(sheet, s.new_level, abilities))
+        if skill_times:
+            skills = dict(changes.get("skills") or sheet.get("skills") or {})
+            for key, times in skill_times.items():
+                stored = next((k for k in skills if str(k).lower() == key), key)
+                ability = tables.SKILL_ABILITY.get(key)
+                if ability:
+                    skills[stored] = tables.modifier(abilities.get(ability)) + times * s.proficiency_bonus
+            changes["skills"] = skills
         if feats != (sheet.get("feats") or []):
             changes["feats"] = feats
         chosen_subclass = self._choices.get("subclass") or s.subclass
@@ -342,6 +365,7 @@ class LevelUpSession:
                 grown = size - (usage.get("max") if type(usage.get("max")) is int else 0)
                 feature_updates.append({"name": name, "usage": {"current": min(size, (usage.get("current") or 0) + max(0, grown)),
                                                                  "max": size, "refreshOn": usage.get("refreshOn", refresh)}})
+        feature_updates.extend(extra_features)
         if feature_updates:
             changes["classFeatures"] = feature_updates
         # 3. spells

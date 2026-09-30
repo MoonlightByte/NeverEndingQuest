@@ -199,23 +199,22 @@ def choice_points(sheet: Dict[str, Any], cls: str, new_level: int) -> List[Dict[
     decides whether a choice exists. Option lists that live outside this file
     (spells) are referenced by source so the packet builder can fill them.
     """
+    from core.leveling import choices as srd_choices
+
     c = tables()["classes"][cls]
     points: List[Dict[str, Any]] = []
     if sheet.get("character_type") == "player":
         points.append({"id": "hit_points", "kind": "hit_points",
                        "prompt": f"Roll your d{hit_die(cls)} for hit points, or take the fixed {fixed_hp_gain(cls)}.",
                        "options": ["fixed", "roll"], "die": hit_die(cls), "fixed": fixed_hp_gain(cls)})
-    if new_level in (c.get("asi_levels") or []):
-        points.append({"id": "ability_score_improvement", "kind": "asi_or_feat",
-                       "prompt": "Ability Score Improvement: raise one ability by 2 or two abilities by 1 (cap 20), "
-                                 "or take a feat.",
-                       "options": ["asi", "feat"], "abilities": dict(sheet.get("abilities") or {}), "cap": ABILITY_CAP})
-    grants_subclass = any(n == "Subclass feature" or n.endswith(" Subclass") for n in features_gained(cls, new_level))
-    if (new_level == int(c.get("subclass_level") or 3) or grants_subclass) and infer_subclass(sheet, cls) is None:
-        points.append({"id": "subclass", "kind": "subclass", "prompt": f"Choose your {c['name']} subclass.",
-                       "options": subclass_options(cls) or None})
-    if new_level == int(c.get("epic_boon_level") or 19):
-        points.append({"id": "epic_boon", "kind": "epic_boon", "prompt": "Choose an Epic Boon feat.", "options": None})
+    # Every other choice this level opens comes from the SRD choices data (kinds
+    # asi_or_feat, subclass, fighting_style, expertise, skill, epic_boon,
+    # other_named), with option lists resolved against the sheet. A subclass pick
+    # is skipped when the sheet's features already identify the subclass.
+    for point in srd_choices.data_choice_points(sheet, cls, new_level):
+        if point["kind"] == "subclass" and infer_subclass(sheet, cls) is not None:
+            continue
+        points.append(point)
     counts_now, counts_before = spell_counts(cls, new_level), spell_counts(cls, new_level - 1)
     if counts_now["cantrips"] and counts_now["cantrips"] != counts_before["cantrips"]:
         points.append({"id": "cantrips", "kind": "cantrips", "count": counts_now["cantrips"],
