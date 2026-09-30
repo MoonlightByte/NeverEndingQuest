@@ -376,8 +376,12 @@ The PLAYER actor must always use mode='adjudicated'; never roll automatically
 for the player. Apply only rolls/results explicitly supplied in playerInput,
 or set requiresPlayerInput={kind:'roll'|'choice', prompt:'...', die:'d20',
 reason:'...', spellName:'exact spell name', phase:'typed spell phase',
-slotLevel:3} and leave mechanical arrays empty. For a spell roll, die must name
-the complete dice expression (for example '2d4', not merely 'd4'); include
+slotLevel:3} and leave mechanical arrays empty. For EVERY roll, die must name
+the complete unmodified dice expression (for example '2d8' for two damage dice,
+not merely 'd8'); give only the currently requested phase, accounting for any
+confirmed critical hit. Keep flat bonuses out of die and apply them once when
+adjudicating the returned raw dice. Put the dice expression in prompt as well
+as the weapon/action name so the player knows what to roll. For a spell include
 spellName and phase, plus slotLevel when the spell was cast with a slot. Code
 will pause the same turn and show that request instead of consuming it.
 One requiresPlayerInput represents exactly ONE next player roll or choice.
@@ -553,7 +557,14 @@ T097_SCENE_CONTRACT_SENTENCE = (
     "GOOD: You spring at Eirik's shield and bite him. BAD: The Snow Rat springs toward "
     "your shield and bites you. Narrate only this committed combat beat. Never ask what "
     "the player does next, request a roll or choice, or announce whose turn follows; "
-    "initiative and player handoff are owned by the game after narration is delivered."
+    "initiative and player handoff are owned by the game after narration is delivered. "
+    "NPC dialogue is characterization, not a source of equipment facts. Before "
+    "repeating advice about a specific weapon or ability, verify it belongs to "
+    "the addressed actor in the authoritative dossier. Rewrite unsupported advice "
+    "as a grounded tactic; never attribute the companion's gear to the player. "
+    "Give companions a distinct voice and an observable reaction appropriate to "
+    "the committed outcome and their supplied personality, without repeating "
+    "generic warnings or inventing additional actions, healing, or resources."
 )
 
 
