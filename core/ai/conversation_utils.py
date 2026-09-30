@@ -1108,7 +1108,7 @@ STATUS: {member_data['status']} | CONDITION: {member_data['condition']} | AFFECT
 STATS: STR {member_data['abilities']['strength']}, DEX {member_data['abilities']['dexterity']}, CON {member_data['abilities']['constitution']}, INT {member_data['abilities']['intelligence']}, WIS {member_data['abilities']['wisdom']}, CHA {member_data['abilities']['charisma']}
 SAVES: {', '.join(member_data['savingThrows'])}
 SKILLS: {skills_display}
-PROF BONUS: +{member_data['proficiencyBonus']} | INIT: {_signed(member_data.get('initiative'))}{_expertise_text(member_data)}
+PROF BONUS: +{member_data['proficiencyBonus']} | INIT: {_signed(member_data.get('initiative'))} (final total; proficiency, feats and expertise are already included in INIT, SKILLS, SENSES and spell DC){_expertise_text(member_data)}
 SENSES: {', '.join(f"{sense} {value}" for sense, value in member_data['senses'].items())}
 LANGUAGES: {', '.join(member_data['languages'])}
 PROF: {', '.join([f"{cat}: {', '.join(items)}" for cat, items in member_data['proficiencies'].items()])}
@@ -1195,7 +1195,7 @@ STATUS: {npc_data['status']} | CONDITION: {npc_data['condition']} | AFFECTED: {'
 STATS: STR {npc_data['abilities']['strength']}, DEX {npc_data['abilities']['dexterity']}, CON {npc_data['abilities']['constitution']}, INT {npc_data['abilities']['intelligence']}, WIS {npc_data['abilities']['wisdom']}, CHA {npc_data['abilities']['charisma']}
 SAVES: {', '.join(npc_data['savingThrows'])}
 SKILLS: {npc_skills_display}
-PROF BONUS: +{npc_data['proficiencyBonus']} | INIT: {_signed(npc_data.get('initiative'))}{_expertise_text(npc_data)}
+PROF BONUS: +{npc_data['proficiencyBonus']} | INIT: {_signed(npc_data.get('initiative'))} (final total; proficiency, feats and expertise are already included in INIT, SKILLS, SENSES and spell DC){_expertise_text(npc_data)}
 SENSES: {', '.join(f"{sense} {value}" for sense, value in npc_data['senses'].items())}
 LANGUAGES: {', '.join(npc_data['languages'])}
 PROF: {', '.join([f"{cat}: {', '.join(items)}" for cat, items in npc_data['proficiencies'].items()])}
