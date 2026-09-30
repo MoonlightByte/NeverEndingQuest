@@ -85,6 +85,26 @@ def _expires_tick(effect: Dict[str, Any]) -> Optional[int]:
         return None
 
 
+def _write_back(sheet: Dict[str, Any], cid: str, status: Dict[str, Any], explanation: Dict[str, Any],
+                world: genesis.Genesis) -> Optional[str]:
+    """The engine's pools, hit point maximum, armor class and AC entries onto the sheet."""
+    problem = resources._write_back(sheet, status)
+    if problem:
+        return problem
+    hp = (status.get("resources") or {}).get("hp")
+    if "maxHitPoints" in sheet and isinstance(hp, dict) and type(hp.get("maximum")) is int:
+        sheet["maxHitPoints"] = hp["maximum"]
+    names = dict(world.effect_names)
+    for index, item_id in (world.item_ids.get(cid) or {}).items():
+        entry = (sheet.get("equipment") or [])[index]
+        names[item_id] = str(entry.get("item_name", item_id))
+    sheet["armorClass"] = explanation["effective"]
+    kept = [e for e in sheet.get("equipment_effects") or []
+            if not (isinstance(e, dict) and e.get("target") == armor_class.AC_TARGET)]
+    sheet["equipment_effects"] = kept + armor_class._ac_entries(explanation, names)
+    return None
+
+
 def reconcile(sheet: Dict[str, Any], removed: Optional[List[Dict[str, Any]]] = None, *,
               location: str = "sheet", request_id: Optional[str] = None,
               binary: Optional[str] = None) -> EffectsOutcome:
@@ -132,22 +152,9 @@ def reconcile(sheet: Dict[str, Any], removed: Optional[List[Dict[str, Any]]] = N
     if not statuses or len(explanations) != 1 or type(explanations[0].get("effective")) is not int:
         return EffectsOutcome(False, reason="engine returned no status or defense explanation",
                               operations=ops, gaps=gaps)
-    status = statuses[0]
-    problem = resources._write_back(sheet, status)
+    problem = _write_back(sheet, cid, statuses[0], explanations[0], world)
     if problem:
         return EffectsOutcome(False, reason=problem, operations=ops, gaps=gaps)
-    hp = (status.get("resources") or {}).get("hp")
-    if "maxHitPoints" in sheet and isinstance(hp, dict) and type(hp.get("maximum")) is int:
-        sheet["maxHitPoints"] = hp["maximum"]
-    explanation = explanations[0]
-    names = dict(world.effect_names)
-    for index, item_id in (world.item_ids.get(cid) or {}).items():
-        entry = (sheet.get("equipment") or [])[index]
-        names[item_id] = str(entry.get("item_name", item_id))
-    sheet["armorClass"] = explanation["effective"]
-    kept = [e for e in sheet.get("equipment_effects") or []
-            if not (isinstance(e, dict) and e.get("target") == armor_class.AC_TARGET)]
-    sheet["equipment_effects"] = kept + armor_class._ac_entries(explanation, names)
     applied_ids = {e.get("effectId") for e in applying}
     for effect in sheet.get("temporaryEffects") or []:
         if isinstance(effect, dict) and effect.get("effectId") in applied_ids:
@@ -187,3 +194,112 @@ def fallback_unbake(sheet: Dict[str, Any], removed: List[Dict[str, Any]]) -> Lis
             sheet["hitPoints"] = min(sheet["hitPoints"], sheet["maxHitPoints"])
         handled.append(str(effect.get("name")))
     return handled
+
+
+# ---------------------------------------------------------------------------
+# Time (E12b): the engine clock ends timed effects; nothing compares dates.
+# ---------------------------------------------------------------------------
+@dataclass
+class EndedEffect:
+    owner: str                      # sheet name
+    effect: Dict[str, Any]          # the effect record as it was on the sheet
+    modifiers: List[Dict[str, Any]] # ended_conditions[].modifiers, magnitudes resolved
+    deadline: Optional[int] = None  # the expiry tick
+
+
+@dataclass
+class AdvanceOutcome:
+    ok: bool
+    sheets: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # owner -> sheet with the engine's values
+    ended: List[EndedEffect] = field(default_factory=list)
+    receipt: Optional[Dict[str, Any]] = None
+    reason: str = ""
+    gaps: List[str] = field(default_factory=list)
+
+
+def timed_effects(sheet: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Owned effects the engine clock ends (an expiresTick, not on the round clock)."""
+    return [e for e in owned_effects(sheet)
+            if type(e.get(genesis.EFFECT_EXPIRES_TICK)) is int and e.get("roundsRemaining") is None]
+
+
+def advance(sheets: Dict[str, Dict[str, Any]], now_tick: int, *, location: str = "party",
+            request_id: Optional[str] = None, binary: Optional[str] = None) -> AdvanceOutcome:
+    """End every owned timed effect that is due at ``now_tick`` across the party.
+
+    Stateless: the world clock starts at the earliest expiry minus one (never
+    later than now), so every timed instance has at least one tick left, and
+    one ``advance time by <now - start>`` ends exactly the instances whose
+    expiry tick is at or before now, earliest first (the engine's order). No
+    engine call when nothing is due. Sheets are returned as new copies with
+    the ended effects removed and the engine's hit points, maximum and armor
+    class written; the caller persists them and reports ``ended``.
+    """
+    sheets = {owner: copy.deepcopy(sheet) for owner, sheet in (sheets or {}).items() if isinstance(sheet, dict)}
+    due = {owner: [e for e in timed_effects(sheet) if e[genesis.EFFECT_EXPIRES_TICK] <= now_tick]
+           for owner, sheet in sheets.items()}
+    if not any(due.values()):
+        return AdvanceOutcome(True, sheets=sheets)
+    start = min(min(e[genesis.EFFECT_EXPIRES_TICK] for e in effects) for effects in due.values() if effects) - 1
+    start = min(start, now_tick - 1)
+    party = [sheet for owner, sheet in sheets.items() if due[owner]]
+    world = genesis.build_world(party, location, clock_tick=start)
+    gaps = list(world.gaps)
+    ids = [genesis.character_id(sheet) for sheet in party]
+    try:
+        response = apply.call({"world": world.source, "world_name": "effects-clock-genesis.nql",
+                               "actions": f"advance time by {now_tick - start};", "actions_name": "advance.nql",
+                               "actor": {"kind": "character", "id": ids[0]},
+                               "request": request_id or f"advance:{uuid.uuid4().hex}",
+                               "status": ids,
+                               "explain": [{"character": cid, "stat": "defense"} for cid in ids]}, binary=binary)
+    except apply.EngineUnavailable as error:
+        return AdvanceOutcome(False, reason=str(error), gaps=gaps)
+    if not response.get("ok"):
+        detail = response.get("diagnostics") or response.get("fault") or response.get("error")
+        return AdvanceOutcome(False, reason=f"engine refused at {response.get('phase')}: {detail}", gaps=gaps)
+    statuses = {s["character"]["id"]: s for s in response.get("status") or [] if isinstance(s.get("character"), dict)}
+    explanations = {}
+    for cid, explanation in zip(ids, response.get("explain") or []):
+        explanations[cid] = explanation
+    ended_by_instance = {}
+    for record in response.get("ended_conditions") or []:
+        if isinstance(record, dict) and isinstance(record.get("instance"), str):
+            ended_by_instance[record["instance"]] = record
+    ended: List[EndedEffect] = []
+    for owner, sheet in sheets.items():
+        if not due[owner]:
+            continue
+        cid = genesis.character_id(sheet)
+        status, explanation = statuses.get(cid), explanations.get(cid)
+        if status is None or not isinstance(explanation, dict) or type(explanation.get("effective")) is not int:
+            return AdvanceOutcome(False, reason=f"engine returned no status or defense explanation for {owner}", gaps=gaps)
+        remaining = []
+        for effect in sheet.get("temporaryEffects") or []:
+            record = ended_by_instance.get(genesis.effect_instance_id(effect)) if isinstance(effect, dict) else None
+            if record is None:
+                remaining.append(effect)
+                continue
+            ended.append(EndedEffect(owner=owner, effect=effect, modifiers=list(record.get("modifiers") or []),
+                                     deadline=record.get("deadline") if type(record.get("deadline")) is int else None))
+        sheet["temporaryEffects"] = remaining
+        problem = _write_back(sheet, cid, status, explanation, world)
+        if problem:
+            return AdvanceOutcome(False, reason=f"{owner}: {problem}", gaps=gaps)
+    return AdvanceOutcome(True, sheets=sheets, ended=ended, receipt=response.get("receipt"), gaps=gaps)
+
+
+def ended_text(item: EndedEffect, sheet_after: Dict[str, Any]) -> str:
+    """'Eirik: Shield of Faith (expired), AC 19 -> 17' from the engine's ended record and the sheet."""
+    parts = []
+    for modifier in item.modifiers:
+        amount = modifier.get("amount")
+        if type(amount) is not int:
+            continue
+        if modifier.get("stat") == "defense" and type(sheet_after.get("armorClass")) is int:
+            parts.append(f"AC {sheet_after['armorClass'] + amount} -> {sheet_after['armorClass']}")
+        elif modifier.get("resource_maximum") == "hp" and type(sheet_after.get("maxHitPoints")) is int:
+            parts.append(f"max HP {sheet_after['maxHitPoints'] + amount} -> {sheet_after['maxHitPoints']}, "
+                         f"HP {sheet_after.get('hitPoints')}")
+    detail = f", {'; '.join(parts)}" if parts else ""
+    return f"{item.owner}: {item.effect.get('name')} (expired){detail}"

@@ -155,13 +155,20 @@ def apply_effect_ops(sheet, operations, *, engine=True):
 
 
 def plan_expirations(sheets, now_scalar):
-    """Return deterministic remove operations for expired wall-clock effects."""
+    """Return deterministic remove operations for expired wall-clock effects.
+
+    Effects the engine holds (engineOwned with an expiresTick) are not planned
+    here: the engine clock ends them (core/nql/effects.advance). Only effects
+    without an engine tick still expire by this comparison.
+    """
     planned = []
     for owner, sheet in (sheets or {}).items():
         if not isinstance(sheet, dict):
             continue
         for effect in sheet.get("temporaryEffects", []) or []:
             if not isinstance(effect, dict) or effect.get("roundsRemaining") is not None:
+                continue
+            if effect.get("engineOwned") is True and type(effect.get("expiresTick")) is int:
                 continue
             expiration = effect.get("expiration")
             if not isinstance(expiration, str) or not expiration.strip():
