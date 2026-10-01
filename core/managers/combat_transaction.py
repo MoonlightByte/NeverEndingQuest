@@ -1332,6 +1332,72 @@ def _award_journaled_xp(character, name, after):
     return character
 
 
+def recover_ammunition(
+    encounter_path,
+    character_paths,
+    forfeit,
+    timeout_seconds=5.0,
+):
+    """AM: once per encounter, the engine returns the recoverable share of each stock.
+
+    SRD: a minute's search after the fight recovers half the ammunition spent
+    (rounded down); a party that fled or yielded has no minute (``forfeit``,
+    engine ``recover ... by 0``). Idempotent through the completion receipt;
+    a crash between a sheet write and the receipt leaves that stock's count
+    at zero, which the engine refuses on the second pass and is then treated
+    as already recovered. Returns the receipt {name: [{name, before, after,
+    recovered}]}.
+    """
+    with _combat_leases(
+        encounter_path,
+        character_paths,
+        timeout_seconds,
+    ):
+        encounter = _load_object(encounter_path, "encounter")
+        state = ensure_combat_state(encounter)
+        completion = state["completion"]
+        if completion.get("ammunitionRecovered"):
+            return deepcopy(completion.get("ammunitionRecovery") or {})
+        from core.nql import ammunition as nql_ammunition
+
+        receipt = {}
+        for name, path in (character_paths or {}).items():
+            character = _load_object(path, "character %s" % name)
+            rows = [
+                row for row in character.get("ammunition") or []
+                if isinstance(row, dict) and type(row.get("recoverable")) is int and row["recoverable"] > 0
+            ]
+            if not rows:
+                continue
+            lines = []
+            for row in rows:
+                before = int(row.get("quantity", 0) or 0)
+                try:
+                    outcome = nql_ammunition.recover(character, row["name"], forfeit=forfeit)
+                except Exception as exc:
+                    outcome = nql_ammunition.AmmunitionOutcome(False, reason=str(exc))
+                if outcome.ok:
+                    nql_ammunition.write_back(row, outcome)
+                    lines.append({"name": row["name"], "before": before, "after": row["quantity"],
+                                  "recovered": row["quantity"] - before})
+                elif (outcome.fault or {}).get("code") == "E_QUANTITY":
+                    # The count was already closed (a crash after the sheet write).
+                    row.pop("recoverable", None)
+                else:
+                    # Fail forward: the count stays on the row for the next fight's
+                    # recovery; the fight still closes.
+                    _LOGGER.warning(
+                        "AM: %s: %s not recovered (%s)", name, row["name"], outcome.reason
+                    )
+            if lines:
+                receipt[name] = lines
+            _write_object(path, character, "ammunition recovery for %s" % name)
+        completion["ammunitionRecovered"] = True
+        completion["ammunitionRecovery"] = receipt
+        _write_object(encounter_path, encounter, "ammunition recovery receipt")
+        return deepcopy(receipt)
+
+
 def apply_combat_rewards(
     encounter_path,
     character_paths,

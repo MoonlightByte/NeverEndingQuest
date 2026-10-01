@@ -319,6 +319,9 @@ An adjudicated intent may contain:
   and name as the item exactly as that sheet lists it. Read the sheets before
   choosing: if the actor's slot is spent and no party sheet holds the item,
   do not declare the spell or potion at all; take a real listed action.
+  Ammunition is spent by the rules engine from the delta you declare (a known
+  ranged attack spends it by itself); never write a quantity, and after the
+  fight the engine returns the recoverable share.
 - effects: [{op:'add', owner, effect:{name,description,roundsRemaining,
   concentration,tickTrigger,modifiers:[{stat,value}],conditions:[],
   incapacitates:false,onApply:[],onRemove:[]}}] or

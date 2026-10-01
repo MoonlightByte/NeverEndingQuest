@@ -279,6 +279,57 @@ def _ammo_quantity(sheet, name=None):
     return total
 
 
+def _engine_ammunition(sheet, name, delta, record):
+    """AM: the rules engine spends (recoverable) or adds ammunition on a party sheet.
+
+    One request per attack event. The engine's quantity and pending count are
+    journaled on the resource record (after, recoverableAfter, engine true) so
+    replay writes the same values without the engine. Returns True when the
+    engine answered, False when it was unavailable (the caller keeps today's
+    arithmetic with engine false), or a refusal string (a short stock).
+    """
+    if type(delta) is not int or delta == 0 or not isinstance(sheet, dict):
+        return False
+    try:
+        from core.nql import ammunition as nql_ammunition
+        if delta < 0:
+            outcome = nql_ammunition.spend(sheet, name, -delta, recoverable=True)
+        else:
+            outcome = nql_ammunition.add(sheet, name, delta)
+    except Exception as exc:  # engine wrapper faults never stop a fight
+        _warn_ammunition(sheet, name, delta, str(exc))
+        return False
+    if not outcome.ok:
+        if (outcome.fault or {}).get("code") == "E_QUANTITY":
+            return outcome.reason
+        _warn_ammunition(sheet, name, delta, outcome.reason)
+        return False
+    record["after"] = int(outcome.quantity or 0)
+    record["recoverableAfter"] = int(outcome.recoverable or 0)
+    record["engine"] = True
+    try:
+        from utils.enhanced_logger import info as _info
+        _info(
+            "AM: %s %s %+d -> %s (%s recoverable) [engine]"
+            % (sheet.get("name"), name, delta, record["after"], record["recoverableAfter"]),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+    return True
+
+
+def _warn_ammunition(sheet, name, delta, reason):
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning(
+            "AM: %s %s %+d applied without the engine (%s)" % (sheet.get("name"), name, delta, reason),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+
+
 def _raw_combatant_sheet(encounter, characters, creature):
     """Return the canonical effect input for any combatant.
 
@@ -747,11 +798,19 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
             if isinstance(item, dict) and int(item.get("quantity", 0) or 0) > 0:
                 before = int(item.get("quantity", 0) or 0)
                 spent = min(ranged_swings, before)
-                event["resources"].append({
+                record = {
                     "owner": actor.get("name"), "kind": "ammunition",
                     "name": item.get("name"), "delta": -spent,
                     "before": before, "after": before - spent,
-                })
+                }
+                # AM: a party archer's shots go through the engine (stock and
+                # recoverable count); monsters have no sheet row and never
+                # reach here. Engine unavailable: today's arithmetic, engine false.
+                if actor.get("type") in ("player", "npc"):
+                    answer = _engine_ammunition(sheet, item.get("name"), -spent, record)
+                    if answer is not True:
+                        record["engine"] = False
+                event["resources"].append(record)
                 break
     return resolution
 
@@ -930,8 +989,20 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             continue
         if cap is not None:
             after = min(after, cap)
-        event["resources"].append({"owner": owner, "kind": kind, "name": name,
-                                   "delta": delta, "before": before, "after": after})
+        record = {"owner": owner, "kind": kind, "name": name,
+                  "delta": delta, "before": before, "after": after}
+        if kind == "ammunition":
+            # AM: the engine spends or adds the declared amount; a short stock
+            # is the same violation as the arithmetic check above, so T096
+            # corrects itself; engine unavailable keeps the arithmetic.
+            answer = _engine_ammunition(sheet, name, delta, record)
+            if isinstance(answer, str):
+                resolution["violations"].append(
+                    "overspend rejected: %s %s %s (%s)" % (owner, kind, name, answer))
+                continue
+            if answer is not True:
+                record["engine"] = False
+        event["resources"].append(record)
 
     # Effects: a sheet owner and an encounter combatantId are deliberately
     # distinct durable destinations. Monster display names can be duplicated,
@@ -1689,6 +1760,13 @@ def apply_resolution(encounter, characters, resolution):
             for item in sheet.get("ammunition", []):
                 if isinstance(item, dict) and item.get("name") == resource.get("name"):
                     item["quantity"] = setter(int(item.get("quantity", 0) or 0))
+                    # AM: the engine's pending count rides on the journal; an
+                    # older record without it leaves the row's count alone.
+                    if type(resource.get("recoverableAfter")) is int:
+                        if resource["recoverableAfter"] > 0:
+                            item["recoverable"] = resource["recoverableAfter"]
+                        else:
+                            item.pop("recoverable", None)
                     break
         elif resource["kind"] == "spellSlot":
             level = ((sheet.get("spellcasting") or {}).get("spellSlots") or {}).get(

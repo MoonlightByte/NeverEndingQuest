@@ -2270,6 +2270,33 @@ def _complete_agentic_combat(
             "Combat effects could not reach their recoverable exit boundary"
         ) from exc
 
+    # AM: the engine returns the recoverable share of the shots fired in this
+    # fight (none when the party fled or yielded: no minute to search).
+    ammunition_note = ""
+    try:
+        from core.managers.combat_state import has_left_fight
+        from core.managers.combat_transaction import recover_ammunition
+
+        fled = any(
+            has_left_fight(creature)
+            for creature in (encounter_data.get("creatures") or [])
+            if isinstance(creature, dict)
+        )
+        recovery = recover_ammunition(encounter_path, character_paths, fled)
+        parts = []
+        for name, lines in sorted((recovery or {}).items()):
+            for line in lines:
+                parts.append(
+                    "%s recovered %d %s (%d -> %d)"
+                    % (name, int(line.get("recovered", 0)), line.get("name"),
+                       int(line.get("before", 0)), int(line.get("after", 0)))
+                )
+        if parts:
+            ammunition_note = " Ammunition recovered: " + "; ".join(parts) + "."
+        encounter_data = safe_json_load(encounter_path) or encounter_data
+    except Exception as exc:
+        warning("AM: ammunition recovery skipped (%s)" % exc, category="combat_events")
+
     xp_narrative, xp_awarded = calculate_xp()
     encounter_data = apply_combat_rewards(
         encounter_path,
@@ -2287,7 +2314,7 @@ def _complete_agentic_combat(
                 "dialogueSummary", _T041_FALLBACK_SUMMARY
             )
         else:
-            xp_message = f"XP Awarded: {xp_narrative}"
+            xp_message = f"XP Awarded: {xp_narrative}{ammunition_note}"
             if not any(
                 message.get("role") == "user"
                 and message.get("content") == xp_message
