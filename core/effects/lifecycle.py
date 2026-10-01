@@ -70,6 +70,9 @@ def _sync_sheet_states(before_effects, result):
     names = sync_condition_states(result.get("condition_affected"), before_effects, result.get("temporaryEffects"))
     if names != [c for c in (result.get("condition_affected") or []) if isinstance(c, str)]:
         result["condition_affected"] = names
+        # The engine's roll-mode labels describe the old states; its next
+        # status request writes the current ones back.
+        result.pop("rollModes", None)
     current = result.get("condition")
     if ("condition" in result or names) and not (
         isinstance(current, str) and current.casefold() in [n.casefold() for n in names]

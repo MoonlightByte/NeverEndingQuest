@@ -432,6 +432,9 @@ def _end_stated_condition(encounter, characters, op):
         if isinstance(current, str) and current.strip().casefold() == name:
             listed = sheet["condition_affected"]
             sheet["condition"] = listed[0] if listed else "none"
+        # The engine's roll-mode labels named the ended state; its next
+        # status request writes the current ones back.
+        sheet.pop("rollModes", None)
         characters[op["owner"]] = sheet
         return
     creature = combatant_by_id(encounter, op.get("combatantId"))
