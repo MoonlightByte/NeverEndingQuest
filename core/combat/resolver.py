@@ -31,7 +31,7 @@ from core.combat.attacks import (
     is_executable_attack,
 )
 from core.effects.effective import effective_sheet, modifier_total
-from core.effects.lifecycle import apply_effect_ops
+from core.effects.lifecycle import apply_effect_ops, effect_incapacitates, sync_condition_states
 from core.effects.model import normalize_effect, validate_effect
 from core.managers.combat_state import (
     combatant_by_id,
@@ -375,6 +375,79 @@ def _combatant_max_hp(encounter, characters, creature):
     if isinstance(sheet.get("maxHitPoints"), (int, float)):
         return int(sheet["maxHitPoints"])
     return int((creature or {}).get("maxHitPoints", 0) or 0)
+
+
+def _stated_condition_reference(characters, encounter, owner, combatant_id, *references):
+    """The condition one of the references names among those the target states, or None.
+
+    A party sheet states conditions in condition_affected / condition; a
+    monster record in conditions. Typed values are compared casefolded
+    against that list (an effectId of "restrained" written by the model is
+    the stated condition, not an effect); nothing is read from prose.
+    """
+    if owner:
+        sheet = (characters or {}).get(owner) or {}
+        listed = [c for c in sheet.get("condition_affected") or [] if isinstance(c, str)]
+        single = sheet.get("condition")
+        if isinstance(single, str) and single.strip().casefold() not in ("", "none"):
+            listed.append(single)
+    else:
+        creature = combatant_by_id(encounter, combatant_id) or {}
+        listed = [c for c in creature.get("conditions") or [] if isinstance(c, str)]
+    stated = {c.strip().casefold() for c in listed}
+    for reference in references:
+        if isinstance(reference, str) and reference.strip().casefold() in stated:
+            return reference.strip().casefold()
+    return None
+
+
+def _end_stated_condition(encounter, characters, op):
+    """A journaled remove op naming a stated condition: the fight's effects stating it go, then the name.
+
+    A function of the op and the target's records, so a replay converges.
+    """
+    name = str(op.get("condition") or "").casefold()
+
+    def _states(effect):
+        return isinstance(effect, dict) and name in [
+            str(c).strip().casefold() for c in effect.get("conditions") or [] if isinstance(c, str)
+        ]
+
+    if op.get("owner"):
+        sheet = (characters or {}).get(op.get("owner"))
+        if not isinstance(sheet, dict):
+            raise ValueError("Effect owner is not durably addressable")
+        remove_ops = [
+            {"op": "remove", "effectId": effect.get("effectId"), "name": effect.get("name")}
+            for effect in sheet.get("temporaryEffects") or []
+            if _states(effect) and effect.get("sourceEncounterId")
+        ]
+        if remove_ops:
+            sheet = apply_effect_ops(sheet, remove_ops)
+        sheet["condition_affected"] = [
+            c for c in sheet.get("condition_affected") or []
+            if not (isinstance(c, str) and c.strip().casefold() == name)
+        ]
+        current = sheet.get("condition")
+        if isinstance(current, str) and current.strip().casefold() == name:
+            listed = sheet["condition_affected"]
+            sheet["condition"] = listed[0] if listed else "none"
+        # The engine's roll-mode labels named the ended state; its next
+        # status request writes the current ones back.
+        sheet.pop("rollModes", None)
+        characters[op["owner"]] = sheet
+        return
+    creature = combatant_by_id(encounter, op.get("combatantId"))
+    if creature is None or creature.get("type") in ("player", "npc"):
+        raise ValueError("Effect combatant is not durably addressable")
+    for effect in [e for e in creature.get("activeEffects") or [] if _states(e)]:
+        _apply_encounter_effect_operation(
+            creature, {"op": "remove", "effectId": effect.get("effectId"), "name": effect.get("name")}
+        )
+    creature["conditions"] = [
+        c for c in creature.get("conditions") or []
+        if not (isinstance(c, str) and c.strip().casefold() == name)
+    ]
 
 
 def _sheet_backed_target(characters, creature):
@@ -1147,6 +1220,11 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             )
             op["effect"].setdefault("modifiers", [])
             op["effect"].setdefault("conditions", [])
+            if effect_incapacitates(op["effect"]):
+                # Paralyzed, stunned, petrified and unconscious include
+                # Incapacitated (SRD): the journal records the derived flag so
+                # a replay and the turn order agree whatever the model wrote.
+                op["effect"]["incapacitates"] = True
             op["effect"].setdefault(
                 "created",
                 {"encounterId": encounter.get("encounterId")},
@@ -1214,9 +1292,10 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             nested_effect = op.get("effect") if isinstance(op.get("effect"), dict) else {}
             supplied_effect_id = op.get("effectId") or nested_effect.get("effectId")
             supplied_name = op.get("name") or nested_effect.get("name")
-            if not supplied_effect_id and not supplied_name:
+            supplied_condition = op.get("condition")
+            if not supplied_effect_id and not supplied_name and not supplied_condition:
                 resolution["violations"].append(
-                    "effect remove requires a name or effectId"
+                    "effect remove requires a name, effectId or condition"
                 )
                 continue
 
@@ -1261,26 +1340,55 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                     ]
                     matched_by_id_in_name = bool(matches)
 
-            if len(matches) != 1:
-                label = supplied_effect_id or supplied_name
+            # CSb: a remove that names a condition the target states (the
+            # sheet's list, or a monster's conditions) and no effect ends
+            # that condition, as removeEffect does outside a fight. Typed
+            # values compared against the stated list, never prose.
+            stated_condition = None
+            if not matches:
+                stated_condition = _stated_condition_reference(
+                    characters, encounter, owner, combatant_id,
+                    supplied_condition, supplied_effect_id, supplied_name,
+                )
+            if stated_condition == "unconscious":
+                resolution["violations"].append(
+                    "unconscious is the rules engine's verdict at 0 hit points; it ends with healing, not a remove"
+                )
+                continue
+            if stated_condition:
+                op.pop("effect", None)
+                op.pop("effectId", None)
+                op.pop("name", None)
+                op["condition"] = stated_condition
+                if supplied_condition != stated_condition:
+                    normalization = {
+                        "kind": "canonicalizeConditionRemovalReference",
+                        "suppliedValue": supplied_effect_id or supplied_name or supplied_condition,
+                        "condition": stated_condition,
+                    }
+                    normalization["owner" if owner else "combatantId"] = owner or combatant_id
+                    event.setdefault("normalizations", []).append(normalization)
+            elif len(matches) != 1:
+                label = supplied_effect_id or supplied_name or supplied_condition
                 reason = "ambiguous" if len(matches) > 1 else "unknown"
                 resolution["violations"].append(
                     "%s effect removal reference %r" % (reason, label)
                 )
                 continue
 
-            matched_effect = matches[0]
+            matched_effect = matches[0] if matches else {}
             matched_effect_id = matched_effect.get("effectId")
             matched_name = matched_effect.get("name")
-            op.pop("effect", None)
-            if matched_effect_id:
-                op["effectId"] = matched_effect_id
-            else:
-                op.pop("effectId", None)
-            if matched_name:
-                op["name"] = matched_name
-            else:
-                op.pop("name", None)
+            if not stated_condition:
+                op.pop("effect", None)
+                if matched_effect_id:
+                    op["effectId"] = matched_effect_id
+                else:
+                    op.pop("effectId", None)
+                if matched_name:
+                    op["name"] = matched_name
+                else:
+                    op.pop("name", None)
             if matched_by_id_in_name:
                 normalization = {
                     "kind": "canonicalizeEffectRemovalReference",
@@ -1689,6 +1797,11 @@ def _apply_encounter_effect_operation(creature, operation):
     raw = _raw_combatant_sheet(None, None, creature)
     # An encounter creature record is not a character sheet: no engine world.
     updated = apply_effect_ops(raw, [operation], engine=False)
+    # The effect's SRD conditions ride on the creature record the same way
+    # a sheet's condition_affected does (CSb); T096 reads them from there.
+    creature["conditions"] = sync_condition_states(
+        creature.get("conditions"), effects, updated.get("temporaryEffects", [])
+    )
     creature["activeEffects"] = updated.get("temporaryEffects", [])
     rendered = effective_sheet(updated)
     for sheet_field, encounter_field in (
@@ -1758,8 +1871,7 @@ def _refresh_effect_control_flags(encounter, characters):
         else:
             effects = creature.get("activeEffects", []) or []
         creature["effectIncapacitated"] = any(
-            isinstance(effect, dict) and effect.get("incapacitates") is True
-            for effect in effects
+            effect_incapacitates(effect) for effect in effects
         )
 
 
@@ -1892,6 +2004,9 @@ def apply_resolution(encounter, characters, resolution):
                     keep_id=added_effect.get("concentrationId"),
                 )
             _record_fight_cast(new_encounter, new_characters, event, op)
+        if op.get("op") == "remove" and op.get("condition"):
+            _end_stated_condition(new_encounter, new_characters, op)
+            continue
         if op.get("owner"):
             sheet = new_characters.get(op.get("owner"))
             if not isinstance(sheet, dict):
@@ -1982,6 +2097,20 @@ def apply_resolution(encounter, characters, resolution):
         if downed is not None:
             from core.managers.concentration_runtime import clear_record
             clear_record(downed)
+    # CSb: a caster held, stunned or petrified by a fight's effect cannot
+    # concentrate (SRD); the spell ends everywhere the way it does at 0 hit
+    # points. A function of the sheets' conditions, so a replay agrees.
+    for creature in new_encounter.get("creatures", []) or []:
+        if not isinstance(creature, dict) or not creature.get("combatantId"):
+            continue
+        caster = _sheet_backed_target(new_characters, creature)
+        if caster is None or _concentration_record(caster) is None:
+            continue
+        from core.nql import stats as nql_stats
+        if nql_stats.concentration_blocked(caster):
+            _drop_concentration(new_encounter, new_characters, creature["combatantId"])
+            from core.managers.concentration_runtime import clear_record
+            clear_record(_sheet_backed_target(new_characters, creature))
     # CC: a failed engine save (journaled on the target record) ends the spell
     # everywhere and clears the caster's record; replay reads the same record.
     _apply_concentration_verdicts(new_encounter, new_characters, event)

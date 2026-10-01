@@ -372,7 +372,15 @@ An adjudicated intent may contain:
   immediate increase; give the target hpDelta 0, keep onRemove empty, and never
   represent the same HP change twice (code clamps to the new max when it ends).
   Set incapacitates=true only when
-  the target cannot act. Code owns duration conversion, arithmetic, and expiry.
+  the target cannot act; paralyzed, stunned, petrified and unconscious
+  incapacitate by themselves. An effect's conditions (SRD names: restrained,
+  paralyzed, poisoned...) are written to the target's condition list by code
+  while the effect lasts and leave with it; the rules engine then applies
+  them (speed, saving-throw modes, a held caster's concentration ends), so
+  never restate or clear them yourself. A condition the sheet lists (the
+  AFFECTED line) with no effect behind it ends with
+  {op:'remove', owner or combatantId, condition:'restrained'} when the scene
+  ends it (a successful escape, the webbing cut). Code owns duration conversion, arithmetic, and expiry.
   Code stamps concentration source/group IDs from actorId and enforces one
   concentration spell (which may affect multiple targets) per caster. A
   concentration save on damage is made by the rules engine and its result is

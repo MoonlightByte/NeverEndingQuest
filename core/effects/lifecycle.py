@@ -11,6 +11,74 @@ from core.effects.clock import display_iso_from_scalar, scalar_from_display_iso
 from core.effects.effective import effective_sheet
 from core.effects.model import effect_identity, normalize_effect, validate_effect
 
+# SRD conditions whose definition includes Incapacitated (a creature that
+# cannot take actions); an effect stating one of them incapacitates.
+INCAPACITATING_CONDITIONS = ("incapacitated", "paralyzed", "petrified", "stunned", "unconscious")
+
+
+def combat_effect_states(effects):
+    """The SRD condition names stated by the live combat-born effects, in order of first mention.
+
+    Only effects a fight created (they carry ``sourceEncounterId``) count: a
+    condition the DM wrote on the sheet outside a fight is a fact the DM
+    states and ends, never a function of an effect.
+    """
+    from core.nql.srd_stats import STATE_NAMES
+
+    names = []
+    for effect in effects or []:
+        if not isinstance(effect, dict) or not effect.get("sourceEncounterId"):
+            continue
+        for item in effect.get("conditions") or []:
+            name = str(item).strip().casefold() if isinstance(item, str) else ""
+            if name in STATE_NAMES and name not in names:
+                names.append(name)
+    return names
+
+
+def effect_incapacitates(effect):
+    """True when the effect says so or states an SRD condition that includes Incapacitated."""
+    if not isinstance(effect, dict):
+        return False
+    if effect.get("incapacitates") is True:
+        return True
+    return any(
+        isinstance(item, str) and item.strip().casefold() in INCAPACITATING_CONDITIONS
+        for item in effect.get("conditions") or []
+    )
+
+
+def sync_condition_states(listed, before_effects, after_effects):
+    """The condition list after an effect operation: a function of the effects, replay-safe.
+
+    Names the combat effects stated before and no longer state leave the
+    list; names they state now are on it. Every other entry (the DM's own,
+    the engine's unconscious hold) is kept as it was.
+    """
+    before = combat_effect_states(before_effects)
+    after = combat_effect_states(after_effects)
+    kept = [c for c in (listed or []) if isinstance(c, str)]
+    result = [c for c in kept if not (c.casefold() in before and c.casefold() not in after)]
+    for name in after:
+        if name not in [c.casefold() for c in result]:
+            result.append(name)
+    return result
+
+
+def _sync_sheet_states(before_effects, result):
+    """Write the combat effects' conditions onto the sheet's condition_affected / condition."""
+    names = sync_condition_states(result.get("condition_affected"), before_effects, result.get("temporaryEffects"))
+    if names != [c for c in (result.get("condition_affected") or []) if isinstance(c, str)]:
+        result["condition_affected"] = names
+        # The engine's roll-mode labels describe the old states; its next
+        # status request writes the current ones back.
+        result.pop("rollModes", None)
+    current = result.get("condition")
+    if ("condition" in result or names) and not (
+        isinstance(current, str) and current.casefold() in [n.casefold() for n in names]
+    ):
+        result["condition"] = names[0] if names else "none"
+
 
 def _apply_resource_operations(sheet, operations):
     for operation in operations or []:
@@ -104,6 +172,7 @@ def apply_effect_ops(sheet, operations, *, engine=True):
     effects = result.setdefault("temporaryEffects", [])
     if not isinstance(effects, list):
         raise ValueError("temporaryEffects must be an array")
+    before_effects = deepcopy(effects)
     removed_owned = []
     for operation in operations or []:
         if not isinstance(operation, dict) or operation.get("op") not in ("add", "remove"):
@@ -178,6 +247,10 @@ def apply_effect_ops(sheet, operations, *, engine=True):
                 else:
                     _apply_resource_operations(result, current.get("onRemove", []))
             effects[:] = retained
+    # A fight's effect that states an SRD condition puts it on the sheet
+    # (CSb), before the engine request so genesis declares the state and
+    # the engine prices it (speed, save modes, concentration) at once.
+    _sync_sheet_states(before_effects, result)
     if engine:
         result = _reconcile_with_engine(result, removed_owned)
     # Current HP is a consumed resource. Removing a maximum-HP effect never
