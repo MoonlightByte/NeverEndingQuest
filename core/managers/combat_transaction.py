@@ -1300,6 +1300,38 @@ def apply_staged_turn(
         return deepcopy(next_encounter), deepcopy(next_characters)
 
 
+def _award_journaled_xp(character, name, after):
+    """Bring one sheet to its journaled post-combat XP through the engine award (X1b).
+
+    The engine adds the difference and writes the next threshold and
+    levelUpsPending in the same call, so the level-up flag is right the turn
+    the fight ends. A sheet already at ``after`` (a replay after a crash) is
+    left alone by value comparison. Fail forward: without the engine the total
+    is written directly, as before, and the engine refreshes the derived
+    numbers at its next touch of the sheet.
+    """
+    current = int(character.get("experience_points", 0) or 0)
+    if current == after:
+        return character
+    from core.nql import experience
+
+    outcome = experience.award(character, after - current, location="combat")
+    if outcome.ok and isinstance(outcome.sheet, dict):
+        _LOGGER.info(
+            "XP: %s: %+d XP -> %s/%s%s [combat]",
+            name, after - current, outcome.sheet.get("experience_points"),
+            outcome.sheet.get("exp_required_for_next_level"),
+            ", level-up earned (%s)" % outcome.sheet.get("levelUpsPending")
+            if outcome.sheet.get("levelUpsPending") else "",
+        )
+        return outcome.sheet
+    _LOGGER.warning(
+        "XP: %s: combat reward written without the engine (%s)", name, outcome.reason
+    )
+    character["experience_points"] = after
+    return character
+
+
 def apply_combat_rewards(
     encounter_path,
     character_paths,
@@ -1337,7 +1369,7 @@ def apply_combat_rewards(
                     "Reward journal does not cover character %s" % name
                 )
             character = _load_object(path, "character %s" % name)
-            character["experience_points"] = int(pending[name]["after"])
+            character = _award_journaled_xp(character, name, int(pending[name]["after"]))
             _write_object(path, character, "combat reward for %s" % name)
 
         completion["rewardsApplied"] = True
