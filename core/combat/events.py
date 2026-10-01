@@ -96,11 +96,12 @@ def validate_event(event):
         elif effect_op.get("op") == "remove" and not (
             effect_op.get("effectId")
             or effect_op.get("name")
+            or effect_op.get("condition")
             or (isinstance(effect_op.get("effect"), dict)
                 and (effect_op["effect"].get("effectId")
                      or effect_op["effect"].get("name")))
         ):
-            problems.append("effect remove requires a name or effectId")
+            problems.append("effect remove requires a name, effectId or condition")
     for tick in event.get("effectTicks", []) or []:
         if not isinstance(tick, dict):
             problems.append("effectTicks entries must be objects")
