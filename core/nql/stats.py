@@ -38,7 +38,11 @@ SAVES_FIELD = "savingThrowBonuses"  # engine-written {ability: total}
 ROLL_MODES_FIELD = "rollModes"
 XP_FIELD = "experience_points"  # a fact: the base of the engine stat "xp"
 XP_NEXT_FIELD = "exp_required_for_next_level"  # engine-written from xp:next
-LEVEL_UPS_FIELD = "levelUpsPending"  # engine-written from xp:pending  # engine-written {what: "disadvantage (poisoned)"}; empty when every roll is normal
+LEVEL_UPS_FIELD = "levelUpsPending"  # engine-written from xp:pending
+CONCENTRATION_FIELD = "concentration"  # code-written: {"name", "group", "targets", "expiration"} while the character concentrates
+# SRD states that are Incapacitated or include it (NQL 70352b9): a caster in one of
+# them cannot hold concentration, and the engine refuses a world that declares both.
+INCAPACITATING_STATES = ("incapacitated", "paralyzed", "petrified", "stunned", "unconscious")
 EXHAUSTION_MAX = 6
 STATE_PREFIX = "state:"
 DEFAULT_SPEED = 30
@@ -213,12 +217,45 @@ def exhaustion_of(status: Dict[str, Any]) -> int:
                if isinstance(record, dict) and record.get("type") == STATE_PREFIX + "exhaustion")
 
 
+def concentration_of(sheet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The typed concentration record (a dict with a non-empty ``group``) or None."""
+    record = sheet.get(CONCENTRATION_FIELD)
+    if isinstance(record, dict) and isinstance(record.get("group"), str) and record["group"]:
+        return record
+    return None
+
+
+def concentration_blocked(sheet: Dict[str, Any]) -> Optional[str]:
+    """Why this sheet cannot hold concentration right now (an incapacitating state or 0 hit points), else None."""
+    hp = _int(sheet.get("hitPoints"))
+    if hp is not None and hp <= 0:
+        return "unconscious at 0 hit points"
+    for name in state_names(sheet, []):
+        if name in INCAPACITATING_STATES:
+            return name
+    return None
+
+
+def concentration_instance(sheet: Dict[str, Any]) -> Optional[str]:
+    """The engine instance id for this sheet's concentration, or None when there is none to declare."""
+    if concentration_of(sheet) is None or concentration_blocked(sheet):
+        return None
+    return "concentration:" + sheet_scope(sheet)
+
+
+def sheet_scope(sheet: Dict[str, Any]) -> str:
+    from core.nql import genesis
+    return genesis.character_id(sheet).split(":", 1)[1]
+
+
 def states_of(status: Dict[str, Any]) -> List[str]:
     """Sorted SRD condition names present in a status record (declared instances and held ones)."""
     names: List[str] = []
     for record in list(status.get("conditions") or []) + list(status.get("held_conditions") or []):
         kind = record.get("type") if isinstance(record, dict) else None
         if isinstance(kind, str) and kind.startswith(STATE_PREFIX) and kind[len(STATE_PREFIX):] not in names:
+            if kind == srd_stats.CONCENTRATION_TYPE:
+                continue  # CN: the caster's concentration is the typed field, not an SRD condition
             names.append(kind[len(STATE_PREFIX):])
     return sorted(names)
 
@@ -502,6 +539,10 @@ def drop_model_totals(stored: Dict[str, Any], updates: Dict[str, Any]) -> List[s
     if XP_FIELD in updates and updates[XP_FIELD] != stored.get(XP_FIELD):
         updates.pop(XP_FIELD)
         dropped.append(XP_FIELD)
+    # Concentration is a code-written fact (core/managers/concentration_runtime): never the model's.
+    if CONCENTRATION_FIELD in updates:
+        updates.pop(CONCENTRATION_FIELD)
+        dropped.append(CONCENTRATION_FIELD)
     senses = updates.get("senses")
     if isinstance(senses, dict) and "passivePerception" in senses:
         senses.pop("passivePerception")

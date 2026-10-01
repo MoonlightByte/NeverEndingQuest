@@ -9145,6 +9145,9 @@ def _main_game_loop(startup_authority, turn_authority):
                     currency_str = f", Currency: {' '.join(currency_parts)}" if currency_parts else ", Currency: 0GP"
 
                     effects_str = _format_temporary_effects(member_data_for_note)
+                    focus = member_data_for_note.get("concentration")
+                    if isinstance(focus, dict) and focus.get("name"):
+                        effects_str = f"{effects_str}, concentrating on {focus['name']} (engine-held)"
                     party_stats_formatted.append(f"{display_name}: Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
 
             party_stats_str = "; ".join(party_stats_formatted)

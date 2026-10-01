@@ -1310,6 +1310,15 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         engine_pools = outcome.sheet
         for gap in outcome.gaps:
             debug(f"[Resource Engine] {character_name}: {gap}", category="character_updates")
+        # CN: the Constitution save the engine made for the caster's concentration
+        # reaches the next DM note (CHECK RESULTS) like a scored check.
+        for line in outcome.concentration_lines:
+            from core.managers import checks_state
+            checks_state.add_result(line)
+            info(f"CONCENTRATION: {line}", category="character_updates")
+        concentration_ended = outcome.concentration_ended
+    else:
+        concentration_ended = None
     updated_data = deep_merge_dict(character_data, updates)
     if engine_pools is not None:
         _copy_engine_pools(engine_pools, updated_data)
@@ -1321,6 +1330,16 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         carried = nql_stats.carry_states(engine_pools, updated_data)
         if carried:
             info(f"STATES: {character_name}: " + "; ".join(carried), category="character_updates")
+    # CN: the engine ended the concentration (failed save, knocked out), or the
+    # delta put the caster in an incapacitating state: the spell ends everywhere.
+    from core.nql import stats as nql_stats
+    focus = nql_stats.concentration_of(updated_data)
+    if focus:
+        why = concentration_ended or nql_stats.concentration_blocked(updated_data)
+        if why:
+            from core.managers.concentration_runtime import clear_record, end_group
+            clear_record(updated_data, focus["group"])
+            end_group(focus["group"], {"minimum": "knocked unconscious"}.get(why, why), skip_caster=character_name)
     if stock_deltas:
         # The requested change reaches the engine unclamped: a stack that
         # would go below zero stays in the merged sheet so the engine sees
@@ -2156,6 +2175,7 @@ CRITICAL INSTRUCTIONS:
     - A change text that mentions XP ("Awarded 50 experience points") changes nothing here: return the other requested fields only (or {{}} when there are none)
     - Level up changes level, maxHitPoints, hitPoints, classFeatures, etc. and never XP
 19. DERIVED TOTALS ARE THE ENGINE'S: proficiencyBonus, initiative, senses.passivePerception, every skill bonus, spellSaveDC and spellAttackBonus are computed by the rules engine from level, ability scores, proficiencies, expertise and feats. Never write them; a value you write is dropped. State the fact instead: a new skill proficiency is the skill added to 'skills' (any number), a new saving throw proficiency is the ability added to 'savingThrows', expertise is the skill added to 'expertise', a feat is added to 'feats', an ability score change is the new score in 'abilities'.
+20. CONCENTRATION IS THE ENGINE'S: never write `concentration` (the caster's record is code-written) and never end a spell because its caster was hit; the engine makes the Constitution save when the damage you report lands and ends the spell everywhere on a failure. Report the hpDelta only.
 {effects_update_rules}
 
 EQUIPMENT UPDATE EXAMPLES:

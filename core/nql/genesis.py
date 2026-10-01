@@ -476,6 +476,11 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         # (unconscious at 0 hp is held by the engine, not declared).
         for prefix, kind in stats.state_instances(sheet, gaps):
             conditions.append(f"condition {_q(prefix + ':' + cid.split(':', 1)[1])} of {_q(kind)} to {_q(cid)};")
+        # CN: the caster's one concentration instance (none while incapacitated or at
+        # 0 hp: the engine would refuse the world, and the host ends the spell instead).
+        focus = stats.concentration_instance(sheet)
+        if focus:
+            conditions.append(f"condition {_q(focus)} of {_q(srd_stats.CONCENTRATION_TYPE)} to {_q(cid)};")
         if _has_defense_style(sheet):
             conditions.append(
                 f"condition {_q(DEFENSE_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(DEFENSE_STYLE_CONDITION)} to {_q(cid)};"
@@ -551,6 +556,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     # The SRD condition states (C1): declared for every world so a later
     # `apply condition` has them and the engine can hold unconscious at 0 hp.
     lines.append(srd_stats.STATE_TYPES.rstrip("\n"))
+    # Concentration (CN): the type, and the damage-triggered Constitution save.
+    lines.append(srd_stats.CONCENTRATION_RULES.rstrip("\n"))
     lines.extend(effect_types)
     lines.extend(conditions)
     lines.append(f"equipment {_q(EQUIPMENT_VERSION)} {{")

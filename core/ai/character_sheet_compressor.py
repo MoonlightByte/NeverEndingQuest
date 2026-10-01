@@ -357,6 +357,9 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
         out.append(f"FEATS={feats_out};")
     if temporary_effects:
         out.append(f"TEMP_FX=[{','.join(temporary_effects)}];")
+    focus = character.get('concentration')
+    if isinstance(focus, dict) and focus.get('name'):
+        out.append(f"CONC={focus['name']}({','.join(focus.get('targets') or []) or 'self'}; engine saves on damage, one spell at a time);")
     out.append(f"EQUIP={equip_out};")
     out.append(f"ATK={atk_out};")
     out.append(f"SPELLCAST={spellcast_out};")

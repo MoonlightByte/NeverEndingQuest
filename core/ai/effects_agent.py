@@ -62,6 +62,7 @@ Return exactly:
     "durationValue": 10,
     "restKind": "short_rest|long_rest|none",
     "concentration": false,
+    "caster": "the character who concentrates on this effect (the target's own name for a self-cast); empty when concentration is false",
     "onApply": [{"stat":"hitPoints", "delta":5}],
     "onRemove": []
   },
@@ -74,9 +75,14 @@ A change that only spends a spell slot or a resource to cast something is
 none; the effect itself arrives as its own change. If currentEffectiveSheet
 already lists an active effect of the same name and the change does not end
 it, return none: the same spell on the same target does not stack.
-Use operation=remove when the change explicitly ends, dispels, replaces, or
-breaks concentration on an existing temporary effect. Copy its exact effectId
-and name from currentEffectiveSheet. Do not guess a removal target.
+Use operation=remove when the change explicitly ends, dispels, or breaks
+concentration on an existing temporary effect and adds nothing. Copy its exact
+effectId and name from currentEffectiveSheet. Do not guess a removal target.
+A change that casts a NEW concentration spell (even when it says the old
+concentration ended or was replaced) is operation=add for the NEW spell with
+an empty remove: the engine ends the previous concentration and its effects
+by itself the moment the new one begins. Never answer remove for the old spell
+in that case, and never fill effect on a remove.
 
 Allowed modifier stats: armorClass, speed, maxHitPoints, abilities.strength,
 abilities.dexterity, abilities.constitution, abilities.intelligence,
@@ -92,7 +98,8 @@ hitPoints in modifiers. Leave onApply/onRemove empty for normal effects.
 
 Conditions use standard lowercase names. Set incapacitates=true only when the
 target cannot take actions. For concentration, use the effect's maximum stated
-duration. Do not calculate timestamps. Do not invent an effectId. Do not include
+duration and name the caster exactly as the change text does (the engine holds
+one concentration per caster and ends the spell on everyone when it breaks). Do not calculate timestamps. Do not invent an effectId. Do not include
 fields outside this contract."""
 
 
@@ -107,6 +114,7 @@ _REQUIRED_EFFECT_FIELDS = {
     "durationValue",
     "restKind",
     "concentration",
+    "caster",
     "onApply",
     "onRemove",
 }
@@ -159,6 +167,10 @@ def _parse(content):
     if set(result["effect"]) != _REQUIRED_EFFECT_FIELDS:
         raise EffectsAgentContractError("T078 effect has missing or extra fields")
     effect = result["effect"]
+    if not isinstance(effect.get("caster"), str):
+        raise EffectsAgentContractError("T078 caster must be a string")
+    if effect.get("concentration") is True and not effect["caster"].strip():
+        raise EffectsAgentContractError("T078 concentration effect requires a caster")
     if effect["restKind"] not in ("short_rest", "long_rest", "none"):
         raise EffectsAgentContractError("T078 restKind is invalid")
     kind = effect["durationKind"]
@@ -274,6 +286,8 @@ def classify_effect(character_name, change_description, sheet, now_scalar, max_a
             last_error = exc
             correction = (
                 "Your previous response failed the strict contract: %s. "
-                "Return a corrected complete JSON object only." % exc
+                "Return a corrected complete JSON object only. Remember: operation=remove takes an "
+                "empty effect {}; a change that casts a new spell is operation=add for that new spell "
+                "with an empty remove {} (a replaced concentration ends by itself)." % exc
             )
     raise EffectsAgentContractError("T078 failed after retries: %s" % last_error)

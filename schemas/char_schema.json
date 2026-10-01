@@ -569,6 +569,18 @@
       "minimum": 0,
       "description": "Level-ups the experience points have earned beyond the current level, written by the rules engine (0 when none)."
     },
+    "concentration": {
+      "type": "object",
+      "description": "The spell this character concentrates on, written by code when a concentration effect is classified (never by the agent). The rules engine holds one per caster, makes the Constitution save when damage lands and ends the spell everywhere when it breaks.",
+      "properties": {
+        "name": {"type": "string"},
+        "group": {"type": "string", "description": "The concentrationId shared by every effect record of this cast."},
+        "targets": {"type": "array", "items": {"type": "string"}},
+        "expiration": {"type": ["string", "null"]}
+      },
+      "required": ["name", "group"],
+      "additionalProperties": false
+    },
     "challengeRating": {
       "type": "number"
     },

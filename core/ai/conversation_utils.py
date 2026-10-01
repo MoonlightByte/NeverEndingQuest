@@ -150,6 +150,17 @@ def _level_ups_text(sheet):
     return ''
 
 
+def _concentration_text(sheet):
+    """Code-written: the spell the character concentrates on (the engine saves on damage and ends it everywhere)."""
+    record = sheet.get('concentration')
+    if isinstance(record, dict) and record.get('name'):
+        targets = ', '.join(record.get('targets') or []) or 'self'
+        until = f"; until {record['expiration']}" if record.get('expiration') else ''
+        return (f" | CONCENTRATING ON: {record['name']} (targets {targets}{until}; one spell at a time, a new one ends it; "
+                f"the engine rolls the Constitution save when damage lands and reports it under CHECK RESULTS; never roll it)")
+    return ''
+
+
 def _exhaustion_text(sheet):
     level = sheet.get('exhaustion')
     if type(level) is int and level > 0:
@@ -1162,7 +1173,7 @@ CLASS FEAT: {', '.join([f"{feature['name']}" for feature in member_data['classFe
 RACIAL: {', '.join([f"{trait['name']}" for trait in member_data['racialTraits']])}
 BG FEAT: {bg_feature_name}
 FEATS: {_feats_text(member_data.get('feats', []))}
-TEMP FX: {_format_temporary_effects(member_data)}
+TEMP FX: {_format_temporary_effects(member_data)}{_concentration_text(member_data)}
 EQUIP: {equipment_str}
 AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in member_data.get('ammunition', [])])}
 ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damageType']})" for atk in member_data['attacksAndSpellcasting']])}
@@ -1249,7 +1260,7 @@ CLASS FEAT: {', '.join([f"{feature['name']}" for feature in npc_data['classFeatu
 RACIAL: {', '.join([f"{trait['name']}" for trait in npc_data['racialTraits']])}
 BG FEAT: {bg_feature_name}
 FEATS: {_feats_text(npc_data.get('feats', []))}
-TEMP FX: {_format_temporary_effects(npc_data)}
+TEMP FX: {_format_temporary_effects(npc_data)}{_concentration_text(npc_data)}
 EQUIP: {equipment_str}
 AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in npc_data['ammunition']])}
 ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damageType']})" for atk in npc_data['attacksAndSpellcasting']])}
