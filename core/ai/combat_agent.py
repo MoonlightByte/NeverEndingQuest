@@ -303,7 +303,17 @@ known attack, ability MUST be the exact listed weapon/action name from the
 actor's sheet (for example 'Longbow' or 'Claws'), never an ability score such
 as dexterity/strength and never a skill name. Use
 mode='adjudicated' for spells, healing, items, class features, and creative
-actions. When spellActionIndex is present, an automatic actor may cast only a
+actions. A listed entry with kind 'save' (a web, a breath weapon, a gaze: its
+save object states ability, dc, halfOnSave and onFail) is also adjudicated:
+mode='adjudicated', ability set to that exact listed entry name, save copied
+from the entry, one target record per creature it reaches (hpDelta 0 when it
+only imposes conditions) and, for its onFail conditions, an effect op gated
+applyOn 'failedSave'. Code takes the save's type and dc, the onFail damage
+dice and the onFail conditions from the stat block itself and corrects what
+you wrote, so use such an ability whenever the scene calls for it. Entries of
+kind 'trait' (Web Sense, Spider Climb, Pack Tactics) are never actions; an
+entry's description is its rule text (range, area, escape DC) for your ruling.
+When spellActionIndex is present, an automatic actor may cast only a
 spell listed for that actor there; use that entry's guidance and exact resource
 keys. If no suitable listed spell remains, choose a listed weapon/action or a
 defensive action instead of guessing spell mechanics. encounterContext and
@@ -390,10 +400,11 @@ An adjudicated intent may contain:
 
 One known attack intent represents the actor's full Attack action. Code owns
 the number of Multiattack swings and consumes each persisted roll; do not emit
-duplicate intents for the same actor. Never set ability to 'Multiattack'
-itself or to any listed entry whose damageDice is 0d0: those are containers,
-not attacks. Name the single weapon/action the Multiattack is made of (for
-example 'Slam') and code applies the extra swings.
+duplicate intents for the same actor. Never set a known attack's ability to
+'Multiattack' itself or to any listed entry whose damageDice is 0d0: those
+are containers or traits, not attacks (a kind 'save' entry is declared in
+mode 'adjudicated' as described above). Name the single weapon/action the
+Multiattack is made of (for example 'Slam') and code applies the extra swings.
 
 Intents resolve in the required order. Account for the HP changes you propose
 for earlier actors: never have a later actor attack a target your earlier
