@@ -143,7 +143,7 @@ def _record_character_state_after(event, before, after):
         if not isinstance(old_sheet, dict) or not isinstance(new_sheet, dict):
             continue
         snapshot = dict(snapshots.get(name) or {})
-        for field in ("hitPoints", "status"):
+        for field in ("hitPoints", "temporaryHitPoints", "status"):
             if old_sheet.get(field) != new_sheet.get(field):
                 snapshot[field] = deepcopy(new_sheet.get(field))
         if snapshot:

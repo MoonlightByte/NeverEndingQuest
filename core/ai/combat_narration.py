@@ -23,6 +23,7 @@ _SHEET_FIELDS = (
     "level",
     "race",
     "hitPoints",
+    "temporaryHitPoints",
     "maxHitPoints",
     "armorClass",
     "speed",
@@ -179,6 +180,8 @@ def _fact_event(event, creatures, presentation=None):
             "hpAfter": after,
             "hpDelta": hp_delta,
             "declaredHpDelta": declared_deltas.get(target.get("combatantId")),
+            "tempHpBefore": target.get("tempHpBefore"),
+            "tempHpAfter": target.get("tempHpAfter"),
             "statusAfter": target.get("statusAfter"),
         }
         targets.append({key: value for key, value in row.items() if value is not None})

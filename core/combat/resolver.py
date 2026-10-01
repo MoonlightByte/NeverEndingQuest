@@ -326,6 +326,91 @@ def _combatant_max_hp(encounter, characters, creature):
     return int((creature or {}).get("maxHitPoints", 0) or 0)
 
 
+def _sheet_backed_target(characters, creature):
+    """The character sheet behind a party combatant, or None for monsters."""
+    if not isinstance(creature, dict) or creature.get("type") not in ("player", "npc"):
+        return None
+    sheet = (characters or {}).get(creature.get("name"))
+    return sheet if isinstance(sheet, dict) else None
+
+
+def _engine_hit_points(sheet, signed, event):
+    """CH: the rules engine applies one hit-point change to a party sheet.
+
+    One damage instance is one engine request (the SRD concentration rule is
+    one save per damage instance). The engine drains temporary hit points
+    first, clamps at zero and at the effective maximum, holds Unconscious at
+    zero and releases it on healing, and makes the concentration save when
+    the sheet carries a record. Returns the engine's sheet copy, or None when
+    the engine is unavailable or refuses, in which case the caller keeps the
+    arithmetic it did before this change (fail forward, the fight never
+    pauses for the engine). Every engine line is journaled on the event.
+    """
+    if type(signed) is not int or signed == 0 or type(sheet.get("hitPoints")) is not int:
+        return None
+    try:
+        from core.nql import resources as nql_resources
+        effective_max = effective_sheet(sheet).get("maxHitPoints")
+        outcome = nql_resources.apply_deltas(
+            sheet,
+            {"hpDelta": signed},
+            max_hp=effective_max if type(effective_max) is int else None,
+            location="combat",
+        )
+    except Exception as exc:  # engine wrapper faults never stop a fight
+        _warn_engine(sheet, signed, str(exc))
+        return None
+    if not outcome.ok or not isinstance(outcome.sheet, dict):
+        _warn_engine(sheet, signed, outcome.reason)
+        return None
+    if type(outcome.sheet.get("hitPoints")) is not int:
+        _warn_engine(sheet, signed, "engine returned no hit points")
+        return None
+    for line in outcome.concentration_lines or []:
+        event.setdefault("engineChecks", []).append(line)
+    if outcome.concentration_ended:
+        event["concentrationEnded"] = outcome.concentration_ended
+    try:
+        from utils.enhanced_logger import info as _info
+        _info(
+            "CH: %s hp %s -> %s (temp %s -> %s) [engine %+d]"
+            % (sheet.get("name"), sheet.get("hitPoints"), outcome.sheet.get("hitPoints"),
+               sheet.get("temporaryHitPoints"), outcome.sheet.get("temporaryHitPoints"), signed),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+    return outcome.sheet
+
+
+def _warn_engine(sheet, signed, reason):
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning(
+            "CH: %s hit points %+d applied without the engine (%s)"
+            % (sheet.get("name"), signed, reason),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+
+
+def _temp_hp(sheet):
+    value = sheet.get("temporaryHitPoints") if isinstance(sheet, dict) else None
+    return value if type(value) is int else None
+
+
+def _sheet_delta(working, hp_after, status_after, creature, had_temp):
+    """The absolute sheet write for one party target (replay reads the same)."""
+    delta = {"hitPoints": hp_after}
+    temp_after = _temp_hp(working)
+    if temp_after is not None and (had_temp is not None or temp_after):
+        delta["temporaryHitPoints"] = temp_after
+    if status_after != normalize_status(creature.get("status")):
+        delta["status"] = status_after
+    return delta
+
+
 def resolve_intent(encounter, characters, intent, rolls, event_id):
     """Resolve a validated attack intent into an event + deltas.
 
@@ -379,6 +464,17 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
     swings = []
     total_damage = 0
     ranged_swings = 0
+    # CH: a party target's hit points are applied by the rules engine, one
+    # request per hitting swing, on a working copy that starts from the
+    # encounter's number (the commit invariant keeps sheet and creature equal).
+    target_sheet = _sheet_backed_target(characters, target)
+    working = None
+    temp_before = None
+    engine_used = None
+    if target_sheet is not None:
+        working = deepcopy(target_sheet)
+        working["hitPoints"] = hp_before
+        temp_before = _temp_hp(working)
     for swing_number, entry in enumerate(attack_entries, start=1):
         if target is None or hp_after <= 0:
             break
@@ -426,7 +522,17 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                 + int(entry.get("damageBonus", 0) or 0)
                 + modifier_total(sheet, "damageRolls"),
             )
-            hp_after = max(0, hp_after - damage)
+            applied = _engine_hit_points(working, -damage, event) if working is not None and damage else None
+            if applied is not None:
+                working = applied
+                hp_after = int(working["hitPoints"])
+                engine_used = True
+            else:
+                hp_after = max(0, hp_after - damage)
+                if working is not None:
+                    working["hitPoints"] = hp_after
+                    if damage:
+                        engine_used = False
             total_damage += damage
         swings.append(
             {
@@ -465,21 +571,27 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                 if is_party_member(target)
                 else NONPLAYER_DEAD
             )
-        event["outcome"]["targets"].append({
+        record = {
             "combatantId": target["combatantId"], "hpBefore": hp_before,
             "hpAfter": hp_after, "statusAfter": status_after,
-        })
+        }
+        if working is not None:
+            if temp_before is not None:
+                record["tempHpBefore"] = temp_before
+            if _temp_hp(working) is not None and (temp_before is not None or _temp_hp(working)):
+                record["tempHpAfter"] = _temp_hp(working)
+            if engine_used is not None:
+                record["engine"] = engine_used
+        event["outcome"]["targets"].append(record)
         resolution["creatureDeltas"][target["combatantId"]] = {
             "currentHitPoints": hp_after, "status": status_after,
         }
         # Only players/NPCs have character files; monsters can share a
         # name (Twig Blight x2), so syncing their sheets by name would
         # clobber the wrong record.
-        target_name = target.get("name")
-        if target.get("type") in ("player", "npc") and target_name in (characters or {}):
-            resolution["charDeltas"][target_name] = {"hitPoints": hp_after}
-            if status_after != normalize_status(target.get("status")):
-                resolution["charDeltas"][target_name]["status"] = status_after
+        if working is not None:
+            resolution["charDeltas"][target["name"]] = _sheet_delta(
+                working, hp_after, status_after, target, temp_before)
 
     if ranged_swings:
         for item in sheet.get("ammunition", []):
@@ -1068,7 +1180,29 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                 )
         hp_before = int(target.get("currentHitPoints", 0) or 0)
         ceiling = _combatant_max_hp(encounter, characters, target) or hp_before
-        hp_after = max(0, min(hp_before + hp_delta, ceiling))
+        # CH: the rules engine applies a party target's change (temporary hit
+        # points first, clamps, the concentration save); the arithmetic below
+        # stays for monsters and as the fallback when the engine is unavailable.
+        target_sheet = _sheet_backed_target(characters, target)
+        working = None
+        temp_before = None
+        engine_used = None
+        if target_sheet is not None:
+            working = deepcopy(target_sheet)
+            working["hitPoints"] = hp_before
+            temp_before = _temp_hp(working)
+            applied = _engine_hit_points(working, hp_delta, event) if hp_delta else None
+            if applied is not None:
+                working = applied
+                engine_used = True
+            elif hp_delta:
+                engine_used = False
+        if engine_used:
+            hp_after = int(working["hitPoints"])
+        else:
+            hp_after = max(0, min(hp_before + hp_delta, ceiling))
+            if working is not None:
+                working["hitPoints"] = hp_after
         status_after = normalize_status(target.get("status"))
         if hp_after == 0 and hp_delta < 0:
             # D-242-1: same rule as the attack path above.
@@ -1082,14 +1216,19 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                   "hpAfter": hp_after, "statusAfter": status_after}
         if saved is not None:
             record["saved"] = saved
+        if working is not None:
+            if temp_before is not None:
+                record["tempHpBefore"] = temp_before
+            if _temp_hp(working) is not None and (temp_before is not None or _temp_hp(working)):
+                record["tempHpAfter"] = _temp_hp(working)
+            if engine_used is not None:
+                record["engine"] = engine_used
         event["outcome"]["targets"].append(record)
         resolution["creatureDeltas"][target["combatantId"]] = {
             "currentHitPoints": hp_after, "status": status_after}
-        if target.get("type") in ("player", "npc") and target.get("name") in (characters or {}):
-            delta = {"hitPoints": hp_after}
-            if status_after != normalize_status(target.get("status")):
-                delta["status"] = status_after
-            resolution["charDeltas"][target["name"]] = delta
+        if working is not None:
+            resolution["charDeltas"][target["name"]] = _sheet_delta(
+                working, hp_after, status_after, target, temp_before)
 
     save_results = {
         record.get("combatantId"): record.get("saved")
@@ -1182,6 +1321,8 @@ def resolution_from_event(encounter, characters, event):
                 # Same as the live path (#466): no sheet delta for leaving.
                 continue
             delta = {"hitPoints": int(record["hpAfter"])}
+            if type(record.get("tempHpAfter")) is int:
+                delta["temporaryHitPoints"] = record["tempHpAfter"]
             if record["statusAfter"] != normalize_status(creature.get("status")):
                 delta["status"] = record["statusAfter"]
             resolution["charDeltas"][creature["name"]] = delta
@@ -1376,6 +1517,8 @@ def apply_resolution(encounter, characters, resolution):
                 or 0
             )
             sheet["hitPoints"] = max(0, min(int(delta["hitPoints"]), ceiling))
+        if type(delta.get("temporaryHitPoints")) is int:
+            sheet["temporaryHitPoints"] = max(0, delta["temporaryHitPoints"])
         if "status" in delta:
             sheet["status"] = delta["status"]
 
@@ -1535,6 +1678,8 @@ def apply_resolution(encounter, characters, resolution):
                 0,
                 min(int(snapshot["hitPoints"]), ceiling),
             )
+        if type(snapshot.get("temporaryHitPoints")) is int:
+            sheet["temporaryHitPoints"] = max(0, snapshot["temporaryHitPoints"])
         if "status" in snapshot:
             sheet["status"] = snapshot["status"]
     _refresh_character_effect_projections(new_encounter, new_characters)

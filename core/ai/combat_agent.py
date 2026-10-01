@@ -87,6 +87,7 @@ def _relevant_sheet(sheet):
         "class",
         "level",
         "hitPoints",
+        "temporaryHitPoints",
         "maxHitPoints",
         "armorClass",
         "status",
@@ -337,6 +338,10 @@ An adjudicated intent may contain:
   dice in the ruling and put the resulting integer in hpDelta. A heal left at
   hpDelta 0 restores nothing and still spends the slot or potion, so a
   healing spell, potion, or feature must always carry a positive hpDelta.
+  hpDelta is the damage dealt or the healing given; the rules engine applies
+  it to the sheet: temporary hit points absorb damage first, totals clamp at
+  0 and at the maximum, and the engine sets unconscious at 0 and alive on
+  healing. Never pre-subtract temporaryHitPoints from a damage hpDelta.
   Example for a hostile control target:
   targets:[{combatantId:'cmb-enemy-bandit-1',hpDelta:0}],
   effects:[{op:'add',combatantId:'cmb-enemy-bandit-1',applyOn:'failedSave',

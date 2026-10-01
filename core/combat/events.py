@@ -132,7 +132,7 @@ def validate_event(event):
                     )
                     continue
                 if any(
-                    field not in ("hitPoints", "status")
+                    field not in ("hitPoints", "temporaryHitPoints", "status")
                     for field in snapshot
                 ):
                     problems.append(
@@ -144,6 +144,14 @@ def validate_event(event):
                 ):
                     problems.append(
                         "characterStateAfter %s hitPoints must be nonnegative"
+                        % owner
+                    )
+                if "temporaryHitPoints" in snapshot and (
+                    type(snapshot["temporaryHitPoints"]) is not int
+                    or snapshot["temporaryHitPoints"] < 0
+                ):
+                    problems.append(
+                        "characterStateAfter %s temporaryHitPoints must be nonnegative"
                         % owner
                     )
                 if "status" in snapshot and not isinstance(
