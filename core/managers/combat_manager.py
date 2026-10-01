@@ -2287,12 +2287,12 @@ def _complete_agentic_combat(
         for name, lines in sorted((recovery or {}).items()):
             for line in lines:
                 parts.append(
-                    "%s recovered %d %s (%d -> %d)"
-                    % (name, int(line.get("recovered", 0)), line.get("name"),
-                       int(line.get("before", 0)), int(line.get("after", 0)))
+                    "%s fired %d %s and recovered %d afterwards (now %d)"
+                    % (name, int(line.get("spent", 0)), line.get("name"),
+                       int(line.get("recovered", 0)), int(line.get("after", 0)))
                 )
         if parts:
-            ammunition_note = " Ammunition recovered: " + "; ".join(parts) + "."
+            ammunition_note = " Ammunition: " + "; ".join(parts) + "."
         encounter_data = safe_json_load(encounter_path) or encounter_data
     except Exception as exc:
         warning("AM: ammunition recovery skipped (%s)" % exc, category="combat_events")

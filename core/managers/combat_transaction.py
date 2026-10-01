@@ -1345,8 +1345,9 @@ def recover_ammunition(
     engine ``recover ... by 0``). Idempotent through the completion receipt;
     a crash between a sheet write and the receipt leaves that stock's count
     at zero, which the engine refuses on the second pass and is then treated
-    as already recovered. Returns the receipt {name: [{name, before, after,
-    recovered}]}.
+    as already recovered. Returns the receipt {name: [{name, spent, before,
+    after, recovered}]}, ``spent`` being the shots fired since the last
+    recovery (the engine's pending count).
     """
     with _combat_leases(
         encounter_path,
@@ -1372,14 +1373,15 @@ def recover_ammunition(
             lines = []
             for row in rows:
                 before = int(row.get("quantity", 0) or 0)
+                spent = int(row.get("recoverable", 0) or 0)
                 try:
                     outcome = nql_ammunition.recover(character, row["name"], forfeit=forfeit)
                 except Exception as exc:
                     outcome = nql_ammunition.AmmunitionOutcome(False, reason=str(exc))
                 if outcome.ok:
                     nql_ammunition.write_back(row, outcome)
-                    lines.append({"name": row["name"], "before": before, "after": row["quantity"],
-                                  "recovered": row["quantity"] - before})
+                    lines.append({"name": row["name"], "spent": spent, "before": before,
+                                  "after": row["quantity"], "recovered": row["quantity"] - before})
                 elif (outcome.fault or {}).get("code") == "E_QUANTITY":
                     # The count was already closed (a crash after the sheet write).
                     row.pop("recoverable", None)
