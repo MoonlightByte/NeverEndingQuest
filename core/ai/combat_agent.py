@@ -341,7 +341,13 @@ An adjudicated intent may contain:
   values for damage, final hpDelta values for healing, and hpDelta 0 for
   control-only targets. Code rolls declared saving throws, applies their
   half/no-damage outcomes, clamps state, and stages only effects whose save
-  condition won. Code does NOT roll adjudicated damage or healing dice: the
+  condition won. A party member's save is rolled by the rules engine with
+  the sheet's total and the roll mode its conditions impose (a Restrained
+  target has disadvantage on Dexterity saves, a Paralyzed one fails Strength
+  and Dexterity saves): declare the save's type and dc only, never pre-apply
+  disadvantage, a bonus or an automatic failure yourself. A save repeated at
+  the end of the target's turn is an intent for that target with the same
+  save and effects:[{op:'remove', ..., applyOn:'successfulSave'}]. Code does NOT roll adjudicated damage or healing dice: the
   engine never turns '2d8+3' in a description into a number. You roll those
   dice in the ruling and put the resulting integer in hpDelta. A heal left at
   hpDelta 0 restores nothing and still spends the slot or potion, so a

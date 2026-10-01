@@ -70,6 +70,9 @@ class Genesis:
     gaps: List[str] = field(default_factory=list)
 
 
+ABILITY_NAMES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
+
+
 def _q(value: str) -> str:
     """NQL strings use JSON escapes."""
     return json.dumps(str(value), ensure_ascii=True)
@@ -222,7 +225,7 @@ def live_effects(sheet: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def effect_engine_modifiers(effect: Dict[str, Any]) -> Optional[List[Tuple[str, int]]]:
-    """The engine-representable modifiers of one effect: [("defense" | "hp-max", amount)].
+    """The engine-representable modifiers of one effect: [("defense" | "hp-max" | "saves" | "save:<ability>", amount)].
 
     Stored modifiers are normalized (``armorClass``, ``maxHitPoints``, or
     ``hitPoints`` with ``affectsMax``); other stats are not the engine's here.
@@ -242,6 +245,11 @@ def effect_engine_modifiers(effect: Dict[str, Any]) -> Optional[List[Tuple[str, 
         elif stat == "maxHitPoints" or (stat == "hitPoints" and modifier.get("affectsMax") is True):
             out.append(("hp-max", modifier["value"]))
             hp_max_total += modifier["value"]
+        elif stat == "savingThrows":
+            # CS: a flat bonus to every saving throw reaches the engine's save totals.
+            out.append(("saves", modifier["value"]))
+        elif isinstance(stat, str) and stat.startswith("savingThrow.") and stat[12:] in ABILITY_NAMES:
+            out.append(("save:" + stat[12:], modifier["value"]))
     if hp_max_total and any(k == "hp-max" and (v > 0) != (hp_max_total > 0) for k, v in out):
         # One instance's maximum modifiers must all raise or all drain.
         return None
@@ -261,6 +269,10 @@ def effect_type_line(effect: Dict[str, Any], modifiers: List[Tuple[str, int]]) -
     for index, (kind, amount) in enumerate(modifiers):
         if kind == "defense":
             parts.append(f'modifier "m{index}" stat "defense" add {amount};')
+        elif kind == "saves":
+            parts.append(f'modifier "m{index}" stat "bonus:saves" add {amount};')
+        elif kind.startswith("save:"):
+            parts.append(f'modifier "m{index}" stat {_q(kind)} add {amount};')
         else:
             parts.append(f'modifier "m{index}" resource "hp" maximum add {amount};')
     return f"condition type {_q(effect_type_id(effect))} {{ instances unique; {' '.join(parts)} }}"
