@@ -9110,6 +9110,10 @@ def _main_game_loop(startup_authority, turn_authority):
                     abilities = member_data_for_note.get("abilities", {})
                     ability_str = f"STR:{abilities.get('strength', 'N/A')} DEX:{abilities.get('dexterity', 'N/A')} CON:{abilities.get('constitution', 'N/A')} INT:{abilities.get('intelligence', 'N/A')} WIS:{abilities.get('wisdom', 'N/A')} CHA:{abilities.get('charisma', 'N/A')}"
                     next_level_xp_note = member_data_for_note.get("exp_required_for_next_level", "N/A")
+                    pending_level_ups = member_data_for_note.get("levelUpsPending")
+                    if type(pending_level_ups) is int and pending_level_ups > 0:
+                        # Engine-written (core/nql/stats): the XP has crossed the threshold; offer levelUp, never recompute.
+                        next_level_xp_note = f"{next_level_xp_note} LEVEL-UP EARNED ({pending_level_ups}; offer levelUp)"
                     display_name = stats_item.get('display_name', stats_item['name'].capitalize())
                 
                     # Extract spell slot information if character has spellcasting

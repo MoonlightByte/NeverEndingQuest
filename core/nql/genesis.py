@@ -557,6 +557,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     lines.append(' slot "hand" capacity 2;\n slot "body" capacity 1;\n slot "shield" capacity 1;')
     lines.append(' derive stat "defense" { term stat "dexterity" offset -10 divide 2; }')
     lines.append(srd_stats.DERIVE_RULES.rstrip("\n"))
+    lines.append(srd_stats.XP_RULES.rstrip("\n"))
     lines.extend(d.rstrip("\n") for d in definitions)
     lines.append("}")
     lines.extend(items)
