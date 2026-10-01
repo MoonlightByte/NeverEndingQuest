@@ -164,6 +164,14 @@ SPELLCASTING MONSTERS:
 - Calculate spell attack bonus as: proficiency bonus + ability modifier
 - Choose appropriate spells for the monster's theme and CR
 
+ACTIONS AND SPECIAL ABILITIES - write each entry the way the SRD stat block states it:
+- kind "attack": an attack roll. attackBonus is the to-hit bonus, damageDice the dice (for example "1d8"), damageBonus the flat bonus, damageType the type. When the hit also forces a saving throw (a venomous bite: "the target must make a DC 11 Constitution saving throw, taking 2d8 poison damage on a failed save, or half as much on a successful one"), put that save in "rider": {ability, dc, halfOnSave, onFail: {damageDice, damageBonus, damageType, conditions, roundsRemaining, repeatAtEndOfTurn}}. The attack's own dice stay in damageDice; the rider's dice go in rider.onFail.damageDice.
+- kind "save": no attack roll; the target makes a saving throw. Put the save in "save": {ability (lowercase: strength, dexterity, constitution, intelligence, wisdom, charisma), dc, halfOnSave, onFail: {damageDice, damageBonus, damageType, conditions, roundsRemaining, repeatAtEndOfTurn}}. onFail.conditions lists SRD condition names in lowercase (restrained, poisoned, paralyzed, prone, frightened, blinded, stunned...); an empty list when the ability only deals damage. roundsRemaining is the duration in rounds, or null when the condition lasts until escaped or cured; repeatAtEndOfTurn is true when the target repeats the save at the end of each of its turns. For a kind "save" entry write attackBonus 0, damageDice "0d0", damageBonus 0 and damageType "none" (the mechanics live in save). Example, Giant Spider Web: {"name": "Web", "kind": "save", "attackBonus": 0, "damageDice": "0d0", "damageBonus": 0, "damageType": "none", "recharge": {"min": 5, "max": 6}, "save": {"ability": "dexterity", "dc": 13, "halfOnSave": false, "onFail": {"damageDice": "", "damageBonus": 0, "damageType": "", "conditions": ["restrained"], "roundsRemaining": null, "repeatAtEndOfTurn": false}}, "description": "Ranged 30/60 ft. The target is restrained by webbing until it escapes (DC 12 Strength check) or the webbing is destroyed (AC 10, 5 hit points)."}
+- kind "trait": a passive feature with no roll (Web Sense, Spider Climb, Pack Tactics, Keen Smell): attackBonus 0, damageDice "0d0", damageBonus 0, damageType "none", and the rule text in "description". Traits go in specialAbilities; attack and save abilities that the creature uses on its turn go in actions.
+- "recharge": {min, max} on an action that recharges on a d6 (Recharge 5-6 is {"min": 5, "max": 6}); omit it otherwise.
+- "description": the SRD sentence for every entry (range, area, escape DC, what happens). Never put rule text in damageType; never leave a saving throw described only in prose.
+- Multiattack: a single entry named "Multiattack" with attackBonus 0, damageDice "0d0", damageBonus 0, damageType "none" and the description stating the attacks it makes; the component attacks are their own entries.
+
 Ensure your new monster JSON adheres to the provided schema template. Do not include any additional properties or nested 'type' and 'value' fields. For non-spellcasters, omit the spellcasting property entirely. Return only the JSON content without any markdown formatting."""
 
     # Build context-aware user prompt
@@ -251,6 +259,7 @@ Schema: {json.dumps(schema)}"""
                 monster_data = remove_nested_values(monster_data)
                 last_parsed_data = monster_data
                 validate(instance=monster_data, schema=schema)
+                require_stated_abilities(monster_data)
                 return monster_data
             except json.JSONDecodeError as e:
                 last_json_err = e
@@ -286,6 +295,40 @@ Schema: {json.dumps(schema)}"""
         print(f"{YELLOW}Processed monster data:{RESET}\n{json.dumps(last_parsed_data, indent=2)}")
 
     return None
+
+def require_stated_abilities(monster_data):
+    """MS-a: an ability declared as a saving throw carries its save.
+
+    The schema keeps every new field optional so older stat blocks still
+    load; this is the one typed check the schema cannot express without
+    conditional keywords that the provider converters do not carry. A
+    ``kind: "save"`` entry without a ``save`` object, or a ``save`` object
+    on an entry of another kind, is a ValidationError so the retry loop
+    asks the model again. An entry with a ``save`` and no ``kind`` is
+    normalized to ``kind: "save"``.
+    """
+    for family in ("actions", "specialAbilities"):
+        entries = monster_data.get(family)
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            kind = entry.get("kind")
+            has_save = isinstance(entry.get("save"), dict)
+            if kind == "save" and not has_save:
+                raise ValidationError(
+                    "%s entry %r is kind 'save' but carries no save object"
+                    % (family, entry.get("name"))
+                )
+            if has_save and kind is None:
+                entry["kind"] = "save"
+            elif has_save and kind != "save":
+                raise ValidationError(
+                    "%s entry %r carries a save object but kind %r (a save on a hit belongs in rider)"
+                    % (family, entry.get("name"), kind)
+                )
+
 
 def remove_nested_values(data):
     if isinstance(data, dict):

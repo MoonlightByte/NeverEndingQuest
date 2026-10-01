@@ -161,6 +161,80 @@ def _find_action(actor_sheet, name):
     return None
 
 
+def _stat_block_save_entry(actor_sheet, name):
+    """MS-a: the actor's listed save ability (kind 'save' with a save object).
+
+    A stat block states a Web, a breath weapon or a gaze as a saving throw
+    (schemas/mon_schema.json: kind, save {ability, dc, halfOnSave, onFail}).
+    The typed entry, found by its exact listed name, is the authority for the
+    save's type, DC and on-fail mechanics; it is never read from prose.
+    """
+    wanted = str(name or "").strip().lower()
+    if not wanted:
+        return None
+    for family in ("attacksAndSpellcasting", "actions", "specialAbilities"):
+        entries = (actor_sheet or {}).get(family)
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if (
+                isinstance(entry, dict)
+                and str(entry.get("name", "")).strip().lower() == wanted
+                and isinstance(entry.get("save"), dict)
+                and entry.get("kind", "save") == "save"
+            ):
+                return entry
+    return None
+
+
+def _stated_save_spec(entry):
+    """The intent-shaped save {type, dc, halfOnSave} a stat-block entry states."""
+    save = (entry or {}).get("save") or {}
+    try:
+        dc = int(save.get("dc"))
+    except (TypeError, ValueError):
+        return None
+    ability = str(save.get("ability") or "").strip().lower()
+    if not ability or dc < 1:
+        return None
+    return {"type": ability, "dc": dc, "halfOnSave": bool(save.get("halfOnSave"))}
+
+
+def _stated_on_fail(entry):
+    """(dice, conditions, roundsRemaining) a stat-block save states on a failure.
+
+    ``dice`` is (count, sides, flat) when the entry carries rollable damage
+    dice, else None; ``conditions`` is the typed SRD list, lowercased.
+    """
+    on_fail = ((entry or {}).get("save") or {}).get("onFail") or {}
+    dice = None
+    try:
+        count, sides, modifier = parse_dice(on_fail.get("damageDice"))
+        dice = (count, sides, modifier + int(on_fail.get("damageBonus", 0) or 0))
+    except (TypeError, ValueError):
+        dice = None
+    conditions = [
+        str(name).strip().lower()
+        for name in (on_fail.get("conditions") or [])
+        if isinstance(name, str) and name.strip()
+    ]
+    rounds = on_fail.get("roundsRemaining")
+    return dice, conditions, (rounds if type(rounds) is int and rounds > 0 else None)
+
+
+def _save_ability_feedback(entry):
+    """Rejection feedback that tells the model how to declare a listed save ability."""
+    spec = _stated_save_spec(entry) or {}
+    _dice, conditions, _rounds = _stated_on_fail(entry)
+    return {
+        "name": entry.get("name"),
+        "type": spec.get("type"),
+        "dc": spec.get("dc"),
+        "halfOnSave": spec.get("halfOnSave", False),
+        "conditions": conditions,
+    }
+
+
 def _living_target_ids(encounter):
     return [c["combatantId"] for c in encounter.get("creatures", [])
             if is_combatant_targetable(c)]
@@ -247,6 +321,18 @@ def validate_intent(encounter, characters, intent, strict=None):
                 retryable=True)
         if strict:
             entry = _find_action(sheet, intent.get("ability"))
+            stated = _stat_block_save_entry(sheet, intent.get("ability"))
+            if stated is not None:
+                # MS-a: a save ability is not an attack roll; the correction
+                # names the adjudicated shape instead of steering to a bite.
+                feedback = _save_ability_feedback(stated)
+                return False, Rejection(
+                    reason="%s is a save ability of %s: declare it with mode "
+                           "'adjudicated', ability %r and save {type: %r, dc: %s}"
+                           % (stated.get("name"), actor.get("name"), stated.get("name"),
+                              feedback.get("type"), feedback.get("dc")),
+                    legalActions=executable_attack_names(sheet), retryable=True,
+                    saveAbility=feedback)
             if entry is None or not is_executable_attack(entry):
                 return False, Rejection(
                     reason="%s does not have %r" % (actor.get("name"), intent.get("ability")),
@@ -1076,6 +1162,80 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
         resolution["violations"].append("duplicate adjudicated targets are not allowed")
         targets = []
 
+    # MS-a: a listed save ability (Web, a breath weapon) is declared by the
+    # model with ability = its exact listed name; the stat block's typed save
+    # object is then the authority for the save, the on-fail damage dice and
+    # the on-fail conditions. Code reconciles: the save spec is taken from
+    # the entry, the damage is rolled from the persisted prerolls, and a
+    # missing failed-save condition effect is staged from the entry. Each
+    # correction is journaled as a normalization; replay reads the journal.
+    stated_entry = None
+    stated_save = None
+    stated_dice = None
+    stated_conditions = []
+    stated_rounds = None
+    actor_creature = combatant_by_id(encounter, proposal.get("actorId"))
+    if actor_creature is not None and proposal.get("ability"):
+        stated_entry = _stat_block_save_entry(
+            _raw_combatant_sheet(encounter, characters, actor_creature),
+            proposal.get("ability"),
+        )
+    if stated_entry is not None:
+        stated_save = _stated_save_spec(stated_entry)
+        stated_dice, stated_conditions, stated_rounds = _stated_on_fail(stated_entry)
+    if stated_entry is not None and stated_save is not None and stated_conditions:
+        effects = list(effects)
+        for entry in targets:
+            target_id = entry.get("combatantId") if isinstance(entry, dict) else None
+            target = combatant_by_id(encounter, target_id) if target_id else None
+            if target is None:
+                continue
+            sheet_backed = target.get("type") in ("player", "npc")
+            covered = False
+            for op in effects:
+                if not isinstance(op, dict) or op.get("op") != "add":
+                    continue
+                same_target = (
+                    op.get("combatantId") == target_id
+                    or (sheet_backed and op.get("owner") == target.get("name"))
+                )
+                listed = [
+                    str(name).strip().lower()
+                    for name in ((op.get("effect") or {}).get("conditions") or [])
+                    if isinstance(name, str)
+                ]
+                if same_target and all(name in listed for name in stated_conditions):
+                    covered = True
+                    break
+            if covered:
+                continue
+            effect = {
+                "name": str(stated_entry.get("name") or "").strip(),
+                "description": str(
+                    stated_entry.get("description") or stated_entry.get("name") or ""
+                ).strip(),
+                "modifiers": [],
+                "conditions": list(stated_conditions),
+                "incapacitates": False,
+            }
+            if stated_rounds:
+                effect["roundsRemaining"] = stated_rounds
+                effect["tickTrigger"] = "end_of_round"
+            else:
+                effect["durationKind"] = "encounter"
+            op = {"op": "add", "applyOn": "failedSave", "effect": effect}
+            if sheet_backed:
+                op["owner"] = target.get("name")
+            else:
+                op["combatantId"] = target_id
+            effects.append(op)
+            event.setdefault("normalizations", []).append({
+                "kind": "statBlockConditions",
+                "ability": stated_entry.get("name"),
+                "combatantId": target_id,
+                "conditions": list(stated_conditions),
+            })
+
     # Resources: validate owner/kind/name, reject overspend, and record
     # absolute before/after so a crash-replay of this event is idempotent.
     resource_identities = set()
@@ -1421,6 +1581,20 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
         if isinstance(proposal.get("save"), dict)
         else None
     )
+    if stated_save is not None:
+        supplied = {
+            "type": str((save_spec or {}).get("type") or "").strip().lower(),
+            "dc": (save_spec or {}).get("dc"),
+            "halfOnSave": bool((save_spec or {}).get("halfOnSave")),
+        }
+        if save_spec is None or supplied != stated_save:
+            event.setdefault("normalizations", []).append({
+                "kind": "statBlockSave",
+                "ability": stated_entry.get("name"),
+                "supplied": deepcopy(save_spec),
+                "applied": dict(stated_save),
+            })
+        save_spec = dict(stated_save)
     target_entries = {
         entry.get("combatantId"): entry
         for entry in targets
@@ -1542,6 +1716,36 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             continue
         saved = None
         save_line = None
+        if stated_dice is not None and hp_delta <= 0:
+            # MS-a: the stat block's on-fail dice are rolled from the
+            # persisted prerolls (the full failed-save amount; the save
+            # verdict below halves or negates it), never by the model.
+            count, sides, flat = stated_dice
+            rolled = [
+                _take_roll(
+                    rolls,
+                    "d%d" % sides,
+                    "damage",
+                    actor_id=proposal.get("actorId"),
+                    target_id=target.get("combatantId"),
+                )
+                for _ in range(count)
+            ]
+            for value in rolled:
+                event["rolls"].append({
+                    "die": "d%d" % sides, "value": value, "purpose": "damage",
+                    "combatantId": target["combatantId"],
+                })
+            stated_damage = max(0, sum(rolled) + flat)
+            if hp_delta != -stated_damage:
+                event.setdefault("normalizations", []).append({
+                    "kind": "statBlockDamage",
+                    "ability": stated_entry.get("name"),
+                    "combatantId": target["combatantId"],
+                    "supplied": hp_delta,
+                    "rolled": -stated_damage,
+                })
+            hp_delta = -stated_damage
         if save_spec and hp_delta <= 0:
             # CS: a party target's save is the rules engine's (conditions'
             # roll modes, the sheet's total, the verdict); monsters and an

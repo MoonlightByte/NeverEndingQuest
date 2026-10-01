@@ -6,6 +6,7 @@
 
 from collections.abc import Mapping
 from copy import deepcopy
+import json
 import logging
 import re
 import time
@@ -164,7 +165,37 @@ def _intent_correction(exc, batch=None):
     )
     instruction = "Return a corrected full ordered intent batch."
     legal_actions = feedback.get("legalActions")
-    if isinstance(legal_actions, list) and legal_actions:
+    save_ability = feedback.get("saveAbility")
+    if isinstance(save_ability, dict) and save_ability.get("name"):
+        # MS-a: the rejected entry is a listed save ability, not an attack
+        # roll; the correction gives the adjudicated shape, not a bite.
+        conditions = [
+            str(name)
+            for name in (save_ability.get("conditions") or [])
+            if isinstance(name, str) and name
+        ]
+        instruction = (
+            "Return a corrected full ordered intent batch. For the rejected "
+            "actor, %r is a save ability, not a known attack: resubmit it "
+            "with mode 'adjudicated', ability %r, save {type:%r, dc:%s, "
+            "halfOnSave:%s}, targets [{combatantId, hpDelta}] (hpDelta 0 when "
+            "it only imposes conditions; code rolls its listed damage dice)"
+            % (
+                save_ability["name"],
+                save_ability["name"],
+                save_ability.get("type"),
+                save_ability.get("dc"),
+                "true" if save_ability.get("halfOnSave") else "false",
+            )
+        )
+        if conditions:
+            instruction += (
+                " and effects [{op:'add', owner or combatantId, "
+                "applyOn:'failedSave', effect:{name:%r, conditions:%s}}]"
+                % (save_ability["name"], json.dumps(conditions))
+            )
+        instruction += "; or choose a listed known attack instead."
+    elif isinstance(legal_actions, list) and legal_actions:
         rendered = [
             str(action).strip()
             for action in legal_actions
