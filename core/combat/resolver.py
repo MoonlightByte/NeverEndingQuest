@@ -334,7 +334,7 @@ def _sheet_backed_target(characters, creature):
     return sheet if isinstance(sheet, dict) else None
 
 
-def _engine_hit_points(sheet, signed, event):
+def _engine_hit_points(sheet, signed, event, focus=None):
     """CH: the rules engine applies one hit-point change to a party sheet.
 
     One damage instance is one engine request (the SRD concentration rule is
@@ -368,6 +368,8 @@ def _engine_hit_points(sheet, signed, event):
         return None
     for line in outcome.concentration_lines or []:
         event.setdefault("engineChecks", []).append(line)
+        if focus is not None:
+            focus.setdefault("engineChecks", []).append(line)
         try:
             from utils.enhanced_logger import info as _info
             _info("CH: engine check: %s" % line, category="combat_events")
@@ -375,6 +377,17 @@ def _engine_hit_points(sheet, signed, event):
             pass
     if outcome.concentration_ended:
         event["concentrationEnded"] = outcome.concentration_ended
+        if focus is not None:
+            # CC: the target record carries the verdict; apply_resolution ends
+            # the spell everywhere from it. The working sheet drops the record
+            # now so a later swing or event of this window makes no second
+            # save for a spell the engine already ended.
+            focus["concentrationEnded"] = outcome.concentration_ended
+            record = _concentration_record(outcome.sheet)
+            if record:
+                focus["concentrationGroup"] = record["group"]
+            from core.managers.concentration_runtime import clear_record
+            clear_record(outcome.sheet)
     try:
         from utils.enhanced_logger import info as _info
         _info(
@@ -394,6 +407,135 @@ def _warn_engine(sheet, signed, reason):
         _warning(
             "CH: %s hit points %+d applied without the engine (%s)"
             % (sheet.get("name"), signed, reason),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+
+
+def _concentration_record(sheet):
+    """The caster's typed concentration record on a sheet, or None."""
+    from core.nql import stats as nql_stats
+    return nql_stats.concentration_of(sheet) if isinstance(sheet, dict) else None
+
+
+def _end_concentration_group(encounter, characters, group, caster_combatant_id):
+    """CC: end every effect of one concentration group on every sheet and creature.
+
+    Matching is by the typed ``concentrationId`` first; a record with no group
+    id (staged before groups existed) ends by its ``sourceCombatantId``. Sheet
+    removals go through the lifecycle so the engine takes the numbers off the
+    sheet. Returns the "<owner>: <name>" labels removed; removing an absent
+    effect is a no-op, so a replay converges.
+    """
+    labels = []
+
+    def _matches(effect):
+        if not (isinstance(effect, dict) and effect.get("concentration")):
+            return False
+        if group and effect.get("concentrationId"):
+            return effect.get("concentrationId") == group
+        return bool(caster_combatant_id) and effect.get("sourceCombatantId") == caster_combatant_id
+
+    for owner, sheet in list((characters or {}).items()):
+        if not isinstance(sheet, dict):
+            continue
+        remove_ops = [
+            {"op": "remove", "effectId": effect.get("effectId"), "name": effect.get("name")}
+            for effect in sheet.get("temporaryEffects", []) or []
+            if _matches(effect)
+        ]
+        if remove_ops:
+            characters[owner] = apply_effect_ops(sheet, remove_ops)
+            labels.extend("%s: %s" % (owner, op["name"]) for op in remove_ops)
+    for creature in (encounter or {}).get("creatures", []) or []:
+        effects = creature.get("activeEffects") if isinstance(creature, dict) else None
+        if not isinstance(effects, list):
+            continue
+        remove_ops = [
+            {"op": "remove", "effectId": effect.get("effectId"), "name": effect.get("name")}
+            for effect in effects
+            if _matches(effect)
+        ]
+        for operation in remove_ops:
+            _apply_encounter_effect_operation(creature, operation)
+            labels.append("%s: %s" % (creature.get("name"), operation["name"]))
+    return labels
+
+
+def _apply_concentration_verdicts(new_encounter, new_characters, event):
+    """CC: act on the engine's concentration verdict journaled on each target record.
+
+    Live apply writes ``concentrationGroup`` and ``concentrationEndedEffects``
+    into the record before the event is journaled; a replay reads them back
+    and re-applies the same removals, never consulting the engine.
+    """
+    from core.managers.concentration_runtime import clear_record
+    for record in (event.get("outcome") or {}).get("targets", []) or []:
+        if not isinstance(record, dict) or not record.get("concentrationEnded"):
+            continue
+        creature = combatant_by_id(new_encounter, record.get("combatantId"))
+        sheet = _sheet_backed_target(new_characters, creature)
+        if sheet is None:
+            continue
+        current = _concentration_record(sheet)
+        group = record.get("concentrationGroup") or (current or {}).get("group")
+        if group and not record.get("concentrationGroup"):
+            record["concentrationGroup"] = group
+        labels = _end_concentration_group(
+            new_encounter, new_characters, group, creature.get("combatantId")
+        )
+        if clear_record(new_characters[creature["name"]]):
+            labels.append("%s: concentration record" % creature["name"])
+        if "concentrationEndedEffects" not in record:
+            record["concentrationEndedEffects"] = labels
+        try:
+            from utils.enhanced_logger import info as _info
+            _info(
+                "CC: %s concentration ended (%s); removed: %s"
+                % (creature.get("name"), record.get("concentrationEnded"), ", ".join(labels) or "nothing"),
+                category="combat_events",
+            )
+        except Exception:
+            pass
+
+
+def _record_fight_cast(new_encounter, new_characters, event, op):
+    """CC: a concentration effect added by a party caster writes the caster's record.
+
+    The group is the event id the resolver stamped on the effect, so the
+    journaled op carries everything a replay needs. Several ops of one event
+    (one cast, several targets) extend ``targets``; a different group replaces
+    the record (the same-caster drop already removed the old effects).
+    """
+    effect = op.get("effect") if isinstance(op, dict) else None
+    if not (isinstance(effect, dict) and effect.get("concentration") and effect.get("concentrationId")):
+        return
+    actor = combatant_by_id(new_encounter, event.get("actorId"))
+    sheet = _sheet_backed_target(new_characters, actor)
+    if sheet is None:
+        return
+    if op.get("owner"):
+        target = op.get("owner")
+    else:
+        target_creature = combatant_by_id(new_encounter, op.get("combatantId"))
+        target = (target_creature or {}).get("name") or op.get("combatantId")
+    from core.nql import stats as nql_stats
+    group = effect.get("concentrationId")
+    current = nql_stats.concentration_of(sheet)
+    targets = set((current or {}).get("targets") or []) if current and current.get("group") == group else set()
+    targets.add(str(target))
+    sheet[nql_stats.CONCENTRATION_FIELD] = {
+        "name": effect.get("name"),
+        "group": group,
+        "targets": sorted(targets),
+        "expiration": None,
+    }
+    try:
+        from utils.enhanced_logger import info as _info
+        _info(
+            "CC: %s concentrates on %s (group %s, targets %s)"
+            % (actor.get("name"), effect.get("name"), group, ", ".join(sorted(targets))),
             category="combat_events",
         )
     except Exception:
@@ -476,6 +618,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
     working = None
     temp_before = None
     engine_used = None
+    focus = {}
     if target_sheet is not None:
         working = deepcopy(target_sheet)
         working["hitPoints"] = hp_before
@@ -527,7 +670,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                 + int(entry.get("damageBonus", 0) or 0)
                 + modifier_total(sheet, "damageRolls"),
             )
-            applied = _engine_hit_points(working, -damage, event) if working is not None and damage else None
+            applied = _engine_hit_points(working, -damage, event, focus) if working is not None and damage else None
             if applied is not None:
                 working = applied
                 hp_after = int(working["hitPoints"])
@@ -587,6 +730,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                 record["tempHpAfter"] = _temp_hp(working)
             if engine_used is not None:
                 record["engine"] = engine_used
+            record.update(focus)
         event["outcome"]["targets"].append(record)
         resolution["creatureDeltas"][target["combatantId"]] = {
             "currentHitPoints": hp_after, "status": status_after,
@@ -1192,11 +1336,12 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
         working = None
         temp_before = None
         engine_used = None
+        focus = {}
         if target_sheet is not None:
             working = deepcopy(target_sheet)
             working["hitPoints"] = hp_before
             temp_before = _temp_hp(working)
-            applied = _engine_hit_points(working, hp_delta, event) if hp_delta else None
+            applied = _engine_hit_points(working, hp_delta, event, focus) if hp_delta else None
             if applied is not None:
                 working = applied
                 engine_used = True
@@ -1228,6 +1373,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                 record["tempHpAfter"] = _temp_hp(working)
             if engine_used is not None:
                 record["engine"] = engine_used
+            record.update(focus)
         event["outcome"]["targets"].append(record)
         resolution["creatureDeltas"][target["combatantId"]] = {
             "currentHitPoints": hp_after, "status": status_after}
@@ -1576,6 +1722,7 @@ def apply_resolution(encounter, characters, resolution):
                     added_effect.get("sourceCombatantId"),
                     keep_id=added_effect.get("concentrationId"),
                 )
+            _record_fight_cast(new_encounter, new_characters, event, op)
         if op.get("owner"):
             sheet = new_characters.get(op.get("owner"))
             if not isinstance(sheet, dict):
@@ -1662,6 +1809,13 @@ def apply_resolution(encounter, characters, resolution):
     }
     for source_id in down_sources:
         _drop_concentration(new_encounter, new_characters, source_id)
+        downed = _sheet_backed_target(new_characters, combatant_by_id(new_encounter, source_id))
+        if downed is not None:
+            from core.managers.concentration_runtime import clear_record
+            clear_record(downed)
+    # CC: a failed engine save (journaled on the target record) ends the spell
+    # everywhere and clears the caster's record; replay reads the same record.
+    _apply_concentration_verdicts(new_encounter, new_characters, event)
 
     # Character files are written before the encounter journal receipt. A
     # replay can therefore begin with an already-applied effect/resource file.
