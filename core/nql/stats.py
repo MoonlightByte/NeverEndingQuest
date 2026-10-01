@@ -543,6 +543,13 @@ def drop_model_totals(stored: Dict[str, Any], updates: Dict[str, Any]) -> List[s
     if CONCENTRATION_FIELD in updates:
         updates.pop(CONCENTRATION_FIELD)
         dropped.append(CONCENTRATION_FIELD)
+    # AM: an ammunition row's count of recoverable shots is the engine's (core/nql/ammunition).
+    rows = updates.get("ammunition")
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, dict) and "recoverable" in row:
+                row.pop("recoverable")
+                dropped.append("ammunition[%s].recoverable" % row.get("name"))
     senses = updates.get("senses")
     if isinstance(senses, dict) and "passivePerception" in senses:
         senses.pop("passivePerception")

@@ -319,6 +319,13 @@ An adjudicated intent may contain:
   and name as the item exactly as that sheet lists it. Read the sheets before
   choosing: if the actor's slot is spent and no party sheet holds the item,
   do not declare the spell or potion at all; take a real listed action.
+  Every shot from a bow, crossbow, or sling in an adjudicated intent declares
+  the ammunition it fires: kind 'ammunition', the ammunition name exactly as
+  the shooter's sheet lists it, delta -1 per shot. Every player shot is
+  adjudicated, so every player shot declares it; only a mode='known' attack
+  spends ammunition by itself. The rules engine spends the declared delta;
+  never write a quantity, and after the fight the engine returns the
+  recoverable share.
 - effects: [{op:'add', owner, effect:{name,description,roundsRemaining,
   concentration,tickTrigger,modifiers:[{stat,value}],conditions:[],
   incapacitates:false,onApply:[],onRemove:[]}}] or
