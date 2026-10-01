@@ -35,7 +35,10 @@ EXPERTISE_FIELD = "expertise"
 STATE_FIELDS = ("status", "condition", "condition_affected")
 EXHAUSTION_FIELD = "exhaustion"
 SAVES_FIELD = "savingThrowBonuses"  # engine-written {ability: total}
-ROLL_MODES_FIELD = "rollModes"  # engine-written {what: "disadvantage (poisoned)"}; empty when every roll is normal
+ROLL_MODES_FIELD = "rollModes"
+XP_FIELD = "experience_points"  # a fact: the base of the engine stat "xp"
+XP_NEXT_FIELD = "exp_required_for_next_level"  # engine-written from xp:next
+LEVEL_UPS_FIELD = "levelUpsPending"  # engine-written from xp:pending  # engine-written {what: "disadvantage (poisoned)"}; empty when every roll is normal
 EXHAUSTION_MAX = 6
 STATE_PREFIX = "state:"
 DEFAULT_SPEED = 30
@@ -256,6 +259,11 @@ def stat_lines(sheet: Dict[str, Any], gaps: List[str]) -> List[str]:
     for start in range(0, len(skills), 6):
         lines.append(" " + " ".join(f'stat "skill:{s}" = 0;' for s in skills[start:start + 6]))
     lines.append(' stat "initiative" = 0; stat "passive:perception" = 10;')
+    xp = _int(sheet.get(XP_FIELD))
+    if xp is None or xp < 0:
+        gaps.append(f"{cid}: {XP_FIELD} is not a whole number; 0 declared")
+        xp = 0
+    lines.append(f' stat "xp" = {xp}; stat "xp:next" = 0; stat "xp:pending" = 0;')
     ability = casting_ability(sheet)
     if ability:
         lines.append(f' stat "spell-dc:{ability}" = 8; stat "spell-attack:{ability}" = 0;')
@@ -344,6 +352,12 @@ def write_back(sheet: Dict[str, Any], status: Dict[str, Any]) -> List[str]:
     if len(saves) == len(srd_stats.ABILITIES):
         put(sheet, SAVES_FIELD, saves, SAVES_FIELD)
     put(sheet, ROLL_MODES_FIELD, roll_modes_of(status), ROLL_MODES_FIELD)
+    if "xp:next" in values and "xp:pending" in values:
+        # At level 20 the engine's "next" is 0 (no further level); the sheet keeps the level-20
+        # total so the banner never reads "XP 400000/0".
+        if values["xp:next"] > 0:
+            put(sheet, XP_NEXT_FIELD, values["xp:next"], XP_NEXT_FIELD)
+        put(sheet, LEVEL_UPS_FIELD, max(0, values["xp:pending"]), LEVEL_UPS_FIELD)
     return changes
 
 
@@ -433,9 +447,9 @@ def store(sheet: Dict[str, Any], status: Dict[str, Any]) -> List[str]:
     return changes
 
 
-DERIVED_FIELDS = ("proficiencyBonus", "initiative", SAVES_FIELD, ROLL_MODES_FIELD)
+DERIVED_FIELDS = ("proficiencyBonus", "initiative", SAVES_FIELD, ROLL_MODES_FIELD, XP_NEXT_FIELD, LEVEL_UPS_FIELD)
 FACT_FIELDS = ("level", "abilities", "skills", "savingThrows", EXPERTISE_FIELD, "feats", "classFeatures", "speed",
-               EXHAUSTION_FIELD) + STATE_FIELDS
+               EXHAUSTION_FIELD, XP_FIELD) + STATE_FIELDS
 
 
 def facts_changed(before: Dict[str, Any], after: Dict[str, Any]) -> bool:

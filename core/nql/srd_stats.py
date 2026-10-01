@@ -358,3 +358,29 @@ DERIVE_RULES = """\
   term stat "level" offset 7 divide 4;
  }
 """
+
+XP_RULES = """\
+ derive stat "xp:next" {
+  term stat "level" offset 0 divide 1
+   step 1 = 300 step 2 = 900 step 3 = 2700 step 4 = 6500 step 5 = 14000
+   step 6 = 23000 step 7 = 34000 step 8 = 48000 step 9 = 64000 step 10 = 85000
+   step 11 = 100000 step 12 = 120000 step 13 = 140000 step 14 = 165000 step 15 = 195000
+   step 16 = 225000 step 17 = 265000 step 18 = 305000 step 19 = 355000 step 20 = 0;
+ }
+ derive stat "xp:pending" {
+  term stat "xp" offset 0 divide 1
+   step 0 = 1 step 300 = 2 step 900 = 3 step 2700 = 4 step 6500 = 5
+   step 14000 = 6 step 23000 = 7 step 34000 = 8 step 48000 = 9 step 64000 = 10
+   step 85000 = 11 step 100000 = 12 step 120000 = 13 step 140000 = 14 step 165000 = 15
+   step 195000 = 16 step 225000 = 17 step 265000 = 18 step 305000 = 19 step 355000 = 20;
+  term stat "level" offset 0 divide 1
+   step 1 = -1 step 2 = -2 step 3 = -3 step 4 = -4 step 5 = -5
+   step 6 = -6 step 7 = -7 step 8 = -8 step 9 = -9 step 10 = -10
+   step 11 = -11 step 12 = -12 step 13 = -13 step 14 = -14 step 15 = -15
+   step 16 = -16 step 17 = -17 step 18 = -18 step 19 = -19 step 20 = -20;
+ }
+"""
+# srd-stats:xp block verbatim from NQL 70352b9 examples/srd-stats/world.nql (SRD Character Advancement
+# table): xp:next = the XP the level after "level" needs (0 at 20); xp:pending = the level the XP
+# reaches minus "level" (the level-ups earned; negative for levels taken without XP).
+

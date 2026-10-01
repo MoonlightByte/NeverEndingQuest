@@ -561,7 +561,13 @@
       "type": "integer"
     },
     "exp_required_for_next_level": {
-      "type": "integer"
+      "type": "integer",
+      "description": "XP the next level needs (SRD Character Advancement table), written by the rules engine from level."
+    },
+    "levelUpsPending": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Level-ups the experience points have earned beyond the current level, written by the rules engine (0 when none)."
     },
     "challengeRating": {
       "type": "number"

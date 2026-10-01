@@ -142,6 +142,14 @@ def _roll_modes_text(sheet):
     return ''
 
 
+def _level_ups_text(sheet):
+    """Engine-written: the level-ups the XP has earned (the DM offers levelUp; no arithmetic here)."""
+    pending = sheet.get('levelUpsPending')
+    if type(pending) is int and pending > 0:
+        return f" | LEVEL-UP EARNED ({pending}; offer levelUp)"
+    return ''
+
+
 def _exhaustion_text(sheet):
     level = sheet.get('exhaustion')
     if type(level) is int and level > 0:
@@ -1161,7 +1169,7 @@ ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damag
 SPELLCASTING: {member_data.get('spellcasting', {}).get('ability', 'N/A')} | DC: {member_data.get('spellcasting', {}).get('spellSaveDC', 'N/A')} | ATK: +{member_data.get('spellcasting', {}).get('spellAttackBonus', 'N/A')}
 SPELLS: {', '.join([f"{level}: {', '.join(spells)}" for level, spells in member_data.get('spellcasting', {}).get('spells', {}).items() if spells])}
 CURRENCY: {member_data['currency']['gold']}G, {member_data['currency']['silver']}S, {member_data['currency']['copper']}C
-XP: {member_data['experience_points']}/{member_data.get('exp_required_for_next_level', 'N/A')}
+XP: {member_data['experience_points']}/{member_data.get('exp_required_for_next_level', 'N/A')}{_level_ups_text(member_data)}
 TRAITS: {member_data['personality_traits']}
 IDEALS: {member_data['ideals']}
 BONDS: {member_data['bonds']}
@@ -1248,7 +1256,7 @@ ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damag
 SPELLCASTING: {npc_data.get('spellcasting', {}).get('ability', 'N/A')} | DC: {npc_data.get('spellcasting', {}).get('spellSaveDC', 'N/A')} | ATK: +{npc_data.get('spellcasting', {}).get('spellAttackBonus', 'N/A')}
 SPELLS: {', '.join([f"{level}: {', '.join(spells)}" for level, spells in npc_data.get('spellcasting', {}).get('spells', {}).items() if spells])}
 CURRENCY: {npc_data['currency']['gold']}G, {npc_data['currency']['silver']}S, {npc_data['currency']['copper']}C
-XP: {npc_data['experience_points']}/{npc_data.get('exp_required_for_next_level', 'N/A')}
+XP: {npc_data['experience_points']}/{npc_data.get('exp_required_for_next_level', 'N/A')}{_level_ups_text(npc_data)}
 TRAITS: {npc_data['personality_traits']}
 IDEALS: {npc_data['ideals']}
 BONDS: {npc_data['bonds']}

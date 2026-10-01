@@ -542,6 +542,20 @@ def repair_and_persist_character(
     # Extract field names from changes (e.g., "ammunition=default_list" -> "ammunition")
     changes = [change.split("=", 1)[0] for change in raw_changes]
 
+    # The engine's totals at load (X1a): proficiency, skills, saves, roll modes, the XP the next
+    # level needs and the level-ups already earned, so the first DM note is right before any
+    # action touches the engine. Fail forward: an unavailable engine leaves the sheet as repaired.
+    try:
+        from core.nql import stats as nql_stats
+        problem = nql_stats.refresh(repaired_data)
+    except Exception as exc:  # the repair pass never blocks a game from loading
+        problem = str(exc)
+    if problem:
+        warning(f"REPAIR: engine totals not refreshed for {character_file_path}: {problem}", category="character_repair")
+    elif repaired_data != character_data:
+        raw_changes = list(raw_changes) + ["engine_totals=refreshed"]
+        changes = changes + ["engine_totals"]
+
     # Only persist if there were actual changes
     if changes:
         if not safe_write_json(character_file_path, repaired_data):
