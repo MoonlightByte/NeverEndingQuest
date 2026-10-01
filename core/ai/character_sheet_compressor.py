@@ -151,7 +151,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     if isinstance(save_totals, dict) and save_totals:  # engine totals; proficient abilities stay listed
         saves_out = ','.join(f"{m.get(a, a[:3])}:{v:+d}" for a, v in save_totals.items()) + (f"(prof:{saves_out})" if saves_out else '')
     roll_modes = character.get('rollModes')
-    modes_out = (' MODES(engine applies at the roll prompt)={' + ','.join(f'{k}:{v}' for k, v in roll_modes.items()) + '};') if isinstance(roll_modes, dict) and roll_modes else ''
+    modes_out = (' MODES(engine applies at the roll prompt; never pass as mode)={' + ','.join(f'{k}:{v}' for k, v in roll_modes.items()) + '};') if isinstance(roll_modes, dict) and roll_modes else ''
 
     # Skills: the engine's bonuses from a dict; a legacy list names the
     # proficient skills with no number. No arithmetic and no defaults here:

@@ -138,7 +138,7 @@ def _roll_modes_text(sheet):
     """The engine's roll modes from conditions; the roll prompt applies them, this only forewarns the DM."""
     modes = sheet.get('rollModes')
     if isinstance(modes, dict) and modes:
-        return ' | ROLL MODES (engine applies at the roll prompt): ' + '; '.join(f"{what}: {mode}" for what, mode in modes.items())
+        return ' | ROLL MODES (the engine applies these at the roll prompt; never pass them as mode): ' + '; '.join(f"{what}: {mode}" for what, mode in modes.items())
     return ''
 
 
