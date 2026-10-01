@@ -62,6 +62,7 @@ Return exactly:
     "durationValue": 10,
     "restKind": "short_rest|long_rest|none",
     "concentration": false,
+    "caster": "the character who concentrates on this effect (the target's own name for a self-cast); empty when concentration is false",
     "onApply": [{"stat":"hitPoints", "delta":5}],
     "onRemove": []
   },
@@ -92,7 +93,8 @@ hitPoints in modifiers. Leave onApply/onRemove empty for normal effects.
 
 Conditions use standard lowercase names. Set incapacitates=true only when the
 target cannot take actions. For concentration, use the effect's maximum stated
-duration. Do not calculate timestamps. Do not invent an effectId. Do not include
+duration and name the caster exactly as the change text does (the engine holds
+one concentration per caster and ends the spell on everyone when it breaks). Do not calculate timestamps. Do not invent an effectId. Do not include
 fields outside this contract."""
 
 
@@ -107,6 +109,7 @@ _REQUIRED_EFFECT_FIELDS = {
     "durationValue",
     "restKind",
     "concentration",
+    "caster",
     "onApply",
     "onRemove",
 }
@@ -159,6 +162,10 @@ def _parse(content):
     if set(result["effect"]) != _REQUIRED_EFFECT_FIELDS:
         raise EffectsAgentContractError("T078 effect has missing or extra fields")
     effect = result["effect"]
+    if not isinstance(effect.get("caster"), str):
+        raise EffectsAgentContractError("T078 caster must be a string")
+    if effect.get("concentration") is True and not effect["caster"].strip():
+        raise EffectsAgentContractError("T078 concentration effect requires a caster")
     if effect["restKind"] not in ("short_rest", "long_rest", "none"):
         raise EffectsAgentContractError("T078 restKind is invalid")
     kind = effect["durationKind"]

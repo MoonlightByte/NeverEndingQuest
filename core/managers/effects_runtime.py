@@ -126,6 +126,10 @@ def update_character_with_effects(
                 managed_effect_operation=classifier,
                 action_context=action_context,
             )
+    if success and classifier.cast:
+        from core.managers.concentration_runtime import record_cast
+
+        record_cast(*classifier.cast)
     if success:
         text = str(changes).lower()
         rest_kind = (
@@ -157,6 +161,7 @@ class _lazy_classifier:
         self.result = None
         self.operation = None
         self.skipped = False
+        self.cast = None  # CN: (caster, spell, group, target, expiration) when the effect is a concentration
 
     def __call__(self, updates, effect_flag):
         if self.result is None and (effect_flag is True or updates == {}):
@@ -164,7 +169,17 @@ class _lazy_classifier:
                 self._name, self._changes, effective_sheet(self._sheet), self._now
             )
             if self.result["operation"] == "add":
-                self.operation = [{"op": "add", "effect": self.result["effect"]}]
+                effect = self.result["effect"]
+                # CN: the classifier states the caster; the record joins the caster's
+                # group for this spell (another target of one cast) or starts one.
+                caster = str(effect.pop("caster", "") or "").strip() or self._name
+                if effect.get("concentration") is True:
+                    from core.managers.concentration_runtime import group_for
+
+                    group = group_for(caster, effect.get("name"))
+                    effect["concentrationId"] = group
+                    self.cast = (caster, effect.get("name"), group, self._name, effect.get("expiration"))
+                self.operation = [{"op": "add", "effect": effect}]
             elif self.result["operation"] == "remove":
                 self.operation = _remove_operation(self.result, self._sheet)
             self.skipped = False
@@ -264,6 +279,7 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
     if condition:
         return {"owner": resolved, "effectId": condition, "name": condition, "reason": reason}
     effect = matches[0]
+    _end_concentration_group(matches, reason)
     return {
         "owner": resolved,
         "effectId": effect.get("effectId"),
@@ -303,7 +319,17 @@ def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="
         "effectId": effect.get("effectId"),
         "name": effect.get("name"),
         "reason": reason,
+        "concentration_groups": sorted({m.get("concentrationId") for m in matches if m.get("concentrationId")}),
     }
+
+
+def _end_concentration_group(matches, reason):
+    """CN: ending one effect of a concentration spell ends the spell everywhere (the caster stopped)."""
+    from core.managers.concentration_runtime import end_group
+
+    for group in sorted({m.get("concentrationId") for m in matches if isinstance(m, dict) and m.get("concentrationId")}):
+        removed = [m.get("effectId") for m in matches if m.get("concentrationId") == group]
+        end_group(group, f"ended by the DM: {reason}", except_effect_id=removed[0] if len(removed) == 1 else None)
 
 
 def prepare_character_update(character_name, changes, party_tracker_data=None):
@@ -337,6 +363,7 @@ def prepare_character_update(character_name, changes, party_tracker_data=None):
             "error": type(exc).__name__,
         }
     receipt["effect_proposal"] = classifier.result or {"operation": "none", "effect": {}, "remove": {}}
+    receipt["concentration_cast"] = list(classifier.cast) if classifier.cast else None
     return receipt
 
 
@@ -355,6 +382,10 @@ def apply_staged_character_update(receipt):
                 return "blocked_conflict"
             if not safe_write_json(receipt["path"], receipt["after"]):
                 raise EffectsRuntimeError("character update could not be persisted")
+    if receipt.get("concentration_cast"):
+        from core.managers.concentration_runtime import record_cast
+
+        record_cast(*receipt["concentration_cast"])
     return "committed"
 
 
@@ -375,6 +406,11 @@ def apply_staged_remove_effect(receipt):
                 return "blocked_conflict"
             if not safe_write_json(receipt["path"], deepcopy(receipt["after"])):
                 raise EffectsRuntimeError("effect removal could not be persisted")
+    if receipt.get("concentration_groups"):
+        from core.managers.concentration_runtime import end_group
+
+        for group in receipt["concentration_groups"]:
+            end_group(group, f"ended by the DM: {receipt.get('reason')}", except_effect_id=receipt.get("effectId"))
     return "committed"
 
 
@@ -513,6 +549,12 @@ def process_effect_lifecycle(conversation_history=None, rest_kind=None):
             plan["path"] = paths.get(plan.get("owner"))
     _queue_expiration_records(plans)
     _apply_outbox_records(paths)
+    # CN: a caster who became incapacitated loses the spell; a record whose
+    # effects all ended (expiry, rest) is cleared. Both queue through the outbox.
+    from core.managers.concentration_runtime import sweep
+
+    if sweep():
+        _apply_outbox_records(paths)
     already_in_history = delivered_ids(history)
     state = load_effects_state()
     pending = [

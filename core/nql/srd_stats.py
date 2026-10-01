@@ -4,7 +4,7 @@ proficiency Condition types a world declares once, the SRD condition states (sta
 derived-stat rules that go inside its equipment block.
 Do not edit by hand; regenerate from the NQL example when the engine changes."""
 NQL_COMMIT = "084cb0c"
-STATES_COMMIT = "27e3089"
+STATES_COMMIT = "70352b9"  # srd-conditions block (includes incapacitated) and the concentration block
 ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
 # skill id -> ability, SRD 5.2.1
 SKILLS = {
@@ -93,13 +93,13 @@ condition type "state:frightened" { instances coexist; }
 condition type "state:grappled" { instances coexist; modifier "speed" stat "speed" at most 0; }
 condition type "state:incapacitated" { instances coexist; modifier "initiative" stat "initiative" roll disadvantage; }
 condition type "state:invisible" { instances coexist; modifier "initiative" stat "initiative" roll advantage; }
-condition type "state:paralyzed" { instances coexist; modifier "speed" stat "speed" at most 0; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
-condition type "state:petrified" { instances coexist; modifier "speed" stat "speed" at most 0; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
+condition type "state:paralyzed" { instances coexist; includes "state:incapacitated"; modifier "speed" stat "speed" at most 0; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
+condition type "state:petrified" { instances coexist; includes "state:incapacitated"; modifier "speed" stat "speed" at most 0; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
 condition type "state:poisoned" { instances coexist; modifier "checks" stat "bonus:checks" roll disadvantage; }
 condition type "state:prone" { instances coexist; }
 condition type "state:restrained" { instances coexist; modifier "speed" stat "speed" at most 0; modifier "save:dexterity" stat "save:dexterity" roll disadvantage; }
-condition type "state:stunned" { instances coexist; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
-condition type "state:unconscious" { instances coexist; held_at_minimum "hp"; modifier "speed" stat "speed" at most 0; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
+condition type "state:stunned" { instances coexist; includes "state:incapacitated"; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
+condition type "state:unconscious" { instances coexist; held_at_minimum "hp"; includes "state:incapacitated"; modifier "speed" stat "speed" at most 0; modifier "initiative" stat "initiative" roll disadvantage; modifier "save:strength" stat "save:strength" roll fail; modifier "save:dexterity" stat "save:dexterity" roll fail; }
 """
 
 DERIVE_RULES = """\
@@ -384,3 +384,13 @@ XP_RULES = """\
 # table): xp:next = the XP the level after "level" needs (0 at 20); xp:pending = the level the XP
 # reaches minus "level" (the level-ups earned; negative for levels taken without XP).
 
+# Concentration (NQL 70352b9, examples/srd-stats/world.nql, verbatim): one
+# `state:concentration` instance per caster (a new one replaces the old), ended
+# by Incapacitated (and every state that includes it, or Unconscious held at
+# 0 hp) and by a failed Constitution save the engine makes after damage:
+# DC max(10, min(30, damage / 2)), the stat's roll modes applied.
+CONCENTRATION_TYPE = "state:concentration"
+CONCENTRATION_RULES = """\
+condition type "state:concentration" { instances replace; ends_on_condition "state:incapacitated"; }
+condition_check "state:concentration" after_damage resource "hp" stat "save:constitution" sides 20 minimum 10 divide 2 maximum 30;
+"""

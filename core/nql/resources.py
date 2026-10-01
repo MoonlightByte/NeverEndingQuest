@@ -45,6 +45,8 @@ class ResourceOutcome:
     reason: str = ""
     fault: Optional[Dict[str, Any]] = None
     gaps: List[str] = field(default_factory=list)
+    concentration_lines: List[str] = field(default_factory=list)  # CN: the saves the engine made for this damage
+    concentration_ended: Optional[str] = None                  # CN: why the engine ended the caster's concentration
 
 
 def _q(value: str) -> str:
@@ -201,7 +203,14 @@ def run(sheet: Dict[str, Any], deltas: Dict[str, int], *, location: str = "sheet
     world_sheet = copy.deepcopy(sheet)
     if max_hp is not None and type(max_hp) is int and max_hp >= 0:
         world_sheet["maxHitPoints"] = max_hp
-    world = genesis.build_world([world_sheet], location)
+    # CN: damage to a concentrating caster makes the engine roll the Constitution
+    # save (no player prompt is possible inside a character update), so the world
+    # carries dice; every other request is byte-identical to before.
+    seed = None
+    if deltas.get("hp", 0) < 0 and stats.concentration_instance(world_sheet):
+        from core.nql import checks
+        seed = checks.fresh_seed()
+    world = genesis.build_world([world_sheet], location, dice_seed=seed)
     cid = genesis.character_id(sheet)
     if not deltas:
         return ResourceOutcome(True, sheet=sheet, gaps=world.gaps)
@@ -231,7 +240,10 @@ def run(sheet: Dict[str, Any], deltas: Dict[str, int], *, location: str = "sheet
     problem = _write_back(sheet, statuses[0])
     if problem:
         return ResourceOutcome(False, reason=problem, gaps=world.gaps)
-    return ResourceOutcome(True, sheet=sheet, applied=dict(deltas), receipt=response.get("receipt"), gaps=world.gaps)
+    from core.nql import concentration
+    focus = concentration.read(world_sheet, response)
+    return ResourceOutcome(True, sheet=sheet, applied=dict(deltas), receipt=response.get("receipt"), gaps=world.gaps,
+                           concentration_lines=focus.lines, concentration_ended=focus.ended_reason)
 
 
 def apply_deltas(sheet: Dict[str, Any], updates: Dict[str, Any], **kwargs: Any) -> ResourceOutcome:

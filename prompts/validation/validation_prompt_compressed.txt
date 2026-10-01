@@ -58,6 +58,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
 
 @ACTIONS={
   updateCharacterInfo: non-advancement stats/inventory/condition changes on EXISTING chars (NOT for checking/reporting current state); advancement uses levelUp
+  concentration: ENGINE-HELD (sheet CONCENTRATING ON/CONC=); the engine rolls the Con save on damage and reports it under CHECK RESULTS, ends the spell everywhere on failure or on a new concentration spell. INVALID: rolling/asking/pending a concentration save, or removing the spell because the caster was hit without the note saying so. VALID: narrating the note's result as settled; removeEffect on one effect ending the whole spell.
   removeEffect: deliberately end/dispel one exact active temporary effect; automatic expiry needs no action; a condition (grappled, poisoned...) ends via updateCharacterInfo, removeEffect naming one is INVALID
   rollCheck: engine-scored check/save outside combat; player dice collected by the game before the next DM turn; result = CHECK RESULTS in the DM Note
   updateTime: activities >=5min
