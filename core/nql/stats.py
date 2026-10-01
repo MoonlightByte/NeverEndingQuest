@@ -497,6 +497,11 @@ def drop_model_totals(stored: Dict[str, Any], updates: Dict[str, Any]) -> List[s
         if key in updates:
             updates.pop(key)
             dropped.append(key)
+    # XP is a fact the engine changes by award (awardExperience -> core/nql/experience); a model-
+    # written total is dropped so a delta sentence can never re-total the sheet.
+    if XP_FIELD in updates and updates[XP_FIELD] != stored.get(XP_FIELD):
+        updates.pop(XP_FIELD)
+        dropped.append(XP_FIELD)
     senses = updates.get("senses")
     if isinstance(senses, dict) and "passivePerception" in senses:
         senses.pop("passivePerception")

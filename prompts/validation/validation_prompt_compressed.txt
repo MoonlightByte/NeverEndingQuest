@@ -147,7 +147,8 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
 
 @XP_VALIDATION={
   post_combat: PROHIBITED after "Combat Summary"
-  narrative_takedown: REQUIRED in same response if enemy defeated outside combat
+  narrative_takedown: REQUIRED in same response if enemy defeated outside combat, as awardExperience per involved member
+  shape: XP changes ONLY via awardExperience {characterName,amount,reason}; experience_points in updateCharacterInfo = INVALID (engine-owned)
 }
 
 @LOCAL_PARTY_BOUNDARY_VALIDATION={

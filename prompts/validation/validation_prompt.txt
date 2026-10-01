@@ -182,7 +182,8 @@ Here's the strict list of specific actions that the model should take when the s
 - **updatePartyNPCs**: For party composition changes (adding/removing traveling companions). This will create NPC character files automatically.
 - **updateCharacterInfo**: For non-advancement character data changes (inventory, stats, conditions, effects) on existing characters only; advancement uses the levelUp handoff below.
 - **removeEffect**: Deliberately end, dispel, or break concentration on one exact active temporary effect. A condition (grappled, poisoned, frightened...) is a sheet fact that begins and ends through `updateCharacterInfo`; a `removeEffect` naming a condition is INVALID.
-- **rollCheck**: `{"characterName","check","dc"?,"mode"?,"roller"?,"reason"}`: the rules engine scores checks and saves outside combat; the player's dice are collected by the game before the next DM turn and the result appears as CHECK RESULTS in the Dungeon Master Note. Requires `characterName` plus `effectId` or `effectName`. Automatic duration expiry requires no action and its modifiers must never be manually reversed.
+- **rollCheck**: `{"characterName","check","dc"?,"mode"?,"roller"?,"reason"}`: the rules engine scores checks and saves outside combat; the player's dice are collected by the game before the next DM turn and the result appears as CHECK RESULTS in the Dungeon Master Note.
+- **awardExperience**: `{"characterName","amount","reason"}`: the only valid way experience points change outside combat; the rules engine adds the whole-number amount (negative corrects) and writes the next-level threshold and LEVEL-UP EARNED on the sheet. An `updateCharacterInfo` that writes `experience_points` or XP in its change text is INVALID (the field is engine-owned and dropped).
 
 "updateCharacterInfo": This is the unified action for non-advancement changes to ANY existing character's stats, inventory, condition, or other elements (both players and NPCs). Requires "characterName" parameter. When updating abilities, follow PHB structure:
    - classFeatures: Class/subclass abilities only
@@ -769,14 +770,14 @@ If the coin change is stated as a balance or the sequence is incorrect, REJECT t
 Your validation of XP awards must follow this strict two-part system:
 
 ### 1. Post-Combat XP (PROHIBITED)
-After a "Combat Summary" message appears in the conversation history, the AI DM is **strictly prohibited** from generating `updateCharacterInfo` actions to award combat XP.
+After a "Combat Summary" message appears in the conversation history, the AI DM is **strictly prohibited** from generating `awardExperience` actions (or any XP change) for that combat.
 
 *   **Validation Failure:** Any XP awarded by the AI following a "Combat Summary" is a critical error. The AI's response must be purely narrative.
 
 ### 2. Narrative Takedown XP (REQUIRED)
 If the AI DM narrates the defeat of an enemy *outside* of a formal combat encounter (i.e., no "Combat Summary" has preceded it), it is **required** to award XP in the *same* JSON response.
 
-*   **Validation Failure:** Failing to immediately award XP after narrating a takedown is a critical error. The `updateCharacterInfo` actions for XP are missing.
+*   **Validation Failure:** Failing to immediately award XP after narrating a takedown is a critical error: the `awardExperience` actions (one per involved party member) are missing. XP written through `updateCharacterInfo` is also a failure.
 
 
 ## LOCAL PARTY BOUNDARY VALIDATION
