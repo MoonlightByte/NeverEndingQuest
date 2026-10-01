@@ -147,6 +147,11 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     m = {'strength':'str','dexterity':'dex','constitution':'con',
          'intelligence':'int','wisdom':'wis','charisma':'cha'}
     saves_out = ','.join(m.get(x.lower(), x[:3].lower()) for x in saves)
+    save_totals = character.get('savingThrowBonuses')
+    if isinstance(save_totals, dict) and save_totals:  # engine totals; proficient abilities stay listed
+        saves_out = ','.join(f"{m.get(a, a[:3])}:{v:+d}" for a, v in save_totals.items()) + (f"(prof:{saves_out})" if saves_out else '')
+    roll_modes = character.get('rollModes')
+    modes_out = (' MODES(engine applies at the roll prompt; never pass as mode)={' + ','.join(f'{k}:{v}' for k, v in roll_modes.items()) + '};') if isinstance(roll_modes, dict) and roll_modes else ''
 
     # Skills: the engine's bonuses from a dict; a legacy list names the
     # proficient skills with no number. No arithmetic and no defaults here:
@@ -343,7 +348,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     # LVL removed - already in DM Note party stats
     out.append(f"CHAR={name}; RACE={race}; CLASS={cls}; ALIGN={align}; BG={bg}; AC={ac}; SPD={spd}; STATUS={status}; CONDITION={condition}; AFFECTED={affected};")
     # STATS removed - already in DM Note party stats (STR:X DEX:X etc.)
-    out.append(f"SAVES={saves_out}; SKILLS={{{skills_out}}}; EXPERTISE={expertise_out}; PROF+{prof_bonus}; INIT={initiative}(final,prof+feats incl);{exhaustion_out}")
+    out.append(f"SAVES={saves_out}; SKILLS={{{skills_out}}}; EXPERTISE={expertise_out}; PROF+{prof_bonus}; INIT={initiative}(final,prof+feats incl);{exhaustion_out}{modes_out}")
     out.append(f"SENSES={{darkvision:{darkv},PP:{pp}}}; LANG={langs_out};")
     out.append(f"PROF={{{prof_out}}};")
     out.append(f"VULN={vuln}; RES={res_out}; IMM=; COND_IMM={cimm_out};")

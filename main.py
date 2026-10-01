@@ -9463,10 +9463,11 @@ def _main_game_loop(startup_authority, turn_authority):
         else:
             dm_note = "Dungeon Master Note: Remember to take actions if necessary such as updating the plot, time, character sheets, and location if changes occur."
 
-        # C2a: every check resolved since the DM's last turn, then cleared.
+        # C2a: every check resolved since the DM's last turn. The lines stay on disk until
+        # a DM reply lands for this turn, so a stalled or killed turn hands them over again.
         from core.managers.checks_runtime import check_results_note
 
-        dm_note += check_results_note()
+        dm_note += check_results_note(sum(1 for m in conversation_history if isinstance(m, dict) and m.get("role") == "assistant"))
 
         # Resolve the named rule once. The same exact bounded block guides the
         # primary call, semantic validator, and any correction retry.

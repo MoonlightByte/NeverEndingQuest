@@ -121,9 +121,10 @@ def take_player_rolls(read: Callable[[str], str]) -> None:
 LAST_NOTE = ""  # the CHECK RESULTS delivered with the current turn's DM note (the validator reviews against it)
 
 
-def check_results_note() -> str:
+def check_results_note(turn_marker=None) -> str:
+    """turn_marker: the count of DM replies in the history (the turn this note is for); see checks_state.consume_results."""
     global LAST_NOTE
-    lines = checks_state.consume_results()
+    lines = checks_state.consume_results(turn_marker)
     if not lines:
         LAST_NOTE = ""
         return ""
