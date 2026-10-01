@@ -16,7 +16,7 @@ CHECKS_STATE_PATH = os.path.join("modules", "checks_state.json")
 
 
 def _empty() -> Dict[str, Any]:
-    return {"schemaVersion": 1, "pending": [], "results": []}
+    return {"schemaVersion": 1, "pending": [], "results": [], "delivered": None}
 
 
 def load_checks_state() -> Dict[str, Any]:
@@ -62,11 +62,23 @@ def pop_pending() -> Dict[str, Any] | None:
     return entry
 
 
-def consume_results() -> List[str]:
-    """The result lines gathered since the last DM turn; cleared on read."""
+def consume_results(turn_marker: Any = None) -> List[str]:
+    """The result lines for the DM turn starting now; cleared once that turn is known to have landed.
+
+    ``turn_marker`` identifies the turn the note is built for (the count of DM
+    replies so far). The lines handed to a turn stay on disk as ``delivered``;
+    when the next note is built for the same marker (that turn never produced
+    a reply: a stall, a crash, a kill), they are handed over again, so a scored
+    check is never lost with the turn that was told about it.
+    """
     state = load_checks_state()
-    lines = list(state["results"])
-    if lines:
+    delivered = state.get("delivered")
+    again: List[str] = []
+    if isinstance(delivered, dict) and delivered.get("turn") == turn_marker and turn_marker is not None:
+        again = [line for line in delivered.get("lines") or [] if isinstance(line, str)]
+    lines = again + list(state["results"])
+    if lines or delivered is not None:
         state["results"] = []
+        state["delivered"] = {"turn": turn_marker, "lines": lines} if lines else None
         write_checks_state(state)
     return lines
