@@ -31,7 +31,7 @@ from core.combat.attacks import (
     is_executable_attack,
 )
 from core.effects.effective import effective_sheet, modifier_total
-from core.effects.lifecycle import apply_effect_ops
+from core.effects.lifecycle import apply_effect_ops, effect_incapacitates, sync_condition_states
 from core.effects.model import normalize_effect, validate_effect
 from core.managers.combat_state import (
     combatant_by_id,
@@ -1147,6 +1147,11 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             )
             op["effect"].setdefault("modifiers", [])
             op["effect"].setdefault("conditions", [])
+            if effect_incapacitates(op["effect"]):
+                # Paralyzed, stunned, petrified and unconscious include
+                # Incapacitated (SRD): the journal records the derived flag so
+                # a replay and the turn order agree whatever the model wrote.
+                op["effect"]["incapacitates"] = True
             op["effect"].setdefault(
                 "created",
                 {"encounterId": encounter.get("encounterId")},
@@ -1689,6 +1694,11 @@ def _apply_encounter_effect_operation(creature, operation):
     raw = _raw_combatant_sheet(None, None, creature)
     # An encounter creature record is not a character sheet: no engine world.
     updated = apply_effect_ops(raw, [operation], engine=False)
+    # The effect's SRD conditions ride on the creature record the same way
+    # a sheet's condition_affected does (CSb); T096 reads them from there.
+    creature["conditions"] = sync_condition_states(
+        creature.get("conditions"), effects, updated.get("temporaryEffects", [])
+    )
     creature["activeEffects"] = updated.get("temporaryEffects", [])
     rendered = effective_sheet(updated)
     for sheet_field, encounter_field in (
@@ -1758,8 +1768,7 @@ def _refresh_effect_control_flags(encounter, characters):
         else:
             effects = creature.get("activeEffects", []) or []
         creature["effectIncapacitated"] = any(
-            isinstance(effect, dict) and effect.get("incapacitates") is True
-            for effect in effects
+            effect_incapacitates(effect) for effect in effects
         )
 
 
@@ -1982,6 +1991,20 @@ def apply_resolution(encounter, characters, resolution):
         if downed is not None:
             from core.managers.concentration_runtime import clear_record
             clear_record(downed)
+    # CSb: a caster held, stunned or petrified by a fight's effect cannot
+    # concentrate (SRD); the spell ends everywhere the way it does at 0 hit
+    # points. A function of the sheets' conditions, so a replay agrees.
+    for creature in new_encounter.get("creatures", []) or []:
+        if not isinstance(creature, dict) or not creature.get("combatantId"):
+            continue
+        caster = _sheet_backed_target(new_characters, creature)
+        if caster is None or _concentration_record(caster) is None:
+            continue
+        from core.nql import stats as nql_stats
+        if nql_stats.concentration_blocked(caster):
+            _drop_concentration(new_encounter, new_characters, creature["combatantId"])
+            from core.managers.concentration_runtime import clear_record
+            clear_record(_sheet_backed_target(new_characters, creature))
     # CC: a failed engine save (journaled on the target record) ends the spell
     # everywhere and clears the caster's record; replay reads the same record.
     _apply_concentration_verdicts(new_encounter, new_characters, event)
