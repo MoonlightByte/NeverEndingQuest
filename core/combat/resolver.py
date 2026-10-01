@@ -876,6 +876,64 @@ def _save_bonus(encounter, characters, creature, save_type):
     )
 
 
+_ABILITY_ALIASES = {"str": "strength", "dex": "dexterity", "con": "constitution",
+                    "int": "intelligence", "wis": "wisdom", "cha": "charisma"}
+
+
+def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
+    """CS: the rules engine rolls one party member's saving throw.
+
+    The engine knows the sheet's save total and the roll mode its conditions
+    impose (Restrained: disadvantage on Dexterity saves; Paralyzed: Strength
+    and Dexterity saves fail). Code reads that mode first, takes that many
+    persisted d20 faces (none for an automatic failure, two for advantage or
+    disadvantage, else one) so the journal stays the replay authority, and
+    hands them to the engine. Returns (result, faces) or None when the engine
+    is unavailable or refuses, in which case the caller keeps today's
+    arithmetic (fail forward, the fight never pauses for the engine).
+    """
+    try:
+        from core.nql import checks as nql_checks
+        from core.nql import stats as nql_stats
+        text = str(save_type or "").strip().lower()
+        ability = nql_stats.ability_id(_ABILITY_ALIASES.get(text, text))
+        if ability is None:
+            return None
+        stat = "save:" + ability
+        mode = nql_checks.net_mode(sheet, stat)
+        if mode.reason:
+            return None
+        faces = [
+            _take_roll(rolls, "d20", "save", actor_id=actor_id, target_id=target_id, ability=ability)
+            for _ in range(nql_checks.faces_needed(mode.mode))
+        ]
+        result = nql_checks.resolve(sheet, stat, dc=int(dc), faces=faces or None)
+    except Exception as exc:  # engine wrapper faults never stop a fight
+        _warn_save(sheet, save_type, str(exc))
+        return None
+    if not result.ok or result.success is None:
+        _warn_save(sheet, save_type, result.reason or "engine returned no verdict")
+        return None
+    try:
+        from utils.enhanced_logger import info as _info
+        _info("CS: engine save: %s" % nql_checks.describe(result), category="combat_events")
+    except Exception:
+        pass
+    return result, faces
+
+
+def _warn_save(sheet, save_type, reason):
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning(
+            "CS: %s %s save rolled without the engine (%s)"
+            % (sheet.get("name"), save_type, reason),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+
+
 def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
     """General adjudicated-outcome contract for anything beyond weapon attacks.
 
@@ -1375,20 +1433,47 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             )
             continue
         saved = None
+        save_line = None
         if save_spec and hp_delta <= 0:
-            die = _take_roll(
-                rolls,
-                "d20",
-                "save",
-                actor_id=proposal.get("actorId"),
-                target_id=target.get("combatantId"),
-                ability=save_spec.get("type"),
+            # CS: a party target's save is the rules engine's (conditions'
+            # roll modes, the sheet's total, the verdict); monsters and an
+            # unavailable engine keep the arithmetic below.
+            save_sheet = _sheet_backed_target(characters, target)
+            engine_save = (
+                _engine_save(save_sheet, save_spec.get("type"), save_spec.get("dc", 10) or 10,
+                             rolls, proposal.get("actorId"), target.get("combatantId"))
+                if save_sheet is not None else None
             )
-            bonus = _save_bonus(encounter, characters, target, save_spec.get("type"))
-            saved = die + bonus >= int(save_spec.get("dc", 10) or 10)
-            event["rolls"].append({"die": "d20", "value": die, "purpose": "save",
-                                   "combatantId": target["combatantId"],
-                                   "bonus": bonus, "success": saved})
+            if engine_save is not None:
+                from core.nql import checks as nql_checks
+                result, faces = engine_save
+                saved = bool(result.success)
+                save_line = nql_checks.describe(result)
+                event["rolls"].append({
+                    "die": "d20", "value": result.kept if result.kept is not None else 0,
+                    "purpose": "save", "combatantId": target["combatantId"],
+                    "bonus": result.bonus, "success": saved, "engine": True,
+                    "faces": faces, "kept": result.kept, "mode": result.mode,
+                    "sources": result.sources, "total": result.total, "margin": result.margin,
+                })
+                event.setdefault("engineChecks", []).append(save_line)
+            else:
+                die = _take_roll(
+                    rolls,
+                    "d20",
+                    "save",
+                    actor_id=proposal.get("actorId"),
+                    target_id=target.get("combatantId"),
+                    ability=save_spec.get("type"),
+                )
+                bonus = _save_bonus(encounter, characters, target, save_spec.get("type"))
+                saved = die + bonus >= int(save_spec.get("dc", 10) or 10)
+                record = {"die": "d20", "value": die, "purpose": "save",
+                          "combatantId": target["combatantId"],
+                          "bonus": bonus, "success": saved}
+                if save_sheet is not None:
+                    record["engine"] = False
+                event["rolls"].append(record)
             if saved and hp_delta < 0:
                 # SRD division rounds damage down. The stored delta is
                 # negative, so Python's ``//`` would round away from zero
@@ -1408,6 +1493,10 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
         temp_before = None
         engine_used = None
         focus = {}
+        if save_line:
+            # The save line rides with the target record like the concentration
+            # lines (CC), so the narrator and the log state the engine's verdict.
+            focus["engineChecks"] = [save_line]
         if target_sheet is not None:
             working = deepcopy(target_sheet)
             working["hitPoints"] = hp_before
@@ -1444,6 +1533,8 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                 record["tempHpAfter"] = _temp_hp(working)
             if engine_used is not None:
                 record["engine"] = engine_used
+            record.update(focus)
+        elif focus:
             record.update(focus)
         event["outcome"]["targets"].append(record)
         resolution["creatureDeltas"][target["combatantId"]] = {
