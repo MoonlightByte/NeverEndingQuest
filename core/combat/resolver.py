@@ -368,6 +368,11 @@ def _engine_hit_points(sheet, signed, event):
         return None
     for line in outcome.concentration_lines or []:
         event.setdefault("engineChecks", []).append(line)
+        try:
+            from utils.enhanced_logger import info as _info
+            _info("CH: engine check: %s" % line, category="combat_events")
+        except Exception:
+            pass
     if outcome.concentration_ended:
         event["concentrationEnded"] = outcome.concentration_ended
     try:
