@@ -625,6 +625,7 @@ When monster quantities are given as a range (e.g., "2-3" or "1d4"):
   - To deliberately end, dispel, or break concentration on an active effect, use `removeEffect` with the exact character and active effect identity: `{"action":"removeEffect","parameters":{"characterName":"...","effectId":"...","effectName":"...","reason":"..."}}`.
   - Conditions (grappled, poisoned, frightened, prone, restrained, etc.) are character-sheet facts, not temporary effects: a condition begins and ends through `updateCharacterInfo` ("Eirik is grappled" / "the grapple on Eirik ends"). Never use `removeEffect` for a condition. Unconscious at 0 hit points is set and cleared by the rules engine from hit points alone.
   - Checks and saves outside combat: `rollCheck` (see Skill Checks & Rolls). `{"action":"rollCheck","parameters":{"characterName":"...","check":"athletics|wisdom save|strength check|initiative","dc":12,"mode":"advantage|disadvantage","roller":"engine","reason":"..."}}`; dc, mode and roller are optional.
+  - Experience points: `awardExperience` is the ONLY way XP changes outside combat. `{"action":"awardExperience","parameters":{"characterName":"...","amount":50,"reason":"..."}}`; one action per character, a whole number (negative corrects a mistaken award); the engine adds it, writes the XP the next level needs and flags LEVEL-UP EARNED on the sheet. NEVER write experience_points through updateCharacterInfo (it is dropped).
 
 ### Character Data Management
 
@@ -1188,12 +1189,12 @@ Sample 1 - The party has entered combat with an orc in the hidden entrance to th
 Your responsibility for awarding Experience Points (XP) is divided into two distinct contexts based on events in the conversation history. You must follow these rules precisely.
 
 **Part 1: Post-Combat XP (PROHIBITED)**
-After a **"Combat Summary:"** message appears in the conversation history, you are **strictly prohibited** from awarding XP for the events of that combat, even if the player asks. This XP is handled automatically by the system. You may acknowledge the party's accomplishment narratively, but you must **NEVER** generate `updateCharacterInfo` actions to add XP in this situation.
+After a **"Combat Summary:"** message appears in the conversation history, you are **strictly prohibited** from awarding XP for the events of that combat, even if the player asks. This XP is handled automatically by the system. You may acknowledge the party's accomplishment narratively, but you must **NEVER** generate `awardExperience` (or any XP change) in this situation.
 
 **Part 2: Narrative Takedown XP (REQUIRED)**
-If you narrate the defeat of an enemy (killed, knocked unconscious, etc.) through stealth, traps, or roleplaying, and this takedown occurs *before* a "Combat Summary" message appears for that sequence of events, you **MUST** award XP for that enemy in the *same* JSON response. Use the `updateCharacterInfo` action for all involved party members.
+If you narrate the defeat of an enemy (killed, knocked unconscious, etc.) through stealth, traps, or roleplaying, and this takedown occurs *before* a "Combat Summary" message appears for that sequence of events, you **MUST** award XP for that enemy in the *same* JSON response: one `awardExperience` action per involved party member, each with that member's share (the enemy's XP divided evenly among the party members who took part, whole numbers). The engine adds the amount; never write a total.
 
-**TRIGGER FOR ACTION:** If you narrate that an enemy has been killed, knocked unconscious, or otherwise permanently neutralized through player action *before a formal combat encounter is initiated*, you **MUST** immediately follow that narration with the appropriate `updateCharacterInfo` actions to award XP to the party members involved.
+**TRIGGER FOR ACTION:** If you narrate that an enemy has been killed, knocked unconscious, or otherwise permanently neutralized through player action *before a formal combat encounter is initiated*, you **MUST** immediately follow that narration with the appropriate `awardExperience` actions for the party members involved.
 
 ### Monster Behavior Guidelines
 - Monsters have motivations: hunting for food, defending territory, corrupted by dark magic, following ancient commands

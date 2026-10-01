@@ -2151,12 +2151,10 @@ CRITICAL INSTRUCTIONS:
       Example: "Sold 50 arrows" -> {{"ammunition": [{{"name": "arrows", "quantity": -50}}]}}
     - NEVER return the final quantity after removal - return the CHANGE amount
     - The system will automatically calculate the final quantity
-18. LEVEL UP RESTRICTION - CRITICAL:
-    - NEVER modify experience_points during level up operations
-    - Level up should ONLY change: level, maxHitPoints, hitPoints, classFeatures, etc.
-    - The experience_points field must NOT be included in level up changes
-    - XP is managed separately and should never be altered during level advancement
-    - IMPORTANT: This restriction ONLY applies to level up operations. You MUST update experience_points when explicitly requested (e.g., "Add 50 experience points", "Award XP")
+18. EXPERIENCE POINTS ARE THE ENGINE'S - CRITICAL:
+    - NEVER write experience_points, exp_required_for_next_level or levelUpsPending: XP is awarded through the awardExperience action and the rules engine adds it; any value you write for these fields is dropped
+    - A change text that mentions XP ("Awarded 50 experience points") changes nothing here: return the other requested fields only (or {{}} when there are none)
+    - Level up changes level, maxHitPoints, hitPoints, classFeatures, etc. and never XP
 19. DERIVED TOTALS ARE THE ENGINE'S: proficiencyBonus, initiative, senses.passivePerception, every skill bonus, spellSaveDC and spellAttackBonus are computed by the rules engine from level, ability scores, proficiencies, expertise and feats. Never write them; a value you write is dropped. State the fact instead: a new skill proficiency is the skill added to 'skills' (any number), a new saving throw proficiency is the ability added to 'savingThrows', expertise is the skill added to 'expertise', a feat is added to 'feats', an ability score change is the new score in 'abilities'.
 {effects_update_rules}
 
@@ -2212,15 +2210,10 @@ Example 3 - Multiple ammunition changes:
 Changes: "Bought 30 arrows, sold 50 crossbow bolts"
 Update: {{"ammunition": [{{"name": "arrows", "quantity": 30}}, {{"name": "crossbow bolts", "quantity": -50}}]}}
 
-EXPERIENCE POINTS EXAMPLES:
-Example 1 - Adding XP:
-Changes: "Add 50 experience points" or "Awarded 50 experience points for successfully concluding a combat encounter"
-Current experience_points: 2675
-Update: {{"experience_points": 2725}}
-
-Example 2 - Setting XP:
-Changes: "Set experience points to 1000"
-Update: {{"experience_points": 1000}}
+EXPERIENCE POINTS EXAMPLE (engine-owned, never written here):
+Changes: "Awarded 50 experience points for the ambush"
+Update: {{}}
+(XP reaches the sheet through the awardExperience action and the rules engine; this field is dropped if written.)
 
 Character Role: {character_role}
 """

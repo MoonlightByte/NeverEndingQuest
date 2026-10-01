@@ -162,6 +162,7 @@ ACTION_LEVEL_UP = "levelUp"
 ACTION_UPDATE_CHARACTER_INFO = "updateCharacterInfo"
 ACTION_REMOVE_EFFECT = "removeEffect"
 ACTION_ROLL_CHECK = "rollCheck"
+ACTION_AWARD_EXPERIENCE = "awardExperience"
 ACTION_UPDATE_PARTY_NPCS = "updatePartyNPCs"
 ACTION_CREATE_NEW_MODULE = "createNewModule"
 ACTION_ESTABLISH_HUB = "establishHub"
@@ -3932,6 +3933,23 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             return create_return(status="error", response_data={"error_message": "The check could not be staged safely."})
         if outcome.get("error"):
             return create_return(status="error", response_data={"error_message": outcome["error"]})
+        return create_return()
+
+    elif action_type == ACTION_AWARD_EXPERIENCE:
+        # X1b: the DM names the amount; the engine adds it to the character's XP and
+        # writes the next-level threshold and any earned level-up back to the sheet.
+        status_updating_character()
+        try:
+            from core.managers.experience_runtime import award_experience
+
+            outcome = award_experience(parameters)
+        except Exception as exc:
+            error("FAILURE: awardExperience failed safely", exception=exc, category="character_updates")
+            return create_return(status="error", response_data={"error_message": "The XP award could not be applied safely."})
+        if outcome.get("error"):
+            # Fail forward: the response goes on; the refusal is in the log and the sheet is unchanged.
+            warning(f"XP: {outcome['error']}", category="character_updates")
+            return create_return()
         return create_return()
 
     elif action_type == ACTION_REMOVE_EFFECT:
