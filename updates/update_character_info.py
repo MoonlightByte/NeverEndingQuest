@@ -36,7 +36,7 @@
 # ================
 # - temporaryEffects: Complete array replacement (not merged)
 # - Equipment: Smart merging by item_name
-# - Ammunition: Additive updates (+20 arrows, -10 bolts)
+# - Ammunition: engine-owned stock (core/nql/ammunition); T079 returns quantityDelta per row, never totals
 # - Currency: engine-owned (core/nql/currency); T079 returns currencyDelta (signed per coin), never totals
 # 
 # COMMON ISSUES & SOLUTIONS:
@@ -486,7 +486,10 @@ Pool Delta Examples (signed change, never a resulting count):
 {"featureUseDelta": {"Channel Divinity (2/rest)": -1}}
 {"tempHpGrant": 10}
 
-Ammunition Example:
+Ammunition Stock Change Example (a row ALREADY on the sheet: signed change, never the new count):
+[{"name": "Crossbow bolt", "quantityDelta": -3}]
+
+Ammunition Example (a NEW row only: quantity = how many were acquired):
 [{"name": "Arrows", "quantity": 20, "description": "Standard arrows"}]
 """
     else:
@@ -636,6 +639,10 @@ def merge_ammunition_arrays(base_ammunition, update_ammunition):
         
         # Check if this ammunition already exists (case-insensitive)
         if update_name_lower in ammo_lookup:
+            if update_ammo.get('_remove'):
+                # AM-b: a model-authored quantity 0 removes the row entirely.
+                del ammo_lookup[update_name_lower]
+                continue
             # Add to existing ammunition quantity (supports negative for removals)
             ammo_lookup[update_name_lower]['quantity'] += update_quantity
             # If the update includes a description and the base doesn't have one, add it
@@ -652,10 +659,12 @@ def merge_ammunition_arrays(base_ammunition, update_ammunition):
                 }
                 ammo_lookup[update_name_lower] = new_ammo
     
-    # Convert back to array and filter out zero/negative quantities
+    # Convert back to array. AM-b: an empty quiver stays on the sheet at 0 (the
+    # engine stock keeps its id and any recovery count); only a negative row,
+    # which no engine answer produces, is dropped.
     result = []
     for ammo in ammo_lookup.values():
-        if ammo.get('quantity', 0) > 0:
+        if ammo.get('quantity', 0) >= 0:
             # Ensure description field exists for schema compliance
             if 'description' not in ammo:
                 ammo['description'] = f"Standard {ammo.get('name', 'ammunition').lower()}."
@@ -1196,6 +1205,99 @@ def _split_equipment_quantity_deltas(character_data, updates, model_authored):
     return pending, None
 
 
+def _stored_ammunition_name(character_data, name):
+    """The stored ammunition row name for a delta entry: exact, then unique case-insensitive."""
+    names = [r.get('name') for r in character_data.get('ammunition') or []
+             if isinstance(r, dict) and r.get('name')]
+    if name in names:
+        return name, None
+    folded = [n for n in names if str(n).strip().lower() == str(name).strip().lower()]
+    if len(folded) == 1:
+        return folded[0], None
+    if folded:
+        return None, f"{name!r} matches several ammunition rows; name it exactly as on the sheet"
+    return None, None
+
+
+def _split_ammunition_quantity_deltas(character_data, updates, model_authored):
+    """Pull ``quantityDelta`` out of ammunition rows before the merge (AM-b).
+
+    Ammunition stock is engine-owned (core/nql/ammunition): the model reports
+    how many were fired, bought, found or sold, never the resulting count.
+    Returns (pending {stored name: signed delta}, error or None). A row not yet
+    on the sheet with a positive delta becomes a new row of that many. A
+    model-authored ``quantity`` on an existing row other than 0 (remove the
+    row) is refused so the next attempt states the change. Non-model input
+    (level-up, repair tools) keeps the legacy additive merge untouched.
+    """
+    pending = {}
+    rows = updates.get('ammunition')
+    if not isinstance(rows, list):
+        return pending, None
+    for entry in rows:
+        if not isinstance(entry, dict) or not entry.get('name'):
+            continue
+        stored, ambiguous = _stored_ammunition_name(character_data, entry['name'])
+        if ambiguous:
+            return pending, ambiguous
+        if 'quantityDelta' in entry:
+            delta = entry.pop('quantityDelta')
+            if type(delta) is bool or type(delta) is not int:
+                return pending, f"quantityDelta for ammunition {entry['name']!r} must be a signed whole number"
+            if 'quantity' in entry:
+                return pending, (f"ammunition {entry['name']!r} has both quantity and quantityDelta; for a row "
+                                 "already on the sheet send only quantityDelta")
+            if stored is None:
+                if delta <= 0:
+                    names = [r.get('name') for r in character_data.get('ammunition') or []
+                             if isinstance(r, dict) and r.get('name')]
+                    return pending, (f"ammunition {entry['name']!r} is not on the sheet, so it cannot be spent; "
+                                     f"the sheet's rows are {names}; use the exact name")
+                entry['quantity'] = delta          # a new row: the number acquired
+                continue
+            entry['name'] = stored
+            if delta:
+                pending[stored] = pending.get(stored, 0) + delta
+        elif stored is not None and 'quantity' in entry and model_authored:
+            if entry['quantity'] == 0:
+                entry['name'] = stored
+                entry['_remove'] = True            # remove the row entirely: unambiguous
+            else:
+                return pending, (f"ammunition quantity totals are not accepted for rows already on the sheet "
+                                 f"({entry['name']!r}); report the change as quantityDelta (signed whole "
+                                 "number), or quantity 0 to remove the row entirely")
+    return pending, None
+
+
+def _engine_ammunition_stock(character_data, pending, character_name):
+    """AM-b: each pending ammunition change through the engine on the before sheet.
+
+    Returns ({stored name: engine quantity}, refusal reason or None). A short
+    stock (E_QUANTITY) is the refusal; an unavailable engine keeps today's
+    addition with a warning so play never stops.
+    """
+    from core.nql import ammunition as nql_ammunition
+
+    stock = {}
+    for name, delta in pending.items():
+        if delta < 0:
+            outcome = nql_ammunition.spend(character_data, name, -delta, recoverable=False)
+        else:
+            outcome = nql_ammunition.add(character_data, name, delta)
+        if outcome.ok:
+            stock[name] = int(outcome.quantity or 0)
+            info(f"AM: {character_name} {name} {delta:+d} -> {stock[name]} [engine]", category="character_updates")
+            continue
+        if (outcome.fault or {}).get('code') == 'E_QUANTITY':
+            return stock, outcome.reason
+        row = nql_ammunition.row_of(character_data, name)
+        before = row.get('quantity', 0) if isinstance(row, dict) and type(row.get('quantity')) is int else 0
+        stock[name] = max(0, before + delta)
+        warning(f"AM: {character_name} {name} {delta:+d} -> {stock[name]} by arithmetic; engine unavailable ({outcome.reason})",
+                category="character_updates")
+    return stock, None
+
+
 def _copy_engine_pools(engine_sheet, target):
     """Write the engine's pool values (hit points, slot and use counts) onto the merged sheet."""
     if 'hitPoints' in engine_sheet:
@@ -1257,6 +1359,25 @@ def prepare_character_delta(character_data, updates, character_role, schema,
             'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
             'error_message': stock_reason,
         }
+    # Ammunition stock is engine-owned (core/nql/ammunition, AM-b): the signed
+    # change per row goes through the engine on the before sheet and the
+    # engine's quantity replaces the merged one. A short stock is refused and
+    # the DM is told; the row is never silently emptied or dropped.
+    ammo_deltas, ammo_reason = _split_ammunition_quantity_deltas(character_data, updates, model_authored)
+    if ammo_reason:
+        return updates, character_data, {
+            'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
+            'error_message': ammo_reason,
+        }
+    ammo_stock = {}
+    if ammo_deltas:
+        ammo_stock, ammo_refusal = _engine_ammunition_stock(character_data, ammo_deltas, character_name)
+        if ammo_refusal:
+            return updates, character_data, {
+                'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
+                'error_message': f"the ammunition change was refused by the rules engine: {ammo_refusal}",
+                'engine_refusal': ammo_refusal,
+            }
     if 'hitPoints' in updates and updates['hitPoints'] < 0:
         updates['hitPoints'] = 0
     if ('experience_points' in updates and
@@ -1320,6 +1441,9 @@ def prepare_character_delta(character_data, updates, character_role, schema,
     else:
         concentration_ended = None
     updated_data = deep_merge_dict(character_data, updates)
+    for row in updated_data.get('ammunition') or []:
+        if isinstance(row, dict) and row.get('name') in ammo_stock:
+            row['quantity'] = ammo_stock[row['name']]
     if engine_pools is not None:
         _copy_engine_pools(engine_pools, updated_data)
         # The engine's unconscious/alive verdict for this hit point change
@@ -1492,14 +1616,6 @@ def infer_requested_character_update_fields(changes):
     )
     if potion_consumption:
         required.add("equipment")
-
-    ammunition_spend = re.search(
-        r"\b(?:fire[ds]?|shot|shoots?|spen[dt]|use[ds]?|expends?)\s+\d+\s+"
-        r"(?:arrows?|bolts?|bullets?|darts?|needles?)\b",
-        text,
-    )
-    if ammunition_spend:
-        required.add("ammunition")
 
     shield_destroyed = (
         re.search(
@@ -2019,7 +2135,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
      }}
      ```
 
-6. **Standard Ammunition Names (ALWAYS use these exact names):**
+6. **Standard Ammunition Names (for a NEW row only; a row already on the sheet keeps its own name exactly as listed):**
    - "Arrows" (plural) - for bow ammunition
    - "Crossbow bolts" (plural) - for crossbow ammunition
    - "Sling bullets" (plural) - for sling ammunition
@@ -2162,14 +2278,15 @@ CRITICAL INSTRUCTIONS:
     Input: "Uses Divine Smite by expending a 2nd-level spell slot"
     Update: {{"spellSlotDelta": {{"level2": -1}}}}
     Note: Do NOT update any Divine Smite usage counter - only the spell slot
-17. AMMUNITION MANAGEMENT - CRITICAL:
-    - When ADDING ammunition: Return the quantity to ADD as a positive number
-      Example: "Added 20 arrows" -> {{"ammunition": [{{"name": "arrows", "quantity": 20}}]}}
-    - When REMOVING/SELLING ammunition: Return the quantity to REMOVE as a NEGATIVE number
-      Example: "Removed 100 crossbow bolts" -> {{"ammunition": [{{"name": "crossbow bolts", "quantity": -100}}]}}
-      Example: "Sold 50 arrows" -> {{"ammunition": [{{"name": "arrows", "quantity": -50}}]}}
-    - NEVER return the final quantity after removal - return the CHANGE amount
-    - The system will automatically calculate the final quantity
+17. AMMUNITION IS THE ENGINE'S - CRITICAL:
+    - A row ALREADY on the sheet changes only by quantityDelta: the signed number fired, bought, found, sold or lost. NEVER the resulting count.
+      Example: sheet has Crossbow bolt x60, "Fired 3 crossbow bolts at the mark and recovered 2" -> {{"ammunition": [{{"name": "Crossbow bolt", "quantityDelta": -1}}]}}
+      Example: "Bought 20 crossbow bolts" -> {{"ammunition": [{{"name": "Crossbow bolt", "quantityDelta": 20}}]}}
+      Example: "Sold 100 crossbow bolts" -> {{"ammunition": [{{"name": "Crossbow bolt", "quantityDelta": -100}}]}} (send the number named even if the sheet holds fewer; the engine refuses and the DM is told)
+    - name is the row's name EXACTLY as the sheet lists it (singular or plural as written), never a standard name
+    - quantity on an existing row is refused, except quantity 0 to remove the row entirely ("lost all the bolts")
+    - A NEW kind of ammunition (no such row on the sheet) is created with quantity = how many were acquired, plus a description
+    - Never write recoverable: the rules engine keeps that count
 18. EXPERIENCE POINTS ARE THE ENGINE'S - CRITICAL:
     - NEVER write experience_points, exp_required_for_next_level or levelUpsPending: XP is awarded through the awardExperience action and the rules engine adds it; any value you write for these fields is dropped
     - A change text that mentions XP ("Awarded 50 experience points") changes nothing here: return the other requested fields only (or {{}} when there are none)
@@ -2217,18 +2334,18 @@ Current spellSlots: {{"level2": {{"current": 2, "max": 2}}}}
 Update: {{"spellSlotDelta": {{"level2": -1}}}}
 Note: Divine Smite is an ability that costs spell slots - only the slot delta, no featureUseDelta
 
-AMMUNITION EXAMPLES:
-Example 1 - Adding ammunition:
-Changes: "Added 25 crossbow bolts to inventory"
-Update: {{"ammunition": [{{"name": "crossbow bolts", "quantity": 25}}]}}
+AMMUNITION EXAMPLES (rows already on the sheet: quantityDelta with the sheet's own row name):
+Example 1 - Buying more:
+Changes: "Added 25 crossbow bolts to inventory" (sheet row: Crossbow bolt x60)
+Update: {{"ammunition": [{{"name": "Crossbow bolt", "quantityDelta": 25}}]}}
 
-Example 2 - Removing/Selling ammunition:  
-Changes: "Sold 100 crossbow bolts to Trader Sila"
-Update: {{"ammunition": [{{"name": "crossbow bolts", "quantity": -100}}]}}
+Example 2 - Selling or firing:
+Changes: "Sold 100 crossbow bolts to Trader Sila" (sheet row: Crossbow bolt x60)
+Update: {{"ammunition": [{{"name": "Crossbow bolt", "quantityDelta": -100}}]}}  (not clamped: the engine refuses a short stock)
 
-Example 3 - Multiple ammunition changes:
-Changes: "Bought 30 arrows, sold 50 crossbow bolts"
-Update: {{"ammunition": [{{"name": "arrows", "quantity": 30}}, {{"name": "crossbow bolts", "quantity": -50}}]}}
+Example 3 - A new kind plus a change to an existing row:
+Changes: "Bought 30 arrows, sold 50 crossbow bolts" (sheet rows: Crossbow bolt x60, no arrows)
+Update: {{"ammunition": [{{"name": "Arrows", "quantity": 30, "description": "Standard arrows"}}, {{"name": "Crossbow bolt", "quantityDelta": -50}}]}}
 
 EXPERIENCE POINTS EXAMPLE (engine-owned, never written here):
 Changes: "Awarded 50 experience points for the ambush"
