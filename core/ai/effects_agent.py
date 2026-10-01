@@ -75,9 +75,14 @@ A change that only spends a spell slot or a resource to cast something is
 none; the effect itself arrives as its own change. If currentEffectiveSheet
 already lists an active effect of the same name and the change does not end
 it, return none: the same spell on the same target does not stack.
-Use operation=remove when the change explicitly ends, dispels, replaces, or
-breaks concentration on an existing temporary effect. Copy its exact effectId
-and name from currentEffectiveSheet. Do not guess a removal target.
+Use operation=remove when the change explicitly ends, dispels, or breaks
+concentration on an existing temporary effect and adds nothing. Copy its exact
+effectId and name from currentEffectiveSheet. Do not guess a removal target.
+A change that casts a NEW concentration spell (even when it says the old
+concentration ended or was replaced) is operation=add for the NEW spell with
+an empty remove: the engine ends the previous concentration and its effects
+by itself the moment the new one begins. Never answer remove for the old spell
+in that case, and never fill effect on a remove.
 
 Allowed modifier stats: armorClass, speed, maxHitPoints, abilities.strength,
 abilities.dexterity, abilities.constitution, abilities.intelligence,
@@ -281,6 +286,8 @@ def classify_effect(character_name, change_description, sheet, now_scalar, max_a
             last_error = exc
             correction = (
                 "Your previous response failed the strict contract: %s. "
-                "Return a corrected complete JSON object only." % exc
+                "Return a corrected complete JSON object only. Remember: operation=remove takes an "
+                "empty effect {}; a change that casts a new spell is operation=add for that new spell "
+                "with an empty remove {} (a replaced concentration ends by itself)." % exc
             )
     raise EffectsAgentContractError("T078 failed after retries: %s" % last_error)
