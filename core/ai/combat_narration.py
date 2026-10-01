@@ -25,6 +25,7 @@ _SHEET_FIELDS = (
     "hitPoints",
     "temporaryHitPoints",
     "maxHitPoints",
+    "concentration",
     "armorClass",
     "speed",
     "status",
@@ -183,6 +184,10 @@ def _fact_event(event, creatures, presentation=None):
             "tempHpBefore": target.get("tempHpBefore"),
             "tempHpAfter": target.get("tempHpAfter"),
             "statusAfter": target.get("statusAfter"),
+            # CC: the engine's concentration save lines and what ended on a failure
+            "engineChecks": target.get("engineChecks"),
+            "concentrationEnded": target.get("concentrationEnded"),
+            "concentrationEndedEffects": target.get("concentrationEndedEffects"),
         }
         targets.append({key: value for key, value in row.items() if value is not None})
     fact = {

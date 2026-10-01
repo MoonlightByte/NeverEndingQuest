@@ -103,6 +103,7 @@ def _relevant_sheet(sheet):
         "classFeatures",
         "ammunition",
         "temporaryEffects",
+        "concentration",  # CC: the caster's record (name, group, targets)
         # D-242 (ruling 5): the tactical model chooses rescues from what the
         # sheets actually hold, so equipment, feats, skills and proficiencies
         # travel whole, for every combatant, every window. No filtering.
@@ -360,7 +361,11 @@ An adjudicated intent may contain:
   Set incapacitates=true only when
   the target cannot act. Code owns duration conversion, arithmetic, and expiry.
   Code stamps concentration source/group IDs from actorId and enforces one
-  concentration spell (which may affect multiple targets) per caster.
+  concentration spell (which may affect multiple targets) per caster. A
+  concentration save on damage is made by the rules engine and its result is
+  already applied to the sheets you see: never roll that save, never remove a
+  concentration effect because its caster was hit, and treat a caster whose
+  sheet shows no concentration record as free to cast another.
 
 One known attack intent represents the actor's full Attack action. Code owns
 the number of Multiattack swings and consumes each persisted roll; do not emit
