@@ -779,9 +779,21 @@ def ai_character_interview(conversation, module):
                         character = sanitize_character_data(proposal["character"])
                         character, _ = repair_required_ammunition_field(character)
                         character, _ = repair_startup_character_sheet(character)
+                        # The repairs return the sheet they fixed (the validator
+                        # below discards its own copy), so keep this result.
+                        character = auto_fix_character_data(character)
                         valid, detail = validate_character_with_recovery(character)
                         if not valid:
                             raise ValueError(detail)
+                        character, mechanics = startup_mechanics(character)
+                        if mechanics:
+                            facts["startup_mechanics"] = {
+                                "status": "already applied by the game to the candidate sheet under review",
+                                "meaning": ("The candidate sheet reflects these engine and SRD derivations. They are "
+                                            "not requirements for the author; only a narration figure that contradicts "
+                                            "the candidate sheet needs correcting."),
+                                "changes": mechanics,
+                            }
                         try:
                             validate(character, safe_json_load("schemas/char_schema.json"))
                         except ValidationError as exc:
@@ -1423,6 +1435,117 @@ def validate_character(character_data):
     except Exception as e:
         return False, f"Validation error: {str(e)}"
 
+STARTING_HIT_DIE = {
+    "barbarian": 12, "fighter": 10, "paladin": 10, "ranger": 10,
+    "bard": 8, "cleric": 8, "druid": 8, "monk": 8, "rogue": 8, "warlock": 8,
+    "sorcerer": 6, "wizard": 6,
+}
+TOUGH_FEAT = "tough"
+DWARVEN_TOUGHNESS_TRAIT = "dwarven toughness"
+
+
+def _normalize_shield_defense(item):
+    """A shield's defense is ac_base + ac_bonus (core.nql.genesis). The SRD shield
+    is base 2 with no bonus; only a magical shield carries one (#531)."""
+    base = item.get("ac_base")
+    bonus = item.get("ac_bonus")
+    base = base if type(base) is int else 0
+    bonus = bonus if type(bonus) is int else 0
+    if base < 2:
+        # The draft wrote the shield's total as its bonus (base 0 / bonus 2):
+        # fold the stated total into base 2 plus whatever remains.
+        item["ac_base"] = 2
+        item["ac_bonus"] = max(0, base + bonus - 2)
+    elif bonus > 0 and item.get("magical") is not True:
+        item["ac_bonus"] = 0
+
+
+def _typed_entry_count(entries, name):
+    """How many typed {name, ...} entries carry this name (casefolded)."""
+    count = 0
+    for entry in entries if isinstance(entries, list) else []:
+        if isinstance(entry, dict) and str(entry.get("name", "")).strip().casefold() == name:
+            count += 1
+    return count
+
+
+def expected_starting_hit_points(character):
+    """SRD 5.2.1 level-1 hit point maximum from the sheet's typed facts, with
+    the terms that make it up; (None, []) when the sheet is not level 1 or its
+    class or Constitution is unknown."""
+    if not isinstance(character, dict) or character.get("level") != 1:
+        return None, []
+    class_name = str(character.get("class", "")).strip()
+    die = STARTING_HIT_DIE.get(class_name.casefold())
+    abilities = character.get("abilities") if isinstance(character.get("abilities"), dict) else {}
+    con = abilities.get("constitution")
+    if die is None or type(con) is not int:
+        return None, []
+    con_mod = (con - 10) // 2
+    terms = [f"{class_name} d{die} maximum {die}", f"Constitution {con} ({con_mod:+d})"]
+    expected = die + con_mod
+    tough = _typed_entry_count(character.get("feats"), TOUGH_FEAT)
+    if tough:
+        expected += 2 * tough
+        terms.append(f"Tough feat (+{2 * tough})")
+    dwarven = _typed_entry_count(character.get("racialTraits"), DWARVEN_TOUGHNESS_TRAIT)
+    if dwarven:
+        expected += dwarven
+        terms.append(f"Dwarven Toughness (+{dwarven})")
+    return max(1, expected), terms
+
+
+def startup_mechanics(character):
+    """Derive a new character's engine-owned and SRD-derived numbers.
+
+    Armor class comes from the engine's defense explanation, the same
+    projection every later write applies (#531). The level-1 hit point
+    maximum is the SRD derivation from typed facts: hit die, Constitution,
+    Tough feat entries, Dwarven Toughness (#532). A lower maximum is raised,
+    never reduced; current hit points follow only for an uninjured hero.
+    Returns the sheet and the notes of what changed (also logged), which the
+    startup reviewer receives as committed facts.
+    """
+    notes = []
+    if not isinstance(character, dict):
+        return character, notes
+    name = character.get("name", "Unknown")
+    from core.nql import armor_class
+    projection = armor_class.project(character)
+    if projection.applied and projection.gaps:
+        # Equipment the engine could not model (an equipped armor without
+        # ac_base, an unknown category): the written armorClass stands until
+        # the first later write types the entries and projects (T051).
+        warning(f"[Startup Mechanics] {name}: armorClass left as written: {projection.gaps}",
+                category="character_validation")
+    elif projection.applied:
+        if projection.changed:
+            parts = [f"{e.get('source')} {e.get('value'):+d}" if e.get("type") == "bonus" else f"{e.get('source')} {e.get('value')}"
+                     for e in projection.sheet.get("equipment_effects") or []
+                     if isinstance(e, dict) and e.get("target") == armor_class.AC_TARGET and type(e.get("value")) is int]
+            notes.append(f"armorClass {projection.previous_armor_class} -> {projection.armor_class} "
+                         f"(engine defense: {', '.join(parts) or 'unarmored'})")
+        character = projection.sheet
+    else:
+        warning(f"[Startup Mechanics] {name}: armorClass left as written: {projection.reason}",
+                category="character_validation")
+    expected, terms = expected_starting_hit_points(character)
+    if expected is not None:
+        current_max = character.get("maxHitPoints")
+        current = character.get("hitPoints")
+        breakdown = " + ".join(terms)
+        if type(current_max) is not int or current_max < expected:
+            if type(current_max) is not int or current == current_max:
+                character["hitPoints"] = expected
+            character["maxHitPoints"] = expected
+            notes.append(f"maxHitPoints {current_max} -> {expected} (SRD level 1: {breakdown})")
+        elif current_max > expected:
+            notes.append(f"maxHitPoints {current_max} kept above the SRD level-1 derivation {expected} ({breakdown})")
+    for note in notes:
+        info(f"[Startup Mechanics] {name}: {note}", category="character_validation")
+    return character, notes
+
+
 def validate_character_with_recovery(character_data):
     """Enhanced validation with automatic error recovery and detailed reporting"""
     try:
@@ -1455,10 +1578,10 @@ def auto_fix_character_data(character_data):
     # Fix equipment ac_base values that are too low
     if "equipment" in character_data and isinstance(character_data["equipment"], list):
         for item in character_data["equipment"]:
-            if isinstance(item, dict) and "ac_base" in item:
+            if isinstance(item, dict) and ("ac_base" in item or item.get("armor_category") == "shield"):
                 # Shield should have ac_base of 2, armor should be 10+
-                if item.get("armor_category") == "shield" and item.get("ac_base", 0) < 2:
-                    item["ac_base"] = 2
+                if item.get("armor_category") == "shield":
+                    _normalize_shield_defense(item)
                 elif item.get("armor_category") in ["light", "medium", "heavy"] and item.get("ac_base", 0) < 10:
                     # Set minimum armor AC based on type
                     if item.get("armor_category") == "light":

@@ -171,6 +171,7 @@ def seed_character(character_file, module_name):
 
     from utils.startup_wizard import (
         auto_fix_character_data,
+        startup_mechanics,
         validate_character_with_recovery,
         save_character_to_module,
         update_party_tracker,
@@ -181,6 +182,9 @@ def seed_character(character_file, module_name):
         raise BootstrapError(
             "character file %s failed schema validation: %s"
             % (character_file, validation_error))
+    # Engine AC projection + SRD level-1 hit points, as the interview
+    # applies them at finalize (#531, #532); the notes are logged there.
+    character_data, _ = startup_mechanics(character_data)
     if not save_character_to_module(character_data, module_name):
         raise BootstrapError(
             "failed to save character %r into module %r"
