@@ -483,7 +483,8 @@ def _new_current_transition_checkpoint(
             "journal_entry_after": staged_journal_entry,
         },
         "location_reconciliation": {
-            "status": "pending",
+            # T091 retired (P4-f): the engine's record is the origin roster.
+            "status": "not_applicable",
             "operation_id": str(uuid4()),
             "area_path": path_manager.get_area_path(str(origin_area_id)),
             "location_id": str(origin_location_id),
@@ -848,47 +849,17 @@ def update_current_transition_checkpoint(operation_id, **changes):
 
 
 def resolve_current_transition_reconciliation(operation_id, transition_context):
-    """Resolve advisory T091 and durably receipt its exact owned values."""
+    """The origin roster is the engine's record (P4-f); T091 is retired. The
+    receipt is kept for old checkpoints: a pending one resolves as not
+    applicable, a committed one stays as it is."""
     checkpoint = load_current_transition_checkpoint(operation_id)
     if checkpoint is None:
         raise RuntimeError("current transition checkpoint is unavailable")
     receipt = checkpoint["location_reconciliation"]
-    if receipt.get("status") in {"committed", "attempted_unavailable"}:
+    if receipt.get("status") in {"committed", "attempted_unavailable", "not_applicable"}:
         return receipt["status"]
-
-    from utils import reconcile_location_state
-    from utils.capture.live_provider_call import LiveProviderUnavailable
-
-    try:
-        proposal = reconcile_location_state.prepare_reconciliation(
-            checkpoint["origin_area_id"],
-            checkpoint["origin_location_id"],
-            transition_context["origin_history_segment"],
-        )
-    except LiveProviderUnavailable:
-        receipt["status"] = "attempted_unavailable"
-        _write_location_transition_checkpoint(checkpoint)
-        return receipt["status"]
-    receipt.update(
-        {
-            "status": "pending",
-            "area_path": proposal["area_path"],
-            "location_id": proposal["location_id"],
-            "monsters_before": proposal["monsters_before"],
-            "monsters_after": proposal["monsters_after"],
-        }
-    )
-    _write_location_transition_checkpoint(checkpoint)
-    outcome = reconcile_location_state.apply_reconciliation(receipt)
-    receipt["status"] = (
-        "committed" if outcome in {"committed", "already_committed"}
-        else "blocked_conflict"
-    )
-    checkpoint["phase"] = (
-        "reconciliation_resolved"
-        if receipt["status"] == "committed"
-        else "blocked_conflict"
-    )
+    receipt["status"] = "not_applicable"
+    checkpoint["phase"] = "reconciliation_resolved"
     _write_location_transition_checkpoint(checkpoint)
     return receipt["status"]
 
@@ -3363,19 +3334,6 @@ def process_action(
                     # the fight resolves its occupant (P4-c). Never stops play.
                     from core.nql import occupants as _occupants
                     _occupants.resolve_combat(encounter_id)
-                    if isinstance(dialogue_summary, str) and dialogue_summary:
-                        # #253: reconcile the location's monster list from this
-                        # fight before the post-combat narration is requested,
-                        # so a won fight is not offered again.
-                        from utils import reconcile_location_state
-                        world = (authoritative_party or party_tracker_data).get("worldConditions", {})
-                        reconcile_location_state.run(
-                            area_id=world.get("currentAreaId"),
-                            location_id=world.get("currentLocationId"),
-                            conversation_history_segment=[
-                                {"role": "assistant", "content": "Combat Summary: " + dialogue_summary}
-                            ],
-                        )
                     print("[DEBUG ACTION_HANDLER] Returning with status='needs_post_combat_narration' - main loop will get follow-up from AI")
                     print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END ==========\n")
                     # SIGNAL-BASED ARCHITECTURE: This return value is crucial for maintaining chronological history.

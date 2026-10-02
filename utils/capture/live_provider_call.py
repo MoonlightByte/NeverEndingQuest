@@ -77,7 +77,6 @@ _ADVISORY_TASK_IDS = frozenset(
         "T085",
         "T087",
         "T090",
-        "T091",
         "T107",
         "T108",
         "T113",

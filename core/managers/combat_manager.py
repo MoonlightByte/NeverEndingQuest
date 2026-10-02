@@ -3528,6 +3528,22 @@ def _run_combat_simulation(
        # Filter out adventureSummary and encounters from location data to reduce token usage (same as conversation_utils.py)
        # Encounters are tracked separately and don't need to be in the location context
        location_for_combat = {k: v for k, v in location_info.items() if k not in ['adventureSummary', 'encounters']}
+       # P4-f: who is here is the engine's view; the authored lists are not
+       # read for state when the view answers.
+       try:
+           from core.nql import occupants as _occupants
+           _world_now = party_tracker_data.get("worldConditions", {}) or {}
+           _here = _occupants.place_roster(
+               str(party_tracker_data.get("module") or ""), str(_world_now.get("currentLocationId") or "")
+           )
+       except Exception:
+           _here = None
+       if _here is not None:
+           location_for_combat.pop("monsters", None)
+           location_for_combat.pop("npcs", None)
+           location_for_combat["occupants"] = _here["present"]
+           if _here["rosterRecord"]:
+               location_for_combat["rosterRecord"] = _here["rosterRecord"]
        conversation_history[4]["content"] = f"Location:\n{json.dumps(location_for_combat, indent=2)}"
        
        # Add each NPC as a separate system message (matching conversation_utils format)

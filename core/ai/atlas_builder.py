@@ -7,7 +7,7 @@ Atlas Builder - Assembles all area files into a complete world atlas for AI navi
 Production version that uses area files (not map files) for complete connectivity
 """
 
-from typing import Dict, Any
+from typing import Optional, Dict, Any
 from pathlib import Path
 
 from utils.path_encounter_analyzer import build_active_module_snapshot, _id_list, _read_json_object
@@ -57,10 +57,18 @@ def format_installed_module_references(current_module: str, modules_root: str = 
             lines.append(f"  SOURCE READ: {issue['kind']}: {issue['source_file']}")
     return "\n".join(lines)
 
-def extract_location_info(location: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract key information from a location"""
-    npcs = location.get("npcs", [])
-    npcs = npcs if isinstance(npcs, list) else []
+def extract_location_info(location: Dict[str, Any], roster: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Extract key information from a location. Who is there comes from the
+    engine's view (P4-f); the authored lists are read only when the view is
+    unavailable."""
+    if roster is not None:
+        npc_names = list(roster.get("people") or [])
+        has_monsters = bool(roster.get("hostile"))
+    else:
+        npcs = location.get("npcs", [])
+        npcs = npcs if isinstance(npcs, list) else []
+        npc_names = [npc["name"] for npc in npcs if isinstance(npc, dict) and isinstance(npc.get("name"), str)]
+        has_monsters = bool(location.get("monsters"))
     return {
         "id": location.get("locationId"),
         "name": location.get("name", "Unknown"),
@@ -68,10 +76,10 @@ def extract_location_info(location: Dict[str, Any]) -> Dict[str, Any]:
         "connectivity": _id_list(location.get("connectivity")),
         "areaConnectivity": _id_list(location.get("areaConnectivity")),
         "areaConnectivityId": _id_list(location.get("areaConnectivityId")),
-        "npcs": [npc["name"] for npc in npcs if isinstance(npc, dict) and isinstance(npc.get("name"), str)],
+        "npcs": npc_names,
         "dangerLevel": location.get("dangerLevel", "unknown"),
         "hasTraps": bool(location.get("traps")),
-        "hasMonsters": bool(location.get("monsters")),
+        "hasMonsters": has_monsters,
         "hasTreasure": bool(location.get("treasures")) or bool(location.get("lootTable"))
     }
 
@@ -79,6 +87,12 @@ def build_atlas_for_module(
     module_name: str, modules_root: str = "modules", *, snapshot=None,
 ) -> Dict[str, Any]:
     """Render the same detached source records used by travel preflight (#303)."""
+    # P4-f: one engine view for the whole module; None while unavailable.
+    try:
+        from core.nql import occupants as _occupants
+        module_roster = _occupants.module_roster(module_name)
+    except Exception:
+        module_roster = None
     if snapshot is None:
         snapshot = build_active_module_snapshot(module_name, modules_root)
     if snapshot["module_name"] != module_name.replace(" ", "_"):
@@ -138,7 +152,9 @@ def build_atlas_for_module(
                         "code": "invalid_npc_labels",
                         "message": f"Area {area_id} location {loc_id} has malformed NPC labels; usable location identities remain listed.",
                     })
-                loc_info = extract_location_info(location)
+                loc_info = extract_location_info(
+                    location, module_roster.get(loc_id) if module_roster is not None else None
+                )
                 area_entry["locations"][loc_id] = loc_info
                 
                 # Track inter-area connections

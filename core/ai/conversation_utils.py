@@ -1011,7 +1011,11 @@ def update_conversation_history(
             print(f"DEBUG: [update_conversation_history] roster record unavailable: {_exc}")
             _record = None
         if _record is not None:
-            location_for_conversation.pop("encounters", None)
+            # P4-f: who is here is the engine's view (`occupants`, with the
+            # authored description joined by id); the authored lists stay in
+            # the file, unread for state.
+            for _authored_list in ("encounters", "monsters", "npcs"):
+                location_for_conversation.pop(_authored_list, None)
             location_for_conversation.update(_record)
 
         new_history.append({

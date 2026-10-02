@@ -66,8 +66,20 @@ def extract_npcs_from_area(area_data: dict) -> Dict[str, Set[str]]:
     return npcs_by_location
 
 def scan_module_areas(module_name: str) -> Dict[str, Set[str]]:
-    """Scan all area files in a module for NPCs."""
+    """The people at each place of a module: the engine's view (P4-f); the
+    area files are scanned only while the view is unavailable."""
     all_npcs = {}
+    try:
+        from core.nql import occupants as _occupants
+        roster = _occupants.module_roster(module_name)
+    except Exception:
+        roster = None
+    if roster is not None:
+        for location_id, here in roster.items():
+            names = {n.split("(")[0].strip().replace(",", "") for n in here.get("people") or [] if n}
+            if names:
+                all_npcs[location_id] = names
+        return all_npcs
     module_path = Path(f"modules/{module_name}")
     areas_path = module_path / "areas"
     

@@ -2083,6 +2083,7 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
     if reconciliation.get("status") not in {
         "committed",
         "attempted_unavailable",
+        "not_applicable",
     }:
         outcome = action_handler.resolve_current_transition_reconciliation(
             operation_id, context
@@ -2659,6 +2660,11 @@ def create_module_validation_context(party_tracker_data, path_manager, *, module
             snapshot = build_active_module_snapshot(current_module)
         
         validation_context = f"MODULE VALIDATION DATA:\nCurrent Module: {current_module}\nCurrent Area: {current_area_id}\nCurrent Location: {current_location_id}\n\n"
+        try:
+            from core.nql import occupants as _occupants_mod
+            _module_roster = _occupants_mod.module_roster(str(current_module))
+        except Exception:
+            _module_roster = None
         
         # NPC context now dynamically built in validate_dm_response function
         # No longer loading static NPC compendium here
@@ -2688,12 +2694,16 @@ def create_module_validation_context(party_tracker_data, path_manager, *, module
                         f"{loc_id} ({loc_name})" if loc_name else loc_id
                     )
                     
-                    # Track NPCs by location
-                    npc_records = location.get("npcs", [])
-                    location_npcs = [
-                        npc["name"] for npc in (npc_records if isinstance(npc_records, list) else [])
-                        if isinstance(npc, dict) and isinstance(npc.get("name"), str) and npc["name"]
-                    ]
+                    # Track NPCs by location: the engine's view (P4-f); the
+                    # authored list only while the view is unavailable.
+                    if _module_roster is not None:
+                        location_npcs = list((_module_roster.get(loc_id) or {}).get("people") or [])
+                    else:
+                        npc_records = location.get("npcs", [])
+                        location_npcs = [
+                            npc["name"] for npc in (npc_records if isinstance(npc_records, list) else [])
+                            if isinstance(npc, dict) and isinstance(npc.get("name"), str) and npc["name"]
+                        ]
                     if location_npcs:
                         area_locations_with_npcs[loc_id] = location_npcs
                     
@@ -3648,7 +3658,21 @@ def validate_ai_response(
             and scene_node["location_data"].get("locationId") == scene_location
         ):
             scene_record["status"] = "available"
-            scene_record["location"] = scene_node["location_data"]
+            _scene_location = dict(scene_node["location_data"])
+            # P4-f: presence is the engine's view; the authored lists are
+            # not sent when the view answers.
+            try:
+                from core.nql import occupants as _occupants_scene
+                _scene_here = _occupants_scene.place_roster(scene_module, scene_location)
+            except Exception:
+                _scene_here = None
+            if _scene_here is not None:
+                for _authored_list in ("monsters", "npcs", "encounters"):
+                    _scene_location.pop(_authored_list, None)
+                _scene_location["occupants"] = _scene_here["present"]
+                if _scene_here["rosterRecord"]:
+                    _scene_location["rosterRecord"] = _scene_here["rosterRecord"]
+            scene_record["location"] = _scene_location
         scene_records.append(scene_record)
     validation_messages_to_send = list(validation_messages_to_send) + [{
         "role": "system",
@@ -3657,9 +3681,10 @@ def validate_ai_response(
             "recorded location. Any prospective destination is supplied by accepted "
             "provisional travel facts; it is not proof that movement has committed. "
             "Review the candidate against these records together with the actual "
-            "player input and established events. A location's named NPC list records "
-            "presence; appearing in that list does not by itself establish party "
-            "allegiance or invalidate an authored monster entry for the same person. "
+            "player input and established events. A location's `occupants` list is the "
+            "rules engine's record of who is present (people and creature groups, with "
+            "ids, counts and attitudes); appearing in it does not by itself establish party "
+            "allegiance. "
             "Judge the encounter role using the supplied scenario and typed proposal. "
             "Authored traps, secrets and future events establish scenario context, "
             "not that the party detected them, triggered them or earned their outcomes. "
@@ -5415,7 +5440,7 @@ def process_ai_response(
 
         # Preserve the legacy response-wide fence for ordinary responses.
         # Travel has its own checkpoint-v2 transaction and must release every
-        # mutation lock before T091/T016/T015/T013/T063/T064 provider work.
+        # mutation lock before T016/T015/T013/T063/T064 provider work.
         if not is_travel_workflow:
             response_fences.enter_context(_party_module_transition_lock())
 
@@ -8573,18 +8598,6 @@ def _main_game_loop(startup_authority, turn_authority):
             # The engine's location record for the resumed fight (P4-c).
             from core.nql import occupants as _occupants
             _occupants.resolve_combat(active_encounter_id)
-            if isinstance(dialogue_summary, str):
-                # #253: reconcile the location's monster list from this fight
-                # before the post-combat narration is requested.
-                from utils import reconcile_location_state
-                world_resume = (party_tracker_data or {}).get("worldConditions", {})
-                reconcile_location_state.run(
-                    area_id=world_resume.get("currentAreaId"),
-                    location_id=world_resume.get("currentLocationId"),
-                    conversation_history_segment=[
-                        {"role": "assistant", "content": "Combat Summary: " + dialogue_summary}
-                    ],
-                )
 
         # ** CRITICAL FIX: Get a new AI response for post-combat narration **
         # This makes the resumed flow behave exactly like the normal flow.
@@ -9319,47 +9332,26 @@ def _main_game_loop(startup_authority, turn_authority):
                         for trap in traps
                     ])
 
-            monsters_str = "None listed"
-            if location_data and "monsters" in location_data:
-                monsters = location_data.get("monsters", [])
-            
-                # Bulletproof check: ensure monsters is actually a list/array
-                if not isinstance(monsters, (list, tuple)):
-                    monsters_str = f"Invalid monster data format: {type(monsters)}"
-                elif monsters:
-                    monster_list = []
-                    for monster in monsters:
-                        # Graceful handling for different monster formats
-                        if isinstance(monster, str):
-                            # Handle legacy string format (just use the string)
-                            monster_list.append(f"- {monster}")
-                        elif isinstance(monster, dict):
-                            # Handle dictionary format (multiple schema versions)
-                            name = monster.get('name', 'Unknown')
-                        
-                            # Try different quantity field names
-                            qty = None
-                            qty_str = "1"
-                        
-                            if 'quantity' in monster:
-                                # Standard schema: {"quantity": {"min": 1, "max": 1}}
-                                qty = monster.get('quantity', {})
-                                if isinstance(qty, dict):
-                                    qty_str = f"{qty.get('min', 1)}-{qty.get('max', 1)}"
-                                else:
-                                    qty_str = str(qty)
-                            elif 'number' in monster:
-                                # Keep of Doom schema: {"number": "2d4"}
-                                qty_str = str(monster.get('number', 1))
-                            elif 'count' in monster:
-                                # Silver Vein schema: {"count": 2}
-                                qty_str = str(monster.get('count', 1))
-                        
-                            monster_list.append(f"- {name} ({qty_str})")
-                        else:
-                            # Handle unexpected types
-                            monster_list.append(f"- Unknown monster type: {type(monster)}")
-                    monsters_str = "\n".join(monster_list)
+            # P4-f: the monsters here are the engine's present hostile
+            # occupants; the authored list is never read for state.
+            monsters_str = "None recorded"
+            try:
+                from core.nql import occupants as _occupants
+
+                _here = _occupants.place_roster(
+                    party_tracker_data.get("module", ""),
+                    party_tracker_data["worldConditions"]["currentLocationId"],
+                )
+            except Exception:
+                _here = None
+            if _here is None:
+                monsters_str = "Roster unavailable this turn"
+            elif _here["hostiles"]:
+                monsters_str = "\n".join(
+                    "- %s (%s)" % (o.get("name"), o.get("count"))
+                    for o in _here["present"]
+                    if o.get("kind") == "creatures" and o.get("attitude") == "hostile"
+                )
 
             # Check ALL modules for plot completion before suggesting module creation
             module_creation_prompt = ""

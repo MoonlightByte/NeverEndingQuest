@@ -3992,42 +3992,50 @@ def handle_party_data_request(data=None):
         current_location_id = world_conditions.get("currentLocationId")
 
         if current_module and current_area_id and current_location_id:
-            # Construct the path to the current area file
-            areas_dir = os.path.join("modules", current_module, "areas")
-            area_file_path = os.path.join(areas_dir, f"{current_area_id}.json")
-            
-            if os.path.exists(area_file_path):
-                area_data = safe_read_json(area_file_path)
-                if area_data and 'locations' in area_data:
-                    # Find the specific location the player is in
-                    current_location_data = next((loc for loc in area_data['locations'] 
-                                                 if loc.get('locationId') == current_location_id), None)
-                    
-                    if current_location_data and 'npcs' in current_location_data:
-                        # Extract the names of the NPCs in that location
-                        for npc in current_location_data['npcs']:
+            # P4-f: the people here come from the engine's view; the authored
+            # list is read only while the view is unavailable.
+            npc_names = None
+            try:
+                from core.nql import occupants as _occupants
+                _here = _occupants.place_roster(current_module, current_location_id)
+                if _here is not None:
+                    npc_names = list(_here["people"])
+            except Exception:
+                npc_names = None
+            if npc_names is None:
+                npc_names = []
+                area_file_path = os.path.join("modules", current_module, "areas", f"{current_area_id}.json")
+                if os.path.exists(area_file_path):
+                    area_data = safe_read_json(area_file_path)
+                    if area_data and 'locations' in area_data:
+                        current_location_data = next((loc for loc in area_data['locations']
+                                                     if loc.get('locationId') == current_location_id), None)
+                        for npc in (current_location_data or {}).get('npcs') or []:
                             npc_name = npc.get('name') if isinstance(npc, dict) else npc
                             if npc_name:
-                                # Exclude NPCs that are already in the player's party
-                                # Also exclude NPCs whose names are contained within any party member's name
-                                # Example: "Eirik" should be excluded if "Eirik Hearthwise" is in the party
-                                if not any(npc_name.lower() in member['name'].lower() for member in party_members):
-                                    # Try to load NPC data for HP info
-                                    npc_data_dict = {'name': npc_name, 'type': 'location_npc'}
-                                    try:
-                                        matched_name = find_character_file_fuzzy(npc_name)
-                                        if matched_name:
-                                            npc_file = path_manager.get_character_path(matched_name)
-                                            if os.path.exists(npc_file):
-                                                npc_data = safe_read_json(npc_file)
-                                                if npc_data:
-                                                    npc_data = _effective_character_for_ui(npc_data)
-                                                    npc_data_dict['currentHp'] = npc_data.get('hitPoints', npc_data.get('currentHp', 0))
-                                                    npc_data_dict['maxHp'] = npc_data.get('maxHitPoints', npc_data.get('maxHp', 0))
-                                    except:
-                                        pass
-                                    location_npcs.append(npc_data_dict)
-        
+                                npc_names.append(npc_name)
+            for npc_name in npc_names:
+                # Exclude NPCs that are already in the player's party
+                # Also exclude NPCs whose names are contained within any party member's name
+                # Example: "Eirik" should be excluded if "Eirik Hearthwise" is in the party
+                if any(npc_name.lower() in member['name'].lower() for member in party_members):
+                    continue
+                # Try to load NPC data for HP info
+                npc_data_dict = {'name': npc_name, 'type': 'location_npc'}
+                try:
+                    matched_name = find_character_file_fuzzy(npc_name)
+                    if matched_name:
+                        npc_file = path_manager.get_character_path(matched_name)
+                        if os.path.exists(npc_file):
+                            npc_data = safe_read_json(npc_file)
+                            if npc_data:
+                                npc_data = _effective_character_for_ui(npc_data)
+                                npc_data_dict['currentHp'] = npc_data.get('hitPoints', npc_data.get('currentHp', 0))
+                                npc_data_dict['maxHp'] = npc_data.get('maxHitPoints', npc_data.get('maxHp', 0))
+                except:
+                    pass
+                location_npcs.append(npc_data_dict)
+
         # Send both lists to the frontend
         emit('party_data_response', _ui_response(data, {'members': party_members, 'location_npcs': location_npcs}))
         
