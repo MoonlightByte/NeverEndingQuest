@@ -444,6 +444,7 @@ class SaveGameManager:
             if value[0] == 'file' and replaced(path) and not self._restore_preserves_file(os.path.basename(path)):
                 expected[path] = ('absent', None)
         for path in ('modules/effects_state.json',
+                     'live_state.json',
                      'modules/conversation_history/combat_conversation_history.json',
                      'modules/conversation_history/startup_conversation.json',
                      'modules/conversation_history/game_interface_cache.json',
@@ -480,6 +481,7 @@ class SaveGameManager:
             "current_location.json", 
             "journal.json",
             "player_storage.json",
+            "live_state.json",
             "data/companion_memories/",
 
             # Installed SRD reference data is application-owned, not campaign
@@ -1439,6 +1441,9 @@ class SaveGameManager:
             # The verified backup retains these files for a failed-Load rollback.
             for optional_path in (
                 "modules/effects_state.json",
+                # A save from before the engine's location record: the record
+                # is re-created from that save's files on the next roster call.
+                "live_state.json",
                 "modules/conversation_history/combat_conversation_history.json",
                 "modules/conversation_history/startup_conversation.json",
                 "modules/conversation_history/game_interface_cache.json",

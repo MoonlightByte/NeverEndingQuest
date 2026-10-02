@@ -999,7 +999,21 @@ def update_conversation_history(
     if current_location:
         # Create a filtered copy for conversation history, omitting adventureSummary to reduce tokens
         location_for_conversation = {k: v for k, v in current_location.items() if k != 'adventureSummary'}
-        
+        # The engine's record of what became of each group here replaces the
+        # per-fight encounter entries (the adventure summary keeps the story).
+        # Absent only while the engine or its document is unavailable.
+        try:
+            from core.nql import occupants as _occupants
+            _record = _occupants.location_record(
+                current_location_id, party_tracker_data.get("module", "") if party_tracker_data else ""
+            )
+        except Exception as _exc:  # the context is never the reason a turn stops
+            print(f"DEBUG: [update_conversation_history] roster record unavailable: {_exc}")
+            _record = None
+        if _record is not None:
+            location_for_conversation.pop("encounters", None)
+            location_for_conversation.update(_record)
+
         new_history.append({
             "role": "system",
             "content": f"Current Location:\n{compress_json_data(location_for_conversation)}\n"

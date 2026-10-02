@@ -8545,6 +8545,9 @@ def _main_game_loop(startup_authority, turn_authority):
             conversation_history.append({"role": "user", "content": combat_summary_message})
             debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
             save_conversation_history(conversation_history)
+            # The engine's location record for the resumed fight (P4-c).
+            from core.nql import occupants as _occupants
+            _occupants.resolve_combat(active_encounter_id)
             if isinstance(dialogue_summary, str):
                 # #253: reconcile the location's monster list from this fight
                 # before the post-combat narration is requested.
