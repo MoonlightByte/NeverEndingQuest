@@ -188,6 +188,8 @@ def _fact_event(event, creatures, presentation=None):
             "engineChecks": target.get("engineChecks"),
             "concentrationEnded": target.get("concentrationEnded"),
             "concentrationEndedEffects": target.get("concentrationEndedEffects"),
+            # MS-b: a hit's rider save (venom): ability, save, dc, saved, damage, conditions
+            "riders": target.get("riders"),
         }
         targets.append({key: value for key, value in row.items() if value is not None})
     fact = {
@@ -205,6 +207,10 @@ def _fact_event(event, creatures, presentation=None):
         "targetAC": outcome.get("targetAC"),
         "resources": _public_copy(event.get("resources") or []),
         "effects": _public_copy(event.get("effects") or []),
+        # MS-b: recharge abilities spent by this action, and the d6 draws made
+        # at the start of the actor's turn (name, value, rechargesOn, recharged)
+        "rechargeSpent": [spent.get("name") for spent in event.get("recharge") or [] if spent.get("name")] or None,
+        "rechargeRolls": _public_copy(event.get("rechargeRolls")) if event.get("rechargeRolls") else None,
     }
     return {key: value for key, value in fact.items() if value is not None}
 

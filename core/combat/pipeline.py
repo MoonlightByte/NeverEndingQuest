@@ -393,6 +393,11 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             resolution["event"].setdefault("normalizations", []).append(
                 stale_target_normalization
             )
+        for draw in pending_turn.get("rechargeRolls") or []:
+            # MS-b: the claim's recharge draws ride on the actor's own event so
+            # the narrator and the log can state them.
+            if isinstance(draw, dict) and draw.get("actorId") == actor_id:
+                resolution["event"].setdefault("rechargeRolls", []).append(deepcopy(draw))
 
         if resolution.get("violations"):
             raise CombatIntentError(

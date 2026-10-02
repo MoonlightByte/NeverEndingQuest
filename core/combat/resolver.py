@@ -187,9 +187,12 @@ def _stat_block_save_entry(actor_sheet, name):
     return None
 
 
-def _stated_save_spec(entry):
-    """The intent-shaped save {type, dc, halfOnSave} a stat-block entry states."""
-    save = (entry or {}).get("save") or {}
+def _stated_save_spec(entry, key="save"):
+    """The intent-shaped save {type, dc, halfOnSave} a stat-block entry states.
+
+    ``key`` is "save" (a save ability) or "rider" (the save a hit forces).
+    """
+    save = (entry or {}).get(key) or {}
     try:
         dc = int(save.get("dc"))
     except (TypeError, ValueError):
@@ -200,13 +203,13 @@ def _stated_save_spec(entry):
     return {"type": ability, "dc": dc, "halfOnSave": bool(save.get("halfOnSave"))}
 
 
-def _stated_on_fail(entry):
+def _stated_on_fail(entry, key="save"):
     """(dice, conditions, roundsRemaining) a stat-block save states on a failure.
 
     ``dice`` is (count, sides, flat) when the entry carries rollable damage
     dice, else None; ``conditions`` is the typed SRD list, lowercased.
     """
-    on_fail = ((entry or {}).get("save") or {}).get("onFail") or {}
+    on_fail = ((entry or {}).get(key) or {}).get("onFail") or {}
     dice = None
     try:
         count, sides, modifier = parse_dice(on_fail.get("damageDice"))
@@ -233,6 +236,161 @@ def _save_ability_feedback(entry):
         "halfOnSave": spec.get("halfOnSave", False),
         "conditions": conditions,
     }
+
+
+def _recharge_spec(entry):
+    """(min, max) on a d6 when a stat-block entry recharges (MS-b), else None."""
+    recharge = (entry or {}).get("recharge")
+    if not isinstance(recharge, dict):
+        return None
+    try:
+        low, high = int(recharge.get("min")), int(recharge.get("max"))
+    except (TypeError, ValueError):
+        return None
+    if not 1 <= low <= high <= 6:
+        return None
+    return low, high
+
+
+def _recharge_spent(creature, name):
+    """True when the creature's recharge record marks the named ability spent."""
+    records = (creature or {}).get("recharge")
+    if not isinstance(records, dict):
+        return False
+    wanted = str(name or "").strip().lower()
+    for key, record in records.items():
+        if str(key).strip().lower() == wanted and isinstance(record, dict):
+            return record.get("state") == "spent"
+    return False
+
+
+def _spend_recharge(resolution, event, actor, entry):
+    """MS-b: using a recharge ability marks it spent on the actor's record.
+
+    The record rides on the creature (the T096 projection shows it), the
+    journal carries the same record so a replay rebuilds it, and the next
+    start of the actor's turn draws the d6 (recharge_at_turn_start).
+    """
+    spec = _recharge_spec(entry)
+    if spec is None or not actor or not actor.get("combatantId"):
+        return
+    name = str(entry.get("name") or "").strip()
+    record = {"state": "spent", "min": spec[0], "max": spec[1],
+              "rechargesOn": "%d-%d" % spec}
+    current = deepcopy(actor.get("recharge")) if isinstance(actor.get("recharge"), dict) else {}
+    current[name] = record
+    resolution["creatureDeltas"].setdefault(actor["combatantId"], {})["recharge"] = current
+    event.setdefault("recharge", []).append(dict(record, actorId=actor["combatantId"], name=name))
+
+
+def recharge_at_turn_start(encounter, actor_ids, rolls):
+    """SRD recharge: at the start of its turn a creature rolls a d6 per spent ability.
+
+    Called at the turn claim, before any model work; the draws come from the
+    persisted roll source so the pending turn's ``rechargeRolls`` is the
+    replay authority, and the creature record is cleared in place when the
+    die lands in the ability's range. Returns the records.
+    """
+    records = []
+    for actor_id in actor_ids or []:
+        creature = combatant_by_id(encounter, actor_id)
+        if creature is None or not isinstance(creature.get("recharge"), dict):
+            continue
+        for name, record in list(creature["recharge"].items()):
+            if not isinstance(record, dict) or record.get("state") != "spent":
+                continue
+            try:
+                low, high = int(record.get("min")), int(record.get("max"))
+            except (TypeError, ValueError):
+                continue
+            value = _take_roll(rolls, "d6", "recharge", actor_id=actor_id)
+            recharged = low <= value <= high
+            if recharged:
+                del creature["recharge"][name]
+            records.append({
+                "actorId": actor_id, "name": name, "die": "d6", "value": value,
+                "rechargesOn": "%d-%d" % (low, high), "recharged": recharged,
+            })
+        if not creature["recharge"]:
+            creature.pop("recharge", None)
+    return records
+
+
+def _stat_block_condition_op(encounter, event_id, actor, target, entry, conditions, rounds, index):
+    """A failed-save condition effect the stat block states, normalized like a model op.
+
+    Returns (op, problems); op is None when the effect contract refuses it.
+    """
+    effect = {
+        "name": str(entry.get("name") or "").strip(),
+        "description": str(entry.get("description") or entry.get("name") or "").strip(),
+        "effectId": "EFF-%s-%d" % (event_id, index),
+        "authoredBy": "engine",
+        "sourceEncounterId": encounter.get("encounterId"),
+        "source": actor.get("name") or "combat",
+        "modifiers": [],
+        "conditions": list(conditions),
+        "incapacitates": False,
+        "created": {"encounterId": encounter.get("encounterId")},
+    }
+    if rounds:
+        effect.update({"roundsRemaining": rounds, "tickTrigger": "end_of_round",
+                       "durationKind": "rounds", "duration": "%s rounds" % rounds})
+    else:
+        effect.update({"durationKind": "encounter", "duration": "encounter"})
+    if effect_incapacitates(effect):
+        effect["incapacitates"] = True
+    if actor.get("combatantId"):
+        effect["sourceCombatantId"] = actor["combatantId"]
+    try:
+        effect = normalize_effect(effect)
+    except ValueError as exc:
+        return None, [str(exc)]
+    problems = validate_effect(effect, require_managed=True)
+    if problems:
+        return None, problems
+    op = {"op": "add", "applyOn": "failedSave", "saveTargetId": target["combatantId"], "effect": effect}
+    if target.get("type") in ("player", "npc"):
+        op["owner"] = target.get("name")
+    else:
+        op["combatantId"] = target["combatantId"]
+    return op, []
+
+
+def _target_save(encounter, characters, sheet, target, spec, rolls, actor_id, event, focus):
+    """One target's save for a stat-block rider: engine for a party sheet, else arithmetic.
+
+    Journals the roll record (and the engine line on ``focus``) exactly as
+    resolve_adjudicated does, and returns the verdict.
+    """
+    engine_save = (
+        _engine_save(sheet, spec.get("type"), spec.get("dc", 10) or 10, rolls, actor_id, target.get("combatantId"))
+        if sheet is not None else None
+    )
+    if engine_save is not None:
+        from core.nql import checks as nql_checks
+        result, faces = engine_save
+        saved = bool(result.success)
+        event["rolls"].append({
+            "die": "d20", "value": result.kept if result.kept is not None else 0,
+            "purpose": "save", "combatantId": target["combatantId"],
+            "bonus": result.bonus, "success": saved, "engine": True,
+            "faces": faces, "kept": result.kept, "mode": result.mode,
+            "sources": result.sources, "total": result.total, "margin": result.margin,
+        })
+        line = nql_checks.describe(result)
+        event.setdefault("engineChecks", []).append(line)
+        focus.setdefault("engineChecks", []).append(line)
+        return saved
+    die = _take_roll(rolls, "d20", "save", actor_id=actor_id, target_id=target.get("combatantId"), ability=spec.get("type"))
+    bonus = _save_bonus(encounter, characters, target, spec.get("type"))
+    saved = die + bonus >= int(spec.get("dc", 10) or 10)
+    record = {"die": "d20", "value": die, "purpose": "save", "combatantId": target["combatantId"],
+              "bonus": bonus, "success": saved}
+    if sheet is not None:
+        record["engine"] = False
+    event["rolls"].append(record)
+    return saved
 
 
 def _living_target_ids(encounter):
@@ -337,6 +495,15 @@ def validate_intent(encounter, characters, intent, strict=None):
                 return False, Rejection(
                     reason="%s does not have %r" % (actor.get("name"), intent.get("ability")),
                     legalActions=executable_attack_names(sheet), retryable=True)
+            if _recharge_spent(actor, entry.get("name")):
+                # MS-b: a spent recharge ability waits for its d6 at the
+                # start of the actor's turn; the correction names the rest.
+                return False, Rejection(
+                    reason="%s is recharging for %s (it returns on a d6 at the start of its turn)"
+                           % (entry.get("name"), actor.get("name")),
+                    legalActions=[n for n in executable_attack_names(sheet)
+                                  if not _recharge_spent(actor, n)],
+                    retryable=True, recharging=entry.get("name"))
             if entry.get("type") == "ranged" and _ammo_quantity(sheet) == 0:
                 return False, Rejection(
                     reason="%s has no ammunition left" % actor.get("name"),
@@ -892,18 +1059,78 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                     if damage:
                         engine_used = False
             total_damage += damage
-        swings.append(
-            {
-                "number": swing_number,
-                "ability": entry.get("name"),
-                "attackRoll": attack_die,
-                "totalAttack": total,
-                "targetAC": target_ac,
-                "hit": hit,
-                "critical": critical,
-                "damage": damage,
+        rider_result = None
+        rider_spec = _stated_save_spec(entry, "rider") if hit else None
+        if rider_spec is not None:
+            # MS-b: the hit forces the stat block's rider save on the same
+            # event (a venomous bite): party target through the engine,
+            # monster by arithmetic; rider dice from the persisted prerolls,
+            # halved or negated by the verdict; conditions staged from the
+            # entry as a failed-save effect. Replay reads the journal.
+            rider_dice, rider_conditions, rider_rounds = _stated_on_fail(entry, "rider")
+            saved = _target_save(
+                encounter, characters, working, target, rider_spec, rolls,
+                intent.get("actorId"), event, focus,
+            )
+            rider_damage = 0
+            if rider_dice is not None:
+                r_count, r_sides, r_flat = rider_dice
+                r_rolls = [
+                    _take_roll(
+                        rolls, "d%d" % r_sides, "damage",
+                        actor_id=intent.get("actorId"), target_id=intent.get("targetId"),
+                    )
+                    for _ in range(r_count)
+                ]
+                for value in r_rolls:
+                    event["rolls"].append({
+                        "die": "d%d" % r_sides, "value": value, "purpose": "damage",
+                        "combatantId": target["combatantId"], "rider": entry.get("name"),
+                    })
+                rider_damage = max(0, sum(r_rolls) + r_flat)
+                if saved:
+                    rider_damage = rider_damage // 2 if rider_spec.get("halfOnSave") else 0
+                if rider_damage:
+                    applied = _engine_hit_points(working, -rider_damage, event, focus) if working is not None else None
+                    if applied is not None:
+                        working = applied
+                        hp_after = int(working["hitPoints"])
+                        engine_used = True
+                    else:
+                        hp_after = max(0, hp_after - rider_damage)
+                        if working is not None:
+                            working["hitPoints"] = hp_after
+                            engine_used = False
+                    total_damage += rider_damage
+            rider_applied = []
+            if not saved and rider_conditions:
+                op, problems = _stat_block_condition_op(
+                    encounter, event_id, actor, target, entry, rider_conditions, rider_rounds,
+                    len(resolution.setdefault("effectOps", [])),
+                )
+                if op is not None:
+                    resolution["effectOps"].append(op)
+                    rider_applied = list(rider_conditions)
+                else:
+                    resolution["violations"].append(
+                        "rider effect contract rejected: %s" % "; ".join(problems))
+            rider_result = {
+                "ability": entry.get("name"), "save": rider_spec["type"], "dc": rider_spec["dc"],
+                "saved": saved, "damage": rider_damage, "conditions": rider_applied,
             }
-        )
+        swing = {
+            "number": swing_number,
+            "ability": entry.get("name"),
+            "attackRoll": attack_die,
+            "totalAttack": total,
+            "targetAC": target_ac,
+            "hit": hit,
+            "critical": critical,
+            "damage": damage,
+        }
+        if rider_result is not None:
+            swing["rider"] = rider_result
+        swings.append(swing)
         if entry.get("type") == "ranged":
             ranged_swings += 1
 
@@ -933,6 +1160,9 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
             "combatantId": target["combatantId"], "hpBefore": hp_before,
             "hpAfter": hp_after, "statusAfter": status_after,
         }
+        riders = [swing["rider"] for swing in swings if swing.get("rider")]
+        if riders:
+            record["riders"] = riders
         if working is not None:
             if temp_before is not None:
                 record["tempHpBefore"] = temp_before
@@ -952,6 +1182,10 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
             resolution["charDeltas"][target["name"]] = _sheet_delta(
                 working, hp_after, status_after, target, temp_before)
 
+    if swings and selected_entry:
+        _spend_recharge(resolution, event, actor, selected_entry)
+    if resolution.get("effectOps"):
+        event["effects"] = deepcopy(resolution["effectOps"])
     if ranged_swings:
         for item in sheet.get("ammunition", []):
             if isinstance(item, dict) and int(item.get("quantity", 0) or 0) > 0:
@@ -1180,6 +1414,11 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             _raw_combatant_sheet(encounter, characters, actor_creature),
             proposal.get("ability"),
         )
+    if stated_entry is not None and _recharge_spent(actor_creature, stated_entry.get("name")):
+        resolution["violations"].append(
+            "%s is recharging for %s (it returns on a d6 at the start of its turn); choose another action"
+            % (stated_entry.get("name"), actor_creature.get("name")))
+        return resolution
     if stated_entry is not None:
         stated_save = _stated_save_spec(stated_entry)
         stated_dice, stated_conditions, stated_rounds = _stated_on_fail(stated_entry)
@@ -1914,6 +2153,8 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
     # The staged event is the durable record recovery replays. It contains
     # only effects that passed their deterministic save gate.
     event["effects"] = deepcopy(resolution["effectOps"])
+    if stated_entry is not None and not resolution["violations"]:
+        _spend_recharge(resolution, event, actor_creature, stated_entry)
     return resolution
 
 
@@ -1951,6 +2192,15 @@ def resolution_from_event(encounter, characters, event):
             if record["statusAfter"] != normalize_status(creature.get("status")):
                 delta["status"] = record["statusAfter"]
             resolution["charDeltas"][creature["name"]] = delta
+    for spent in event.get("recharge") or []:
+        actor = combatant_by_id(encounter, spent.get("actorId"))
+        if actor is None or not spent.get("name"):
+            continue
+        current = deepcopy(actor.get("recharge")) if isinstance(actor.get("recharge"), dict) else {}
+        current[spent["name"]] = {
+            key: spent[key] for key in ("state", "min", "max", "rechargesOn") if key in spent
+        }
+        resolution["creatureDeltas"].setdefault(actor["combatantId"], {})["recharge"] = current
     return resolution
 
 
@@ -2135,6 +2385,12 @@ def apply_resolution(encounter, characters, resolution):
             creature["currentHitPoints"] = max(0, min(int(delta["currentHitPoints"]), ceiling))
         if "status" in delta:
             creature["status"] = delta["status"]
+        if "recharge" in delta:
+            # MS-b: the full record replaces the creature's (journal authority)
+            if delta["recharge"]:
+                creature["recharge"] = deepcopy(delta["recharge"])
+            else:
+                creature.pop("recharge", None)
 
     for name, delta in (resolution.get("charDeltas") or {}).items():
         sheet = new_characters.get(name)
