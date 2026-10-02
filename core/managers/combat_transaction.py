@@ -18,9 +18,11 @@ import re
 import uuid
 
 from core.combat import (
+    PersistedPrerollSource,
     apply_resolution,
     check_invariants,
     ensure_agentic_roll_reserve,
+    recharge_at_turn_start,
     resolution_from_event,
 )
 from core.effects.lifecycle import apply_effect_ops, enter_combat_effect, exit_combat_effect
@@ -738,6 +740,19 @@ def claim_turn(
         state.pop("pauseReason", None)
         if state.get("pipelineMode") == "agentic":
             ensure_agentic_roll_reserve(encounter, actor_ids)
+            if "rechargeRolls" not in pending:
+                # MS-b: recharge d6 per spent ability at the start of the
+                # actor's turn, drawn from the persisted reserve and journaled
+                # on the claim; the cursor advances so resolution never
+                # reuses the face. A recovered claim keeps its draws.
+                rolls = PersistedPrerollSource(
+                    (encounter.get("preroll_cache") or {}).get("rolls", ""), encounter
+                )
+                pending["rechargeRolls"] = recharge_at_turn_start(encounter, actor_ids, rolls)
+                if pending["rechargeRolls"]:
+                    encounter.setdefault("preroll_cache", {})["consumed"] = deepcopy(
+                        rolls.consumption()
+                    )
         _write_object(encounter_path, encounter, "turn claim")
         return deepcopy(encounter), deepcopy(pending)
 

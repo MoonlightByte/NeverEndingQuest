@@ -195,6 +195,21 @@ def _intent_correction(exc, batch=None):
                 % (save_ability["name"], json.dumps(conditions))
             )
         instruction += "; or choose a listed known attack instead."
+    elif feedback.get("recharging"):
+        # MS-b: the ability waits for its recharge die; name the rest.
+        rendered = [
+            str(action).strip()
+            for action in (legal_actions or [])
+            if isinstance(action, str) and action.strip()
+        ]
+        instruction = (
+            "Return a corrected full ordered intent batch. For the rejected "
+            "actor, %r is recharging (it returns on a d6 at the start of that "
+            "actor's turn; the creature's recharge record shows it as spent): "
+            "do not declare it this turn. Use another listed action%s or a "
+            "defensive action."
+            % (feedback.get("recharging"), (" (%s)" % ", ".join(rendered)) if rendered else "")
+        )
     elif isinstance(legal_actions, list) and legal_actions:
         rendered = [
             str(action).strip()

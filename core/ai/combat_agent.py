@@ -313,6 +313,12 @@ dice and the onFail conditions from the stat block itself and corrects what
 you wrote, so use such an ability whenever the scene calls for it. Entries of
 kind 'trait' (Web Sense, Spider Climb, Pack Tactics) are never actions; an
 entry's description is its rule text (range, area, escape DC) for your ruling.
+A creature's `recharge` record (on its creatures entry) lists abilities it has
+spent, for example {Web: {state:'spent', rechargesOn:'5-6'}}: code rolls the
+d6 at the start of that creature's turn and clears the record when it
+returns; never declare an ability the record shows as spent. A listed attack
+with a `rider` (a venomous bite) is a plain known attack: on a hit code rolls
+the target's rider save, its damage and its conditions from the stat block.
 When spellActionIndex is present, an automatic actor may cast only a
 spell listed for that actor there; use that entry's guidance and exact resource
 keys. If no suitable listed spell remains, choose a listed weapon/action or a
