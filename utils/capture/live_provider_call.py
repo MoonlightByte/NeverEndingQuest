@@ -26,7 +26,6 @@ _LOGGER = logging.getLogger(__name__)
 
 _REQUIRED_TASK_IDS = frozenset(
     {
-        "T014",
         "T015",
         "T016",
         "T021",

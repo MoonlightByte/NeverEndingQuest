@@ -180,6 +180,7 @@ Here's the strict list of specific actions that the model should take when the s
 
 **KEY ACTION DISTINCTIONS:**
 - **updatePartyNPCs**: For party composition changes (adding/removing traveling companions). This will create NPC character files automatically.
+- **resolveOccupant / setOccupantAttitude / moveOccupant / returnOccupant**: Story outcomes on the engine's occupant record, by an `id` from the location data's `occupants` list (never a companion, never a fight's defeated).
 - **updateCharacterInfo**: For non-advancement character data changes (inventory, stats, conditions, effects) on existing characters only; advancement uses the levelUp handoff below.
 - **Concentration (engine-held)**: the caster's sheet shows CONCENTRATING ON; the rules engine rolls the Constitution save when damage lands and reports it under CHECK RESULTS, and ends the spell everywhere on a failure or when the caster starts another concentration spell. A candidate that rolls or asks for a concentration save, calls one pending, or removes a concentration spell because its caster was hit (without the note saying it ended) is INVALID; a candidate that narrates the note's result as settled is correct. removeEffect on one effect of a concentration spell legitimately ends the whole spell.
 - **removeEffect**: Deliberately end, dispel, or break concentration on one exact active temporary effect. A condition (grappled, poisoned, frightened...) is a sheet fact that begins and ends through `updateCharacterInfo`; a `removeEffect` naming a condition is INVALID.
@@ -272,18 +273,16 @@ PLAYER COIN INSTRUCTIONS STAND: when the player plainly gives or splits their ow
    If player mentions another module by name, use updatePartyTracker with module parameter.
    
    Requires parameters for the specific updates (module, currentLocationId, currentLocation, currentAreaId, currentArea, etc.).
-"moveBackgroundNPC": Used for managing NPCs in location files who are NOT traveling with the party. This action handles NPCs who are captured, killed, relocated, or have status changes due to narrative events. CRITICAL DISTINCTION: Use this ONLY for background NPCs in location files, NOT for party NPCs (use updatePartyNPCs for those). Should be used when:
-   - Background NPCs are captured or taken away ("Rusk was captured by the party")
-   - Background NPCs are killed or die ("The merchant was killed in the attack")
-   - Background NPCs relocate or move ("The guard captain went to the watchtower")
-   - Background NPCs have significant status changes ("The wounded scout recovered")
+"resolveOccupant", "setOccupantAttitude", "moveOccupant", "returnOccupant": Story outcomes on the rules engine's occupant record, for the groups and people the location data lists under `occupants` (each with an `id`). The DM decides what became of an occupant and names it by id; the engine records it. Valid when the narration settles the outcome in the same response: a group agrees or is persuaded to leave (resolveOccupant, outcome "departed", a "reason" is REQUIRED), slips away ("fled"), yields outside combat ("surrendered"), is killed outside combat ("died" or "defeated"); a parley changes an attitude (setOccupantAttitude: "friendly", "indifferent" or "hostile"); an occupant goes to another location of the module (moveOccupant with a location ID); members who left come back (returnOccupant with the outcome they left under).
    
-   Requires "npcName" parameter (exact NPC name) and "context" parameter (narrative explanation of what happened). The system intelligently determines whether to remove, relocate, or update the NPC based on context.
+   Requires "occupantId" taken from the location data's `occupants` list. "count" is optional (all present when omitted); a "reason" is optional except for a departed outcome. Missing optional fields are NEVER a reason to reject.
    
    **INVALID USAGE:**
-   - Using on party NPCs (NPCs traveling with the party) [INVALID - use updatePartyNPCs]
-   - Using on NPCs that don't exist in location files [INVALID]
-   - Using without clear narrative reason [INVALID]
+   - An occupantId that is not in the location data's `occupants` list [INVALID - never invented]
+   - resolveOccupant with outcome "departed" and no reason [INVALID]
+   - Resolving a group that a createEncounter in this or an earlier response just defeated (the engine records combat outcomes at the end of the fight) [INVALID]
+   - Using these actions for a companion joining or leaving the party [INVALID - use updatePartyNPCs, which keeps the occupant in step]
+   - An outcome the narration did not settle (discussion, threats or plans alone) [INVALID]
 
 // Example Response 13: False - Combat Not Initiated at Commitment Point
 {

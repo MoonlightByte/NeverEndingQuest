@@ -72,7 +72,6 @@ from utils.provider_errors import classify_provider_error
 from core.combat.invocation import InvocationSupersededError
 register_callsite("T013", "core/ai/action_handler.py", 1255)
 register_callsite("T012", "core/ai/action_handler.py", 676)
-register_callsite("T014", "core/ai/action_handler.py", 2506)
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
@@ -172,7 +171,11 @@ ACTION_TRANSFER_CURRENCY = "transferCurrency"
 ACTION_SPLIT_CURRENCY = "splitCurrency"
 ACTION_REST = "rest"
 ACTION_UPDATE_PARTY_TRACKER = "updatePartyTracker"
-ACTION_MOVE_BACKGROUND_NPC = "moveBackgroundNPC"
+ACTION_MOVE_BACKGROUND_NPC = "moveBackgroundNPC"  # retired: forwarded to the occupant actions
+ACTION_RESOLVE_OCCUPANT = "resolveOccupant"
+ACTION_SET_OCCUPANT_ATTITUDE = "setOccupantAttitude"
+ACTION_MOVE_OCCUPANT = "moveOccupant"
+ACTION_RETURN_OCCUPANT = "returnOccupant"
 ACTION_SAVE_GAME = "saveGame"
 ACTION_RESTORE_GAME = "restoreGame"
 ACTION_LIST_SAVES = "listSaves"
@@ -728,12 +731,15 @@ def prepare_current_transition_actions(operation_id):
             )
             receipt["quest_projection"] = {"status": "pending"}
         elif family == "moveBackgroundNPC":
-            receipt = prepare_background_npc_movement(
-                parameters.get("npcName"),
-                parameters.get("context", ""),
-                parameters.get("currentLocation"),
-                safe_json_load("party_tracker.json"),
-            )
+            # Retired (P4-e): the occupant record is the engine's. A travel
+            # turn carries no roster outcome; the record is applied as a no-op.
+            receipt = {
+                "kind": "moveBackgroundNPC",
+                "retired": True,
+                "npc_name": parameters.get("npcName"),
+                "before": None,
+                "after": None,
+            }
         elif family == "updateCharacterInfo":
             from core.managers.effects_runtime import prepare_character_update
 
@@ -1285,15 +1291,22 @@ def apply_current_transition_action(operation_id, action_index):
         return "committed"
 
     if family == "moveBackgroundNPC":
-        if receipt.get("before") is None:
-            materialize_staged_background_npc_movement(receipt)
-            _write_location_transition_checkpoint(checkpoint)
-        outcome = apply_staged_background_npc_movement(receipt)
-        if outcome == "blocked_conflict":
-            record["status"] = "blocked_conflict"
-            checkpoint["phase"] = "blocked_conflict"
-            _write_location_transition_checkpoint(checkpoint)
-            return outcome
+        # Retired (P4-e). A receipt materialized before the retirement (an
+        # in-flight checkpoint) still applies its frozen area value; any other
+        # is a no-op, so an old checkpoint never blocks the arrival.
+        if receipt.get("after") is not None:
+            outcome = apply_staged_background_npc_movement(receipt)
+            if outcome == "blocked_conflict":
+                record["status"] = "blocked_conflict"
+                checkpoint["phase"] = "blocked_conflict"
+                _write_location_transition_checkpoint(checkpoint)
+                return outcome
+        else:
+            info(
+                "moveBackgroundNPC for %s in a travel turn is retired; nothing applied"
+                % receipt.get("npc_name"),
+                category="npc_management",
+            )
         record["status"] = "committed"
         deferred["cursor"] = action_index + 1
         deferred["receipts"].append(
@@ -1463,6 +1476,19 @@ def apply_current_transition_action(operation_id, action_index):
         )
         receipt["lifecycle_status"] = (
             "committed" if lifecycle_ok else "attempted_unavailable"
+        )
+        # The companion's occupant follows the roster (P4-e); best effort.
+        from core.nql import occupants as _occupants
+
+        _lc_party = safe_json_load("party_tracker.json") or party
+        _occupants.party_change(
+            receipt["operation"],
+            receipt["npc_name"],
+            str(_lc_party.get("module") or ""),
+            str((_lc_party.get("worldConditions") or {}).get("currentLocationId") or ""),
+            "dm:%s:party" % receipt["operation_id"],
+            reason=(receipt.get("lifecycle_context") or {}).get("reason")
+            if isinstance(receipt.get("lifecycle_context"), dict) else None,
         )
         receipt["phase"] = "lifecycle_resolved"
         record["status"] = "committed"
@@ -3018,6 +3044,18 @@ def get_travel_narration(target_module: str) -> str:
     except:
         return f"The party travels to the {target_module} region, where new adventures await."
 
+def _occupant_request_id(invocation_claim, action_context, suffix):
+    """A deterministic engine request id for one typed occupant action of
+    one accepted turn: dm:<turn id>:<action index>:<suffix>, so a retried
+    turn is answered as already applied. Without a turn identity the id is
+    unique instead (the action still runs; only replay protection is lost)."""
+    turn_id = str(getattr(invocation_claim, "logical_invocation_id", "") or "").strip()
+    index = (action_context or {}).get("current_index") if isinstance(action_context, dict) else None
+    if not turn_id or not isinstance(index, int):
+        return "dm:%s:%s" % (uuid4(), suffix)
+    return "dm:%s:%d:%s" % (turn_id, index, suffix)
+
+
 def process_action(
     action,
     party_tracker_data,
@@ -4067,6 +4105,20 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     % (type(exc).__name__, str(exc)),
                     category="character_updates",
                 )
+            # The companion's occupant follows the roster (P4-e): a join
+            # resolves the present person as joined, a leave brings the
+            # person back at this place. Best effort; never undoes the roster.
+            from core.nql import occupants as _occupants
+
+            _occupants.party_change(
+                operation,
+                str(npc.get("name") or ""),
+                str(party_tracker_data.get("module") or ""),
+                str((party_tracker_data.get("worldConditions") or {}).get("currentLocationId") or ""),
+                _occupant_request_id(invocation_claim, action_context, "party"),
+                reason=(parameters.get("lifecycleContext") or {}).get("reason")
+                if isinstance(parameters.get("lifecycleContext"), dict) else None,
+            )
 
     elif action_type == ACTION_UPDATE_ENCOUNTER:
         debug("STATE_CHANGE: Processing updateEncounter action", category="combat_processing")
@@ -4848,31 +4900,51 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 response_data=response_data,
             )
 
-    elif action_type == ACTION_MOVE_BACKGROUND_NPC:
-        debug("STATE_CHANGE: Processing moveBackgroundNPC action", category="npc_management")
-        try:
-            # Extract parameters
-            npc_name = parameters.get("npcName")
-            context = parameters.get("context", "")
-            current_location = parameters.get("currentLocation")
-            
-            if not npc_name:
-                print(f"ERROR: Missing required parameter 'npcName' for moveBackgroundNPC action")
-                return create_return(status="continue", needs_update=False)
-            
-            # Process the NPC movement
-            success = move_background_npc(npc_name, context, current_location, party_tracker_data)
-            
-            if success:
-                info(f"SUCCESS: Processed movement for NPC: {npc_name}", category="npc_management")
-                needs_conversation_history_update = True
+    elif action_type in (
+        ACTION_RESOLVE_OCCUPANT,
+        ACTION_SET_OCCUPANT_ATTITUDE,
+        ACTION_MOVE_OCCUPANT,
+        ACTION_RETURN_OCCUPANT,
+        ACTION_MOVE_BACKGROUND_NPC,
+    ):
+        # Typed story outcomes on the engine's occupant record (P4-e). The DM
+        # decided what became of the occupant; the engine records it by id.
+        # A refusal goes back to the DM as a correction with the present ids,
+        # the way a refused handoff does; an unavailable engine never stops
+        # the turn. The retired moveBackgroundNPC is forwarded to moveOccupant
+        # when it names an occupant and a destination, else corrected.
+        debug("STATE_CHANGE: Processing %s action" % action_type, category="npc_management")
+        from core.nql import occupants as _occupants
+
+        _module = str(party_tracker_data.get("module") or "")
+        _location_id = str(
+            (party_tracker_data.get("worldConditions") or {}).get("currentLocationId") or ""
+        )
+        _occupant_action = action_type
+        _occupant_parameters = parameters
+        _correction = None
+        if action_type == ACTION_MOVE_BACKGROUND_NPC:
+            _legacy = _occupants.legacy_move(parameters, _module, _location_id)
+            if _legacy.get("forward"):
+                _occupant_action = ACTION_MOVE_OCCUPANT
+                _occupant_parameters = _legacy["forward"]
             else:
-                print(f"ERROR: Failed to process movement for NPC: {npc_name}")
-                
-        except Exception as e:
-            print(f"ERROR: Exception while processing moveBackgroundNPC: {str(e)}")
-            import traceback
-            traceback.print_exc()
+                _correction = _legacy.get("correction")
+        if _occupant_action != ACTION_MOVE_BACKGROUND_NPC and _correction is None:
+            _outcome = _occupants.apply_dm_action(
+                _occupant_action,
+                _occupant_parameters,
+                _occupant_request_id(invocation_claim, action_context, _occupant_action),
+                _module,
+                _location_id,
+            )
+            if _outcome.get("ok"):
+                needs_conversation_history_update = True
+            _correction = _outcome.get("correction")
+        if _correction:
+            conversation_history.append({"role": "user", "content": _correction})
+            needs_conversation_history_update = True
+            return create_return(status="needs_response", needs_update=True)
 
     elif action_type == ACTION_SAVE_GAME:
         debug("STATE_CHANGE: Processing save game action", category="save_game")
@@ -5003,242 +5075,6 @@ Please use a valid location that exists in the current area ({current_area_id}) 
     
     return create_return(needs_update=needs_conversation_history_update)
 
-def move_background_npc(npc_name, context, current_location_hint=None, party_tracker_data=None):
-    """
-    AI-driven function to handle NPC movement/status changes with atomic safety
-    
-    Args:
-        npc_name (str): Name of the NPC to move/update
-        context (str): Narrative context explaining what happened to the NPC
-        current_location_hint (str, optional): Hint about current location if not found automatically
-        party_tracker_data (dict, optional): Party tracker data for module context
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    import json
-    import copy
-    import shutil
-    import os
-    import time
-    from datetime import datetime
-    from utils.file_operations import safe_write_json, safe_read_json
-    
-    debug(f"STATE_CHANGE: moveBackgroundNPC called for {npc_name}", category="npc_management")
-    debug(f"AI_CALL: Context: {context}", category="npc_management")
-    
-    if not party_tracker_data:
-        party_tracker_data = safe_read_json("party_tracker.json")
-        if not party_tracker_data:
-            print("ERROR: Could not load party tracker data")
-            return False
-
-    module_name = party_tracker_data.get("module", "").replace(" ", "_")
-    if not module_name:
-        print("ERROR: No current module found in party tracker")
-        return False
-
-    # The complete read -> AI decision -> mutate -> write sequence is one
-    # transaction.  A lock created inside this function cannot protect two
-    # invocations, so share a re-entrant lock by module instead.
-    from contextlib import ExitStack
-    from utils.module_refresh_lock import module_refresh_lock
-
-    with ExitStack() as movement_locks:
-        refresh_acquired = movement_locks.enter_context(module_refresh_lock())
-        if not refresh_acquired:
-            warning(
-                "Background NPC movement deferred while modules are refreshing",
-                category="npc_management",
-            )
-            return False
-        movement_locks.enter_context(_npc_movement_lock(module_name))
-        try:
-            path_manager = ModulePathManager(module_name)
-            
-            # Find the NPC in area files
-            npc_location = find_npc_in_areas(npc_name, path_manager, current_location_hint)
-            if not npc_location:
-                print(f"ERROR: Could not find NPC '{npc_name}' in any location")
-                return False
-                
-            area_file, location_id, npc_data = npc_location
-            debug(f"VALIDATION: Found {npc_name} in {area_file} at location {location_id}", category="npc_management")
-            
-            # Load area data with backup
-            area_data = safe_read_json(area_file)
-            if not area_data:
-                print(f"ERROR: Could not load area data from {area_file}")
-                return False
-                
-            # Create backup
-            backup_path = create_area_backup(area_file)
-            if not backup_path:
-                print("WARNING: Could not create backup, proceeding anyway")
-            
-            # Get party NPCs for validation
-            party_npcs = party_tracker_data.get("partyNPCs", [])
-            
-            # Retry loop with fallback system
-            ai_decision = None
-            max_attempts = 5
-            
-            for attempt in range(1, max_attempts + 1):
-                debug(f"AI_CALL: AI decision attempt {attempt}/{max_attempts}", category="npc_management")
-                
-                # Get AI decision on what to do with the NPC
-                ai_decision = get_ai_npc_movement_decision(
-                    npc_name, context, npc_data, area_data, location_id, module_name, party_npcs, attempt
-                )
-                
-                if ai_decision:
-                    # Validate the AI decision
-                    validation_result = validate_npc_movement_decision(ai_decision, area_data, location_id, party_npcs)
-                    if validation_result["valid"]:
-                        info(f"SUCCESS: AI decision validated on attempt {attempt}", category="npc_management")
-                        break
-                    else:
-                        warning(f"VALIDATION: AI decision failed on attempt {attempt}: {validation_result['reason']}", category="npc_management")
-                        if attempt == max_attempts:
-                            print("ERROR: Max attempts reached, AI could not generate valid decision")
-                            return False
-                        else:
-                            # Add validation feedback to context for retry
-                            context += f"\n\nPREVIOUS ATTEMPT FAILED: {validation_result['reason']}"
-                else:
-                    error(f"FAILURE: AI could not generate decision on attempt {attempt}", category="npc_management")
-                    if attempt == max_attempts:
-                        print("ERROR: Max attempts reached, AI could not determine appropriate action")
-                        return False
-            
-            if not ai_decision:
-                print("ERROR: AI could not determine appropriate action after all attempts")
-                return False
-                
-            info(f"AI_CALL: Final AI decision: {ai_decision.get('action')} - {ai_decision.get('reasoning', 'No reasoning')}", category="npc_management")
-            
-            # Execute the AI decision with surgical updates
-            success = execute_npc_movement_decision(ai_decision, area_data, location_id, npc_name, path_manager)
-            
-            if success:
-                # Save updated area data
-                if safe_write_json(area_file, area_data):
-                    info(f"SUCCESS: Updated area file {area_file}", category="file_operations")
-                    # Clean up old backups
-                    cleanup_old_area_backups(area_file)
-                    return True
-                else:
-                    print(f"ERROR: Failed to save updated area data")
-                    # Restore from backup if save failed
-                    if backup_path and os.path.exists(backup_path):
-                        try:
-                            shutil.copy2(backup_path, area_file)
-                            warning("FILE_OP: Restored area file from backup due to save failure", category="file_operations")
-                        except Exception as e:
-                            print(f"ERROR: Could not restore from backup: {e}")
-                    return False
-            else:
-                print("ERROR: Failed to execute NPC movement decision")
-                return False
-                
-        except Exception as e:
-            print(f"ERROR: Exception in move_background_npc: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return False
-
-
-def prepare_background_npc_movement(
-    npc_name, context, current_location_hint=None, party_tracker_data=None
-):
-    """Freeze one required T014 decision and its exact area mutation."""
-    from utils.module_refresh_lock import module_refresh_lock
-
-    party = party_tracker_data or safe_json_load("party_tracker.json")
-    module_name = str((party or {}).get("module", "")).replace(" ", "_")
-    if not module_name:
-        raise RuntimeError("No current module for moveBackgroundNPC")
-    path_manager = ModulePathManager(module_name)
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            raise RuntimeError("module refresh is busy")
-        with _npc_movement_lock(module_name):
-            found = find_npc_in_areas(
-                npc_name, path_manager, current_location_hint
-            )
-            if not found:
-                raise ValueError("referenced background NPC does not exist")
-            area_file, location_id, npc_data = found
-            area_before = safe_json_load(area_file)
-    correction = context
-    attempt = 1
-    while True:
-        decision = get_ai_npc_movement_decision(
-            npc_name,
-            correction,
-            npc_data,
-            area_before,
-            location_id,
-            module_name,
-            (party or {}).get("partyNPCs", []),
-            attempt,
-        )
-        validation = validate_npc_movement_decision(
-            decision, area_before, location_id, (party or {}).get("partyNPCs", [])
-        )
-        if validation["valid"]:
-            break
-        correction = "%s\n\nCorrection facts: %s" % (
-            context,
-            validation["reason"],
-        )
-        attempt += 1
-    return {
-        "kind": "moveBackgroundNPC",
-        "module": module_name,
-        "area_path": area_file,
-        "location_id": location_id,
-        "npc_name": npc_name,
-        "proposal": decision,
-        # The semantic decision is frozen before movement. Its exact file
-        # values are materialized only after earlier travel stages finish, so
-        # the departure summary cannot become a false whole-area conflict.
-        "before": None,
-        "after": None,
-    }
-
-
-def materialize_staged_background_npc_movement(receipt):
-    """Freeze T014's exact post-departure area values before its first write."""
-    import copy
-    from utils.module_refresh_lock import module_refresh_lock
-
-    if receipt.get("before") is not None:
-        return receipt
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            raise RuntimeError("module refresh is busy")
-        with _npc_movement_lock(receipt["module"]):
-            current = safe_json_load(receipt["area_path"])
-            if not isinstance(current, dict):
-                raise RuntimeError("background NPC area is unavailable")
-            after = copy.deepcopy(current)
-            path_manager = ModulePathManager(receipt["module"])
-            if not execute_npc_movement_decision(
-                receipt["proposal"],
-                after,
-                receipt["location_id"],
-                receipt["npc_name"],
-                path_manager,
-            ):
-                raise RuntimeError(
-                    "accepted background NPC proposal no longer matches current state"
-                )
-            receipt["before"] = current
-            receipt["after"] = after
-    return receipt
-
-
 def apply_staged_background_npc_movement(receipt):
     """Apply or recognize one frozen T014 area value."""
     from utils.module_refresh_lock import module_refresh_lock
@@ -5255,418 +5091,3 @@ def apply_staged_background_npc_movement(receipt):
             if not safe_write_json(receipt["area_path"], receipt["after"]):
                 raise RuntimeError("background NPC area write failed")
     return "committed"
-
-def find_npc_in_areas(npc_name, path_manager, location_hint=None):
-    """Find an NPC in area files, returning (area_file, location_id, npc_data)"""
-    import glob
-    import os
-    from utils.file_operations import safe_read_json
-    
-    # Get all area files in the module, excluding backup files
-    area_pattern = f"{path_manager.module_dir}/areas/*.json"
-    all_files = glob.glob(area_pattern)
-    
-    # Filter out backup files (_BU.json) and backup copies (.backup_*)
-    area_files = []
-    for file_path in all_files:
-        filename = os.path.basename(file_path)
-        # Skip backup files
-        if filename.endswith('_BU.json') or '.backup_' in filename:
-            debug(f"FILE_OP: Skipping backup file: {filename}", category="file_operations")
-            continue
-        area_files.append(file_path)
-    
-    debug(f"FILE_OP: Searching {len(area_files)} active area files (excluded {len(all_files) - len(area_files)} backup files)", category="file_operations")
-    
-    for area_file in area_files:
-        try:
-            area_data = safe_read_json(area_file)
-            if not area_data:
-                continue
-                
-            # Search through all locations in this area
-            for location in area_data.get("locations", []):
-                location_id = location.get("locationId", "")
-                
-                # If location hint provided, check if this matches
-                if location_hint and location_hint != location_id:
-                    continue
-                    
-                # Search NPCs in this location
-                for npc in location.get("npcs", []):
-                    if npc.get("name", "").lower() == npc_name.lower():
-                        return (area_file, location_id, npc)
-                        
-        except Exception as e:
-            warning(f"FILE_OP: Could not search area file {area_file}: {e}", category="file_operations")
-            continue
-    
-    return None
-
-def get_ai_npc_movement_decision(npc_name, context, npc_data, area_data, location_id, module_name, party_npcs=None, attempt=1):
-    """Use AI to determine what to do with the NPC based on context"""
-    try:
-        # Get available locations for potential moves
-        available_locations = []
-        for location in area_data.get("locations", []):
-            loc_id = location.get("locationId", "")
-            loc_name = location.get("name", "")
-            if loc_id and loc_name and loc_id != location_id:
-                available_locations.append(f"{loc_id} ({loc_name})")
-        
-        # Check if this is a party NPC vs background NPC
-        party_npc_names = [npc.get("name", "").lower() for npc in (party_npcs or [])]
-        is_party_npc = npc_name.lower() in party_npc_names
-        
-        # Load and validate against location schema
-        from jsonschema import validate, ValidationError
-        import json
-        
-        try:
-            with open("schemas/loca_schema.json", "r") as f:
-                location_schema = json.load(f)
-        except Exception as e:
-            warning(f"FILE_OP: Could not load location schema: {e}", category="file_operations")
-            location_schema = None
-        
-        system_prompt = f"""You are an expert 5th edition narrative manager specialized in NPC movement and status changes. Your job is to make intelligent decisions about background NPCs based on narrative context while maintaining strict game world consistency.
-
-CRITICAL DISTINCTIONS:
-- BACKGROUND NPCs: NPCs found in location files who are not traveling with the party
-- PARTY NPCs: NPCs actively traveling with and assisting the party (managed separately)
-- This action is ONLY for BACKGROUND NPCs - NPCs who exist in specific locations
-
-CURRENT NPC CLASSIFICATION:
-- {npc_name} is {'a PARTY NPC (ERROR - use updatePartyNPCs instead)' if is_party_npc else 'a BACKGROUND NPC (correct for this action)'}
-
-AVAILABLE ACTIONS FOR BACKGROUND NPCs:
-1. "remove" - Remove NPC from location entirely
-   - Use for: Captured and taken elsewhere, fled permanently, left the area
-   - Result: NPC disappears from location, may add location description update
-   
-2. "update_status" - Keep NPC in location but change their description  
-   - Use for: Death, injury, status change, but NPC remains in place
-   - Result: NPC description updated, location may be updated too
-   
-3. "move" - Move NPC to different location within same area
-   - Use for: NPC relocated to another nearby location
-   - Result: NPC moves between locations, descriptions updated
-
-SCHEMA VALIDATION REQUIREMENTS:
-All NPC objects must maintain this exact structure:
-{{
-  "name": "string (required)",
-  "description": "string (required)", 
-  "attitude": "string (required)"
-}}
-
-CONTEXT INFORMATION:
-- Module: {module_name}
-- Current Location: {location_id}
-- Available Target Locations: {', '.join(available_locations) if available_locations else 'None (cannot use move action)'}
-- Attempt: {attempt}/5
-
-RESPONSE FORMAT (JSON only):
-{{
-  "action": "remove|update_status|move",
-  "reasoning": "Brief explanation of decision based on narrative context",
-  "newDescription": "Updated NPC description if action is update_status (required field)",
-  "newAttitude": "Updated attitude if action is update_status (required field)", 
-  "newLocation": "Target location ID if action is move (must match available locations exactly)",
-  "locationUpdate": "Addition to location description explaining change (optional)"
-}}
-
-DECISION GUIDELINES WITH EXAMPLES:
-
-CAPTURE SCENARIO:
-Context: "Rusk was captured by the party and taken to Thornwood"
-Decision: "remove" - Rusk is no longer at this location
-Reasoning: "Captured and removed from area by party"
-
-DEATH SCENARIO:  
-Context: "The merchant was killed by bandits"
-Decision: "update_status" - Body remains in location
-New Description: "The merchant's lifeless body lies sprawled among scattered goods..."
-New Attitude: "Dead"
-Location Update: "Signs of violence and blood stain the ground"
-
-RELOCATION SCENARIO:
-Context: "Elen went to report to the watchtower"  
-Decision: "move" - IF watchtower location exists in available locations
-New Location: "WT01" (only if this exact ID exists)
-Reasoning: "Moved to fulfill duty obligations"
-
-INJURY SCENARIO:
-Context: "The guard was wounded but survived the attack"
-Decision: "update_status" - Guard stays but is injured
-New Description: "A wounded guard with bandaged arms, still determined despite recent injuries..."
-New Attitude: "Cautious but resilient"
-
-IMPORTANT VALIDATION RULES:
-- NEVER move party NPCs (they travel with the party automatically)
-- ONLY use exact location IDs from the available locations list
-- ALWAYS provide required fields: newDescription and newAttitude for update_status
-- Keep descriptions realistic and immersive
-- Maintain narrative consistency with established world"""
-
-        user_prompt = f"""Background NPC Movement Decision Request:
-
-NPC Name: {npc_name}
-Current Description: {npc_data.get('description', 'No description available')}
-Current Attitude: {npc_data.get('attitude', 'No attitude specified')}
-Narrative Context: {context}
-Current Location: {location_id}
-
-Based on this narrative context, determine the most appropriate action for this background NPC. Consider the story implications and choose the action that best maintains narrative consistency.
-
-Remember: This is a background NPC management action, not party NPC management."""
-
-        # Select model config per provider
-        from model_config import MODEL_PROVIDER
-        if MODEL_PROVIDER == "openai":
-            npc_config = config.NPC_INFO_GPT54MINI_NONE
-        elif MODEL_PROVIDER == "gemini":
-            # T014 uses its OWN gemini config (NPC_MOVEMENT_T014_*), NOT the shared
-            # NPC_INFO_GEMINI_FLASH_LOW -- that one is shared with T091 whose
-            # output is a JSON ARRAY; attaching this object schema there would corrupt
-            # T091's monster reconciliation.
-            npc_config = config.NPC_MOVEMENT_T014_GEMINI_FLASH_LOW
-        elif MODEL_PROVIDER == "lmstudio":
-            npc_config = config.NPC_INFO_LMSTUDIO
-        else:  # legacy
-            npc_config = config.NPC_INFO_LEGACY
-
-        # T014: fail loud (gemini-only) if response_schema is missing. Without it,
-        # gemini-flash emits narration instead of the action/reasoning decision JSON
-        # and the NPC update is silently dropped.
-        if MODEL_PROVIDER == "gemini" and npc_config.get("response_schema") is None:
-            raise RuntimeError(
-                "T014 NPC movement decision aborted: Gemini response_schema is None. "
-                "Refusing to run -- Gemini would emit narration and silently drop the "
-                "NPC update."
-            )
-
-        response = capture_and_fanout("T014", api_client.create_completion,
-            _request_provider=MODEL_PROVIDER,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            model=npc_config["model"],
-            temperature=0.3,  # MED-9 (#127): lower temp reduces JSON parse failures on NPC movement
-            **{k: v for k, v in npc_config.items() if k != "model"})
-        
-        # Track token usage
-        if USAGE_TRACKING_AVAILABLE:
-            try:
-                track_response(response)
-            except:
-                pass
-        
-        ai_response = response.choices[0].message.content.strip()
-        debug(f"AI_CALL: Movement decision response: {ai_response}", category="ai_operations")
-        
-        # Parse the structured response directly. Gameplay meaning comes from
-        # the typed fields, never a brace-shaped substring found in prose.
-        if ai_response.startswith("```json"):
-            ai_response = ai_response[len("```json") :]
-        if ai_response.endswith("```"):
-            ai_response = ai_response[: -len("```")]
-        return json.loads(ai_response.strip())
-            
-    except Exception as e:
-        error(f"AI_CALL: AI decision failed: {str(e)}", category="ai_operations")
-        return None
-
-def validate_npc_movement_decision(decision, area_data, location_id, party_npcs):
-    """Validate AI decision against schema and game rules"""
-    try:
-        # Check required fields
-        if not isinstance(decision, dict):
-            return {"valid": False, "reason": "Decision must be a JSON object"}
-            
-        action = decision.get("action")
-        if action not in ["remove", "update_status", "move"]:
-            return {"valid": False, "reason": f"Invalid action '{action}'. Must be: remove, update_status, or move"}
-        
-        # Validate action-specific requirements
-        if action == "update_status":
-            if not decision.get("newDescription"):
-                return {"valid": False, "reason": "update_status action requires newDescription field"}
-            if not decision.get("newAttitude"):
-                return {"valid": False, "reason": "update_status action requires newAttitude field"}
-            
-            if not isinstance(decision.get("newDescription"), str):
-                return {"valid": False, "reason": "newDescription must be a string"}
-                
-        elif action == "move":
-            new_location = decision.get("newLocation")
-            if not new_location:
-                return {"valid": False, "reason": "move action requires newLocation field"}
-                
-            # Check if target location exists
-            valid_locations = [loc.get("locationId") for loc in area_data.get("locations", [])]
-            if new_location not in valid_locations:
-                return {"valid": False, "reason": f"Target location '{new_location}' does not exist. Valid locations: {valid_locations}"}
-        
-        location_update = decision.get("locationUpdate")
-        if location_update is not None and not isinstance(location_update, str):
-            return {"valid": False, "reason": "locationUpdate must be a string or null"}
-        
-        # Schema validation - check NPC structure requirements
-        if action == "update_status":
-            # Simulate the NPC object that would be created
-            test_npc = {
-                "name": "test",
-                "description": decision.get("newDescription"),
-                "attitude": decision.get("newAttitude")
-            }
-            
-            # Basic validation
-            for field in ["name", "description", "attitude"]:
-                if not test_npc.get(field):
-                    return {"valid": False, "reason": f"NPC object missing required field: {field}"}
-                if not isinstance(test_npc[field], str):
-                    return {"valid": False, "reason": f"NPC field '{field}' must be a string"}
-        
-        return {"valid": True, "reason": "Decision validated successfully"}
-        
-    except Exception as e:
-        return {"valid": False, "reason": f"Validation error: {str(e)}"}
-
-def execute_npc_movement_decision(decision, area_data, location_id, npc_name, path_manager):
-    """Execute the AI's decision with surgical updates to area data"""
-    try:
-        action = decision.get("action")
-        
-        # Find the location and NPC in area data
-        target_location = None
-        npc_index = None
-        
-        for location in area_data.get("locations", []):
-            if location.get("locationId") == location_id:
-                target_location = location
-                # Find NPC index
-                for i, npc in enumerate(location.get("npcs", [])):
-                    if npc.get("name", "").lower() == npc_name.lower():
-                        npc_index = i
-                        break
-                break
-        
-        if not target_location or npc_index is None:
-            error("VALIDATION: Could not find location or NPC in area data", category="npc_management")
-            return False
-        
-        if action == "remove":
-            # Remove NPC from location
-            target_location["npcs"].pop(npc_index)
-            info(f"STATE_CHANGE: Removed {npc_name} from {location_id}", category="npc_management")
-            
-            # Update location description if provided
-            location_update = decision.get("locationUpdate")
-            if location_update:
-                current_desc = target_location.get("description", "")
-                target_location["description"] = f"{current_desc} {location_update}".strip()
-                
-        elif action == "update_status":
-            # Update NPC description and attitude
-            new_description = decision.get("newDescription")
-            new_attitude = decision.get("newAttitude")
-            
-            if new_description:
-                target_location["npcs"][npc_index]["description"] = new_description
-                info(f"STATE_CHANGE: Updated description for {npc_name}", category="npc_management")
-            
-            if new_attitude:
-                target_location["npcs"][npc_index]["attitude"] = new_attitude
-                info(f"STATE_CHANGE: Updated attitude for {npc_name}", category="npc_management")
-                
-            # Update location description if provided
-            location_update = decision.get("locationUpdate")
-            if location_update:
-                current_desc = target_location.get("description", "")
-                target_location["description"] = f"{current_desc} {location_update}".strip()
-                    
-        elif action == "move":
-            # Move NPC to different location
-            new_location_id = decision.get("newLocation")
-            if not new_location_id:
-                error("VALIDATION: Move action specified but no target location provided", category="npc_management")
-                return False
-                
-            # Find target location
-            target_new_location = None
-            for location in area_data.get("locations", []):
-                if location.get("locationId") == new_location_id:
-                    target_new_location = location
-                    break
-                    
-            if not target_new_location:
-                error(f"VALIDATION: Target location {new_location_id} not found", category="npc_management")
-                return False
-                
-            # Move NPC
-            npc_to_move = target_location["npcs"].pop(npc_index)
-            target_new_location["npcs"].append(npc_to_move)
-            info(f"STATE_CHANGE: Moved {npc_name} from {location_id} to {new_location_id}", category="npc_management")
-            
-            # Update both location descriptions if provided
-            location_update = decision.get("locationUpdate")
-            if location_update:
-                # Update source location
-                current_desc = target_location.get("description", "")
-                target_location["description"] = f"{current_desc} {location_update}".strip()
-        
-        else:
-            error(f"VALIDATION: Unknown action: {action}", category="npc_management")
-            return False
-            
-        return True
-        
-    except Exception as e:
-        error(f"FAILURE: Failed to execute decision: {str(e)}", category="npc_management")
-        return False
-
-def create_area_backup(area_file):
-    """Create timestamped backup of area file"""
-    import shutil
-    import os
-    from datetime import datetime
-    
-    try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_name = f"{area_file}.backup_npc_move_{timestamp}"
-        shutil.copy2(area_file, backup_name)
-        debug(f"FILE_OP: Created area backup: {os.path.basename(backup_name)}", category="file_operations")
-        return backup_name
-    except Exception as e:
-        error(f"FILE_OP: Could not create area backup: {e}", category="file_operations")
-        return None
-
-def cleanup_old_area_backups(area_file, max_backups=5):
-    """Clean up old area backup files"""
-    import os
-    
-    try:
-        directory = os.path.dirname(area_file)
-        base_name = os.path.basename(area_file)
-        
-        backup_files = []
-        for file in os.listdir(directory):
-            if file.startswith(f"{base_name}.backup_npc_move_") and file.endswith(".json"):
-                backup_path = os.path.join(directory, file)
-                mtime = os.path.getmtime(backup_path)
-                backup_files.append((mtime, backup_path))
-        
-        # Sort by modification time (newest first) and remove old ones
-        backup_files.sort(reverse=True)
-        if len(backup_files) > max_backups:
-            for _, old_backup in backup_files[max_backups:]:
-                try:
-                    os.remove(old_backup)
-                    debug(f"FILE_OP: Removed old backup: {os.path.basename(old_backup)}", category="file_operations")
-                except Exception as e:
-                    warning(f"FILE_OP: Could not remove old backup: {e}", category="file_operations")
-                    
-    except Exception as e:
-        warning(f"FILE_OP: Backup cleanup failed: {e}", category="file_operations")

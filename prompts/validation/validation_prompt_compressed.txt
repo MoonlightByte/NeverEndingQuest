@@ -77,7 +77,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   rest: sole authority for rest recovery {restType: short|long}, whole party, after updateTime; REJECT recovery as updateCharacterInfo notes
   coin_instruction_stands: player plainly gives/splits own coins -> the transferCurrency/splitCurrency action is REQUIRED in that response; a companion's objection is dialogue only, never a reason to withhold/shrink the action or narrate coins refused/handed back this turn (a companion returns coins on a later turn with its own transferCurrency). REJECT a pause/refusal on a companion's behalf; correction = emit the action, keep the objection as words
   updatePartyTracker: module/location updates; triggers archiving
-  moveBackgroundNPC: NPCs not in party (captured/killed/relocated)
+  occupant actions (resolveOccupant/setOccupantAttitude/moveOccupant/returnOccupant): story outcomes on a listed occupant by its id; never companions, never a fight's defeated
   engineNumbers: SPD/STATUS/CONDITION/AFFECTED/EXHAUSTION lines on the sheet are the rules engine's values; narration repeating them is correct, never reject from rules memory. SRD 5.2.1 exhaustion = -2 d20 and -5ft speed per level ("SPD: 20 ft NOW (base 30...)" means speed IS 20); long rest removes one level (engine).
   updatePartyNPCs: add/remove traveling companions
   saveGame: save current game state
@@ -156,7 +156,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   judge: ACTUAL input + canonical location/roster + narration/actions. Local scouting supported; player-directed companion mission in ANOTHER location while player stays unsupported
   reject: Remote scouting/action/arrival/report promises or performance, including later invented spy reports; advice/destination context is NOT authority
   correction: valid=false; name violating remote activity, say it cannot happen under local-party boundary, direct DM to explain naturally in scene/character voice and offer supported choices with player agency
-  substitutions: Reject unauthorized dismissal, whole-party travel or moveBackgroundNPC workaround. Do NOT demand remove to satisfy remote request; corrected response removes unsupported promises/actions, preserves authorized intent, returns agency
+  substitutions: Reject unauthorized dismissal, whole-party travel or occupant-action workaround. Do NOT demand remove to satisfy remote request; corrected response removes unsupported promises/actions, preserves authorized intent, returns agency
   valid: Honest explanation + unchanged membership/location; legitimate local scouting/party travel; genuine leaving/rejoining via existing mechanism and NPC/player agreement. Real membership changes require matching actions in SAME response; remote request alone is NOT removal consent
   no_false_reject: Discussion/negation/future plan/refusal alone != membership change. Independently authorized parting != remote mission. Remove needs exact name only, no level/class/role or optional context
   grounding: Preserve legitimate established knowledge/independent background events, never as remote-mission workaround. Validation != commit proof; keep correction loop, no game abort/forced player retry
@@ -216,7 +216,10 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   updateTime: {"timeEstimate":int} #integer only, not string
   updatePlot: {"plotPointId":str,"newStatus":str,"plotImpact":str}
   updatePartyNPCs: {"operation":str,"npc":obj,"lifecycleContext":obj optional} #add: npc {"name","level","class"}. remove: npc {"name"} ONLY - NEVER demand level or class on a remove. lifecycleContext {"reason","departureKind","destination"} is optional on remove and its absence is NEVER a rejection
-  moveBackgroundNPC: {"npcName":str,"context":str,"currentLocation":str}
+  resolveOccupant: {"occupantId":str,"outcome":str,"count":int optional,"reason":str} #outcome departed/fled/surrendered/defeated/died/joined; reason REQUIRED only for departed
+  setOccupantAttitude: {"occupantId":str,"attitude":str} #friendly/indifferent/hostile
+  moveOccupant: {"occupantId":str,"locationId":str}
+  returnOccupant: {"occupantId":str,"outcome":str,"reason":str optional,"count":int optional}
   levelUp: {"entityName":str,"newLevel":int} #integer only, not string
   establishHub: {"hubName":str,"hubType":str,"description":str,"services":arr,"ownership":str}
   exitGame: {"farewell":str}
@@ -257,6 +260,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   15:MULTIPLE updateCharacterInfo OK in actions array. Each updates ONE character. NEVER comma-separated names
   16:Actions go in "actions" array, NOT numbered keys like updateCharacterInfo_2, updateCharacterInfo_3
   17:Character-to-character item handoff = ONE transferItem per item (fromCharacter, toCharacter, itemName exactly as on the giver's supplied sheet, integer quantity); a trade = two transferItem actions. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided; never demand a container. Container operation then handoff of the retrieved items = storageInteraction then transferItem. Coins between party characters change hands with transferCurrency or splitCurrency.
+  18:Occupant actions: occupantId MUST be an id from the location data's occupants list (never invented); resolveOccupant departed needs a reason; attitude friendly/indifferent/hostile; count and other optional fields missing is NEVER a rejection; not for companions (updatePartyNPCs) nor for what a createEncounter defeated
 }
 
 Evaluate last assistant response. Return JSON validation result.

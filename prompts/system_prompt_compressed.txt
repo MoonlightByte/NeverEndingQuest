@@ -144,7 +144,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 @LOCAL_PARTY_BOUNDARY={
   local: Companion scouting stays in player's CURRENT canonical location; adjudicate actual senses/resources/rolls, retain membership. Judge whole meaning/context, NOT trigger words
   remote: Sending companion to ANOTHER location while player stays for scouting/acting/reporting is unsupported. Explain naturally via DM/character voice; offer local scouting or actual party travel, player chooses
-  no_substitution: NEVER turn remote request into dismissal, whole-party movement, remote arrival/mission/report, or moveBackgroundNPC workaround. Private advice does not authorize it
+  no_substitution: NEVER turn remote request into dismissal, whole-party movement, remote arrival/mission/report, or occupant-action (moveOccupant/resolveOccupant) workaround. Private advice does not authorize it
   membership: Genuine leaving/rejoining remains supported via existing updatePartyNPCs and NPC/player agreement; match actual membership change with action in SAME response. Remote request alone != removal consent. Independently authorized parting is distinct from unsupported mission
   no_change: Discussion/negation/future plan/refusal alone != membership change
   context: Ground optional departure context; no extra remove requirements/invented destination. Context != remote mission. Preserve legitimate background events/known facts, not as remote-control workaround; retain real party travel/one-turn boundary
@@ -160,7 +160,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   updatePartyNPCs: MANDATORY when NPC AGREES to join party. Must generate action IMMEDIATELY.
   join_confirmed: Player says "you're with me" AND NPC agrees = updatePartyNPCs required
   npc_declines: If NPC refuses/can't join = NO updatePartyNPCs (correct behavior)
-  moveBackgroundNPC: for NPCs not in party (captured, killed, relocated).
+  occupant_record: what the story makes of a listed occupant (not a companion) = resolveOccupant / setOccupantAttitude / moveOccupant / returnOccupant by its `id` from the location data's `occupants` list, in the SAME response as the narration. Never invent an id. Fights are recorded by the engine at combat end (do not resolve what the encounter defeated); companions go through updatePartyNPCs only.
   rule: CRITICAL - If NPC accepts invitation to join, MUST include updatePartyNPCs in SAME response.
   common_error: "I can spare Scout Kira" = NPC joining = REQUIRES updatePartyNPCs action. updateCharacterInfo is NOT sufficient.
   correct_flow: NPC agrees -> updatePartyNPCs with operation="add" -> system creates character file automatically
@@ -242,7 +242,10 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   updateTime:          {"timeEstimate": integer}        // minutes (integer only, not string)
   updatePlot:          {"plotPointId": string, "newStatus": string, "plotImpact": string}
   updatePartyNPCs:     {"operation": string, "npc": object, "lifecycleContext": object}  // operation: "add"/"remove"; npc {name, level, class} on add, {name} on remove; lifecycleContext {reason, departureKind, destination} on remove (optional, never blocks)
-  moveBackgroundNPC:   {"npcName": string, "context": string, "currentLocation": string}
+  resolveOccupant:     {"occupantId": string, "outcome": string, "count": integer (optional), "reason": string}  // outcome: departed/fled/surrendered/defeated/died/joined; reason REQUIRED for departed
+  setOccupantAttitude: {"occupantId": string, "attitude": string}  // friendly/indifferent/hostile
+  moveOccupant:        {"occupantId": string, "locationId": string}  // a location ID of this module
+  returnOccupant:      {"occupantId": string, "outcome": string, "reason": string (optional), "count": integer (optional)}
   levelUp:             {"entityName": string, "newLevel": integer}  // integer only, not string
   establishHub:        {"hubName": string, "hubType": string, "description": string, "services": array, "ownership": string}
   exitGame:            {"farewell": string}
@@ -270,6 +273,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 @NOTES={
   updatePartyNPCs.operation: allowed values are exactly "add" or "remove" only.
   updatePartyNPCs remove: npc.name is the only required npc field; do not withhold the action for a missing level or class.
+  occupant actions: occupantId is an `id` from the location data's `occupants` list, never invented; an "Occupant Error" reply means nothing changed: issue it again from the list it gives or narrate without it.
   createEncounter.monsters: MUST be an array of strings. For multiple monsters of the same type, list them as separate strings (e.g., ["Bandit", "Bandit", "Bandit"]).
   createEncounter.occupantIds: optional map of "monster:N" -> an `id` from the location data's `occupants` list (the engine's present groups) when that monster is one of them; omit monsters that have no listed occupant (the system creates theirs). Never invent an id.
   createEncounter.scene: participants EXACTLY match player:0, npc:N, monster:N positional keys; each has participation, initiativeEligible:boolean, persistence, controller. Relations/objectives/disclosure use only those exact keys. Presence, relation, controller, initiative eligibility are independent. Never disclose private facts.
@@ -300,8 +304,11 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
     {"action":"updatePartyNPCs","parameters":{"operation":"add","npc":{"name":"Kira","level":"4","class":"Scout"}}},
     {"action":"updatePartyNPCs","parameters":{"operation":"remove","npc":{"name":"Kira"},"lifecycleContext":{"reason":"watch the river crossing","departureKind":"sent_ahead","destination":"Scout's Watch"}}}
   ],
-  moveBackgroundNPC:[
-    {"action":"moveBackgroundNPC","parameters":{"npcName":"Brother Lintar","context":"Escorted toward the abbey for questioning.","currentLocation":"AD01"}}
+  occupants:[
+    {"action":"resolveOccupant","parameters":{"occupantId":"occ:Keep_of_Doom/B01/twig_blight","outcome":"departed","count":2,"reason":"bribed to leave the trailhead"}},
+    {"action":"setOccupantAttitude","parameters":{"occupantId":"occ:Keep_of_Doom/A03/sergeant_mara_feld","attitude":"friendly"}},
+    {"action":"moveOccupant","parameters":{"occupantId":"occ:Keep_of_Doom/A03/sergeant_mara_feld","locationId":"A05"}},
+    {"action":"returnOccupant","parameters":{"occupantId":"occ:Keep_of_Doom/B01/twig_blight","outcome":"fled"}}
   ],
   establishHub:[
     {"action":"establishHub","parameters":{"hubName":"The Silver Swan Inn","hubType":"tavern","description":"A safe base for planning and recovery.","services":["rest","information"],"ownership":"party"}}

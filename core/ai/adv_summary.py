@@ -1119,7 +1119,7 @@ def prepare_departure_summary(
     )
     if not isinstance(updated_location, dict):
         raise DepartureSummaryError("T015 did not produce a location update")
-    # T091 and T014 are the dedicated presence authorities. T015 owns the
+    # T091 and the occupant record are the presence authorities. T015 owns the
     # chronicle-derived location description, not creature placement. Preserve
     # the accepted lists so a summary proposal cannot silently add, remove, or
     # relocate an entity outside its responsible workflow lane.

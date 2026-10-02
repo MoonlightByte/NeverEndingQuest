@@ -207,18 +207,6 @@ _declare(
     ),
 )
 _declare(
-    "T014",
-    _profiles(
-        "OPENAI_GPT56_LUNA_NONE",
-        "NPC_MOVEMENT_T014_GEMINI_FLASH_LOW",
-        "NPC_INFO_LEGACY",
-        "NPC_INFO_LMSTUDIO",
-    ),
-    note="T014 needs its OWN gemini config carrying response_schema; NPC_INFO_GEMINI_FLASH_LOW "
-         "(shared with T091) has none, so gemini would emit narration and silently drop the NPC "
-         "movement update. Must match the live callsite (action_handler.py NPC_MOVEMENT_T014_*).",
-)
-_declare(
     "T091",
     _profiles(
         "OPENAI_GPT56_LUNA_NONE",
@@ -775,12 +763,12 @@ def openai_output_ceiling(task_id):
     """The output ceiling for one callsite on the openai provider, or None."""
     value = OPENAI_OUTPUT_CEILING_CHARS.get(task_id)
     return value if isinstance(value, int) and value > 0 else None
-# Reviewed source inventory: 75 register_callsite IDs plus enabled T104, plus the
+# Reviewed source inventory: 74 register_callsite IDs (T014 retired in P4-e) plus enabled T104, plus the
 # NPC-voice family T105 (voice+affinity) and T107 (profile seed). Keep this
 # independent from _DECLARATIONS so deleting/adding a binding cannot make the
 # expected set silently redefine itself.
 REGISTERED_TASK_IDS = tuple(
-    "T012 T013 T014 T015 T016 T017 T018 T019 T020 T021 T022 T023 T024 T025 "
+    "T012 T013 T015 T016 T017 T018 T019 T020 T021 T022 T023 T024 T025 "
     "T026 T027 T028 T029 T030 T031 T032 T033 T034 T035 T036 T037 T038 T039 "
     "T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T050 T051 T052 T053 "
     "T054 T059 T063 T064 T065 T066 T067 T077 T078 T079 T081 T082 T083 T084 "

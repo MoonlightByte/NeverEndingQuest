@@ -539,3 +539,266 @@ def location_record(location_id: str, module: str, *, root: str = ".") -> Option
     if at_large:
         out["atLarge"] = at_large
     return out
+
+
+# DM story outcomes --------------------------------------------------------
+#
+# The DM declares what the story made of an occupant with a typed action by
+# its ID (resolveOccupant, setOccupantAttitude, moveOccupant, returnOccupant);
+# T067 owns the interpretation and T065 validates it. The host turns the
+# action into one engine line and relays a refusal as a correction naming the
+# present IDs, never as a stop. A party join or leave (updatePartyNPCs) keeps
+# the person's occupant in step.
+
+DM_ACTIONS = ("resolveOccupant", "setOccupantAttitude", "moveOccupant", "returnOccupant")
+OUTCOMES = ("defeated", "fled", "surrendered", "departed", "joined", "died")
+ATTITUDES = ("friendly", "indifferent", "hostile")
+REASON_BYTES = 200
+
+
+def _reason(text: Any) -> str:
+    text = " ".join(str(text or "").split())
+    while len(text.encode("utf-8")) > REASON_BYTES:
+        text = text[:-1]
+    return text.strip()
+
+
+def _members(value: Any) -> Tuple[Optional[int], str]:
+    """An optional member count: (n, "") or (None, problem)."""
+    if value in (None, ""):
+        return None, ""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None, "count must be a whole number of members"
+    if n < 1:
+        return None, "count must be at least 1"
+    return n, ""
+
+
+def dm_action_line(action_type: str, parameters: Any, module: str) -> Tuple[str, str]:
+    """The engine line for one typed DM action: (line, "") or ("", problem)."""
+    from utils.roster_conversion import q
+    p = parameters if isinstance(parameters, dict) else {}
+    oid = str(p.get("occupantId") or "").strip()
+    if not oid.startswith("occ:"):
+        return "", "occupantId must be an id from the location data's occupants list"
+    if action_type == "resolveOccupant":
+        outcome = str(p.get("outcome") or "").strip().lower()
+        if outcome not in OUTCOMES:
+            return "", "outcome must be one of %s" % ", ".join(OUTCOMES)
+        n, problem = _members(p.get("count"))
+        if problem:
+            return "", problem
+        reason = _reason(p.get("reason"))
+        if outcome == "departed" and not reason:
+            return "", "a departed outcome needs a reason (why they left)"
+        line = "resolve occupant %s as %s" % (q(oid), outcome)
+        if n is not None:
+            line += " by %d" % n
+        if reason:
+            line += " because %s" % q(reason)
+        return line + ";", ""
+    if action_type == "setOccupantAttitude":
+        attitude = str(p.get("attitude") or "").strip().lower()
+        if attitude not in ATTITUDES:
+            return "", "attitude must be one of %s" % ", ".join(ATTITUDES)
+        return "set occupant %s attitude %s;" % (q(oid), attitude), ""
+    if action_type == "moveOccupant":
+        location_id = str(p.get("locationId") or "").strip()
+        if not location_id:
+            return "", "locationId must be a location id of this module"
+        return "move occupant %s to %s;" % (q(oid), q(place_id(module, location_id))), ""
+    if action_type == "returnOccupant":
+        outcome = str(p.get("outcome") or "").strip().lower()
+        if outcome not in OUTCOMES:
+            return "", "outcome must be one of %s" % ", ".join(OUTCOMES)
+        n, problem = _members(p.get("count"))
+        if problem:
+            return "", problem
+        reason = _reason(p.get("reason"))
+        line = "return occupant %s from %s" % (q(oid), outcome)
+        if reason:
+            line += " %s" % q(reason)
+        if n is not None:
+            line += " by %d" % n
+        return line + ";", ""
+    return "", "unknown occupant action %s" % action_type
+
+
+def _present_lines(here: Optional[Dict[str, Any]]) -> str:
+    entries = present_roster(here or {})
+    if not entries:
+        return "none"
+    return "; ".join("%s (%s, %s, %s)" % (e["id"], e["name"], e.get("count", "?"), e.get("attitude"))
+                     for e in entries)
+
+
+def correction(action_type: str, problem: str, here: Optional[Dict[str, Any]]) -> str:
+    """The message that sends a refused occupant action back to the DM."""
+    return (
+        "Occupant Error: %s was refused: %s. Nothing changed in the roster record. "
+        "Present occupants at this location: %s. Later actions from this response have not "
+        "executed. Do not repeat earlier completed actions; issue the action again with an id "
+        "and values from this list, or narrate the outcome without it."
+        % (action_type, problem, _present_lines(here))
+    )
+
+
+def _here(root: str, place: str) -> Optional[Dict[str, Any]]:
+    views = view([place], root=root)
+    return views[0] if views else None
+
+
+def apply_dm_action(action_type: str, parameters: Any, request_id: str, module: str,
+                    location_id: str, *, root: str = ".") -> Dict[str, Any]:
+    """Send one typed DM action to the engine. Returns {"ok": bool,
+    "correction": text or None}: a refusal comes back as a correction for
+    the DM; an unavailable engine is logged and the turn goes on."""
+    place = place_id(module, location_id)
+    try:
+        line, problem = dm_action_line(action_type, parameters, module)
+        if problem:
+            return {"ok": False, "correction": correction(action_type, problem, _here(root, place))}
+        if action_type == "moveOccupant":
+            current = request(view=(place,), root=root)
+            if not current or not current.get("ok"):
+                return {"ok": False, "correction": None}
+            target = place_id(module, str((parameters or {}).get("locationId") or "").strip())
+            if target not in ((current.get("live_state") or {}).get("places") or []):
+                here = (current.get("locations") or [None])[0]
+                return {"ok": False, "correction": correction(
+                    action_type, "locationId %s is not a location of this module"
+                    % (parameters or {}).get("locationId"), here)}
+        response = request(line, request_id, view=(place,), root=root)
+        if response is None:
+            return {"ok": False, "correction": None}
+        if response.get("ok"):
+            if response.get("historical"):
+                debug("OCCUPANTS: %s already applied" % request_id, category="location_transitions")
+            else:
+                info("OCCUPANTS: %s applied: %s" % (request_id, line), category="location_transitions")
+            return {"ok": True, "correction": None}
+        fault = response.get("fault") or {}
+        if fault.get("code") == "E_NO_CHANGE":
+            info("OCCUPANTS: %s changes nothing (%s); taken as applied" % (request_id, line),
+                 category="location_transitions")
+            return {"ok": True, "correction": None}
+        problem = str(fault.get("message") or response.get("error") or "the engine refused it")
+        warning("OCCUPANTS: %s refused: %s (%s)" % (request_id, problem, line),
+                category="location_transitions")
+        return {"ok": False, "correction": correction(action_type, problem, _here(root, place))}
+    except Exception as exc:  # fail forward
+        warning("OCCUPANTS: %s skipped (%s)" % (action_type, exc), category="location_transitions")
+        return {"ok": False, "correction": None}
+
+
+def _person_matches(occupant: Dict[str, Any], want: str) -> bool:
+    from utils.roster_conversion import slug
+    if occupant.get("kind") != "person":
+        return False
+    names = [occupant.get("name")] + list(occupant.get("aliases") or [])
+    return any(slug(n) == want for n in names if n)
+
+
+def settle_person(live: Dict[str, Any], module: str, place: str, npc_name: str) -> Optional[Dict[str, Any]]:
+    """The present person occupant a name settles on: by slug equality with
+    its name or an alias, at this place first, else the module's only one."""
+    from utils.roster_conversion import slug
+    want = slug(npc_name)
+    prefix = "loc:%s/" % (module or "").replace(" ", "_")
+    present = [o for o in live.get("occupants") or []
+               if o.get("count") != 0 and str(o.get("location") or "").startswith(prefix)
+               and _person_matches(o, want)]
+    here = [o for o in present if o.get("location") == place]
+    if here:
+        return here[0]
+    if len(present) == 1:
+        return present[0]
+    return None
+
+
+def party_change(operation: str, npc_name: str, module: str, location_id: str, request_id: str,
+                 *, reason: Any = None, root: str = ".") -> Optional[Dict[str, Any]]:
+    """Keep a companion's occupant in step with updatePartyNPCs: an add
+    resolves the person present here as joined; a remove brings the person
+    back at this place (return from joined, moved here when the record is
+    elsewhere) or creates one. Never stops the roster change."""
+    try:
+        from utils.roster_conversion import q, slug
+        place = place_id(module, location_id)
+        current = request(view=(place,), root=root)
+        if not current or not current.get("ok"):
+            return None
+        live = current.get("live_state") or _load(root) or {}
+        why = _reason(reason)
+        if operation == "add":
+            person = settle_person(live, module, place, npc_name)
+            if person is None:
+                debug("OCCUPANTS: no present person occupant for companion %s; nothing to resolve"
+                      % npc_name, category="location_transitions")
+                return None
+            line = "resolve occupant %s as joined%s;" % (q(person["id"]), " because %s" % q(why) if why else "")
+        elif operation == "remove":
+            want = slug(npc_name)
+            prefix = "loc:%s/" % (module or "").replace(" ", "_")
+            back = None
+            for o in live.get("occupants") or []:
+                if not str(o.get("location") or "").startswith(prefix) or not _person_matches(o, want):
+                    continue
+                entry = next((e for e in o.get("tally") or [] if e.get("outcome") == "joined"), None)
+                if entry is not None:
+                    back = (o, entry)
+                    break
+            if back is not None:
+                o, entry = back
+                line = "return occupant %s from joined%s;" % (q(o["id"]), " %s" % q(entry["reason"]) if entry.get("reason") else "")
+                if o.get("location") != place:
+                    line += "\nmove occupant %s to %s;" % (q(o["id"]), q(place))
+            else:
+                taken = {o["id"] for o in live.get("occupants") or []}
+                ident = _unique_id(place, want, taken)
+                line = "create occupant %s named %s at %s { person; attitude friendly; };" % (q(ident), q(npc_name), q(place))
+        else:
+            return None
+        response = request(line, request_id, view=(place,), root=root)
+        if response is None:
+            return None
+        if response.get("ok"):
+            info("OCCUPANTS: %s (%s %s): %s" % (request_id, operation, npc_name, line.replace("\n", " ")),
+                 category="location_transitions")
+        else:
+            warning("OCCUPANTS: %s (%s %s) refused: %s" % (request_id, operation, npc_name, response.get("error")),
+                    category="location_transitions")
+        return response
+    except Exception as exc:  # fail forward
+        warning("OCCUPANTS: party change for %s skipped (%s)" % (npc_name, exc), category="location_transitions")
+        return None
+
+
+def legacy_move(parameters: Any, module: str, location_id: str, *, root: str = ".") -> Dict[str, Any]:
+    """The retired moveBackgroundNPC action: forwarded to moveOccupant when
+    it names an occupant (by id, or a present person by name) and a
+    destination, else answered with a correction that lists the ids."""
+    p = parameters if isinstance(parameters, dict) else {}
+    place = place_id(module, location_id)
+    try:
+        current = request(view=(place,), root=root)
+        here = (current.get("locations") or [None])[0] if current and current.get("ok") else None
+        live = (current or {}).get("live_state") or {}
+        oid = str(p.get("occupantId") or "").strip()
+        if not oid and p.get("npcName"):
+            person = settle_person(live, module, place, str(p.get("npcName")))
+            oid = person["id"] if person else ""
+        destination = str(p.get("locationId") or p.get("newLocation") or "").strip()
+        if oid and destination:
+            return {"forward": {"occupantId": oid, "locationId": destination}, "correction": None}
+        problem = ("it is retired; say what became of the occupant with resolveOccupant "
+                   "(occupantId, outcome, reason), setOccupantAttitude (occupantId, attitude) or "
+                   "moveOccupant (occupantId, locationId)")
+        if p.get("npcName") and not oid:
+            problem = "no present occupant here is named %s; %s" % (p.get("npcName"), problem)
+        return {"forward": None, "correction": correction("moveBackgroundNPC", problem, here)}
+    except Exception as exc:  # fail forward
+        warning("OCCUPANTS: moveBackgroundNPC forwarding skipped (%s)" % exc, category="location_transitions")
+        return {"forward": None, "correction": None}
