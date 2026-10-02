@@ -630,6 +630,84 @@ def _combatant_max_hp(encounter, characters, creature):
     return int((creature or {}).get("maxHitPoints", 0) or 0)
 
 
+def _stated_conditions(characters, encounter, creature):
+    """The conditions a combatant states, casefolded: a party sheet's
+    condition_affected / condition and the encounter record's conditions.
+    Typed values only; nothing is read from prose."""
+    creature = creature or {}
+    listed = [c for c in creature.get("conditions") or [] if isinstance(c, str)]
+    sheet = (characters or {}).get(creature.get("name"))
+    if creature.get("type") in ("player", "npc") and isinstance(sheet, dict):
+        listed += [c for c in sheet.get("condition_affected") or [] if isinstance(c, str)]
+        single = sheet.get("condition")
+        if isinstance(single, str):
+            listed.append(single)
+    return {c.strip().casefold() for c in listed if c.strip().casefold() not in ("", "none")}
+
+
+# SRD 5.2.1 conditions that set a known attack's roll mode (#528). The
+# attacker's own condition imposes disadvantage; the target's grants advantage.
+# Prone depends on the attack: melee has advantage, ranged disadvantage (the
+# SRD's 5 feet is the melee entry). Situational modes (cover, unseen, a
+# frightened attacker's source in sight) stay with the DM.
+_ATTACKER_DISADVANTAGE = frozenset(("blinded", "poisoned", "prone", "restrained"))
+_TARGET_ADVANTAGE = frozenset(("blinded", "paralyzed", "petrified", "restrained", "stunned", "unconscious"))
+
+
+def _attack_mode(attacker_conditions, target_conditions, entry_type):
+    """("normal" | "advantage" | "disadvantage", sources). Any advantage
+    with any disadvantage cancels to normal (SRD), the sources still listed."""
+    advantage = []
+    disadvantage = []
+    for name in sorted(attacker_conditions or ()):
+        if name in _ATTACKER_DISADVANTAGE:
+            disadvantage.append(name)
+    for name in sorted(target_conditions or ()):
+        if name in _TARGET_ADVANTAGE:
+            advantage.append("target " + name)
+        elif name == "prone":
+            (disadvantage if entry_type == "ranged" else advantage).append("target prone")
+    if advantage and disadvantage:
+        return "normal", advantage + disadvantage
+    if advantage:
+        return "advantage", advantage
+    if disadvantage:
+        return "disadvantage", disadvantage
+    return "normal", []
+
+
+# Typed damage traits (#527): the target sheet's lists, compared by exact
+# casefolded equality with the attack's damage type. A free-text entry such
+# as "poison from Giant Spider" is not a type and never matches.
+_DAMAGE_TRAITS = (
+    ("damageImmunities", "immunity"),
+    ("damageResistances", "resistance"),
+    ("damageVulnerabilities", "vulnerability"),
+)
+
+
+def _typed_damage(sheet, damage_type, raw):
+    """(applied, traits): immunity -> 0; else resistance halves (rounded
+    down) and then vulnerability doubles, each counted once (SRD order)."""
+    kind = str(damage_type or "").strip().casefold()
+    raw = int(raw or 0)
+    if not kind or raw <= 0 or not isinstance(sheet, dict):
+        return raw, []
+    found = []
+    for field, trait in _DAMAGE_TRAITS:
+        for entry in sheet.get(field) or []:
+            if isinstance(entry, str) and entry.strip().casefold() == kind and trait not in found:
+                found.append(trait)
+    if "immunity" in found:
+        return 0, ["immunity"]
+    applied = raw
+    if "resistance" in found:
+        applied = applied // 2
+    if "vulnerability" in found:
+        applied = applied * 2
+    return applied, found
+
+
 def _stated_condition_reference(characters, encounter, owner, combatant_id, *references):
     """The condition one of the references names among those the target states, or None.
 
@@ -1003,6 +1081,11 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
         working = deepcopy(target_sheet)
         working["hitPoints"] = hp_before
         temp_before = _temp_hp(working)
+    # #527/#528: the target's typed damage traits and the stated conditions
+    # on both sides are read once; every swing of the sequence uses them.
+    trait_sheet = _raw_combatant_sheet(encounter, characters, target) if target is not None else {}
+    attacker_conditions = _stated_conditions(characters, encounter, actor)
+    target_conditions = _stated_conditions(characters, encounter, target)
     for swing_number, entry in enumerate(attack_entries, start=1):
         if target is None or hp_after <= 0:
             break
@@ -1011,20 +1094,48 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
         attack_bonus = int(entry.get("attackBonus", 0) or 0) + modifier_total(
             sheet, "attackRolls"
         )
-        attack_die = _take_roll(
-            rolls,
-            "d20",
-            "attack",
-            actor_id=intent.get("actorId"),
-            target_id=intent.get("targetId"),
+        # #528: advantage or disadvantage takes two faces from the same
+        # source (both journaled), and keeps the higher or the lower one.
+        attack_mode, mode_sources = _attack_mode(
+            attacker_conditions, target_conditions, entry.get("type")
+        )
+        attack_faces = [
+            _take_roll(
+                rolls,
+                "d20",
+                "attack",
+                actor_id=intent.get("actorId"),
+                target_id=intent.get("targetId"),
+            )
+            for _ in range(2 if attack_mode in ("advantage", "disadvantage") else 1)
+        ]
+        attack_die = (
+            max(attack_faces) if attack_mode == "advantage"
+            else min(attack_faces) if attack_mode == "disadvantage"
+            else attack_faces[0]
         )
         total = attack_die + attack_bonus
         critical = attack_die == 20
         hit = critical or (attack_die != 1 and total >= target_ac)
-        event["rolls"].append(
-            {"die": "d20", "value": attack_die, "purpose": "attack"}
-        )
+        if mode_sources:
+            try:
+                from utils.enhanced_logger import info as _info
+                _info(
+                    "CR: %s %s with %s (%s): faces %s, kept %d"
+                    % (actor.get("name"), entry.get("name"), attack_mode,
+                       ", ".join(mode_sources), attack_faces, attack_die),
+                    category="combat_events",
+                )
+            except Exception:
+                pass
+        for face in attack_faces:
+            roll_record = {"die": "d20", "value": face, "purpose": "attack"}
+            if attack_mode != "normal":
+                roll_record["mode"] = attack_mode
+            event["rolls"].append(roll_record)
         damage = 0
+        raw_damage = 0
+        damage_traits = []
         if hit:
             count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"))
             if critical:
@@ -1043,13 +1154,28 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                 event["rolls"].append(
                     {"die": "d%d" % sides, "value": value, "purpose": "damage"}
                 )
-            damage = max(
+            raw_damage = max(
                 0,
                 sum(damage_rolls)
                 + modifier
                 + int(entry.get("damageBonus", 0) or 0)
                 + modifier_total(sheet, "damageRolls"),
             )
+            # #527: the target's trait for this damage type applies before
+            # the number reaches the engine or the arithmetic; the journal
+            # keeps both numbers so a replay applies the same result.
+            damage, damage_traits = _typed_damage(trait_sheet, entry.get("damageType"), raw_damage)
+            if damage_traits:
+                try:
+                    from utils.enhanced_logger import info as _info
+                    _info(
+                        "CR: %s takes %d %s from %s's %s (%s: %d -> %d)"
+                        % (target.get("name"), damage, entry.get("damageType"), actor.get("name"),
+                           entry.get("name"), ", ".join(damage_traits), raw_damage, damage),
+                        category="combat_events",
+                    )
+                except Exception:
+                    pass
             applied = _engine_hit_points(working, -damage, event, focus) if working is not None and damage else None
             if applied is not None:
                 working = applied
@@ -1076,6 +1202,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                 intent.get("actorId"), event, focus,
             )
             rider_damage = 0
+            rider_typed = {}
             if rider_dice is not None:
                 r_count, r_sides, r_flat = rider_dice
                 r_rolls = [
@@ -1093,6 +1220,18 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                 rider_damage = max(0, sum(r_rolls) + r_flat)
                 if saved:
                     rider_damage = rider_damage // 2 if rider_spec.get("halfOnSave") else 0
+                # #527: the rider's own damage type (a venomous bite's poison)
+                # meets the target's traits like the swing's damage does.
+                rider_raw = rider_damage
+                rider_damage, rider_traits = _typed_damage(
+                    trait_sheet,
+                    ((entry.get("rider") or {}).get("onFail") or {}).get("damageType"),
+                    rider_damage,
+                )
+                if rider_traits:
+                    rider_typed = {"rawDamage": rider_raw, "damageTraits": rider_traits}
+                else:
+                    rider_typed = {}
                 if rider_damage:
                     applied = _engine_hit_points(working, -rider_damage, event, focus) if working is not None else None
                     if applied is not None:
@@ -1121,6 +1260,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                 "ability": entry.get("name"), "save": rider_spec["type"], "dc": rider_spec["dc"],
                 "saved": saved, "damage": rider_damage, "conditions": rider_applied,
             }
+            rider_result.update(rider_typed)
         swing = {
             "number": swing_number,
             "ability": entry.get("name"),
@@ -1131,6 +1271,17 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
             "critical": critical,
             "damage": damage,
         }
+        if attack_mode != "normal" or mode_sources:
+            # #528: the mode, the faces it chose from and the conditions
+            # behind it (cancelled ones included) stay on the journal.
+            swing["attackMode"] = attack_mode
+            swing["attackFaces"] = list(attack_faces)
+            swing["attackModeSources"] = list(mode_sources)
+        if hit and damage_traits:
+            # #527: the raw number and the trait that changed it.
+            swing["damageType"] = entry.get("damageType")
+            swing["rawDamage"] = raw_damage
+            swing["damageTraits"] = list(damage_traits)
         if rider_result is not None:
             swing["rider"] = rider_result
         swings.append(swing)
