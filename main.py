@@ -2851,7 +2851,32 @@ def create_module_validation_context(party_tracker_data, path_manager, *, module
             validation_context += "\n\n"
         else:
             validation_context += f"NO NPCs present at current location ({current_location_id})\n\n"
-        
+
+        # The rules engine's occupant record for this place (P4-e): the ids an
+        # occupant action may name. The DM reads the same list in its location
+        # data; without it here the validator would call every id invented.
+        try:
+            from core.nql import occupants as _occupants
+
+            _record = _occupants.location_record(current_location_id, str(current_module))
+        except Exception:
+            _record = None
+        if isinstance(_record, dict):
+            _present = _record.get("occupants") or []
+            validation_context += f"OCCUPANT RECORD at current location ({current_location_id}) from the rules engine (the ONLY valid occupantId values for resolveOccupant/setOccupantAttitude/moveOccupant/returnOccupant here):\n"
+            if _present:
+                validation_context += "\n".join(
+                    "- %s (%s, %s, count %s)" % (o.get("id"), o.get("name"), o.get("attitude"), o.get("count"))
+                    for o in _present
+                )
+            else:
+                validation_context += "- none present"
+            if _record.get("rosterRecord"):
+                validation_context += "\nResolved here: " + "; ".join(_record["rosterRecord"])
+            validation_context += "\n\n"
+        else:
+            validation_context += "OCCUPANT RECORD: unavailable this turn; never reject an occupant action for its occupantId.\n\n"
+
         if area_locations_with_npcs:
             validation_context += "NPCs at OTHER locations in this area:\n"
             for loc_id, npcs in area_locations_with_npcs.items():

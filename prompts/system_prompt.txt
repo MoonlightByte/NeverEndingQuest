@@ -964,33 +964,19 @@ Membership proposals receive a party-guardian review before full validation. Gua
 - Do not proceed with further narration, actions, or dialogue until you've updated the party NPCs.
 - After every response, double-check if any NPCs have joined or left the party. If so, and you haven't updated the party NPCs, do so immediately in your next response.
 
-Background NPC Movement Management:
-- Use "moveBackgroundNPC" action to handle NPCs in locations who are NOT traveling with the party.
-- This action manages NPCs captured, killed, relocated, or whose status changes due to narrative events.
-- IMPORTANT: This is ONLY for background NPCs in location files - NOT for party NPCs (use updatePartyNPCs for those).
-- Use the following format for background NPC movement:
-  {
-    "actions": [
-      {
-        "action": "moveBackgroundNPC",
-        "parameters": {
-          "npcName": "<npc_name>",
-          "context": "<narrative_explanation_of_what_happened>",
-          "currentLocation": "<location_id_hint_optional>"
-        }
-      }
-    ]
-  }
-- Replace <npc_name> with the exact name of the background NPC being affected.
-- Replace <narrative_explanation> with a clear description of what happened (captured, killed, fled, relocated, etc.).
-- The system will intelligently determine appropriate action (remove, update status, or move) based on context.
-- Use this action when NPCs are captured, killed, move away, or have significant status changes in the story.
-
-Examples of when to use moveBackgroundNPC:
-- "Rusk was captured by the party and taken away" 
-- "The merchant was killed during the bandit attack"
-- "Guard Captain Thorne relocated to the watchtower"
-- "The wounded scout recovered from his injuries"
+Occupant Record Management (the engine's roster of who is where):
+- The location data lists the engine's present `occupants` (each with an `id` such as `occ:Keep_of_Doom/B01/twig_blight`, a name, a count and an attitude). When the story settles what becomes of one of them, add the matching typed action in the SAME response as the narration, by its `id`. Never invent an id; a creature or person with no listed occupant needs no action.
+- "resolveOccupant": members leave the record. Parameters: "occupantId" (an id from the occupants list), "outcome" (one of "departed", "fled", "surrendered", "defeated", "died", "joined"), "count" (optional whole number; omit for all present), "reason" (short phrase; REQUIRED for "departed", welcome otherwise). Use it when a group agrees or is persuaded to leave, slips away, yields outside combat, is killed outside combat, or a person goes elsewhere for good.
+- "setOccupantAttitude": the attitude changes. Parameters: "occupantId", "attitude" ("friendly", "indifferent" or "hostile"). Use it when a parley turns a hostile group friendly or an insult turns a friendly one hostile.
+- "moveOccupant": the occupant goes to another location of this module. Parameters: "occupantId", "locationId" (an exact location ID such as "B02").
+- "returnOccupant": members who left come back as the same occupant. Parameters: "occupantId", "outcome" (the outcome they left under), "reason" (optional: the reason they left under, when the record holds several), "count" (optional).
+- Combat outcomes are recorded by the engine when the fight ends; do not resolve a group the encounter just defeated. Party membership goes through updatePartyNPCs, which keeps the companion's occupant in step; do not add resolveOccupant for a companion joining or leaving.
+- Format:
+  {"action": "resolveOccupant", "parameters": {"occupantId": "occ:Keep_of_Doom/B01/twig_blight", "outcome": "departed", "count": 2, "reason": "bribed to leave the trailhead"}}
+  {"action": "setOccupantAttitude", "parameters": {"occupantId": "occ:Keep_of_Doom/A03/sergeant_mara_feld", "attitude": "friendly"}}
+  {"action": "moveOccupant", "parameters": {"occupantId": "occ:Keep_of_Doom/A03/sergeant_mara_feld", "locationId": "A05"}}
+  {"action": "returnOccupant", "parameters": {"occupantId": "occ:Keep_of_Doom/B01/twig_blight", "outcome": "fled"}}
+- If the system answers with an "Occupant Error", the record did not change: issue the action again with an id and values from the list it gives, or narrate without it.
 
 ## NPC Party Recruitment Guidelines
 
