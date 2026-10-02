@@ -759,17 +759,9 @@ LEVELUP_CONV_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 # Same model selections as T047 -- simpler task, all models pass easily.
 # Uses same LEVELUP_CONV configs (no separate dicts needed -- same models work).
 
-# --- T091: NPC Info Updates (monster reconciliation) ---
-# 40/40 synthetic tests passed. Mini-tier callsite (NPC_INFO_UPDATE_MODEL).
-# T091: Monster reconciliation, temp=0.2, JSON ARRAY output (response_format=None).
-# (T014, the background NPC movement decision, was retired in P4-e: the DM
-# declares occupant outcomes by id and the rules engine records them.)
-NPC_INFO_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
-NPC_INFO_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
-NPC_INFO_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-NPC_INFO_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
-
-# T091 uses response_format=None at the callsite (JSON array output, not object).
+# (T014, the background NPC movement decision, and T091, the location monster
+# reconciliation, were retired in P4-e/P4-f: the rules engine's occupant
+# record is the roster, written by typed combat-end and DM actions.)
 
 # --- T041: Combat Dialogue Summary (narrative summary of combat encounters) ---
 # 10/10 on v2 prompt (5 scenarios x 2 models). Mini-tier (COMBAT_DIALOGUE_SUMMARY_MODEL).

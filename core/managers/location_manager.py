@@ -61,7 +61,6 @@ import traceback
 from datetime import datetime
 from utils.module_path_manager import ModulePathManager
 import core.ai.cumulative_summary as cumulative_summary
-import utils.reconcile_location_state as reconcile_location_state
 from utils.encoding_utils import (
     sanitize_text,
     sanitize_dict,
@@ -580,20 +579,6 @@ def handle_location_transition(
                 "FILE_OP: Failed to update current_location.json",
                 exception=e,
                 category="file_operations",
-            )
-        try:
-            reconcile_location_state.run(
-                area_id=current_area_id,
-                location_id=current_location_info["locationId"],
-                conversation_history_segment=origin_history_segment,
-            )
-            info(
-                f"STATE_RECONCILIATION: Ran reconciler for {current_location_info['name']} ({current_location_info['locationId']})."
-            )
-        except Exception as e:
-            error(
-                f"FAILURE: Location State Reconciliation failed for {current_location_info['name']}",
-                exception=e,
             )
         try:
             summary_result = _run_departure_summary(

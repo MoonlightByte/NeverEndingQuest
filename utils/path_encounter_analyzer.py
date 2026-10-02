@@ -172,6 +172,11 @@ def build_active_module_snapshot(
     Duplicate IDs and dangling connections are retained as validation issues;
     they are never silently repaired or resolved by load order.
     """
+    try:
+        from core.nql import occupants as _occupants
+        module_roster = _occupants.module_roster(str(module_name))
+    except Exception:
+        module_roster = None
     normalized_module = str(module_name or "").replace(" ", "_")
     module_dir = Path(modules_root) / normalized_module
     nodes: Dict[str, Dict[str, Any]] = {}
@@ -326,7 +331,18 @@ def build_active_module_snapshot(
                 )
                 continue
 
-            monsters = location.get("monsters", [])
+            # P4-f: the monsters at a place are the engine's present hostile
+            # occupants; the authored list is read only while the view is
+            # unavailable.
+            if module_roster is not None:
+                _here = module_roster.get(location_id) or {}
+                monsters = [
+                    {"name": o.get("name"), "count": o.get("count")}
+                    for o in _here.get("present") or []
+                    if o.get("kind") == "creatures" and o.get("attitude") == "hostile"
+                ]
+            else:
+                monsters = location.get("monsters", [])
             encounters = location.get("encounters", [])
             if not isinstance(monsters, list):
                 monsters = []

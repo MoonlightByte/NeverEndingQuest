@@ -518,7 +518,9 @@ def location_record(location_id: str, module: str, *, root: str = ".") -> Option
             if isinstance(left, int) and left > 0:
                 text += "; %d still here" % left
             record.append(text)
-    out: Dict[str, Any] = {"rosterRecord": record, "occupants": present_roster(here)}
+    present = present_roster(here)
+    describe(present, module, location_id, root=root)
+    out: Dict[str, Any] = {"rosterRecord": record, "occupants": present}
     at_large: List[str] = []
     prefix = "loc:%s/" % (module or "").replace(" ", "_")
     from utils.roster_conversion import DEFAULT_REASON
@@ -802,3 +804,149 @@ def legacy_move(parameters: Any, module: str, location_id: str, *, root: str = "
     except Exception as exc:  # fail forward
         warning("OCCUPANTS: moveBackgroundNPC forwarding skipped (%s)" % exc, category="location_transitions")
         return {"forward": None, "correction": None}
+
+
+# Readers on the view ------------------------------------------------------
+#
+# From P4-f on, nothing reads a location's authored `monsters`/`npcs` lists
+# for state: who is at a place comes from the engine's locations view. The
+# authored entry is joined to a present occupant by its id (the slug the
+# seeding gave it) only for its description text.
+
+_ROSTER_CACHE: Dict[Tuple[str, str], Tuple[Any, Dict[str, Dict[str, Any]]]] = {}
+_AUTHORED_CACHE: Dict[str, Tuple[Tuple[str, ...], Dict[str, Dict[str, Dict[str, Any]]]]] = {}
+
+
+def _stamp(root: str):
+    try:
+        st = os.stat(document_path(root))
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _authored(root: str) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """{module: {location_id: authored location}} from the masters (the
+    played file when a master is missing), read once per set of modules."""
+    from utils import roster_conversion
+    modules = tuple(roster_conversion.installed_modules(root))
+    hit = _AUTHORED_CACHE.get(os.path.abspath(root))
+    if hit and hit[0] == modules:
+        return hit[1]
+    game = roster_conversion.Game(root, list(modules))
+    out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for module in modules:
+        out[module] = {}
+        for loc_id, (_, loc) in game.played[module].items():
+            out[module][loc_id] = loc
+        for loc_id, (_, loc) in game.masters[module].items():
+            out[module][loc_id] = loc
+    _AUTHORED_CACHE[os.path.abspath(root)] = (modules, out)
+    return out
+
+
+def _authored_entry(location: Optional[Dict[str, Any]], occupant_id: str) -> Optional[Dict[str, Any]]:
+    """The authored monsters/npcs entry an occupant id names: the slug at the
+    end of the id (with -N for the Nth repeat at the place), by value."""
+    if not isinstance(location, dict) or not occupant_id:
+        return None
+    from utils.roster_conversion import slug
+    import re
+    tail = occupant_id.rsplit("/", 1)[-1]
+    m = re.match(r"^(.*?)(?:-(\d+))?$", tail)
+    want, nth = m.group(1), int(m.group(2) or 1)
+    seen = 0
+    for field in ("monsters", "npcs"):
+        for entry in location.get(field) or []:
+            if isinstance(entry, dict) and slug(entry.get("name") or "") == want:
+                seen += 1
+                if seen == nth:
+                    return entry
+    return None
+
+
+def describe(present: List[Dict[str, Any]], module: str, location_id: str, *, root: str = ".") -> None:
+    """Attach the authored description (and disposition text) to each present
+    occupant entry in place, when its authored entry exists."""
+    try:
+        location = _authored(root).get((module or "").replace(" ", "_"), {}).get(location_id)
+    except Exception:
+        location = None
+    for entry in present:
+        authored = _authored_entry(location, str(entry.get("id") or ""))
+        if not authored:
+            continue
+        for key in ("description", "disposition", "role"):
+            if isinstance(authored.get(key), str) and authored[key].strip():
+                entry[key] = authored[key]
+        if isinstance(authored.get("attitude"), str) and authored["attitude"].strip() \
+                and authored["attitude"].strip().lower() not in ATTITUDES:
+            entry["attitudeText"] = authored["attitude"]
+
+
+def record_lines(place_view: Dict[str, Any]) -> List[str]:
+    """One line per group with a tally at the place (resolved or partly)."""
+    record: List[str] = []
+    for occupant in list(place_view.get("resolved") or []) + list(place_view.get("present") or []):
+        if occupant.get("tally"):
+            left = occupant.get("count")
+            text = "%s: %s" % (occupant.get("name"), _tally_text(occupant))
+            if isinstance(left, int) and left > 0:
+                text += "; %d still here" % left
+            record.append(text)
+    return record
+
+
+def place_summary(place_view: Dict[str, Any], module: str, location_id: str, *, root: str = ".") -> Dict[str, Any]:
+    present = present_roster(place_view)
+    describe(present, module, location_id, root=root)
+    return {
+        "present": present,
+        "people": [e["name"] for e in present if e.get("kind") == "person"],
+        "hostile": any(e.get("kind") == "creatures" and e.get("attitude") == "hostile" for e in present),
+        "hostiles": [e["name"] for e in present if e.get("kind") == "creatures" and e.get("attitude") == "hostile"],
+        "rosterRecord": record_lines(place_view),
+    }
+
+
+def module_roster(module: str, *, root: str = ".") -> Optional[Dict[str, Dict[str, Any]]]:
+    """Every place of the module from one engine call: {location_id:
+    {present, people, hostile, hostiles, rosterRecord}}. Cached until the
+    document changes. None when the engine or the document is unavailable
+    (callers fall back to nothing present, never to the authored lists)."""
+    module = (module or "").replace(" ", "_")
+    key = (os.path.abspath(root), module)
+    stamp = _stamp(root)
+    hit = _ROSTER_CACHE.get(key)
+    if hit and stamp is not None and hit[0] == stamp:
+        return hit[1]
+    try:
+        _, places, _ = _world(root)
+        prefix = "loc:%s/" % module
+        mine = [p[0] if isinstance(p, tuple) else p for p in places]
+        mine = [p for p in mine if str(p).startswith(prefix)]
+        if not mine:
+            return None
+        response = request(view=tuple(mine), root=root)
+        if not response or not response.get("ok"):
+            return None
+        out: Dict[str, Dict[str, Any]] = {}
+        for v in response.get("locations") or []:
+            place = str((v.get("location") or {}).get("id") or "")
+            if "/" not in place:
+                continue
+            loc_id = place.split("/", 1)[1]
+            out[loc_id] = place_summary(v, module, loc_id, root=root)
+        _ROSTER_CACHE[key] = (_stamp(root), out)
+        return out
+    except Exception as exc:  # fail forward
+        warning("OCCUPANTS: module roster for %s unavailable (%s)" % (module, exc),
+                category="location_transitions")
+        return None
+
+
+def place_roster(module: str, location_id: str, *, root: str = ".") -> Optional[Dict[str, Any]]:
+    roster = module_roster(module, root=root)
+    if roster is None:
+        return None
+    return roster.get(location_id) or {"present": [], "people": [], "hostile": False, "hostiles": [], "rosterRecord": []}
