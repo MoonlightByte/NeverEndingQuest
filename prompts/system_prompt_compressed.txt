@@ -247,7 +247,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   establishHub:        {"hubName": string, "hubType": string, "description": string, "services": array, "ownership": string}
   exitGame:            {"farewell": string}
   transitionLocation:  {"newLocation": string}          // EXACTLY this one key - MUST be location ID (D03, C01) NEVER location name
-  createEncounter:     {"encounterSummary": string, "player": string, "npcs": array, "monsters": array, "scene": {"participants": array, "relations": array, "objectives": array, "disclosureGrants": array}}
+  createEncounter:     {"encounterSummary": string, "player": string, "npcs": array, "monsters": array, "occupantIds": object (optional), "scene": {"participants": array, "relations": array, "objectives": array, "disclosureGrants": array}}
   storageInteraction:  {"description": string, "characterName": string}
   transferItem:        {"fromCharacter": string, "toCharacter": string, "itemName": string, "quantity": integer}  // display names; itemName exactly as on the giver's sheet; one item per action
   transferCurrency:    {"fromCharacter": string, "toCharacter": string, "gold": integer, "silver": integer, "copper": integer}  // display names; omit coin types that do not move
@@ -271,6 +271,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   updatePartyNPCs.operation: allowed values are exactly "add" or "remove" only.
   updatePartyNPCs remove: npc.name is the only required npc field; do not withhold the action for a missing level or class.
   createEncounter.monsters: MUST be an array of strings. For multiple monsters of the same type, list them as separate strings (e.g., ["Bandit", "Bandit", "Bandit"]).
+  createEncounter.occupantIds: optional map of "monster:N" -> an `id` from the location data's `occupants` list (the engine's present groups) when that monster is one of them; omit monsters that have no listed occupant (the system creates theirs). Never invent an id.
   createEncounter.scene: participants EXACTLY match player:0, npc:N, monster:N positional keys; each has participation, initiativeEligible:boolean, persistence, controller. Relations/objectives/disclosure use only those exact keys. Presence, relation, controller, initiative eligibility are independent. Never disclose private facts.
 }
 

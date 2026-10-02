@@ -1125,6 +1125,7 @@ When the Combat Commitment Point is reached (excluding historical records) and n
   `disposition`. `scene.objectives` uses `ownerKeys`, `kind`, `targetKeys`, and
   `status`. `scene.disclosureGrants` uses `observerKey` and exact observable
   `factPaths`; omit private facts rather than exposing them.
+- The location data lists the engine's present `occupants` (each with an `id` like `occ:Keep_of_Doom/B01/twig_blight`, a name, a count and an attitude). When a monster you list is one of those groups, add `occupantIds`, mapping its positional key to that id (`"occupantIds": {"monster:0": "occ:Keep_of_Doom/B01/twig_blight", "monster:1": "occ:Keep_of_Doom/B01/twig_blight"}`), so the fight resolves exactly that group. A monster with no listed occupant needs no entry: the system creates its occupant at this place. Never invent an id.
 - After sending this action, wait for the combat encounter to be created before proceeding with combat narration.
 - Once the encounter is created, the combat will be managed by a separate system. Your role will be to narrate the events and outcomes of the combat based on the information provided by the combat system.
 
@@ -1140,6 +1141,7 @@ Combat Summary:
           "player": "<player_name>",
           "npcs": ["<npc1>", "<npc2>", ...],
           "monsters": ["<monster1>", "<monster2>", ...],
+          "occupantIds": {"monster:0": "<occupant id from the location's occupants list, when it has one>"},
           "encounterSummary": "<brief_description_of_combat_situation>",
           "scene": {
             "participants": [

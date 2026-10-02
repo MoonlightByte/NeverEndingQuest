@@ -3198,6 +3198,11 @@ def process_action(
                     f"STATE_CHANGE: Preparing combat encounter ID: {encounter_id}",
                     category="combat_processing",
                 )
+                # Every enemy gets its engine occupant before the fight: the
+                # declared ID, the present group of its type at the place, or a
+                # new occupant created for a free name (P4-d). Never a stop.
+                from core.nql import occupants as _occupants
+                _occupants.declare_encounter(encounter_id)
 
                 # Reload location data here
                 current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
