@@ -64,7 +64,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   updateTime: activities >=5min
   createEncounter: initialize combat (NOT for traps unless monsters)
   updateEncounter: modify active encounter state
-  updatePlot: story developments/discoveries
+  updatePlot: a quest starts, advances, completes, fails or reopens (by its plot status id)
   transitionLocation: party moves to new location (ID only)
   levelUp: dedicated advancement handoff; see @LEVEL_UP for PC consent and automatic NPC entry
   establishHub: gain base ownership
@@ -214,7 +214,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   removeEffect: {"characterName":str,"effectId":str,"effectName":str,"reason":str} #requires effectId or effectName
   rollCheck: {"characterName":str,"check":str,"dc":int?,"mode":"advantage"|"disadvantage"?,"roller":"engine"?,"reason":str}
   updateTime: {"timeEstimate":int} #integer only, not string
-  updatePlot: {"plotPointId":str,"newStatus":str,"plotImpact":str}
+  updatePlot: {"plotPointId":str,"newStatus":"in progress"|"completed"|"failed"|"reopened","plotImpact":str,"aheadReason":str optional}
   updatePartyNPCs: {"operation":str,"npc":obj,"lifecycleContext":obj optional} #add: npc {"name","level","class"}. remove: npc {"name"} ONLY - NEVER demand level or class on a remove. lifecycleContext {"reason","departureKind","destination"} is optional on remove and its absence is NEVER a rejection
   resolveOccupant: {"occupantId":str,"outcome":str,"count":int optional,"reason":str} #outcome departed/fled/surrendered/defeated/died/joined; reason REQUIRED only for departed
   setOccupantAttitude: {"occupantId":str,"attitude":str} #friendly/indifferent/hostile

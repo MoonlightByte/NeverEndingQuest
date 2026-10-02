@@ -122,7 +122,7 @@ from core.combat.down_scene import (
     TPK_PAUSE_TEXT,
     sheet_is_down,
 )
-from updates.plot_update import update_plot
+from utils import quest_record
 from utils.player_stats import get_player_stat
 from updates.update_world_time import update_world_time
 from core.ai.conversation_utils import (
@@ -3607,9 +3607,8 @@ def validate_ai_response(
         plot_context_failure = "missing_module_identity"
     else:
         try:
-            with open(path_manager.get_plot_path(), "r", encoding="utf-8") as plot_file:
-                canonical_plot_data = json.load(plot_file)
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            canonical_plot_data = quest_record.module_plot(module_name)
+        except Exception as exc:
             plot_context_failure = type(exc).__name__
         else:
             if not isinstance(canonical_plot_data, dict):
@@ -3628,7 +3627,8 @@ def validate_ai_response(
         )
     else:
         plot_context = (
-            "Canonical plot data for the current module follows. Use its recorded IDs, "
+            "Canonical plot data for the current module follows. Statuses, requirements and "
+            "logs come from the rules engine's quest record. Use its recorded IDs, "
             "statuses and plot impacts when reviewing this candidate. Authored descriptions, "
             "objectives and future outcomes are scenario context, not proof that an event "
             "occurred, a quest completed, or the party learned a hidden fact. Judge the "
@@ -4795,7 +4795,7 @@ def _rebuild_conversation_for_current_party_locked(conversation_history):
         )
     module_name = party_tracker_data.get("module", "").replace(" ", "_")
     path_manager = ModulePathManager(module_name)
-    plot_data = load_json_file(path_manager.get_plot_path())
+    plot_data = quest_record.module_plot(module_name)
     module_data = load_json_file(path_manager.get_module_file_path())
     refreshed = update_conversation_history(
         conversation_history,
@@ -7776,7 +7776,7 @@ def _prepare_rebuilt_history_for_t067(
     party_tracker_data = load_json_file("party_tracker.json") or {}
     module_name = (party_tracker_data.get("module", "") or "").replace(" ", "_")
     path_manager = ModulePathManager(module_name)
-    plot_data = load_json_file(path_manager.get_plot_path())
+    plot_data = quest_record.module_plot(module_name)
     module_data = load_json_file(path_manager.get_module_file_path())
     detached_history = [dict(message) for message in conversation_history]
     detached_history = update_conversation_history(
@@ -7791,6 +7791,14 @@ def _prepare_rebuilt_history_for_t067(
     return order_conversation_messages(
         detached_history, main_system_prompt_text
     )
+
+def _requires_note(point):
+    """The DM Note's open-requirement suffix: '; requires PP001'."""
+    open_ids = point.get("open") if isinstance(point, dict) else None
+    if not open_ids:
+        return ""
+    return "; requires " + ", ".join(str(x) for x in open_ids)
+
 
 def check_all_modules_plot_completion():
     """
@@ -7865,7 +7873,7 @@ def check_all_modules_plot_completion():
         # Checking plot completion for module '{module_name}' at {plot_file_path}
         
         try:
-            plot_data = load_json_file(plot_file_path)
+            plot_data = quest_record.module_plot(module_name)
             
             if plot_data and "plotPoints" in plot_data:
                 # Only count main plot points (PP), not side quests (SQ)
@@ -8774,7 +8782,7 @@ def _main_game_loop(startup_authority, turn_authority):
         # Use current module from party tracker for plot data  
         current_module_name = party_tracker_data.get("module", "").replace(" ", "_")
         current_path_manager = ModulePathManager(current_module_name)
-        plot_data = load_json_file(current_path_manager.get_plot_path())
+        plot_data = quest_record.module_plot(current_module_name)
         debug(f"FILE_OP: Plot file path: {current_path_manager.get_plot_path()}", category="module_management")
     
         module_data = load_json_file(current_path_manager.get_module_file_path())
@@ -9300,7 +9308,7 @@ def _main_game_loop(startup_authority, turn_authority):
             # Use current module from party tracker for plot data
             current_module_for_plot = party_tracker_data.get("module", "").replace(" ", "_")
             current_plot_manager = ModulePathManager(current_module_for_plot)
-            plot_data_for_note = load_json_file(current_plot_manager.get_plot_path())
+            plot_data_for_note = quest_record.module_plot(current_module_for_plot)
             debug(f"FILE_OP: Plot file path: {current_plot_manager.get_plot_path()}", category="module_management")
             debug(f"FILE_OP: Plot data loaded: {plot_data_for_note is not None}", category="module_management")
             if plot_data_for_note:
@@ -9313,26 +9321,26 @@ def _main_game_loop(startup_authority, turn_authority):
                 # Get plot points for current location
                 current_plot_points = [
                     point for point in plot_data_for_note["plotPoints"]
-                    if point.get("location") == current_area_id and point["status"] != "completed"
+                    if point.get("location") == current_area_id and point.get("status") not in ("completed", "failed")
                 ]
                 # Get ALL active plot points in the module
                 all_active_plot_points = [
                     point for point in plot_data_for_note["plotPoints"]
-                    if point["status"] != "completed"
+                    if point.get("status") not in ("completed", "failed")
                 ]
         
             # Format plot points - show current location plots first, then other active plots
             plot_points_parts = []
             if current_plot_points:
                 plot_points_parts.append("At this location:")
-                plot_points_parts.extend([f"- {point['id']}: {point['title']} [{point.get('status', 'active')}]" for point in current_plot_points])
+                plot_points_parts.extend([f"- {point['id']}: {point['title']} [{point.get('status', 'active')}]{_requires_note(point)}" for point in current_plot_points])
         
             # Add other active plots from different locations
             other_plots = [p for p in all_active_plot_points if p not in current_plot_points]
             if other_plots:
                 if plot_points_parts:  # Add separator if we have location plots
                     plot_points_parts.append("\nActive elsewhere in module:")
-                plot_points_parts.extend([f"- {point['id']}: {point['title']} [{point.get('status', 'active')}] @{point.get('location', 'Unknown')}" for point in other_plots])
+                plot_points_parts.extend([f"- {point['id']}: {point['title']} [{point.get('status', 'active')}]{_requires_note(point)} @{point.get('location', 'Unknown')}" for point in other_plots])
         
             plot_points_str = "\n".join(plot_points_parts) if plot_points_parts else "None active"
         
@@ -9340,7 +9348,7 @@ def _main_game_loop(startup_authority, turn_authority):
             # Get ALL side quests from ALL plot points (not just current location)
             for point in plot_data_for_note.get("plotPoints", []):
                 for quest in point.get("sideQuests", []):
-                    if quest["status"] != "completed":
+                    if quest.get("status") not in ("completed", "failed"):
                         location_info = f" [Location: {point.get('location', 'Unknown')}]" if point.get('location') != current_area_id else ""
                         side_quests.append(f"- {quest['id']}: {quest['title']} [{quest['status']}]{location_info}")
             side_quests_str = "\n".join(side_quests) if side_quests else "None active"
@@ -9495,7 +9503,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 "updateCharacterInfo for player and NPC character changes (inventory, stats, abilities), "
                 "removeEffect only to deliberately end or dispel an active effect (durations expire automatically), "
                 "updateTime for time passage, "
-                "updatePlot for story progression, discovers, and new information, "
+                "updatePlot when the story starts, advances, completes or fails a quest, by its id, "
                 "updatePartyNPCs for party composition changes to the party tracker, "
                 "levelUp for advancement, "
                 "establishHub when the party gains ownership or control of a location that could serve as a base of operations (stronghold, tavern, keep, etc.) - example: establishHub('The Silver Swan Inn', {hubType: 'tavern', description: 'Our permanent base of operations', services: ['rest', 'information'], ownership: 'party'}), "
@@ -9507,7 +9515,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 "Maintain immersive and engaging storytelling similar to an adventure novel while accurately managing game mechanics. "
                 "Update all relevant information immediately and confirm with the player before major actions. "
                 "Consider whether the party's action trigger traps in this location. "
-                "Consider updating the plot elements on every action the player and NPCs take."
+                "When the party's actions change where a quest stands, record it with updatePlot in the same response."
                 f"{module_creation_prompt}")
         else:
             dm_note = "Dungeon Master Note: Remember to take actions if necessary such as updating the plot, time, character sheets, and location if changes occur."
@@ -9986,7 +9994,7 @@ def _main_game_loop(startup_authority, turn_authority):
         # Use current module from party tracker for plot data
         module_name_updated = party_tracker_data.get("module", "").replace(" ", "_")
         updated_path_manager = ModulePathManager(module_name_updated)
-        plot_data = load_json_file(updated_path_manager.get_plot_path())
+        plot_data = quest_record.module_plot(module_name_updated)
         module_data = load_json_file(updated_path_manager.get_module_file_path())
         debug(f"FILE_OP: Updated plot file path: {updated_path_manager.get_plot_path()}", category="module_management")
 

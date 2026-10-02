@@ -2114,7 +2114,8 @@ class CampaignManager:
                 debug(f"FILE_OP: No module_plot.json found for {module_name}", category="file_operations")
                 return False
             
-            plot_data = safe_json_load(plot_file)
+            from utils import quest_record
+            plot_data = quest_record.module_plot(module_name) or {}
             plot_points = plot_data.get('plotPoints', [])
             
             if not plot_points:
@@ -4600,7 +4601,8 @@ Focus on story outcomes, character development, and decisions that will matter i
             plot_file = os.path.join(path_manager.module_dir, "module_plot.json")
             
             if os.path.exists(plot_file):
-                return safe_json_load(plot_file)
+                from utils import quest_record
+                return quest_record.module_plot(module_name)
             else:
                 debug(f"FILE_OP: No module_plot.json found for {module_name}", category="file_operations")
                 return None

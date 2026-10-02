@@ -75,7 +75,6 @@ register_callsite("T012", "core/ai/action_handler.py", 676)
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
-from updates.plot_update import update_plot
 from utils.encoding_utils import sanitize_text, safe_json_dump, safe_json_load
 from utils.file_operations import safe_read_json, safe_write_json
 from core.managers.status_manager import (
@@ -750,12 +749,15 @@ def prepare_current_transition_actions(operation_id):
             _write_location_transition_checkpoint(checkpoint)
             continue
         if family == "updatePlot":
-            from updates.plot_update import prepare_plot_update
+            # QS: the quest record is the engine's. The local checks run
+            # before movement; the engine line is sent after arrival. A
+            # refusal is recorded on the receipt and never stops travel.
+            from utils import quest_record as _quest_record
 
-            receipt = prepare_plot_update(
-                parameters.get("plotPointId"),
-                parameters.get("newStatus"),
-                parameters.get("plotImpact"),
+            receipt = _quest_record.prepare_travel_update(
+                parameters,
+                "dm:travel:%s:%d:updatePlot" % (operation_id, index),
+                str(checkpoint.get("module_name") or ""),
             )
             receipt["quest_projection"] = {"status": "pending"}
         elif family == "moveBackgroundNPC":
@@ -1186,23 +1188,50 @@ def apply_current_transition_action(operation_id, action_index):
     from updates.update_world_time import apply_staged_world_time
 
     if family == "updatePlot":
-        from updates.plot_update import apply_staged_plot_update
+        # QS: the quest record is the engine's. The prepared line is sent
+        # by its travel request id (a replay is historical); a refusal or an
+        # unavailable engine is recorded and the arrival goes on. T090's
+        # journal steps run only after a committed change. A checkpoint from
+        # before the switch (a T077 receipt: target_id, before, after) is
+        # mapped to the same line first.
+        from utils import quest_record as _quest_record
         from utils.quest_player_formatter import (
             apply_staged_player_quests,
             prepare_player_quests,
             refresh_staged_player_quest_source,
         )
 
-        if receipt.get("status") != "plot_committed":
-            with _party_module_transition_lock():
-                outcome = apply_staged_plot_update(receipt)
-                if outcome == "blocked_conflict":
-                    record["status"] = "blocked_conflict"
-                    checkpoint["phase"] = "blocked_conflict"
-                    _write_location_transition_checkpoint(checkpoint)
-                    return outcome
-                receipt["status"] = "plot_committed"
-                _write_location_transition_checkpoint(checkpoint)
+        if receipt.get("kind") != "updatePlot" or "line" not in receipt:
+            legacy_projection = receipt.get("quest_projection") or {"status": "pending"}
+            receipt = _quest_record.receipt_from_legacy(
+                receipt, "dm:travel:%s:%d:updatePlot" % (operation_id, action_index)
+            )
+            receipt["quest_projection"] = legacy_projection
+            record["receipt"] = receipt
+            _write_location_transition_checkpoint(checkpoint)
+        if receipt.get("quest_status") == "prepared":
+            quest_outcome = _quest_record.apply_travel_receipt(receipt)
+            _write_location_transition_checkpoint(checkpoint)
+        else:
+            # refused before movement, or already committed / attempted on
+            # a resumed checkpoint (the checkpoint owns receipt["status"])
+            quest_outcome = str(receipt.get("quest_status") or "refused")
+        if quest_outcome != "committed":
+            record["status"] = "committed"
+            deferred = checkpoint["deferred_actions"]
+            deferred["cursor"] = action_index + 1
+            deferred["receipts"].append(
+                {
+                    "operation_id": record["operation_id"],
+                    "kind": family,
+                    "status": "committed",
+                    "quest_status": quest_outcome,
+                }
+            )
+            if deferred["cursor"] >= len(deferred["actions"]):
+                deferred["status"] = "committed"
+            _write_location_transition_checkpoint(checkpoint)
+            return "committed"
 
         checkpoint = load_current_transition_checkpoint(operation_id)
         record = checkpoint["deferred_actions"]["actions"][action_index]
@@ -2063,7 +2092,9 @@ def pre_validate_transition(
         transition_atlas = ""
 
         # Load plot data
-        plot_data = safe_read_json(path_manager.get_plot_path()) or {}
+        from utils import quest_record as _quest_record
+
+        plot_data = _quest_record.module_plot(current_module) or {}
 
         # Get party level
         party_level = 1
@@ -2279,9 +2310,9 @@ def verify_approved_transition_plan(
     path_analysis = analyze_path_for_encounters(
         path, location_graph, current_module, snapshot=snapshot
     )
-    plot_data = safe_read_json(
-        ModulePathManager(current_module).get_plot_path()
-    ) or {}
+    from utils import quest_record as _quest_record
+
+    plot_data = _quest_record.module_plot(current_module) or {}
     topology_identity = str(
         snapshot.get("topology_identity") or snapshot.get("snapshot_hash") or ""
     )
@@ -2842,8 +2873,9 @@ def get_module_starting_location(module_name: str) -> tuple:
         
         # Load plot data
         try:
-            plot_file = path_manager.get_plot_path()
-            plot_data = safe_json_load(plot_file)
+            from utils import quest_record as _quest_record
+
+            plot_data = _quest_record.module_plot(module_name)
             if plot_data:
                 # Include key plot information
                 module_analysis_data["plotData"] = {
@@ -3076,7 +3108,7 @@ def get_travel_narration(target_module: str) -> str:
     except:
         return f"The party travels to the {target_module} region, where new adventures await."
 
-def _occupant_request_id(invocation_claim, action_context, suffix):
+def _engine_request_id(invocation_claim, action_context, suffix):
     """A deterministic engine request id for one typed occupant action of
     one accepted turn: dm:<turn id>:<action index>:<suffix>, so a retried
     turn is answered as already applied. Without a turn identity the id is
@@ -3114,7 +3146,6 @@ def process_action(
     # Import modules here to avoid circular imports
     from core.managers import location_manager
     from updates.update_world_time import update_world_time
-    from updates.plot_update import update_plot
     from updates.update_character_info import update_character_info
 
     # Helper function to create consistent return values
@@ -3454,12 +3485,25 @@ def process_action(
         update_world_time(time_estimate_str)
 
     elif action_type == ACTION_UPDATE_PLOT:
+        # QS: the quest record is the engine's. One typed action, one engine
+        # request; a refusal goes back to the DM as a Quest Error correction
+        # and later actions of this response do not run. module_plot.json is
+        # authored content and is never written here.
         status_updating_plot()
-        plot_point_id = parameters["plotPointId"]
-        new_status = parameters["newStatus"]
-        plot_impact = parameters.get("plotImpact", "")
-        plot_filename = "module_plot.json"  # Now using unified plot file
-        updated_plot = update_plot(plot_point_id, new_status, plot_impact, plot_filename)
+        from utils import quest_record as _quest_record
+
+        _module = str(party_tracker_data.get("module") or "").replace(" ", "_")
+        _outcome = _quest_record.apply_update(
+            parameters,
+            _engine_request_id(invocation_claim, action_context, "updatePlot"),
+            _module,
+        )
+        if _outcome.get("outcome") == "applied":
+            _quest_record.journal_after_change(_module)
+        if _outcome.get("correction"):
+            conversation_history.append({"role": "user", "content": _outcome["correction"]})
+            needs_conversation_history_update = True
+            return create_return(status="needs_response", needs_update=True)
 
     elif action_type == ACTION_EXIT_GAME:
         # Don't add return message here - it will be added when the player actually returns
@@ -4134,7 +4178,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 str(npc.get("name") or ""),
                 str(party_tracker_data.get("module") or ""),
                 str((party_tracker_data.get("worldConditions") or {}).get("currentLocationId") or ""),
-                _occupant_request_id(invocation_claim, action_context, "party"),
+                _engine_request_id(invocation_claim, action_context, "party"),
                 reason=(parameters.get("lifecycleContext") or {}).get("reason")
                 if isinstance(parameters.get("lifecycleContext"), dict) else None,
             )
@@ -4953,7 +4997,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             _outcome = _occupants.apply_dm_action(
                 _occupant_action,
                 _occupant_parameters,
-                _occupant_request_id(invocation_claim, action_context, _occupant_action),
+                _engine_request_id(invocation_claim, action_context, _occupant_action),
                 _module,
                 _location_id,
             )

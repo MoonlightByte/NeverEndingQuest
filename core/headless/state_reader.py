@@ -102,7 +102,11 @@ def build_snapshot():
     module = (tracker.get("module") or "").strip()
     if module:
         plot_path = os.path.join("modules", module, "module_plot.json")
-        plot = _load_json(plot_path)
+        try:
+            from utils import quest_record
+            plot = quest_record.module_plot(module)
+        except Exception:
+            plot = _load_json(plot_path)
         snapshot["files"]["module_plot"] = _mtime(plot_path)
         if isinstance(plot, dict):
             snapshot["plot"] = [

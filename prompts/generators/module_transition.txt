@@ -56,7 +56,7 @@ Remember: Traps should be an active, frequent element of gameplay to maintain ch
       "action": "updatePlot",
       "parameters": {
         "plotPointId": "PP001",
-        "action": "Received warning about strange noises in the mines",
+        "newStatus": "in progress",
         "plotImpact": "The party has entered the Old Mines and received a warning about strange occurrences, potentially linked to the Ember Enclave's activities."
       }
     }
@@ -64,8 +64,6 @@ Remember: Traps should be an active, frequent element of gameplay to maintain ch
 }
 
 ### Example 2 of great narration and roleplaying:
-Certainly. Here's the revised version with only the updateTime and updatePlot actions:
-
 {
   "narration": "The salty sea breeze whips through your hair as you stand on the creaking deck of the Siren's Whisper, a weathered pirate ship cutting through choppy waters. Dark storm clouds loom on the horizon, promising a tempest to come.\n\nCaptain Lyra, a battle-scarred elf with a gleaming hook for a hand, barks orders from the helm. \"Batten down the hatches, ye scurvy dogs! There's a storm brewin', and it ain't natural!\"\n\nZax, the goblin rigger, scampers up the mainmast with inhuman agility, his beady eyes fixed on the roiling clouds. \"Cap'n!\" he shrieks, pointing a gnarled finger. \"There be somethin' in them clouds! Somethin' big!\"\n\nAs if on cue, a monstrous shape emerges from the storm front - a colossal kraken, its tentacles writhing against the darkening sky. The crew erupts into panicked shouts and frantic activity.\n\nBrook, the water genasi cleric, rushes to your side, her liquid hair swirling with agitation. \"By the depths,\" she breathes, clutching her holy symbol. \"That's no ordinary beast. It reeks of dark magic!\"\n\nGrunk, the half-orc bosun, hefts a massive harpoon onto his shoulder, a savage grin splitting his tusked face. \"Magic or no, it'll bleed all the same,\" he growls, taking aim at the approaching monstrosity.\n\nSuddenly, a brilliant flash of lightning illuminates the deck, and a crackling portal tears open in the air before you. Through it, you glimpse a shimmering underwater grotto filled with ancient ruins and glowing crystals.\n\n\"It's the lost city of Atlantis!\" gasps Whisper, the tabaxi loremaster, her tail lashing with excitement. \"The kraken must be its guardian! Quick, we must--\"\n\nHer words are cut short as a massive tentacle slams into the ship's hull, sending everyone stumbling. Crates of valuable plunder slide across the deck, teetering dangerously close to the railings.\n\nNorn, chaos erupts around you as the storm intensifies and the kraken bears down on the Siren's Whisper. The magical portal flickers, offering a tantalizing escape. Captain Lyra bellows for action, while your crewmates scramble to defend the ship. The precious cargo threatens to be lost overboard with each violent wave. \n\nWhat do you do? Fight the kraken? Dive through the portal? Secure the treasure? Or something else entirely? The next few moments could determine the fate of the entire crew!",
   "actions": [
@@ -73,7 +71,7 @@ Certainly. Here's the revised version with only the updateTime and updatePlot ac
       "action": "updatePlot",
       "parameters": {
         "plotPointId": "PP002",
-        "action": "Encountered magical kraken and portal to Atlantis",
+        "newStatus": "in progress",
         "plotImpact": "The crew of the Siren's Whisper encounters a magical kraken and a portal to the lost city of Atlantis, presenting a critical decision point in their adventure."
       }
     }
@@ -88,7 +86,7 @@ Certainly. Here's the revised version with only the updateTime and updatePlot ac
       "action": "updatePlot",
       "parameters": {
         "plotPointId": "PP002",
-        "action": "Discovered barkeep's deception about secret tunnels",
+        "newStatus": "in progress",
         "plotImpact": "The party has uncovered potential deception regarding the secret tunnels, raising suspicions about the barkeep's involvement and the true nature of the tunnels."
       }
     }
@@ -117,14 +115,6 @@ Certainly. Here's the revised version with only the updateTime and updatePlot ac
       "action": "updateTime",
       "parameters": {
         "timeEstimate": 2
-      }
-    },
-    {
-      "action": "updatePlot",
-      "parameters": {
-        "plotPointId": "PT001",
-        "action": "Triggered ceiling spike trap in ancient tomb",
-        "plotImpact": "The ceiling spike trap in the ancient tomb has been triggered, revealing the dangerous nature of the location and potentially injuring party members."
       }
     }
   ]

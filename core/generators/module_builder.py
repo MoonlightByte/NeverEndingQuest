@@ -1915,7 +1915,6 @@ IMPORTANT:
                 "weatherConditions": "",
                 "lastCompletedEncounter": "",
             },
-            "activeQuests": [],
         }
 
         if explicit_start:

@@ -4325,9 +4325,10 @@ def handle_plot_data_request(data=None):
                 emit('plot_data_response', _ui_response(data, {'data': None, 'error': f'Plot file not found for module: {current_module}'}))
                 return
                 
-            # Step 3: Read the plot file and send its data back to the browser.
-            with open(plot_file_path, 'r', encoding='utf-8') as f:
-                plot_data = json.load(f)
+            # Step 3: Read the plot (statuses from the engine's quest record)
+            # and send its data back to the browser.
+            from utils import quest_record
+            plot_data = quest_record.module_plot(current_module)
             
             debug(f"WEB_INTERFACE: Using original plot data for {current_module} (player quests unavailable or stale)", category="web_interface")
         
@@ -5590,10 +5591,11 @@ def extract_module_context_for_npcs(module_name):
         # Header for the entire context block
         context_parts.append(f"--- START OF CONTEXT FOR MODULE: {module_name} ---")
 
-        # 1. Read and append the entire module plot file
+        # 1. Read and append the entire module plot (statuses from the engine's quest record)
         plot_file = os.path.join('modules', module_name, 'module_plot.json')
         if os.path.exists(plot_file):
-            plot_data = safe_read_json(plot_file)
+            from utils import quest_record
+            plot_data = quest_record.module_plot(module_name)
             if plot_data:
                 context_parts.append("\n--- MODULE PLOT FILE: module_plot.json ---")
                 context_parts.append(json.dumps(plot_data, indent=2))

@@ -1278,31 +1278,23 @@ Whenever the player mentions ANY future time reference (tomorrow, sunrise, morni
 - "meet back here tomorrow" → default to 09:00 next day unless specified
 
 
-### Plot Management:
-- ALWAYS use the "updatePlot" action when a significant plot point is reached or completed.
-- This includes completing objectives, reaching key story milestones, or changing the status of plot points.
-- Use the following format for plot updates:
-  {
-    "actions": [
-      {
-        "action": "updatePlot",
-        "parameters": {
-          "plotPointId": "<plot_point_id>",
-          "newStatus": "<new_status>",
-          "plotImpact": "<description_of_impact>"
-        }
-      }
-    ]
-  }
-- Replace <plot_point_id> with the ID of the plot point being updated (e.g., "PP001", "PP002", etc.).
-- Replace <new_status> with one of: "not started", "in progress", or "completed".
-- Replace <description_of_impact> with a brief description of how the players' actions have affected the plot at this point.
-- This action MUST be included immediately after describing the completion or progression of a plot point in the narrative.
-- Do not proceed with further narration, actions, or dialogue until you've updated the plot status and impact.
-- After every response, double-check if any plot points have been affected. If so, and you haven't updated the plot, do so immediately in your next response.
+### Plot Management (the engine's quest record):
+- The plot status lists every quest of this module by id: plot points (PP001, PP002, ...) and side quests (SQ001, ...). The rules engine keeps each quest's status and a log of what happened. Change a quest only with the "updatePlot" action, by its id, in the SAME response as the narration that changes it. Never invent an id.
+- Format:
+  {"action": "updatePlot", "parameters": {"plotPointId": "PP002", "newStatus": "in progress", "plotImpact": "Mara asked the party to find the missing scouts."}}
+- "newStatus" is one of:
+  - "in progress": the party takes up the quest, or makes progress on one already in progress. "plotImpact" says what happened.
+  - "completed": the quest is done. A quest whose requirements ("Still requires" in the plot status) are not completed is refused: complete those first in the same response if the story has done them; only when the party truly finished this one before them, add "aheadReason" saying why.
+  - "failed": the quest can no longer be achieved. "plotImpact" says how it was lost.
+  - "reopened": a completed or failed quest comes back into play. "plotImpact" says why.
+  A quest never goes back to "not started".
+- "plotImpact" is one or two sentences, at most 500 characters, in your own words about what happened. The engine keeps it in the quest's log.
+- Completing ahead, only when it truly happened:
+  {"action": "updatePlot", "parameters": {"plotPointId": "PP003", "newStatus": "completed", "plotImpact": "The party broke into the keep through the collapsed sewer.", "aheadReason": "They bypassed the gatehouse, so PP002 was never finished."}}
+- If the system answers with a "Quest Error", the record did not change: issue the action again with an id and status it allows, or narrate without it.
 - Do not include a "narration" element in this JSON.
 
-Remember to integrate plot updates seamlessly into your storytelling. Use them to track progress, unlock new story elements, and guide the overall narrative arc of the adventure.
+Record a quest's progress whenever the story changes where it stands, so the plot status stays true.
 
 ## Player Storage System
 
@@ -1617,7 +1609,7 @@ Remember: Traps should be an active, frequent element of gameplay to maintain ch
       "action": "updatePlot",
       "parameters": {
         "plotPointId": "PP001",
-        "action": "Received warning about strange noises in the mines",
+        "newStatus": "in progress",
         "plotImpact": "The party has entered the Old Mines and received a warning about strange occurrences, potentially linked to the Ember Enclave's activities."
       }
     }
@@ -1625,8 +1617,6 @@ Remember: Traps should be an active, frequent element of gameplay to maintain ch
 }
 
 ### Example 2 of great narration and roleplaying:
-Certainly. Here's the revised version with only the updateTime and updatePlot actions:
-
 {
   "narration": "The salty sea breeze whips through your hair as you stand on the creaking deck of the Siren's Whisper, a weathered pirate ship cutting through choppy waters. Dark storm clouds loom on the horizon, promising a tempest to come.\n\nCaptain Lyra, a battle-scarred elf with a gleaming hook for a hand, barks orders from the helm. \"Batten down the hatches, ye scurvy dogs! There's a storm brewin', and it ain't natural!\"\n\nZax, the goblin rigger, scampers up the mainmast with inhuman agility, his beady eyes fixed on the roiling clouds. \"Cap'n!\" he shrieks, pointing a gnarled finger. \"There be somethin' in them clouds! Somethin' big!\"\n\nAs if on cue, a monstrous shape emerges from the storm front - a colossal kraken, its tentacles writhing against the darkening sky. The crew erupts into panicked shouts and frantic activity.\n\nBrook, the water genasi cleric, rushes to your side, her liquid hair swirling with agitation. \"By the depths,\" she breathes, clutching her holy symbol. \"That's no ordinary beast. It reeks of dark magic!\"\n\nGrunk, the half-orc bosun, hefts a massive harpoon onto his shoulder, a savage grin splitting his tusked face. \"Magic or no, it'll bleed all the same,\" he growls, taking aim at the approaching monstrosity.\n\nSuddenly, a brilliant flash of lightning illuminates the deck, and a crackling portal tears open in the air before you. Through it, you glimpse a shimmering underwater grotto filled with ancient ruins and glowing crystals.\n\n\"It's the lost city of Atlantis!\" gasps Whisper, the tabaxi loremaster, her tail lashing with excitement. \"The kraken must be its guardian! Quick, we must--\"\n\nHer words are cut short as a massive tentacle slams into the ship's hull, sending everyone stumbling. Crates of valuable plunder slide across the deck, teetering dangerously close to the railings.\n\nNorn, chaos erupts around you as the storm intensifies and the kraken bears down on the Siren's Whisper. The magical portal flickers, offering a tantalizing escape. Captain Lyra bellows for action, while your crewmates scramble to defend the ship. The precious cargo threatens to be lost overboard with each violent wave. \n\nWhat do you do? Fight the kraken? Dive through the portal? Secure the treasure? Or something else entirely? The next few moments could determine the fate of the entire crew!",
   "actions": [
@@ -1634,7 +1624,7 @@ Certainly. Here's the revised version with only the updateTime and updatePlot ac
       "action": "updatePlot",
       "parameters": {
         "plotPointId": "PP002",
-        "action": "Encountered magical kraken and portal to Atlantis",
+        "newStatus": "in progress",
         "plotImpact": "The crew of the Siren's Whisper encounters a magical kraken and a portal to the lost city of Atlantis, presenting a critical decision point in their adventure."
       }
     }
@@ -1649,7 +1639,7 @@ Certainly. Here's the revised version with only the updateTime and updatePlot ac
       "action": "updatePlot",
       "parameters": {
         "plotPointId": "PP002",
-        "action": "Discovered barkeep's deception about secret tunnels",
+        "newStatus": "in progress",
         "plotImpact": "The party has uncovered potential deception regarding the secret tunnels, raising suspicions about the barkeep's involvement and the true nature of the tunnels."
       }
     }
@@ -1678,14 +1668,6 @@ Certainly. Here's the revised version with only the updateTime and updatePlot ac
       "action": "updateTime",
       "parameters": {
         "timeEstimate": 2
-      }
-    },
-    {
-      "action": "updatePlot",
-      "parameters": {
-        "plotPointId": "PT001",
-        "action": "Triggered ceiling spike trap in ancient tomb",
-        "plotImpact": "The ceiling spike trap in the ancient tomb has been triggered, revealing the dangerous nature of the location and potentially injuring party members."
       }
     }
   ]
