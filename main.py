@@ -1821,6 +1821,20 @@ def _transition_narration_action_context(checkpoint):
                 "before": copy.deepcopy(receipt.get("before")),
                 "after": copy.deepcopy(receipt.get("after")),
             }
+        elif family in (
+            "moveOccupant",
+            "resolveOccupant",
+            "setOccupantAttitude",
+            "returnOccupant",
+        ):
+            # P4-g: only a staged or committed escort is a fact of the
+            # arrival; a refused occupant action changed nothing.
+            if not (receipt.get("escort") and receipt.get("status") in ("staged", "committed")):
+                continue
+            fact["receiptResult"] = {
+                "escort": receipt.get("occupant_name") or receipt.get("occupant_id"),
+                "arrivesWithParty": True,
+            }
         public_actions.append(fact)
     if not public_actions:
         return ""
@@ -1865,6 +1879,14 @@ def _transition_outcome_lines(checkpoint, party):
                 lines.append(
                     "%s leaves your traveling party at %s."
                     % (receipt.get("npc_name"), destination)
+                )
+        elif family == "moveOccupant":
+            # P4-g: a staged or committed escort comes along; a refused or
+            # unavailable one is not claimed.
+            if receipt.get("escort") and receipt.get("status") in ("staged", "committed"):
+                lines.append(
+                    "%s comes with you to %s."
+                    % (receipt.get("occupant_name") or receipt.get("occupant_id"), destination)
                 )
         elif family == "moveBackgroundNPC":
             proposal = receipt.get("proposal") or {}
@@ -10383,11 +10405,32 @@ def _review_dm_candidate(
                         "updateTime",
                         "updatePlot",
                     }
+                    # P4-g: an escort is travel-owned: a moveOccupant whose
+                    # locationId is the travel destination brings a present
+                    # occupant along; its receipt rides the travel checkpoint.
+                    travel_destination = str(
+                        ((actions[0].get("parameters") or {}).get("newLocation") or "")
+                        if isinstance(actions[0], dict) else ""
+                    ).strip()
+
+                    def _escort_sibling(item):
+                        return (
+                            isinstance(item, dict)
+                            and item.get("action") == "moveOccupant"
+                            and bool(travel_destination)
+                            and str(
+                                (item.get("parameters") or {}).get("locationId") or ""
+                            ).strip() == travel_destination
+                        )
+
                     unsupported = [
                         item.get("action") if isinstance(item, dict) else type(item).__name__
                         for item in actions[1:]
                         if not isinstance(item, dict)
-                        or item.get("action") not in supported_siblings
+                        or (
+                            item.get("action") not in supported_siblings
+                            and not _escort_sibling(item)
+                        )
                     ]
                     # O1 (owner 2026-09-03): a roster change (updatePartyNPCs,
                     # remove OR add) co-emitted with a within-module travel must
@@ -10471,7 +10514,9 @@ def _review_dm_candidate(
                             "execute after arrival: %s. Preserve the later "
                             "intent in narration, invite the player's next "
                             "action, and return only transitionLocation plus "
-                            "travel-owned updateTime/updatePlot bookkeeping."
+                            "travel-owned updateTime/updatePlot bookkeeping "
+                            "(and a moveOccupant to the destination for an "
+                            "occupant who comes along)."
                             % ", ".join(map(str, unsupported))
                         )
                     if contract_error:

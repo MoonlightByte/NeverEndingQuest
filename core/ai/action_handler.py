@@ -717,11 +717,38 @@ def prepare_current_transition_actions(operation_id):
             "storageInteraction",
             "updatePartyNPCs",
             "updatePartyTracker",
+            "moveOccupant",
+            "resolveOccupant",
+            "setOccupantAttitude",
+            "returnOccupant",
         } or record.get(
             "receipt"
         ) is not None:
             continue
         parameters = record["action"].get("parameters", {})
+        if family in (
+            "moveOccupant",
+            "resolveOccupant",
+            "setOccupantAttitude",
+            "returnOccupant",
+        ):
+            # P4-g: an escort (moveOccupant to the destination) rides the
+            # travel receipt; any other occupant action is refused here with
+            # its reason and never applied. The travel is never blocked.
+            from core.nql import occupants as _occupants
+
+            receipt = _occupants.prepare_travel_action(
+                family,
+                parameters,
+                "dm:travel:%s:%d:%s" % (operation_id, index, family),
+                str(checkpoint.get("module_name") or ""),
+                str(checkpoint.get("origin_location_id") or ""),
+                str(checkpoint.get("destination_location_id") or ""),
+            )
+            checkpoint = load_current_transition_checkpoint(operation_id)
+            checkpoint["deferred_actions"]["actions"][index]["receipt"] = receipt
+            _write_location_transition_checkpoint(checkpoint)
+            continue
         if family == "updatePlot":
             from updates.plot_update import prepare_plot_update
 
@@ -1116,6 +1143,40 @@ def apply_current_transition_action(operation_id, action_index):
         return "committed"
     family = record.get("family")
     receipt = record.get("receipt")
+    if family in (
+        "moveOccupant",
+        "resolveOccupant",
+        "setOccupantAttitude",
+        "returnOccupant",
+    ):
+        # P4-g: the occupant record is the engine's; the staged escort is
+        # applied by its request id (a replay is answered as historical). A
+        # refusal or an unavailable engine is recorded and the arrival goes
+        # on. A checkpoint from before P4-g (no receipt) resolves as not
+        # applicable.
+        from core.nql import occupants as _occupants
+
+        if not isinstance(receipt, dict):
+            outcome = "not_applicable"
+            record["receipt"] = {"kind": family, "status": outcome}
+        else:
+            outcome = _occupants.apply_travel_receipt(
+                receipt, str(checkpoint.get("module_name") or "")
+            )
+        record["status"] = "committed"
+        deferred["cursor"] = action_index + 1
+        deferred["receipts"].append(
+            {
+                "operation_id": record["operation_id"],
+                "kind": family,
+                "status": "committed",
+                "occupant_status": outcome,
+            }
+        )
+        if deferred["cursor"] >= len(records):
+            deferred["status"] = "committed"
+        _write_location_transition_checkpoint(checkpoint)
+        return "committed"
     if not isinstance(receipt, dict):
         raise RuntimeError(
             "deferred action family %s has no approved v2 receipt" % family

@@ -89,8 +89,8 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
 @TRANSITION_ACTION_ORDER={
   rule: transitionLocation MUST appear exactly once and MUST be the first action
   one_turn: Travel ends at committed arrival; preserve later "then" clauses as deferred player intent and invite the next action
-  after_transition: ONLY travel-owned updateTime and immediate travel-result updatePlot
-  forbidden_after: character, roster, storage, hub, save-management, exit, module-handoff, or any other downstream action
+  after_transition: ONLY travel-owned updateTime, immediate travel-result updatePlot, and an escort moveOccupant (an origin occupant id, locationId = the travel destination: that occupant comes along)
+  forbidden_after: character, roster (other than the escort moveOccupant), storage, hub, save-management, exit, module-handoff, or any other downstream action
   cross_module: EXACTLY updatePartyTracker then updateTime
   invalid: Any action before transitionLocation OR multiple transitionLocation actions
 }

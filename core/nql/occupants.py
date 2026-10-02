@@ -149,15 +149,18 @@ def _set_aside(root: str) -> None:
 
 
 def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
-            view: Tuple[str, ...] = (), root: str = ".") -> Optional[Dict[str, Any]]:
+            view: Tuple[str, ...] = (), root: str = ".", create: bool = True) -> Optional[Dict[str, Any]]:
     """One engine call on the document. Returns the response (ok or a refusal
     of the actions, which the caller reconciles), or None when the engine is
     unavailable or the document could not be made. Writes the next document
-    when it changed."""
+    when it changed. With create=False a missing document is None (a reader
+    never writes; the DM turn makes the document)."""
     try:
         world, places, _ = _world(root)
         live = _load(root)
         if live is None:
+            if not create:
+                return None
             live = _create(root, world, places)
             if live is None:
                 return None
@@ -806,6 +809,109 @@ def legacy_move(parameters: Any, module: str, location_id: str, *, root: str = "
         return {"forward": None, "correction": None}
 
 
+# Travel receipts (P4-g) ----------------------------------------------------
+#
+# An occupant action staged behind transitionLocation rides the travel
+# checkpoint like the other siblings: prepared before movement, applied in
+# order after arrival, replay-safe by its request id. Only an escort is
+# travel-owned: a moveOccupant of an occupant present at the origin to the
+# committed destination. Anything else is recorded as refused with its
+# reason and never applied. A roster is never a reason to stop travel.
+
+TRAVEL_FAMILIES = ("moveOccupant", "resolveOccupant", "setOccupantAttitude", "returnOccupant")
+
+
+def prepare_travel_action(action_type: str, parameters: Any, request_id: str, module: str,
+                          origin_location_id: str, destination_location_id: str, *,
+                          root: str = ".") -> Dict[str, Any]:
+    """The receipt for one occupant action staged behind a within-module
+    travel: status "staged" (an escort, applied after arrival) or "refused"
+    (reason recorded, nothing applied)."""
+    p = parameters if isinstance(parameters, dict) else {}
+    receipt: Dict[str, Any] = {
+        "kind": action_type,
+        "status": "refused",
+        "reason": None,
+        "request_id": request_id,
+        "occupant_id": str(p.get("occupantId") or "").strip(),
+        "occupant_name": None,
+        "origin_location_id": origin_location_id,
+        "destination_location_id": destination_location_id,
+        "line": None,
+        "escort": False,
+    }
+    try:
+        if action_type != "moveOccupant":
+            receipt["reason"] = ("%s is not travel-owned; a travel turn carries only an escort "
+                                 "(moveOccupant to the destination)" % action_type)
+            return receipt
+        line, problem = dm_action_line(action_type, p, module)
+        if problem:
+            receipt["reason"] = problem
+            return receipt
+        target = str(p.get("locationId") or "").strip()
+        if target != str(destination_location_id or "").strip():
+            receipt["reason"] = ("moveOccupant to %s is not the travel destination %s"
+                                 % (target, destination_location_id))
+            return receipt
+        receipt["line"] = line
+        here = _here(root, place_id(module, origin_location_id))
+        if here is None:
+            # The engine is unavailable now; the apply decides.
+            receipt["status"] = "staged"
+            receipt["escort"] = True
+            return receipt
+        present = next((o for o in present_roster(here) if o.get("id") == receipt["occupant_id"]), None)
+        if present is None:
+            receipt["reason"] = ("%s is not present at %s; present: %s"
+                                 % (receipt["occupant_id"], origin_location_id, _present_lines(here)))
+            return receipt
+        receipt["occupant_name"] = present.get("name")
+        receipt["status"] = "staged"
+        receipt["escort"] = True
+        return receipt
+    except Exception as exc:  # fail forward
+        warning("OCCUPANTS: travel %s skipped (%s)" % (action_type, exc), category="location_transitions")
+        receipt["reason"] = "could not be prepared (%s)" % exc
+        return receipt
+
+
+def apply_travel_receipt(receipt: Dict[str, Any], module: str, *, root: str = ".") -> str:
+    """Apply a staged travel receipt after arrival: "committed" (applied, or
+    already on record under the same request id), "refused" (the engine said
+    no; the reason is kept) or "attempted_unavailable" (no engine). The
+    receipt is updated in place; the caller writes the checkpoint."""
+    if receipt.get("status") in ("committed", "refused", "attempted_unavailable"):
+        return str(receipt["status"])
+    line = receipt.get("line")
+    request_id = str(receipt.get("request_id") or "")
+    if not line or not request_id:
+        receipt["status"] = "refused"
+        receipt["reason"] = receipt.get("reason") or "no engine line was prepared"
+        return "refused"
+    place = place_id(module, str(receipt.get("origin_location_id") or ""))
+    try:
+        response = request(line, request_id, view=(place,), root=root)
+    except Exception as exc:  # fail forward
+        warning("OCCUPANTS: travel %s skipped (%s)" % (receipt.get("kind"), exc), category="location_transitions")
+        response = None
+    if response is None:
+        receipt["status"] = "attempted_unavailable"
+        info("OCCUPANTS: travel %s %s not applied: engine unavailable" % (receipt.get("kind"), request_id),
+             category="location_transitions")
+        return "attempted_unavailable"
+    fault = response.get("fault") or {}
+    if response.get("ok") or fault.get("code") == "E_NO_CHANGE":
+        receipt["status"] = "committed"
+        info("OCCUPANTS: travel %s %s: %s" % (receipt.get("kind"), request_id, line), category="location_transitions")
+        return "committed"
+    receipt["status"] = "refused"
+    receipt["reason"] = str(fault.get("message") or response.get("error") or "the engine refused it")
+    warning("OCCUPANTS: travel %s %s refused: %s (%s)" % (receipt.get("kind"), request_id, receipt["reason"], line),
+            category="location_transitions")
+    return "refused"
+
+
 # Readers on the view ------------------------------------------------------
 #
 # From P4-f on, nothing reads a location's authored `monsters`/`npcs` lists
@@ -912,8 +1018,9 @@ def place_summary(place_view: Dict[str, Any], module: str, location_id: str, *, 
 def module_roster(module: str, *, root: str = ".") -> Optional[Dict[str, Dict[str, Any]]]:
     """Every place of the module from one engine call: {location_id:
     {present, people, hostile, hostiles, rosterRecord}}. Cached until the
-    document changes. None when the engine or the document is unavailable
-    (callers fall back to nothing present, never to the authored lists)."""
+    document changes. None when the engine is unavailable or no document
+    exists yet (a reader never creates it; callers then fall back to the
+    authored lists)."""
     module = (module or "").replace(" ", "_")
     key = (os.path.abspath(root), module)
     stamp = _stamp(root)
@@ -927,7 +1034,7 @@ def module_roster(module: str, *, root: str = ".") -> Optional[Dict[str, Dict[st
         mine = [p for p in mine if str(p).startswith(prefix)]
         if not mine:
             return None
-        response = request(view=tuple(mine), root=root)
+        response = request(view=tuple(mine), root=root, create=False)
         if not response or not response.get("ok"):
             return None
         out: Dict[str, Dict[str, Any]] = {}
