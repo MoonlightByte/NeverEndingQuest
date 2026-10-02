@@ -516,6 +516,12 @@ def generate_encounter(encounter_data):
             # intent resolution instead of the resolver's legacy default.
             "armorClass": monster_data.get("armorClass", 10),
         }
+        # The engine's occupant this monster belongs to, when the DM declared
+        # the fight by ID from the location's occupants list (P4-d). A missing
+        # or unknown ID is settled by the host before combat starts.
+        declared_id = (encounter_data.get("occupantIds") or {}).get(f"monster:{monster_index}")
+        if isinstance(declared_id, str) and declared_id.startswith("occ:"):
+            monster["occupantId"] = declared_id
         encounter["creatures"].append(monster)
         scene_sources.append(
             {

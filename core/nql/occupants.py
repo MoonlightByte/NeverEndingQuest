@@ -375,7 +375,117 @@ def resolve_combat(encounter_id: str, *, root: str = ".") -> Optional[Dict[str, 
         return None
 
 
+# Fight declaration --------------------------------------------------------
+
+def _unique_id(place: str, slug_text: str, taken: set) -> str:
+    base = "occ:%s/%s" % (place.split(":", 1)[1], slug_text)
+    ident, n = base, 2
+    while ident in taken:
+        ident, n = "%s-%d" % (base, n), n + 1
+    return ident
+
+
+def declare_encounter(encounter_id: str, *, root: str = ".") -> Optional[Dict[str, Any]]:
+    """Give every enemy of a freshly built encounter its occupant before the
+    fight: the ID the DM declared (when the document holds it at the place),
+    else the present group of its type at the place, else a new occupant
+    created for the free name in one request. Writes the stamped IDs into
+    the encounter file. Never stops the fight: an unknown ID is dropped and
+    settled like a free name; an engine refusal leaves the enemy to the
+    combat-end type match."""
+    try:
+        path = os.path.join(root, "modules", "encounters", "encounter_%s.json" % encounter_id)
+        encounter = safe_read_json(path)
+        if not isinstance(encounter, dict):
+            return None
+        tracker = safe_read_json(os.path.join(root, "party_tracker.json")) or {}
+        module = tracker.get("module") or ""
+        location_id = str(encounter.get("encounterId") or encounter_id).rsplit("-E", 1)[0]
+        place = place_id(module, location_id)
+        current = request(view=(place,), root=root)
+        if not current or not current.get("ok"):
+            return current
+        live = current.get("live_state") or _load(root) or {}
+        at_place = [o for o in live.get("occupants") or [] if o.get("location") == place]
+        here_ids = {o["id"] for o in at_place}
+        taken = {o["id"] for o in live.get("occupants") or []}
+        by_type: Dict[str, List[Dict[str, Any]]] = {}
+        for o in at_place:
+            if o.get("kind") == "creatures" and o.get("count") != 0:
+                by_type.setdefault(str(o.get("type") or "").lower(), []).append(o)
+        changed = False
+        to_create: Dict[str, Dict[str, Any]] = {}  # slug -> {"id", "name", "creatures"}
+        for creature in encounter.get("creatures") or []:
+            if creature.get("type") != "enemy":
+                continue
+            declared = creature.get("occupantId")
+            if declared in here_ids:
+                continue
+            if declared:
+                info("OCCUPANTS: %s: declared occupant %s is not at %s; settled by type"
+                     % (encounter_id, declared, place), category="location_transitions")
+                creature.pop("occupantId", None)
+                changed = True
+            slug_text = _type_slug(creature)
+            present = by_type.get(slug_text)
+            if present:
+                creature["occupantId"] = present[0]["id"]
+                changed = True
+                continue
+            if not slug_text:
+                continue
+            entry = to_create.get(slug_text)
+            if entry is None:
+                from utils.roster_conversion import base_name
+                ident = _unique_id(place, slug_text, taken)
+                taken.add(ident)
+                entry = to_create[slug_text] = {"id": ident, "name": base_name(str(creature.get("name") or slug_text)), "creatures": []}
+            entry["creatures"].append(creature)
+        if to_create:
+            from utils.roster_conversion import q
+            lines = []
+            for slug_text, entry in to_create.items():
+                lines.append('create occupant %s named %s at %s { creatures %d; attitude hostile; type %s; };'
+                             % (q(entry["id"]), q(entry["name"]), q(place), len(entry["creatures"]), q(slug_text)))
+            response = request("\n".join(lines), "encounter:%s" % encounter_id, view=(place,), root=root)
+            if response and response.get("ok"):
+                for entry in to_create.values():
+                    for creature in entry["creatures"]:
+                        creature["occupantId"] = entry["id"]
+                changed = True
+                info("OCCUPANTS: %s: created %s at %s for the free-name fight"
+                     % (encounter_id, ", ".join(e["id"] for e in to_create.values()), place),
+                     category="location_transitions")
+            else:
+                warning("OCCUPANTS: %s: the engine refused the free-name occupants (%s); the fight runs "
+                        "and its end is matched by type" % (encounter_id, (response or {}).get("error")),
+                        category="location_transitions")
+        if changed and not safe_write_json(path, encounter):
+            warning("OCCUPANTS: %s: encounter file could not be rewritten with occupant IDs"
+                    % encounter_id, category="location_transitions")
+        return current
+    except Exception as exc:  # fail forward
+        warning("OCCUPANTS: declaration for %s skipped (%s)" % (encounter_id, exc),
+                category="location_transitions")
+        return None
+
+
 # DM context ---------------------------------------------------------------
+
+def present_roster(place_view: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The present occupants of a place for the DM context: the IDs a fight
+    or a story outcome is declared with."""
+    out = []
+    for o in place_view.get("present") or []:
+        entry: Dict[str, Any] = {"id": o.get("id"), "name": o.get("name"), "kind": o.get("kind"),
+                                 "attitude": o.get("attitude")}
+        if "count" in o:
+            entry["count"] = o["count"]
+        elif o.get("range"):
+            entry["count"] = "%d to %d" % (o["range"].get("min", 0), o["range"].get("max", 0))
+        out.append(entry)
+    return out
+
 
 def _tally_text(occupant: Dict[str, Any]) -> str:
     parts = []
@@ -408,7 +518,7 @@ def location_record(location_id: str, module: str, *, root: str = ".") -> Option
             if isinstance(left, int) and left > 0:
                 text += "; %d still here" % left
             record.append(text)
-    out: Dict[str, Any] = {"rosterRecord": record}
+    out: Dict[str, Any] = {"rosterRecord": record, "occupants": present_roster(here)}
     at_large: List[str] = []
     prefix = "loc:%s/" % (module or "").replace(" ", "_")
     from utils.roster_conversion import DEFAULT_REASON

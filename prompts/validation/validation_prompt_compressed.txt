@@ -221,7 +221,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   establishHub: {"hubName":str,"hubType":str,"description":str,"services":arr,"ownership":str}
   exitGame: {"farewell":str}
   transitionLocation: {"newLocation":str} #EXACTLY this one key
-  createEncounter: {"encounterSummary":str,"player":str,"npcs":arr,"monsters":arr,"scene":{"participants":arr,"relations":arr,"objectives":arr,"disclosureGrants":arr}} #participant keys exactly match player:0/npc:N/monster:N; complete typed scene required
+  createEncounter: {"encounterSummary":str,"player":str,"npcs":arr,"monsters":arr,"occupantIds":obj(optional),"scene":{"participants":arr,"relations":arr,"objectives":arr,"disclosureGrants":arr}} #participant keys exactly match player:0/npc:N/monster:N; complete typed scene required; occupantIds optional (monster:N -> engine occupant id), never a reason to reject
   storageInteraction: {"description":str,"characterName":str}
   createNewModule: {"narrative":str} #EXACTLY this one non-empty key; MUST be sole action; only after explicit commitment to one specific hook. Full shape: {"action":"createNewModule","parameters":{"narrative":"[complete concept and labeled technical fields]"}}
   updateEncounter: {"encounterId":str,"changes":obj}
