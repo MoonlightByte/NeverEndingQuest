@@ -106,6 +106,7 @@ def create_backup():
         "party_tracker.json", "campaign.json", "world_registry.json",
         "modules/conversation_history/conversation_history.json", "modules/conversation_history/chat_history.json", "modules/conversation_history/combat_conversation_history.json",
         "modules/conversation_history/conversation_history.json", "current_location.json", "journal.json",
+        "live_state.json", "live_state.json.bak",
         "summary_dump.json", "trimmed_summary_dump.json", "modules/conversation_history/second_model_history.json",
         "modules/conversation_history/third_model_history.json", "debug_encounter_update.json", "debug_initial_response.json",
         "debug_npc_update.json", "debug_player_update.json", "debug_second_model.json",
@@ -309,6 +310,12 @@ def _reset_global_state_locked(*, reset_prepared=False):
     if os.path.exists("player_storage.json"):
         os.remove("player_storage.json")
         print("  [OK] Removed player_storage.json (will be created fresh)")
+
+    # The engine's location record: a fresh game starts from the seeds
+    for live_state_file in ("live_state.json", "live_state.json.bak"):
+        if os.path.exists(live_state_file):
+            os.remove(live_state_file)
+            print(f"  [OK] Removed {live_state_file} (will be created fresh)")
     
     # Delete campaign state and its transactional metadata under the same
     # lifecycle boundary used by completion/save/restore.

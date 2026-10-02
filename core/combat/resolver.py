@@ -964,7 +964,10 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
             "statusAfter": "defeated",
         })
         resolution["creatureDeltas"][actor["combatantId"]] = {
-            "status": "defeated"
+            "status": "defeated",
+            # The typed manner of leaving, for the location record (P4-c):
+            # a closed file tells fled from yielded without reading prose.
+            "resolution": "fled" if intent.get("action") == "flee" else "yielded",
         }
         # Leaving the fight is an encounter fact only (#466): the sheet keeps
         # its own status so the character is not treated as down afterwards.
@@ -2385,6 +2388,8 @@ def apply_resolution(encounter, characters, resolution):
             creature["currentHitPoints"] = max(0, min(int(delta["currentHitPoints"]), ceiling))
         if "status" in delta:
             creature["status"] = delta["status"]
+        if "resolution" in delta:
+            creature["resolution"] = delta["resolution"]
         if "recharge" in delta:
             # MS-b: the full record replaces the creature's (journal authority)
             if delta["recharge"]:

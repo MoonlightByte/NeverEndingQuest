@@ -3316,6 +3316,10 @@ def process_action(
 
                     from main import save_conversation_history
                     save_conversation_history(conversation_history)
+                    # The engine's location record: each enemy's typed end in
+                    # the fight resolves its occupant (P4-c). Never stops play.
+                    from core.nql import occupants as _occupants
+                    _occupants.resolve_combat(encounter_id)
                     if isinstance(dialogue_summary, str) and dialogue_summary:
                         # #253: reconcile the location's monster list from this
                         # fight before the post-combat narration is requested,
