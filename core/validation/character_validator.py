@@ -1764,7 +1764,7 @@ class AICharacterValidator:
         for entry in after.get('equipment') or []:
             if not isinstance(entry, dict) or not entry.get('item_name'):
                 continue
-            if item_catalog.entry(entry.get('catalog_id')) is not None:
+            if item_catalog.row_entry(entry)[0] is not None:
                 continue  # SA: a catalog row is typed by its pack entry; nothing to classify
             nql_id = entry.get('nql_id')
             is_new = (nql_id not in before_ids) if isinstance(nql_id, str) else (str(entry['item_name']) not in before_names)
