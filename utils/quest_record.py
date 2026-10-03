@@ -499,6 +499,15 @@ def _overlay(record, view_record, authored_impact):
     record["requires"] = [_short(r) for r in view_record.get("requires") or []]
     record["open"] = [_short(r) for r in view_record.get("open") or []]
     record["ready"] = bool(view_record.get("ready"))
+    # The engine's log, as it happened (#544: the journal summarizes this,
+    # not the authored description).
+    record["log"] = [
+        {"kind": str(e.get("kind") or ""), "text": e.get("text") or "",
+         "ahead": [_short(r) for r in e.get("ahead") or []], "reason": e.get("reason") or ""}
+        for e in log
+    ]
+    record["bypassed"] = False
+    record["bypassedBy"] = []
     ahead = [e for e in log if e.get("kind") == "completed" and e.get("ahead")]
     if ahead:
         record["aheadOf"] = [_short(r) for r in ahead[-1].get("ahead") or []]
@@ -507,6 +516,38 @@ def _overlay(record, view_record, authored_impact):
         record.pop("aheadOf", None)
         record.pop("aheadReason", None)
     return record
+
+
+def _mark_bypassed(plot):
+    """#544: a quest is bypassed while it is not started and a completed
+    quest's ahead list names it (the party finished later work by another
+    route). Started later, it is an active quest again. Readers leave a
+    bypassed quest out of the objectives and the completion checks count it
+    as closed."""
+    entries_ = []
+    for point in plot.get("plotPoints") or []:
+        if isinstance(point, dict):
+            entries_.append(point)
+            entries_ += [sq for sq in point.get("sideQuests") or [] if isinstance(sq, dict)]
+    by_id = {e.get("id"): e for e in entries_}
+    for e in entries_:
+        if e.get("status") != "completed":
+            continue
+        for entry in e.get("log") or []:
+            if entry.get("kind") != "completed":
+                continue
+            for skipped in entry.get("ahead") or []:
+                target = by_id.get(skipped)
+                if target is not None and target.get("status") == NOT_STARTED and "bypassed" in target:
+                    target["bypassed"] = True
+                    if e.get("id") not in target["bypassedBy"]:
+                        target["bypassedBy"].append(e.get("id"))
+
+
+def is_closed(record) -> bool:
+    """Completed, failed, or bypassed: nothing left for the party to do."""
+    return isinstance(record, dict) and (
+        record.get("status") in (COMPLETED, "failed") or bool(record.get("bypassed")))
 
 
 def module_plot(module, *, root=".") -> Optional[Dict[str, Any]]:
@@ -538,6 +579,7 @@ def module_plot(module, *, root=".") -> Optional[Dict[str, Any]]:
         for sq in point.get("sideQuests") or []:
             if isinstance(sq, dict) and view.get(sq.get("id")) is not None:
                 _overlay(sq, view[sq.get("id")], sq.get("plotImpact"))
+    _mark_bypassed(data)
     return data
 
 
@@ -646,9 +688,10 @@ def _engine_refusal(module, fault, view, root):
         open_ = [a.strip() for a in actual.split(",") if a.strip()]
         listed = ", ".join("%s (%s)" % (_short(r), titles.get(_short(r), _short(r))) for r in open_)
         return ("its requirements are not completed: %s" % listed,
-                'Complete them first in the same response if the story has done them; only if the '
-                'party truly finished this one before them, send "completed" again with "aheadReason" '
-                'saying why.')
+                'Complete them first in the same response only if the story has actually done them. '
+                'If the party finished this one without them (out of order, or by another route that '
+                'bypassed them), send "completed" again with "aheadReason" saying how. Never complete '
+                'a quest the party did not do.')
     if field == "ahead":
         return ("aheadReason was given but no requirement is open", 'Send "completed" without aheadReason.')
     if field == "status":

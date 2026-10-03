@@ -1284,7 +1284,7 @@ Whenever the player mentions ANY future time reference (tomorrow, sunrise, morni
   {"action": "updatePlot", "parameters": {"plotPointId": "PP002", "newStatus": "in progress", "plotImpact": "Mara asked the party to find the missing scouts."}}
 - "newStatus" is one of:
   - "in progress": the party takes up the quest, or makes progress on one already in progress. "plotImpact" says what happened.
-  - "completed": the quest is done. A quest whose requirements ("Still requires" in the plot status) are not completed is refused: complete those first in the same response if the story has done them; only when the party truly finished this one before them, add "aheadReason" saying why.
+  - "completed": the quest is done. A quest whose requirements ("Still requires" in the plot status) are not completed is refused: complete those first in the same response only if the story has actually done them; when the party finished this one without them (out of order, or by another route that bypassed them), add "aheadReason" saying how. Never complete a quest the party did not do; a quest the party went around is shown as [BYPASSED] and is not an objective.
   - "failed": the quest can no longer be achieved. "plotImpact" says how it was lost.
   - "reopened": a completed or failed quest comes back into play. "plotImpact" says why.
   A quest never goes back to "not started".
