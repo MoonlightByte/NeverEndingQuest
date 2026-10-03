@@ -2705,50 +2705,10 @@ def create_module_validation_context(party_tracker_data, path_manager, *, module
             if area_data is None or not isinstance(area_data.get("locations"), list):
                 raise FileNotFoundError("Current area has no readable location list")
 
-            valid_location_ids = []
-            for location in area_data.get("locations", []):
-                if not isinstance(location, dict):
-                    continue
-                loc_id = location.get("locationId", "")
-                loc_name = location.get("name", "")
-                if loc_id:
-                    valid_location_ids.append(
-                        f"{loc_id} ({loc_name})" if loc_name else loc_id
-                    )
-                    
-                    # Track NPCs by location: the engine's view (P4-f); the
-                    # authored list only while the view is unavailable.
-                    if _module_roster is not None:
-                        location_npcs = list((_module_roster.get(loc_id) or {}).get("people") or [])
-                    else:
-                        npc_records = location.get("npcs", [])
-                        location_npcs = [
-                            npc["name"] for npc in (npc_records if isinstance(npc_records, list) else [])
-                            if isinstance(npc, dict) and isinstance(npc.get("name"), str) and npc["name"]
-                        ]
-                    if location_npcs:
-                        area_locations_with_npcs[loc_id] = location_npcs
-                    
-                    # Collect NPCs for current location
-                    if loc_id == current_location_id:
-                        current_location_npcs = location_npcs.copy()  # Start with location NPCs
-
-            # Add party NPCs to current location (they travel with the party)
-            party_npcs = party_tracker_data.get("partyNPCs", [])
-            for party_npc in party_npcs:
-                npc_name = party_npc.get("name", "")
-                if npc_name and npc_name not in current_location_npcs:
-                    current_location_npcs.append(npc_name)
-
-            # IDs AND names: the validator judges narration, and narration
-            # speaks in names. An ids-only list made it reject the area's own
-            # location names as hallucinations.
-            validation_context += f"Current area ({current_area_id}) locations: "
-            if valid_location_ids:
-                validation_context += ", ".join(valid_location_ids)
-            else:
-                validation_context += "None found"
-            validation_context += "\n\n"
+            # C2: the current area's locations are listed once, under CURRENT MODULE
+            # IDENTITIES below; who is where is told once, by the canonical location
+            # records (occupants from the rules engine) and the character records.
+            pass
                 
         except (FileNotFoundError, json.JSONDecodeError):
             validation_context += f"ERROR: Could not load area data for {current_area_id}\n\n"
@@ -2873,55 +2833,17 @@ def create_module_validation_context(party_tracker_data, path_manager, *, module
             else:
                 validation_context += "- No character files found"
         
-        # Add location-aware NPC context
-        validation_context += f"\n\nLOCATION-AWARE NPC VALIDATION:\n"
-        validation_context += f"Current Location: {current_location_id}\n"
-        
-        if current_location_npcs:
-            validation_context += f"NPCs PRESENT at current location ({current_location_id}):\n"
-            validation_context += "\n".join([f"- {npc}" for npc in current_location_npcs])
-            validation_context += "\n\n"
-        else:
-            validation_context += f"NO NPCs present at current location ({current_location_id})\n\n"
-
-        # The rules engine's occupant record for this place (P4-e): the ids an
-        # occupant action may name. The DM reads the same list in its location
-        # data; without it here the validator would call every id invented.
-        try:
-            from core.nql import occupants as _occupants
-
-            _record = _occupants.location_record(current_location_id, str(current_module))
-        except Exception:
-            _record = None
-        if isinstance(_record, dict):
-            _present = _record.get("occupants") or []
-            validation_context += f"OCCUPANT RECORD at current location ({current_location_id}) from the rules engine (the ONLY valid occupantId values for resolveOccupant/setOccupantAttitude/moveOccupant/returnOccupant here):\n"
-            if _present:
-                validation_context += "\n".join(
-                    "- %s (%s, %s, count %s)" % (o.get("id"), o.get("name"), o.get("attitude"), o.get("count"))
-                    for o in _present
-                )
-            else:
-                validation_context += "- none present"
-            if _record.get("rosterRecord"):
-                validation_context += "\nResolved here: " + "; ".join(_record["rosterRecord"])
-            validation_context += "\n\n"
-        else:
-            validation_context += "OCCUPANT RECORD: unavailable this turn; never reject an occupant action for its occupantId.\n\n"
-
-        if area_locations_with_npcs:
-            validation_context += "NPCs at OTHER locations in this area:\n"
-            for loc_id, npcs in area_locations_with_npcs.items():
-                if loc_id != current_location_id:  # Don't repeat current location
-                    validation_context += f"  {loc_id}: {', '.join(npcs)}\n"
-            validation_context += "\n"
-        
+        # C2: NPCs present, the engine's occupant record and NPCs at other
+        # locations are told once, by the canonical location records and the
+        # NPC validation data; this block keeps identities and rules only.
+        validation_context += "\n\n"
         validation_context += """ENHANCED VALIDATION RULES:
-1. For interactions happening AT the current location, ONLY use NPCs from the "PRESENT at current location" list
-2. For references to NPCs at OTHER locations, they must exist in the "NPCs at OTHER locations" or module character lists
+1. For interactions happening AT the current location, ONLY use the occupants listed in the canonical location record for the origin (the rules engine's view; party NPCs travel with the party and appear in the character records); when that record is unavailable, the @CURRENT_LOC list stands in for it
+2. For references to NPCs at OTHER locations, they must exist in the NPC validation data or the module character lists
 3. NEVER create new NPCs - all names must exist in the provided lists
-4. If an NPC is referenced incorrectly, suggest the CORRECT NPC from the current location list
+4. If an NPC is referenced incorrectly, suggest the CORRECT NPC from the origin record's occupants
 5. NPCs cannot be in multiple locations simultaneously - verify location consistency
+6. The occupant ids an occupant action may name are the ids in the origin record's occupants; when that record is unavailable, never reject an occupant action for its occupantId
 
 CHARACTER NAME RULES FOR updateCharacterInfo:
 - ALWAYS use the FULL character name exactly as it appears in the party tracker or NPC lists
@@ -3216,6 +3138,15 @@ def _select_validation_history(conversation_history, raw_user_input):
     return recent_messages
 
 
+def _validation_location_view(location_data):
+    """A canonical location record's authored fields for the validator (C2).
+    Adjacency is not the validator's fact to judge (travel is settled by the
+    accepted travel facts), so the connectivity fields are left out; the
+    module's identities block lists every place once."""
+    return {k: v for k, v in dict(location_data or {}).items()
+            if k not in ("connectivity", "areaConnectivity", "areaConnectivityId")}
+
+
 def _compact_character_evidence(character_records):
     """The validator's character block as compact KEY=value lines (context views C1).
 
@@ -3232,11 +3163,31 @@ def _compact_character_evidence(character_records):
         return json.dumps(character_records, ensure_ascii=True)
 
 
-def _block_bytes(messages, labelled):
+_DM_BLOCK_HEADERS = (
+    ("system_prompt", "You are the Dungeon Master for the world's most popular roleplaying game"),
+    ("system_prompt", "You are a world-class 5th edition Dungeon Master"),
+    ("atlas", "=== COMPLETE MODULE WORLD ATLAS ==="),
+    ("module_refs", "=== INSTALLED MODULE REFERENCES ==="),
+    ("plot_status", "=== ADVENTURE PLOT STATUS ==="),
+    ("campaign_context", "=== CAMPAIGN CONTEXT ==="),
+    ("world_state", "WORLD STATE CONTEXT"),
+    ("current_location", "Current Location:"),
+    ("character_sheets", "Here's the updated character data"),
+    ("character_sheets", "Here's the NPC data"),
+    ("companion", "=== ACTIVE COMPANION CANONICAL CONTEXT ==="),
+    ("companion", "=== COMPANION MEMORIES"),
+    ("travel_review_facts", "Travel review facts"),
+    ("review_corrections", "Review corrections, NOT player dialogue"),
+)
+
+
+def _block_bytes(messages, labelled, headers=None):
     """UTF-8 bytes per block of a request (context views C7), for the capture
     metadata. A message whose content equals one of the labelled block strings
-    is counted under that label; other system messages under "system_other";
-    the final user/assistant pair under "turn"; everything else under
+    is counted under that label; otherwise one whose content starts with a
+    known block header (our own structured blocks) under that header's label;
+    other system messages under "system_other"; the final user/assistant pair
+    under "turn" (a final DM Note under "dm_note"); everything else under
     "history". "total" is the whole request."""
     by_value = {}
     for label, text in (labelled or {}).items():
@@ -3246,13 +3197,22 @@ def _block_bytes(messages, labelled):
     def add(label, content):
         sizes[label] = sizes.get(label, 0) + len(content.encode("utf-8"))
     messages = [m for m in messages or [] if isinstance(m, dict)]
+    note_at = max((i for i, m in enumerate(messages) if m.get("role") == "user"
+                   and isinstance(m.get("content"), str) and m["content"].startswith("Dungeon Master Note:")), default=None)
     for index, message in enumerate(messages):
         content = message.get("content")
         if not isinstance(content, str):
             content = json.dumps(content, ensure_ascii=True) if content is not None else ""
         label = by_value.get(content)
         if label is None:
-            if message.get("role") == "system":
+            for name, prefix in headers or ():
+                if content.startswith(prefix):
+                    label = name
+                    break
+        if label is None:
+            if index == note_at:
+                label = "dm_note"
+            elif message.get("role") == "system":
                 label = "system_other"
             elif index >= len(messages) - 2:
                 label = "turn"
@@ -3558,7 +3518,6 @@ def validate_ai_response(
             if validation_down_rules
             else None
         ),
-        {"role": "system", "content": location_details},
         {"role": "system", "content": module_data_context},
     ]
     
@@ -3728,7 +3687,7 @@ def validate_ai_response(
             and scene_node["location_data"].get("locationId") == scene_location
         ):
             scene_record["status"] = "available"
-            _scene_location = dict(scene_node["location_data"])
+            _scene_location = _validation_location_view(scene_node["location_data"])
             # P4-f: presence is the engine's view; the authored lists are
             # not sent when the view answers.
             try:
@@ -3765,6 +3724,22 @@ def validate_ai_response(
         ),
     }]
     location_records_context = validation_messages_to_send[-1]["content"]
+    # C2: the origin record carries the location's description and DM
+    # instructions; Location Details repeats them only when that record is
+    # unavailable (an unreadable area file, a mismatched module).
+    if not any(isinstance(r, dict) and r.get("role") == "origin" and r.get("status") == "available"
+               for r in scene_records):
+        validation_messages_to_send = list(validation_messages_to_send) + [{
+            "role": "system", "content": location_details,
+        }]
+        try:
+            from core.ai.build_npc_context import current_location_npc_lines
+            validation_messages_to_send = list(validation_messages_to_send) + [{
+                "role": "system",
+                "content": current_location_npc_lines(party_tracker_data.get("module", ""), current_location_id),
+            }]
+        except Exception as exc:  # noqa: BLE001 - evidence never stops a turn
+            warning(f"VALIDATION: current-location NPC fallback failed: {exc}", category="ai_validation")
 
     # #344: the referee judged abilities, proficiencies, resources and healing
     # from an inventory-only projection of update targets (a5c64749). Supply
@@ -7606,7 +7581,7 @@ def _get_ai_response_impl(
         from utils.api_logger import log_api_call
         log_api_call("main_dm", messages_for_diagnostics, response,
                     metadata={"temperature": TEMPERATURE, "retry_count": validation_retry_count, "provider": MODEL_PROVIDER,
-                              "block_bytes": _block_bytes(messages_for_diagnostics, {})})
+                              "block_bytes": _block_bytes(messages_for_diagnostics, {}, _DM_BLOCK_HEADERS)})
     except Exception as e:
         print(f"[API_LOG] Warning: Failed to log main DM call: {e}")
 
@@ -9296,84 +9271,8 @@ def _main_game_loop(startup_authority, turn_authority):
             current_location_name_note = world_conditions["currentLocation"]
             current_location_id_note = world_conditions["currentLocationId"]
         
-            # --- CONNECTIVITY SECTION ---
-            connected_locations_display_str = "None listed"
-            connected_areas_display_str = "" # Initialize as empty
-
-            if location_data: # Ensure location_data is not None
-                # Get connections within the current area
-                if "connectivity" in location_data and location_data["connectivity"]:
-                    connected_ids_current_area = location_data["connectivity"]
-                    connected_names_current_area = []
-                    # Load the current area's full data to get names from IDs
-                    current_area_full_data = load_json_file(path_manager.get_area_path(current_area_id))
-                    if current_area_full_data and "locations" in current_area_full_data:
-                        for loc_id in connected_ids_current_area:
-                            found_loc = next((l["name"] for l in current_area_full_data["locations"] if l["locationId"] == loc_id), loc_id)
-                            connected_names_current_area.append(found_loc)
-                    if connected_names_current_area:
-                         connected_locations_display_str = ", ".join(connected_names_current_area)
-            
-                # Get connections to other areas
-                if "areaConnectivityId" in location_data and location_data["areaConnectivityId"]:
-                    # Use the global location_graph to get info about connected locations
-                    connected_area_details = []
-                    for connected_loc_id in location_data["areaConnectivityId"]:
-                        # Get the full info for the connected location
-                        conn_loc_info = location_graph.get_location_info(connected_loc_id)
-                        if conn_loc_info:
-                            conn_loc_name = conn_loc_info['location_name']
-                            conn_area_name = location_graph.get_area_name_from_location_id(connected_loc_id)
-                            connected_area_details.append(f"{conn_loc_name} (in {conn_area_name})")
-                
-                    if connected_area_details:
-                        connected_areas_display_str = ". Connects to other areas via: " + ", ".join(connected_area_details)
-        
-            # --- INTER-MODULE CONNECTIVITY SECTION ---
-            available_modules_str = ""
-            try:
-                # Load world registry to get all available modules
-                world_registry_path = "modules/world_registry.json"
-                world_registry = safe_read_json(world_registry_path)
-            
-                if world_registry and 'modules' in world_registry:
-                    current_module = party_tracker_data.get('module', '').replace(' ', '_')
-                    all_modules = list(world_registry['modules'].keys())
-                    other_modules = [m for m in all_modules if m != current_module]
-                
-                    if other_modules:
-                        # Get areas from other modules
-                        other_module_areas = []
-                        for module_name in other_modules:
-                            module_info = world_registry['modules'][module_name]
-                            # Get the areas for this module from the areas section
-                            module_areas = []
-                            for area_id, area_info in world_registry.get('areas', {}).items():
-                                if area_info.get('module') == module_name:
-                                    area_name = area_info.get('areaName', area_id)
-                                    module_areas.append(f"{area_name} ({area_id})")
-                        
-                            if module_areas:
-                                level_range = module_info.get('levelRange', {})
-                                level_str = f"Level {level_range.get('min', '?')}-{level_range.get('max', '?')}"
-                            
-                                # Get starting location for this module
-                                try:
-                                    start_location_id, start_location_name, start_area_id, start_area_name = action_handler.get_module_starting_location(module_name)
-                                    starting_info = f" (Starting location: {start_location_name} [{start_location_id}] in {start_area_name} [{start_area_id}])"
-                                except Exception as e:
-                                    print(f"Warning: Could not get starting location for {module_name}: {e}")
-                                    starting_info = ""
-                            
-                                module_description = f"{module_name} [{level_str}]: {', '.join(module_areas)}{starting_info}"
-                                other_module_areas.append(module_description)
-                    
-                        if other_module_areas:
-                            available_modules_str = ". Available modules for travel: " + "; ".join(other_module_areas)
-            except Exception as e:
-                error(f"FAILURE: Failed to load inter-module connectivity", exception=e, category="module_management")
-            # --- END OF INTER-MODULE CONNECTIVITY SECTION ---
-            # --- END OF CONNECTIVITY SECTION ---
+            # C3: adjacency and other modules are told once, by the atlas and
+            # INSTALLED MODULE REFERENCES; the note no longer repeats them.
         
             # Use current module from party tracker for plot data
             current_module_for_plot = party_tracker_data.get("module", "").replace(" ", "_")
@@ -9385,73 +9284,18 @@ def _main_game_loop(startup_authority, turn_authority):
                 debug(f"FILE_OP: Plot data keys: {list(plot_data_for_note.keys())}", category="module_management")
             else:
                 debug("FILE_OP: No plot data loaded - plot_data_for_note is None", category="module_management") 
-            current_plot_points = []
-            all_active_plot_points = []
+            # C3: the plot status block owns every quest fact; the note names
+            # only the ids of the open points whose location is this area.
+            plot_here_ids = []
             if plot_data_for_note and "plotPoints" in plot_data_for_note:
-                # Get plot points for current location
-                current_plot_points = [
-                    point for point in plot_data_for_note["plotPoints"]
-                    if point.get("location") == current_area_id and not quest_record.is_closed(point)
+                plot_here_ids = [
+                    point["id"] for point in plot_data_for_note["plotPoints"]
+                    if isinstance(point, dict) and point.get("location") == current_area_id
+                    and not quest_record.is_closed(point) and point.get("id")
                 ]
-                # Get ALL active plot points in the module
-                all_active_plot_points = [
-                    point for point in plot_data_for_note["plotPoints"]
-                    if not quest_record.is_closed(point)
-                ]
-        
-            # Format plot points - show current location plots first, then other active plots
-            plot_points_parts = []
-            if current_plot_points:
-                plot_points_parts.append("At this location:")
-                plot_points_parts.extend([f"- {point['id']}: {point['title']} [{point.get('status', 'active')}]{_requires_note(point)}" for point in current_plot_points])
-        
-            # Add other active plots from different locations
-            other_plots = [p for p in all_active_plot_points if p not in current_plot_points]
-            if other_plots:
-                if plot_points_parts:  # Add separator if we have location plots
-                    plot_points_parts.append("\nActive elsewhere in module:")
-                plot_points_parts.extend([f"- {point['id']}: {point['title']} [{point.get('status', 'active')}]{_requires_note(point)} @{point.get('location', 'Unknown')}" for point in other_plots])
-        
-            plot_points_str = "\n".join(plot_points_parts) if plot_points_parts else "None active"
-        
-            side_quests = []
-            # Get ALL side quests from ALL plot points (not just current location)
-            for point in plot_data_for_note.get("plotPoints", []):
-                for quest in point.get("sideQuests", []):
-                    if not quest_record.is_closed(quest):
-                        location_info = f" [Location: {point.get('location', 'Unknown')}]" if point.get('location') != current_area_id else ""
-                        side_quests.append(f"- {quest['id']}: {quest['title']} [{quest['status']}]{location_info}")
-            side_quests_str = "\n".join(side_quests) if side_quests else "None active"
+            plot_here_str = ", ".join(plot_here_ids) if plot_here_ids else "none"
 
-            traps_str = "None listed"
-            if location_data and "traps" in location_data: 
-                traps = location_data.get("traps", [])
-                if traps:
-                    traps_str = "\n".join([
-                        f"- {trap.get('name', 'Unknown Trap')}: {trap.get('description', 'No description')} (Detect DC: {trap.get('detectDC', 'N/A')}, Disable DC: {trap.get('disableDC', 'N/A')}, Trigger DC: {trap.get('triggerDC', 'N/A')}, Damage: {trap.get('damage', 'N/A')})"
-                        for trap in traps
-                    ])
-
-            # P4-f: the monsters here are the engine's present hostile
-            # occupants; the authored list is never read for state.
-            monsters_str = "None recorded"
-            try:
-                from core.nql import occupants as _occupants
-
-                _here = _occupants.place_roster(
-                    party_tracker_data.get("module", ""),
-                    party_tracker_data["worldConditions"]["currentLocationId"],
-                )
-            except Exception:
-                _here = None
-            if _here is None:
-                monsters_str = "Roster unavailable this turn"
-            elif _here["hostiles"]:
-                monsters_str = "\n".join(
-                    "- %s (%s)" % (o.get("name"), o.get("count"))
-                    for o in _here["present"]
-                    if o.get("kind") == "creatures" and o.get("attitude") == "hostile"
-                )
+            # C3: traps and hostile occupants are told once, by the Current Location block.
 
             # Check ALL modules for plot completion before suggesting module creation
             module_creation_prompt = ""
@@ -9530,63 +9374,23 @@ def _main_game_loop(startup_authority, turn_authority):
                 party_npcs_formatted.append(f"{npc['name']} ({npc['role']})") 
             party_npcs_str = ", ".join(party_npcs_formatted) if party_npcs_formatted else "None"
         
-            # Get established hubs information
-            established_hubs_str = ""
-            try:
-                from core.managers.campaign_manager import CampaignManager, format_campaign_hubs
-                campaign_manager = CampaignManager()
-                hub_context = format_campaign_hubs(campaign_manager.campaign_data.get('hubs', {}))
-                if hub_context:
-                    established_hubs_str = " " + hub_context
-            except Exception as e:
-                debug(f"Could not load hub information: {e}", category="dm_note")
+            # C3: hubs are told once, by WORLD STATE CONTEXT.
 
             # Build DM note - exclude plot/quest info when module creation is active
-            if should_inject_creation_prompt:
-                # Simplified DM note for module creation - no confusing plot/quest info
-                dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
-                    f"Current module: {current_module_name}. "
-                    f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
-                    f"Party members: {party_members_str}. "
-                    f"Party NPCs: {party_npcs_str}. "
-                    f"Party stats: {party_stats_str}. "
-                    f"Adjacent locations in this area: {connected_locations_display_str}{connected_areas_display_str}{available_modules_str}{established_hubs_str}.\n")
-            else:
-                # Normal DM note with all plot/quest/monster info
-                dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
-                    f"Current module: {current_module_name}. "
-                    f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
-                    f"Party members: {party_members_str}. "
-                    f"Party NPCs: {party_npcs_str}. "
-                    f"Party stats: {party_stats_str}. "
-                    # --- MODIFIED LINE TO INCLUDE CONNECTIVITY ---
-                    f"Adjacent locations in this area: {connected_locations_display_str}{connected_areas_display_str}{available_modules_str}{established_hubs_str}.\n"
-                    # --- END OF MODIFIED LINE ---
-                    f"Active plot points for this location:\n{plot_points_str}\n"
-                    f"Active side quests for this location:\n{side_quests_str}\n"
-                    f"Monsters in this location:\n{monsters_str}\n"
-                    f"Traps in this location:\n{traps_str}\n"
-                    "Monsters should be active threats per engagement rules. ")
-        
-            # Add common instructions
-            dm_note += (
-                "updateCharacterInfo for player and NPC character changes (inventory, stats, abilities), "
-                "removeEffect only to deliberately end or dispel an active effect (durations expire automatically), "
-                "updateTime for time passage, "
-                "updatePlot when the story starts, advances, completes or fails a quest, by its id, "
-                "updatePartyNPCs for party composition changes to the party tracker, "
-                "levelUp for advancement, "
-                "establishHub when the party gains ownership or control of a location that could serve as a base of operations (stronghold, tavern, keep, etc.) - example: establishHub('The Silver Swan Inn', {hubType: 'tavern', description: 'Our permanent base of operations', services: ['rest', 'information'], ownership: 'party'}), "
-                "exitGame for ending sessions, and "
-                "transitionLocation moves the party for actual party travel within the module, including multi-area travel under accepted route facts; companion scouting stays within the current location, and unsupported remote scouting must not be converted into dismissal or party travel; genuine leaving and rejoining use the existing party membership actions, "
-                "rollCheck for every skill check, ability check or saving throw outside combat: the engine scores it; the player's own dice are collected by the game before your next turn and every result appears under CHECK RESULTS. "
-                "Proactively narrate location NPCs, start conversations, and weave plot elements into the adventure. "
-                "Use party NPCs to narrate if possible instead of always narrating from the DM's perspective, but don't overdo it. "
-                "Maintain immersive and engaging storytelling similar to an adventure novel while accurately managing game mechanics. "
-                "Update all relevant information immediately and confirm with the player before major actions. "
-                "Consider whether the party's action trigger traps in this location. "
-                "When the party's actions change where a quest stands, record it with updatePlot in the same response."
-                f"{module_creation_prompt}")
+            # C3: one mention per fact. The note carries this turn's state only:
+            # time, place, party and stats. Adjacency, other modules and hubs
+            # are in the atlas, INSTALLED MODULE REFERENCES and WORLD STATE
+            # CONTEXT; traps and occupants in Current Location; quest facts in
+            # ADVENTURE PLOT STATUS. The fixed per-turn instructions live in the
+            # system prompt (D4), sent once instead of once per turn.
+            dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
+                f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
+                f"Party members: {party_members_str}. "
+                f"Party NPCs: {party_npcs_str}. "
+                f"Party stats: {party_stats_str}.")
+            if not should_inject_creation_prompt:
+                dm_note += f" Open plot points located in this area: {plot_here_str} (see ADVENTURE PLOT STATUS)."
+            dm_note += f"{module_creation_prompt}"
         else:
             dm_note = "Dungeon Master Note: Remember to take actions if necessary such as updating the plot, time, character sheets, and location if changes occur."
 

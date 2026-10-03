@@ -13,6 +13,21 @@ from pathlib import Path
 from utils.path_encounter_analyzer import build_active_module_snapshot, _id_list, _read_json_object
 
 
+def _module_reference_facts(entry) -> str:
+    """\" [Level a-b]; starting location: name [id] in area [id]\" from the registry entry, or \"\"."""
+    if not isinstance(entry, dict):
+        return ""
+    out = ""
+    level = entry.get("levelRange")
+    if isinstance(level, dict) and (level.get("min") is not None or level.get("max") is not None):
+        out += f" [Level {level.get('min', '?')}-{level.get('max', '?')}]"
+    start = entry.get("startingLocation")
+    if isinstance(start, dict) and start.get("locationId") and start.get("areaId"):
+        out += (f"; starting location: {start.get('locationName', 'Unknown Location')} [{start['locationId']}]"
+                f" in {start.get('areaName', 'Unknown Area')} [{start['areaId']}]")
+    return out
+
+
 def format_installed_module_references(current_module: str, modules_root: str = "modules") -> str:
     """Share foreign identities with T067 and T065 without pooling route graphs (#307 A2)."""
     lines = [
@@ -32,12 +47,15 @@ def format_installed_module_references(current_module: str, modules_root: str = 
     for module in sorted(modules):
         if module.replace(" ", "_") == current_module.replace(" ", "_"):
             continue
+        # C3: the level range and the recorded starting location are told here
+        # once (the DM Note used to carry them); registry facts only, no lookup.
+        facts = _module_reference_facts(modules.get(module))
         try:
             snapshot = build_active_module_snapshot(module, modules_root)
         except (OSError, ValueError, TypeError) as exc:
-            lines.append(f"Module: {module}; SOURCE READ unavailable ({type(exc).__name__}); target lookup still required.")
+            lines.append(f"Module: {module}{facts}; SOURCE READ unavailable ({type(exc).__name__}); target lookup still required.")
             continue
-        lines.append(f"Module: {snapshot['module_name']}")
+        lines.append(f"Module: {snapshot['module_name']}{facts}")
         for kind, records in (
             ("LIVE SOURCE LABELS", snapshot["source_records"]),
             ("PRISTINE REFERENCE ONLY, NOT LIVE", snapshot["reference_records"]),
@@ -203,7 +221,23 @@ def build_atlas_for_module(
     
     return atlas
 
-def format_atlas_for_conversation(atlas: Dict[str, Any]) -> str:
+def _current_location_id() -> Optional[str]:
+    """The party's current location id from party_tracker.json, or None."""
+    try:
+        from utils.encoding_utils import safe_json_load
+        tracker = safe_json_load("party_tracker.json") or {}
+        value = (tracker.get("worldConditions") or {}).get("currentLocationId")
+        return value if isinstance(value, str) and value else None
+    except Exception:
+        return None
+
+
+def format_atlas_for_conversation(atlas: Dict[str, Any], current_location_id: Optional[str] = None) -> str:
+    # C3: the place the party stands in is marked HERE; its traps and hostiles
+    # are told once, by the Current Location block, so their markers are
+    # kept for other places only.
+    if current_location_id is None:
+        current_location_id = _current_location_id()
     """Format atlas into a complete world map for conversation context"""
     lines = []
     lines.append("=== COMPLETE MODULE WORLD ATLAS ===")
@@ -231,11 +265,14 @@ def format_atlas_for_conversation(atlas: Dict[str, Any]) -> str:
                 
                 # Add special markers
                 markers = []
+                here = loc_id == current_location_id
+                if here:
+                    markers.append("HERE")
                 if loc_data.get("npcs"):
                     markers.append(f"NPCs: {', '.join(loc_data['npcs'])}")
-                if loc_data.get("hasTraps"):
+                if loc_data.get("hasTraps") and not here:
                     markers.append("TRAPPED")
-                if loc_data.get("hasMonsters"):
+                if loc_data.get("hasMonsters") and not here:
                     markers.append("MONSTERS")
                 if loc_data.get("hasTreasure"):
                     markers.append("TREASURE")
