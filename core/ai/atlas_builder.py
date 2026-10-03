@@ -7,7 +7,9 @@ Atlas Builder - Assembles all area files into a complete world atlas for AI navi
 Production version that uses area files (not map files) for complete connectivity
 """
 
-from typing import Optional, Dict, Any
+import copy
+import os
+from typing import Optional, Dict, Any, Tuple
 from pathlib import Path
 
 from utils.path_encounter_analyzer import build_active_module_snapshot, _id_list, _read_json_object
@@ -102,15 +104,17 @@ def extract_location_info(location: Dict[str, Any], roster: Optional[Dict[str, A
     }
 
 def build_atlas_for_module(
-    module_name: str, modules_root: str = "modules", *, snapshot=None,
+    module_name: str, modules_root: str = "modules", *, snapshot=None, module_roster=None,
 ) -> Dict[str, Any]:
     """Render the same detached source records used by travel preflight (#303)."""
-    # P4-f: one engine view for the whole module; None while unavailable.
-    try:
-        from core.nql import occupants as _occupants
-        module_roster = _occupants.module_roster(module_name)
-    except Exception:
-        module_roster = None
+    # P4-f: one engine view for the whole module; None while unavailable. A
+    # caller that already holds the roster (the C4 cache key) passes it in.
+    if module_roster is None:
+        try:
+            from core.nql import occupants as _occupants
+            module_roster = _occupants.module_roster(module_name)
+        except Exception:
+            module_roster = None
     if snapshot is None:
         snapshot = build_active_module_snapshot(module_name, modules_root)
     if snapshot["module_name"] != module_name.replace(" ", "_"):
@@ -220,6 +224,95 @@ def build_atlas_for_module(
             atlas["statistics"]["total_connections"] += len(location.get("connectivity", []))
     
     return atlas
+
+
+# C4: the atlas is built once per (module, engine revision, area-file stamps)
+# and reused across the rebuild, the attempt and the review request. The
+# engine revision is represented by the module roster the engine returns at
+# the live_state revision (occupants caches it per document stamp) and is
+# compared by value; the area files by (name, mtime_ns, size). A build that
+# saw a read error, or ran without the engine roster, is never cached.
+_ATLAS_CACHE: Dict[Tuple[str, str], Tuple[Any, Any, Dict[str, Any]]] = {}
+_ATLAS_BUILD_COUNTS = {"built": 0, "reused": 0}
+
+
+def _area_file_stamps(module_name: str, modules_root: str):
+    """((dir, name, mtime_ns, size), ...) over every JSON file the snapshot
+    may read (areas/ and the module root), or None when a stat fails."""
+    module_dir = Path(modules_root) / module_name.replace(" ", "_")
+    stamps = []
+    for directory in (module_dir / "areas", module_dir):
+        try:
+            with os.scandir(directory) as it:
+                entries = sorted(it, key=lambda e: e.name)
+                for entry in entries:
+                    if not entry.name.endswith(".json") or not entry.is_file():
+                        continue
+                    st = entry.stat()
+                    stamps.append((directory.name, entry.name, st.st_mtime_ns, st.st_size))
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+    return tuple(stamps)
+
+
+def atlas_cache_stamps(module_name: str, modules_root: str = "modules"):
+    """The area-file stamps a caller takes BEFORE reading its own snapshot,
+    so the cache entry built from that snapshot is never newer than its
+    content (a file changed after the read misses on the next call)."""
+    return _area_file_stamps(str(module_name or "").replace(" ", "_"), modules_root)
+
+
+def cached_atlas_for_module(module_name: str, modules_root: str = "modules", *,
+                            snapshot=None, stamps=None) -> Dict[str, Any]:
+    """The atlas dict for the module, built once per (module, engine
+    revision, area-file stamps). Same value as build_atlas_for_module.
+
+    A caller holding a busy-checked travel snapshot (the attempt and the
+    review request, #303) passes it with the stamps it took before reading
+    it: a miss then renders that snapshot (the same records as travel
+    preflight, no second read) and caches it only when the stamps were taken
+    before the read. Without a snapshot the function reads once itself."""
+    module = str(module_name or "").replace(" ", "_")
+    key = (os.path.abspath(modules_root), module)
+    if snapshot is None:
+        stamps = _area_file_stamps(module, modules_root)
+    try:
+        from core.nql import occupants as _occupants
+        roster = _occupants.module_roster(module)
+    except Exception:
+        roster = None
+    hit = _ATLAS_CACHE.get(key)
+    if (hit is not None and stamps is not None and roster is not None
+            and hit[0] == stamps and hit[1] == roster):
+        _ATLAS_BUILD_COUNTS["reused"] += 1
+        return copy.deepcopy(hit[2])
+    atlas = build_atlas_for_module(module, modules_root, snapshot=snapshot, module_roster=roster)
+    _ATLAS_BUILD_COUNTS["built"] += 1
+    if stamps is not None and roster is not None and not atlas.get("read_errors"):
+        _ATLAS_CACHE[key] = (stamps, copy.deepcopy(roster), copy.deepcopy(atlas))
+    try:
+        from utils.enhanced_logger import debug
+        debug("ATLAS: built for %s (built=%d reused=%d)" % (
+            module, _ATLAS_BUILD_COUNTS["built"], _ATLAS_BUILD_COUNTS["reused"]),
+            category="module_management")
+    except Exception:
+        pass
+    return atlas
+
+
+def atlas_build_counts() -> Dict[str, int]:
+    """Process-wide {built, reused} counts, for the capture metadata."""
+    return dict(_ATLAS_BUILD_COUNTS)
+
+
+def build_atlas_text(module_name: str, current_location_id: Optional[str] = None,
+                     modules_root: str = "modules") -> str:
+    """The atlas block as sent to the DM, from the cached atlas."""
+    return format_atlas_for_conversation(
+        cached_atlas_for_module(module_name, modules_root), current_location_id)
+
 
 def _current_location_id() -> Optional[str]:
     """The party's current location id from party_tracker.json, or None."""

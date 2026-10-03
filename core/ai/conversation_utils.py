@@ -84,7 +84,7 @@ from utils.encoding_utils import safe_json_load
 from utils.character_sheet_contract import normalize_for_runtime
 from utils.plot_formatting import format_plot_for_ai
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
-from core.ai.atlas_builder import build_atlas_for_module, format_atlas_for_conversation
+from core.ai.atlas_builder import cached_atlas_for_module, format_atlas_for_conversation
 from core.combat.down_scene import (
     DOWN_RULES_MARKER,
     from_sheets as down_scene_rules_from_sheets,
@@ -936,7 +936,7 @@ def update_conversation_history(
     current_module_name = party_tracker_data.get("module", "").replace(" ", "_") if party_tracker_data else None
     if current_module_name:
         try:
-            atlas = build_atlas_for_module(current_module_name)
+            atlas = cached_atlas_for_module(current_module_name)
             if atlas:
                 atlas_message = format_atlas_for_conversation(atlas)
                 new_history.append({"role": "system", "content": atlas_message})
