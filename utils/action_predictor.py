@@ -58,6 +58,7 @@ RETURN TRUE if input requires any of these JSON actions:
 - levelUp: character advancement
 - exitGame: ending session
 - storageInteraction: item storage/retrieval
+- acquireItem: buying or receiving standard gear from a shop or merchant
 - updatePartyTracker: module travel
 - updatePartyNPCs: NPCs joining/leaving the party (recruitment requests, asking for help/backup, NPCs volunteering, dismissing companions)
 

@@ -70,6 +70,13 @@ def _matching_stack(receiver: Dict[str, Any], ids: Dict[int, str], entry: Dict[s
             continue
         if other.get("equipped") is True or other.get("effects"):
             continue
+        if isinstance(entry.get("catalog_id"), str) and entry.get("catalog_id"):
+            # SA: a catalog row stacks with another row of the same catalog type.
+            if other.get("catalog_id") == entry["catalog_id"]:
+                return ids[index]
+            continue
+        if other.get("catalog_id"):
+            continue
         if all(_identity_value(other, k) == _identity_value(entry, k) for k in _STACK_IDENTITY):
             return ids[index]
     return None
