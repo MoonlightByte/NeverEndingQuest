@@ -151,24 +151,18 @@ def build_npc_validation_context(current_module: str, current_location: str, par
     lines = []
     lines.append("@NPC_VALIDATION_DATA")
     
-    # NPCs at current location
-    current_loc_npcs = []
-    if current_module in all_modules and current_location in all_modules[current_module]:
-        current_loc_npcs = sorted(all_modules[current_module][current_location])
-    lines.append(f"@CURRENT_LOC[{current_location}]: {','.join(current_loc_npcs) if current_loc_npcs else 'NONE'}")
-    
-    # NPCs in current module
+    # C2: NPCs at the current location are told once, by the canonical location
+    # records (the rules engine's occupants); party NPCs by the character records.
+
+    # NPCs elsewhere in the current module (C2: the ones at the current
+    # location are told once, by the canonical location record's occupants)
     module_npcs = set()
     if current_module in all_modules:
-        for loc_npcs in all_modules[current_module].values():
-            module_npcs.update(loc_npcs)
-    lines.append(f"@CURRENT_MODULE[{current_module}]: {','.join(sorted(module_npcs)[:50]) if module_npcs else 'NONE'}")
-    
-    # Party NPCs
-    if party_npcs:
-        lines.append(f"@PARTY_NPCS: {','.join(party_npcs)}")
-    else:
-        lines.append("@PARTY_NPCS: NONE")
+        for loc_id, loc_npcs in all_modules[current_module].items():
+            if loc_id != current_location:
+                module_npcs.update(loc_npcs)
+        module_npcs -= set(all_modules[current_module].get(current_location) or [])
+    lines.append(f"@CURRENT_MODULE_ELSEWHERE[{current_module}]: {','.join(sorted(module_npcs)[:50]) if module_npcs else 'NONE'}")
     
     # All NPCs from other modules (compressed list)
     other_npcs = set()

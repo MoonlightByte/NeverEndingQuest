@@ -22,6 +22,19 @@ def _sq_lines(point, status, label):
     return out
 
 
+def _at(point):
+    """The area a plot point is located in, as " @<id>" (C3: told here only)."""
+    location = point.get('location') if isinstance(point, dict) else None
+    return f" @{location}" if location else ""
+
+
+def _requires(point, titles):
+    if point.get('open'):
+        return "  - Still requires: " + ", ".join(
+            f"{x} ({titles.get(x, 'Unknown')})" for x in point['open']) + "\n"
+    return ""
+
+
 def format_plot_for_ai(plot_data):
     """
     Format plot data into readable text for AI DM
@@ -62,7 +75,7 @@ def format_plot_for_ai(plot_data):
 
     # Completed plot points
     for point in completed_points:
-        output += f"[COMPLETED]: {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')})\n"
+        output += f"[COMPLETED]: {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')}){_at(point)}\n"
         output += f"  - {point.get('description', 'No description')}\n"
         if point.get('plotImpact'):
             output += f"  - Impact: {point['plotImpact']}\n"
@@ -75,7 +88,7 @@ def format_plot_for_ai(plot_data):
 
     # Failed plot points
     for point in failed_points:
-        output += f"[FAILED]: {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')})\n"
+        output += f"[FAILED]: {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')}){_at(point)}\n"
         output += f"  - {point.get('description', 'No description')}\n"
         if point.get('plotImpact'):
             output += f"  - Outcome: {point['plotImpact']}\n"
@@ -84,7 +97,7 @@ def format_plot_for_ai(plot_data):
     # Active plot points
     # Bypassed plot points: the party finished later work by another route
     for point in bypassed_points:
-        output += f"[BYPASSED]: {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')})\n"
+        output += f"[BYPASSED]: {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')}){_at(point)}\n"
         output += f"  - {point.get('description', 'No description')}\n"
         output += "  - Bypassed by: " + ", ".join(
             f"{x} ({titles.get(x, 'Unknown')})" for x in point.get('bypassedBy') or []) + "\n"
@@ -92,23 +105,26 @@ def format_plot_for_ai(plot_data):
         output += "\n"
 
     for point in active_points:
-        output += f"[ACTIVE]: {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')})\n"
+        output += f"[ACTIVE]: {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')}){_at(point)}\n"
         output += f"  - {point.get('description', 'No description')}\n"
         if point.get('plotImpact'):
             output += f"  - Current situation: {point['plotImpact']}\n"
-        if point.get('open'):
-            output += "  - Still requires: " + ", ".join(
-                f"{x} ({titles.get(x, 'Unknown')})" for x in point['open']) + "\n"
+        output += _requires(point, titles)
         output += _sq_lines(point, 'in progress', "Side quests in progress")
+        output += _sq_lines(point, 'not started', "Side quests not started")
         output += _sq_lines(point, 'completed', "Side quests completed")
         output += _sq_lines(point, 'failed', "Side quests failed")
         output += "\n"
 
-    # Upcoming objectives
+    # Upcoming objectives (C3: with their area, open requirements and side
+    # quests, so the DM Note need not repeat them)
     if upcoming_points:
         output += "UPCOMING OBJECTIVES:\n"
         for point in upcoming_points:
-            output += f"- {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')}): {point.get('description', 'No description')}\n"
+            output += f"- {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')}){_at(point)}: {point.get('description', 'No description')}\n"
+            output += _requires(point, titles)
+            output += _sq_lines(point, 'in progress', "Side quests in progress")
+            output += _sq_lines(point, 'not started', "Side quests not started")
         output += "\n"
 
     return output

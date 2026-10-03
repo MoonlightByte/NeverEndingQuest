@@ -877,15 +877,11 @@ def update_conversation_history(
             # Fallback to parameter if file reading fails
             current_module = party_tracker_data.get('module', 'Unknown') if party_tracker_data else 'Unknown'
         
-        world_state_parts = []
-        if available_modules:
-            other_modules = [m for m in available_modules if m != current_module]
-            if other_modules:
-                world_state_parts.append(f"Available modules for travel: {', '.join(other_modules)}")
-                world_state_parts.append(f"To travel to another module, use: 'I travel to [module name]' or similar explicit phrasing")
-            world_state_parts.append(f"Current module: {current_module}")
-        else:
-            world_state_parts.append(f"Current module: {current_module} (no other modules detected)")
+        # C3: other modules are listed once, under INSTALLED MODULE REFERENCES.
+        world_state_parts = [f"Current module: {current_module}"]
+        if available_modules and [m for m in available_modules if m != current_module]:
+            world_state_parts.append("Other installed modules are listed under INSTALLED MODULE REFERENCES; "
+                                     "to travel to one, use: 'I travel to [module name]' or similar explicit phrasing")
             
         hub_context = format_campaign_hubs(campaign_manager.campaign_data.get('hubs', {}))
         if hub_context:
@@ -997,8 +993,10 @@ def update_conversation_history(
 
     # Insert the most recent location information
     if current_location:
-        # Create a filtered copy for conversation history, omitting adventureSummary to reduce tokens
-        location_for_conversation = {k: v for k, v in current_location.items() if k != 'adventureSummary'}
+        # Create a filtered copy for conversation history, omitting adventureSummary to reduce tokens.
+        # C3: adjacency is told once, by the atlas; the connectivity fields are omitted here.
+        location_for_conversation = {k: v for k, v in current_location.items()
+                                     if k not in ('adventureSummary', 'connectivity', 'areaConnectivity', 'areaConnectivityId')}
         # The engine's record of what became of each group here replaces the
         # per-fight encounter entries (the adventure summary keeps the story).
         # Absent only while the engine or its document is unavailable.

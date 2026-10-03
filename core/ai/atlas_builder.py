@@ -203,7 +203,23 @@ def build_atlas_for_module(
     
     return atlas
 
-def format_atlas_for_conversation(atlas: Dict[str, Any]) -> str:
+def _current_location_id() -> Optional[str]:
+    """The party's current location id from party_tracker.json, or None."""
+    try:
+        from utils.encoding_utils import safe_json_load
+        tracker = safe_json_load("party_tracker.json") or {}
+        value = (tracker.get("worldConditions") or {}).get("currentLocationId")
+        return value if isinstance(value, str) and value else None
+    except Exception:
+        return None
+
+
+def format_atlas_for_conversation(atlas: Dict[str, Any], current_location_id: Optional[str] = None) -> str:
+    # C3: the place the party stands in is marked HERE; its traps and hostiles
+    # are told once, by the Current Location block, so their markers are
+    # kept for other places only.
+    if current_location_id is None:
+        current_location_id = _current_location_id()
     """Format atlas into a complete world map for conversation context"""
     lines = []
     lines.append("=== COMPLETE MODULE WORLD ATLAS ===")
@@ -231,11 +247,14 @@ def format_atlas_for_conversation(atlas: Dict[str, Any]) -> str:
                 
                 # Add special markers
                 markers = []
+                here = loc_id == current_location_id
+                if here:
+                    markers.append("HERE")
                 if loc_data.get("npcs"):
                     markers.append(f"NPCs: {', '.join(loc_data['npcs'])}")
-                if loc_data.get("hasTraps"):
+                if loc_data.get("hasTraps") and not here:
                     markers.append("TRAPPED")
-                if loc_data.get("hasMonsters"):
+                if loc_data.get("hasMonsters") and not here:
                     markers.append("MONSTERS")
                 if loc_data.get("hasTreasure"):
                     markers.append("TREASURE")
