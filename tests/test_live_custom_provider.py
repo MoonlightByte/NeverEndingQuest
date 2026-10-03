@@ -4,16 +4,85 @@ The fake HTTP transport speaks SSE/JSON; socket connections are forbidden. No
 credentials, keyring contents or live game files are read. Both the parent and
 its real provider child run from a temporary copy of the public Python sources.
 """
+import importlib.util
 import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
+import time
 
 import pytest
 
 ROOT = Path(os.environ.get("NEQ_PROVIDER_TEST_ROOT", Path(__file__).resolve().parents[1]))
+
+
+def _run_fixture_worker(command, *, cwd, env, timeout=25):
+    """Contain this fixture's descendants, including on timeout/Ctrl-C.
+
+    subprocess.run(timeout=...) only kills the direct worker. Its provider
+    child can survive and retain the captured pipes. Never search for or kill
+    unrelated Python processes: the group/tree here belongs to this Popen.
+    """
+    process = subprocess.Popen(
+        command, cwd=cwd, env=env, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, start_new_session=os.name == 'posix',
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    finally:
+        if os.name == 'posix':
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+            # Also covers an exited worker with a surviving provider child.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        elif process.poll() is None:
+            # The root is still our owned Popen; /T includes its descendants.
+            try:
+                subprocess.run(
+                    ['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                    capture_output=True, timeout=5, check=False,
+                )
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=5)
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+        for pipe in (process.stdout, process.stderr):
+            pipe.close()
+
+
+@pytest.fixture(scope='session')
+def installed_openai_sdk(tmp_path_factory):
+    """Stage the installed SDK unchanged, outside the per-case deadline.
+
+    OpenAI 3.x imports over a thousand small files. On WSL /mnt/c, parent +
+    fresh-child imports alone can exceed 25 seconds. A session-local copy on
+    pytest's temp filesystem removes that I/O assumption without extending
+    deadlines, changing SDK versions or bypassing real child/SDK execution.
+    """
+    spec = importlib.util.find_spec('openai')
+    assert spec and spec.submodule_search_locations, 'Install the OpenAI SDK to run these tests'
+    destination = tmp_path_factory.mktemp('installed-openai-sdk')
+    shutil.copytree(
+        next(iter(spec.submodule_search_locations)), destination / 'openai',
+        ignore=shutil.ignore_patterns('__pycache__', '*.pyc'),
+    )
+    return destination
 
 SITE_CUSTOMIZE = r'''
 import json, socket, httpx
@@ -190,7 +259,7 @@ Path('result.json').write_text(json.dumps(result))
 
 
 @pytest.fixture
-def run_case(tmp_path):
+def run_case(tmp_path, installed_openai_sdk):
     for name in ('core', 'utils'):
         shutil.copytree(ROOT / name, tmp_path / name,
                         ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
@@ -219,10 +288,11 @@ def run_case(tmp_path):
         # proxy credentials, cloud project selection or SDK configuration.
         env={key:value for key,value in os.environ.items() if key.upper() in
              {'PATH','SYSTEMROOT','WINDIR','LANG','LC_ALL','TEMP','TMP','TMPDIR','LD_LIBRARY_PATH'}}
-        env.update(PYTHONPATH=str(tmp_path),PYTHONDONTWRITEBYTECODE='1',PYTHONNOUSERSITE='1',
+        env.update(PYTHONPATH=os.pathsep.join((str(tmp_path), str(installed_openai_sdk))),
+                   PYTHONDONTWRITEBYTECODE='1',PYTHONNOUSERSITE='1',
                    NEQ_MULTI_MODEL_CAPTURE='0',NEQ_MODEL_EVAL_PRIMARY='')
-        proc=subprocess.run([sys.executable,str(tmp_path/'worker.py')],cwd=tmp_path,
-                            env=env,capture_output=True,text=True,timeout=25)
+        proc=_run_fixture_worker([sys.executable,str(tmp_path/'worker.py')],
+                                 cwd=tmp_path,env=env,timeout=25)
         assert proc.returncode==0, proc.stderr
         assert 'fixture-token' not in proc.stdout + proc.stderr
         for request in [json.loads(line) for line in (tmp_path/'http-requests.jsonl').read_text().splitlines()] if (tmp_path/'http-requests.jsonl').exists() else []:
@@ -235,6 +305,50 @@ def run_case(tmp_path):
         assert result['global_scope_untouched']
         return result
     return run
+
+
+@pytest.mark.skipif(sys.platform != 'linux', reason='Uses /proc to verify descendant exit')
+@pytest.mark.parametrize('failure', ['timeout', 'interrupt'])
+def test_fixture_failure_stops_owned_descendants(tmp_path, monkeypatch, failure):
+    child = tmp_path / 'fixture-child.py'
+    child.write_text('import time\ntime.sleep(120)\n')
+    worker = tmp_path / 'fixture-worker.py'
+    worker.write_text(
+        "import json,os,subprocess,sys,time\nfrom pathlib import Path\n"
+        "p=subprocess.Popen([sys.executable,'fixture-child.py'])\n"
+        "Path('owned.json').write_text(json.dumps([os.getpid(),p.pid]))\n"
+        "try: time.sleep(120)\n"
+        "finally: p.kill(); p.wait()\n"
+    )
+    original_communicate = subprocess.Popen.communicate
+
+    def wait_for_owned_children(process, timeout):
+        deadline = time.monotonic() + 10
+        while not (tmp_path / 'owned.json').exists():
+            assert time.monotonic() < deadline, 'Fixture worker did not start'
+            time.sleep(0.01)
+        if failure == 'interrupt':
+            raise KeyboardInterrupt
+        return original_communicate(process, timeout=0.05)
+
+    monkeypatch.setattr(subprocess.Popen, 'communicate', wait_for_owned_children)
+    expected = KeyboardInterrupt if failure == 'interrupt' else subprocess.TimeoutExpired
+    with pytest.raises(expected):
+        _run_fixture_worker([sys.executable, str(worker)], cwd=tmp_path, env={}, timeout=25)
+
+    def still_running(pid):
+        try:
+            return Path(f'/proc/{pid}/stat').read_text().split(') ', 1)[1][0] != 'Z'
+        except FileNotFoundError:
+            return False
+
+    for pid in json.loads((tmp_path / 'owned.json').read_text()):
+        # An orphan zombie can briefly await the OS reaper; it cannot execute
+        # or retain pipes. Never signal a PID discovered by scanning /proc.
+        deadline = time.monotonic() + 2
+        while still_running(pid):
+            assert time.monotonic() < deadline, 'Owned fixture descendant survived cleanup'
+            time.sleep(0.01)
 
 
 @pytest.mark.parametrize('task',['T092','T093'])

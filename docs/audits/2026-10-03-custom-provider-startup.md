@@ -36,8 +36,9 @@ including a 90 KB prompt. Therefore these tests prove a missing request snapshot
 and the resulting loops under stated conditions; they do **not** prove which
 condition occurred on the reporter's machine, nor a general inability to reach
 OpenRouter. A lack of inference records alone cannot distinguish pre-connection
-failure, authentication rejection or a stalled child. Child-import/credential
-backend stalls are not reproduced by this fixture.
+failure, authentication rejection or a stalled child. Credential-backend stalls are not reproduced by this fixture. See the
+independent runtime follow-up below for a test deadline/import-latency finding;
+that does not establish the cause of the reporter's startup loop.
 
 ## Repair
 
@@ -59,7 +60,7 @@ credential can still enter the existing outer wizard correction loop.
 
 ## Tests
 
-Final results: **22 passed** (61.87 seconds) with this repair; the identical
+Initial results at `b38907e1`: **22 passed** (61.87 seconds) with this repair; the identical
 suite against public baseline **fails the five cases described above and passes
 17 controls** (76.46 seconds). The existing five secure-provider-settings tests
 also pass in an isolated installation (0.10 seconds).
@@ -89,3 +90,54 @@ transport doubles rather than listening-server/TLS tests. Model responses are
 scripted and no model quality, native Windows keyring behavior, browser UI or
 paid OpenRouter acceptance is claimed. Reporter confirmation remains necessary
 before declaring #557 resolved.
+
+## Independent runtime follow-up
+
+The original 22-case run used Python 3.10.19, pytest 9.0.2, OpenAI 2.36.0 and
+HTTPX 0.28.1. An independent run with Python 3.11.16, pytest 9.1.1, OpenAI 3.11.0
+and HTTPX 0.28.1, installed on WSL's Windows-mounted `/mnt/c`, timed out in the
+T092/T093 stable controls. The deadline was the **test harness's 25 seconds**,
+not a production live-provider timeout. Both independent controls had already
+reached fake HTTP with matching authentication.
+
+The T092 timeout reproduced using that exact interpreter and committed test.
+Bounded `faulthandler` traces then showed the parent and real child still
+importing OpenAI types/resources from `/mnt/c`, including lazy chat resources.
+There was no observed missing dependency or evidence of a transport deadlock.
+Copying only the unchanged installed OpenAI package (1,568 Python files) onto
+`/tmp` made the same interpreter/control finish in **7.58 seconds**, with one
+request, one usage receipt and the child reaped. The deadline remained 25 seconds.
+A subsequent mounted-SDK control again timed out at 25 seconds during resource
+imports. The child reached its endpoint phase at 9.37 seconds with mounted SDK
+imports versus 1.73 seconds with the staged package.
+
+The test fixture now stages that installed package once per pytest session,
+outside the per-case deadline. It keeps the same interpreter, SDK version,
+dependencies, real provider subprocess and SDK response parser. No production
+imports, routing, retries or timeout values changed. Use a Linux-filesystem
+pytest temp directory for WSL runs, e.g. `--basetemp=/tmp/neq-provider-tests`.
+This is a deterministic contract test, not a cold-start performance benchmark.
+
+The old harness also killed only its worker on `TimeoutExpired` and could leave
+the worker's provider child behind. Each fixture now owns a separate POSIX
+process group and terminates that group in `finally`, including interruption;
+the direct worker is waited for and pipes closed. Two Linux regression cases
+exercise timeout and `KeyboardInterrupt` with a real descendant process and
+verify no owned process remains running. Normal successful cases still assert
+the production code reaped its own provider children. The Windows tree-cleanup
+branch has not been exercised; native Windows acceptance remains outstanding.
+
+Historical desktop processes cannot be inspected from the diagnostic tool's
+separate PID namespace. No claim is made that those original processes were
+reaped. All new diagnostic runs used dedicated groups and bounded cleanup.
+
+With SDK staging and the two cleanup cases, the repaired engine passes **24/24**
+in both environments: Python 3.10/OpenAI 2.36.0 in **66.09 seconds**, and the
+exact independent Python 3.11/OpenAI 3.11.0 interpreter in **222.97 seconds**.
+A final cleanup-assertion refinement was also checked separately: **2 passed**.
+
+The revised suite against untouched public `222553b8`, using that same desktop
+interpreter/SDK, reports **5 expected failures and 19 passes in 266.42 seconds**.
+Only the two settings-drift cases and three parent-only credential wizard cases
+fail; there are no harness timeouts. This independently preserves the original
+before/after result with both newer SDKs and the cleanup tests included.
