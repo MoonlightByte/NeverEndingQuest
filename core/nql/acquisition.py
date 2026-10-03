@@ -40,7 +40,7 @@ def find_entry(item_name: Any) -> Tuple[Optional[Dict[str, Any]], str]:
     if len(loose) == 1:
         return loose[0], ""
     near = suggest(wanted, entries)
-    hint = f"; the catalog has {'; '.join(repr(n) for n in near)}" if near else ""
+    hint = f". Catalog items near that name: {'; '.join(near)}. Use the catalog name alone as itemName" if near else ""
     return None, f"{wanted!r} is not an item in the SRD catalog{hint}"
 
 
@@ -60,10 +60,10 @@ def suggest(item_name: str, entries: Optional[List[Dict[str, Any]]] = None, limi
         name = str(e.get("name", ""))
         if any(a.startswith(b) or b.startswith(a) for a in _words(name) for b in words):
             per_lot = (e.get("price") or {}).get("units_per_lot")
-            facts = str(e.get("kind") or "")
+            facts = str(e.get("kind") or "item")
             if type(per_lot) is int and per_lot > 1:
-                facts += f", sold in lots of {per_lot}"
-            out.append(f"{name} ({facts})" if facts else name)
+                facts += f", sold in lots of {per_lot} (quantity {per_lot}, {2 * per_lot}, ...)"
+            out.append(f"{name!r} = {facts}")
     return out[:limit]
 
 
@@ -76,7 +76,8 @@ def lot_cost(entry: Dict[str, Any], quantity: Any) -> Tuple[Optional[int], str]:
         return None, "quantity must be a positive whole number"
     per_lot = price.get("units_per_lot") if type(price.get("units_per_lot")) is int and price["units_per_lot"] > 0 else 1
     if quantity % per_lot:
-        return None, f"{entry.get('name')} is sold in lots of {per_lot}"
+        return None, (f"{entry.get('name')} is sold in lots of {per_lot}: quantity counts single items and must be "
+                      f"{per_lot}, {2 * per_lot}, ... (one lot = quantity {per_lot})")
     unit = COPPER.get(price.get("unit"))
     amount = price.get("amount")
     if unit is None or type(amount) is not int or amount < 0:

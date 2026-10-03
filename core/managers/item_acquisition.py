@@ -97,7 +97,8 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
         cost = stated
         per_lot = (entry.get("price") or {}).get("units_per_lot")
         if type(per_lot) is int and per_lot > 1 and quantity % per_lot:
-            return {"success": False, "error": f"{entry['name']} is sold in lots of {per_lot}"}
+            return {"success": False, "error": (f"{entry['name']} is sold in lots of {per_lot}: quantity counts single items "
+                                                f"and must be {per_lot}, {2 * per_lot}, ... (one lot = quantity {per_lot})")}
 
     party = party_tracker or safe_json_load("party_tracker.json") or {}
     location = str((party.get("worldConditions") or {}).get("currentLocationId") or "party")
