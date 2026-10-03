@@ -40,7 +40,7 @@ def find_entry(item_name: Any) -> Tuple[Optional[Dict[str, Any]], str]:
     if len(loose) == 1:
         return loose[0], ""
     near = suggest(wanted, entries)
-    hint = f"; the catalog has {', '.join(repr(n) for n in near)}" if near else ""
+    hint = f"; the catalog has {'; '.join(repr(n) for n in near)}" if near else ""
     return None, f"{wanted!r} is not an item in the SRD catalog{hint}"
 
 
@@ -60,7 +60,10 @@ def suggest(item_name: str, entries: Optional[List[Dict[str, Any]]] = None, limi
         name = str(e.get("name", ""))
         if any(a.startswith(b) or b.startswith(a) for a in _words(name) for b in words):
             per_lot = (e.get("price") or {}).get("units_per_lot")
-            out.append(f"{name} (sold in lots of {per_lot})" if type(per_lot) is int and per_lot > 1 else name)
+            facts = str(e.get("kind") or "")
+            if type(per_lot) is int and per_lot > 1:
+                facts += f", sold in lots of {per_lot}"
+            out.append(f"{name} ({facts})" if facts else name)
     return out[:limit]
 
 
