@@ -11,6 +11,7 @@ type), never authored by a model. Reference: kit acquire_gate.py (lot_cost,
 pay, acquire_lines, sheet_row).
 """
 import copy
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.nql import genesis, item_catalog
@@ -38,7 +39,28 @@ def find_entry(item_name: Any) -> Tuple[Optional[Dict[str, Any]], str]:
     loose = [e for e in entries if str(e.get("name", "")).casefold() == wanted.casefold()]
     if len(loose) == 1:
         return loose[0], ""
-    return None, f"{wanted!r} is not an item in the SRD catalog"
+    near = suggest(wanted, entries)
+    hint = f"; the catalog has {', '.join(repr(n) for n in near)}" if near else ""
+    return None, f"{wanted!r} is not an item in the SRD catalog{hint}"
+
+
+def _words(text: str) -> List[str]:
+    return [w for w in re.split(r"[^a-z0-9]+", text.casefold()) if len(w) >= 3]
+
+
+def suggest(item_name: str, entries: Optional[List[Dict[str, Any]]] = None, limit: int = 6) -> List[str]:
+    """Catalog names that share a word with the DM's itemName (one word a prefix
+    of the other, e.g. "bolt" and "bolts"). A hint for the correction only: the
+    DM re-decides; nothing is bought from a suggestion."""
+    words = _words(item_name)
+    if not words:
+        return []
+    out: List[str] = []
+    for e in entries if entries is not None else item_catalog.entries().values():
+        name = str(e.get("name", ""))
+        if any(a.startswith(b) or b.startswith(a) for a in _words(name) for b in words):
+            out.append(name)
+    return out[:limit]
 
 
 def lot_cost(entry: Dict[str, Any], quantity: Any) -> Tuple[Optional[int], str]:
