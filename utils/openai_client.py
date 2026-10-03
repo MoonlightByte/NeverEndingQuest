@@ -48,7 +48,7 @@ def _provider_http_client():
     )
 
 
-def get_openai_client(provider=None):
+def get_openai_client(provider=None, *, local_endpoint=None):
     """
     Create and return an OpenAI client configured for the active provider.
 
@@ -70,11 +70,14 @@ def get_openai_client(provider=None):
 
     if provider == "lmstudio":
         # Local / OpenAI-compatible server (LM Studio, Ollama, vLLM, OpenRouter,
-        # remote host). Endpoint is read live from user_settings.json so a web-UI
-        # change applies on the next request with no restart. Defaults preserve
+        # remote host). Live requests supply their frozen connection settings;
+        # other callers read current settings so UI changes apply next request.
+        # Defaults preserve
         # the original LM Studio localhost:1234 behavior. (Issue #120)
         import model_config
-        ep = model_config.get_local_endpoint()
+        # Live children receive the parent's frozen Local/Custom connection
+        # settings. Other callers keep the existing live-settings behavior.
+        ep = local_endpoint if local_endpoint is not None else model_config.get_local_endpoint()
         return OpenAI(
             base_url=ep["base_url"],
             api_key=ep["api_key"] or "not-needed",

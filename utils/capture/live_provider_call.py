@@ -1331,6 +1331,17 @@ def call_live_provider(
     operation_id = scope.operation_id if scope is not None else str(uuid4())
     frozen_messages = copy.deepcopy(messages)
     frozen_kwargs = copy.deepcopy(request_kwargs)
+    if frozen_kwargs.get("_request_provider") == "lmstudio":
+        import model_config
+
+        # Local/Custom also has request-owned connection settings. Re-reading
+        # them in each fresh child can change the endpoint, credential or model
+        # after dispatch (or on a retry), despite the pinned provider ID. Keep
+        # the resolved settings on the private stdin pipe only, never in capture
+        # records, process arguments or environment variables (#557).
+        frozen_kwargs["_request_local_endpoint"] = copy.deepcopy(
+            model_config.get_local_endpoint()
+        )
     wizard_task = task_id in _WIZARD_TASK_IDS
     # The per-generation transport deadline is the REISSUE TRIGGER, never a
     # terminal (#193 B2-iii). It is set for every provider; each adapter
