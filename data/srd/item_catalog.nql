@@ -1,0 +1,1012 @@
+// SRD 5.2.1 item definitions, built by build_item_catalog.py.
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
+item type "itemdef:srd/club" named "Club" {
+ description "Simple Melee weapon. Damage: 1d4 Bludgeoning. Properties: Light. Mastery: Slow.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "silver" 1 per 1;
+}
+item type "itemdef:srd/dagger" named "Dagger" {
+ description "Simple Melee weapon. Damage: 1d4 Piercing. Properties: Finesse, Light, Thrown (Range 20/60). Mastery: Nick.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/greatclub" named "Greatclub" {
+ description "Simple Melee weapon. Damage: 1d8 Bludgeoning. Properties: Two-Handed. Mastery: Push.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "silver" 2 per 1;
+}
+item type "itemdef:srd/handaxe" named "Handaxe" {
+ description "Simple Melee weapon. Damage: 1d6 Slashing. Properties: Light, Thrown (Range 20/60). Mastery: Vex.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/javelin" named "Javelin" {
+ description "Simple Melee weapon. Damage: 1d6 Piercing. Properties: Thrown (Range 30/120). Mastery: Slow.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "silver" 5 per 1;
+}
+item type "itemdef:srd/light-hammer" named "Light Hammer" {
+ description "Simple Melee weapon. Damage: 1d4 Bludgeoning. Properties: Light, Thrown (Range 20/60). Mastery: Nick.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/mace" named "Mace" {
+ description "Simple Melee weapon. Damage: 1d6 Bludgeoning. Properties: -. Mastery: Sap.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/quarterstaff" named "Quarterstaff" {
+ description "Simple Melee weapon. Damage: 1d6 Bludgeoning. Properties: Versatile (1d8). Mastery: Topple.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "silver" 2 per 1;
+}
+item type "itemdef:srd/sickle" named "Sickle" {
+ description "Simple Melee weapon. Damage: 1d4 Slashing. Properties: Light. Mastery: Nick.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/spear" named "Spear" {
+ description "Simple Melee weapon. Damage: 1d6 Piercing. Properties: Thrown (Range 20/60), Versatile (1d8). Mastery: Sap.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/dart" named "Dart" {
+ description "Simple Ranged weapon. Damage: 1d4 Piercing. Properties: Finesse, Thrown (Range 20/60). Mastery: Vex.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "copper" 5 per 1;
+}
+item type "itemdef:srd/light-crossbow" named "Light Crossbow" {
+ description "Simple Ranged weapon. Damage: 1d8 Piercing. Properties: Ammunition (Range 80/320; Bolt), Loading, Two-Handed. Mastery: Slow.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 25 per 1;
+}
+item type "itemdef:srd/shortbow" named "Shortbow" {
+ description "Simple Ranged weapon. Damage: 1d6 Piercing. Properties: Ammunition (Range 80/320; Arrow), Two-Handed. Mastery: Vex.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 25 per 1;
+}
+item type "itemdef:srd/sling" named "Sling" {
+ description "Simple Ranged weapon. Damage: 1d4 Bludgeoning. Properties: Ammunition (Range 30/120; Bullet). Mastery: Slow.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "silver" 1 per 1;
+}
+item type "itemdef:srd/battleaxe" named "Battleaxe" {
+ description "Martial Melee weapon. Damage: 1d8 Slashing. Properties: Versatile (1d10). Mastery: Topple.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/flail" named "Flail" {
+ description "Martial Melee weapon. Damage: 1d8 Bludgeoning. Properties: -. Mastery: Sap.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/glaive" named "Glaive" {
+ description "Martial Melee weapon. Damage: 1d10 Slashing. Properties: Heavy, Reach, Two-Handed. Mastery: Graze.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 20 per 1;
+}
+item type "itemdef:srd/greataxe" named "Greataxe" {
+ description "Martial Melee weapon. Damage: 1d12 Slashing. Properties: Heavy, Two-Handed. Mastery: Cleave.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 30 per 1;
+}
+item type "itemdef:srd/greatsword" named "Greatsword" {
+ description "Martial Melee weapon. Damage: 2d6 Slashing. Properties: Heavy, Two-Handed. Mastery: Graze.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 50 per 1;
+}
+item type "itemdef:srd/halberd" named "Halberd" {
+ description "Martial Melee weapon. Damage: 1d10 Slashing. Properties: Heavy, Reach, Two-Handed. Mastery: Cleave.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 20 per 1;
+}
+item type "itemdef:srd/lance" named "Lance" {
+ description "Martial Melee weapon. Damage: 1d10 Piercing. Properties: Heavy, Reach, Two-Handed (unless mounted). Mastery: Topple.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/longsword" named "Longsword" {
+ description "Martial Melee weapon. Damage: 1d8 Slashing. Properties: Versatile (1d10). Mastery: Sap.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 15 per 1;
+}
+item type "itemdef:srd/maul" named "Maul" {
+ description "Martial Melee weapon. Damage: 2d6 Bludgeoning. Properties: Heavy, Two-Handed. Mastery: Topple.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/morningstar" named "Morningstar" {
+ description "Martial Melee weapon. Damage: 1d8 Piercing. Properties: -. Mastery: Sap.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 15 per 1;
+}
+item type "itemdef:srd/pike" named "Pike" {
+ description "Martial Melee weapon. Damage: 1d10 Piercing. Properties: Heavy, Reach, Two-Handed. Mastery: Push.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/rapier" named "Rapier" {
+ description "Martial Melee weapon. Damage: 1d8 Piercing. Properties: Finesse. Mastery: Vex.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 25 per 1;
+}
+item type "itemdef:srd/scimitar" named "Scimitar" {
+ description "Martial Melee weapon. Damage: 1d6 Slashing. Properties: Finesse, Light. Mastery: Nick.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 25 per 1;
+}
+item type "itemdef:srd/shortsword" named "Shortsword" {
+ description "Martial Melee weapon. Damage: 1d6 Piercing. Properties: Finesse, Light. Mastery: Vex.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/trident" named "Trident" {
+ description "Martial Melee weapon. Damage: 1d8 Piercing. Properties: Thrown (Range 20/60), Versatile (1d10). Mastery: Topple.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/warhammer" named "Warhammer" {
+ description "Martial Melee weapon. Damage: 1d8 Bludgeoning. Properties: Versatile (1d10). Mastery: Push.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 15 per 1;
+}
+item type "itemdef:srd/war-pick" named "War Pick" {
+ description "Martial Melee weapon. Damage: 1d8 Piercing. Properties: Versatile (1d10). Mastery: Sap.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/whip" named "Whip" {
+ description "Martial Melee weapon. Damage: 1d4 Slashing. Properties: Finesse, Reach. Mastery: Slow.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/blowgun" named "Blowgun" {
+ description "Martial Ranged weapon. Damage: 1 Piercing. Properties: Ammunition (Range 25/100; Needle), Loading. Mastery: Vex.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/hand-crossbow" named "Hand Crossbow" {
+ description "Martial Ranged weapon. Damage: 1d6 Piercing. Properties: Ammunition (Range 30/120; Bolt), Light, Loading. Mastery: Vex.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 75 per 1;
+}
+item type "itemdef:srd/heavy-crossbow" named "Heavy Crossbow" {
+ description "Martial Ranged weapon. Damage: 1d10 Piercing. Properties: Ammunition (Range 100/400; Bolt), Heavy, Loading, Two-Handed. Mastery: Push.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 50 per 1;
+}
+item type "itemdef:srd/longbow" named "Longbow" {
+ description "Martial Ranged weapon. Damage: 1d8 Piercing. Properties: Ammunition (Range 150/600; Arrow), Heavy, Two-Handed. Mastery: Slow.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 50 per 1;
+}
+item type "itemdef:srd/musket" named "Musket" {
+ description "Martial Ranged weapon. Damage: 1d12 Piercing. Properties: Ammunition (Range 40/120; Bullet), Loading, Two-Handed. Mastery: Slow.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 500 per 1;
+}
+item type "itemdef:srd/pistol" named "Pistol" {
+ description "Martial Ranged weapon. Damage: 1d10 Piercing. Properties: Ammunition (Range 30/90; Bullet), Loading. Mastery: Vex.";
+ kind "weapon";
+ magical false; consumable false;
+ equipment "gear:held";
+ price "gold" 250 per 1;
+}
+item type "itemdef:srd/padded-armor" named "Padded Armor" {
+ description "Light armor. Armor Class: 11 + Dex modifier. Stealth: Disadvantage. 1 Minute to Don or Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/padded-armor";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/leather-armor" named "Leather Armor" {
+ description "Light armor. Armor Class: 11 + Dex modifier. 1 Minute to Don or Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/leather-armor";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/studded-leather-armor" named "Studded Leather Armor" {
+ description "Light armor. Armor Class: 12 + Dex modifier. 1 Minute to Don or Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/studded-leather-armor";
+ price "gold" 45 per 1;
+}
+item type "itemdef:srd/hide-armor" named "Hide Armor" {
+ description "Medium armor. Armor Class: 12 + Dex modifier (max 2). 5 Minutes to Don and 1 Minute to Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/hide-armor";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/chain-shirt" named "Chain Shirt" {
+ description "Medium armor. Armor Class: 13 + Dex modifier (max 2). 5 Minutes to Don and 1 Minute to Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/chain-shirt";
+ price "gold" 50 per 1;
+}
+item type "itemdef:srd/scale-mail" named "Scale Mail" {
+ description "Medium armor. Armor Class: 14 + Dex modifier (max 2). Stealth: Disadvantage. 5 Minutes to Don and 1 Minute to Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/scale-mail";
+ price "gold" 50 per 1;
+}
+item type "itemdef:srd/breastplate" named "Breastplate" {
+ description "Medium armor. Armor Class: 14 + Dex modifier (max 2). 5 Minutes to Don and 1 Minute to Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/breastplate";
+ price "gold" 400 per 1;
+}
+item type "itemdef:srd/half-plate-armor" named "Half Plate Armor" {
+ description "Medium armor. Armor Class: 15 + Dex modifier (max 2). Stealth: Disadvantage. 5 Minutes to Don and 1 Minute to Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/half-plate-armor";
+ price "gold" 750 per 1;
+}
+item type "itemdef:srd/ring-mail" named "Ring Mail" {
+ description "Heavy armor. Armor Class: 14. Stealth: Disadvantage. 10 Minutes to Don and 5 Minutes to Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/ring-mail";
+ price "gold" 30 per 1;
+}
+item type "itemdef:srd/chain-mail" named "Chain Mail" {
+ description "Heavy armor. Armor Class: 16. Strength: 13. Stealth: Disadvantage. 10 Minutes to Don and 5 Minutes to Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/chain-mail";
+ price "gold" 75 per 1;
+}
+item type "itemdef:srd/splint-armor" named "Splint Armor" {
+ description "Heavy armor. Armor Class: 17. Strength: 15. Stealth: Disadvantage. 10 Minutes to Don and 5 Minutes to Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/splint-armor";
+ price "gold" 200 per 1;
+}
+item type "itemdef:srd/plate-armor" named "Plate Armor" {
+ description "Heavy armor. Armor Class: 18. Strength: 15. Stealth: Disadvantage. 10 Minutes to Don and 5 Minutes to Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/plate-armor";
+ price "gold" 1500 per 1;
+}
+item type "itemdef:srd/shield" named "Shield" {
+ description "Shield. Armor Class: +2. Utilize Action to Don or Doff.";
+ kind "armor";
+ magical false; consumable false;
+ equipment "gear:srd/shield";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/acid" named "Acid" {
+ description "When you take the Attack action, you can replace one of your attacks with throwing a vial of Acid. Target one creature or object you can see within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or take 2d6 Acid damage.";
+ kind "consumable"; subtype "other";
+ magical false; consumable true;
+ equipment "gear:worn";
+ price "gold" 25 per 1;
+}
+item type "itemdef:srd/alchemists-fire" named "Alchemist's Fire" {
+ description "When you take the Attack action, you can replace one of your attacks with throwing a flask of Alchemist's Fire. Target one creature or object you can see within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or take 1d4 Fire damage and start burning (see \"Rules Glossary\").";
+ kind "consumable"; subtype "other";
+ magical false; consumable true;
+ equipment "gear:worn";
+ price "gold" 50 per 1;
+}
+item type "itemdef:srd/antitoxin" named "Antitoxin" {
+ description "As a Bonus Action, you can drink a vial of Antitoxin to gain Advantage on saving throws to avoid or end the Poisoned condition for 1 hour.";
+ kind "consumable"; subtype "potion";
+ magical false; consumable true;
+ equipment "gear:worn";
+ price "gold" 50 per 1;
+}
+item type "itemdef:srd/backpack" named "Backpack" {
+ description "A Backpack holds up to 30 pounds within 1 cubic foot. It can also serve as a saddlebag.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/ball-bearings" named "Ball Bearings" {
+ description "As a Utilize action, you can spill Ball Bearings from their pouch. They spread to cover a level, 10-footsquare area within 10 feet of yourself. A creature that enters this area for the first time on a turn must succeed on a DC 10 Dexterity saving throw or have the Prone condition. It takes 10 minutes to recover the Ball Bearings.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/barrel" named "Barrel" {
+ description "A Barrel holds up to 40 gallons of liquid or up to 4 cubic feet of dry goods.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/basket" named "Basket" {
+ description "A Basket holds up to 40 pounds within 2 cubic feet.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "silver" 4 per 1;
+}
+item type "itemdef:srd/bedroll" named "Bedroll" {
+ description "A Bedroll sleeps one Small or Medium creature. While in a Bedroll, you automatically succeed on saving throws against extreme cold (see \"Gameplay Toolbox\").";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/bell" named "Bell" {
+ description "When rung as a Utilize action, a Bell produces a sound that can be heard up to 60 feet away.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/blanket" named "Blanket" {
+ description "While wrapped in a blanket, you have Advantage on saving throws against extreme cold (see \"Gameplay Toolbox\").";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "silver" 5 per 1;
+}
+item type "itemdef:srd/block-and-tackle" named "Block and Tackle" {
+ description "A Block and Tackle allows you to hoist up to four times the weight you can normally lift.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/book" named "Book" {
+ description "A Book contains fiction or nonfiction. If you consult an accurate nonfiction Book about its topic, you gain a +5 bonus to Intelligence (Arcana, History, Nature, or Religion) checks you make about that topic.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 25 per 1;
+}
+item type "itemdef:srd/bottle-glass" named "Bottle, Glass" {
+ description "A Glass Bottle holds up to 11/2 pints.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/bucket" named "Bucket" {
+ description "A Bucket holds up to half a cubic foot of contents.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "copper" 5 per 1;
+}
+item type "itemdef:srd/burglars-pack" named "Burglar's Pack" {
+ description "A Burglar's Pack contains the following items: Backpack, Ball Bearings, Bell, 10 Candles, Crowbar, Hooded Lantern, 7 flasks of Oil, 5 days of Rations, Rope, Tinderbox, and Waterskin.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 16 per 1;
+}
+item type "itemdef:srd/caltrops" named "Caltrops" {
+ description "As a Utilize action, you can spread Caltrops from their bag to cover a 5-foot-square area within 5 feet of yourself. A creature that enters this area for the first time on a turn must succeed on a DC 15 Dexterity saving throw or take 1 Piercing damage and have its Speed reduced to 0 until the start of its next turn. It takes 10 minutes to recover the Caltrops.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/candle" named "Candle" {
+ description "For 1 hour, a lit Candle sheds Bright Light in a 5-foot radius and Dim Light for an additional 5 feet.";
+ kind "equipment"; subtype "other";
+ magical false; consumable true;
+ equipment "gear:worn";
+ price "copper" 1 per 1;
+}
+item type "itemdef:srd/case-crossbow-bolt" named "Case, Crossbow Bolt" {
+ description "A Crossbow Bolt Case holds up to 20 Bolts.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/case-map-or-scroll" named "Case, Map or Scroll" {
+ description "A Map or Scroll Case holds up to 10 sheets of paper or 5 sheets of parchment.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/chain" named "Chain" {
+ description "As a Utilize action, you can wrap a Chain around an unwilling creature within 5 feet of yourself that has the Grappled, Incapacitated, or Restrained condition if you succeed on a DC 13 Strength (Athletics) check. If the creature's legs are bound, the creature has the Restrained condition until it escapes. Escaping the Chain requires the creature to make a successful DC 18 Dexterity (Acrobatics) check as an action. Bursting the Chain requires a successful DC 20 Strength (Athletics) check as an action.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/chest" named "Chest" {
+ description "A Chest holds up to 12 cubic feet of contents.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/climbers-kit" named "Climber's Kit" {
+ description "A Climber's Kit includes boot tips, gloves, pitons, and a harness. As a Utilize action, you can use the Climber's Kit to anchor yourself; when you do, you can't fall more than 25 feet from the anchor point, and you can't move more than 25 feet from there without undoing the anchor as a Bonus Action.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 25 per 1;
+}
+item type "itemdef:srd/clothes-fine" named "Clothes, Fine" {
+ description "Fine Clothes are made of expensive fabrics and adorned with expertly crafted details. Some events and locations admit only people wearing these clothes.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 15 per 1;
+}
+item type "itemdef:srd/clothes-travelers" named "Clothes, Traveler's" {
+ description "Traveler's Clothes are resilient garments designed for travel in various environments.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/component-pouch" named "Component Pouch" {
+ description "A Component Pouch is watertight and filled with compartments that hold all the free Material components of your spells.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 25 per 1;
+}
+item type "itemdef:srd/costume" named "Costume" {
+ description "While wearing a Costume, you have Advantage on any ability check you make to impersonate the person or type of person it represents.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/crowbar" named "Crowbar" {
+ description "Using a Crowbar gives you Advantage on Strength checks where the Crowbar's leverage can be applied.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/diplomats-pack" named "Diplomat's Pack" {
+ description "A Diplomat's Pack contains the following items: Chest, Fine Clothes, Ink, 5 Ink Pens, Lamp, 2 Map or Scroll Cases, 4 flasks of Oil, 5 sheets of Paper, 5 sheets of Parchment, Perfume, and Tinderbox.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 39 per 1;
+}
+item type "itemdef:srd/dungeoneers-pack" named "Dungeoneer's Pack" {
+ description "A Dungeoneer's Pack contains the following items: Backpack, Caltrops, Crowbar, 2 flasks of Oil, 10 days of Rations, Rope, Tinderbox, 10 Torches, and Waterskin.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 12 per 1;
+}
+item type "itemdef:srd/entertainers-pack" named "Entertainer's Pack" {
+ description "An Entertainer's Pack contains the following items: Backpack, Bedroll, Bell, Bullseye Lantern, 3 Costumes, Mirror, 8 flasks of Oil, 9 days of Rations, Tinderbox, and Waterskin.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 40 per 1;
+}
+item type "itemdef:srd/explorers-pack" named "Explorer's Pack" {
+ description "An Explorer's Pack contains the following items: Backpack, Bedroll, 2 flasks of Oil, 10 days of Rations, Rope, Tinderbox, 10 Torches, and Waterskin.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/flask" named "Flask" {
+ description "A Flask holds up to 1 pint.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "copper" 2 per 1;
+}
+item type "itemdef:srd/grappling-hook" named "Grappling Hook" {
+ description "As a Utilize action, you can throw the Grappling Hook at a railing, a ledge, or another catch within 50 feet of yourself, and the hook catches on if you succeed on a DC 13 Dexterity (Acrobatics) check. If you tied a Rope to the hook, you can then climb it.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/healers-kit" named "Healer's Kit" {
+ description "A Healer's Kit has ten uses. As a Utilize action, you can expend one of its uses to stabilize an Unconscious creature that has 0 Hit Points without needing to make a Wisdom (Medicine) check.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/holy-water" named "Holy Water" {
+ description "When you take the Attack action, you can replace one of your attacks with throwing a flask of Holy Water. Target one creature you can see within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or take 2d8 Radiant damage if it is a Fiend or an Undead.";
+ kind "consumable"; subtype "other";
+ magical false; consumable true;
+ equipment "gear:worn";
+ price "gold" 25 per 1;
+}
+item type "itemdef:srd/hunting-trap" named "Hunting Trap" {
+ description "As a Utilize action, you can set a Hunting Trap, which is a sawtooth steel ring that snaps shut when a creature steps on a pressure plate in the center. The trap is affixed by a heavy chain to an immobile object, such as a tree or a spike driven into the ground. A creature that steps on the plate must succeed on a DC 13 Dexterity saving throw or take 1d4 Piercing damage and have its Speed reduced to 0 until the start of its next turn. Thereafter, until the creature breaks free of the trap, its movement is limited by the length of the chain (typically 3 feet). A creature can use its action to make a DC 13 Strength (Athletics) check, freeing itself or another creature within its reach on a success. Each failed check deals 1 Piercing damage to the trapped creature.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/ink" named "Ink" {
+ description "Ink comes in a 1-ounce bottle, which provides enough ink to write about 500 pages.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/ink-pen" named "Ink Pen" {
+ description "Using Ink, an Ink Pen is used to write or draw.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "copper" 2 per 1;
+}
+item type "itemdef:srd/jug" named "Jug" {
+ description "A Jug holds up to 1 gallon.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "copper" 2 per 1;
+}
+item type "itemdef:srd/ladder" named "Ladder" {
+ description "A Ladder is 10 feet tall. You must climb to move up or down it.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "silver" 1 per 1;
+}
+item type "itemdef:srd/lamp" named "Lamp" {
+ description "A Lamp burns Oil as fuel to cast Bright Light in a 15- foot radius and Dim Light for an additional 30 feet.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "silver" 5 per 1;
+}
+item type "itemdef:srd/lantern-bullseye" named "Lantern, Bullseye" {
+ description "A Bullseye Lantern burns Oil as fuel to cast Bright Light in a 60-foot Cone and Dim Light for an additional 60 feet.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/lantern-hooded" named "Lantern, Hooded" {
+ description "A Hooded Lantern burns Oil as fuel to cast Bright Light in a 30-foot radius and Dim Light for an additional 30 feet. As a Bonus Action, you can lower the hood, reducing the light to Dim Light in a 5-foot radius, or raise it again.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/lock" named "Lock" {
+ description "A Lock comes with a key. Without the key, a creature can use Thieves' Tools to pick this Lock with a successful DC 15 Dexterity (Sleight of Hand) check.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/magnifying-glass" named "Magnifying Glass" {
+ description "A Magnifying Glass grants Advantage on any ability check made to appraise or inspect a highly detailed item. Lighting a fire with a Magnifying Glass requires light as bright as sunlight to focus, tinder to ignite, and about 5 minutes for the fire to ignite.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 100 per 1;
+}
+item type "itemdef:srd/manacles" named "Manacles" {
+ description "As a Utilize action, you can use Manacles to bind an unwilling Small or Medium creature within 5 feet of yourself that has the Grappled, Incapacitated, or Restrained condition if you succeed on a DC 13 Dexterity (Sleight of Hand) check. While bound, a creature has Disadvantage on attack rolls, and the creature is Restrained if the Manacles are attached to a chain or hook that is fixed in place. Escaping the Manacles requires a successful DC 20 Dexterity (Sleight of Hand) check as an action. Bursting them requires a successful DC 25 Strength (Athletics) check as an action. Each set of Manacles comes with a key. Without the key, a creature can use Thieves' Tools to pick the Manacles' lock with a successful DC 15 Dexterity (Sleight of Hand) check.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/map" named "Map" {
+ description "If you consult an accurate Map, you gain a +5 bonus to Wisdom (Survival) checks you make to find your way in the place represented on it.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/mirror" named "Mirror" {
+ description "A handheld steel Mirror is useful for personal cosmetics but also for peeking around corners and reflecting light as a signal.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/net" named "Net" {
+ description "When you take the Attack action, you can replace one of your attacks with throwing a Net. Target a creature you can see within 15 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or have the Restrained condition until it escapes. The target succeeds automatically if it is Huge or larger. To escape, the target or a creature within 5 feet of it must take an action to make a DC 10 Strength (Athletics) check, freeing the Restrained creature on a success. Destroying the Net (AC 10; 5 HP; Immunity to Bludgeoning, Poison, and Psychic damage) also frees the target, ending the effect.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/oil" named "Oil" {
+ description "You can douse a creature, object, or space with Oil or use it as fuel, as detailed below. Dousing a Creature or an Object. When you take the Attack action, you can replace one of your attacks with throwing an Oil flask. Target one creature or object within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or be covered in oil. If the target takes Fire damage before the oil dries (after 1 minute), the target takes an extra 5 Fire damage from burning oil. Dousing a Space. You can take the Utilize action to pour an Oil flask on level ground to cover a 5-foot-square area within 5 feet of yourself. If lit, the oil burns until the end of the turn 2 rounds from when the oil was lit (or 12 seconds) and deals 5 Fire damage to any creature that enters the area or ends its turn there. A creature can take this damage only once per turn. Fuel. Oil serves as fuel for Lamps and Lanterns. Once lit, a flask of Oil burns for 6 hours in a Lamp or Lantern. That duration doesn't need to be consecutive; you can extinguish the burning Oil (as a Utilize action) and rekindle it again until it has burned for a total of 6 hours.";
+ kind "consumable"; subtype "other";
+ magical false; consumable true;
+ equipment "gear:worn";
+ price "silver" 1 per 1;
+}
+item type "itemdef:srd/paper" named "Paper" {
+ description "One sheet of Paper can hold about 250 handwritten words.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "silver" 2 per 1;
+}
+item type "itemdef:srd/parchment" named "Parchment" {
+ description "One sheet of Parchment can hold about 250 handwritten words.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "silver" 1 per 1;
+}
+item type "itemdef:srd/perfume" named "Perfume" {
+ description "Perfume comes in a 4-ounce vial. For 1 hour after applying Perfume to yourself, you have Advantage on Charisma (Persuasion) checks made to influence an Indifferent Humanoid within 5 feet of yourself.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/poison-basic" named "Poison, Basic" {
+ description "As a Bonus Action, you can use a vial of Basic Poison to coat one weapon or up to three pieces of ammunition. A creature that takes Piercing or Slashing damage from the poisoned weapon or ammunition takes an extra 1d4 Poison damage. Once applied, the poison retains potency for 1 minute or until its damage is dealt, whichever comes first.";
+ kind "consumable"; subtype "other";
+ magical false; consumable true;
+ equipment "gear:worn";
+ price "gold" 100 per 1;
+}
+item type "itemdef:srd/pole" named "Pole" {
+ description "A Pole is 10 feet long. You can use it to touch something up to 10 feet away. If you must make a Strength (Athletics) check as part of a High or Long Jump, you can use the Pole to vault, giving yourself Advantage on the check.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "copper" 5 per 1;
+}
+item type "itemdef:srd/pot-iron" named "Pot, Iron" {
+ description "An Iron Pot holds up to 1 gallon.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/potion-of-healing" named "Potion of Healing" {
+ description "This potion is a magic item. As a Bonus Action, you can drink it or administer it to another creature within 5 feet of yourself. The creature that drinks the magical red fluid in this vial regains 2d4 + 2 Hit Points.";
+ kind "consumable"; subtype "potion";
+ magical true; consumable true;
+ equipment "gear:worn";
+ price "gold" 50 per 1;
+}
+item type "itemdef:srd/pouch" named "Pouch" {
+ description "A Pouch holds up to 6 pounds within one-fifth of a cubic foot.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "silver" 5 per 1;
+}
+item type "itemdef:srd/priests-pack" named "Priest's Pack" {
+ description "A Priest's Pack contains the following items: Backpack, Blanket, Holy Water, Lamp, 7 days of Rations, Robe, and Tinderbox.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 33 per 1;
+}
+item type "itemdef:srd/quiver" named "Quiver" {
+ description "A Quiver holds up to 20 Arrows.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/ram-portable" named "Ram, Portable" {
+ description "You can use a Portable Ram to break down doors. When doing so, you gain a +4 bonus to the Strength check. One other character can help you use the ram, giving you Advantage on this check.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 4 per 1;
+}
+item type "itemdef:srd/rations" named "Rations" {
+ description "Rations consist of travel-ready food, including jerky, dried fruit, hardtack, and nuts. See \"Malnutrition\" in \"Rules Glossary\" for the risks of not eating.";
+ kind "consumable"; subtype "food";
+ magical false; consumable true;
+ equipment "gear:worn";
+ price "silver" 5 per 1;
+}
+item type "itemdef:srd/robe" named "Robe" {
+ description "A Robe has vocational or ceremonial significance. Some events and locations admit only people wearing a Robe bearing certain colors or symbols.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/rope" named "Rope" {
+ description "As a Utilize action, you can tie a knot with Rope if you succeed on a DC 10 Dexterity (Sleight of Hand) check. The Rope can be burst with a successful DC 20 Strength (Athletics) check. You can bind an unwilling creature with the Rope only if the creature has the Grappled, Incapacitated, or Restrained condition. If the creature's legs are bound, the creature has the Restrained condition until it escapes. Escaping the Rope requires the creature to make a successful DC 15 Dexterity (Acrobatics) check as an action.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/sack" named "Sack" {
+ description "A Sack holds up to 30 pounds within 1 cubic foot.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "copper" 1 per 1;
+}
+item type "itemdef:srd/scholars-pack" named "Scholar's Pack" {
+ description "A Scholar's Pack contains the following items: Backpack, Book, Ink, Ink Pen, Lamp, 10 flasks of Oil, 10 sheets of Parchment, and Tinderbox.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 40 per 1;
+}
+item type "itemdef:srd/shovel" named "Shovel" {
+ description "Working for 1 hour, you can use a Shovel to dig a hole that is 5 feet on each side in soil or similar material.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/signal-whistle" named "Signal Whistle" {
+ description "When blown as a Utilize action, a Signal Whistle produces a sound that can be heard up to 600 feet away.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "copper" 5 per 1;
+}
+item type "itemdef:srd/spell-scroll-cantrip" named "Spell Scroll (Cantrip)" {
+ description "A Spell Scroll (Cantrip) or Spell Scroll (Level 1) is a magic item that bears the words of a cantrip or level 1 spell, respectively, determined by the scroll's creator. If the spell is on your class's spell list, you can read the scroll and cast the spell using its normal casting time and without providing any Material components. If the spell requires a saving throw or an attack roll, the spell save DC is 13, and the attack bonus is +5. The scroll disintegrates when the casting is completed.";
+ kind "consumable"; subtype "scroll";
+ magical true; consumable true;
+ equipment "gear:worn";
+ price "gold" 30 per 1;
+}
+item type "itemdef:srd/spell-scroll-level-1" named "Spell Scroll (Level 1)" {
+ description "A Spell Scroll (Cantrip) or Spell Scroll (Level 1) is a magic item that bears the words of a cantrip or level 1 spell, respectively, determined by the scroll's creator. If the spell is on your class's spell list, you can read the scroll and cast the spell using its normal casting time and without providing any Material components. If the spell requires a saving throw or an attack roll, the spell save DC is 13, and the attack bonus is +5. The scroll disintegrates when the casting is completed.";
+ kind "consumable"; subtype "scroll";
+ magical true; consumable true;
+ equipment "gear:worn";
+ price "gold" 50 per 1;
+}
+item type "itemdef:srd/spikes-iron" named "Spikes, Iron" {
+ description "Iron Spikes come in bundles of ten. As a Utilize action, you can use a blunt object, such as a Light Hammer, to hammer a spike into wood, earth, or a similar material. You can do so to jam a door shut or to then tie a Rope or Chain to the Spike.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/spyglass" named "Spyglass" {
+ description "Objects viewed through a Spyglass are magnified to twice their size.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1000 per 1;
+}
+item type "itemdef:srd/string" named "String" {
+ description "String is 10 feet long. You can tie a knot in it as a Utilize action.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "silver" 1 per 1;
+}
+item type "itemdef:srd/tent" named "Tent" {
+ description "A Tent sleeps up to two Small or Medium creatures.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 2 per 1;
+}
+item type "itemdef:srd/tinderbox" named "Tinderbox" {
+ description "A Tinderbox is a small container holding flint, fire steel, and tinder (usually dry cloth soaked in light oil) used to kindle a fire. Using it to light a Candle, Lamp, Lantern, or Torch-or anything else with exposed fuel-takes a Bonus Action. Lighting any other fire takes 1 minute.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "silver" 5 per 1;
+}
+item type "itemdef:srd/torch" named "Torch" {
+ description "A Torch burns for 1 hour, casting Bright Light in a 20-foot radius and Dim Light for an additional 20 feet. When you take the Attack action, you can attack with the Torch, using it as a Simple Melee weapon. On a hit, the target takes 1 Fire damage.";
+ kind "equipment"; subtype "other";
+ magical false; consumable true;
+ equipment "gear:worn";
+ price "copper" 1 per 1;
+}
+item type "itemdef:srd/vial" named "Vial" {
+ description "A Vial holds up to 4 ounces.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/waterskin" named "Waterskin" {
+ description "A Waterskin holds up to 4 pints. If you don't drink sufficient water, you risk dehydration (see \"Rules Glossary\").";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "silver" 2 per 1;
+}
+item type "itemdef:srd/arrows" named "Arrows" {
+ description "Ammunition is required by a weapon that has the Ammunition property. A weapon's description specifies the type of ammunition used by the weapon. The Ammunition table lists the different types and the amount you get when you buy them. The table also lists the item that is typically used to store each type; storage must be bought separately. Sold in lots of 20; typically stored in a Quiver, bought separately.";
+ kind "ammunition";
+ magical false; consumable true;
+ price "gold" 1 per 20;
+}
+item type "itemdef:srd/bolts" named "Bolts" {
+ description "Ammunition is required by a weapon that has the Ammunition property. A weapon's description specifies the type of ammunition used by the weapon. The Ammunition table lists the different types and the amount you get when you buy them. The table also lists the item that is typically used to store each type; storage must be bought separately. Sold in lots of 20; typically stored in a Case, bought separately.";
+ kind "ammunition";
+ magical false; consumable true;
+ price "gold" 1 per 20;
+}
+item type "itemdef:srd/bullets-firearm" named "Bullets, Firearm" {
+ description "Ammunition is required by a weapon that has the Ammunition property. A weapon's description specifies the type of ammunition used by the weapon. The Ammunition table lists the different types and the amount you get when you buy them. The table also lists the item that is typically used to store each type; storage must be bought separately. Sold in lots of 10; typically stored in a Pouch, bought separately.";
+ kind "ammunition";
+ magical false; consumable true;
+ price "gold" 3 per 10;
+}
+item type "itemdef:srd/bullets-sling" named "Bullets, Sling" {
+ description "Ammunition is required by a weapon that has the Ammunition property. A weapon's description specifies the type of ammunition used by the weapon. The Ammunition table lists the different types and the amount you get when you buy them. The table also lists the item that is typically used to store each type; storage must be bought separately. Sold in lots of 20; typically stored in a Pouch, bought separately.";
+ kind "ammunition";
+ magical false; consumable true;
+ price "copper" 4 per 20;
+}
+item type "itemdef:srd/needles" named "Needles" {
+ description "Ammunition is required by a weapon that has the Ammunition property. A weapon's description specifies the type of ammunition used by the weapon. The Ammunition table lists the different types and the amount you get when you buy them. The table also lists the item that is typically used to store each type; storage must be bought separately. Sold in lots of 50; typically stored in a Pouch, bought separately.";
+ kind "ammunition";
+ magical false; consumable true;
+ price "gold" 1 per 50;
+}
+item type "itemdef:srd/arcane-focus-crystal" named "Arcane Focus (Crystal)" {
+ description "An Arcane Focus takes one of the forms in the Arcane Focuses table and is bejeweled or carved to channel arcane magic. A Sorcerer, Warlock, or Wizard can use such an item as a Spellcasting Focus.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/arcane-focus-orb" named "Arcane Focus (Orb)" {
+ description "An Arcane Focus takes one of the forms in the Arcane Focuses table and is bejeweled or carved to channel arcane magic. A Sorcerer, Warlock, or Wizard can use such an item as a Spellcasting Focus.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 20 per 1;
+}
+item type "itemdef:srd/arcane-focus-rod" named "Arcane Focus (Rod)" {
+ description "An Arcane Focus takes one of the forms in the Arcane Focuses table and is bejeweled or carved to channel arcane magic. A Sorcerer, Warlock, or Wizard can use such an item as a Spellcasting Focus.";
+ kind "equipment"; subtype "rod";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/arcane-focus-staff" named "Arcane Focus (Staff)" {
+ description "An Arcane Focus takes one of the forms in the Arcane Focuses table and is bejeweled or carved to channel arcane magic. A Sorcerer, Warlock, or Wizard can use such an item as a Spellcasting Focus. This form: also a Quarterstaff.";
+ kind "equipment"; subtype "staff";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/arcane-focus-wand" named "Arcane Focus (Wand)" {
+ description "An Arcane Focus takes one of the forms in the Arcane Focuses table and is bejeweled or carved to channel arcane magic. A Sorcerer, Warlock, or Wizard can use such an item as a Spellcasting Focus.";
+ kind "equipment"; subtype "wand";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/druidic-focus-sprig-of-mistletoe" named "Druidic Focus (Sprig of mistletoe)" {
+ description "A Druidic Focus takes one of the forms in the Druidic Focuses table and is carved, tied with ribbon, or painted to channel primal magic. A Druid or Ranger can use such an object as a Spellcasting Focus.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 1 per 1;
+}
+item type "itemdef:srd/druidic-focus-wooden-staff" named "Druidic Focus (Wooden staff)" {
+ description "A Druidic Focus takes one of the forms in the Druidic Focuses table and is carved, tied with ribbon, or painted to channel primal magic. A Druid or Ranger can use such an object as a Spellcasting Focus. This form: also a Quarterstaff.";
+ kind "equipment"; subtype "staff";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/druidic-focus-yew-wand" named "Druidic Focus (Yew wand)" {
+ description "A Druidic Focus takes one of the forms in the Druidic Focuses table and is carved, tied with ribbon, or painted to channel primal magic. A Druid or Ranger can use such an object as a Spellcasting Focus.";
+ kind "equipment"; subtype "wand";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 10 per 1;
+}
+item type "itemdef:srd/holy-symbol-amulet" named "Holy Symbol (Amulet)" {
+ description "A Holy Symbol takes one of the forms in the Holy Symbol table and is bejeweled or painted to channel divine magic. A Cleric or Paladin can use a Holy Symbol as a Spellcasting Focus. The table indicates whether a Holy Symbol needs to be held, worn, or borne on fabric (such as a tabard or banner) or a Shield. This form: worn or held.";
+ kind "equipment"; subtype "amulet";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/holy-symbol-emblem" named "Holy Symbol (Emblem)" {
+ description "A Holy Symbol takes one of the forms in the Holy Symbol table and is bejeweled or painted to channel divine magic. A Cleric or Paladin can use a Holy Symbol as a Spellcasting Focus. The table indicates whether a Holy Symbol needs to be held, worn, or borne on fabric (such as a tabard or banner) or a Shield. This form: borne on fabric or a Shield.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
+item type "itemdef:srd/holy-symbol-reliquary" named "Holy Symbol (Reliquary)" {
+ description "A Holy Symbol takes one of the forms in the Holy Symbol table and is bejeweled or painted to channel divine magic. A Cleric or Paladin can use a Holy Symbol as a Spellcasting Focus. The table indicates whether a Holy Symbol needs to be held, worn, or borne on fabric (such as a tabard or banner) or a Shield. This form: held.";
+ kind "equipment"; subtype "other";
+ magical false; consumable false;
+ equipment "gear:worn";
+ price "gold" 5 per 1;
+}
