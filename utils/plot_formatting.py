@@ -57,7 +57,8 @@ def format_plot_for_ai(plot_data):
     completed_points = [p for p in points if p.get('status') == 'completed']
     failed_points = [p for p in points if p.get('status') == 'failed']
     active_points = [p for p in points if p.get('status') == 'in progress']
-    upcoming_points = [p for p in points if p.get('status') == 'not started']
+    bypassed_points = [p for p in points if p.get('status') == 'not started' and p.get('bypassed')]
+    upcoming_points = [p for p in points if p.get('status') == 'not started' and not p.get('bypassed')]
 
     # Completed plot points
     for point in completed_points:
@@ -81,6 +82,15 @@ def format_plot_for_ai(plot_data):
         output += "\n"
 
     # Active plot points
+    # Bypassed plot points: the party finished later work by another route
+    for point in bypassed_points:
+        output += f"[BYPASSED]: {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')})\n"
+        output += f"  - {point.get('description', 'No description')}\n"
+        output += "  - Bypassed by: " + ", ".join(
+            f"{x} ({titles.get(x, 'Unknown')})" for x in point.get('bypassedBy') or []) + "\n"
+        output += "  - Not an objective: the party went another way. It becomes active only if the party takes it up.\n"
+        output += "\n"
+
     for point in active_points:
         output += f"[ACTIVE]: {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')})\n"
         output += f"  - {point.get('description', 'No description')}\n"

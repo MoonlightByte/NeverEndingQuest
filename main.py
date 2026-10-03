@@ -7885,7 +7885,9 @@ def check_all_modules_plot_completion():
                     status = plot_point.get("status", "unknown")
                     plot_id = plot_point.get("id", "unknown")
                     
-                    if status == "completed":
+                    # #544: completed, failed or bypassed (the party went
+                    # another way): nothing left to do in this module for it.
+                    if quest_record.is_closed(plot_point):
                         completed_plots += 1
                 
                 # Module is complete when all main plots (PP) are done, side quests (SQ) are optional
@@ -9321,12 +9323,12 @@ def _main_game_loop(startup_authority, turn_authority):
                 # Get plot points for current location
                 current_plot_points = [
                     point for point in plot_data_for_note["plotPoints"]
-                    if point.get("location") == current_area_id and point.get("status") not in ("completed", "failed")
+                    if point.get("location") == current_area_id and not quest_record.is_closed(point)
                 ]
                 # Get ALL active plot points in the module
                 all_active_plot_points = [
                     point for point in plot_data_for_note["plotPoints"]
-                    if point.get("status") not in ("completed", "failed")
+                    if not quest_record.is_closed(point)
                 ]
         
             # Format plot points - show current location plots first, then other active plots
@@ -9348,7 +9350,7 @@ def _main_game_loop(startup_authority, turn_authority):
             # Get ALL side quests from ALL plot points (not just current location)
             for point in plot_data_for_note.get("plotPoints", []):
                 for quest in point.get("sideQuests", []):
-                    if quest.get("status") not in ("completed", "failed"):
+                    if not quest_record.is_closed(quest):
                         location_info = f" [Location: {point.get('location', 'Unknown')}]" if point.get('location') != current_area_id else ""
                         side_quests.append(f"- {quest['id']}: {quest['title']} [{quest['status']}]{location_info}")
             side_quests_str = "\n".join(side_quests) if side_quests else "None active"
