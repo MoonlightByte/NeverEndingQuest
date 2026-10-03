@@ -42,7 +42,6 @@ _REQUIRED_TASK_IDS = frozenset(
         "T049",
         "T065",
         "T067",
-        "T077",
         "T078",
         "T079",
         "T082",

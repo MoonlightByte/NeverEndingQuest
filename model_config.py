@@ -718,15 +718,6 @@ ENCOUNTER_UPD_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_l
 ENCOUNTER_UPD_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 ENCOUNTER_UPD_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
-# ----- T077 Plot Update -----
-# Updates plot progression after game events.
-# Mini-tier callsite, temperature=0.7, JSON output.
-# GPT-5.4 reviewer: all models 2/2 pass. gpt-5.2|none = 5.0/5 avg.
-PLOT_UPD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
-PLOT_UPD_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
-PLOT_UPD_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-PLOT_UPD_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
-
 # ----- T021 Transition Validation -----
 # Validates location transitions (path blocking, encounter checks).
 # Mini-tier callsite, temperature from TRANSITION_VALIDATOR_TEMPERATURE (0.3), JSON output.

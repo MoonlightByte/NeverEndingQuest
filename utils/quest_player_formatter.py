@@ -122,6 +122,14 @@ def _capture_plot_source(module_dir, plot_path):
         raise _QuestSourceDriftError("Plot source is not valid UTF-8 JSON") from exc
     if not isinstance(payload, dict):
         raise _QuestSourceDriftError("Plot source is not a JSON object")
+    # QS: statuses, impacts and requirements come from the rules engine's
+    # quest record (utils/quest_record.module_plot); the file holds the
+    # authored text. The digest is of what the formatter sees, so the
+    # journal tracks the engine's record, not the file's bytes.
+    from utils import quest_record
+    engine_payload = quest_record.module_plot(os.path.basename(canonical_module))
+    if isinstance(engine_payload, dict):
+        payload = engine_payload
     return {
         "module_path": canonical_module,
         "module_real": module_real,
@@ -129,7 +137,7 @@ def _capture_plot_source(module_dir, plot_path):
         "plot_path": canonical_plot,
         "plot_real": plot_real,
         "plot_identity": file_identity,
-        "digest": hashlib.sha256(raw).hexdigest(),
+        "digest": quest_record.plot_digest(payload),
         "payload": payload,
     }
 
@@ -550,7 +558,8 @@ def apply_staged_player_quests(receipt):
         if not acquired:
             raise RuntimeError("module refresh is busy during T090 commit")
         with _quest_file_lock(receipt["target_path"]):
-            plot = safe_read_json(receipt["plot_path"])
+            from utils import quest_record
+            plot = quest_record.module_plot(receipt["module"])
             if _quest_source_projection(plot or {}) != receipt["source_plot"]:
                 return "blocked_conflict"
             exists = os.path.exists(receipt["target_path"])

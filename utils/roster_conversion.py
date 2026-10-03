@@ -636,6 +636,10 @@ def world_source(game, seed_list):
     lines += ["location %s named %s;" % (q(p), q(n)) for p, n in places]
     lines.append("character %s named %s at %s { }" % (q(ACTOR), q("Roster conversion"), q(here or places[0][0])))
     lines += [s.declaration() for s in seed_list]
+    # QS: every quest of every module, from the authored plot (the engine's
+    # quest record; utils/quest_record.py).
+    from utils import quest_record
+    lines += quest_record.declaration_lines(game.root, game.modules)
     return "\n".join(lines) + "\n", [p for p, _ in places]
 
 

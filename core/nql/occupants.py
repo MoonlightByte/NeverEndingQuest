@@ -125,13 +125,82 @@ def _actor_of(world: str) -> Dict[str, str]:
 
 
 def _call(world: str, live: Dict[str, Any], actions: Optional[str], request_id: Optional[str],
-          view: List[str]) -> Dict[str, Any]:
+          view: List[str], quests: List[str] = ()) -> Dict[str, Any]:
     body: Dict[str, Any] = {"world": world, "live_state": live}
     if actions:
         body.update({"actions": actions, "actor": _actor_of(world), "request": request_id})
     if view:
         body["locations"] = list(view)
+    if quests:
+        body["quests"] = list(quests)
     return apply.call(body, timeout=TIMEOUT)
+
+
+def _send_quest_requests(root: str, world: str, live: Dict[str, Any],
+                         requests: List[Tuple[str, str]], label: str) -> Tuple[Dict[str, Any], bool]:
+    """Send typed quest requests on the document, one after the other,
+    writing each accepted result. Returns (document, all accepted). A
+    refusal stops the series and is logged; play goes on (fail forward)."""
+    for request_id, text in requests:
+        response = _call(world, live, text, request_id, [])
+        if not response.get("ok"):
+            warning("OCCUPANTS: %s request %s refused (%s)" % (label, request_id, response.get("error")),
+                    category="plot_updates")
+            return live, False
+        if response.get("historical"):
+            continue
+        live = response["live_state"]
+        _write(root, live)
+    return live, True
+
+
+def _convert_quests(root: str, world: str, live: Dict[str, Any], why: str) -> Dict[str, Any]:
+    """QS: the one-time conversion of the played plot (module_plot.json) into
+    the engine's quest record, when the document was just made or holds no
+    quests yet. The report goes to debug/quest_conversion.json. Refused or
+    unavailable: the quests stay as declared (unstarted), logged."""
+    from utils import quest_record
+    try:
+        modules = _modules(root)
+        quests, extra, actions, notes = quest_record.conversion(root, modules)
+        requests = quest_record.conversion_requests(actions)
+        live, accepted = _send_quest_requests(root, world, live, requests, "quest conversion")
+        outcome = "converted" if accepted else "refused"
+        quest_record.write_conversion_report(root, quests, extra, notes, requests, outcome)
+        info("OCCUPANTS: quest record %s (%s): %d quests declared, %d actions in %d requests, %s"
+             % (outcome, why, len(quests), len(actions), len(requests),
+                "every played status carried" if accepted else "the rest of the played statuses are not carried"),
+             category="plot_updates")
+    except Exception as exc:  # fail forward: the quests stay as declared
+        warning("OCCUPANTS: quest conversion failed (%s); the quests start as declared" % exc,
+                category="plot_updates")
+    return live
+
+
+def _carry_quests(root: str, world: str, live: Dict[str, Any], old: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """D3: a set-aside document's quest logs replay on the new one. When the
+    old document has none, or the replay is refused, the record is rebuilt
+    from module_plot.json as a last resort (logged quest_record_rebuilt_from_plot)."""
+    from utils import quest_record
+    actions: List[str] = []
+    try:
+        actions = quest_record.carry_actions(old)
+    except Exception as exc:  # a refused document may hold anything
+        warning("OCCUPANTS: the set-aside document's quests could not be read (%s)" % exc,
+                category="plot_updates")
+    if actions:
+        requests = [("quest-carry:%d" % (i // quest_record.MAX_OPS + 1),
+                     "\n".join(actions[i:i + quest_record.MAX_OPS]))
+                    for i in range(0, len(actions), quest_record.MAX_OPS)]
+        live, accepted = _send_quest_requests(root, world, live, requests, "quest carry")
+        if accepted:
+            info("OCCUPANTS: %d quest log entries carried from the set-aside document" % len(actions),
+                 category="plot_updates")
+            return live
+    warning("OCCUPANTS: quest_record_rebuilt_from_plot: the quest record is rebuilt from "
+            "module_plot.json (as played at the switch); changes since are not carried",
+            category="plot_updates")
+    return _convert_quests(root, world, live, "rebuilt after set-aside")
 
 
 def _set_aside(root: str) -> None:
@@ -149,15 +218,18 @@ def _set_aside(root: str) -> None:
 
 
 def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
-            view: Tuple[str, ...] = (), root: str = ".", create: bool = True) -> Optional[Dict[str, Any]]:
+            view: Tuple[str, ...] = (), quests: Tuple[str, ...] = (), root: str = ".",
+            create: bool = True) -> Optional[Dict[str, Any]]:
     """One engine call on the document. Returns the response (ok or a refusal
     of the actions, which the caller reconciles), or None when the engine is
     unavailable or the document could not be made. Writes the next document
     when it changed. With create=False a missing document is None (a reader
-    never writes; the DM turn makes the document)."""
+    never writes; the DM turn makes the document). `quests` asks for the
+    quests view of these ids (QS)."""
     try:
         world, places, _ = _world(root)
         live = _load(root)
+        created = False
         if live is None:
             if not create:
                 return None
@@ -165,12 +237,17 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
             if live is None:
                 return None
             _write(root, live)
+            created = True
+        if created or "quests" not in live:
+            # QS: the switch. A new document, or one from before the quest
+            # record (v2), takes the played plot once, before this turn's call.
+            live = _convert_quests(root, world, live, "new document" if created else "document without quests")
         tried_bak = False
         recreated = False
         redeclared: set = set()
         on_disk = live
         while True:
-            response = _call(world, live, actions, request_id, list(view))
+            response = _call(world, live, actions, request_id, list(view), list(quests))
             if response.get("ok"):
                 # Written when the engine changed it, or when the file holds
                 # a refused document and this one (the .bak) is good.
@@ -196,17 +273,21 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
                 warning("OCCUPANTS: the document was refused (%s); retrying with the "
                         "previous one" % response.get("error"), category="location_transitions")
                 live = bak
+                if "quests" not in live:
+                    live = _convert_quests(root, world, live, "previous document without quests")
                 continue
             if recreated:
                 warning("OCCUPANTS: the re-created document was refused too (%s)"
                         % response.get("error"), category="location_transitions")
                 return None
             recreated = True
+            old = live
             _set_aside(root)
             live = _create(root, world, places)
             if live is None:
                 return None
             _write(root, live)
+            live = _carry_quests(root, world, live, old)
             on_disk = live
     except apply.EngineUnavailable as exc:
         warning("OCCUPANTS: engine unavailable (%s); the roster record is not updated this turn"
