@@ -447,22 +447,24 @@ def format_schema_for_prompt(schema, character_role):
     schema_info += """
 CRITICAL - Valid item_type values (MUST use one of these EXACTLY):
 - "weapon" - swords, bows, daggers, melee and ranged weapons
-- "armor" - armor pieces, shields, cloaks, boots, gloves, protective wear
+- "armor" - body armor and shields only (armor_category and ac_base required); cloaks, boots, gloves and other worn magic items are "miscellaneous" with an item_subtype
 - "ammunition" - arrows, bolts, sling bullets, thrown weapon ammo
 - "consumable" - potions, scrolls, food, rations, anything consumed when used
 - "equipment" - tools, torches, rope, containers, utility items
 - "miscellaneous" - rings, amulets, wands, truly miscellaneous items only
 
 NEVER use: "wondrous item", "magic item", "magical" or any other value!
+Every equipment entry carries all four of item_name, item_type, description and quantity (the schema refuses an entry missing any of them).
+Valid item_subtype values (when given): scroll, potion, wand, ring, amulet, cloak, boots, gloves, helmet, rod, staff, food, other.
 
 NOTE: Enhanced categorization system fixes GitHub issue #45 (inconsistent item storage)
 
 Enhanced Item Type Mappings:
 - Arrows/Bolts/Bullets -> item_type: "ammunition"
 - Travel Ration/Food -> item_type: "consumable", item_subtype: "food"
-- Torch/Rope/Tools -> item_type: "equipment", item_subtype: "tool"
+- Torch/Rope/Tools -> item_type: "equipment", item_subtype: "other"
 - Studded Leather Armor -> item_type: "armor", description: "Light armor. AC 12 + Dex modifier."
-- Cloak of Elvenkind -> item_type: "armor", item_subtype: "cloak"
+- Cloak of Elvenkind -> item_type: "miscellaneous", item_subtype: "cloak"
 - Ring of Protection -> item_type: "miscellaneous", item_subtype: "ring"
 - Wand of Magic Missiles -> item_type: "miscellaneous", item_subtype: "wand"
 - Potion of Healing -> item_type: "consumable", item_subtype: "potion"
