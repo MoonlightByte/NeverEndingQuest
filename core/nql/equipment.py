@@ -22,7 +22,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.nql import apply, genesis
+from core.nql import apply, genesis, item_catalog
 
 
 @dataclass
@@ -96,6 +96,12 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
         fields = [f"owner {_q(cid)};", f"custody character {_q(cid)};"]
         if _stock(e) != 1:
             fields.append(f"quantity {_stock(e)};")
+        catalog = item_catalog.entry(e.get("catalog_id"))
+        if catalog is not None:
+            # GP: a new catalog row is created from the pack's type, which
+            # supplies its name, description and equipment (no definition).
+            ops.append(f"create item {_q(iid)} from {_q(catalog['id'])} {{ {' '.join(fields)} }};")
+            continue
         if e.get("item_type") == "armor" and type(e.get("ac_base")) is int or e.get("armor_category") == "shield":
             fields.append(f"definition {_q('gear:' + iid.split(':', 1)[1])};")
         elif e.get("item_type") == "weapon":

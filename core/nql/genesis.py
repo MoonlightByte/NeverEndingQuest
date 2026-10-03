@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.nql import srd_stats, stats
+from core.nql import item_catalog, srd_stats, stats
 
 EQUIPMENT_VERSION = "nql-equipment-v1"
 # Typed values an item effect may use to name armor class as its target. This
@@ -391,6 +391,28 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
     item_type = entry.get("item_type")
     definition = None
     mode = None
+    catalog = item_catalog.entry(entry.get("catalog_id"))
+    if catalog is not None:
+        # A catalog row (GP): the pack's type supplies name, description and
+        # equipment, and an item `from` a type may not add a definition of
+        # its own. A catalog armor row therefore gets no per-row definition;
+        # the shared gear:srd/<slug> one declared for every world carries its AC.
+        mode = item_catalog.equipment_mode(catalog)
+        if worn and mode is None:
+            gaps.append(f"{cid}: {entry.get('item_name')!r} ({catalog['id']}) is equipped but its catalog type has no equipment; item left unworn")
+            worn = False
+        if worn and quantity not in (None, 1):
+            gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, item left unworn")
+            worn = False
+        fields = [f"owner {_q(owner)};", custody]
+        if worn:
+            fields.append(f"wearer {_q(cid)};")
+            fields.append(f"mode {_q(mode)};")
+        if quantity is not None and quantity != 1:
+            fields.append(f"quantity {quantity};")
+        return f"item {_q(iid)} from {_q(catalog['id'])} {{ {' '.join(fields)} }}", (mode if worn else None)
+    if isinstance(entry.get("catalog_id"), str) and entry.get("catalog_id"):
+        gaps.append(f"{cid}: {entry.get('item_name')!r} names unknown catalog_id {entry['catalog_id']!r}; declared from its own fields")
     if ac_effect_lines(iid, entry) and item_type not in ("armor", "weapon"):
         # An item with a while-worn defense effect must be a typed worn item.
         definition, mode = "gear:worn", "worn"
@@ -469,6 +491,13 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         ' definition "gear:held" named "Held item" { description "Occupies one hand."; default "held"; mode "held" { occupy "hand" by 1; } }\n',
         ' definition "gear:worn" named "Worn item" { description "Worn, occupies no slot."; default "worn"; mode "worn" { } }\n',
     ]
+    # GP: the pack's armor types name gear:srd/<slug>; one definition each from
+    # the entry's typed neq_armor fields (a shield is ac_base 2, ac_bonus 0).
+    for catalog_armor in item_catalog.armor_entries():
+        text = _armor_definition(item_catalog.armor_definition_id(catalog_armor),
+                                 dict(catalog_armor["neq_armor"], item_name=catalog_armor.get("name", "")), gaps)
+        if text is not None:
+            definitions.append(text)
     items: List[str] = []
     effects: List[str] = []
     effect_types: List[str] = []
@@ -591,6 +620,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     # Definitions for items that do not exist yet (a later create item in the
     # same world needs its equipment definition declared at genesis).
     for iid, entry in definition_entries or []:
+        if isinstance(entry, dict) and item_catalog.entry(entry.get("catalog_id")) is not None:
+            continue  # a catalog row takes its equipment from the pack's type
         if isinstance(entry, dict) and entry.get("item_type") == "armor":
             text = _armor_definition("gear:" + iid.split(":", 1)[1], entry, gaps)
             if text is not None:
@@ -619,6 +650,11 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     lines.append("}")
     lines.extend(items)
     lines.extend(effects)
+    # GP: every world carries the SRD item pack, so a row `from` a catalog type
+    # and a later `create item ... from` resolve in any call's world.
+    pack = item_catalog.pack_source().rstrip("\n")
+    if pack:
+        lines.append(pack)
     return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
                    container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps)
 
