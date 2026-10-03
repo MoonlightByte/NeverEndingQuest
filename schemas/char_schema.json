@@ -374,6 +374,7 @@
         "properties": {
           "item_name": {"type": "string"},
           "nql_id": {"type": "string"},
+          "catalog_id": {"type": "string"},
           "item_type": {"type": "string", "enum": ["weapon", "armor", "miscellaneous", "consumable", "ammunition", "equipment"]},
           "item_subtype": {"type": "string", "enum": ["scroll", "potion", "wand", "ring", "amulet", "cloak", "boots", "gloves", "helmet", "rod", "staff", "food", "other"]},
           "description": {"type": "string"},

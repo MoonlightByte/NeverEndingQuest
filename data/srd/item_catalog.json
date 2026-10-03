@@ -1,0 +1,3399 @@
+{
+ "schema": "srd-item-catalog/2",
+ "ruleset": "SRD 5.2.1",
+ "sources": {
+  "document": "System Reference Document 5.2.1 (SRD_CC_v5.2.1.pdf)",
+  "pdf_sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
+  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.",
+  "licence": "CC BY 4.0",
+  "licence_url": "https://creativecommons.org/licenses/by/4.0/legalcode"
+ },
+ "notes": [
+  "Weapons and armor come from equipment.json (SRD Weapons and Armor tables, pages 91-92); their descriptions are composed from those table facts.",
+  "Gear is the Adventuring Gear table (page 95) without its four Varies rows, each with the description under its own heading; Spell Scroll is two rows sharing one heading.",
+  "The Varies rows are expanded from the Ammunition, Arcane Focuses, Druidic Focuses and Holy Symbols tables (pages 96-97).",
+  "kind and subtype use NEQ's item_type and item_subtype enums (schemas/char_schema.json).",
+  "Prices: CP copper, SP silver, GP gold, per units_per_lot items (ammunition is sold in lots).",
+  "equipment names the equipment definition NEQ's genesis declares: gear:held for weapons, gear:worn for other gear, gear:srd/<slug> for each armor (built from neq_armor), none for ammunition.",
+  "neq_armor holds NEQ's typed armor fields. A shield is ac_base 2, ac_bonus 0 (genesis adds ac_bonus to ac_base)."
+ ],
+ "counts": {
+  "weapon": 38,
+  "armor": 13,
+  "equipment": 79,
+  "consumable": 10,
+  "ammunition": 5
+ },
+ "entries": [
+  {
+   "id": "itemdef:srd/club",
+   "name": "Club",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Melee weapon. Damage: 1d4 Bludgeoning. Properties: Light. Mastery: Slow.",
+   "price": {
+    "unit": "silver",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 SP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/dagger",
+   "name": "Dagger",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Melee weapon. Damage: 1d4 Piercing. Properties: Finesse, Light, Thrown (Range 20/60). Mastery: Nick.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/greatclub",
+   "name": "Greatclub",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Melee weapon. Damage: 1d8 Bludgeoning. Properties: Two-Handed. Mastery: Push.",
+   "price": {
+    "unit": "silver",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 SP"
+   },
+   "weight_lb": 10,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/handaxe",
+   "name": "Handaxe",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Melee weapon. Damage: 1d6 Slashing. Properties: Light, Thrown (Range 20/60). Mastery: Vex.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/javelin",
+   "name": "Javelin",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Melee weapon. Damage: 1d6 Piercing. Properties: Thrown (Range 30/120). Mastery: Slow.",
+   "price": {
+    "unit": "silver",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 SP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/light-hammer",
+   "name": "Light Hammer",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Melee weapon. Damage: 1d4 Bludgeoning. Properties: Light, Thrown (Range 20/60). Mastery: Nick.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/mace",
+   "name": "Mace",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Melee weapon. Damage: 1d6 Bludgeoning. Properties: -. Mastery: Sap.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/quarterstaff",
+   "name": "Quarterstaff",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Melee weapon. Damage: 1d6 Bludgeoning. Properties: Versatile (1d8). Mastery: Topple.",
+   "price": {
+    "unit": "silver",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 SP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/sickle",
+   "name": "Sickle",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Melee weapon. Damage: 1d4 Slashing. Properties: Light. Mastery: Nick.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/spear",
+   "name": "Spear",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Melee weapon. Damage: 1d6 Piercing. Properties: Thrown (Range 20/60), Versatile (1d8). Mastery: Sap.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 3,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/dart",
+   "name": "Dart",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Ranged weapon. Damage: 1d4 Piercing. Properties: Finesse, Thrown (Range 20/60). Mastery: Vex.",
+   "price": {
+    "unit": "copper",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 CP"
+   },
+   "weight_lb": 0.25,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Ranged"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/light-crossbow",
+   "name": "Light Crossbow",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Ranged weapon. Damage: 1d8 Piercing. Properties: Ammunition (Range 80/320; Bolt), Loading, Two-Handed. Mastery: Slow.",
+   "price": {
+    "unit": "gold",
+    "amount": 25,
+    "units_per_lot": 1,
+    "printed": "25 GP"
+   },
+   "weight_lb": 5,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Ranged"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/shortbow",
+   "name": "Shortbow",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Ranged weapon. Damage: 1d6 Piercing. Properties: Ammunition (Range 80/320; Arrow), Two-Handed. Mastery: Vex.",
+   "price": {
+    "unit": "gold",
+    "amount": 25,
+    "units_per_lot": 1,
+    "printed": "25 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Ranged"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/sling",
+   "name": "Sling",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Simple Ranged weapon. Damage: 1d4 Bludgeoning. Properties: Ammunition (Range 30/120; Bullet). Mastery: Slow.",
+   "price": {
+    "unit": "silver",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 SP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Simple",
+    "kind": "Ranged"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/battleaxe",
+   "name": "Battleaxe",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d8 Slashing. Properties: Versatile (1d10). Mastery: Topple.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/flail",
+   "name": "Flail",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d8 Bludgeoning. Properties: -. Mastery: Sap.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/glaive",
+   "name": "Glaive",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d10 Slashing. Properties: Heavy, Reach, Two-Handed. Mastery: Graze.",
+   "price": {
+    "unit": "gold",
+    "amount": 20,
+    "units_per_lot": 1,
+    "printed": "20 GP"
+   },
+   "weight_lb": 6,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/greataxe",
+   "name": "Greataxe",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d12 Slashing. Properties: Heavy, Two-Handed. Mastery: Cleave.",
+   "price": {
+    "unit": "gold",
+    "amount": 30,
+    "units_per_lot": 1,
+    "printed": "30 GP"
+   },
+   "weight_lb": 7,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/greatsword",
+   "name": "Greatsword",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 2d6 Slashing. Properties: Heavy, Two-Handed. Mastery: Graze.",
+   "price": {
+    "unit": "gold",
+    "amount": 50,
+    "units_per_lot": 1,
+    "printed": "50 GP"
+   },
+   "weight_lb": 6,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/halberd",
+   "name": "Halberd",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d10 Slashing. Properties: Heavy, Reach, Two-Handed. Mastery: Cleave.",
+   "price": {
+    "unit": "gold",
+    "amount": 20,
+    "units_per_lot": 1,
+    "printed": "20 GP"
+   },
+   "weight_lb": 6,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/lance",
+   "name": "Lance",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d10 Piercing. Properties: Heavy, Reach, Two-Handed (unless mounted). Mastery: Topple.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 6,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/longsword",
+   "name": "Longsword",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d8 Slashing. Properties: Versatile (1d10). Mastery: Sap.",
+   "price": {
+    "unit": "gold",
+    "amount": 15,
+    "units_per_lot": 1,
+    "printed": "15 GP"
+   },
+   "weight_lb": 3,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/maul",
+   "name": "Maul",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 2d6 Bludgeoning. Properties: Heavy, Two-Handed. Mastery: Topple.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 10,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/morningstar",
+   "name": "Morningstar",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d8 Piercing. Properties: -. Mastery: Sap.",
+   "price": {
+    "unit": "gold",
+    "amount": 15,
+    "units_per_lot": 1,
+    "printed": "15 GP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/pike",
+   "name": "Pike",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d10 Piercing. Properties: Heavy, Reach, Two-Handed. Mastery: Push.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 18,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/rapier",
+   "name": "Rapier",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d8 Piercing. Properties: Finesse. Mastery: Vex.",
+   "price": {
+    "unit": "gold",
+    "amount": 25,
+    "units_per_lot": 1,
+    "printed": "25 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/scimitar",
+   "name": "Scimitar",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d6 Slashing. Properties: Finesse, Light. Mastery: Nick.",
+   "price": {
+    "unit": "gold",
+    "amount": 25,
+    "units_per_lot": 1,
+    "printed": "25 GP"
+   },
+   "weight_lb": 3,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/shortsword",
+   "name": "Shortsword",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d6 Piercing. Properties: Finesse, Light. Mastery: Vex.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/trident",
+   "name": "Trident",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d8 Piercing. Properties: Thrown (Range 20/60), Versatile (1d10). Mastery: Topple.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/warhammer",
+   "name": "Warhammer",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d8 Bludgeoning. Properties: Versatile (1d10). Mastery: Push.",
+   "price": {
+    "unit": "gold",
+    "amount": 15,
+    "units_per_lot": 1,
+    "printed": "15 GP"
+   },
+   "weight_lb": 5,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/war-pick",
+   "name": "War Pick",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d8 Piercing. Properties: Versatile (1d10). Mastery: Sap.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/whip",
+   "name": "Whip",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Melee weapon. Damage: 1d4 Slashing. Properties: Finesse, Reach. Mastery: Slow.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 3,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Melee"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/blowgun",
+   "name": "Blowgun",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Ranged weapon. Damage: 1 Piercing. Properties: Ammunition (Range 25/100; Needle), Loading. Mastery: Vex.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Ranged"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/hand-crossbow",
+   "name": "Hand Crossbow",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Ranged weapon. Damage: 1d6 Piercing. Properties: Ammunition (Range 30/120; Bolt), Light, Loading. Mastery: Vex.",
+   "price": {
+    "unit": "gold",
+    "amount": 75,
+    "units_per_lot": 1,
+    "printed": "75 GP"
+   },
+   "weight_lb": 3,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Ranged"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/heavy-crossbow",
+   "name": "Heavy Crossbow",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Ranged weapon. Damage: 1d10 Piercing. Properties: Ammunition (Range 100/400; Bolt), Heavy, Loading, Two-Handed. Mastery: Push.",
+   "price": {
+    "unit": "gold",
+    "amount": 50,
+    "units_per_lot": 1,
+    "printed": "50 GP"
+   },
+   "weight_lb": 18,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Ranged"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/longbow",
+   "name": "Longbow",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Ranged weapon. Damage: 1d8 Piercing. Properties: Ammunition (Range 150/600; Arrow), Heavy, Two-Handed. Mastery: Slow.",
+   "price": {
+    "unit": "gold",
+    "amount": 50,
+    "units_per_lot": 1,
+    "printed": "50 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Ranged"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/musket",
+   "name": "Musket",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Ranged weapon. Damage: 1d12 Piercing. Properties: Ammunition (Range 40/120; Bullet), Loading, Two-Handed. Mastery: Slow.",
+   "price": {
+    "unit": "gold",
+    "amount": 500,
+    "units_per_lot": 1,
+    "printed": "500 GP"
+   },
+   "weight_lb": 10,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Ranged"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/pistol",
+   "name": "Pistol",
+   "kind": "weapon",
+   "magical": false,
+   "consumable": false,
+   "description": "Martial Ranged weapon. Damage: 1d10 Piercing. Properties: Ammunition (Range 30/90; Bullet), Loading. Mastery: Vex.",
+   "price": {
+    "unit": "gold",
+    "amount": 250,
+    "units_per_lot": 1,
+    "printed": "250 GP"
+   },
+   "weight_lb": 3,
+   "source": {
+    "section": "Equipment > Weapons > Weapons table",
+    "page": 91
+   },
+   "weapon": {
+    "category": "Martial",
+    "kind": "Ranged"
+   },
+   "equipment": "gear:held"
+  },
+  {
+   "id": "itemdef:srd/padded-armor",
+   "name": "Padded Armor",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Light armor. Armor Class: 11 + Dex modifier. Stealth: Disadvantage. 1 Minute to Don or Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 8,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Light",
+    "ac": {
+     "base": 11,
+     "bonus": null,
+     "dex": true,
+     "dex_max": null,
+     "printed": "11 + Dex modifier"
+    }
+   },
+   "equipment": "gear:srd/padded-armor",
+   "neq_armor": {
+    "armor_category": "light",
+    "ac_base": 11,
+    "ac_bonus": 0,
+    "stealth_disadvantage": true
+   }
+  },
+  {
+   "id": "itemdef:srd/leather-armor",
+   "name": "Leather Armor",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Light armor. Armor Class: 11 + Dex modifier. 1 Minute to Don or Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 10,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Light",
+    "ac": {
+     "base": 11,
+     "bonus": null,
+     "dex": true,
+     "dex_max": null,
+     "printed": "11 + Dex modifier"
+    }
+   },
+   "equipment": "gear:srd/leather-armor",
+   "neq_armor": {
+    "armor_category": "light",
+    "ac_base": 11,
+    "ac_bonus": 0,
+    "stealth_disadvantage": false
+   }
+  },
+  {
+   "id": "itemdef:srd/studded-leather-armor",
+   "name": "Studded Leather Armor",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Light armor. Armor Class: 12 + Dex modifier. 1 Minute to Don or Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 45,
+    "units_per_lot": 1,
+    "printed": "45 GP"
+   },
+   "weight_lb": 13,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Light",
+    "ac": {
+     "base": 12,
+     "bonus": null,
+     "dex": true,
+     "dex_max": null,
+     "printed": "12 + Dex modifier"
+    }
+   },
+   "equipment": "gear:srd/studded-leather-armor",
+   "neq_armor": {
+    "armor_category": "light",
+    "ac_base": 12,
+    "ac_bonus": 0,
+    "stealth_disadvantage": false
+   }
+  },
+  {
+   "id": "itemdef:srd/hide-armor",
+   "name": "Hide Armor",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Medium armor. Armor Class: 12 + Dex modifier (max 2). 5 Minutes to Don and 1 Minute to Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 12,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Medium",
+    "ac": {
+     "base": 12,
+     "bonus": null,
+     "dex": true,
+     "dex_max": 2,
+     "printed": "12 + Dex modifier (max 2)"
+    }
+   },
+   "equipment": "gear:srd/hide-armor",
+   "neq_armor": {
+    "armor_category": "medium",
+    "ac_base": 12,
+    "ac_bonus": 0,
+    "dex_limit": 2,
+    "stealth_disadvantage": false
+   }
+  },
+  {
+   "id": "itemdef:srd/chain-shirt",
+   "name": "Chain Shirt",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Medium armor. Armor Class: 13 + Dex modifier (max 2). 5 Minutes to Don and 1 Minute to Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 50,
+    "units_per_lot": 1,
+    "printed": "50 GP"
+   },
+   "weight_lb": 20,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Medium",
+    "ac": {
+     "base": 13,
+     "bonus": null,
+     "dex": true,
+     "dex_max": 2,
+     "printed": "13 + Dex modifier (max 2)"
+    }
+   },
+   "equipment": "gear:srd/chain-shirt",
+   "neq_armor": {
+    "armor_category": "medium",
+    "ac_base": 13,
+    "ac_bonus": 0,
+    "dex_limit": 2,
+    "stealth_disadvantage": false
+   }
+  },
+  {
+   "id": "itemdef:srd/scale-mail",
+   "name": "Scale Mail",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Medium armor. Armor Class: 14 + Dex modifier (max 2). Stealth: Disadvantage. 5 Minutes to Don and 1 Minute to Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 50,
+    "units_per_lot": 1,
+    "printed": "50 GP"
+   },
+   "weight_lb": 45,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Medium",
+    "ac": {
+     "base": 14,
+     "bonus": null,
+     "dex": true,
+     "dex_max": 2,
+     "printed": "14 + Dex modifier (max 2)"
+    }
+   },
+   "equipment": "gear:srd/scale-mail",
+   "neq_armor": {
+    "armor_category": "medium",
+    "ac_base": 14,
+    "ac_bonus": 0,
+    "dex_limit": 2,
+    "stealth_disadvantage": true
+   }
+  },
+  {
+   "id": "itemdef:srd/breastplate",
+   "name": "Breastplate",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Medium armor. Armor Class: 14 + Dex modifier (max 2). 5 Minutes to Don and 1 Minute to Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 400,
+    "units_per_lot": 1,
+    "printed": "400 GP"
+   },
+   "weight_lb": 20,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Medium",
+    "ac": {
+     "base": 14,
+     "bonus": null,
+     "dex": true,
+     "dex_max": 2,
+     "printed": "14 + Dex modifier (max 2)"
+    }
+   },
+   "equipment": "gear:srd/breastplate",
+   "neq_armor": {
+    "armor_category": "medium",
+    "ac_base": 14,
+    "ac_bonus": 0,
+    "dex_limit": 2,
+    "stealth_disadvantage": false
+   }
+  },
+  {
+   "id": "itemdef:srd/half-plate-armor",
+   "name": "Half Plate Armor",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Medium armor. Armor Class: 15 + Dex modifier (max 2). Stealth: Disadvantage. 5 Minutes to Don and 1 Minute to Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 750,
+    "units_per_lot": 1,
+    "printed": "750 GP"
+   },
+   "weight_lb": 40,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Medium",
+    "ac": {
+     "base": 15,
+     "bonus": null,
+     "dex": true,
+     "dex_max": 2,
+     "printed": "15 + Dex modifier (max 2)"
+    }
+   },
+   "equipment": "gear:srd/half-plate-armor",
+   "neq_armor": {
+    "armor_category": "medium",
+    "ac_base": 15,
+    "ac_bonus": 0,
+    "dex_limit": 2,
+    "stealth_disadvantage": true
+   }
+  },
+  {
+   "id": "itemdef:srd/ring-mail",
+   "name": "Ring Mail",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Heavy armor. Armor Class: 14. Stealth: Disadvantage. 10 Minutes to Don and 5 Minutes to Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 30,
+    "units_per_lot": 1,
+    "printed": "30 GP"
+   },
+   "weight_lb": 40,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Heavy",
+    "ac": {
+     "base": 14,
+     "bonus": null,
+     "dex": false,
+     "dex_max": null,
+     "printed": "14"
+    }
+   },
+   "equipment": "gear:srd/ring-mail",
+   "neq_armor": {
+    "armor_category": "heavy",
+    "ac_base": 14,
+    "ac_bonus": 0,
+    "stealth_disadvantage": true
+   }
+  },
+  {
+   "id": "itemdef:srd/chain-mail",
+   "name": "Chain Mail",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Heavy armor. Armor Class: 16. Strength: 13. Stealth: Disadvantage. 10 Minutes to Don and 5 Minutes to Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 75,
+    "units_per_lot": 1,
+    "printed": "75 GP"
+   },
+   "weight_lb": 55,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Heavy",
+    "ac": {
+     "base": 16,
+     "bonus": null,
+     "dex": false,
+     "dex_max": null,
+     "printed": "16"
+    }
+   },
+   "equipment": "gear:srd/chain-mail",
+   "neq_armor": {
+    "armor_category": "heavy",
+    "ac_base": 16,
+    "ac_bonus": 0,
+    "stealth_disadvantage": true
+   }
+  },
+  {
+   "id": "itemdef:srd/splint-armor",
+   "name": "Splint Armor",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Heavy armor. Armor Class: 17. Strength: 15. Stealth: Disadvantage. 10 Minutes to Don and 5 Minutes to Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 200,
+    "units_per_lot": 1,
+    "printed": "200 GP"
+   },
+   "weight_lb": 60,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Heavy",
+    "ac": {
+     "base": 17,
+     "bonus": null,
+     "dex": false,
+     "dex_max": null,
+     "printed": "17"
+    }
+   },
+   "equipment": "gear:srd/splint-armor",
+   "neq_armor": {
+    "armor_category": "heavy",
+    "ac_base": 17,
+    "ac_bonus": 0,
+    "stealth_disadvantage": true
+   }
+  },
+  {
+   "id": "itemdef:srd/plate-armor",
+   "name": "Plate Armor",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Heavy armor. Armor Class: 18. Strength: 15. Stealth: Disadvantage. 10 Minutes to Don and 5 Minutes to Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 1500,
+    "units_per_lot": 1,
+    "printed": "1500 GP"
+   },
+   "weight_lb": 65,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Heavy",
+    "ac": {
+     "base": 18,
+     "bonus": null,
+     "dex": false,
+     "dex_max": null,
+     "printed": "18"
+    }
+   },
+   "equipment": "gear:srd/plate-armor",
+   "neq_armor": {
+    "armor_category": "heavy",
+    "ac_base": 18,
+    "ac_bonus": 0,
+    "stealth_disadvantage": true
+   }
+  },
+  {
+   "id": "itemdef:srd/shield",
+   "name": "Shield",
+   "kind": "armor",
+   "magical": false,
+   "consumable": false,
+   "description": "Shield. Armor Class: +2. Utilize Action to Don or Doff.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 6,
+   "source": {
+    "section": "Equipment > Armor > Armor table",
+    "page": 92
+   },
+   "armor": {
+    "category": "Shield",
+    "ac": {
+     "base": null,
+     "bonus": 2,
+     "dex": false,
+     "dex_max": null,
+     "printed": "+2"
+    }
+   },
+   "equipment": "gear:srd/shield",
+   "neq_armor": {
+    "armor_category": "shield",
+    "ac_base": 2,
+    "ac_bonus": 0,
+    "stealth_disadvantage": false
+   }
+  },
+  {
+   "id": "itemdef:srd/acid",
+   "name": "Acid",
+   "kind": "consumable",
+   "subtype": "other",
+   "magical": false,
+   "consumable": true,
+   "description": "When you take the Attack action, you can replace one of your attacks with throwing a vial of Acid. Target one creature or object you can see within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or take 2d6 Acid damage.",
+   "price": {
+    "unit": "gold",
+    "amount": 25,
+    "units_per_lot": 1,
+    "printed": "25 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/alchemists-fire",
+   "name": "Alchemist's Fire",
+   "kind": "consumable",
+   "subtype": "other",
+   "magical": false,
+   "consumable": true,
+   "description": "When you take the Attack action, you can replace one of your attacks with throwing a flask of Alchemist's Fire. Target one creature or object you can see within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or take 1d4 Fire damage and start burning (see \"Rules Glossary\").",
+   "price": {
+    "unit": "gold",
+    "amount": 50,
+    "units_per_lot": 1,
+    "printed": "50 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/antitoxin",
+   "name": "Antitoxin",
+   "kind": "consumable",
+   "subtype": "potion",
+   "magical": false,
+   "consumable": true,
+   "description": "As a Bonus Action, you can drink a vial of Antitoxin to gain Advantage on saving throws to avoid or end the Poisoned condition for 1 hour.",
+   "price": {
+    "unit": "gold",
+    "amount": 50,
+    "units_per_lot": 1,
+    "printed": "50 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/backpack",
+   "name": "Backpack",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Backpack holds up to 30 pounds within 1 cubic foot. It can also serve as a saddlebag.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/ball-bearings",
+   "name": "Ball Bearings",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "As a Utilize action, you can spill Ball Bearings from their pouch. They spread to cover a level, 10-footsquare area within 10 feet of yourself. A creature that enters this area for the first time on a turn must succeed on a DC 10 Dexterity saving throw or have the Prone condition. It takes 10 minutes to recover the Ball Bearings.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/barrel",
+   "name": "Barrel",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Barrel holds up to 40 gallons of liquid or up to 4 cubic feet of dry goods.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 70,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/basket",
+   "name": "Basket",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Basket holds up to 40 pounds within 2 cubic feet.",
+   "price": {
+    "unit": "silver",
+    "amount": 4,
+    "units_per_lot": 1,
+    "printed": "4 SP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/bedroll",
+   "name": "Bedroll",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Bedroll sleeps one Small or Medium creature. While in a Bedroll, you automatically succeed on saving throws against extreme cold (see \"Gameplay Toolbox\").",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 7,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/bell",
+   "name": "Bell",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "When rung as a Utilize action, a Bell produces a sound that can be heard up to 60 feet away.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/blanket",
+   "name": "Blanket",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "While wrapped in a blanket, you have Advantage on saving throws against extreme cold (see \"Gameplay Toolbox\").",
+   "price": {
+    "unit": "silver",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 SP"
+   },
+   "weight_lb": 3,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/block-and-tackle",
+   "name": "Block and Tackle",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Block and Tackle allows you to hoist up to four times the weight you can normally lift.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/book",
+   "name": "Book",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Book contains fiction or nonfiction. If you consult an accurate nonfiction Book about its topic, you gain a +5 bonus to Intelligence (Arcana, History, Nature, or Religion) checks you make about that topic.",
+   "price": {
+    "unit": "gold",
+    "amount": 25,
+    "units_per_lot": 1,
+    "printed": "25 GP"
+   },
+   "weight_lb": 5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/bottle-glass",
+   "name": "Bottle, Glass",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Glass Bottle holds up to 11/2 pints.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/bucket",
+   "name": "Bucket",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Bucket holds up to half a cubic foot of contents.",
+   "price": {
+    "unit": "copper",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 CP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/burglars-pack",
+   "name": "Burglar's Pack",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Burglar's Pack contains the following items: Backpack, Ball Bearings, Bell, 10 Candles, Crowbar, Hooded Lantern, 7 flasks of Oil, 5 days of Rations, Rope, Tinderbox, and Waterskin.",
+   "price": {
+    "unit": "gold",
+    "amount": 16,
+    "units_per_lot": 1,
+    "printed": "16 GP"
+   },
+   "weight_lb": 42,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/caltrops",
+   "name": "Caltrops",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "As a Utilize action, you can spread Caltrops from their bag to cover a 5-foot-square area within 5 feet of yourself. A creature that enters this area for the first time on a turn must succeed on a DC 15 Dexterity saving throw or take 1 Piercing damage and have its Speed reduced to 0 until the start of its next turn. It takes 10 minutes to recover the Caltrops.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/candle",
+   "name": "Candle",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": true,
+   "description": "For 1 hour, a lit Candle sheds Bright Light in a 5-foot radius and Dim Light for an additional 5 feet.",
+   "price": {
+    "unit": "copper",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 CP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/case-crossbow-bolt",
+   "name": "Case, Crossbow Bolt",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Crossbow Bolt Case holds up to 20 Bolts.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/case-map-or-scroll",
+   "name": "Case, Map or Scroll",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Map or Scroll Case holds up to 10 sheets of paper or 5 sheets of parchment.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/chain",
+   "name": "Chain",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "As a Utilize action, you can wrap a Chain around an unwilling creature within 5 feet of yourself that has the Grappled, Incapacitated, or Restrained condition if you succeed on a DC 13 Strength (Athletics) check. If the creature's legs are bound, the creature has the Restrained condition until it escapes. Escaping the Chain requires the creature to make a successful DC 18 Dexterity (Acrobatics) check as an action. Bursting the Chain requires a successful DC 20 Strength (Athletics) check as an action.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 10,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/chest",
+   "name": "Chest",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Chest holds up to 12 cubic feet of contents.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 25,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/climbers-kit",
+   "name": "Climber's Kit",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Climber's Kit includes boot tips, gloves, pitons, and a harness. As a Utilize action, you can use the Climber's Kit to anchor yourself; when you do, you can't fall more than 25 feet from the anchor point, and you can't move more than 25 feet from there without undoing the anchor as a Bonus Action.",
+   "price": {
+    "unit": "gold",
+    "amount": 25,
+    "units_per_lot": 1,
+    "printed": "25 GP"
+   },
+   "weight_lb": 12,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/clothes-fine",
+   "name": "Clothes, Fine",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "Fine Clothes are made of expensive fabrics and adorned with expertly crafted details. Some events and locations admit only people wearing these clothes.",
+   "price": {
+    "unit": "gold",
+    "amount": 15,
+    "units_per_lot": 1,
+    "printed": "15 GP"
+   },
+   "weight_lb": 6,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/clothes-travelers",
+   "name": "Clothes, Traveler's",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "Traveler's Clothes are resilient garments designed for travel in various environments.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/component-pouch",
+   "name": "Component Pouch",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Component Pouch is watertight and filled with compartments that hold all the free Material components of your spells.",
+   "price": {
+    "unit": "gold",
+    "amount": 25,
+    "units_per_lot": 1,
+    "printed": "25 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/costume",
+   "name": "Costume",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "While wearing a Costume, you have Advantage on any ability check you make to impersonate the person or type of person it represents.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/crowbar",
+   "name": "Crowbar",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "Using a Crowbar gives you Advantage on Strength checks where the Crowbar's leverage can be applied.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/diplomats-pack",
+   "name": "Diplomat's Pack",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Diplomat's Pack contains the following items: Chest, Fine Clothes, Ink, 5 Ink Pens, Lamp, 2 Map or Scroll Cases, 4 flasks of Oil, 5 sheets of Paper, 5 sheets of Parchment, Perfume, and Tinderbox.",
+   "price": {
+    "unit": "gold",
+    "amount": 39,
+    "units_per_lot": 1,
+    "printed": "39 GP"
+   },
+   "weight_lb": 39,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/dungeoneers-pack",
+   "name": "Dungeoneer's Pack",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Dungeoneer's Pack contains the following items: Backpack, Caltrops, Crowbar, 2 flasks of Oil, 10 days of Rations, Rope, Tinderbox, 10 Torches, and Waterskin.",
+   "price": {
+    "unit": "gold",
+    "amount": 12,
+    "units_per_lot": 1,
+    "printed": "12 GP"
+   },
+   "weight_lb": 55,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/entertainers-pack",
+   "name": "Entertainer's Pack",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "An Entertainer's Pack contains the following items: Backpack, Bedroll, Bell, Bullseye Lantern, 3 Costumes, Mirror, 8 flasks of Oil, 9 days of Rations, Tinderbox, and Waterskin.",
+   "price": {
+    "unit": "gold",
+    "amount": 40,
+    "units_per_lot": 1,
+    "printed": "40 GP"
+   },
+   "weight_lb": 58.5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/explorers-pack",
+   "name": "Explorer's Pack",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "An Explorer's Pack contains the following items: Backpack, Bedroll, 2 flasks of Oil, 10 days of Rations, Rope, Tinderbox, 10 Torches, and Waterskin.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 55,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/flask",
+   "name": "Flask",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Flask holds up to 1 pint.",
+   "price": {
+    "unit": "copper",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 CP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/grappling-hook",
+   "name": "Grappling Hook",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "As a Utilize action, you can throw the Grappling Hook at a railing, a ledge, or another catch within 50 feet of yourself, and the hook catches on if you succeed on a DC 13 Dexterity (Acrobatics) check. If you tied a Rope to the hook, you can then climb it.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/healers-kit",
+   "name": "Healer's Kit",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Healer's Kit has ten uses. As a Utilize action, you can expend one of its uses to stabilize an Unconscious creature that has 0 Hit Points without needing to make a Wisdom (Medicine) check.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 3,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/holy-water",
+   "name": "Holy Water",
+   "kind": "consumable",
+   "subtype": "other",
+   "magical": false,
+   "consumable": true,
+   "description": "When you take the Attack action, you can replace one of your attacks with throwing a flask of Holy Water. Target one creature you can see within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or take 2d8 Radiant damage if it is a Fiend or an Undead.",
+   "price": {
+    "unit": "gold",
+    "amount": 25,
+    "units_per_lot": 1,
+    "printed": "25 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/hunting-trap",
+   "name": "Hunting Trap",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "As a Utilize action, you can set a Hunting Trap, which is a sawtooth steel ring that snaps shut when a creature steps on a pressure plate in the center. The trap is affixed by a heavy chain to an immobile object, such as a tree or a spike driven into the ground. A creature that steps on the plate must succeed on a DC 13 Dexterity saving throw or take 1d4 Piercing damage and have its Speed reduced to 0 until the start of its next turn. Thereafter, until the creature breaks free of the trap, its movement is limited by the length of the chain (typically 3 feet). A creature can use its action to make a DC 13 Strength (Athletics) check, freeing itself or another creature within its reach on a success. Each failed check deals 1 Piercing damage to the trapped creature.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 25,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/ink",
+   "name": "Ink",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "Ink comes in a 1-ounce bottle, which provides enough ink to write about 500 pages.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/ink-pen",
+   "name": "Ink Pen",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "Using Ink, an Ink Pen is used to write or draw.",
+   "price": {
+    "unit": "copper",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 CP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/jug",
+   "name": "Jug",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Jug holds up to 1 gallon.",
+   "price": {
+    "unit": "copper",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 CP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/ladder",
+   "name": "Ladder",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Ladder is 10 feet tall. You must climb to move up or down it.",
+   "price": {
+    "unit": "silver",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 SP"
+   },
+   "weight_lb": 25,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/lamp",
+   "name": "Lamp",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Lamp burns Oil as fuel to cast Bright Light in a 15- foot radius and Dim Light for an additional 30 feet.",
+   "price": {
+    "unit": "silver",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 SP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/lantern-bullseye",
+   "name": "Lantern, Bullseye",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Bullseye Lantern burns Oil as fuel to cast Bright Light in a 60-foot Cone and Dim Light for an additional 60 feet.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/lantern-hooded",
+   "name": "Lantern, Hooded",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Hooded Lantern burns Oil as fuel to cast Bright Light in a 30-foot radius and Dim Light for an additional 30 feet. As a Bonus Action, you can lower the hood, reducing the light to Dim Light in a 5-foot radius, or raise it again.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/lock",
+   "name": "Lock",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Lock comes with a key. Without the key, a creature can use Thieves' Tools to pick this Lock with a successful DC 15 Dexterity (Sleight of Hand) check.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/magnifying-glass",
+   "name": "Magnifying Glass",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Magnifying Glass grants Advantage on any ability check made to appraise or inspect a highly detailed item. Lighting a fire with a Magnifying Glass requires light as bright as sunlight to focus, tinder to ignite, and about 5 minutes for the fire to ignite.",
+   "price": {
+    "unit": "gold",
+    "amount": 100,
+    "units_per_lot": 1,
+    "printed": "100 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/manacles",
+   "name": "Manacles",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "As a Utilize action, you can use Manacles to bind an unwilling Small or Medium creature within 5 feet of yourself that has the Grappled, Incapacitated, or Restrained condition if you succeed on a DC 13 Dexterity (Sleight of Hand) check. While bound, a creature has Disadvantage on attack rolls, and the creature is Restrained if the Manacles are attached to a chain or hook that is fixed in place. Escaping the Manacles requires a successful DC 20 Dexterity (Sleight of Hand) check as an action. Bursting them requires a successful DC 25 Strength (Athletics) check as an action. Each set of Manacles comes with a key. Without the key, a creature can use Thieves' Tools to pick the Manacles' lock with a successful DC 15 Dexterity (Sleight of Hand) check.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 6,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/map",
+   "name": "Map",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "If you consult an accurate Map, you gain a +5 bonus to Wisdom (Survival) checks you make to find your way in the place represented on it.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/mirror",
+   "name": "Mirror",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A handheld steel Mirror is useful for personal cosmetics but also for peeking around corners and reflecting light as a signal.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 0.5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/net",
+   "name": "Net",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "When you take the Attack action, you can replace one of your attacks with throwing a Net. Target a creature you can see within 15 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or have the Restrained condition until it escapes. The target succeeds automatically if it is Huge or larger. To escape, the target or a creature within 5 feet of it must take an action to make a DC 10 Strength (Athletics) check, freeing the Restrained creature on a success. Destroying the Net (AC 10; 5 HP; Immunity to Bludgeoning, Poison, and Psychic damage) also frees the target, ending the effect.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 3,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/oil",
+   "name": "Oil",
+   "kind": "consumable",
+   "subtype": "other",
+   "magical": false,
+   "consumable": true,
+   "description": "You can douse a creature, object, or space with Oil or use it as fuel, as detailed below. Dousing a Creature or an Object. When you take the Attack action, you can replace one of your attacks with throwing an Oil flask. Target one creature or object within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or be covered in oil. If the target takes Fire damage before the oil dries (after 1 minute), the target takes an extra 5 Fire damage from burning oil. Dousing a Space. You can take the Utilize action to pour an Oil flask on level ground to cover a 5-foot-square area within 5 feet of yourself. If lit, the oil burns until the end of the turn 2 rounds from when the oil was lit (or 12 seconds) and deals 5 Fire damage to any creature that enters the area or ends its turn there. A creature can take this damage only once per turn. Fuel. Oil serves as fuel for Lamps and Lanterns. Once lit, a flask of Oil burns for 6 hours in a Lamp or Lantern. That duration doesn't need to be consecutive; you can extinguish the burning Oil (as a Utilize action) and rekindle it again until it has burned for a total of 6 hours.",
+   "price": {
+    "unit": "silver",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 SP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/paper",
+   "name": "Paper",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "One sheet of Paper can hold about 250 handwritten words.",
+   "price": {
+    "unit": "silver",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 SP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/parchment",
+   "name": "Parchment",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "One sheet of Parchment can hold about 250 handwritten words.",
+   "price": {
+    "unit": "silver",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 SP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/perfume",
+   "name": "Perfume",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "Perfume comes in a 4-ounce vial. For 1 hour after applying Perfume to yourself, you have Advantage on Charisma (Persuasion) checks made to influence an Indifferent Humanoid within 5 feet of yourself.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/poison-basic",
+   "name": "Poison, Basic",
+   "kind": "consumable",
+   "subtype": "other",
+   "magical": false,
+   "consumable": true,
+   "description": "As a Bonus Action, you can use a vial of Basic Poison to coat one weapon or up to three pieces of ammunition. A creature that takes Piercing or Slashing damage from the poisoned weapon or ammunition takes an extra 1d4 Poison damage. Once applied, the poison retains potency for 1 minute or until its damage is dealt, whichever comes first.",
+   "price": {
+    "unit": "gold",
+    "amount": 100,
+    "units_per_lot": 1,
+    "printed": "100 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/pole",
+   "name": "Pole",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Pole is 10 feet long. You can use it to touch something up to 10 feet away. If you must make a Strength (Athletics) check as part of a High or Long Jump, you can use the Pole to vault, giving yourself Advantage on the check.",
+   "price": {
+    "unit": "copper",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 CP"
+   },
+   "weight_lb": 7,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/pot-iron",
+   "name": "Pot, Iron",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "An Iron Pot holds up to 1 gallon.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 10,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/potion-of-healing",
+   "name": "Potion of Healing",
+   "kind": "consumable",
+   "subtype": "potion",
+   "magical": true,
+   "consumable": true,
+   "description": "This potion is a magic item. As a Bonus Action, you can drink it or administer it to another creature within 5 feet of yourself. The creature that drinks the magical red fluid in this vial regains 2d4 + 2 Hit Points.",
+   "price": {
+    "unit": "gold",
+    "amount": 50,
+    "units_per_lot": 1,
+    "printed": "50 GP"
+   },
+   "weight_lb": 0.5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/pouch",
+   "name": "Pouch",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Pouch holds up to 6 pounds within one-fifth of a cubic foot.",
+   "price": {
+    "unit": "silver",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 SP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/priests-pack",
+   "name": "Priest's Pack",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Priest's Pack contains the following items: Backpack, Blanket, Holy Water, Lamp, 7 days of Rations, Robe, and Tinderbox.",
+   "price": {
+    "unit": "gold",
+    "amount": 33,
+    "units_per_lot": 1,
+    "printed": "33 GP"
+   },
+   "weight_lb": 29,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/quiver",
+   "name": "Quiver",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Quiver holds up to 20 Arrows.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/ram-portable",
+   "name": "Ram, Portable",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "You can use a Portable Ram to break down doors. When doing so, you gain a +4 bonus to the Strength check. One other character can help you use the ram, giving you Advantage on this check.",
+   "price": {
+    "unit": "gold",
+    "amount": 4,
+    "units_per_lot": 1,
+    "printed": "4 GP"
+   },
+   "weight_lb": 35,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/rations",
+   "name": "Rations",
+   "kind": "consumable",
+   "subtype": "food",
+   "magical": false,
+   "consumable": true,
+   "description": "Rations consist of travel-ready food, including jerky, dried fruit, hardtack, and nuts. See \"Malnutrition\" in \"Rules Glossary\" for the risks of not eating.",
+   "price": {
+    "unit": "silver",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 SP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/robe",
+   "name": "Robe",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Robe has vocational or ceremonial significance. Some events and locations admit only people wearing a Robe bearing certain colors or symbols.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/rope",
+   "name": "Rope",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "As a Utilize action, you can tie a knot with Rope if you succeed on a DC 10 Dexterity (Sleight of Hand) check. The Rope can be burst with a successful DC 20 Strength (Athletics) check. You can bind an unwilling creature with the Rope only if the creature has the Grappled, Incapacitated, or Restrained condition. If the creature's legs are bound, the creature has the Restrained condition until it escapes. Escaping the Rope requires the creature to make a successful DC 15 Dexterity (Acrobatics) check as an action.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/sack",
+   "name": "Sack",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Sack holds up to 30 pounds within 1 cubic foot.",
+   "price": {
+    "unit": "copper",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 CP"
+   },
+   "weight_lb": 0.5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/scholars-pack",
+   "name": "Scholar's Pack",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Scholar's Pack contains the following items: Backpack, Book, Ink, Ink Pen, Lamp, 10 flasks of Oil, 10 sheets of Parchment, and Tinderbox.",
+   "price": {
+    "unit": "gold",
+    "amount": 40,
+    "units_per_lot": 1,
+    "printed": "40 GP"
+   },
+   "weight_lb": 22,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/shovel",
+   "name": "Shovel",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "Working for 1 hour, you can use a Shovel to dig a hole that is 5 feet on each side in soil or similar material.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/signal-whistle",
+   "name": "Signal Whistle",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "When blown as a Utilize action, a Signal Whistle produces a sound that can be heard up to 600 feet away.",
+   "price": {
+    "unit": "copper",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 CP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/spell-scroll-cantrip",
+   "name": "Spell Scroll (Cantrip)",
+   "kind": "consumable",
+   "subtype": "scroll",
+   "magical": true,
+   "consumable": true,
+   "description": "A Spell Scroll (Cantrip) or Spell Scroll (Level 1) is a magic item that bears the words of a cantrip or level 1 spell, respectively, determined by the scroll's creator. If the spell is on your class's spell list, you can read the scroll and cast the spell using its normal casting time and without providing any Material components. If the spell requires a saving throw or an attack roll, the spell save DC is 13, and the attack bonus is +5. The scroll disintegrates when the casting is completed.",
+   "price": {
+    "unit": "gold",
+    "amount": 30,
+    "units_per_lot": 1,
+    "printed": "30 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/spell-scroll-level-1",
+   "name": "Spell Scroll (Level 1)",
+   "kind": "consumable",
+   "subtype": "scroll",
+   "magical": true,
+   "consumable": true,
+   "description": "A Spell Scroll (Cantrip) or Spell Scroll (Level 1) is a magic item that bears the words of a cantrip or level 1 spell, respectively, determined by the scroll's creator. If the spell is on your class's spell list, you can read the scroll and cast the spell using its normal casting time and without providing any Material components. If the spell requires a saving throw or an attack roll, the spell save DC is 13, and the attack bonus is +5. The scroll disintegrates when the casting is completed.",
+   "price": {
+    "unit": "gold",
+    "amount": 50,
+    "units_per_lot": 1,
+    "printed": "50 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/spikes-iron",
+   "name": "Spikes, Iron",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "Iron Spikes come in bundles of ten. As a Utilize action, you can use a blunt object, such as a Light Hammer, to hammer a spike into wood, earth, or a similar material. You can do so to jam a door shut or to then tie a Rope or Chain to the Spike.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": 5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/spyglass",
+   "name": "Spyglass",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "Objects viewed through a Spyglass are magnified to twice their size.",
+   "price": {
+    "unit": "gold",
+    "amount": 1000,
+    "units_per_lot": 1,
+    "printed": "1,000 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/string",
+   "name": "String",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "String is 10 feet long. You can tie a knot in it as a Utilize action.",
+   "price": {
+    "unit": "silver",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 SP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/tent",
+   "name": "Tent",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Tent sleeps up to two Small or Medium creatures.",
+   "price": {
+    "unit": "gold",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 GP"
+   },
+   "weight_lb": 20,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/tinderbox",
+   "name": "Tinderbox",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Tinderbox is a small container holding flint, fire steel, and tinder (usually dry cloth soaked in light oil) used to kindle a fire. Using it to light a Candle, Lamp, Lantern, or Torch-or anything else with exposed fuel-takes a Bonus Action. Lighting any other fire takes 1 minute.",
+   "price": {
+    "unit": "silver",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 SP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/torch",
+   "name": "Torch",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": true,
+   "description": "A Torch burns for 1 hour, casting Bright Light in a 20-foot radius and Dim Light for an additional 20 feet. When you take the Attack action, you can attack with the Torch, using it as a Simple Melee weapon. On a hit, the target takes 1 Fire damage.",
+   "price": {
+    "unit": "copper",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 CP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/vial",
+   "name": "Vial",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Vial holds up to 4 ounces.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/waterskin",
+   "name": "Waterskin",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Waterskin holds up to 4 pints. If you don't drink sufficient water, you risk dehydration (see \"Rules Glossary\").",
+   "price": {
+    "unit": "silver",
+    "amount": 2,
+    "units_per_lot": 1,
+    "printed": "2 SP"
+   },
+   "weight_lb": 5,
+   "source": {
+    "section": "Equipment > Adventuring Gear",
+    "page": 95
+   },
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/arrows",
+   "name": "Arrows",
+   "kind": "ammunition",
+   "magical": false,
+   "consumable": true,
+   "description": "Ammunition is required by a weapon that has the Ammunition property. A weapon's description specifies the type of ammunition used by the weapon. The Ammunition table lists the different types and the amount you get when you buy them. The table also lists the item that is typically used to store each type; storage must be bought separately. Sold in lots of 20; typically stored in a Quiver, bought separately.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 20,
+    "printed": "1 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Ammunition table",
+    "page": 96
+   },
+   "lot": 20,
+   "storage": "Quiver"
+  },
+  {
+   "id": "itemdef:srd/bolts",
+   "name": "Bolts",
+   "kind": "ammunition",
+   "magical": false,
+   "consumable": true,
+   "description": "Ammunition is required by a weapon that has the Ammunition property. A weapon's description specifies the type of ammunition used by the weapon. The Ammunition table lists the different types and the amount you get when you buy them. The table also lists the item that is typically used to store each type; storage must be bought separately. Sold in lots of 20; typically stored in a Case, bought separately.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 20,
+    "printed": "1 GP"
+   },
+   "weight_lb": 1.5,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Ammunition table",
+    "page": 96
+   },
+   "lot": 20,
+   "storage": "Case"
+  },
+  {
+   "id": "itemdef:srd/bullets-firearm",
+   "name": "Bullets, Firearm",
+   "kind": "ammunition",
+   "magical": false,
+   "consumable": true,
+   "description": "Ammunition is required by a weapon that has the Ammunition property. A weapon's description specifies the type of ammunition used by the weapon. The Ammunition table lists the different types and the amount you get when you buy them. The table also lists the item that is typically used to store each type; storage must be bought separately. Sold in lots of 10; typically stored in a Pouch, bought separately.",
+   "price": {
+    "unit": "gold",
+    "amount": 3,
+    "units_per_lot": 10,
+    "printed": "3 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Ammunition table",
+    "page": 96
+   },
+   "lot": 10,
+   "storage": "Pouch"
+  },
+  {
+   "id": "itemdef:srd/bullets-sling",
+   "name": "Bullets, Sling",
+   "kind": "ammunition",
+   "magical": false,
+   "consumable": true,
+   "description": "Ammunition is required by a weapon that has the Ammunition property. A weapon's description specifies the type of ammunition used by the weapon. The Ammunition table lists the different types and the amount you get when you buy them. The table also lists the item that is typically used to store each type; storage must be bought separately. Sold in lots of 20; typically stored in a Pouch, bought separately.",
+   "price": {
+    "unit": "copper",
+    "amount": 4,
+    "units_per_lot": 20,
+    "printed": "4 CP"
+   },
+   "weight_lb": 1.5,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Ammunition table",
+    "page": 96
+   },
+   "lot": 20,
+   "storage": "Pouch"
+  },
+  {
+   "id": "itemdef:srd/needles",
+   "name": "Needles",
+   "kind": "ammunition",
+   "magical": false,
+   "consumable": true,
+   "description": "Ammunition is required by a weapon that has the Ammunition property. A weapon's description specifies the type of ammunition used by the weapon. The Ammunition table lists the different types and the amount you get when you buy them. The table also lists the item that is typically used to store each type; storage must be bought separately. Sold in lots of 50; typically stored in a Pouch, bought separately.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 50,
+    "printed": "1 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Ammunition table",
+    "page": 96
+   },
+   "lot": 50,
+   "storage": "Pouch"
+  },
+  {
+   "id": "itemdef:srd/arcane-focus-crystal",
+   "name": "Arcane Focus (Crystal)",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "An Arcane Focus takes one of the forms in the Arcane Focuses table and is bejeweled or carved to channel arcane magic. A Sorcerer, Warlock, or Wizard can use such an item as a Spellcasting Focus.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Arcane Focuses table",
+    "page": 96
+   },
+   "form": "Crystal",
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/arcane-focus-orb",
+   "name": "Arcane Focus (Orb)",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "An Arcane Focus takes one of the forms in the Arcane Focuses table and is bejeweled or carved to channel arcane magic. A Sorcerer, Warlock, or Wizard can use such an item as a Spellcasting Focus.",
+   "price": {
+    "unit": "gold",
+    "amount": 20,
+    "units_per_lot": 1,
+    "printed": "20 GP"
+   },
+   "weight_lb": 3,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Arcane Focuses table",
+    "page": 96
+   },
+   "form": "Orb",
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/arcane-focus-rod",
+   "name": "Arcane Focus (Rod)",
+   "kind": "equipment",
+   "subtype": "rod",
+   "magical": false,
+   "consumable": false,
+   "description": "An Arcane Focus takes one of the forms in the Arcane Focuses table and is bejeweled or carved to channel arcane magic. A Sorcerer, Warlock, or Wizard can use such an item as a Spellcasting Focus.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Arcane Focuses table",
+    "page": 96
+   },
+   "form": "Rod",
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/arcane-focus-staff",
+   "name": "Arcane Focus (Staff)",
+   "kind": "equipment",
+   "subtype": "staff",
+   "magical": false,
+   "consumable": false,
+   "description": "An Arcane Focus takes one of the forms in the Arcane Focuses table and is bejeweled or carved to channel arcane magic. A Sorcerer, Warlock, or Wizard can use such an item as a Spellcasting Focus. This form: also a Quarterstaff.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Arcane Focuses table",
+    "page": 96
+   },
+   "form": "Staff (also a Quarterstaff)",
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/arcane-focus-wand",
+   "name": "Arcane Focus (Wand)",
+   "kind": "equipment",
+   "subtype": "wand",
+   "magical": false,
+   "consumable": false,
+   "description": "An Arcane Focus takes one of the forms in the Arcane Focuses table and is bejeweled or carved to channel arcane magic. A Sorcerer, Warlock, or Wizard can use such an item as a Spellcasting Focus.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Arcane Focuses table",
+    "page": 96
+   },
+   "form": "Wand",
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/druidic-focus-sprig-of-mistletoe",
+   "name": "Druidic Focus (Sprig of mistletoe)",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Druidic Focus takes one of the forms in the Druidic Focuses table and is carved, tied with ribbon, or painted to channel primal magic. A Druid or Ranger can use such an object as a Spellcasting Focus.",
+   "price": {
+    "unit": "gold",
+    "amount": 1,
+    "units_per_lot": 1,
+    "printed": "1 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Druidic Focuses table",
+    "page": 97
+   },
+   "form": "Sprig of mistletoe",
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/druidic-focus-wooden-staff",
+   "name": "Druidic Focus (Wooden staff)",
+   "kind": "equipment",
+   "subtype": "staff",
+   "magical": false,
+   "consumable": false,
+   "description": "A Druidic Focus takes one of the forms in the Druidic Focuses table and is carved, tied with ribbon, or painted to channel primal magic. A Druid or Ranger can use such an object as a Spellcasting Focus. This form: also a Quarterstaff.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 4,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Druidic Focuses table",
+    "page": 97
+   },
+   "form": "Wooden staff (also a Quarterstaff)",
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/druidic-focus-yew-wand",
+   "name": "Druidic Focus (Yew wand)",
+   "kind": "equipment",
+   "subtype": "wand",
+   "magical": false,
+   "consumable": false,
+   "description": "A Druidic Focus takes one of the forms in the Druidic Focuses table and is carved, tied with ribbon, or painted to channel primal magic. A Druid or Ranger can use such an object as a Spellcasting Focus.",
+   "price": {
+    "unit": "gold",
+    "amount": 10,
+    "units_per_lot": 1,
+    "printed": "10 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Druidic Focuses table",
+    "page": 97
+   },
+   "form": "Yew wand",
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/holy-symbol-amulet",
+   "name": "Holy Symbol (Amulet)",
+   "kind": "equipment",
+   "subtype": "amulet",
+   "magical": false,
+   "consumable": false,
+   "description": "A Holy Symbol takes one of the forms in the Holy Symbol table and is bejeweled or painted to channel divine magic. A Cleric or Paladin can use a Holy Symbol as a Spellcasting Focus. The table indicates whether a Holy Symbol needs to be held, worn, or borne on fabric (such as a tabard or banner) or a Shield. This form: worn or held.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 1,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Holy Symbols table",
+    "page": 97
+   },
+   "form": "Amulet (worn or held)",
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/holy-symbol-emblem",
+   "name": "Holy Symbol (Emblem)",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Holy Symbol takes one of the forms in the Holy Symbol table and is bejeweled or painted to channel divine magic. A Cleric or Paladin can use a Holy Symbol as a Spellcasting Focus. The table indicates whether a Holy Symbol needs to be held, worn, or borne on fabric (such as a tabard or banner) or a Shield. This form: borne on fabric or a Shield.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": null,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Holy Symbols table",
+    "page": 97
+   },
+   "form": "Emblem (borne on fabric or a Shield)",
+   "equipment": "gear:worn"
+  },
+  {
+   "id": "itemdef:srd/holy-symbol-reliquary",
+   "name": "Holy Symbol (Reliquary)",
+   "kind": "equipment",
+   "subtype": "other",
+   "magical": false,
+   "consumable": false,
+   "description": "A Holy Symbol takes one of the forms in the Holy Symbol table and is bejeweled or painted to channel divine magic. A Cleric or Paladin can use a Holy Symbol as a Spellcasting Focus. The table indicates whether a Holy Symbol needs to be held, worn, or borne on fabric (such as a tabard or banner) or a Shield. This form: held.",
+   "price": {
+    "unit": "gold",
+    "amount": 5,
+    "units_per_lot": 1,
+    "printed": "5 GP"
+   },
+   "weight_lb": 2,
+   "source": {
+    "section": "Equipment > Adventuring Gear > Holy Symbols table",
+    "page": 97
+   },
+   "form": "Reliquary (held)",
+   "equipment": "gear:worn"
+  }
+ ]
+}
