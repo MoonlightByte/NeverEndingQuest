@@ -4946,7 +4946,7 @@ def prepare_conversation_for_ai_request(conversation_history):
     # labels. The returned snapshot is request-local, not persisted authority.
     from core.managers.campaign_manager import _party_module_transition_lock
     from core.ai.atlas_builder import (
-        build_atlas_for_module, format_atlas_for_conversation,
+        cached_atlas_for_module, format_atlas_for_conversation,
         format_installed_module_references,
     )
     from utils.path_encounter_analyzer import build_active_module_snapshot
@@ -4960,7 +4960,7 @@ def prepare_conversation_for_ai_request(conversation_history):
                 snapshot = build_active_module_snapshot(module_name)
                 busy = any(item["kind"] == "busy" for item in snapshot["read_errors"])
                 if not busy:
-                    atlas = build_atlas_for_module(module_name, snapshot=snapshot)
+                    atlas = cached_atlas_for_module(module_name)
                     installed_references = format_installed_module_references(module_name)
                     conversation_history[:] = [
                         message for message in conversation_history
@@ -7579,9 +7579,11 @@ def _get_ai_response_impl(
     # Log API call to master log
     try:
         from utils.api_logger import log_api_call
+        from core.ai.atlas_builder import atlas_build_counts as _atlas_build_counts
         log_api_call("main_dm", messages_for_diagnostics, response,
                     metadata={"temperature": TEMPERATURE, "retry_count": validation_retry_count, "provider": MODEL_PROVIDER,
-                              "block_bytes": _block_bytes(messages_for_diagnostics, {}, _DM_BLOCK_HEADERS)})
+                              "block_bytes": _block_bytes(messages_for_diagnostics, {}, _DM_BLOCK_HEADERS),
+                              "atlas_builds": _atlas_build_counts()})
     except Exception as e:
         print(f"[API_LOG] Warning: Failed to log main DM call: {e}")
 
@@ -7676,6 +7678,50 @@ def get_ai_response(
 
 
 
+# C5: blocks that change rarely come first, so a provider's prompt cache can
+# reuse the prefix; blocks that change every turn or move sit after the past
+# turns and before this turn's player message.
+_DM_RARE_BLOCKS = ("atlas", "module_refs", "world_state", "campaign_context", "plot_status")
+_DM_VOLATILE_BLOCKS = ("current_location", "character_sheets", "companion", "down_rules")
+
+
+def _dm_block_label(message):
+    if message.get("role") != "system":
+        return None
+    content = message.get("content", "")
+    if not isinstance(content, str):
+        return None
+    for label, header in _DM_BLOCK_HEADERS:
+        if content.startswith(header):
+            return label
+    from core.combat.down_scene import DOWN_RULES_MARKER
+    if content.startswith(DOWN_RULES_MARKER):
+        return "down_rules"
+    return None
+
+
+def _order_dm_request(messages):
+    """Stable prefix, volatile tail (context views C5): the main prompt, the
+    rarely changing blocks, the past turns in their order (unknown system
+    entries stay where they are), the per-turn blocks, then the latest player
+    message. Every message is kept exactly once; only positions change."""
+    main, rare, volatile, rest = [], [], [], []
+    for message in messages:
+        label = _dm_block_label(message)
+        if label == "system_prompt" and not main:
+            main.append(message)
+        elif label in _DM_RARE_BLOCKS:
+            rare.append(message)
+        elif label in _DM_VOLATILE_BLOCKS:
+            volatile.append(message)
+        else:
+            rest.append(message)
+    tail = []
+    if rest and rest[-1].get("role") == "user":
+        tail = [rest.pop()]
+    return main + rare + rest + volatile + tail
+
+
 def _build_dm_review_request(
     accepted_history, latest_candidate, review_feedback, planner_projection,
     *, module_snapshot=None, installed_module_references="",
@@ -7687,7 +7733,7 @@ def _build_dm_review_request(
     """
     request_history = copy.deepcopy(accepted_history)
     if module_snapshot is not None:
-        from core.ai.atlas_builder import build_atlas_for_module, format_atlas_for_conversation
+        from core.ai.atlas_builder import cached_atlas_for_module, format_atlas_for_conversation
 
         request_history = [
             message for message in request_history
@@ -7695,9 +7741,10 @@ def _build_dm_review_request(
                     ("COMPLETE MODULE WORLD ATLAS" in message.get("content", "") or
                      "=== INSTALLED MODULE REFERENCES ===" in message.get("content", "")))
         ]
-        atlas = build_atlas_for_module(module_snapshot["module_name"], snapshot=module_snapshot)
+        atlas = cached_atlas_for_module(module_snapshot["module_name"])
         request_history.append({"role": "system", "content": format_atlas_for_conversation(atlas)})
         request_history.append({"role": "system", "content": installed_module_references})
+    request_history = _order_dm_request(request_history)
     if latest_candidate is not None:
         request_history.append({"role": "assistant", "content": latest_candidate})
     if planner_projection:
