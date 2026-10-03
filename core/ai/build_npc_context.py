@@ -132,6 +132,21 @@ def scan_all_modules() -> Dict[str, Dict[str, Set[str]]]:
     
     return all_modules
 
+def current_location_npc_lines(current_module: str, current_location: str) -> str:
+    """@CURRENT_LOC from the authored lists (or the engine roster when it answers),
+    for the one case the canonical origin record is unavailable (C2 F2): the
+    validator must still know who may be here."""
+    all_modules = scan_all_modules()
+    module_key = str(current_module or "").replace(" ", "_")
+    names = set()
+    for key in (current_module, module_key):
+        if key in all_modules and current_location in all_modules[key]:
+            names |= set(all_modules[key][current_location])
+    return (f"@NPC_VALIDATION_DATA (origin record unavailable this turn)\n"
+            f"@CURRENT_LOC[{current_location}]: {','.join(sorted(names)) if names else 'NONE'}\n"
+            f"@RULES: Any listed NPC is VALID here; the party's NPCs travel with the party.")
+
+
 def build_npc_validation_context(current_module: str, current_location: str, party_npcs: List[str] = None) -> str:
     """
     Build compressed NPC context for validation.

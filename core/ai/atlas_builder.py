@@ -13,6 +13,21 @@ from pathlib import Path
 from utils.path_encounter_analyzer import build_active_module_snapshot, _id_list, _read_json_object
 
 
+def _module_reference_facts(entry) -> str:
+    """\" [Level a-b]; starting location: name [id] in area [id]\" from the registry entry, or \"\"."""
+    if not isinstance(entry, dict):
+        return ""
+    out = ""
+    level = entry.get("levelRange")
+    if isinstance(level, dict) and (level.get("min") is not None or level.get("max") is not None):
+        out += f" [Level {level.get('min', '?')}-{level.get('max', '?')}]"
+    start = entry.get("startingLocation")
+    if isinstance(start, dict) and start.get("locationId") and start.get("areaId"):
+        out += (f"; starting location: {start.get('locationName', 'Unknown Location')} [{start['locationId']}]"
+                f" in {start.get('areaName', 'Unknown Area')} [{start['areaId']}]")
+    return out
+
+
 def format_installed_module_references(current_module: str, modules_root: str = "modules") -> str:
     """Share foreign identities with T067 and T065 without pooling route graphs (#307 A2)."""
     lines = [
@@ -32,12 +47,15 @@ def format_installed_module_references(current_module: str, modules_root: str = 
     for module in sorted(modules):
         if module.replace(" ", "_") == current_module.replace(" ", "_"):
             continue
+        # C3: the level range and the recorded starting location are told here
+        # once (the DM Note used to carry them); registry facts only, no lookup.
+        facts = _module_reference_facts(modules.get(module))
         try:
             snapshot = build_active_module_snapshot(module, modules_root)
         except (OSError, ValueError, TypeError) as exc:
-            lines.append(f"Module: {module}; SOURCE READ unavailable ({type(exc).__name__}); target lookup still required.")
+            lines.append(f"Module: {module}{facts}; SOURCE READ unavailable ({type(exc).__name__}); target lookup still required.")
             continue
-        lines.append(f"Module: {snapshot['module_name']}")
+        lines.append(f"Module: {snapshot['module_name']}{facts}")
         for kind, records in (
             ("LIVE SOURCE LABELS", snapshot["source_records"]),
             ("PRISTINE REFERENCE ONLY, NOT LIVE", snapshot["reference_records"]),

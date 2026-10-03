@@ -2838,7 +2838,7 @@ def create_module_validation_context(party_tracker_data, path_manager, *, module
         # NPC validation data; this block keeps identities and rules only.
         validation_context += "\n\n"
         validation_context += """ENHANCED VALIDATION RULES:
-1. For interactions happening AT the current location, ONLY use the occupants listed in the canonical location record for the origin (the rules engine's view; party NPCs travel with the party and appear in the character records)
+1. For interactions happening AT the current location, ONLY use the occupants listed in the canonical location record for the origin (the rules engine's view; party NPCs travel with the party and appear in the character records); when that record is unavailable, the @CURRENT_LOC list stands in for it
 2. For references to NPCs at OTHER locations, they must exist in the NPC validation data or the module character lists
 3. NEVER create new NPCs - all names must exist in the provided lists
 4. If an NPC is referenced incorrectly, suggest the CORRECT NPC from the origin record's occupants
@@ -3732,6 +3732,14 @@ def validate_ai_response(
         validation_messages_to_send = list(validation_messages_to_send) + [{
             "role": "system", "content": location_details,
         }]
+        try:
+            from core.ai.build_npc_context import current_location_npc_lines
+            validation_messages_to_send = list(validation_messages_to_send) + [{
+                "role": "system",
+                "content": current_location_npc_lines(party_tracker_data.get("module", ""), current_location_id),
+            }]
+        except Exception as exc:  # noqa: BLE001 - evidence never stops a turn
+            warning(f"VALIDATION: current-location NPC fallback failed: {exc}", category="ai_validation")
 
     # #344: the referee judged abilities, proficiencies, resources and healing
     # from an inventory-only projection of update targets (a5c64749). Supply
