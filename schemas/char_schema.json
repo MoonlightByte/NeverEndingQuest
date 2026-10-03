@@ -367,6 +367,22 @@
         "required": ["name", "description"]
       }
     },
+    "acquisitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "request": {"type": "string"},
+          "catalogId": {"type": "string"},
+          "nqlId": {"type": "string"},
+          "quantity": {"type": "integer"},
+          "paid": {"type": "object"},
+          "change": {"type": "object"},
+          "message": {"type": "string"}
+        },
+        "required": ["request", "catalogId", "nqlId"]
+      }
+    },
     "equipment": {
       "type": "array",
       "items": {

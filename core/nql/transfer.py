@@ -20,7 +20,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.nql import apply, genesis
+from core.nql import apply, genesis, item_catalog
 
 
 @dataclass
@@ -69,6 +69,14 @@ def _matching_stack(receiver: Dict[str, Any], ids: Dict[int, str], entry: Dict[s
         if not isinstance(other, dict) or index not in ids or other is entry:
             continue
         if other.get("equipped") is True or other.get("effects"):
+            continue
+        mine = item_catalog.row_entry(entry)[0]
+        theirs = item_catalog.row_entry(other)[0]
+        if mine is not None or theirs is not None:
+            # SA: a catalog row stacks only with another row of the same catalog
+            # type; a row that drifted from its type is its own kind of thing.
+            if mine is not None and theirs is not None and mine["id"] == theirs["id"]:
+                return ids[index]
             continue
         if all(_identity_value(other, k) == _identity_value(entry, k) for k in _STACK_IDENTITY):
             return ids[index]

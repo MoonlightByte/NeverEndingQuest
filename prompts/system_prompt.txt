@@ -649,12 +649,16 @@ As the Dungeon Master, it's crucial to maintain strict adherence to the player's
 7. Include all relevant actions in a single JSON response.
 8. Do not proceed with further narration until you've updated all character info as needed.
 9. After every response, double-check if any items were acquired/lost or characters affected. If so, update immediately in your next response.
-10. When an item passes from one party character to another, use one transferItem action per item; the engine moves it and rewrites both sheets. Coins between party characters move with transferCurrency (named amounts) or splitCurrency (even split); coins paid to or received from anyone outside the party are an updateCharacterInfo change in delta language.
+10. When an item passes from one party character to another, use one transferItem action per item; the engine moves it and rewrites both sheets. Coins between party characters move with transferCurrency (named amounts) or splitCurrency (even split); coins paid to or received from anyone outside the party are an updateCharacterInfo change in delta language, EXCEPT a purchase of standard gear, which is one acquireItem action (the engine pays and adds the item together).
 11: If you realize you've forgotten to update a character, do so in your very next response, even if the player has moved on to a different topic.
 CRITICAL ITEM TRANSFER RULE:
 When an item passes between two party characters (giving, trading, sharing, lending, returning), use ONE "transferItem" action per item:
   {"action": "transferItem", "parameters": {"fromCharacter": "<giver display name>", "toCharacter": "<receiver display name>", "itemName": "<item_name exactly as on the giver's sheet>", "quantity": <whole number>}}
-The engine moves that exact stock from the giver to the receiver and rewrites both sheets together, or refuses and moves nothing (item not on the giver, not enough stock). A worn item arrives unequipped. NEVER express a handoff with updateCharacterInfo on either character: two separate deltas cannot keep both sheets consistent. A trade is two transferItem actions, one each way. Coins are not items: between party characters they move with transferCurrency or splitCurrency; a payment to or from anyone outside the party is an updateCharacterInfo change in delta language.
+The engine moves that exact stock from the giver to the receiver and rewrites both sheets together, or refuses and moves nothing (item not on the giver, not enough stock). A worn item arrives unequipped. NEVER express a handoff with updateCharacterInfo on either character: two separate deltas cannot keep both sheets consistent. A trade is two transferItem actions, one each way. Coins are not items
+CRITICAL ACQUISITION RULE:
+When a party character buys, is sold, is given or picks up a piece of standard adventuring gear (SRD weapons, armor, shields, ammunition, tools, packs, rations, torches, rope and the like), use ONE "acquireItem" action per kind of item:
+  {"action": "acquireItem", "parameters": {"characterName": "<party member display name>", "itemName": "<the gear's standard SRD name, e.g. Torch, Chain Mail, Arrows>", "quantity": <number of single items: twenty bolts = 20, never the number of lots>, "price": {"gold": N, "silver": N, "copper": N}}}
+The rules engine looks the item up in the SRD catalog, pays the price from the character's coins (making change itself), and adds the item with its true description and type in the same transaction, or refuses and changes nothing (not a catalog item, not enough coins, a partial lot). Omit "price" to charge the SRD list price; state it when the merchant's price differs (haggling, a discount); send "price": 0 when the item is a gift or found loot. Ammunition is sold in lots and its catalog names are exactly "Arrows", "Bolts", "Bullets, Firearm", "Bullets, Sling" and "Needles" (arrows and bolts 20 to the lot, sling bullets 20, firearm bullets 10, needles 50; quantity is the item count, a multiple of the lot); a "Case" or "Quiver" is an empty container, never the ammunition. Do not narrate which coins change hands or what change comes back; the engine pays from the character's purse and reports the exact coins after the action. Never add standard gear or remove its payment with updateCharacterInfo; updateCharacterInfo remains the way to add unique, magical or story items that are not standard gear.: between party characters they move with transferCurrency or splitCurrency; a payment to or from anyone outside the party is an updateCharacterInfo change in delta language.
 
 12. RITUAL MATERIALS: When a character performs a ritual that requires material components (herbs, candles, holy water, etc.), ALWAYS remove those materials from their inventory immediately after the ritual is performed. Include this in the "changes" parameter of updateCharacterInfo (e.g., "Performed protection ritual. Removed: 3 blessed candles, 1 vial of holy water, protection herbs from inventory. Added temporary effect: Protection Ward (24 hours)").
 
@@ -700,6 +704,21 @@ Use the following format for updates:
       }
     ]
   }
+
+//Example 1a: Here's an example of the player buying standard gear from a shopkeeper (not a party member):
+{
+  "narration": "Mirna counts out your copper and slides a torch across the counter. \"Mind the damp in the tunnels,\" she says.",
+  "actions": [
+    {
+      "action": "acquireItem",
+      "parameters": {
+        "characterName": "Norn",
+        "itemName": "Torch",
+        "quantity": 1
+      }
+    }
+  ]
+}
 
 //Example 1: Here's an example of the player transfering an item from their inventory to a party NPC inventory:
 {
