@@ -59,7 +59,8 @@ def suggest(item_name: str, entries: Optional[List[Dict[str, Any]]] = None, limi
     for e in entries if entries is not None else item_catalog.entries().values():
         name = str(e.get("name", ""))
         if any(a.startswith(b) or b.startswith(a) for a in _words(name) for b in words):
-            out.append(name)
+            per_lot = (e.get("price") or {}).get("units_per_lot")
+            out.append(f"{name} (sold in lots of {per_lot})" if type(per_lot) is int and per_lot > 1 else name)
     return out[:limit]
 
 
