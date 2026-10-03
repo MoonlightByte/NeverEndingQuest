@@ -104,15 +104,17 @@ def extract_location_info(location: Dict[str, Any], roster: Optional[Dict[str, A
     }
 
 def build_atlas_for_module(
-    module_name: str, modules_root: str = "modules", *, snapshot=None,
+    module_name: str, modules_root: str = "modules", *, snapshot=None, module_roster=None,
 ) -> Dict[str, Any]:
     """Render the same detached source records used by travel preflight (#303)."""
-    # P4-f: one engine view for the whole module; None while unavailable.
-    try:
-        from core.nql import occupants as _occupants
-        module_roster = _occupants.module_roster(module_name)
-    except Exception:
-        module_roster = None
+    # P4-f: one engine view for the whole module; None while unavailable. A
+    # caller that already holds the roster (the C4 cache key) passes it in.
+    if module_roster is None:
+        try:
+            from core.nql import occupants as _occupants
+            module_roster = _occupants.module_roster(module_name)
+        except Exception:
+            module_roster = None
     if snapshot is None:
         snapshot = build_active_module_snapshot(module_name, modules_root)
     if snapshot["module_name"] != module_name.replace(" ", "_"):
@@ -255,12 +257,27 @@ def _area_file_stamps(module_name: str, modules_root: str):
     return tuple(stamps)
 
 
-def cached_atlas_for_module(module_name: str, modules_root: str = "modules") -> Dict[str, Any]:
+def atlas_cache_stamps(module_name: str, modules_root: str = "modules"):
+    """The area-file stamps a caller takes BEFORE reading its own snapshot,
+    so the cache entry built from that snapshot is never newer than its
+    content (a file changed after the read misses on the next call)."""
+    return _area_file_stamps(str(module_name or "").replace(" ", "_"), modules_root)
+
+
+def cached_atlas_for_module(module_name: str, modules_root: str = "modules", *,
+                            snapshot=None, stamps=None) -> Dict[str, Any]:
     """The atlas dict for the module, built once per (module, engine
-    revision, area-file stamps). Same value as build_atlas_for_module."""
+    revision, area-file stamps). Same value as build_atlas_for_module.
+
+    A caller holding a busy-checked travel snapshot (the attempt and the
+    review request, #303) passes it with the stamps it took before reading
+    it: a miss then renders that snapshot (the same records as travel
+    preflight, no second read) and caches it only when the stamps were taken
+    before the read. Without a snapshot the function reads once itself."""
     module = str(module_name or "").replace(" ", "_")
     key = (os.path.abspath(modules_root), module)
-    stamps = _area_file_stamps(module, modules_root)
+    if snapshot is None:
+        stamps = _area_file_stamps(module, modules_root)
     try:
         from core.nql import occupants as _occupants
         roster = _occupants.module_roster(module)
@@ -271,7 +288,7 @@ def cached_atlas_for_module(module_name: str, modules_root: str = "modules") -> 
             and hit[0] == stamps and hit[1] == roster):
         _ATLAS_BUILD_COUNTS["reused"] += 1
         return copy.deepcopy(hit[2])
-    atlas = build_atlas_for_module(module, modules_root)
+    atlas = build_atlas_for_module(module, modules_root, snapshot=snapshot, module_roster=roster)
     _ATLAS_BUILD_COUNTS["built"] += 1
     if stamps is not None and roster is not None and not atlas.get("read_errors"):
         _ATLAS_CACHE[key] = (stamps, copy.deepcopy(roster), copy.deepcopy(atlas))
