@@ -92,14 +92,21 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
         elif delta > 0:
             ops.append(f"add {_q(iid)} to {_q(cid)} by {delta};")
     # New items: create, then equip if the merged entry says so.
+    wearable: Dict[str, bool] = {}
     for iid, e in created:
         fields = [f"owner {_q(cid)};", f"custody character {_q(cid)};"]
         if _stock(e) != 1:
             fields.append(f"quantity {_stock(e)};")
-        catalog = item_catalog.entry(e.get("catalog_id"))
+        # The engine wears exactly one unit (the same guard genesis applies).
+        wearable[iid] = _stock(e) == 1
+        catalog, catalog_gap = item_catalog.row_entry(e)
+        if catalog_gap:
+            gaps.append(f"{cid}: {e.get('item_name')!r} {catalog_gap}; created from its own fields")
         if catalog is not None:
             # GP: a new catalog row is created from the pack's type, which
             # supplies its name, description and equipment (no definition).
+            # A type without equipment (ammunition) cannot be worn.
+            wearable[iid] = wearable[iid] and item_catalog.equipment_mode(catalog) is not None
             ops.append(f"create item {_q(iid)} from {_q(catalog['id'])} {{ {' '.join(fields)} }};")
             continue
         if e.get("item_type") == "armor" and type(e.get("ac_base")) is int or e.get("armor_category") == "shield":
@@ -121,7 +128,11 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
             ops.append(f"unequip {_q(iid)};")
     for iid, e in created:
         if e.get("equipped") is True:
-            ops.append(f"equip {_q(iid)} on {_q(cid)};")
+            if wearable.get(iid):
+                ops.append(f"equip {_q(iid)} on {_q(cid)};")
+            else:
+                gaps.append(f"{cid}: {e.get('item_name')!r} is marked equipped but cannot be worn "
+                            f"(quantity {_stock(e)} or a type without equipment); left unequipped")
 
     if not ops:
         return EquipmentOutcome(True, equipment=after.get("equipment"), gaps=gaps)

@@ -391,7 +391,7 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
     item_type = entry.get("item_type")
     definition = None
     mode = None
-    catalog = item_catalog.entry(entry.get("catalog_id"))
+    catalog, catalog_gap = item_catalog.row_entry(entry)
     if catalog is not None:
         # A catalog row (GP): the pack's type supplies name, description and
         # equipment, and an item `from` a type may not add a definition of
@@ -411,8 +411,8 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
         if quantity is not None and quantity != 1:
             fields.append(f"quantity {quantity};")
         return f"item {_q(iid)} from {_q(catalog['id'])} {{ {' '.join(fields)} }}", (mode if worn else None)
-    if isinstance(entry.get("catalog_id"), str) and entry.get("catalog_id"):
-        gaps.append(f"{cid}: {entry.get('item_name')!r} names unknown catalog_id {entry['catalog_id']!r}; declared from its own fields")
+    if catalog_gap:
+        gaps.append(f"{cid}: {entry.get('item_name')!r} {catalog_gap}; declared from its own fields")
     if ac_effect_lines(iid, entry) and item_type not in ("armor", "weapon"):
         # An item with a while-worn defense effect must be a typed worn item.
         definition, mode = "gear:worn", "worn"
@@ -620,7 +620,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     # Definitions for items that do not exist yet (a later create item in the
     # same world needs its equipment definition declared at genesis).
     for iid, entry in definition_entries or []:
-        if isinstance(entry, dict) and item_catalog.entry(entry.get("catalog_id")) is not None:
+        if isinstance(entry, dict) and item_catalog.row_entry(entry)[0] is not None:
             continue  # a catalog row takes its equipment from the pack's type
         if isinstance(entry, dict) and entry.get("item_type") == "armor":
             text = _armor_definition("gear:" + iid.split(":", 1)[1], entry, gaps)
