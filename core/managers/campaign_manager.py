@@ -1922,8 +1922,8 @@ class CampaignManager:
 
                 # P2a: lifecycle recovery is advisory here too. Do not abort the
                 # refresh over an INDETERMINATE classification -- inert residue
-                # must not block module integration. (This path is currently
-                # unreachable: refresh_modules_async has no callers.)
+                # must not block module integration. (Startup calls this once,
+                # after reconcile_campaign_state.)
                 lifecycle_recovery = ModuleLifecycleStore("modules").recover()
                 if lifecycle_recovery.status is RecoveryStatus.INDETERMINATE:
                     warning(
