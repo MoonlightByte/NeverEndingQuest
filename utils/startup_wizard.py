@@ -715,12 +715,15 @@ def _set_startup_progress(conversation, *, live_scope=None, **changes):
     return record
 
 
-def _review_startup_response(conversation, proposal, committed_facts, *, live_scope):
+def _review_startup_response(conversation, proposal, committed_facts, *,
+                             authored_proposal, normalization_provenance, live_scope):
     review_messages = [
         {"role": "system", "content": build_startup_review_prompt()},
         {"role": "user", "content": json.dumps({
             "task_purpose": "startup_semantic_review",
             "interview": conversation, "proposal": proposal,
+            "authored_proposal": authored_proposal,
+            "normalization_provenance": normalization_provenance,
             "latest_user_index": _latest_player_index(conversation),
             "committed_facts": committed_facts,
         }, ensure_ascii=True)},
@@ -736,6 +739,29 @@ def _review_startup_response(conversation, proposal, committed_facts, *, live_sc
                 f"The rejected review has invalid structure: {exc}. "
                 "Return the complete corrected review object."
             )})
+
+
+def _prepare_startup_proposal(authored_proposal):
+    """Normalize a private copy; keep authorship distinct from engine output."""
+    proposal = copy.deepcopy(authored_proposal)
+    provenance = {}
+    if proposal["decision"] != "finalize_character":
+        return proposal, provenance
+    character = sanitize_character_data(proposal["character"])
+    character, _ = repair_required_ammunition_field(character)
+    character, _ = repair_startup_character_sheet(character)
+    character = auto_fix_character_data(character)
+    valid, detail = validate_character_with_recovery(character)
+    if not valid:
+        raise ValueError(detail)
+    character, mechanics = startup_mechanics(character, provenance=provenance)
+    provenance["mechanics_notes"] = mechanics
+    try:
+        validate(character, safe_json_load("schemas/char_schema.json"))
+    except ValidationError as exc:
+        raise ValueError(exc.message) from exc
+    proposal["character"] = character
+    return proposal, provenance
 
 
 def ai_character_interview(conversation, module):
@@ -772,34 +798,22 @@ def ai_character_interview(conversation, module):
                 raw = get_ai_response(request, {"type": "json_object"},
                                       persist_response=False, live_scope=scope)
                 try:
-                    proposal = parse_startup_response(raw, latest_user_index=current_index)
+                    authored_proposal = copy.deepcopy(
+                        parse_startup_response(raw, latest_user_index=current_index))
+                    proposal, provenance = _prepare_startup_proposal(authored_proposal)
                     if proposal["decision"] == "finalize_character":
-                        # Preserve the existing narrow repairs before schema and
-                        # semantic review so the reviewer sees the actual candidate.
-                        character = sanitize_character_data(proposal["character"])
-                        character, _ = repair_required_ammunition_field(character)
-                        character, _ = repair_startup_character_sheet(character)
-                        # The repairs return the sheet they fixed (the validator
-                        # below discards its own copy), so keep this result.
-                        character = auto_fix_character_data(character)
-                        valid, detail = validate_character_with_recovery(character)
-                        if not valid:
-                            raise ValueError(detail)
-                        character, mechanics = startup_mechanics(character)
+                        mechanics = provenance["mechanics_notes"]
                         if mechanics:
                             facts["startup_mechanics"] = {
                                 "status": "already applied by the game to the candidate sheet under review",
-                                "meaning": ("The candidate sheet reflects these engine and SRD derivations. They are "
-                                            "not requirements for the author; only a narration figure that contradicts "
-                                            "the candidate sheet needs correcting."),
+                                "meaning": ("These normalization notes describe the candidate, not author requirements "
+                                            "or player approval. Check narration against the candidate and still reject "
+                                            "unsupported mechanics or lost choices. A kept HP maximum is not rules-verified."),
                                 "changes": mechanics,
                             }
-                        try:
-                            validate(character, safe_json_load("schemas/char_schema.json"))
-                        except ValidationError as exc:
-                            raise ValueError(exc.message) from exc
-                        proposal["character"] = character
-                    review = _review_startup_response(request, proposal, facts, live_scope=scope)
+                    review = _review_startup_response(
+                        request, proposal, facts, authored_proposal=authored_proposal,
+                        normalization_provenance=provenance, live_scope=scope)
                 except ValueError as exc:
                     correction_context.append({"role": "system", "content": (
                         f"Rejected startup proposal (not approved): {exc}. "
@@ -808,7 +822,10 @@ def ai_character_interview(conversation, module):
                     continue
                 if not review["accepted"]:
                     correction_context.append({"role": "system", "content": json.dumps({
-                        "rejected_proposal": proposal, "review_feedback": review["feedback"],
+                        "rejected_proposal": authored_proposal,
+                        "canonical_candidate": proposal,
+                        "normalization_provenance": provenance,
+                        "review_feedback": review["feedback"],
                         "needs_player_clarification": review["needs_player_clarification"],
                         "instruction": ("Propose a continue_interview question; do not finalize."
                                         if review["needs_player_clarification"]
@@ -1495,7 +1512,7 @@ def expected_starting_hit_points(character):
     return max(1, expected), terms
 
 
-def startup_mechanics(character):
+def startup_mechanics(character, *, provenance=None):
     """Derive a new character's engine-owned and SRD-derived numbers.
 
     Armor class comes from the engine's defense explanation, the same
@@ -1504,7 +1521,8 @@ def startup_mechanics(character):
     Tough feat entries, Dwarven Toughness (#532). A lower maximum is raised,
     never reduced; current hit points follow only for an uninjured hero.
     Returns the sheet and the notes of what changed (also logged), which the
-    startup reviewer receives as committed facts.
+    startup reviewer receives as committed facts. When provenance is supplied,
+    retain successful projection output even if these scalar notes are empty.
     """
     notes = []
     if not isinstance(character, dict):
@@ -1512,6 +1530,13 @@ def startup_mechanics(character):
     name = character.get("name", "Unknown")
     from core.nql import armor_class
     projection = armor_class.project(character)
+    if provenance is not None:
+        provenance["engine_projection"] = {
+            "source": "core.nql.armor_class.project",
+            "applied": projection.applied and not projection.gaps,
+            "reason": projection.reason,
+            "gaps": copy.deepcopy(projection.gaps),
+        }
     if projection.applied and projection.gaps:
         # Equipment the engine could not model (an equipped armor without
         # ac_base, an unknown category): the written armorClass stands until
@@ -1519,6 +1544,20 @@ def startup_mechanics(character):
         warning(f"[Startup Mechanics] {name}: armorClass left as written: {projection.gaps}",
                 category="character_validation")
     elif projection.applied:
+        if provenance is not None:
+            # Successful projection writes these even when AC/HP do not change.
+            # Preserve the actual engine status, not an author-provided claim.
+            provenance["engine_projection"].update({
+                "armorClass": projection.armor_class,
+                "equipment_effects": {
+                    "selector": {"target": armor_class.AC_TARGET},
+                    "entries": copy.deepcopy([
+                        e for e in projection.sheet.get("equipment_effects") or []
+                        if isinstance(e, dict) and e.get("target") == armor_class.AC_TARGET
+                    ]),
+                },
+                "status": copy.deepcopy(projection.status),
+            })
         if projection.changed:
             parts = [f"{e.get('source')} {e.get('value'):+d}" if e.get("type") == "bonus" else f"{e.get('source')} {e.get('value')}"
                      for e in projection.sheet.get("equipment_effects") or []
@@ -1530,6 +1569,12 @@ def startup_mechanics(character):
         warning(f"[Startup Mechanics] {name}: armorClass left as written: {projection.reason}",
                 category="character_validation")
     expected, terms = expected_starting_hit_points(character)
+    if provenance is not None and expected is not None:
+        provenance["hit_points"] = {
+            "source": "utils.startup_wizard.expected_starting_hit_points",
+            "expected_maximum": expected, "terms": terms,
+            "policy": "Raise missing/low maxima; preserve higher maxima. Preserved is not rules-verified.",
+        }
     if expected is not None:
         current_max = character.get("maxHitPoints")
         current = character.get("hitPoints")
@@ -1743,8 +1788,7 @@ def update_party_tracker(module_name, character_name, *, live_scope=None, starti
             "currentArea": location["areaName"], "currentAreaId": location["areaId"],
         })
         for key in ("weather", "politicalClimate"):
-            # A declared entry carries the module's built values, which may be
-            # empty; they fill a key the tracker does not have yet.
+            # Preserve declared empty built weather/climate on a new tracker.
             if location.get(key) or (key not in world and isinstance(location.get(key), str)):
                 world[key] = location[key]
         party_data["module"] = module_name
@@ -1815,6 +1859,36 @@ def initialize_startup_conversation():
     _set_startup_progress(conversation, phase="module_selection")
     return conversation
 
+def _startup_configuration_handback(exc, provider, revision, scope):
+    from utils.startup_provider_recovery import (
+        configuration_required_message, notify_configuration_saved,
+        wait_for_configuration,
+    )
+    from utils.capture.live_provider_call import LiveProviderSuperseded, _safe_emit
+
+    message = configuration_required_message(exc)
+    if message is None:
+        return False
+    _emit_startup_phase("startup_configuration_required")
+    # Web Settings stays usable while the normal command row remains busy.
+    # Console mode uses its existing input owner for an explicit retry/cancel.
+    def emit(text):
+        status_manager.update_status(text, True)
+    _safe_emit(emit, message)
+    if not web_mode:
+        while True:
+            if scope.is_superseded():
+                raise LiveProviderSuperseded("startup configuration wait superseded")
+            answer = input("\nAfter updating provider configuration, type retry, or cancel: ").strip().lower()
+            if answer in {"cancel", "quit", "exit"}:
+                raise StartupCancelled()
+            if answer == "retry":
+                notify_configuration_saved(provider)
+                break
+    wait_for_configuration(provider, revision, scope, message, emit)
+    return True
+
+
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
                     startup_phase="startup_interview"):
     """Run T092 through shared cancellable transport; borrowed scope stays open."""
@@ -1822,17 +1896,17 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
         LiveProviderSuperseded, finish_live_turn_scope, open_live_turn_scope,
         _interruptible_wait, _delay_for_error,
     )
-    from model_config import MODEL_PROVIDER
+    from model_config import get_provider
+    from utils.startup_provider_recovery import configuration_revision
 
     owned = live_scope is None
     scope = open_live_turn_scope() if owned else live_scope
-    provider = MODEL_PROVIDER
-    main_cfg = {
+    profiles = {
         "openai": config.DM_MAIN_GPT52_NONE,
         "gemini": config.DM_MAIN_GEMINI_PRO_LOW,
         "lmstudio": config.DM_MAIN_LMSTUDIO,
         "legacy": config.DM_MAIN_LEGACY,
-    }[provider]
+    }
 
     request_messages = copy.deepcopy(conversation)
     _emit_startup_phase(startup_phase)
@@ -1842,6 +1916,9 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
             if scope.is_superseded():
                 raise LiveProviderSuperseded("startup request superseded")
             try:
+                provider = get_provider()
+                main_cfg = profiles[provider]
+                revision = configuration_revision(provider)
                 response = capture_and_fanout(
                     "T092", api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
@@ -1863,7 +1940,13 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                 return content
             except LiveProviderSuperseded:
                 raise
+            except (StartupCancelled, KeyboardInterrupt, EOFError):
+                raise
             except Exception as exc:
+                if _startup_configuration_handback(exc, provider, revision, scope):
+                    _emit_startup_phase(startup_phase)
+                    status_processing_ai()
+                    continue
                 warning(f"Startup provider correction remains pending: {exc}", category="startup")
                 # Transient requests reissue inside the shared transport. This
                 # handback retains completed-error context, without a count cap.
@@ -1951,12 +2034,13 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
         info(f"Starting at {module['moduleName']}'s declared entry "
              f"{declared['areaId']}/{declared['locationId']}", category="startup")
         return declared
-    from model_config import MODEL_PROVIDER
+    from model_config import get_provider
+    from utils.startup_provider_recovery import configuration_revision
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, _interruptible_wait, _delay_for_error,
     )
 
-    provider = request_provider or MODEL_PROVIDER
+    provider = request_provider or get_provider()
     profiles = {
         "openai": config.MINI_UTIL_GPT54MINI_NONE,
         "gemini": config.MINI_UTIL_GEMINI_FLASH_LOW,
@@ -1980,6 +2064,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
         )}]
         while True:
             try:
+                revision = configuration_revision(provider)
                 response = capture_and_fanout(
                     "T093", api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
@@ -2007,7 +2092,15 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                 )})
             except LiveProviderSuperseded:
                 raise
+            except (StartupCancelled, KeyboardInterrupt, EOFError):
+                raise
             except Exception as exc:
+                if _startup_configuration_handback(exc, provider, revision, scope):
+                    provider = get_provider()
+                    mini_cfg = profiles.get(provider, config.MINI_UTIL_LEGACY)
+                    _emit_startup_phase("startup_location")
+                    status_processing_ai()
+                    continue
                 warning(f"Startup location remains pending: {exc}", category="startup")
                 messages.append({"role": "system", "content": (
                     f"The last location request failed: {exc}. Retain the task and "

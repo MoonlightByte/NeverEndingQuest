@@ -6,7 +6,8 @@
 ``project(sheet)`` builds a one-character world from the sheet's typed fields,
 asks the engine for its ``defense`` explanation, and returns a copy of the sheet
 with ``armorClass`` and the AC-target entries of ``equipment_effects`` rewritten
-from that explanation. Nothing else on the sheet changes. No model is called.
+from that explanation. Engine status also supplies the existing derived totals;
+the returned status records their provenance. No model is called.
 
 Fail-forward: when the engine is unavailable, refuses the world, or the sheet
 carries an equipped armor entry the typed fields cannot describe, the sheet is
@@ -32,6 +33,7 @@ class Projection:
     previous_armor_class: Optional[int] = None
     explanation: Optional[Dict[str, Any]] = None
     gaps: List[str] = field(default_factory=list)
+    status: Optional[Dict[str, Any]] = None
 
     @property
     def changed(self) -> bool:
@@ -110,11 +112,13 @@ def project(sheet: Dict[str, Any], *, binary: Optional[str] = None) -> Projectio
 
     result = copy.deepcopy(sheet)
     result["armorClass"] = explanation["effective"]
+    projected_status = None
     for status in response.get("status") or []:
         if isinstance(status.get("character"), dict) and status["character"].get("id") == cid:
             stats.store(result, status)
+            projected_status = copy.deepcopy(status)
     kept = [e for e in result.get("equipment_effects") or []
             if not (isinstance(e, dict) and e.get("target") == AC_TARGET)]
     result["equipment_effects"] = kept + _ac_entries(explanation, names_by_id)
     return Projection(result, True, "", armor_class=explanation["effective"], previous_armor_class=previous,
-                      explanation=explanation, gaps=world.gaps)
+                      explanation=explanation, gaps=world.gaps, status=projected_status)

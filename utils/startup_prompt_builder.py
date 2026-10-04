@@ -75,6 +75,11 @@ Keep approved backstory in the existing descriptive fields or interview context;
 do not distort a mechanical background name to satisfy an invented schema slot.
 Rejected proposals are correction context, not approved choices. Correct the
 specific errors while retaining the latest player input and accepted choices.
+Correction context separates rejected_proposal (your authored wire object) from
+canonical_candidate (the game's normalized private copy). Correct the authored
+object; do not copy engine-generated fields back from canonical_candidate.
+normalization_provenance describes actual game derivations, not player choices
+or extra author requirements. Do not attempt to remove fields the engine writes.
 
 STARTUP RESPONSE SCHEMA:
 {json.dumps(STARTUP_RESPONSE_SCHEMA, indent=2)}
@@ -115,6 +120,18 @@ calculation in feedback. Do not call a rule "supplied" when it is absent there,
 or replace a consistent value solely because of uncertain remembered rules.
 Earlier rejection feedback is an allegation to verify, not a rules authority;
 recheck it independently rather than treating repetition as proof.
+The payload separates authored_proposal (the untouched model response) from
+proposal (the normalized canonical candidate to be saved if accepted).
+Apply author-only restrictions, including not inventing equipment_effects or
+savingThrowBonuses, to authored_proposal. When normalization_provenance reports
+an applied engine_projection, its AC-target effects and matching status totals
+are engine output, even when armorClass and hit points did not change. Do not
+attribute those additions to the author or demand their removal on retry.
+An unavailable or incomplete projection does not certify fields as engine output.
+Still check actual typed equipment/features, approved choices, schema, arithmetic,
+and narration against the canonical candidate. Provenance is not whole-build
+approval or proof that all mechanics are correct. A retained higher HP maximum
+is not certified as rules-correct; verify it against the supplied facts.
 An owned but stowed weapon can have an available attack entry. That does not
 claim it is currently wielded, nor allow simultaneous incompatible equipment.
 An equipment package whose description includes an item already represents that

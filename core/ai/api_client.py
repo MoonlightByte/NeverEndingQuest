@@ -348,6 +348,8 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     # --- Pop wrapper-only params (never forwarded to provider) ---
     task_id = kwargs.pop("task_id", None)
     request_provider = kwargs.pop("_request_provider", None)
+    # Private live-request snapshot; never an SDK payload or capture option.
+    local_endpoint = kwargs.pop("_request_local_endpoint", None)
     usage_invocation_id = kwargs.pop("_usage_invocation_id", None)
     if not isinstance(usage_invocation_id, str) or not usage_invocation_id.strip():
         usage_invocation_id = str(uuid4())
@@ -378,6 +380,11 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     repaired = None
     try:
         if request_provider in ("legacy", "openai", "lmstudio"):
+            local_options = (
+                {"local_endpoint": local_endpoint}
+                if request_provider == "lmstudio" and local_endpoint is not None
+                else {}
+            )
             try:
                 raw_response = _openai_completion(
                     messages,
@@ -387,6 +394,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     response_format=_response_format,
                     phase_emit=_phase_emit,
                     output_ceiling=_output_ceiling,
+                    **local_options,
                     **kwargs,
                 )
             except Exception as exc:
@@ -401,6 +409,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     response_format=_response_format,
                     phase_emit=_phase_emit,
                     output_ceiling=_output_ceiling,
+                    **local_options,
                     **kwargs,
                 )
         else:  # gemini
@@ -492,7 +501,9 @@ def _local_template_repair(provider, messages, exc):
     Reactive by design: a lenient local model that accepts the raw shape is never
     reshaped and its request stays byte-identical. Only a COMPLETED rejection
     (the server answered with a status) qualifies; a transport failure is not a
-    shape problem. The status code itself is not authority -- #179 observed the
+    shape problem. Authentication, access and payment refusals (401/402/403)
+    cannot be repaired by reshaping messages and must hand back immediately.
+    Other completed statuses retain the existing policy -- #179 observed the
     template error as a 500 and #389 observed the same error as a 400 from a
     newer LM Studio -- and provider prose is never parsed. If the reshape leaves
     the array unchanged the rejection was not about shape, and the caller
@@ -500,7 +511,7 @@ def _local_template_repair(provider, messages, exc):
     """
     if provider != "lmstudio" or not isinstance(messages, list):
         return None
-    if _completed_http_status(exc) is None:
+    if _completed_http_status(exc) in {None, 401, 402, 403}:
         return None
     repaired = normalize_local_template_messages(messages)
     if repaired == messages:
@@ -833,9 +844,12 @@ def _chat_stream_completion(client, call_kwargs, phase_emit, output_ceiling=None
 
 
 def _openai_completion(messages, model, temperature, provider, response_format=_UNSET,
-                       phase_emit=None, output_ceiling=None, **kwargs):
+                       phase_emit=None, output_ceiling=None, local_endpoint=None, **kwargs):
     """Execute a completion via the OpenAI-compatible API."""
-    client = get_openai_client(provider=provider)
+    if provider == "lmstudio" and local_endpoint is not None:
+        client = get_openai_client(provider=provider, local_endpoint=local_endpoint)
+    else:
+        client = get_openai_client(provider=provider)
 
     # Issue #120: honor a user-set custom model for the Local/Custom provider
     # WITHOUT touching any of the 67 per-callsite model dicts. Empty => keep the
@@ -843,7 +857,9 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
     # param is affected (create_completion remains a thin router).
     if provider == "lmstudio":
         import model_config
-        _local_model = model_config.get_local_endpoint().get("model")
+        endpoint = (local_endpoint if local_endpoint is not None
+                    else model_config.get_local_endpoint())
+        _local_model = endpoint.get("model")
         if _local_model:
             model = _local_model
 
