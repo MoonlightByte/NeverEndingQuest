@@ -4923,6 +4923,13 @@ def display_dm_narration(content, channel="main", color="blue", message_id=None,
                 print(*rendered)
 
 
+def _module_joined_line(imported):
+    """Plain player line for a dropped-in module joined to the world."""
+    return "%s has been joined to this world." % (
+        str(imported.get("module")).replace("_", " "),
+    )
+
+
 def _module_join_refusal_line(refusal):
     """Plain player line for a module left unjoined by colliding ids."""
     def label(name):
@@ -8899,6 +8906,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
             )
             debug(f"STATE_CHANGE: startup module refresh result: {refresh_result}", category="startup")
+            for imported in refresh_result.get("imported", []):
+                display_dm_narration(_module_joined_line(imported), channel="system")
             for refusal in refresh_result.get("import_required", []):
                 display_dm_narration(_module_join_refusal_line(refusal), channel="system")
         except Exception as refresh_exc:
