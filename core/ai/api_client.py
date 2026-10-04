@@ -492,7 +492,9 @@ def _local_template_repair(provider, messages, exc):
     Reactive by design: a lenient local model that accepts the raw shape is never
     reshaped and its request stays byte-identical. Only a COMPLETED rejection
     (the server answered with a status) qualifies; a transport failure is not a
-    shape problem. The status code itself is not authority -- #179 observed the
+    shape problem. Authentication, access and payment refusals (401/402/403)
+    cannot be repaired by reshaping messages and must hand back immediately.
+    Other completed statuses retain the existing policy -- #179 observed the
     template error as a 500 and #389 observed the same error as a 400 from a
     newer LM Studio -- and provider prose is never parsed. If the reshape leaves
     the array unchanged the rejection was not about shape, and the caller
@@ -500,7 +502,7 @@ def _local_template_repair(provider, messages, exc):
     """
     if provider != "lmstudio" or not isinstance(messages, list):
         return None
-    if _completed_http_status(exc) is None:
+    if _completed_http_status(exc) in {None, 401, 402, 403}:
         return None
     repaired = normalize_local_template_messages(messages)
     if repaired == messages:
