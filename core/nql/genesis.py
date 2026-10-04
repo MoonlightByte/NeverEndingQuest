@@ -87,6 +87,39 @@ def _int(value: Any) -> Optional[int]:
     return value if type(value) is int else None
 
 
+CHARGES_MAX = 1000  # the engine's bound for an item definition's charges
+
+
+def charges_fields(entry: Dict[str, Any]) -> Tuple[Optional[Tuple[int, int]], Optional[str]]:
+    """((current, max), None) for a sheet row whose ``charges`` object the engine
+    accepts, (None, reason) for one it would refuse, (None, None) for a row
+    without charges.
+
+    The engine refuses the WHOLE world at compile time on one bad charges row,
+    so the host mirrors every rule here (NQL docs/ITEM_CHARGES.md, data
+    contract) and the caller declares a refused row without charges instead.
+    """
+    charges = entry.get("charges")
+    if not isinstance(charges, dict):
+        return None, None
+    current, maximum = charges.get("current"), charges.get("max")
+    if type(current) is not int or type(maximum) is not int:
+        return None, "charges.current and charges.max must be whole numbers"
+    if not 1 <= maximum <= CHARGES_MAX:
+        return None, f"charges.max must be between 1 and {CHARGES_MAX}"
+    if not 0 <= current <= maximum:
+        return None, "charges.current must be between 0 and charges.max"
+    quantity = entry.get("quantity")
+    if type(quantity) is bool or quantity not in (None, 0, 1):
+        return None, "a charged item is one physical unit (quantity 0 or 1)"
+    return (current, maximum), None
+
+
+def charged_type_id(iid: str) -> str:
+    """The per-row item type a charged sheet row is declared from."""
+    return "itemdef:row/" + iid.split(":", 1)[1]
+
+
 def character_id(sheet: Dict[str, Any]) -> str:
     return "char:" + slug(sheet.get("name", ""))
 
@@ -385,8 +418,15 @@ def ac_effect_lines(iid: str, entry: Dict[str, Any]) -> List[str]:
 
 
 def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: bool,
-               definitions: List[str], gaps: List[str], cid: str) -> Tuple[str, Optional[str]]:
-    """One item declaration. Returns (line, mode-if-held)."""
+               definitions: List[str], gaps: List[str], cid: str,
+               charged: Optional[Tuple[List[str], set]] = None) -> Tuple[str, Optional[str]]:
+    """One item declaration. Returns (line, mode-if-held).
+
+    ``charged`` is (item type lines, type ids already used) for the world; a
+    non-catalog row with an acceptable ``charges`` object (charges_fields) is
+    declared ``from`` a per-row item type that carries ``charges max`` (item
+    charges H1). Everything else is declared exactly as before.
+    """
     quantity = _int(entry.get("quantity"))
     item_type = entry.get("item_type")
     definition = None
@@ -413,6 +453,35 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
         return f"item {_q(iid)} from {_q(catalog['id'])} {{ {' '.join(fields)} }}", (mode if worn else None)
     if catalog_gap:
         gaps.append(f"{cid}: {entry.get('item_name')!r} {catalog_gap}; declared from its own fields")
+    if charged is not None and item_type != "armor":
+        pair, reason = charges_fields(entry)
+        type_id = charged_type_id(iid)
+        if reason:
+            gaps.append(f"{cid}: {entry.get('item_name')!r} {reason}; declared without charges")
+        elif pair is not None and type_id in charged[1]:
+            gaps.append(f"{cid}: {entry.get('item_name')!r} repeats charged type {type_id}; declared without charges")
+        elif pair is not None:
+            current, maximum = pair
+            mode = "held" if item_type == "weapon" else "worn"
+            kind = entry.get("item_subtype") or item_type or "other"
+            charged[1].add(type_id)
+            charged[0].append(
+                f"item type {_q(type_id)} named {_q(entry['item_name'])} {{\n"
+                f" description {_q(str(entry.get('description') or entry['item_name']))};\n"
+                f" kind {_q(str(kind))}; magical {'true' if entry.get('magical') is True else 'false'}; consumable false;\n"
+                f" equipment {_q('gear:' + mode)};\n"
+                f" charges {maximum};\n}}")
+            if worn and quantity not in (None, 1):
+                gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, item left unworn")
+                worn = False
+            fields = [f"owner {_q(owner)};", custody]
+            if worn:
+                fields.append(f"wearer {_q(cid)};")
+                fields.append(f"mode {_q(mode)};")
+            if quantity is not None and quantity != 1:
+                fields.append(f"quantity {quantity};")
+            fields.append(f"charges {current} of {maximum};")
+            return f"item {_q(iid)} from {_q(type_id)} {{ {' '.join(fields)} }}", (mode if worn else None)
     if ac_effect_lines(iid, entry) and item_type not in ("armor", "weapon"):
         # An item with a while-worn defense effect must be a typed worn item.
         definition, mode = "gear:worn", "worn"
@@ -503,6 +572,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     effect_types: List[str] = []
     effect_names: Dict[str, str] = {}
     all_ids: set = set()
+    # Item charges (H1): one item type per charged sheet row, declared after the pack.
+    charged: Tuple[List[str], set] = ([], set())
 
     for sheet in sheets:
         cid = character_id(sheet)
@@ -569,7 +640,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             all_ids.add(iid)
             ids[index] = iid
             line, held = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
-                                    entry.get("equipped") is True, definitions, gaps, cid)
+                                    entry.get("equipped") is True, definitions, gaps, cid, charged)
             items.append(line)
             effects.extend(ac_effect_lines(iid, entry))
             if held == "held":
@@ -613,7 +684,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 break
             all_ids.add(iid)
             ids[index] = iid
-            line, _ = _item_line(iid, entry, owner, f"custody item {_q(conid)};", False, definitions, gaps, owner)
+            line, _ = _item_line(iid, entry, owner, f"custody item {_q(conid)};", False, definitions, gaps, owner, charged)
             items.append(line)
         content_ids[sid] = ids
 
@@ -655,6 +726,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     pack = item_catalog.pack_source().rstrip("\n")
     if pack:
         lines.append(pack)
+    lines.extend(charged[0])
     return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
                    container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps)
 
