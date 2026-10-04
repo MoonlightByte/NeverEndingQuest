@@ -3081,11 +3081,13 @@ def _round_facts_text(encounter, round_num):
         for roll in event.get("rolls") or []:
             if not isinstance(roll, dict):
                 continue
+            # A roll is the die result, never the HP lost: "damage roll 1"
+            # beside "HP 51 -> 49" (the HP line is the damage dealt).
             piece = str(roll.get("purpose") or roll.get("die") or "roll")
             if roll.get("total") is not None:
                 piece += f" total {roll.get('total')}"
             elif roll.get("value") is not None:
-                piece += f" {roll.get('value')}"
+                piece += f" roll {roll.get('value')}"
             if roll.get("success") is not None:
                 piece += " success" if roll.get("success") else " failure"
             rolls.append(piece)
