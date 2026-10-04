@@ -231,9 +231,10 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
 def due_rows(sheet: Dict[str, Any], now: int) -> List[int]:
     """Equipment indexes whose recharge the engine should count now: a row
     with a recharge rule and a unit left whose stored boundary has passed, or
-    that has no anchor yet, or whose anchor is later than now (an older save;
-    the engine answers "behind" and nothing changes). Value checks on our own
-    int fields only."""
+    that has no anchor yet. A row anchored later than now (a restored older
+    timeline) is not due: the engine would answer "behind" and change nothing
+    on every turn until the clock catches up; its boundary rule covers it from
+    then on. Value checks on our own int fields only."""
     out = []
     for index, entry in enumerate(sheet.get("equipment") or []):
         if not isinstance(entry, dict) or genesis.charges_fields(entry)[0] is None:
@@ -242,7 +243,7 @@ def due_rows(sheet: Dict[str, Any], now: int) -> List[int]:
             continue
         charges = entry["charges"]
         boundary, anchor = charges.get("nextRecharge"), charges.get("asOf")
-        if type(anchor) is not int or anchor > now or (type(boundary) is int and boundary <= now):
+        if type(anchor) is not int or (type(boundary) is int and boundary <= now):
             out.append(index)
     return out
 
