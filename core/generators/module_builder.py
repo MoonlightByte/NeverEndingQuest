@@ -481,11 +481,14 @@ class ModuleBuilder:
         from utils.file_operations import safe_read_json
 
         try:
-            report = safe_read_json(os.path.join(self.config.output_directory, "validation_report.json"))
+            path = os.path.join(self.config.output_directory, "validation_report.json")
+            report = safe_read_json(path)
             if not isinstance(report, dict) or not isinstance(verdict, dict):
                 return
             report["engine"] = verdict
-            self._atomic_save_json("validation_report.json", report)
+            # No .bak beside it: the candidate is published as it stands.
+            if not safe_write_json(path, report, create_backup=False):
+                raise OSError("could not save validation_report.json")
         except Exception as exc:
             warning(f"MODULE_DECLARATION: engine verdict not recorded ({exc})", category="module_creation")
 

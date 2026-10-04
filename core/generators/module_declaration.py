@@ -31,6 +31,16 @@ REFUSED = "module_declaration.refused.json"
 ONE_BEING = ("same_mobile_person", "deliberate_attitude_change")
 
 
+def refusal(response):
+    """The engine's reason for a refused call: its error, or its compile
+    diagnostics ("E_MAP: invalid map visited; ...")."""
+    if response.get("error"):
+        return str(response["error"])
+    found = ["%s: %s" % (d.get("code"), d.get("message")) for d in response.get("diagnostics") or []
+             if isinstance(d, dict)]
+    return "; ".join(found) or "refused (phase %s)" % response.get("phase")
+
+
 def load_declared_world(module_path, module_name):
     """Engine load of the roster world with the module's declaration, before
     the module is live. Never a gate on publication: a world the engine
@@ -69,7 +79,7 @@ def load_declared_world(module_path, module_name):
             info(f"MODULE_DECLARATION: {module_name} loads in the engine with its declaration",
                  category="module_creation")
             return {"loaded": "declared", "reason": None}
-        reason = response.get("error")
+        reason = refusal(response)
         os.replace(declared, refused)
         try:
             loads_without = bool(apply.call({"world": world()}).get("ok"))
@@ -139,7 +149,7 @@ def reach_check(module_path, module_name):
         source = source[:-2] + "".join(" %s\n" % v for v in visited if v not in marked) + "}\n"
         response = apply.call({"world": source, "map": [travel_map.member_id(member)]})
         if not response.get("ok"):
-            return {"unreachable": None, "reach": "refused: %s" % (response.get("error") or response.get("diagnostics"))}
+            return {"unreachable": None, "reach": "refused: %s" % refusal(response)}
         view = (response.get("map") or [{}])[0]
         reached = {_place_ref(view.get("location"))}
         reached.update(_place_ref(d.get("to")) for d in view.get("destinations") or [])
