@@ -45,9 +45,14 @@
               "properties": {
                 "name": { "type": "string" },
                 "description": { "type": "string" },
-                "attitude": { "type": "string" }
+                "attitude": { "type": "string" },
+                "disposition": {
+                  "type": "string",
+                  "enum": ["friendly", "indifferent", "hostile"],
+                  "description": "How this NPC first treats the party: friendly, indifferent or hostile. attitude stays free text."
+                }
               },
-              "required": ["name", "description", "attitude"]
+              "required": ["name", "description", "attitude", "disposition"]
             },
             "description": "List of NPCs present in the location."
           },

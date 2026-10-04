@@ -189,6 +189,21 @@ def played_count(entry):
 
 # Seeds --------------------------------------------------------------------
 
+ATTITUDES = ("friendly", "indifferent", "hostile")
+
+
+def disposition(entry):
+    """(attitude, problem) for an NPC entry: its model-typed disposition when
+    that is exactly an engine attitude, else indifferent as before; problem
+    names a disposition that is present but not one of the three words."""
+    value = entry.get("disposition") if isinstance(entry, dict) else None
+    if value in ATTITUDES:
+        return value, None
+    if value is None:
+        return "indifferent", None
+    return "indifferent", "disposition %r is not friendly, indifferent or hostile; indifferent" % (value,)
+
+
 class Seed:
     def __init__(self, module, loc, name, kind, entry, ident):
         self.module, self.loc, self.name, self.kind, self.entry, self.id = module, loc, name, kind, entry, ident
@@ -196,10 +211,11 @@ class Seed:
         self.range = authored_count(entry) if kind == "creatures" else None
         self.decision = None
         self.aliases = []
+        self.attitude, self.attitude_problem = disposition(entry) if kind == "person" else (None, None)
 
     def declaration(self):
         if self.kind == "person":
-            body = "person; attitude indifferent;" + "".join(" alias %s;" % q(a) for a in self.aliases)
+            body = "person; attitude %s;" % self.attitude + "".join(" alias %s;" % q(a) for a in self.aliases)
         elif self.range is None:
             body = "creatures; attitude hostile; type %s;" % q(slug(self.name))
         elif self.range[0] == self.range[1]:
@@ -313,6 +329,8 @@ def seeds(game, notes):
                     seed = Seed(m, loc_id, name.strip(), kind, entry, ident)
                     if kind == "person":
                         seed.aliases = homes.get((loc_id, name.strip()), [])
+                        if seed.attitude_problem:
+                            notes.append(("seed", "%s: %s" % (ident, seed.attitude_problem)))
                     if kind == "creatures" and seed.range is not None and not (1 <= seed.range[0] <= seed.range[1]):
                         notes.append(("seed", "%s: authored count %r is not a group size; declared uncounted" % (ident, seed.range)))
                         seed.range = None
@@ -516,7 +534,10 @@ def convert(game, lower=(), overrides=None):
                     seed_ids.add(ident)
                     if field == "npcs":
                         d = Decision(ident, name, place, "7", "in play but not authored: created")
-                        d.actions.append("create occupant %s named %s at %s { person; attitude indifferent; };" % (q(ident), q(name), q(place)))
+                        attitude, problem = disposition(e)
+                        if problem:
+                            d.evidence.append(problem)
+                        d.actions.append("create occupant %s named %s at %s { person; attitude %s; };" % (q(ident), q(name), q(place), attitude))
                         d.size = 1
                     else:
                         c = played_count(e)

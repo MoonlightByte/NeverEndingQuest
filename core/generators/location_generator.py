@@ -769,12 +769,15 @@ class LocationPromptGuide:
     - name: Their name or identifier
     - description: Brief physical/personality note
     - attitude: hostile, neutral, friendly, cautious, etc.
+    - disposition: exactly one of friendly, indifferent or hostile -- how
+      this NPC first treats the party (attitude stays free text)
     
     Example:
     {
         "name": "Grimtooth the Gatekeeper",
         "description": "A scarred hobgoblin veteran with a missing eye",
-        "attitude": "hostile"
+        "attitude": "hostile",
+        "disposition": "hostile"
     }
     
     NPCs should:
@@ -1235,7 +1238,9 @@ CRITICAL COMPLETE LOCATION CHECKLIST -- field names and nesting must match EXACT
   no player events have occurred yet; runtime departure processing populates
   this living-history field later.
 - "npcs" (NOT "notableNPCs") is an array of complete objects. Every NPC
-  requires name (string), description (string), and attitude (string).
+  requires name (string), description (string), attitude (string, free
+  text), and disposition (exactly "friendly", "indifferent" or "hostile":
+  how the NPC first treats the party).
 - "monsters" (NOT "creatures") is an array of complete objects. Every
   monster requires name (string) and quantity (object); quantity requires
   min (integer, 0 or greater) and max (integer, 1 or greater).
