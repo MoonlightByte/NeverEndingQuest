@@ -295,3 +295,11 @@ def test_invalid_review_verdict_is_repaired_without_changing_sources(wizard, aut
     assert review["accepted"] is True and len(calls) == 2
     assert calls[0][1] == calls[1][1]
     assert "invalid structure" in calls[1][-1]["content"]
+
+def test_declared_module_entry_bypasses_provider_after_main_integration(wizard, monkeypatch):
+    entry = {'areaId': 'AREA01', 'locationId': 'ROOM01', 'areaName': 'Fixture',
+             'locationName': 'Entry', 'weather': '', 'politicalClimate': ''}
+    monkeypatch.setattr(wizard, '_declared_starting_location', lambda name: entry)
+    # The fixture forbids network/provider calls; declared entries must retain
+    # public main's deterministic bypass even with provenance/recovery changes.
+    assert wizard.get_ai_starting_location({'moduleName': 'Fixture'}) == entry
