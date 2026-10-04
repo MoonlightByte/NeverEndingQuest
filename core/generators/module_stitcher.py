@@ -1187,8 +1187,10 @@ class ModuleStitcher:
         }
         # The module builder writes a module-level party tracker; published
         # modules (the repo's own, and modules dropped into modules/) never
-        # ship one and no gameplay path reads it. Validate it only when it
-        # is present.
+        # ship one, and no play path reads it through the schema (the
+        # declared start reads only its weather and politicalClimate). It is
+        # checked only when present, and its content never refuses
+        # publication (#586): a failure is logged and the module publishes.
         optional_files = {
             "party_tracker.json": "party_schema.json",
         }
@@ -1238,8 +1240,19 @@ class ModuleStitcher:
                     continue
                 if not file_path.is_file():
                     return False, f"Publication file is not a regular file: {filename}"
-                data = load_object(file_path)
-                validate_available_schema(data, schema_name, filename)
+                try:
+                    data = load_object(file_path)
+                    validate_available_schema(data, schema_name, filename)
+                except (OSError, ValueError) as exc:
+                    # Publication checks a module several times; report once.
+                    warned = self.__dict__.setdefault("_own_tracker_warned", set())
+                    if str(file_path) not in warned:
+                        warned.add(str(file_path))
+                        warning(
+                            f"MODULE_PUBLICATION: {module_root.name}'s own {filename} "
+                            f"is not used by play and fails: {exc}; publishing anyway",
+                            category="module_integration",
+                        )
 
             areas_dir = module_root / "areas"
             if not areas_dir.is_dir():
