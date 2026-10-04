@@ -836,6 +836,10 @@ class ModuleStitcher:
             return None, "World registry is not a JSON object"
         if not isinstance(registry.get("modules"), dict):
             return None, "World registry 'modules' value is not an object"
+        # Startup reconciliation writes a registry with no 'areas' key at
+        # all; that is an empty area map, not a malformed one.
+        if "areas" not in registry:
+            registry["areas"] = {}
         if not isinstance(registry.get("areas"), dict):
             return None, "World registry 'areas' value is not an object"
         return registry, ""
