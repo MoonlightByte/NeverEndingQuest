@@ -31,6 +31,16 @@ REFUSED = "module_declaration.refused.json"
 ONE_BEING = ("same_mobile_person", "deliberate_attitude_change")
 
 
+def refusal(response):
+    """The engine's reason for a refused call: its error, or its compile
+    diagnostics ("E_MAP: invalid map visited; ...")."""
+    if response.get("error"):
+        return str(response["error"])
+    found = ["%s: %s" % (d.get("code"), d.get("message")) for d in response.get("diagnostics") or []
+             if isinstance(d, dict)]
+    return "; ".join(found) or "refused (phase %s)" % response.get("phase")
+
+
 def load_declared_world(module_path, module_name):
     """Engine load of the roster world with the module's declaration, before
     the module is live. Never a gate on publication: a world the engine
@@ -38,6 +48,11 @@ def load_declared_world(module_path, module_name):
     aside (module_declaration.refused.json), and the module derives as
     before. The module's quests are not part of this load (they are read from
     the live module path); the declaration does not touch them.
+
+    Returns the verdict: {"loaded": "declared" | "derived" | "none" | None,
+    "reason": the engine's refusal or why the load did not run, or None}.
+    "derived" is the declaration set aside; "none" is a world refused with or
+    without it; None is no load (engine unavailable, or skipped).
     """
     from core.nql import apply
     from utils import roster_conversion
@@ -46,9 +61,15 @@ def load_declared_world(module_path, module_name):
     refused = Path(module_path) / "module_declaration.refused.json"
 
     def world():
-        modules = [m for m in roster_conversion.installed_modules(".") if m != module_name]
+        # The world play will load (the joined modules and the party's), not
+        # every installed directory: an unjoined module must not decide this
+        # module's load.
+        modules = [m for m in roster_conversion.world_modules(".") if m != module_name]
         modules.append(module_name)
-        game = roster_conversion.Game(".", modules, paths={module_name: os.fspath(module_path)})
+        # A build before the first game has no root tracker: an empty party.
+        tracker = None if os.path.exists("party_tracker.json") else {}
+        game = roster_conversion.Game(".", modules, paths={module_name: os.fspath(module_path)},
+                                      tracker=tracker)
         source, _ = roster_conversion.world_source(game, roster_conversion.seeds(game, []))
         return source
 
@@ -57,8 +78,8 @@ def load_declared_world(module_path, module_name):
         if response.get("ok"):
             info(f"MODULE_DECLARATION: {module_name} loads in the engine with its declaration",
                  category="module_creation")
-            return
-        reason = response.get("error")
+            return {"loaded": "declared", "reason": None}
+        reason = refusal(response)
         os.replace(declared, refused)
         try:
             loads_without = bool(apply.call({"world": world()}).get("ok"))
@@ -75,18 +96,73 @@ def load_declared_world(module_path, module_name):
             if isinstance(report, dict) and isinstance(report.get("issues"), list):
                 report["issues"].append(f"module declaration refused by the engine and set aside: {reason}")
                 safe_write_json(os.fspath(report_path), report)
-            return
+            return {"loaded": "derived", "reason": reason}
         # Refused either way: the declaration is not the cause; keep it.
         os.replace(refused, declared)
         warning(f"MODULE_DECLARATION: the engine refuses the world with or without "
                 f"{module_name}'s declaration ({reason}); declaration kept",
                 category="module_creation")
+        return {"loaded": "none", "reason": reason}
     except apply.EngineUnavailable as exc:
         warning(f"MODULE_DECLARATION: engine unavailable ({exc}); {module_name} published "
                 "without the build-time load", category="module_creation")
+        return {"loaded": None, "reason": f"engine unavailable: {exc}"}
     except Exception as exc:
         warning(f"MODULE_DECLARATION: build-time load skipped for {module_name} ({exc})",
                 category="module_creation")
+        return {"loaded": None, "reason": f"skipped: {exc}"}
+
+
+def reach_check(module_path, module_name):
+    """Which of the module's places the party cannot reach from its declared
+    start, from the engine (a second load-only call; nql-7d's recipe): a
+    world of the module alone, every place visited, one synthetic member at
+    the start as the party, and its map view. The start and the view's
+    destinations are the reachable set; a place missing from it is an island
+    or behind a one-way link. A record, never a gate.
+
+    Returns {"unreachable": [bare place ids, sorted]}, or {"unreachable":
+    None, "reach": why no check ran} (no declared entry start, the start not
+    a place of the module, the engine unavailable or refusing).
+    """
+    from core.nql import apply
+    from core.nql.travel import _place_ref
+    from utils import roster_conversion, travel_map
+
+    start = roster_conversion.declared_start(module_path)
+    if start is None:
+        return {"unreachable": None, "reach": "no declared entry start"}
+    member = "Reach Check"
+    tracker = {"module": module_name, "partyMembers": [member],
+               "worldConditions": {"currentAreaId": start["areaId"],
+                                   "currentLocationId": start["locationId"]}}
+    try:
+        game = roster_conversion.Game(".", [module_name], paths={module_name: os.fspath(module_path)},
+                                      tracker=tracker)
+        # No occupants: the check reads the links, not who stands where.
+        source, places = roster_conversion.world_source(game, [])
+        here = "loc:%s/%s" % (module_name, start["locationId"])
+        if here not in places or not source.endswith("\n}\n"):
+            return {"unreachable": None, "reach": "the declared start is not a place of the module"}
+        marked = {line.strip() for line in source.splitlines()}
+        visited = ["visited %s;" % travel_map.q(p) for p in places]
+        source = source[:-2] + "".join(" %s\n" % v for v in visited if v not in marked) + "}\n"
+        response = apply.call({"world": source, "map": [travel_map.member_id(member)]})
+        if not response.get("ok"):
+            return {"unreachable": None, "reach": "refused: %s" % refusal(response)}
+        view = (response.get("map") or [{}])[0]
+        reached = {_place_ref(view.get("location"))}
+        reached.update(_place_ref(d.get("to")) for d in view.get("destinations") or [])
+    except apply.EngineUnavailable as exc:
+        return {"unreachable": None, "reach": "engine unavailable: %s" % exc}
+    except Exception as exc:
+        return {"unreachable": None, "reach": "skipped: %s" % exc}
+    prefix = "loc:%s/" % module_name
+    unreachable = sorted(p[len(prefix):] for p in places if p not in reached)
+    if unreachable:
+        warning(f"MODULE_DECLARATION: {module_name} places not reachable from its start "
+                f"{start['locationId']}: {', '.join(unreachable)}", category="module_creation")
+    return {"unreachable": unreachable}
 
 
 def typing_packet(game, module):

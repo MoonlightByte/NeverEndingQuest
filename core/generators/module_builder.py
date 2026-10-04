@@ -119,9 +119,11 @@ def _publication_step(prepare_candidate, builder_holder):
             registry_bytes = prepare_candidate(candidate_path, final_name)
         builder = builder_holder.get("builder")
         if builder is not None and builder.emit_module_declaration():
-            from core.generators.module_declaration import load_declared_world
+            from core.generators.module_declaration import load_declared_world, reach_check
 
-            load_declared_world(candidate_path, final_name)
+            verdict = load_declared_world(candidate_path, final_name)
+            verdict.update(reach_check(candidate_path, final_name))
+            builder.record_engine_verdict(verdict)
         return registry_bytes
 
     return step
@@ -470,6 +472,25 @@ class ModuleBuilder:
             raise OSError(f"Could not save generated module file: {relative_filename}")
         self.log(f"Saved: {relative_filename}")
         return True
+
+    def record_engine_verdict(self, verdict) -> None:
+        """Record the build-time engine load's verdict (load_declared_world) as
+        validation_report.json's `engine` object, in the candidate before the
+        commit rename. A record, never a gate: a failure here is logged and the
+        module publishes."""
+        from utils.file_operations import safe_read_json
+
+        try:
+            path = os.path.join(self.config.output_directory, "validation_report.json")
+            report = safe_read_json(path)
+            if not isinstance(report, dict) or not isinstance(verdict, dict):
+                return
+            report["engine"] = verdict
+            # No .bak beside it: the candidate is published as it stands.
+            if not safe_write_json(path, report, create_backup=False):
+                raise OSError("could not save validation_report.json")
+        except Exception as exc:
+            warning(f"MODULE_DECLARATION: engine verdict not recorded ({exc})", category="module_creation")
 
     # Classifications whose occurrences are one being (owner ruling Q3).
     ONE_BEING = ("same_mobile_person", "deliberate_attitude_change")
