@@ -231,7 +231,18 @@ try:
             if scenario['wizard']=='interview':
                 content=wizard.get_ai_response(conversation,persist_response=False,live_scope=scope)
             elif scenario['wizard']=='review':
-                content=json.dumps(wizard._review_startup_response(conversation,{'decision':'continue_interview'},{},live_scope=scope))
+                import inspect, copy
+                proposal={'decision':'continue_interview'}
+                review_kwargs={'live_scope':scope}
+                # PR579 adds explicit authorship provenance; transport fixtures
+                # exercise either public interface without changing production.
+                parameters=inspect.signature(wizard._review_startup_response).parameters
+                if 'authored_proposal' in parameters:
+                    assert 'normalization_provenance' in parameters
+                    review_kwargs.update(authored_proposal=copy.deepcopy(proposal),
+                                         normalization_provenance={})
+                content=json.dumps(wizard._review_startup_response(
+                    conversation,proposal,{},**review_kwargs))
             else:
                 content=json.dumps(wizard.get_ai_starting_location({'moduleName':'Fixture'},live_scope=scope))
             result={'kind':'success','content':content}
