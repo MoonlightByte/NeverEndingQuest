@@ -102,6 +102,29 @@ _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE = (
 )
 
 
+def _publication_step(prepare_candidate, builder_holder):
+    """The one publication step every entry path runs on its hidden candidate,
+    before the commit rename (utils/module_publish.publish_module_atomic).
+
+    Order matters: ids are normalized first (the caller's prepare_candidate,
+    i.e. the stitcher, when one is supplied), then the module declaration is
+    written. The stitcher re-prefix is positional and rewrites only the files
+    it knows, so a declaration written before it would keep stale ids. The
+    returned value is prepare_candidate's registry bytes, unchanged (None when
+    there is no prepare_candidate, as before: no registry write).
+    """
+    def step(candidate_path, final_name):
+        registry_bytes = None
+        if prepare_candidate is not None:
+            registry_bytes = prepare_candidate(candidate_path, final_name)
+        builder = builder_holder.get("builder")
+        if builder is not None:
+            builder.emit_module_declaration()
+        return registry_bytes
+
+    return step
+
+
 def _run_managed_module_build(
     *,
     requested_name,
@@ -3197,6 +3220,10 @@ def _ai_driven_module_creation_impl(
             category="module_creation",
         )
 
+        # The builder of the candidate being published, for the publication
+        # step's module declaration (set per attempt by build_candidate).
+        builder_holder: Dict[str, Any] = {}
+
         def build_candidate(
             candidate_path: Path,
             final_name: str,
@@ -3232,6 +3259,7 @@ def _ai_driven_module_creation_impl(
                     }
                 )
             builder = ModuleBuilder(config)
+            builder_holder["builder"] = builder
             if per_area_locations is not None:
                 builder.per_area_locations = list(per_area_locations)
 
@@ -3354,7 +3382,7 @@ def _ai_driven_module_creation_impl(
                 final_name,
                 story_first_path=False,
             ),
-            prepare_registry_fn=prepare_candidate,
+            prepare_registry_fn=_publication_step(prepare_candidate, builder_holder),
             use_story_first=use_story_first,
             progress_callback=progress_callback,
         )
