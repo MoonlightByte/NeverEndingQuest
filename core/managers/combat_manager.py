@@ -3081,11 +3081,13 @@ def _round_facts_text(encounter, round_num):
         for roll in event.get("rolls") or []:
             if not isinstance(roll, dict):
                 continue
+            # A roll is the die result, never the HP lost: "damage roll 1"
+            # beside "HP 51 -> 49" (the HP line is the damage dealt).
             piece = str(roll.get("purpose") or roll.get("die") or "roll")
             if roll.get("total") is not None:
                 piece += f" total {roll.get('total')}"
             elif roll.get("value") is not None:
-                piece += f" {roll.get('value')}"
+                piece += f" roll {roll.get('value')}"
             if roll.get("success") is not None:
                 piece += " success" if roll.get("success") else " failure"
             rolls.append(piece)
@@ -3101,6 +3103,19 @@ def _round_facts_text(encounter, round_num):
             spent.append(piece)
         if spent:
             parts.append("resources: " + "; ".join(spent))
+        ticked = []
+        for tick in event.get("effectTicks") or []:
+            if not isinstance(tick, dict):
+                continue
+            holder = tick.get("owner") or _name(tick.get("combatantId"))
+            piece = f"{tick.get('name') or tick.get('effectId') or 'effect'} on {holder}"
+            if tick.get("expired"):
+                piece += " expired"
+            elif tick.get("roundsBefore") is not None and tick.get("roundsAfter") is not None:
+                piece += f" {tick.get('roundsBefore')} -> {tick.get('roundsAfter')} rounds"
+            ticked.append(piece)
+        if ticked:
+            parts.append("effects at round end: " + "; ".join(ticked))
         lines.append("- " + "; ".join(parts))
 
     states = []
