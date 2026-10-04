@@ -5079,11 +5079,26 @@ Respond with JSON:
                 json.dumps({"module": module_name}), encoding="utf-8"
             )
             shutil.copytree(live_path, candidate, symlinks=True)
+            copied = {
+                os.path.relpath(os.path.join(directory, filename), candidate)
+                for directory, _dirs, filenames in os.walk(candidate)
+                for filename in filenames
+            }
             before = self._area_location_ids(str(candidate))
             registry_bytes = self.build_publication_registry_bytes(
                 candidate, module_name, replacing_live=True
             )
             after = self._area_location_ids(str(candidate))
+            # The rewrite's own .bak copies hold intermediate ids; the
+            # original stays in the workspace until the swap, so they are
+            # not kept in the module.
+            for directory, _dirs, filenames in os.walk(candidate):
+                for filename in filenames:
+                    path = os.path.join(directory, filename)
+                    if filename.endswith(".bak") and (
+                        os.path.relpath(path, candidate) not in copied
+                    ):
+                        os.remove(path)
             renumbered = sum(
                 old != new
                 for area in before
