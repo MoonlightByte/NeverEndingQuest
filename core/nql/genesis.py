@@ -89,6 +89,7 @@ def _int(value: Any) -> Optional[int]:
 
 CHARGES_MAX = 1000  # the engine's bound for an item definition's charges
 TYPE_DESCRIPTION_MAX = 4096  # the catalog's bound for an item type description, in bytes
+TYPE_KIND_MAX = 256  # the catalog's bound for a type's kind and for its id, in bytes
 
 
 def _type_description(entry: Dict[str, Any]) -> str:
@@ -475,10 +476,14 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
             gaps.append(f"{cid}: {entry.get('item_name')!r} {reason}; declared without charges")
         elif pair is not None and type_id in charged[1]:
             gaps.append(f"{cid}: {entry.get('item_name')!r} repeats charged type {type_id}; declared without charges")
+        elif pair is not None and len(type_id.encode("utf-8")) > TYPE_KIND_MAX:
+            gaps.append(f"{cid}: {entry.get('item_name')!r} has a name too long for a charged type id; declared without charges")
         elif pair is not None:
             current, maximum = pair
             mode = "held" if item_type == "weapon" else "worn"
             kind = entry.get("item_subtype") or item_type or "other"
+            if len(str(kind).encode("utf-8")) > TYPE_KIND_MAX:
+                kind = item_type if item_type and len(str(item_type).encode("utf-8")) <= TYPE_KIND_MAX else "other"
             charged[1].add(type_id)
             charged[0].append(
                 f"item type {_q(type_id)} named {_q(entry['item_name'])} {{\n"
