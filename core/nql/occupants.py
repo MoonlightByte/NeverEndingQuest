@@ -65,8 +65,9 @@ def _modules(root: str) -> List[str]:
     return modules
 
 
-def _world(root: str):
-    """The world source and the places it declares, from the masters."""
+def _world(root: str, joins: Tuple[Tuple[str, str, int], ...] = ()):
+    """The world source and the places it declares, from the masters, with
+    the cross-module `joins` a module switch declares (C12)."""
     from utils import roster_conversion
     modules = _modules(root)
     game = roster_conversion.Game(root, modules)
@@ -79,7 +80,7 @@ def _world(root: str):
             )
     notes: List[Tuple[str, str]] = []
     seed_list = roster_conversion.seeds(game, notes)
-    world, places = roster_conversion.world_source(game, seed_list, _held_party(root), notes)
+    world, places = roster_conversion.world_source(game, seed_list, _held_party(root), notes, joins)
     for kind, text in notes:
         debug("OCCUPANTS: seed note (%s): %s" % (kind, text), category="location_transitions")
     return world, places, game
@@ -242,7 +243,8 @@ def _set_aside(root: str) -> None:
 def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
             view: Tuple[str, ...] = (), quests: Tuple[str, ...] = (), root: str = ".",
             create: bool = True, actor: Optional[str] = None,
-            align: bool = True, map_view: Tuple[str, ...] = ()) -> Optional[Dict[str, Any]]:
+            align: bool = True, map_view: Tuple[str, ...] = (),
+            joins: Tuple[Tuple[str, str, int], ...] = ()) -> Optional[Dict[str, Any]]:
     """One engine call on the document. Returns the response (ok or a refusal
     of the actions, which the caller reconciles), or None when the engine is
     unavailable or the document could not be made. Writes the next document
@@ -252,9 +254,10 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
     the roster actor). A call with actions first brings the document's party
     to the tracker when another writer moved it (core/nql/travel.py);
     align=False is travel's own call. `map_view` asks for the map view of
-    these characters (C10b)."""
+    these characters (C10b). `joins` are cross-module routes declared for
+    this call only (C12: a module switch's view and trip)."""
     try:
-        world, places, game = _world(root)
+        world, places, game = _world(root, tuple(joins))
         live = _load(root)
         created = False
         if live is None:

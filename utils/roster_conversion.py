@@ -791,11 +791,12 @@ def npc_decision(game, s, fights, played, persons, played_lists, claimed):
 
 # Output -------------------------------------------------------------------
 
-def world_source(game, seed_list, held=None, notes=None):
+def world_source(game, seed_list, held=None, notes=None, joins=()):
     """Every place of the modules, masters first, then any place only the
     played files have; and the map with the party (utils/travel_map.py).
     `held` is the document's party and character places, when there is a
-    document."""
+    document; `joins` the cross-module routes a module switch declares
+    (C12)."""
     places = []
     for m in game.modules:
         for loc_id, (_, loc) in game.masters[m].items():
@@ -819,7 +820,7 @@ def world_source(game, seed_list, held=None, notes=None):
     lines += quest_record.declaration_lines(game.root, game.modules)
     # C10a: the map, the party at the tracker's place and the visited seed.
     from utils import travel_map
-    lines += travel_map.lines(game, [p for p, _ in places], held, notes)
+    lines += travel_map.lines(game, [p for p, _ in places], held, notes, joins)
     return "\n".join(lines) + "\n", [p for p, _ in places]
 
 

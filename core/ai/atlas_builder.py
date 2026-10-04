@@ -30,6 +30,23 @@ def _module_reference_facts(entry) -> str:
     return out
 
 
+def _known_journey_facts(registry, current_module: str, module: str) -> str:
+    """\"; known journey: ...\" for the join between the current module and
+    this one (C12: the way the party already crossed, utils/module_joins.py),
+    or \"\"."""
+    from utils import module_joins
+    from core.nql.travel import floor_minutes
+    joins = registry.get("joins")
+    pair = {current_module.replace(" ", "_"), module.replace(" ", "_")}
+    for join in joins if isinstance(joins, list) else []:
+        if module_joins.valid(join) and set(module_joins.modules_of(join)) == pair:
+            ends = {join[k]["module"].replace(" ", "_"): join[k]["location"] for k in ("gateway", "entry")}
+            return (f"; known journey: from {ends[current_module.replace(' ', '_')]} here to "
+                    f"{ends[module.replace(' ', '_')]} there, {join['minutes']} min at normal pace "
+                    f"(at least {floor_minutes(join['minutes'])} min at a fast pace)")
+    return ""
+
+
 def format_installed_module_references(current_module: str, modules_root: str = "modules") -> str:
     """Share foreign identities with T067 and T065 without pooling route graphs (#307 A2)."""
     lines = [
@@ -52,6 +69,7 @@ def format_installed_module_references(current_module: str, modules_root: str = 
         # C3: the level range and the recorded starting location are told here
         # once (the DM Note used to carry them); registry facts only, no lookup.
         facts = _module_reference_facts(modules.get(module))
+        facts += _known_journey_facts(registry, current_module, module)
         try:
             snapshot = build_active_module_snapshot(module, modules_root)
         except (OSError, ValueError, TypeError) as exc:

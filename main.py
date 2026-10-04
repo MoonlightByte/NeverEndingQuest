@@ -1967,6 +1967,10 @@ def _resume_cross_module_root(operation_id, *, publish=True, publication=None):
             "status": "blocked",
             "reason": "party state matches neither staged module projection",
         }
+    # C12: the engine's party crosses with the tracker, over the join of the
+    # two modules; a trip already on record is skipped by its request id.
+    from core.nql import travel
+    travel.realign(checkpoint)
 
     targeted, completion = retry_staged_module_completions(
         pending,
