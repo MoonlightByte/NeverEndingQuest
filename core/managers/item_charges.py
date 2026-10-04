@@ -11,15 +11,21 @@ the sheet (``chargeUses``) answers a retried request id without a second
 spend, because the engine keeps no memory of request ids across calls and the
 world is rebuilt from the sheet on every call.
 
-No clock, seed or recharge in H1: an item type without a recharge rule spends
-in a clockless world (NQL docs/ITEM_CHARGES.md). The view's ``as_of`` and
-``seed`` are stored when present so a later engine never reads a sheet lossy.
+Recharge (H2): every charges world declares the party's clock (absolute game
+seconds from the fantasy calendar, the same scalar the effects runtime uses),
+so an item whose per-row type recharges is counted up to now by the engine
+before the spend; a rule-less item gives identical events with or without a
+clock. The engine's normalized state comes back in the ``item_charges`` view
+and is stored as ``charges.current``, ``charges.asOf``, ``charges.seed`` and
+``charges.nextRecharge`` (an absolute tick, our own int field); a value the
+view omits is removed, so the sheet never holds a stale anchor.
 """
 import copy
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
+from core.effects.clock import GameTimeError, scalar_from_calendar
 from core.nql import apply, genesis, stats
 from core.managers.item_acquisition import _backup, _discard, _projected, _resolve, _restore
 from utils.encoding_utils import safe_json_load
@@ -40,6 +46,37 @@ _FAULT_WORDS = {
 
 def _norm(text: Any) -> str:
     return " ".join(str(text or "").split()).casefold()
+
+
+def store_view(charges: Dict[str, Any], view: Dict[str, Any], quantity: Any = 1) -> None:
+    """Write the engine's normalized charge state from an ``item_charges`` view
+    row onto the sheet's ``charges`` object: ``current`` always; ``asOf`` and
+    ``seed`` when the view carries them, removed when it does not;
+    ``nextRecharge`` only while the item is below max AND the view's clock is
+    live (a view read with the clock absent still prints a boundary, but it is
+    inert), and never for a destroyed unit (quantity 0: the engine keeps
+    counting a destroyed item's charges while nothing can be spent)."""
+    charges["current"] = view["current"]
+    for key, stored in (("as_of", "asOf"), ("seed", "seed")):
+        if key in view:
+            charges[stored] = view[key]
+        else:
+            charges.pop(stored, None)
+    boundary = view.get("next_recharge")
+    live = view.get("clock") not in (None, "absent") and quantity != 0
+    if live and type(boundary) is int:
+        charges["nextRecharge"] = boundary
+    else:
+        charges.pop("nextRecharge", None)
+
+
+def party_clock(party: Dict[str, Any]) -> Tuple[Optional[int], Optional[str]]:
+    """(absolute game seconds, None) from the party tracker's calendar, or
+    (None, reason) when the calendar cannot be read."""
+    try:
+        return scalar_from_calendar((party or {}).get("worldConditions") or {}), None
+    except GameTimeError as error:
+        return None, str(error)
 
 
 def charged_rows(sheet: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -83,6 +120,7 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
 
     party = party_tracker or safe_json_load("party_tracker.json") or {}
     location = str((party.get("worldConditions") or {}).get("currentLocationId") or "party")
+    clock, clock_error = party_clock(party)
 
     with _get_character_update_lock(os.path.basename(path)[:-5]):
         with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=30.0) as lease:
@@ -112,11 +150,17 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
             if pair is None:
                 why = reason or "it has no charges"
                 return {"success": False, "error": f"{row.get('item_name')} cannot spend charges: {why}"}
+            if clock is None and genesis.recharge_rule(row)[0]:
+                # A recharging item is counted from the clock; without one the
+                # engine refuses the spend (E_CHARGES field clock). Say why in
+                # plain words. A rule-less item spends in a clockless world.
+                return {"success": False, "error": f"{row.get('item_name')} recharges on the game clock, which could not be "
+                                                   f"read ({clock_error}); nothing was spent"}
 
             working = copy.deepcopy(sheet)
             genesis.assign_ids(working)
             cid = genesis.character_id(working)
-            world = genesis.build_world([working], location)
+            world = genesis.build_world([working], location, clock_tick=clock)
             for gap in world.gaps:
                 debug(f"EXPEND: genesis gap: {gap}", category="storage_operations")
             iid = (world.item_ids.get(cid) or {}).get(index)
@@ -151,18 +195,21 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
             # event's `before`, which includes recharge from E2 on).
             target = working["equipment"][index]
             before = target["charges"]["current"]
-            target["charges"]["current"] = view["current"]
+            store_view(target["charges"], view, target.get("quantity", 1))
             target["charges"]["max"] = pair[1]
-            for key, stored in (("as_of", "asOf"), ("seed", "seed")):
-                if key in view:
-                    target["charges"][stored] = view[key]
+            # The count the engine spent from: the view's count plus the spend.
+            # Above the stored count means the item had recharged since the
+            # sheet was last written (numbers from the engine, not computed
+            # from any rule here).
+            had = view["current"] + charges
             status = next((s for s in response.get("status") or []
                            if isinstance(s.get("character"), dict) and s["character"].get("id") == cid), None)
             if status is not None:
                 stats.store(working, status)
             name = working.get("name")
+            regained = f"; it had recharged to {had} of {pair[1]} since its last use" if had > before else ""
             message = (f"{name} spent {charges} charge{'s' if charges != 1 else ''} of {target['item_name']} "
-                       f"({view['current']} of {pair[1]} remain)")
+                       f"({view['current']} of {pair[1]} remain{regained})")
             receipts = [r for r in working.get("chargeUses") or [] if isinstance(r, dict)]
             receipts.append({"request": request, "nqlId": iid, "item": target["item_name"], "requested": charges,
                              "before": before, "after": view["current"], "message": message})
@@ -179,3 +226,116 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
             _discard(backup)
             info(f"EXPEND: {message}", category="storage_operations")
             return {"success": True, "message": message}
+
+
+def due_rows(sheet: Dict[str, Any], now: int) -> List[int]:
+    """Equipment indexes whose recharge the engine should count now: a row
+    with a recharge rule and a unit left whose stored boundary has passed, or
+    that has no anchor yet. A row anchored later than now (a restored older
+    timeline) is not due: the engine would answer "behind" and change nothing
+    on every turn until the clock catches up; its boundary rule covers it from
+    then on. Value checks on our own int fields only."""
+    out = []
+    for index, entry in enumerate(sheet.get("equipment") or []):
+        if not isinstance(entry, dict) or genesis.charges_fields(entry)[0] is None:
+            continue
+        if entry.get("quantity") == 0 or not genesis.recharge_rule(entry)[0]:
+            continue
+        charges = entry["charges"]
+        boundary, anchor = charges.get("nextRecharge"), charges.get("asOf")
+        if type(anchor) is not int or (type(boundary) is int and boundary <= now):
+            out.append(index)
+    return out
+
+
+def refresh_sheet(character_name: str, now: int, location: str = "party") -> Dict[str, Any]:
+    """Count the recharge of one character's due items and store the engine's
+    state. One view-only engine call (no actions, no event, revision 0), so
+    repeating it is harmless. {"refreshed": [item names]} or {"error"}."""
+    from updates.update_character_info import _get_character_update_lock
+    from utils.path_transaction_lock import path_transaction_lock
+
+    path = _resolve(character_name)
+    if path is None:
+        return {"error": f"no character sheet for {character_name!r}"}
+    with _get_character_update_lock(os.path.basename(path)[:-5]):
+        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=30.0) as lease:
+            if lease is None:
+                return {"error": "the character sheet is busy"}
+            sheet = safe_read_json(path)
+            if not sheet:
+                return {"error": "could not load the character sheet"}
+            due = due_rows(sheet, now)
+            if not due:
+                return {"refreshed": []}
+            working = copy.deepcopy(sheet)
+            genesis.assign_ids(working)
+            cid = genesis.character_id(working)
+            world = genesis.build_world([working], location, clock_tick=now)
+            ids = {index: (world.item_ids.get(cid) or {}).get(index) for index in due}
+            wanted = [iid for iid in ids.values() if iid and genesis._q(genesis.charged_type_id(iid)) in world.source]
+            if not wanted:
+                return {"refreshed": []}
+            try:
+                response = apply.call({"world": world.source, "world_name": "charges-refresh-genesis.nql",
+                                       "item_charges": wanted})
+            except apply.EngineUnavailable as error:
+                return {"error": f"rules engine unavailable: {error}"}
+            if not response.get("ok"):
+                return {"error": _refusal(response)}
+            views = {v.get("item"): v for v in response.get("item_charges") or [] if isinstance(v, dict)}
+            refreshed, stored = [], 0
+            for index, iid in ids.items():
+                view = views.get(iid)
+                if view is None or type(view.get("current")) is not int:
+                    continue
+                row = working["equipment"][index]
+                before = row["charges"].get("current")
+                store_view(row["charges"], view, row.get("quantity", 1))
+                stored += 1
+                # Only a count that rose is reported (and shown to the DM); an
+                # anchor written on a row's first refresh is stored silently.
+                if type(before) is int and view["current"] > before:
+                    refreshed.append(f"{row['item_name']} {view['current']} of {row['charges']['max']}")
+            if not stored:
+                return {"refreshed": []}
+            out = _projected(working)
+            backup = _backup(path)
+            try:
+                if not safe_write_json(path, out):
+                    raise RuntimeError("failed to write the character sheet")
+            except Exception as error:
+                _restore(path, backup)
+                return {"error": f"could not save the character sheet: {error}"}
+            _discard(backup)
+            if refreshed:
+                info(f"CHARGES: {working.get('name')} recharge counted: {'; '.join(refreshed)}", category="storage_operations")
+            else:
+                debug(f"CHARGES: {working.get('name')} charge anchors stored for {stored} item(s), nothing regained", category="storage_operations")
+            return {"refreshed": refreshed}
+
+
+def refresh_party(party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, List[str]]:
+    """Count due recharges for every party member and companion at the party
+    clock. Nothing is called when no row is due; an unreadable calendar skips
+    the refresh (the next turn tries again). Never raises."""
+    party = party_tracker or safe_json_load("party_tracker.json") or {}
+    now, clock_error = party_clock(party)
+    if now is None:
+        debug(f"CHARGES: refresh skipped, the game clock could not be read ({clock_error})", category="storage_operations")
+        return {}
+    location = str((party.get("worldConditions") or {}).get("currentLocationId") or "party")
+    names = list(party.get("partyMembers") or [])
+    names += [npc.get("name") for npc in party.get("partyNPCs") or [] if isinstance(npc, dict) and npc.get("name")]
+    result: Dict[str, List[str]] = {}
+    for name in names:
+        try:
+            outcome = refresh_sheet(str(name), now, location)
+        except Exception as error:  # fail forward: a refresh never breaks the turn
+            debug(f"CHARGES: refresh of {name!r} skipped: {error}", category="storage_operations")
+            continue
+        if outcome.get("error"):
+            debug(f"CHARGES: refresh of {name!r} left to the next turn: {outcome['error']}", category="storage_operations")
+        elif outcome.get("refreshed"):
+            result[str(name)] = outcome["refreshed"]
+    return result

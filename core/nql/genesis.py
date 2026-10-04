@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.effects.clock import DAYS_PER_MONTH, SECONDS_PER_DAY
 from core.nql import item_catalog, srd_stats, stats
 
 EQUIPMENT_VERSION = "nql-equipment-v1"
@@ -134,6 +135,59 @@ def charges_fields(entry: Dict[str, Any]) -> Tuple[Optional[Tuple[int, int]], Op
 def charged_type_id(iid: str) -> str:
     """The per-row item type a charged sheet row is declared from."""
     return "itemdef:row/" + iid.split(":", 1)[1]
+
+
+# Item charges H2: the recharge rule of a per-row type comes from the row's
+# typed ``rechargeRate`` value (char_schema.json enum), never from prose. The
+# boundaries are calendar-fixed on the game's absolute seconds
+# (core/effects/clock.py: day = 86400 s, 06:00 = 21600, 18:00 = 64800; a week
+# is days 1/8/15/22 of the 28-day month, a month is its 1st). A per-row type
+# never rolls dice, so a per-row item never carries a seed; the sheet has no
+# amount field, so a per-row recharge is always ``all``.
+RECHARGE_DAWN = 6 * 3600
+RECHARGE_DUSK = 18 * 3600
+RECHARGE_RULES = {
+    "daily": (SECONDS_PER_DAY, RECHARGE_DAWN),
+    "dawn": (SECONDS_PER_DAY, RECHARGE_DAWN),
+    "dusk": (SECONDS_PER_DAY, RECHARGE_DUSK),
+    "weekly": (7 * SECONDS_PER_DAY, RECHARGE_DAWN),
+    "monthly": (DAYS_PER_MONTH * SECONDS_PER_DAY, RECHARGE_DAWN),
+}
+
+
+def recharge_rule(entry: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+    """(rule line, None) for a row whose typed ``rechargeRate`` names a rate,
+    (None, None) for ``never`` or no rate, (None, reason) for an unknown value
+    (the row then recharges nothing, as before)."""
+    rate = entry.get("rechargeRate")
+    if rate is None or rate == "never":
+        return None, None
+    period = RECHARGE_RULES.get(rate) if isinstance(rate, str) else None
+    if period is None:
+        return None, f"rechargeRate {rate!r} is not a known rate; no recharge declared"
+    return f" recharge every {period[0]} at {period[1]} all;\n", None
+
+
+def charge_state(entry: Dict[str, Any], current: int, maximum: int, recharging: bool,
+                 gaps: List[str], label: str) -> str:
+    """The item's ``charges`` field. The anchor ``since`` is stated only when
+    the TYPE recharges, and a per-row type never rolls, so a stored seed is
+    never stated: either on the wrong type refuses the WHOLE world (engine
+    rule), so a stale value is dropped with a gap and the item is declared
+    unanchored (the engine anchors it at its next spend, no back credit)."""
+    charges = entry.get("charges") or {}
+    since = ""
+    as_of = charges.get("asOf")
+    if as_of is not None:
+        if not recharging:
+            gaps.append(f"{label} carries charges.asOf but no recharge rule; anchor dropped")
+        elif type(as_of) is not int or as_of < 0:
+            gaps.append(f"{label} has a charges.asOf that is not a whole number of game seconds; anchor dropped")
+        else:
+            since = f" since {as_of}"
+    if charges.get("seed") is not None:
+        gaps.append(f"{label} carries a charges.seed but its per-row type never rolls; seed not declared")
+    return f"charges {current} of {maximum}{since};"
 
 
 def character_id(sheet: Dict[str, Any]) -> str:
@@ -484,13 +538,17 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
             kind = entry.get("item_subtype") or item_type or "other"
             if len(str(kind).encode("utf-8")) > TYPE_KIND_MAX:
                 kind = item_type if item_type and len(str(item_type).encode("utf-8")) <= TYPE_KIND_MAX else "other"
+            label = f"{cid}: {entry.get('item_name')!r}"
+            rule, rule_gap = recharge_rule(entry)
+            if rule_gap:
+                gaps.append(f"{label} {rule_gap}")
             charged[1].add(type_id)
             charged[0].append(
                 f"item type {_q(type_id)} named {_q(entry['item_name'])} {{\n"
                 f" description {_q(_type_description(entry))};\n"
                 f" kind {_q(str(kind))}; magical {'true' if entry.get('magical') is True else 'false'}; consumable false;\n"
                 f" equipment {_q('gear:' + mode)};\n"
-                f" charges {maximum};\n}}")
+                f" charges {maximum};\n{rule or ''}}}")
             if worn and quantity not in (None, 1):
                 gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, item left unworn")
                 worn = False
@@ -500,7 +558,7 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
                 fields.append(f"mode {_q(mode)};")
             if quantity is not None and quantity != 1:
                 fields.append(f"quantity {quantity};")
-            fields.append(f"charges {current} of {maximum};")
+            fields.append(charge_state(entry, current, maximum, rule is not None, gaps, label))
             return f"item {_q(iid)} from {_q(type_id)} {{ {' '.join(fields)} }}", (mode if worn else None)
     if ac_effect_lines(iid, entry) and item_type not in ("armor", "weapon"):
         # An item with a while-worn defense effect must be a typed worn item.
