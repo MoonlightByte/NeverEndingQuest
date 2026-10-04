@@ -4913,6 +4913,10 @@ Respond with JSON:
                 live = None
             if not isinstance(live, dict):
                 return "live_state"
+            # Engine shape (NQL docs/LIVE_STATE.md, version 3): ``places`` is a
+            # list of typed-id strings (as core/nql/occupants.py:754 reads it);
+            # occupants and quests are records with ``id`` (and ``location``).
+            # Characters and map.visited stand at places, so they are covered.
             typed_ids = list(live.get("places") or [])
             for occupant in live.get("occupants") or []:
                 if isinstance(occupant, dict):
