@@ -1788,7 +1788,9 @@ def update_party_tracker(module_name, character_name, *, live_scope=None, starti
             "currentArea": location["areaName"], "currentAreaId": location["areaId"],
         })
         for key in ("weather", "politicalClimate"):
-            if location.get(key):
+            # A declared entry carries the module's built values, which may be
+            # empty; they fill a key the tracker does not have yet.
+            if location.get(key) or (key not in world and isinstance(location.get(key), str)):
                 world[key] = location[key]
         party_data["module"] = module_name
         party_data["partyMembers"] = [character_name]
@@ -1965,8 +1967,35 @@ def _validate_starting_location(candidate):
     return validated
 
 
+def _declared_starting_location(module_name):
+    """The entry the module declares (module_declaration.json, chosen as the
+    entry when it was built), resolved against its files, with the weather
+    and political climate the module was built with. None when it declares
+    no entry, the entry does not resolve, or the module has no built weather
+    and political climate (T093 then supplies them, as before)."""
+    from utils import roster_conversion
+
+    path_manager = ModulePathManager(module_name)
+    start = roster_conversion.declared_start(path_manager.module_dir)
+    location = _resolve_startup_location(module_name, start)
+    if location is None:
+        return None
+    built = safe_json_load(os.path.join(path_manager.module_dir, "party_tracker_BU.json")) or {}
+    built = built.get("worldConditions") if isinstance(built, dict) else None
+    built = built if isinstance(built, dict) else {}
+    if not all(isinstance(built.get(key), str) for key in ("weather", "politicalClimate")):
+        return None
+    return dict(location, weather=built["weather"], politicalClimate=built["politicalClimate"])
+
+
 def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
-    """Have T093 choose an entry from the installed module; never invent IDs."""
+    """The module's declared entry if it has one; otherwise have T093 choose an
+    entry from the installed module; never invent IDs."""
+    declared = _declared_starting_location(module["moduleName"])
+    if declared is not None:
+        info(f"Starting at {module['moduleName']}'s declared entry "
+             f"{declared['areaId']}/{declared['locationId']}", category="startup")
+        return declared
     from model_config import MODEL_PROVIDER
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, _interruptible_wait, _delay_for_error,
