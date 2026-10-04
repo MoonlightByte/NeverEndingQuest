@@ -1741,6 +1741,14 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             answer = _engine_charges(encounter, sheet, owner, name, delta, event_id, record)
             if answer is not True:
                 resolution["violations"].append(answer)
+                if type(delta) is int and delta < 0:
+                    # H3b: the item could not pay for this use (the engine
+                    # refused, or the unit is gone). For the player's own
+                    # actor this pauses for the player's choice
+                    # (core/combat/pipeline.py); a positive delta is a model
+                    # mistake, corrected as before.
+                    resolution.setdefault("chargeRefusals", []).append(
+                        {"owner": owner, "name": name, "reason": answer})
                 continue
             event["resources"].append(record)
             continue
