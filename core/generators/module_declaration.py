@@ -103,6 +103,58 @@ def load_declared_world(module_path, module_name):
         return {"loaded": None, "reason": f"skipped: {exc}"}
 
 
+def reach_check(module_path, module_name):
+    """Which of the module's places the party cannot reach from its declared
+    start, from the engine (a second load-only call; nql-7d's recipe): a
+    world of the module alone, every place visited, one synthetic member at
+    the start as the party, and its map view. The start and the view's
+    destinations are the reachable set; a place missing from it is an island
+    or behind a one-way link. A record, never a gate.
+
+    Returns {"unreachable": [bare place ids, sorted]}, or {"unreachable":
+    None, "reach": why no check ran} (no declared entry start, the start not
+    a place of the module, the engine unavailable or refusing).
+    """
+    from core.nql import apply
+    from core.nql.travel import _place_ref
+    from utils import roster_conversion, travel_map
+
+    start = roster_conversion.declared_start(module_path)
+    if start is None:
+        return {"unreachable": None, "reach": "no declared entry start"}
+    member = "Reach Check"
+    tracker = {"module": module_name, "partyMembers": [member],
+               "worldConditions": {"currentAreaId": start["areaId"],
+                                   "currentLocationId": start["locationId"]}}
+    try:
+        game = roster_conversion.Game(".", [module_name], paths={module_name: os.fspath(module_path)},
+                                      tracker=tracker)
+        # No occupants: the check reads the links, not who stands where.
+        source, places = roster_conversion.world_source(game, [])
+        here = "loc:%s/%s" % (module_name, start["locationId"])
+        if here not in places or not source.endswith("\n}\n"):
+            return {"unreachable": None, "reach": "the declared start is not a place of the module"}
+        marked = {line.strip() for line in source.splitlines()}
+        visited = ["visited %s;" % travel_map.q(p) for p in places]
+        source = source[:-2] + "".join(" %s\n" % v for v in visited if v not in marked) + "}\n"
+        response = apply.call({"world": source, "map": [travel_map.member_id(member)]})
+        if not response.get("ok"):
+            return {"unreachable": None, "reach": "refused: %s" % (response.get("error") or response.get("diagnostics"))}
+        view = (response.get("map") or [{}])[0]
+        reached = {_place_ref(view.get("location"))}
+        reached.update(_place_ref(d.get("to")) for d in view.get("destinations") or [])
+    except apply.EngineUnavailable as exc:
+        return {"unreachable": None, "reach": "engine unavailable: %s" % exc}
+    except Exception as exc:
+        return {"unreachable": None, "reach": "skipped: %s" % exc}
+    prefix = "loc:%s/" % module_name
+    unreachable = sorted(p[len(prefix):] for p in places if p not in reached)
+    if unreachable:
+        warning(f"MODULE_DECLARATION: {module_name} places not reachable from its start "
+                f"{start['locationId']}: {', '.join(unreachable)}", category="module_creation")
+    return {"unreachable": unreachable}
+
+
 def typing_packet(game, module):
     """Every named NPC entry of the module's masters (areas/*_BU.json), in
     the order the roster world reads them, each with a short id. None when

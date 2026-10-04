@@ -119,9 +119,11 @@ def _publication_step(prepare_candidate, builder_holder):
             registry_bytes = prepare_candidate(candidate_path, final_name)
         builder = builder_holder.get("builder")
         if builder is not None and builder.emit_module_declaration():
-            from core.generators.module_declaration import load_declared_world
+            from core.generators.module_declaration import load_declared_world, reach_check
 
-            builder.record_engine_verdict(load_declared_world(candidate_path, final_name))
+            verdict = load_declared_world(candidate_path, final_name)
+            verdict.update(reach_check(candidate_path, final_name))
+            builder.record_engine_verdict(verdict)
         return registry_bytes
 
     return step
