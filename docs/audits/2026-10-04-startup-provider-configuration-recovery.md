@@ -86,6 +86,12 @@ Native Windows comparison had 21 passes, two Linux-only skips and one parallel
 fixture PID-record assertion failure. That Windows run is not a clean pass.
 The prior mounted-filesystem timeouts and historical passes remain separate.
 
+Final integration at `9a3d436a2aa86080559f9517128b94a419393c23` (public
+`331ec992` + PR558 commits `b38907e1`/`dcf91ea5` + auth fix `516f701d`):
+all **67 passed in 180.78s** on Linux using `/dev/shm`, including the original
+24 provider regressions, all 30 real subprocess recovery cases and 13 focused
+wait/terminal/production-web-marker checks. The 25-second deadline is unchanged.
+
 No paid requests, main merge, deployment, browser visual acceptance or new
 successful-projection live replay are performed by this patch. Desktop owns
 the remaining live replay and complete current-main integration acceptance.
