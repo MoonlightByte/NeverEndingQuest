@@ -243,6 +243,22 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
                 return None
             _write(root, live)
             created = True
+        # Places the document holds that the world does not declare (a module
+        # not published, or seeded before #572): declared bare in one pass,
+        # as the refusal ladder below would one call at a time. A bare place
+        # has no seeds and no routes; the document keeps its record.
+        declared = {p[0] if isinstance(p, tuple) else p for p in places}
+        held = [p for p in live.get("places") or [] if isinstance(p, str) and p not in declared]
+        if held:
+            by_module: Dict[str, int] = {}
+            for place in held:
+                module = place.partition(":")[2].split("/", 1)[0]
+                by_module[module] = by_module.get(module, 0) + 1
+            info("OCCUPANTS: the document holds %d places the world does not declare (%s); "
+                 "declared bare, their record kept" % (
+                     len(held), ", ".join("%s %d" % kv for kv in sorted(by_module.items()))),
+                 category="location_transitions")
+            world += "".join('location "%s" named "%s";\n' % (p, p) for p in held)
         if created or "quests" not in live:
             # QS: the switch. A new document, or one from before the quest
             # record (v2), takes the played plot once, before this turn's call.
