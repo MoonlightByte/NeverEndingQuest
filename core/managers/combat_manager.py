@@ -111,6 +111,7 @@ Combat Logging System:
 # while maintaining strict 5e rule compliance through AI validation.
 # ============================================================================
 
+import copy
 import json
 import os
 import time
@@ -1768,6 +1769,62 @@ def _extract_t041_summary(response):
     raise ValueError("T041 returned JSON without a supported prose field")
 
 
+# Context views C6: a location keeps its last ENCOUNTER_KEEP fight records;
+# older ones fold into one record at the head of the list, so the area file
+# and the blocks built from it stay bounded.
+ENCOUNTER_KEEP = 8
+
+
+def _encounter_date(record):
+    when = record.get("worldConditions") if isinstance(record, dict) else None
+    if not isinstance(when, dict):
+        return "an unknown date"
+    return "%s %s %s" % (when.get("day", "?"), when.get("month", "?"), when.get("year", "?"))
+
+
+def fold_location_encounters(encounters, keep=ENCOUNTER_KEEP):
+    """Fold the oldest records of a location's encounters[] in place so at
+    most `keep` recent records remain after one folded record. The folded
+    record keeps the oldest folded encounterId (schema-valid), the latest
+    folded date, a one-line summary and the count under "folded". Returns
+    the number of records folded by this call."""
+    if not isinstance(encounters, list):
+        return 0
+    records = [item for item in encounters if isinstance(item, dict)]
+    folded = records[0] if records and isinstance(records[0].get("folded"), int) else None
+    recent = records[1:] if folded is not None else records
+    if len(recent) <= keep:
+        return 0
+    older = recent[:-keep]
+    recent = recent[-keep:]
+    count = (folded.get("folded", 0) if folded is not None else 0) + len(older)
+    first_id = folded.get("encounterId") if folded is not None else older[0].get("encounterId")
+    first_date = folded.get("foldedFrom") if folded is not None else _encounter_date(older[0])
+    last = older[-1]
+    record = {
+        "encounterId": first_id,
+        "summary": "%d earlier fights here were folded: from %s (%s) through %s (%s)." % (
+            count, first_id, first_date, last.get("encounterId"), _encounter_date(last)),
+        "impact": "Folded record of earlier encounters at this location.",
+        "worldConditions": copy.deepcopy(last.get("worldConditions")),
+        "folded": count,
+        "foldedFrom": first_date,
+    }
+    encounters[:] = [record] + recent
+    return len(older)
+
+
+def _next_encounter_number(encounters):
+    """One more than the largest -E<n> suffix present, folded records
+    included, so a fallback id never repeats one after a fold."""
+    highest = 0
+    for item in encounters if isinstance(encounters, list) else []:
+        value = item.get("encounterId") if isinstance(item, dict) else None
+        if isinstance(value, str) and "-E" in value and value.rsplit("-E", 1)[1].isdigit():
+            highest = max(highest, int(value.rsplit("-E", 1)[1]))
+    return highest + 1
+
+
 def _append_combat_encounter_to_current_area(current_location_id, new_encounter):
     """Merge one encounter into fresh area state under module refresh.
 
@@ -1892,6 +1949,7 @@ def _append_combat_encounter_to_current_area(current_location_id, new_encounter)
                 new_encounter["summary"] = existing["summary"]
             return True
         encounters.append(new_encounter)
+        fold_location_encounters(encounters)
 
         if not safe_write_json(area_file, area_data):
             error(
@@ -2038,7 +2096,7 @@ def summarize_dialogue(
             error("[summarize_dialogue] activeCombatEncounter ID is EMPTY or None. This is the cause of missing encounter IDs.", category="encounter_setup")
             # Try to generate a fallback ID if missing
             existing_encounters = location_data.get("encounters", [])
-            next_num = len(existing_encounters) + 1
+            next_num = _next_encounter_number(existing_encounters)
             encounter_id = f"{current_location_id}-E{next_num}"
             warning(f"[summarize_dialogue] Generated fallback encounter ID: {encounter_id}", category="encounter_setup")
         
@@ -2073,6 +2131,7 @@ def summarize_dialogue(
                 for item in encounters
             ):
                 encounters.append(new_encounter)
+                fold_location_encounters(encounters)
         elif require_persistence:
             raise RuntimeError("Combat summary could not be persisted to the current area")
         # adventureSummary field is deprecated - no longer updated to prevent data bloat

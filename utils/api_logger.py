@@ -150,6 +150,14 @@ def log_api_call(endpoint_name, messages, response, metadata=None):
         prompt_tokens = 0
         completion_tokens = 0
         total_tokens = 0
+    # Prompt-cache hits: the share of the prompt the provider served from its
+    # cache. Both SDK and wrapper usage objects carry it under
+    # prompt_tokens_details.cached_tokens; a provider without the field logs 0.
+    try:
+        cached_tokens = int(getattr(getattr(response.usage, "prompt_tokens_details", None),
+                                    "cached_tokens", 0) or 0)
+    except Exception:
+        cached_tokens = 0
 
     # The row must describe the request that produced the response. When the
     # adapter reshaped the caller's array for a strict local template (#389)
@@ -166,7 +174,8 @@ def log_api_call(endpoint_name, messages, response, metadata=None):
         "tokens": {
             "prompt": prompt_tokens,
             "completion": completion_tokens,
-            "total": total_tokens
+            "total": total_tokens,
+            "cached": cached_tokens
         },
         "request": {
             "messages": messages,

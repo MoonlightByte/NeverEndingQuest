@@ -447,22 +447,25 @@ def format_schema_for_prompt(schema, character_role):
     schema_info += """
 CRITICAL - Valid item_type values (MUST use one of these EXACTLY):
 - "weapon" - swords, bows, daggers, melee and ranged weapons
-- "armor" - armor pieces, shields, cloaks, boots, gloves, protective wear
+- "armor" - body armor and shields only (armor_category and ac_base required); cloaks, boots, gloves and other worn magic items are "miscellaneous" with an item_subtype
 - "ammunition" - arrows, bolts, sling bullets, thrown weapon ammo
 - "consumable" - potions, scrolls, food, rations, anything consumed when used
 - "equipment" - tools, torches, rope, containers, utility items
 - "miscellaneous" - rings, amulets, wands, truly miscellaneous items only
 
 NEVER use: "wondrous item", "magic item", "magical" or any other value!
+Every equipment entry carries all four of item_name, item_type, description and quantity (the schema refuses an entry missing any of them).
+Valid item_subtype values (when given): scroll, potion, wand, ring, amulet, cloak, boots, gloves, helmet, rod, staff, food, other.
+A "charges" object ({"current": N, "max": M}) is owned by the rules engine: keep an existing item's charges exactly as they are on the sheet (the expendCharges action spends them; never lower or raise them here). Give charges only to a NEW charged item (current = max unless the narration states a used count).
 
 NOTE: Enhanced categorization system fixes GitHub issue #45 (inconsistent item storage)
 
 Enhanced Item Type Mappings:
 - Arrows/Bolts/Bullets -> item_type: "ammunition"
 - Travel Ration/Food -> item_type: "consumable", item_subtype: "food"
-- Torch/Rope/Tools -> item_type: "equipment", item_subtype: "tool"
+- Torch/Rope/Tools -> item_type: "equipment", item_subtype: "other"
 - Studded Leather Armor -> item_type: "armor", description: "Light armor. AC 12 + Dex modifier."
-- Cloak of Elvenkind -> item_type: "armor", item_subtype: "cloak"
+- Cloak of Elvenkind -> item_type: "miscellaneous", item_subtype: "cloak"
 - Ring of Protection -> item_type: "miscellaneous", item_subtype: "ring"
 - Wand of Magic Missiles -> item_type: "miscellaneous", item_subtype: "wand"
 - Potion of Healing -> item_type: "consumable", item_subtype: "potion"
@@ -1441,6 +1444,18 @@ def prepare_character_delta(character_data, updates, character_role, schema,
     else:
         concentration_ended = None
     updated_data = deep_merge_dict(character_data, updates)
+    # Item charges (H1): the engine owns an existing row's charges object; a
+    # delta that rewrote it is reverted to the stored object (value comparison
+    # of the sheet's own typed field, matched by item_name).
+    stored_charges = {entry.get('item_name'): copy.deepcopy(entry.get('charges'))
+                      for entry in character_data.get('equipment') or []
+                      if isinstance(entry, dict) and isinstance(entry.get('charges'), dict)}
+    for entry in updated_data.get('equipment') or []:
+        if isinstance(entry, dict) and entry.get('item_name') in stored_charges \
+                and entry.get('charges') != stored_charges[entry['item_name']]:
+            info(f"CHARGES: {character_name}: {entry['item_name']} charges {entry.get('charges')} reverted to "
+                 f"{stored_charges[entry['item_name']]} (engine-owned; use expendCharges)", category="character_updates")
+            entry['charges'] = stored_charges[entry['item_name']]
     for row in updated_data.get('ammunition') or []:
         if isinstance(row, dict) and row.get('name') in ammo_stock:
             row['quantity'] = ammo_stock[row['name']]
