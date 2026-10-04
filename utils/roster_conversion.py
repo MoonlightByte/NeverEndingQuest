@@ -299,25 +299,30 @@ def declared_start(module_dir):
 
 
 def declared_beings(game, module, notes):
-    """What the module's declaration (written at publication) says about its
-    people: ({(home, name): aliases}, {(place, name)} for the same being's
-    other appearances). No file means none, and every entry derives as
-    before; so does an unreadable file or another format. A being is used
-    only when its home and each appearance list exactly one authored NPC of
-    that exact name. Home and appearances are bare location ids ("G04"), so
-    a re-prefix that rewrites the module's ids rewrites them too."""
-    homes, elsewhere = {}, set()
+    """What the module's declaration says about its people: ({(home, name):
+    aliases}, {(place, name)} for the same being's other appearances,
+    {(place, name, index): attitude} for the declared dispositions). No file
+    means none, and every entry derives as before; so does an unreadable file
+    or another format. A being is used only when its home and each
+    appearance list exactly one authored NPC of the name it has there: its
+    `name`, or the being's `names` entry for that place when the module
+    calls it differently there. A declared disposition names one NPC
+    occurrence by place, exact name and index (the 0-based count of entries
+    of that name at that place, in file order) and is used only when it is
+    one of the three attitudes. Places are bare location ids ("G04"), so a
+    re-prefix that rewrites the module's ids rewrites them too."""
+    homes, elsewhere, words = {}, set(), {}
     path = os.path.join(game.paths[module], DECLARATION)
     if not os.path.exists(path):
-        return homes, elsewhere
+        return homes, elsewhere, words
     try:
         data = load(path)
     except (OSError, ValueError) as exc:
         notes.append(("declaration", "%s: %s unreadable (%s); derived as before" % (module, DECLARATION, exc)))
-        return homes, elsewhere
+        return homes, elsewhere, words
     if not isinstance(data, dict) or data.get("format") != "neq-module-declaration" or data.get("version") != 1:
         notes.append(("declaration", "%s: %s is not a version 1 declaration; derived as before" % (module, DECLARATION)))
-        return homes, elsewhere
+        return homes, elsewhere, words
     masters = game.masters[module]
 
     def authored_once(loc_id, name):
@@ -330,40 +335,61 @@ def declared_beings(game, module, notes):
         being = being if isinstance(being, dict) else {}
         name, home = being.get("name"), being.get("home")
         appearances = being.get("appearances") if isinstance(being.get("appearances"), list) else []
-        if not (isinstance(name, str) and home in appearances
-                and all(isinstance(p, str) and authored_once(p, name) for p in appearances)):
+        names = being.get("names") if isinstance(being.get("names"), dict) else {}
+        named = {p: names.get(p, name) for p in appearances if isinstance(p, str)}
+        if not (isinstance(name, str) and home in appearances and all(isinstance(p, str) for p in appearances)
+                and all(isinstance(n, str) and authored_once(p, n) for p, n in named.items())):
             notes.append(("declaration", "%s: being %r does not match the authored NPCs; derived as before" % (module, name)))
             continue
         aliases = being.get("aliases") if isinstance(being.get("aliases"), list) else []
-        homes[(home, name)] = usable_aliases(name, aliases)
-        elsewhere.update((p, name) for p in appearances if p != home)
-    return homes, elsewhere
+        homes[(home, named[home])] = usable_aliases(named[home], aliases)
+        elsewhere.update((p, n) for p, n in named.items() if p != home)
+    for item in data.get("dispositions") if isinstance(data.get("dispositions"), list) else []:
+        item = item if isinstance(item, dict) else {}
+        key = (item.get("location"), item.get("name"), item.get("index"))
+        if not (isinstance(key[0], str) and isinstance(key[1], str) and type(key[2]) is int
+                and item.get("disposition") in ATTITUDES and key not in words):
+            notes.append(("declaration", "%s: disposition %r is not one attitude for one NPC; not used" % (module, item)))
+            continue
+        words[key] = item["disposition"]
+    return homes, elsewhere, words
 
 
 def seeds(game, notes):
     """Every authored monster and NPC of the masters, in file order, with
     IDs occ:<Module>/<LocationId>/<slug>, -2, -3 for repeats at one place.
     A being the module declares as one figure across places is one person at
-    its home, with its aliases; its other appearances are not seeded."""
+    its home, with its aliases; its other appearances are not seeded. A
+    person's attitude is its entry's disposition, else the one the
+    declaration gives that occurrence, else indifferent."""
     out = []
     for m in game.modules:
-        homes, elsewhere = declared_beings(game, m, notes)
+        homes, elsewhere, words = declared_beings(game, m, notes)
         for loc_id, (_, loc) in game.masters[m].items():
             used = collections.Counter()
+            index = collections.Counter()
             for field, kind in (("monsters", "creatures"), ("npcs", "person")):
                 for entry in loc.get(field) or []:
                     name = entry.get("name") if isinstance(entry, dict) else None
                     if not name or not name.strip():
                         notes.append(("seed", "%s/%s: a %s entry without a name is skipped" % (m, loc_id, field)))
                         continue
-                    if kind == "person" and (loc_id, name.strip()) in elsewhere:
-                        continue
+                    if kind == "person":
+                        index[name.strip()] += 1
+                        if (loc_id, name.strip()) in elsewhere:
+                            continue
                     s = slug(name)
                     used[s] += 1
                     ident = "occ:%s/%s/%s" % (m, loc_id, s) + ("" if used[s] == 1 else "-%d" % used[s])
                     seed = Seed(m, loc_id, name.strip(), kind, entry, ident)
                     if kind == "person":
                         seed.aliases = homes.get((loc_id, name.strip()), [])
+                        declared = words.get((loc_id, name.strip(), index[name.strip()] - 1))
+                        if declared and entry.get("disposition") not in ATTITUDES:
+                            seed.attitude = declared
+                            if seed.attitude_problem:
+                                seed.attitude_problem = ("disposition %r is not friendly, indifferent or hostile; "
+                                                         "the declaration's %s" % (entry.get("disposition"), declared))
                         if seed.attitude_problem:
                             notes.append(("seed", "%s: %s" % (ident, seed.attitude_problem)))
                     if kind == "creatures" and seed.range is not None and not (1 <= seed.range[0] <= seed.range[1]):
