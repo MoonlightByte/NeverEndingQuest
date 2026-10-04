@@ -411,6 +411,9 @@ class ModuleBuilder:
         # they survive publication id normalization; the module declaration
         # is written from them after the stitcher re-prefix.
         self.npc_identity_decisions = []
+        # How create_party_tracker chose the start: "entry" (the story's typed
+        # entry ids) or "first-location" (the first location of the first area).
+        self.party_start_source = None
         
         # Initialize generators
         self.module_gen = ModuleGenerator()
@@ -442,7 +445,119 @@ class ModuleBuilder:
             raise OSError(f"Could not save generated module file: {relative_filename}")
         self.log(f"Saved: {relative_filename}")
         return True
-    
+
+    # Classifications whose occurrences are one being (owner ruling Q3).
+    ONE_BEING = ("same_mobile_person", "deliberate_attitude_change")
+
+    def emit_module_declaration(self) -> bool:
+        """Write module_declaration.json: the typed facts the build already holds
+        and the roster world would otherwise rebuild from the area files.
+
+        Runs on the candidate AFTER publication id normalization: the stitcher
+        re-prefix rewrites only the files it knows, by position, so anything
+        written before it would keep the old ids. Every id is module-relative.
+        Declares one entry per being T104 typed as one figure across areas, the
+        party start with how it was chosen, and the location-level cross-area
+        links. Nothing is read from prose. An entry that does not resolve
+        against the written files is left out and logged; the module then
+        derives it as before. Never raises: on any failure no file is written
+        and the module derives as before.
+        """
+        try:
+            from utils.file_operations import safe_read_json
+            from utils.roster_conversion import slug
+
+            out = self.config.output_directory
+            areas = {}
+            for path in sorted(Path(out, "areas").glob("*.json")):
+                if path.name.endswith("_BU.json"):
+                    continue
+                area = safe_read_json(os.fspath(path))
+                if isinstance(area, dict) and isinstance(area.get("areaId"), str):
+                    areas[area["areaId"]] = area
+            location_ids = {
+                loc.get("locationId")
+                for area in areas.values()
+                for loc in area.get("locations") or []
+                if isinstance(loc, dict) and loc.get("locationId")
+            }
+            context = safe_read_json(os.path.join(out, "module_context.json")) or {}
+            people = list((context.get("npcs") or {}).values())
+
+            beings = []
+            for decision in self.npc_identity_decisions:
+                if decision.get("classification") not in self.ONE_BEING:
+                    continue
+                resolved = []
+                for occ in decision["occurrences"]:
+                    locations = (areas.get(occ["areaId"]) or {}).get("locations") or []
+                    if occ["locationIndex"] >= len(locations):
+                        break
+                    location = locations[occ["locationIndex"]]
+                    named = [n for n in location.get("npcs") or []
+                             if isinstance(n, dict) and (n.get("name") or "").strip() == occ["name"]]
+                    if len(named) != 1:
+                        break
+                    resolved.append(dict(occ, locationId=location.get("locationId")))
+                primary = [o for o in resolved
+                           if o["occurrenceId"] == decision.get("primaryOccurrenceId")]
+                if len(resolved) != len(decision["occurrences"]) or len(primary) != 1:
+                    self.log("Module declaration: identity decision not resolved "
+                             "after normalization; its NPCs derive as before")
+                    continue
+                name = primary[0]["name"]
+                entries = [p for p in people if isinstance(p, dict) and (
+                    p.get("name") == name or name in (p.get("aliases") or []))]
+                aliases, seen = [], {slug(name)}
+                for alias in (entries[0].get("aliases") or []) if len(entries) == 1 else []:
+                    if isinstance(alias, str) and alias.strip() and slug(alias) not in seen:
+                        seen.add(slug(alias))
+                        aliases.append(alias.strip())
+                beings.append({
+                    "name": name,
+                    "home": primary[0]["locationId"],
+                    "appearances": [o["locationId"] for o in resolved],
+                    "aliases": aliases[:16],
+                    "identity": decision["classification"],
+                })
+
+            start = None
+            tracker = safe_read_json(os.path.join(out, "party_tracker.json")) or {}
+            conditions = tracker.get("worldConditions") or {}
+            area_id, location_id = conditions.get("currentAreaId"), conditions.get("currentLocationId")
+            area_locations = {loc.get("locationId")
+                              for loc in (areas.get(area_id) or {}).get("locations") or []}
+            if self.party_start_source and location_id in area_locations:
+                start = {"areaId": area_id, "locationId": location_id,
+                         "source": self.party_start_source}
+            else:
+                self.log("Module declaration: party start not resolved; none declared")
+
+            gateways = []
+            for area in areas.values():
+                for loc in area.get("locations") or []:
+                    for target in loc.get("areaConnectivityId") or []:
+                        if loc.get("locationId") in location_ids and target in location_ids:
+                            gateways.append({"from": loc["locationId"], "to": target})
+                        else:
+                            self.log(f"Module declaration: gateway {loc.get('locationId')} -> "
+                                     f"{target} names an unknown location; left out")
+
+            declaration = {
+                "format": "neq-module-declaration",
+                "version": 1,
+                "module": self.config.module_name,
+                "beings": beings,
+                "start": start,
+                "gateways": gateways,
+            }
+            self._atomic_save_json("module_declaration.json", declaration)
+            return True
+        except Exception as exc:
+            self.log(f"Module declaration not written (non-fatal; the module derives "
+                     f"as before): {exc}")
+            return False
+
     def create_context_header(self, party_members: List[str]) -> str:
         """Create a context header to prepend to all generator prompts"""
         header = """
@@ -1880,8 +1995,10 @@ IMPORTANT:
                     "explicit party start location is missing or ambiguous"
                 )
             first_location = matches[0]
+            self.party_start_source = "entry"
         else:
             # Use the first area as the starting location
+            self.party_start_source = "first-location"
             first_area_id = list(self.areas_data.keys())[0]
             first_area = self.areas_data[first_area_id]
 
