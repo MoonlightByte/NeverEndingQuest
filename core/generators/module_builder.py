@@ -119,68 +119,12 @@ def _publication_step(prepare_candidate, builder_holder):
             registry_bytes = prepare_candidate(candidate_path, final_name)
         builder = builder_holder.get("builder")
         if builder is not None and builder.emit_module_declaration():
-            _load_declared_world(candidate_path, final_name)
+            from core.generators.module_declaration import load_declared_world
+
+            load_declared_world(candidate_path, final_name)
         return registry_bytes
 
     return step
-
-
-def _load_declared_world(candidate_path, final_name):
-    """Build-time engine load of the roster world with the candidate's
-    declaration, before the module is live. Never a gate on publication: a
-    world the engine refuses with the declaration but accepts without it sets
-    the declaration aside (module_declaration.refused.json), and the module
-    derives as before. The candidate's quests are not part of this load (they
-    are read from the live module path); the declaration does not touch them.
-    """
-    from core.nql import apply
-    from utils import roster_conversion
-
-    declared = Path(candidate_path) / roster_conversion.DECLARATION
-    refused = Path(candidate_path) / "module_declaration.refused.json"
-
-    def world():
-        modules = [m for m in roster_conversion.installed_modules(".") if m != final_name]
-        modules.append(final_name)
-        game = roster_conversion.Game(".", modules, paths={final_name: os.fspath(candidate_path)})
-        source, _ = roster_conversion.world_source(game, roster_conversion.seeds(game, []))
-        return source
-
-    try:
-        response = apply.call({"world": world()})
-        if response.get("ok"):
-            info(f"MODULE_DECLARATION: {final_name} loads in the engine with its declaration",
-                 category="module_creation")
-            return
-        reason = response.get("error")
-        os.replace(declared, refused)
-        try:
-            loads_without = bool(apply.call({"world": world()}).get("ok"))
-        except Exception:
-            os.replace(refused, declared)
-            raise
-        if loads_without:
-            warning(f"MODULE_DECLARATION: the engine refused {final_name} with its declaration "
-                    f"({reason}); set aside, the module derives as before",
-                    category="module_creation")
-            report_path = Path(candidate_path) / "validation_report.json"
-            from utils.file_operations import safe_read_json
-            report = safe_read_json(os.fspath(report_path))
-            if isinstance(report, dict) and isinstance(report.get("issues"), list):
-                report["issues"].append(f"module declaration refused by the engine and set aside: {reason}")
-                safe_write_json(os.fspath(report_path), report)
-            return
-        # Refused either way: the declaration is not the cause; keep it.
-        os.replace(refused, declared)
-        warning(f"MODULE_DECLARATION: the engine refuses the world with or without "
-                f"{final_name}'s declaration ({reason}); declaration kept",
-                category="module_creation")
-    except apply.EngineUnavailable as exc:
-        warning(f"MODULE_DECLARATION: engine unavailable ({exc}); {final_name} published "
-                "without the build-time load", category="module_creation")
-    except Exception as exc:
-        warning(f"MODULE_DECLARATION: build-time load skipped for {final_name} ({exc})",
-                category="module_creation")
 
 
 def _run_managed_module_build(

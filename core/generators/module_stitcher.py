@@ -5111,6 +5111,13 @@ Respond with JSON:
                 for area in before
                 for old, new in zip(before[area], after.get(area, []))
             )
+            # N4: a module without a declaration is typed (T122) on the
+            # candidate, where its ids are final, so the declaration is
+            # synced and swapped in with it. Never raises; a failure
+            # imports it untyped.
+            from core.generators.module_declaration import type_joining_module
+
+            type_joining_module(candidate, module_name)
             _sync_directory(candidate)
             _replace_entry(live_path, retired)
             _replace_entry(candidate, live_path)
@@ -5213,6 +5220,12 @@ Respond with JSON:
                     result = self.publish_module_locked(module_name)
                     if result.status is PublicationStatus.PUBLISHED:
                         integrated_modules.append(module_name)
+                        # N4: a module joining without a declaration is
+                        # typed (T122) in its live folder, still under the
+                        # refresh lock. Never raises; a failure joins it untyped.
+                        from core.generators.module_declaration import type_joining_module
+
+                        type_joining_module(Path(self.modules_dir) / module_name, module_name)
                     elif result.status is PublicationStatus.IMPORT_REQUIRED:
                         collides_with = list(result.conflicting_modules)
                         outcome = self._import_colliding_module_locked(

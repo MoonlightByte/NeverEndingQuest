@@ -962,6 +962,15 @@ NPC_COHERENCE_T104_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none
 # it. ON: the pass is fail-closed + heal-forward so shipping enabled is safe.
 ENABLE_NPC_COHERENCE_REPAIR = True
 
+# T122 (typing a module that joins without a module declaration, N4): one
+# structured call over the module's NPC entries, typing each occurrence's
+# disposition and the occurrences that are one being. Bound like T104 (the same
+# kind of NPC identity decision); its own names so the two can diverge.
+NPC_TYPING_T122_GPT56LUNA_NONE = copy.deepcopy(OPENAI_GPT56_LUNA_NONE)
+NPC_TYPING_T122_GEMINI_PRO_LOW = copy.deepcopy(NPC_COHERENCE_T104_GEMINI_PRO_LOW)
+NPC_TYPING_T122_LEGACY = copy.deepcopy(NPC_COHERENCE_T104_LEGACY)
+NPC_TYPING_T122_LMSTUDIO = copy.deepcopy(NPC_COHERENCE_T104_LMSTUDIO)
+
 # ----- T105 NPC Voice (+ isolated affinity classifier) & T107 NPC Profile Seed -----
 # Per-NPC "voice" micro-model agents (always on). These are per-NPC,
 # per-relevant-turn micro calls, so OpenAI uses the CHEAPEST luna tier. Both the

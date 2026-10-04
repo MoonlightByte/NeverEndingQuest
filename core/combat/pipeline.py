@@ -399,6 +399,18 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             if isinstance(draw, dict) and draw.get("actorId") == actor_id:
                 resolution["event"].setdefault("rechargeRolls", []).append(deepcopy(draw))
 
+        if controller == "human" and resolution.get("chargeRefusals"):
+            # H3b: the player chose to use an item that cannot pay for it.
+            # The player keeps agency: the DM narrates the failed use and
+            # asks for another action; the round does not fire. The
+            # orchestrator pauses for the player if the correction does not.
+            refusals = deepcopy(resolution["chargeRefusals"])
+            raise CombatIntentError(
+                "; ".join(resolution["violations"]),
+                actor_id,
+                {"violations": list(resolution["violations"]),
+                 "playerChargeRefusal": refusals, "retryable": True},
+            )
         if resolution.get("violations"):
             raise CombatIntentError(
                 "; ".join(resolution["violations"]),

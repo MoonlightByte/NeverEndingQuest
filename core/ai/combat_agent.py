@@ -344,14 +344,23 @@ An adjudicated intent may contain:
   recoverable share.
   A wand, staff, rod or any equipment row with a `charges` object spends
   charges, never quantity: kind 'charges', name exactly as the holder's sheet
-  lists it, delta = minus the count the item's text costs for this use (1
-  unless it says more; a staff spending 3 for one spell is delta -3), owner
-  the sheet that holds it. The rules engine spends exactly or refuses; a row
-  whose charges.current is 0 and whose text promises recharge may still be
-  spent after a dawn has passed, so declare the use and let the engine
-  answer. Never add charges in combat, never write a count, and never spend
-  a charged item as kind 'item'. When the engine reports the item destroyed
-  (its last charge gone), the narration says so.
+  lists it, delta = minus the count the item's text costs for ONE use of
+  it (1 unless it says more; a staff spending 3 for one spell is delta -3).
+  The cost is per use, never per dart, missile or target: one casting of a
+  wand's spell, all its darts included, costs what the text says for that
+  casting. owner is the sheet that holds it. The rules engine spends exactly
+  or refuses; a row whose charges.current is 0 and whose text promises
+  recharge may still be spent after a dawn has passed, so declare the use
+  and let the engine answer. Never add charges in combat, never write a
+  count, and never spend a charged item as kind 'item'. When the engine
+  reports the item destroyed (its last charge gone), the narration says so.
+  The PLAYER chooses the player's action. When the player asks to use an
+  item that cannot pay for it (the sheet shows it destroyed, or its count
+  too low and nothing promises a recharge), never resolve a null action and
+  never choose another action for the player: set requiresPlayerInput
+  {kind:'choice', prompt} narrating the attempt failing (the item flares
+  with no effect or stays dark, and the bearer remembers it is spent) and
+  asking what they do instead. An NPC may simply take another action.
 - effects: [{op:'add', owner, effect:{name,description,roundsRemaining,
   concentration,tickTrigger,modifiers:[{stat,value}],conditions:[],
   incapacitates:false,onApply:[],onRemove:[]}}] or

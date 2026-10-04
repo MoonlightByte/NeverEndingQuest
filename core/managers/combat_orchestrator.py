@@ -223,6 +223,26 @@ def _intent_correction(exc, batch=None):
                 "(%s); ability is the listed weapon/action name, never an "
                 "ability score or skill."
             ) % ", ".join(rendered)
+    if isinstance(feedback.get("playerChargeRefusal"), list) and feedback["playerChargeRefusal"]:
+        # H3b: the player keeps agency over a refused item use.
+        items = ", ".join(
+            "%s (%s)" % (r.get("name"), r.get("reason"))
+            for r in feedback["playerChargeRefusal"] if isinstance(r, dict)
+        )
+        instruction = (
+            "Return a corrected full ordered intent batch. The rules engine "
+            "refused the PLAYER's item use: %s. Nothing was spent. Never choose "
+            "another action for the player and never resolve a null action: "
+            "return the player's intent with empty targets, resources and "
+            "effects and requiresPlayerInput {kind:'choice', prompt} where the "
+            "prompt narrates the attempt failing (the item flares with no effect "
+            "or stays dark, and the bearer remembers it is spent) and asks what "
+            "they do instead. If the refusal is only the count and the item's "
+            "text costs less per use (one casting, all its darts or targets "
+            "included), you may instead re-declare the SAME item use at that "
+            "per-use cost. Keep every other intent exactly as given."
+            % items
+        )
     if feedback.get("multiRollRequest"):
         instruction += (
             " requiresPlayerInput must ask for exactly one next roll or "
@@ -399,6 +419,49 @@ def _require_current_invocation(invocation_claim):
     from core.combat.invocation import require_current_invocation
 
     require_current_invocation(invocation_claim)
+
+
+def _same_item_spent(events, refusals):
+    """True when the resolved events spend, through the engine, an item the
+    player's refused use named (the same owner and item, by value)."""
+    wanted = {(r.get("owner"), r.get("name")) for r in refusals or [] if isinstance(r, dict)}
+    return any(
+        isinstance(resource, dict) and resource.get("kind") == "charges" and resource.get("engine") is True
+        and (resource.get("owner"), resource.get("name")) in wanted
+        for event in events or [] if isinstance(event, dict)
+        for resource in event.get("resources") or []
+    )
+
+
+def _pause_for_refused_item(encounter_path, pending, refusals, voice_intents):
+    """H3b fail-safe: the player's item use was refused and the correction did
+    not ask the player. Record the DM's question on the pending turn and pause:
+    nothing is staged, the round does not fire, and the player chooses again."""
+    facts = {
+        "short": "it does not hold enough charges for that",
+        "destroyed": "it was destroyed when its last charge was spent",
+        "clock": "its charges cannot be counted right now (the game clock could not be read)",
+        "unavailable": "the rules engine is not answering right now",
+    }
+    parts = []
+    for refusal in refusals or []:
+        if not isinstance(refusal, dict) or not refusal.get("name"):
+            continue
+        _LOGGER.info("H3b: paused for the player: %s refused (%s)", refusal.get("name"), refusal.get("reason"))
+        parts.append("Your %s does not answer: %s" % (
+            refusal["name"], facts.get(refusal.get("fact"), "it cannot be used right now")))
+    message = "%s. Nothing was spent. What do you do instead?" % (
+        "; ".join(parts) or "That item cannot be used right now")
+    record_pending_player_request(
+        encounter_path,
+        pending.get("turnId"),
+        message,
+        npc_voice_intents=voice_intents,
+    )
+    raise CombatTurnPaused(
+        "The player's item use was refused; waiting for the player's choice",
+        player_message=message,
+    )
 
 
 def _player_request_message(request):
@@ -1373,6 +1436,7 @@ def execute_agentic_turn(
     events = None
     roll_consumption = None
     rules_drift_seen = False
+    player_charge_refusal = None
     window_kind = _window_kind(encounter, pending.get("actorIds", []))
     capability_count, rule_count = _diagnostic_context_counts(spell_references)
     attempt_number = 0
@@ -1530,6 +1594,13 @@ def execute_agentic_turn(
                 rule_references=rule_count,
                 intents=len(batch.get("intents") or []) if isinstance(batch, dict) else None,
             )
+            if player_charge_refusal and not _same_item_spent(events, player_charge_refusal):
+                # H3b fail-safe: the correction chose an action for the
+                # player instead of asking (re-declaring the same item at a
+                # cost the engine accepted is the player's own choice).
+                # Nothing is staged; the round waits for the player.
+                _pause_for_refused_item(encounter_path, pending, player_charge_refusal,
+                                        immutable_voice_intents)
             break
         except CombatPlayerInputRequired as exc:
             request = exc.feedback.get("request", {})
@@ -1565,6 +1636,13 @@ def execute_agentic_turn(
                 player_message=player_message,
             ) from exc
         except (CombatIntentError, IndexError, TypeError, ValueError) as exc:
+            refused = (getattr(exc, "feedback", None) or {}).get("playerChargeRefusal") \
+                if isinstance(getattr(exc, "feedback", None), dict) else None
+            if refused and player_charge_refusal:
+                # H3b fail-safe: the correction repeated the refused use.
+                _pause_for_refused_item(encounter_path, pending, refused, immutable_voice_intents)
+            if refused:
+                player_charge_refusal = refused
             correction = _intent_correction(exc, batch=batch)
             failure_class = _resolution_failure_class(exc)
             rules_drift = (

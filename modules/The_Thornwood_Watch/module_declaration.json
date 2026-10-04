@@ -1,0 +1,136 @@
+{
+  "format": "neq-module-declaration",
+  "version": 1,
+  "module": "The_Thornwood_Watch",
+  "beings": [],
+  "start": null,
+  "gateways": [],
+  "dispositions": [
+    {
+      "location": "NC02",
+      "name": "Thorn-Touched Dryad Sylara",
+      "index": 0,
+      "disposition": "hostile"
+    },
+    {
+      "location": "NC03",
+      "name": "The Withered Hart",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "NC04",
+      "name": "Corrupted Ranger Thane",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "NC05",
+      "name": "Malarok the Corruptor",
+      "index": 0,
+      "disposition": "hostile"
+    },
+    {
+      "location": "RO01",
+      "name": "Ranger Elen",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "RO01",
+      "name": "Ranger Marcus",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "RO01",
+      "name": "Scout Kira",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "RO01",
+      "name": "Messenger Tom",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "RO01",
+      "name": "Rusk",
+      "index": 0,
+      "disposition": "hostile"
+    },
+    {
+      "location": "RO02",
+      "name": "Quartermaster Brann",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "RO02",
+      "name": "Dock Worker Finn",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "RO02",
+      "name": "Merchant Vera",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "RO02",
+      "name": "Apprentice Jeb",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "RO03",
+      "name": "Trader Sila",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "RO03",
+      "name": "Merchant Gareth",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "RO03",
+      "name": "Trader Mila",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "RO03",
+      "name": "Caravan Guard Bex",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "TW04",
+      "name": "Spirit-Touched Hermit Maelo",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "TW05",
+      "name": "Bandit Captain Gorvek",
+      "index": 0,
+      "disposition": "hostile"
+    },
+    {
+      "location": "TW06",
+      "name": "Wounded Ranger Gareth",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "TW06",
+      "name": "Merchant Kael",
+      "index": 0,
+      "disposition": "friendly"
+    }
+  ]
+}

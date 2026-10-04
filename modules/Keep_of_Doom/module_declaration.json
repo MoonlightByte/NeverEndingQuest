@@ -1,0 +1,226 @@
+{
+  "format": "neq-module-declaration",
+  "version": 1,
+  "module": "Keep_of_Doom",
+  "beings": [
+    {
+      "name": "Keeper Morvath",
+      "home": "B07",
+      "appearances": [
+        "B07",
+        "B01"
+      ],
+      "names": {
+        "B01": "The Keeper"
+      },
+      "aliases": [
+        "The Keeper",
+        "Keeper Morvath"
+      ],
+      "identity": "same_mobile_person"
+    },
+    {
+      "name": "Scout Elen",
+      "home": "E07",
+      "appearances": [
+        "E07",
+        "B06",
+        "E02"
+      ],
+      "names": {
+        "B06": "Echo of Scout Elen",
+        "E02": "Prisoner Echo"
+      },
+      "aliases": [
+        "Echo of Scout Elen",
+        "Prisoner Echo",
+        "Scout Elen"
+      ],
+      "identity": "same_mobile_person"
+    }
+  ],
+  "start": null,
+  "gateways": [],
+  "dispositions": [
+    {
+      "location": "B01",
+      "name": "The Keeper",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "B01",
+      "name": "Harrow's Hollow East Gate Guards",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "B03",
+      "name": "The Lingering Spirit",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "B06",
+      "name": "Echo of Scout Elen",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "B06",
+      "name": "Mournful Ghost",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "B07",
+      "name": "Keeper Morvath",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "A01",
+      "name": "Elder Mirna Harrow",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "A01",
+      "name": "Farmer Willem",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "A01",
+      "name": "Young Apprentice Tam",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "A02",
+      "name": "Old Tommen",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "A02",
+      "name": "Blacksmith Goric",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "A02",
+      "name": "Baker Marta",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "A02",
+      "name": "Merchant Aldric",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "A03",
+      "name": "Sergeant Mara Feld",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "A04",
+      "name": "Ranger Branik",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "A05",
+      "name": "Cira the Innkeeper",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "A05",
+      "name": "Traveling Merchant Rosa",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "A05",
+      "name": "Local Hunter Jorik",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "A05",
+      "name": "Off-Duty Militiaman Gareth",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "A05",
+      "name": "Elderly Scholar Fenwick",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "A05",
+      "name": "Worried Mother Eliza",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "C03",
+      "name": "Father Aldren",
+      "index": 0,
+      "disposition": "friendly"
+    },
+    {
+      "location": "C05",
+      "name": "The Spectral Scribe",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "D03",
+      "name": "Watcher Morven",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "D04",
+      "name": "Magister Valen",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "D04",
+      "name": "Acolyte Therin",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "E02",
+      "name": "Prisoner Echo",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "E06",
+      "name": "The Bone Speaker",
+      "index": 0,
+      "disposition": "indifferent"
+    },
+    {
+      "location": "E07",
+      "name": "Sir Garran Vael",
+      "index": 0,
+      "disposition": "hostile"
+    },
+    {
+      "location": "E07",
+      "name": "Scout Elen",
+      "index": 0,
+      "disposition": "friendly"
+    }
+  ]
+}
