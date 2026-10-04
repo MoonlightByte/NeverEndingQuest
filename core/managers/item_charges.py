@@ -281,6 +281,11 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
                 return {"success": False, "error": f"{sheet.get('name')} has {len(matches)} items named {item_name!r}; the spend is ambiguous, nothing changed"}
             index = matches[0]
             row = sheet["equipment"][index]
+            if row.get("quantity") == 0:
+                # A destroyed unit (an exhausted roll) keeps its row and its
+                # count, but nothing can be spent; say so before any engine call.
+                return {"success": False, "error": f"{row.get('item_name')} was destroyed when its last charge was spent; "
+                                                   f"nothing can be spent from it"}
             rule = genesis.charge_rule(row)
             if clock is None and rule is not None and (rule.recharges or genesis.mint_reason(row)):
                 # A recharging item is counted from the clock, and a catalog
