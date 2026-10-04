@@ -154,15 +154,20 @@ class Game:
         self.tracker = load(os.path.join(root, "party_tracker.json"))
         journal = os.path.join(root, "journal.json")
         self.journal = load(journal).get("entries", []) if os.path.exists(journal) else []
-        # masters[M] and played[M] map a location ID to (area ID, location).
-        self.masters, self.played = {}, {}
+        # masters[M] and played[M] map a location ID to (area ID, location);
+        # played_areas[M] keeps each played area file whole (the map's links
+        # are read from them, utils/travel_map.py).
+        self.masters, self.played, self.played_areas = {}, {}, {}
         for m in modules:
-            self.masters[m], self.played[m] = {}, {}
+            self.masters[m], self.played[m], self.played_areas[m] = {}, {}, {}
             for path in sorted(glob.glob(os.path.join(self.paths[m], "areas", "*.json"))):
                 name = os.path.basename(path)[:-5]
                 master = name.endswith("_BU")
                 area = name[:-3] if master else name
-                for loc in load(path).get("locations", []) or []:
+                doc = load(path)
+                if not master:
+                    self.played_areas[m][name] = doc
+                for loc in doc.get("locations", []) or []:
                     (self.masters if master else self.played)[m][loc["locationId"]] = (area, loc)
         self.encounters = []
         for path in glob.glob(os.path.join(root, "modules", "encounters", "encounter_*.json")):
@@ -760,9 +765,11 @@ def npc_decision(game, s, fights, played, persons, played_lists, claimed):
 
 # Output -------------------------------------------------------------------
 
-def world_source(game, seed_list):
+def world_source(game, seed_list, held=None, notes=None):
     """Every place of the modules, masters first, then any place only the
-    played files have."""
+    played files have; and the map with the party (utils/travel_map.py).
+    `held` is the document's party and character places, when there is a
+    document."""
     places = []
     for m in game.modules:
         for loc_id, (_, loc) in game.masters[m].items():
@@ -784,6 +791,9 @@ def world_source(game, seed_list):
     # quest record; utils/quest_record.py).
     from utils import quest_record
     lines += quest_record.declaration_lines(game.root, game.modules)
+    # C10a: the map, the party at the tracker's place and the visited seed.
+    from utils import travel_map
+    lines += travel_map.lines(game, [p for p, _ in places], held, notes)
     return "\n".join(lines) + "\n", [p for p, _ in places]
 
 

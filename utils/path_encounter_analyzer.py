@@ -165,20 +165,35 @@ def _issue(code: str, message: str, **details: Any) -> Dict[str, Any]:
 def build_active_module_snapshot(
     module_name: str,
     modules_root: Union[str, Path] = "modules",
+    *,
+    roster: bool = True,
+    module_dir: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
     """Build a canonical, read-only snapshot of one active module.
 
     The returned dictionaries are detached from the parsed JSON documents.
     Duplicate IDs and dangling connections are retained as validation issues;
-    they are never silently repaired or resolved by load order.
+    they are never silently repaired or resolved by load order. With
+    roster=False the engine's rosters are not read (the authored monsters
+    stand in): the engine world's own map is built from this snapshot's
+    links, so it must not call back into the engine. `module_dir` reads the
+    module from that directory instead of modules_root/<module> (a module
+    checked in its publication workspace before it is live); source files
+    are then named from its parent.
     """
-    try:
-        from core.nql import occupants as _occupants
-        module_roster = _occupants.module_roster(str(module_name))
-    except Exception:
-        module_roster = None
+    module_roster = None
+    if roster:
+        try:
+            from core.nql import occupants as _occupants
+            module_roster = _occupants.module_roster(str(module_name))
+        except Exception:
+            module_roster = None
     normalized_module = str(module_name or "").replace(" ", "_")
-    module_dir = Path(modules_root) / normalized_module
+    if module_dir is not None:
+        module_dir = Path(module_dir)
+        modules_root = module_dir.parent
+    else:
+        module_dir = Path(modules_root) / normalized_module
     nodes: Dict[str, Dict[str, Any]] = {}
     areas: Dict[str, Dict[str, Any]] = {}
     edges: Dict[str, List[str]] = {}

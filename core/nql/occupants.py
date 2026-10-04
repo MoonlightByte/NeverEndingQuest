@@ -79,10 +79,23 @@ def _world(root: str):
             )
     notes: List[Tuple[str, str]] = []
     seed_list = roster_conversion.seeds(game, notes)
+    world, places = roster_conversion.world_source(game, seed_list, _held_party(root), notes)
     for kind, text in notes:
         debug("OCCUPANTS: seed note (%s): %s" % (kind, text), category="location_transitions")
-    world, places = roster_conversion.world_source(game, seed_list)
     return world, places, game
+
+
+def _held_party(root: str) -> Optional[Dict[str, Any]]:
+    """The document's party and character places (C10a), so the world keeps
+    declaring a member the document's party still holds."""
+    live = _load(root)
+    if not live:
+        return None
+    return {
+        "party": list((live.get("map") or {}).get("party") or []),
+        "characters": {c.get("id"): c.get("location") for c in live.get("characters") or []
+                       if isinstance(c, dict)},
+    }
 
 
 def _load(root: str) -> Optional[Dict[str, Any]]:
