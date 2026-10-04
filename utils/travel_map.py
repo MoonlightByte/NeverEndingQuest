@@ -11,9 +11,11 @@ docs/WORLD_MAP.md, LIVE_STATE.md):
 - Routes: each world module's links as build_active_module_snapshot resolves
   them (connectivity plus areaConnectivity / areaConnectivityId), the graph
   the route check walks today. A link touching a place the snapshot marks
-  invalid is left out, as the route check never crosses one. Every route
-  takes TICKS: travel time stays the DM's in C10a, and with equal ticks the
-  engine's quickest path is the one with the fewest stops.
+  invalid is left out, as the route check never crosses one. A route's
+  ticks are seconds at SRD normal pace from the time table (C11): SAME_AREA
+  within an area, CROSS_AREA between areas (the snapshot's area_id). The
+  engine's quickest path is the quickest in time; its trip time, in game
+  minutes, is the move's travel time (core/nql/travel.py).
 - The party: one character per party member, ``char:<slug>`` as the genesis
   world names them, at the tracker's place in the tracker's module; plus
   every member the document's party still holds, until its ``leave party``
@@ -33,11 +35,16 @@ import json
 import os
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-TICKS = 60
+# The time table (owner Q1, C11): seconds at SRD normal pace (3 miles an
+# hour), the world clock being "second". About 1,500 ft between places of
+# one area, about 1.5 miles between areas. Whole minutes, so ticks / 60 is
+# exact.
+SAME_AREA = 300
+CROSS_AREA = 1800
 
-# {module dir: (the played area files, [(source id, target id)])}: the links
-# are resolved again only when the played area files differ by value.
-_ROUTES: Dict[str, Tuple[Any, List[Tuple[str, str]]]] = {}
+# {module dir: (the played area files, [(source id, target id, ticks)])}: the
+# links are resolved again only when the played area files differ by value.
+_ROUTES: Dict[str, Tuple[Any, List[Tuple[str, str, int]]]] = {}
 
 
 def q(text):
@@ -75,12 +82,13 @@ def tracker_place(tracker: Optional[Dict[str, Any]]) -> Optional[str]:
     return "loc:%s/%s" % (module, loc)
 
 
-def module_links(game, module: str) -> List[Tuple[str, str]]:
+def module_links(game, module: str) -> List[Tuple[str, str, int]]:
     """The module's directed links between valid places, as the route check
-    resolves them (build_active_module_snapshot, without the rosters). The
-    result is kept while the played area files Game read are equal by value
-    (the snapshot reads the same files; a legacy area file at the module's
-    top level is read but not compared)."""
+    resolves them (build_active_module_snapshot, without the rosters), each
+    with its ticks from the time table. The result is kept while the played
+    area files Game read are equal by value (the snapshot reads the same
+    files; a legacy area file at the module's top level is read but not
+    compared)."""
     from utils.path_encounter_analyzer import build_active_module_snapshot
 
     module_dir = os.path.abspath(game.paths[module])
@@ -96,7 +104,8 @@ def module_links(game, module: str) -> List[Tuple[str, str]]:
         for target in dict.fromkeys(targets):
             if source != target and source in nodes and target in nodes \
                     and source not in invalid and target not in invalid:
-                links.append((source, target))
+                same = (nodes[source] or {}).get("area_id") == (nodes[target] or {}).get("area_id")
+                links.append((source, target, SAME_AREA if same else CROSS_AREA))
     _ROUTES[module_dir] = (key, links)
     return links
 
@@ -124,13 +133,13 @@ def lines(game, declared: Iterable[str], held: Optional[Dict[str, Any]] = None,
     {"party": [ids], "characters": {id: place}} when there is a document."""
     declared = list(declared)
     known = set(declared)
-    routes: Dict[Tuple[str, str], bool] = {}
+    routes: Dict[Tuple[str, str], int] = {}
     visited: List[str] = []
     for module in game.modules:
-        for source, target in module_links(game, module):
+        for source, target, ticks in module_links(game, module):
             a, b = "loc:%s/%s" % (module, source), "loc:%s/%s" % (module, target)
             if a in known and b in known:
-                routes[(a, b)] = True
+                routes[(a, b)] = ticks
             elif notes is not None:
                 notes.append(("map", "%s -> %s: a place is not declared; no route" % (a, b)))
         masters = game.masters.get(module) or {}
@@ -174,11 +183,11 @@ def lines(game, declared: Iterable[str], held: Optional[Dict[str, Any]] = None,
     for a, b in sorted(routes):
         if (a, b) in paired:
             continue
-        if (b, a) in routes:
-            out.append(" route %s to %s ticks %d both;" % (q(a), q(b), TICKS))
+        if routes.get((b, a)) == routes[(a, b)]:
+            out.append(" route %s to %s ticks %d both;" % (q(a), q(b), routes[(a, b)]))
             paired.add((b, a))
         else:
-            out.append(" route %s to %s ticks %d;" % (q(a), q(b), TICKS))
+            out.append(" route %s to %s ticks %d;" % (q(a), q(b), routes[(a, b)]))
         paired.add((a, b))
     for ident in member_ids:
         out.append(" party %s;" % q(ident))
