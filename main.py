@@ -10676,6 +10676,40 @@ def _review_dm_candidate(
                             "transition to the original final destination in "
                             "this turn."
                         )
+                    elif route_outcome.reason_code == "unvisited_stop":
+                        # C10b, Q5 rule A: the party stops at every place it
+                        # has not visited. The engine names the reachable
+                        # unvisited places; the DM chooses, normally the
+                        # first one on the way.
+                        fresh = ", ".join(
+                            "%s (%s)" % (item.get("id"), item.get("name"))
+                            for item in (route_outcome.facts or {}).get("reachable_unvisited") or []
+                        )
+                        if route_outcome.intermediate_destination_id:
+                            retry_correction = (
+                                "Revise the complete response using the accepted "
+                                "Travel Agent facts. The party stops at every place "
+                                "it has not visited yet. Narrate movement toward the "
+                                "player's original goal, but transition only to "
+                                f"{route_outcome.intermediate_destination_id} "
+                                f"({route_outcome.intermediate_destination_name}), "
+                                "the first unvisited place on the way, or to another "
+                                f"unvisited place reachable now ({fresh}) if the "
+                                "player's intent fits it better. Use that "
+                                "transitionLocation first and do not transition to "
+                                "the original final destination in this turn."
+                            )
+                        else:
+                            retry_correction = (
+                                "Revise the complete response using the accepted "
+                                "Travel Agent facts. The party stops at every place "
+                                "it has not visited yet, and the original destination "
+                                "is not reachable this turn. Transition only to one "
+                                f"of the unvisited places reachable now ({fresh}) if "
+                                "the player's intent fits one, else use no "
+                                "transitionLocation and leave the next choice to the "
+                                "player."
+                            )
                     elif route_outcome.reason_code in {
                         "no_valid_route",
                         "active_combat",
