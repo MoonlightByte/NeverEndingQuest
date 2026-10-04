@@ -122,6 +122,14 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
             iid = (world.item_ids.get(cid) or {}).get(index)
             if not iid:
                 return {"success": False, "error": "the item was not declared to the engine; nothing changed"}
+            if genesis.charged_type_id(iid) not in world.source:
+                # genesis declared the row without charges (a gap names why);
+                # refuse here with that reason rather than let the engine say
+                # "no charges" for an item the sheet shows charged.
+                why = next((g.split("; declared without charges")[0].split(" ", 1)[1] for g in world.gaps
+                            if "declared without charges" in g and repr(row.get("item_name")) in g),
+                           "its charges could not be declared to the engine")
+                return {"success": False, "error": f"{row.get('item_name')} cannot spend charges: {why}"}
             request = request_id or f"expend:{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
             try:
                 response = apply.call({"world": world.source, "world_name": "expend-genesis.nql",
