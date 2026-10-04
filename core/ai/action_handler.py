@@ -167,6 +167,7 @@ ACTION_ESTABLISH_HUB = "establishHub"
 ACTION_STORAGE_INTERACTION = "storageInteraction"
 ACTION_TRANSFER_ITEM = "transferItem"
 ACTION_ACQUIRE_ITEM = "acquireItem"
+ACTION_EXPEND_CHARGES = "expendCharges"
 ACTION_TRANSFER_CURRENCY = "transferCurrency"
 ACTION_SPLIT_CURRENCY = "splitCurrency"
 ACTION_REST = "rest"
@@ -4711,6 +4712,49 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             import traceback
             traceback.print_exc()
             error_message = "Transfer System Error: An unexpected error occurred while handing the item over. Nothing moved. Later actions from this response have not executed; check current state before proposing further changes. Do not repeat earlier completed actions."
+            conversation_history.append({"role": "user", "content": error_message})
+            needs_conversation_history_update = True
+            return create_return(status="needs_response", needs_update=True)
+
+    elif action_type == ACTION_EXPEND_CHARGES:
+        # One typed charge spend (item charges H1): the engine holds the count
+        # of every charged sheet row, spends exactly or refuses, and the sheet
+        # count is rewritten from its view. A retried turn is answered from
+        # the receipt on the sheet (chargeUses).
+        debug("STATE_CHANGE: Processing expendCharges action", category="storage_operations")
+        status_updating_character()
+        try:
+            from core.managers.item_charges import execute_expend
+
+            result = execute_expend(
+                parameters.get("characterName", ""),
+                parameters.get("itemName", ""),
+                parameters.get("charges", 1),
+                _engine_request_id(invocation_claim, action_context, "expendCharges"),
+                party_tracker_data,
+            )
+            if result.get("success"):
+                info(f"SUCCESS: {result.get('message')}", category="storage_operations")
+                conversation_history.append({"role": "user", "content": f"Charges: {result.get('message')}"})
+                needs_conversation_history_update = True
+            else:
+                print(f"ERROR: Charge spend failed: {result.get('error')}")
+                error_message = (
+                    f"Expend Error: {result.get('error', 'the spend was refused')}. Nothing changed: no charge was "
+                    "spent. Later actions from this response have not executed. Do not repeat earlier completed "
+                    "actions; spend a count the item has, name a charged item the character holds, or narrate why "
+                    "the item cannot be used."
+                )
+                conversation_history.append({"role": "user", "content": error_message})
+                needs_conversation_history_update = True
+                return create_return(status="needs_response", needs_update=True)
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
+        except Exception as e:
+            print(f"ERROR: Exception while processing expendCharges: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            error_message = "Charges System Error: An unexpected error occurred while spending charges. Nothing changed. Later actions from this response have not executed; check current state before proposing further changes. Do not repeat earlier completed actions."
             conversation_history.append({"role": "user", "content": error_message})
             needs_conversation_history_update = True
             return create_return(status="needs_response", needs_update=True)
