@@ -284,15 +284,20 @@ def refresh_sheet(character_name: str, now: int, location: str = "party") -> Dic
             if not response.get("ok"):
                 return {"error": _refusal(response)}
             views = {v.get("item"): v for v in response.get("item_charges") or [] if isinstance(v, dict)}
-            refreshed = []
+            refreshed, stored = [], 0
             for index, iid in ids.items():
                 view = views.get(iid)
                 if view is None or type(view.get("current")) is not int:
                     continue
                 row = working["equipment"][index]
+                before = row["charges"].get("current")
                 store_view(row["charges"], view, row.get("quantity", 1))
-                refreshed.append(f"{row['item_name']} {view['current']} of {row['charges']['max']}")
-            if not refreshed:
+                stored += 1
+                # Only a count that rose is reported (and shown to the DM); an
+                # anchor written on a row's first refresh is stored silently.
+                if type(before) is int and view["current"] > before:
+                    refreshed.append(f"{row['item_name']} {view['current']} of {row['charges']['max']}")
+            if not stored:
                 return {"refreshed": []}
             out = _projected(working)
             backup = _backup(path)
@@ -303,7 +308,10 @@ def refresh_sheet(character_name: str, now: int, location: str = "party") -> Dic
                 _restore(path, backup)
                 return {"error": f"could not save the character sheet: {error}"}
             _discard(backup)
-            info(f"CHARGES: {working.get('name')} recharge counted: {'; '.join(refreshed)}", category="storage_operations")
+            if refreshed:
+                info(f"CHARGES: {working.get('name')} recharge counted: {'; '.join(refreshed)}", category="storage_operations")
+            else:
+                debug(f"CHARGES: {working.get('name')} charge anchors stored for {stored} item(s), nothing regained", category="storage_operations")
             return {"refreshed": refreshed}
 
 
