@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024 MoonlightByte
 # SPDX-License-Identifier: Fair-Source-1.0
 # License: See LICENSE file in the repository root
-"""The engine's party follows the tracker (C10a).
+"""The engine's party and the in-module move authority (C10a, C10b).
 
 The world declares a map (utils/travel_map.py); the document holds the
 party, where each member is and the places visited. The tracker stays the
@@ -25,8 +25,25 @@ brought in line by value (NQL docs/WORLD_MAP.md, LIVE_STATE.md):
 - Membership changes only through ``join party`` / ``leave party``; a member
   that left stays declared until its leave is applied (travel_map.lines).
 
+C10b, the engine leads (Q5 rule A: the party stops at every place it has
+not visited, and moves freely through visited places with no hostile
+present):
+
+- ``engine_route`` answers whether a proposed in-module move may go, from
+  the map view of the party's first member: approved (the destination is
+  reachable through visited places), a halt at a hostile place on the way,
+  or an unvisited stop (the first unvisited place on NEQ's own route, and
+  the unvisited places reachable now, for the DM to choose from).
+- An engine-approved move is committed after the tracker write with
+  ``travel party to`` under ``travel:<checkpoint>``; the engine marks the
+  departure and the arrival. A refusal, or a trip that ends elsewhere (the
+  world changed after review), moves the party to the tracker's place
+  under ``realign:<checkpoint>:move``, with a warning.
+
 Never a gate on play: an engine that is unavailable or refuses leaves the
-tracker as it is, with a warning, and the next call aligns again.
+tracker as it is, with a warning, and the next call aligns again. With the
+engine unavailable, the route check stays NEQ's own (snapshot route and
+T021).
 """
 import os
 import uuid
@@ -159,10 +176,151 @@ def align_id() -> str:
     return "align:%s" % uuid.uuid4().hex
 
 
+def _place_ref(value: Any) -> str:
+    """A place in a view: its id string, or an object with an id."""
+    if isinstance(value, dict):
+        return str(value.get("id") or "")
+    return str(value or "")
+
+
+def map_view(root: str = ".") -> Optional[Dict[str, Any]]:
+    """{"view": the map view of the party's first member, "live": the
+    document}, after the document's party is brought to the tracker. None
+    when the engine is unavailable, the world has no map or the tracker
+    names no party member."""
+    from core.nql import occupants
+    tracker = safe_read_json(os.path.join(root, "party_tracker.json")) or {}
+    members = _members(tracker)
+    if not members:
+        return None
+    live = occupants._load(root) or {}
+    if isinstance(live.get("map"), dict) and align_actions(live, tracker):
+        _align(root, align_id(), live, tracker, "before the map view")
+    response = occupants.request(root=root, align=False, map_view=(members[0],))
+    if not response or not response.get("ok") or not response.get("map"):
+        return None
+    return {"view": response["map"][0], "live": response.get("live_state") or {}}
+
+
+def _hostiles(place: str, root: str) -> List[str]:
+    """The names of the hostile occupants present at place (locations view)."""
+    from core.nql import occupants
+    out: List[str] = []
+    for loc in occupants.view([place], root=root):
+        for occ in loc.get("present") or []:
+            if isinstance(occ, dict) and occ.get("attitude") == "hostile":
+                out.append(str(occ.get("name") or occ.get("id")))
+    return out
+
+
+def engine_route(module: str, origin_id: str, destination_id: str, path: List[str], *,
+                 root: str = ".") -> Optional[Dict[str, Any]]:
+    """The engine's verdict on an in-module move (C10b). `path` is NEQ's
+    snapshot route (origin to destination, bare location ids), used only to
+    name the first unvisited place on the way. Returns None when the engine
+    cannot answer (the caller keeps NEQ's own route check), else a dict:
+
+    - {"verdict": "approved", "stops", "ticks"}
+    - {"verdict": "halt", "stop", "hostiles"}: a place on the way holds a
+      present hostile occupant; the trip stops there.
+    - {"verdict": "unvisited_stop", "stop", "fresh"}: the way crosses a
+      place the party has not visited; `stop` is the first such place on
+      NEQ's route (None when the engine cannot reach it), `fresh` every
+      unvisited place reachable now (bare ids).
+    """
+    try:
+        return _engine_route(module, origin_id, destination_id, path, root)
+    except Exception as exc:  # fail forward: NEQ's own route check decides
+        warning("TRAVEL: the engine route check failed (%s); the route check stays NEQ's" % exc,
+                category="location_transitions")
+        return None
+
+
+def _engine_route(module: str, origin_id: str, destination_id: str, path: List[str],
+                  root: str) -> Optional[Dict[str, Any]]:
+    module = (module or "").replace(" ", "_")
+    if not module or origin_id == destination_id:
+        return None
+
+    def full(loc: str) -> str:
+        return "loc:%s/%s" % (module, loc)
+
+    def bare(place: str) -> str:
+        prefix = "loc:%s/" % module
+        return place[len(prefix):] if place.startswith(prefix) else place
+
+    got = map_view(root)
+    if got is None:
+        return None
+    view, live = got["view"], got["live"]
+    here = _place_ref(view.get("location"))
+    if here != full(origin_id):
+        warning("TRAVEL: the engine party is at %s, not at the move's origin %s; the route check "
+                "stays NEQ's" % (here, full(origin_id)), category="location_transitions")
+        return None
+    reach = {_place_ref(d.get("to")): d for d in view.get("destinations") or [] if isinstance(d, dict)}
+
+    def halt_or(place: str, otherwise: Dict[str, Any]) -> Dict[str, Any]:
+        halt = _place_ref(reach[place].get("halts_at"))
+        if not halt:
+            return otherwise
+        return {"verdict": "halt", "stop": bare(halt), "hostiles": _hostiles(halt, root)}
+
+    target = full(destination_id)
+    if target in reach:
+        entry = reach[target]
+        return halt_or(target, {"verdict": "approved", "stops": entry.get("stops"), "ticks": entry.get("ticks")})
+    visited = set((live.get("map") or {}).get("visited") or [])
+    fresh = [bare(p) for p, d in sorted(reach.items())
+             if not d.get("visited") and p.startswith("loc:%s/" % module)]
+    first = next((loc for loc in list(path)[1:] if full(loc) not in visited), None)
+    if first is not None and full(first) in reach:
+        return halt_or(full(first), {"verdict": "unvisited_stop", "stop": first, "fresh": fresh})
+    return {"verdict": "unvisited_stop", "stop": None, "fresh": fresh}
+
+
+def _travel(root: str, checkpoint: Dict[str, Any], members: List[str], live: Dict[str, Any],
+            done: set, here: Optional[str]) -> str:
+    """Commit an engine-approved move: "traveled", "on record" (a resume),
+    "diverged" (the trip, or the tracker, ended elsewhere), "refused" or
+    "unavailable"."""
+    from core.nql import occupants
+    cp = str(checkpoint.get("operation_id") or "")
+    module = str(checkpoint.get("module_name") or "").replace(" ", "_")
+    rid = "travel:%s" % cp
+    if rid in done:
+        return "on record"
+    origin = "loc:%s/%s" % (module, checkpoint.get("origin_location_id"))
+    target = "loc:%s/%s" % (module, checkpoint.get("destination_location_id"))
+    if target != here:
+        return "diverged"
+    actions = _membership(live, members) + _moves(live, members, origin, here)
+    actions.append("travel party to %s;" % travel_map.q(target))
+    response = occupants.request("\n".join(actions), rid, root=root, actor=members[0], align=False)
+    if response is None:
+        return "unavailable"
+    if not response.get("ok"):
+        fault = response.get("fault") or {}
+        warning("TRAVEL: the trip %s was refused (%s: %s); moving the party instead" % (
+            rid, fault.get("code") or response.get("error"), fault.get("actual") or fault.get("message")),
+            category="location_transitions")
+        return "refused"
+    after = response.get("live_state") or {}
+    end = {c.get("id"): c.get("location") for c in after.get("characters") or [] if isinstance(c, dict)}
+    if end.get(members[0]) != target:
+        warning("TRAVEL: the trip %s ended at %s, not %s (the world changed after the review); "
+                "the party follows the tracker" % (rid, end.get(members[0]), target),
+                category="location_transitions")
+        return "diverged"
+    return "traveled"
+
+
 def realign(checkpoint: Optional[Dict[str, Any]] = None, *, root: str = ".") -> Optional[str]:
     """Bring the document's party to the tracker. With the v2 checkpoint of
-    a committed in-module move, walk its path; else (or when the walk is
-    refused) move. Returns what was done, or None when nothing could be."""
+    a committed in-module move: an engine-approved move (authority
+    "engine") travels; one NEQ's own route check approved walks its path;
+    else (or when the trip or walk is refused) move. Returns what was done,
+    or None when nothing could be."""
     try:
         from core.nql import occupants
         tracker = safe_read_json(os.path.join(root, "party_tracker.json")) or {}
@@ -174,6 +332,10 @@ def realign(checkpoint: Optional[Dict[str, Any]] = None, *, root: str = ".") -> 
         # costs no call.
         live = occupants._load(root) or {}
         wanted = set(_stops(checkpoint, here, None) or []) | ({here} if here else set())
+        engine = (checkpoint or {}).get("authority") == "engine"
+        if engine:
+            module = str(checkpoint.get("module_name") or "").replace(" ", "_")
+            wanted.add("loc:%s/%s" % (module, checkpoint.get("origin_location_id")))
         if not isinstance(live.get("map"), dict) or not wanted <= set(live.get("places") or []):
             response = occupants.request(root=root, align=False)
             if not response or not response.get("ok"):
@@ -185,7 +347,22 @@ def realign(checkpoint: Optional[Dict[str, Any]] = None, *, root: str = ".") -> 
         cp = str((checkpoint or {}).get("operation_id") or "")
         stops = _stops(checkpoint, here, set(live.get("places") or []))
         fallback = "realign:%s:move" % cp if cp else ""
-        if stops and members and fallback not in done:
+        if engine and members and fallback not in done:
+            outcome = _travel(root, checkpoint, members, live, done, here)
+            if outcome == "traveled":
+                info("TRAVEL: the party traveled %s/%s -> %s (travel:%s)" % (
+                    checkpoint.get("module_name"), checkpoint.get("origin_location_id"),
+                    checkpoint.get("destination_location_id"), cp), category="location_transitions")
+                return outcome
+            if outcome == "on record":
+                return _align(root, align_id(), live, tracker, "trip on record")
+            if outcome == "unavailable":
+                return None
+            response = occupants.request(root=root, align=False)
+            if not response or not response.get("ok"):
+                return None
+            live = response.get("live_state") or live
+        elif stops and members and fallback not in done:
             outcome = _walk(root, cp, stops, members, live, done, here)
             if outcome == "on record":
                 # The walk applied before (a resume); anything since moved
@@ -201,7 +378,7 @@ def realign(checkpoint: Optional[Dict[str, Any]] = None, *, root: str = ".") -> 
             if not response or not response.get("ok"):
                 return None
             live = response.get("live_state") or live
-        elif checkpoint is not None and "path" not in checkpoint:
+        elif checkpoint is not None and not engine and "path" not in checkpoint:
             info("TRAVEL: checkpoint %s has no path; the party is moved, not walked" % cp,
                  category="location_transitions")
         rid = fallback if fallback and fallback not in done else align_id()
