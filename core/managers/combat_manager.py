@@ -3108,7 +3108,7 @@ def _round_facts_text(encounter, round_num):
             if not isinstance(tick, dict):
                 continue
             holder = tick.get("owner") or _name(tick.get("combatantId"))
-            piece = f"{tick.get('name')} on {holder}"
+            piece = f"{tick.get('name') or tick.get('effectId') or 'effect'} on {holder}"
             if tick.get("expired"):
                 piece += " expired"
             elif tick.get("roundsBefore") is not None and tick.get("roundsAfter") is not None:

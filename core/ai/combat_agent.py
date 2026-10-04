@@ -363,7 +363,8 @@ An adjudicated intent may contain:
   asking what they do instead. An NPC may simply take another action.
   Do not refuse a use the count can still pay: when charges.current is at
   least the cost of ONE use, declare the use and let the rules engine
-  answer; only a count below that cost, or a destroyed item, is a failure.
+  answer; only a count below that cost with no recharge promised, or a
+  destroyed item, is a failure.
 - effects: [{op:'add', owner, effect:{name,description,roundsRemaining,
   concentration,tickTrigger,modifiers:[{stat,value}],conditions:[],
   incapacitates:false,onApply:[],onRemove:[]}}] or

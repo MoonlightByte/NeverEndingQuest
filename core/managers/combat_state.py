@@ -1006,6 +1006,7 @@ def stage_turn_events(encounter, turn_id, events):
 ROUND_EVENTS_KEEP_ROUNDS = 3
 ROUND_EVENTS_MAX_PER_ROUND = 64
 ROUND_EVENT_DESCRIPTION_CHARS = 300
+ROUND_EVENT_NAME_CHARS = 80
 
 
 def compact_combat_event(event):
@@ -1046,11 +1047,14 @@ def compact_combat_event(event):
     ticks = []
     for tick in event.get("effectTicks") or []:
         if isinstance(tick, dict):
-            ticks.append({
+            compact_tick = {
                 key: tick.get(key)
-                for key in ("owner", "combatantId", "name", "roundsBefore", "roundsAfter", "expired")
+                for key in ("owner", "combatantId", "effectId", "name", "roundsBefore", "roundsAfter", "expired")
                 if key in tick
-            })
+            }
+            if isinstance(compact_tick.get("name"), str):
+                compact_tick["name"] = compact_tick["name"][:ROUND_EVENT_NAME_CHARS]
+            ticks.append(compact_tick)
     compact = {
         "eventId": event.get("eventId"),
         "actorId": event.get("actorId"),
