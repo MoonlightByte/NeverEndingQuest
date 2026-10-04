@@ -4923,6 +4923,23 @@ def display_dm_narration(content, channel="main", color="blue", message_id=None,
                 print(*rendered)
 
 
+def _module_join_refusal_line(refusal):
+    """Plain player line for a module left unjoined by colliding ids."""
+    def label(name):
+        return str(name).replace("_", " ")
+
+    others = [label(name) for name in refusal.get("collides_with") or []]
+    return (
+        "%s is installed, but some of its location ids are already used by "
+        "%s, so it cannot be joined to this world yet. You can keep playing; "
+        "nothing was changed."
+        % (
+            label(refusal.get("module")),
+            " and ".join(others) or "another installed module",
+        )
+    )
+
+
 
 
 
@@ -8872,6 +8889,20 @@ def _main_game_loop(startup_authority, turn_authority):
             debug(f"STATE_CHANGE: reconcile_campaign_state result: {reconcile_result}", category="startup")
         except Exception as reconcile_exc:
             warning(f"INITIALIZATION: reconcile_campaign_state failed: {reconcile_exc}", category="startup")
+
+        # Integrate module directories the registry does not hold yet (a
+        # bare reconcile stub, or a module dropped into modules/). The
+        # party's module goes first; a module whose ids collide with a joined
+        # one stays installed and unjoined, and the player is told so.
+        try:
+            refresh_result = CampaignManager().refresh_modules(
+                priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
+            )
+            debug(f"STATE_CHANGE: startup module refresh result: {refresh_result}", category="startup")
+            for refusal in refresh_result.get("import_required", []):
+                display_dm_narration(_module_join_refusal_line(refusal), channel="system")
+        except Exception as refresh_exc:
+            warning(f"INITIALIZATION: startup module refresh failed: {refresh_exc}", category="startup")
     
         # Path manager already initialized above for both paths
         # Just verify it's using the correct module
