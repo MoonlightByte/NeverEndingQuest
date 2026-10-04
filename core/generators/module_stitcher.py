@@ -417,8 +417,11 @@ class ModuleStitcher:
         # Load or create world registry
         self.world_registry = self._load_world_registry()
         # Modules the last scan could not join because their ids collide
-        # with a registered module: [{"module", "collides_with"}].
+        # with a registered module: [{"module", "collides_with",
+        # "refused_because"}], and the unplayed ones it joined by
+        # renumbering a copy: [{"module", "collides_with", "renumbered"}].
         self.import_required = []
+        self.imported = []
         
         # Clean up old connections if they exist (migration to isolated modules)
         if 'connections' in self.world_registry:
@@ -3117,7 +3120,7 @@ Create atmospheric travel narration that leads into this adventure."""
         )
 
     def _registry_with_live_publication_identities(
-        self, registry: Dict[str, Any]
+        self, registry: Dict[str, Any], exclude_module: Optional[str] = None
     ) -> Dict[str, Any]:
         """Return a detached conflict view augmented from live module trees.
 
@@ -3125,7 +3128,8 @@ Create atmospheric travel narration that leads into this adventure."""
         map.  Conflict resolution still needs the identifiers owned by those
         already-live modules.  Rebuild that conflict-only view from disk while
         the caller owns ``module_refresh_lock``; never rewrite the live registry
-        as part of discovery.
+        as part of discovery. ``exclude_module`` leaves out the live tree that
+        a managed import is about to replace (its own old identities).
         """
         from utils.module_refresh_lock import assert_module_refresh_lock_owned
 
@@ -3153,6 +3157,8 @@ Create atmospheric travel narration that leads into this adventure."""
         for entry in entries:
             module_name = entry.name
             if module_name.startswith(".") or module_name in support_roots:
+                continue
+            if module_name == exclude_module:
                 continue
             if entry.is_symlink():
                 raise ValueError("Live module root is a link")
@@ -3189,7 +3195,9 @@ Create atmospheric travel narration that leads into this adventure."""
 
         return conflict_registry
 
-    def build_publication_registry_bytes(self, candidate_path, module_name):
+    def build_publication_registry_bytes(
+        self, candidate_path, module_name, *, replacing_live=False
+    ):
         """Store-free registry preparation for the atomic-publish path (P2b).
 
         Runs on a freshly built module candidate (utils/module_publish's hidden
@@ -3204,6 +3212,11 @@ Create atmospheric travel narration that leads into this adventure."""
         is made live. Any raise here aborts the publish with ``modules/<name>``
         never touched -- the player's game is unaffected and the build simply did
         not happen. Never operates on live module state.
+
+        ``replacing_live=True`` is the managed import of an unplayed live
+        module: the candidate is a copy of ``modules/<name>`` that will replace
+        it, so the occupied final path, a bare registry stub of the name, and
+        the live tree's own identities are not conflicts.
         """
         from utils.module_publish import validate_module_name
         from utils.module_refresh_lock import assert_module_refresh_lock_owned
@@ -3235,7 +3248,7 @@ Create atmospheric travel narration that leads into this adventure."""
                     raise ValueError(
                         "Managed candidate contains a link or reparse point"
                     )
-        if os.path.lexists(modules_root / module_name):
+        if not replacing_live and os.path.lexists(modules_root / module_name):
             raise FileExistsError("Managed module final path became occupied")
 
         prior_registry_bytes = Path(self.world_registry_file).read_bytes()
@@ -3261,9 +3274,12 @@ Create atmospheric travel narration that leads into this adventure."""
         elif not isinstance(prior_registry["areas"], dict):
             raise ValueError("World registry shape is invalid")
         conflict_registry = self._registry_with_live_publication_identities(
-            prior_registry
+            prior_registry,
+            exclude_module=module_name if replacing_live else None,
         )
-        if self._registry_references_module(prior_registry, module_name):
+        if self._registry_references_module(prior_registry, module_name) and not (
+            replacing_live and self._is_registry_stub(prior_registry, module_name)
+        ):
             raise ValueError("Allocated module name is already registry-owned")
 
         candidate_text = os.fspath(candidate)
@@ -4400,8 +4416,12 @@ Create atmospheric travel narration that leads into this adventure."""
         # first character. Reading only loc_id[0] treats 'AA01' as prefix 'A',
         # so start_index lands inside the already-used range and the new module
         # can be handed an already-used two-letter prefix.
+        # The module's own current prefixes count too: a new prefix equal to
+        # one of its old ones (CMS001 C->H while HLF001 still holds H01)
+        # would be rewritten again by the module-wide old->new reference
+        # mapping below, giving duplicate ids.
         max_prefix_index = -1
-        for loc_id in all_existing_loc_ids:
+        for loc_id in all_existing_loc_ids | new_module_loc_ids:
             m = re.match(r'^([A-Za-z]+)\d', loc_id or '')
             if m:
                 max_prefix_index = max(max_prefix_index, _location_prefix_to_index(m.group(1)))
@@ -4860,6 +4880,279 @@ Respond with JSON:
             print(f"Warning: Schema validation failed: {e}")
             return False
     
+    _IMPORT_WORKSPACE_PREFIX = ".module_import_"
+
+    def _managed_import_refusal(self, module_name: str) -> Optional[str]:
+        """Why an installed module counts as played, or None when unplayed.
+
+        A played module is never rewritten. Value checks only:
+        ``tracker``: the party's module is this one;
+        ``live_state``: the live record holds a place, occupant or quest of
+        it (typed ids ``kind:<Module>/...``);
+        ``archive``: a campaign archive or summary names it as its
+        moduleName, or the campaign lists it as completed or current;
+        ``saved_games``: its folder holds a save.
+        An unreadable record counts as played (the module is left alone).
+        """
+        try:
+            tracker = safe_json_load(self.party_tracker_file) if os.path.exists(
+                self.party_tracker_file
+            ) else {}
+        except Exception:
+            return "tracker"
+        if isinstance(tracker, dict) and str(
+            tracker.get("module") or ""
+        ).replace(" ", "_") == module_name:
+            return "tracker"
+
+        live_path = os.path.join(self.root_dir, "live_state.json")
+        if os.path.exists(live_path):
+            try:
+                live = safe_json_load(live_path)
+            except Exception:
+                live = None
+            if not isinstance(live, dict):
+                return "live_state"
+            # Engine shape (NQL docs/LIVE_STATE.md, version 3): ``places`` is a
+            # list of typed-id strings (as core/nql/occupants.py:754 reads it);
+            # occupants and quests are records with ``id`` (and ``location``).
+            # Characters and map.visited stand at places, so they are covered.
+            typed_ids = list(live.get("places") or [])
+            for occupant in live.get("occupants") or []:
+                if isinstance(occupant, dict):
+                    typed_ids += [occupant.get("id"), occupant.get("location")]
+            for quest in live.get("quests") or []:
+                if isinstance(quest, dict):
+                    typed_ids.append(quest.get("id"))
+            for typed_id in typed_ids:
+                if isinstance(typed_id, str) and (
+                    typed_id.partition(":")[2].split("/", 1)[0] == module_name
+                ):
+                    return "live_state"
+
+        for record_dir in ("campaign_archives", "campaign_summaries"):
+            directory = os.path.join(self.modules_dir, record_dir)
+            if not os.path.isdir(directory):
+                continue
+            for filename in sorted(os.listdir(directory)):
+                if not filename.endswith(".json"):
+                    continue
+                try:
+                    record = safe_json_load(os.path.join(directory, filename))
+                except Exception:
+                    return "archive"
+                if isinstance(record, dict) and record.get("moduleName") == module_name:
+                    return "archive"
+        campaign_path = os.path.join(self.modules_dir, "campaign.json")
+        if os.path.exists(campaign_path):
+            try:
+                campaign = safe_json_load(campaign_path)
+            except Exception:
+                return "archive"
+            if isinstance(campaign, dict) and (
+                campaign.get("currentModule") == module_name
+                or module_name in (campaign.get("completedModules") or [])
+            ):
+                return "archive"
+
+        saves = os.path.join(self.modules_dir, module_name, "saved_games")
+        if os.path.isdir(saves) and os.listdir(saves):
+            return "saved_games"
+        return None
+
+    @staticmethod
+    def _area_location_ids(module_path: str) -> Dict[str, List[Any]]:
+        """Location ids per live area file, in file order."""
+        areas_dir = os.path.join(module_path, "areas")
+        out = {}
+        for filename in sorted(os.listdir(areas_dir)):
+            if filename.endswith(".json") and not filename.endswith("_BU.json"):
+                area = safe_json_load(os.path.join(areas_dir, filename))
+                locations = area.get("locations", []) if isinstance(area, dict) else []
+                out[filename] = [
+                    location.get("locationId")
+                    for location in locations
+                    if isinstance(location, dict)
+                ]
+        return out
+
+    def _settle_import_workspace(self, workspace: Path, module_name: str) -> bool:
+        """Leave the module live and remove the workspace; never lose the module.
+
+        If the live entry is missing while the retired original is in the
+        workspace (a stop between the two renames), the original is renamed
+        back first. The workspace is removed only once ``modules/<name>``
+        exists. Returns whether the workspace is gone.
+        """
+        from utils.module_publish import _replace_entry
+
+        live_path = Path(self.modules_dir) / module_name
+        retired = workspace / "retired" / module_name
+        if not os.path.lexists(live_path) and os.path.lexists(retired):
+            _replace_entry(retired, live_path)
+            warning(
+                f"Managed import of {module_name} was interrupted between its "
+                "renames; the original module was put back",
+                category="module_integration",
+            )
+        if not os.path.lexists(live_path):
+            error(
+                f"Managed import workspace {workspace.name} kept: {module_name} "
+                "is not live and no original was found in it",
+                category="module_integration",
+            )
+            return False
+        shutil.rmtree(workspace)
+        return True
+
+    def _recover_managed_imports_locked(self) -> int:
+        """Settle every managed import workspace a stopped run left behind."""
+        settled = 0
+        try:
+            entries = sorted(os.listdir(self.modules_dir))
+        except OSError:
+            return settled
+        for entry in entries:
+            if not entry.startswith(self._IMPORT_WORKSPACE_PREFIX):
+                continue
+            workspace = Path(self.modules_dir) / entry
+            try:
+                marker = safe_json_load(str(workspace / "import.json"))
+            except Exception:
+                marker = None
+            module_name = marker.get("module") if isinstance(marker, dict) else None
+            try:
+                if module_name is None:
+                    # The marker is written before anything is moved, so a
+                    # workspace without one holds no original; one with a
+                    # retired entry anyway is kept for a person to look at.
+                    retired_dir = workspace / "retired"
+                    if retired_dir.is_dir() and os.listdir(retired_dir):
+                        error(
+                            f"Managed import workspace {entry} has no marker "
+                            "but holds a retired entry; kept",
+                            category="module_integration",
+                        )
+                        continue
+                    shutil.rmtree(workspace)
+                    settled += 1
+                    continue
+                if self._target_module_path(module_name) is None:
+                    error(
+                        f"Managed import workspace {entry} names an unsafe module",
+                        category="module_integration",
+                    )
+                    continue
+                if self._settle_import_workspace(workspace, module_name):
+                    settled += 1
+            except Exception as exc:
+                error(
+                    f"Managed import workspace {entry} could not be settled: {exc}",
+                    category="module_integration",
+                )
+        return settled
+
+    def _import_colliding_module_locked(self, module_name: str) -> Dict[str, Any]:
+        """Join an unplayed module whose ids collide, renumbering a copy.
+
+        The caller owns module_refresh_lock. A played module is refused. The
+        live folder is copied into a hidden workspace, the copy goes through
+        the hidden-candidate publication path (re-prefix, validation, T032,
+        T033, registry bytes), and only then is it swapped in: live ->
+        retired, candidate -> live, registry bytes. Any failure before the
+        swap leaves the live folder as it was.
+        """
+        from utils.module_publish import (
+            _replace_entry,
+            _replace_exact_bytes,
+            _sync_directory,
+        )
+        from utils.transient_filesystem import retry_transient_filesystem
+
+        refusal = self._managed_import_refusal(module_name)
+        if refusal:
+            return {"status": "refused", "refused_because": refusal}
+
+        live_path = Path(self.modules_dir) / module_name
+        workspace = Path(self.modules_dir) / (
+            f"{self._IMPORT_WORKSPACE_PREFIX}{uuid4().hex}"
+        )
+        candidate = workspace / "candidate" / module_name
+        retired = workspace / "retired" / module_name
+        try:
+            (workspace / "candidate").mkdir(parents=True)
+            (workspace / "retired").mkdir()
+            (workspace / "import.json").write_text(
+                json.dumps({"module": module_name}), encoding="utf-8"
+            )
+            shutil.copytree(live_path, candidate, symlinks=True)
+            copied = {
+                os.path.relpath(os.path.join(directory, filename), candidate)
+                for directory, _dirs, filenames in os.walk(candidate)
+                for filename in filenames
+            }
+            before = self._area_location_ids(str(candidate))
+            registry_bytes = self.build_publication_registry_bytes(
+                candidate, module_name, replacing_live=True
+            )
+            after = self._area_location_ids(str(candidate))
+            # The rewrite's own .bak copies hold intermediate ids; the
+            # original stays in the workspace until the swap, so they are
+            # not kept in the module.
+            for directory, _dirs, filenames in os.walk(candidate):
+                for filename in filenames:
+                    path = os.path.join(directory, filename)
+                    if filename.endswith(".bak") and (
+                        os.path.relpath(path, candidate) not in copied
+                    ):
+                        os.remove(path)
+            renumbered = sum(
+                old != new
+                for area in before
+                for old, new in zip(before[area], after.get(area, []))
+            )
+            _sync_directory(candidate)
+            _replace_entry(live_path, retired)
+            _replace_entry(candidate, live_path)
+        except Exception as exc:
+            warning(
+                f"Managed import of {module_name} did not complete; the module "
+                f"is left as it was: {exc}",
+                category="module_integration",
+            )
+            try:
+                self._settle_import_workspace(workspace, module_name)
+            except Exception as settle_exc:
+                error(
+                    f"Managed import workspace {workspace.name} kept for the "
+                    f"next scan: {settle_exc}",
+                    category="module_integration",
+                )
+            return {"status": "failed", "refused_because": "import_failed"}
+
+        # The renumbered module is live; nothing below may undo that.
+        try:
+            retry_transient_filesystem(
+                lambda: _replace_exact_bytes(
+                    Path(self.world_registry_file), registry_bytes
+                )
+            )
+            self.world_registry = json.loads(registry_bytes.decode("utf-8"))
+        except Exception as exc:
+            error(
+                f"Module {module_name} was renumbered and is live, but its "
+                f"registry write failed; the next scan integrates it: {exc}",
+                category="module_integration",
+            )
+        try:
+            self._settle_import_workspace(workspace, module_name)
+        except Exception as exc:
+            warning(
+                f"Managed import workspace {workspace.name} not removed: {exc}",
+                category="module_integration",
+            )
+        return {"status": "imported", "renumbered": renumbered}
+
     def scan_and_integrate_new_modules(
         self, priority_module: Optional[str] = None
     ) -> List[str]:
@@ -4898,8 +5191,10 @@ Respond with JSON:
         """Perform the scan while the caller owns module refresh."""
         integrated_modules = []
         self.import_required = []
+        self.imported = []
         
         try:
+            self._recover_managed_imports_locked()
             # Detect new modules
             new_modules = self.detect_new_modules()
             if priority_module in new_modules:
@@ -4919,19 +5214,38 @@ Respond with JSON:
                     if result.status is PublicationStatus.PUBLISHED:
                         integrated_modules.append(module_name)
                     elif result.status is PublicationStatus.IMPORT_REQUIRED:
-                        warning(
-                            f"Module {module_name} is installed but not joined: "
-                            f"{result.reason}",
-                            category="module_integration",
+                        collides_with = list(result.conflicting_modules)
+                        outcome = self._import_colliding_module_locked(
+                            module_name
                         )
-                        self.import_required.append(
-                            {
-                                "module": module_name,
-                                "collides_with": list(
-                                    result.conflicting_modules
-                                ),
-                            }
-                        )
+                        if outcome["status"] == "imported":
+                            info(
+                                f"Module {module_name} joined after renumbering "
+                                f"{outcome['renumbered']} location ids "
+                                f"(they collided with {', '.join(collides_with)})",
+                                category="module_integration",
+                            )
+                            integrated_modules.append(module_name)
+                            self.imported.append(
+                                {
+                                    "module": module_name,
+                                    "collides_with": collides_with,
+                                    "renumbered": outcome["renumbered"],
+                                }
+                            )
+                        else:
+                            warning(
+                                f"Module {module_name} is installed but not joined "
+                                f"({outcome['refused_because']}): {result.reason}",
+                                category="module_integration",
+                            )
+                            self.import_required.append(
+                                {
+                                    "module": module_name,
+                                    "collides_with": collides_with,
+                                    "refused_because": outcome["refused_because"],
+                                }
+                            )
                     elif result.status is PublicationStatus.INDETERMINATE:
                         error(
                             f"Publication state indeterminate for {module_name}: "
