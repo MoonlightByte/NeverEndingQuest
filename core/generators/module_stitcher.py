@@ -198,6 +198,8 @@ class TargetedPublicationResult:
     registry_restoration_proven: bool = False
     module_restoration_proven: bool = False
     backup_path: Optional[str] = field(default=None, init=False, repr=False)
+    # IMPORT_REQUIRED only: the registered modules whose ids collide.
+    conflicting_modules: Tuple[str, ...] = ()
 
     @property
     def published(self) -> bool:
@@ -414,6 +416,9 @@ class ModuleStitcher:
 
         # Load or create world registry
         self.world_registry = self._load_world_registry()
+        # Modules the last scan could not join because their ids collide
+        # with a registered module: [{"module", "collides_with"}].
+        self.import_required = []
         
         # Clean up old connections if they exist (migration to isolated modules)
         if 'connections' in self.world_registry:
@@ -836,6 +841,10 @@ class ModuleStitcher:
             return None, "World registry is not a JSON object"
         if not isinstance(registry.get("modules"), dict):
             return None, "World registry 'modules' value is not an object"
+        # Startup reconciliation writes a registry with no 'areas' key at
+        # all; that is an empty area map, not a malformed one.
+        if "areas" not in registry:
+            registry["areas"] = {}
         if not isinstance(registry.get("areas"), dict):
             return None, "World registry 'areas' value is not an object"
         return registry, ""
@@ -868,6 +877,39 @@ class ModuleStitcher:
             isinstance(area_data, dict)
             and cls._module_names_alias(area_data.get("module"), module_name)
             for area_data in registry.get("areas", {}).values()
+        )
+
+    @classmethod
+    def _is_registry_stub(
+        cls, registry: Dict[str, Any], module_name: str
+    ) -> bool:
+        """Whether the registry names the module only by a bare stub.
+
+        Startup reconciliation records every module directory as exactly
+        ``{"moduleName": M}``. Such an entry carries no areas and no module
+        data, so the module has not been integrated yet. Any other field,
+        an alias entry, or an area row naming the module means it is not a
+        stub.
+        """
+        modules = registry.get("modules", {})
+        areas = registry.get("areas", {})
+        if not isinstance(modules, dict) or not isinstance(areas, dict):
+            return False
+        if modules.get(module_name) != {"moduleName": module_name}:
+            return False
+        for key, module_data in modules.items():
+            if key == module_name:
+                continue
+            if cls._module_names_alias(key, module_name):
+                return False
+            if isinstance(module_data, dict) and cls._module_names_alias(
+                module_data.get("moduleName"), module_name
+            ):
+                return False
+        return not any(
+            isinstance(area_data, dict)
+            and cls._module_names_alias(area_data.get("module"), module_name)
+            for area_data in areas.values()
         )
 
     def _prove_module_absent_from_registry_locked(
@@ -1139,6 +1181,12 @@ class ModuleStitcher:
         required_files = {
             "module_plot.json": "plot_schema.json",
             "module_context.json": None,
+        }
+        # The module builder writes a module-level party tracker; published
+        # modules (the repo's own, and modules dropped into modules/) never
+        # ship one and no gameplay path reads it. Validate it only when it
+        # is present.
+        optional_files = {
             "party_tracker.json": "party_schema.json",
         }
 
@@ -1179,6 +1227,14 @@ class ModuleStitcher:
                 file_path = module_root / filename
                 if not file_path.is_file():
                     return False, f"Required publication file is missing: {filename}"
+                data = load_object(file_path)
+                validate_available_schema(data, schema_name, filename)
+            for filename, schema_name in optional_files.items():
+                file_path = module_root / filename
+                if not os.path.lexists(file_path):
+                    continue
+                if not file_path.is_file():
+                    return False, f"Publication file is not a regular file: {filename}"
                 data = load_object(file_path)
                 validate_available_schema(data, schema_name, filename)
 
@@ -1275,28 +1331,36 @@ class ModuleStitcher:
         module_name: str,
         module_path: str,
         registry_snapshot: Dict[str, Any],
-    ) -> Tuple[Optional[bool], str]:
+    ) -> Tuple[Optional[bool], str, Tuple[str, ...]]:
         """Detect whether legacy publication would require live-file rewrites.
 
         ``True`` means a managed import is required, ``False`` means registry-only
         publication can continue, and ``None`` means the read was unsafe or
-        ambiguous. This helper never writes or creates a mutation backup.
+        ambiguous. The third value names the registered modules whose ids
+        collide (empty unless ``True``). This helper never writes or creates
+        a mutation backup.
         """
         candidate_areas, candidate_locations, reason = (
             self._module_identity_sets_for_conflict_scan(module_path)
         )
         if candidate_areas is None or candidate_locations is None:
-            return None, reason
+            return None, reason, ()
 
-        registered_areas = set(registry_snapshot.get("areas", {}))
-        area_conflicts = candidate_areas.intersection(registered_areas)
+        registered_area_rows = registry_snapshot.get("areas", {})
+        area_conflicts = candidate_areas.intersection(registered_area_rows)
         if area_conflicts:
             return True, (
                 "Managed import is required for conflicting area IDs: "
                 + ", ".join(sorted(area_conflicts))
-            )
+            ), tuple(sorted({
+                registered_area_rows[area_id].get("module")
+                for area_id in area_conflicts
+                if isinstance(registered_area_rows[area_id], dict)
+                and isinstance(registered_area_rows[area_id].get("module"), str)
+            }))
 
         existing_location_ids = set()
+        colliding_modules = set()
         existing_module_names = {
             area_data.get("module")
             for area_data in registry_snapshot.get("areas", {}).values()
@@ -1307,7 +1371,7 @@ class ModuleStitcher:
         for existing_name in sorted(existing_module_names):
             existing_path = self._target_module_path(existing_name)
             if existing_path is None:
-                return None, "Registered module path is unsafe"
+                return None, "Registered module path is unsafe", ()
             state, _entry_stat, state_reason = self._exact_module_entry_state(
                 existing_name, existing_path
             )
@@ -1317,13 +1381,19 @@ class ModuleStitcher:
             if state == "absent":
                 continue
             if state != "directory":
-                return None, f"Registered module path is unsafe: {state_reason}"
+                return (
+                    None,
+                    f"Registered module path is unsafe: {state_reason}",
+                    (),
+                )
             _areas, locations, existing_reason = (
                 self._module_identity_sets_for_conflict_scan(existing_path)
             )
             if locations is None:
-                return None, existing_reason
+                return None, existing_reason, ()
             existing_location_ids.update(locations)
+            if candidate_locations.intersection(locations):
+                colliding_modules.add(existing_name)
 
         location_conflicts = candidate_locations.intersection(
             existing_location_ids
@@ -1332,8 +1402,8 @@ class ModuleStitcher:
             return True, (
                 "Managed import is required for conflicting location IDs: "
                 + ", ".join(sorted(location_conflicts))
-            )
-        return False, ""
+            ), tuple(sorted(colliding_modules))
+        return False, "", ()
     
     def detect_new_modules(self) -> List[str]:
         """Detect new modules in the modules directory"""
@@ -1362,12 +1432,16 @@ class ModuleStitcher:
                 
                 # Check if module has area files (current data structure)
                 if self._has_area_files(item_path):
-                    # Check if already registered
-                    if item not in self.world_registry.get('modules', {}):
+                    # Check if already registered (a bare stub is not)
+                    if item not in self.world_registry.get(
+                        'modules', {}
+                    ) or self._is_registry_stub(self.world_registry, item):
                         detected_modules.append(item)
                         print(f"Detected new module: {item}")
             
-            return detected_modules
+            # Directory listing order is filesystem-dependent; integration
+            # order decides which of two colliding modules is joined.
+            return sorted(detected_modules)
             
         except Exception as e:
             print(f"Error detecting modules: {e}")
@@ -3228,7 +3302,7 @@ Create atmospheric travel narration that leads into this adventure."""
         valid, reason = self._validate_required_publication_files(candidate_text)
         if not valid:
             raise ValueError(reason or "Normalized module files are incomplete")
-        remaining_conflict, conflict_reason = (
+        remaining_conflict, conflict_reason, _colliding = (
             self._detect_legacy_publication_conflicts(
                 module_name,
                 candidate_text,
@@ -3416,7 +3490,11 @@ Create atmospheric travel narration that leads into this adventure."""
         # in-memory baseline while candidate construction remains detached.
         self.world_registry = deepcopy(prior_registry)
 
-        referenced = self._registry_references_module(prior_registry, module_name)
+        # A bare stub names the module without integrating it; publish it
+        # through the unregistered path, whose candidate replaces the stub.
+        referenced = self._registry_references_module(
+            prior_registry, module_name
+        ) and not self._is_registry_stub(prior_registry, module_name)
         exact_entry = prior_registry.get("modules", {}).get(module_name)
         if referenced:
             if entry_state != "directory" or os.path.exists(
@@ -3517,10 +3595,12 @@ Create atmospheric travel narration that leads into this adventure."""
                 registry_restoration_proven=True,
             )
 
-        conflict_state, conflict_reason = self._detect_legacy_publication_conflicts(
-            module_name,
-            module_path,
-            prior_registry,
+        conflict_state, conflict_reason, conflicting_modules = (
+            self._detect_legacy_publication_conflicts(
+                module_name,
+                module_path,
+                prior_registry,
+            )
         )
         entry_valid, entry_reason = self._revalidate_publication_entry(
             module_name,
@@ -3549,6 +3629,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 registry_absence_proven=True,
                 registry_restoration_proven=True,
                 module_restoration_proven=True,
+                conflicting_modules=conflicting_modules,
             )
 
         backup_result = _coerce_module_backup_result(
@@ -4779,8 +4860,14 @@ Respond with JSON:
             print(f"Warning: Schema validation failed: {e}")
             return False
     
-    def scan_and_integrate_new_modules(self) -> List[str]:
-        """Scan/integrate under the shared module-publication boundary."""
+    def scan_and_integrate_new_modules(
+        self, priority_module: Optional[str] = None
+    ) -> List[str]:
+        """Scan/integrate under the shared module-publication boundary.
+
+        ``priority_module`` (the party's module) is integrated first, so a
+        module that collides with it is the one left unjoined.
+        """
         from utils.module_refresh_lock import module_refresh_lock
 
         with module_refresh_lock() as acquired:
@@ -4801,15 +4888,23 @@ Respond with JSON:
                     category="module_integration",
                 )
                 return []
-            return self._scan_and_integrate_new_modules_locked()
+            return self._scan_and_integrate_new_modules_locked(
+                priority_module=priority_module
+            )
 
-    def _scan_and_integrate_new_modules_locked(self) -> List[str]:
+    def _scan_and_integrate_new_modules_locked(
+        self, priority_module: Optional[str] = None
+    ) -> List[str]:
         """Perform the scan while the caller owns module refresh."""
         integrated_modules = []
+        self.import_required = []
         
         try:
             # Detect new modules
             new_modules = self.detect_new_modules()
+            if priority_module in new_modules:
+                new_modules.remove(priority_module)
+                new_modules.insert(0, priority_module)
             
             if not new_modules:
                 info("STATE: No new modules detected.", category="module_integration")
@@ -4823,6 +4918,20 @@ Respond with JSON:
                     result = self.publish_module_locked(module_name)
                     if result.status is PublicationStatus.PUBLISHED:
                         integrated_modules.append(module_name)
+                    elif result.status is PublicationStatus.IMPORT_REQUIRED:
+                        warning(
+                            f"Module {module_name} is installed but not joined: "
+                            f"{result.reason}",
+                            category="module_integration",
+                        )
+                        self.import_required.append(
+                            {
+                                "module": module_name,
+                                "collides_with": list(
+                                    result.conflicting_modules
+                                ),
+                            }
+                        )
                     elif result.status is PublicationStatus.INDETERMINATE:
                         error(
                             f"Publication state indeterminate for {module_name}: "
