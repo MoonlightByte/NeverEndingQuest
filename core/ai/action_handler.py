@@ -2222,10 +2222,11 @@ def pre_validate_transition(
                     "destination_location_name": nodes[new_location_id]["location_name"],
                     "destination_area_id": nodes[new_location_id]["area_id"],
                     "destination_area_name": nodes[new_location_id]["area_name"],
-                    "engine_route": {
-                        "stops": engine.get("stops"),
-                        "ticks": engine.get("ticks"),
-                    },
+                    # No ticks: the map's uniform route ticks are not
+                    # minutes, and the validator read them as the travel
+                    # time (C10b live run). Travel time stays the DM's
+                    # until C11.
+                    "engine_route": {"stops": engine.get("stops")},
                     "authority": "engine",
                     "provisional_until_semantic_validation": True,
                 },
