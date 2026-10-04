@@ -1043,7 +1043,15 @@ def compact_combat_event(event):
     description = intent.get("description") or outcome.get("description") or ""
     if not isinstance(description, str):
         description = str(description)
-    return {
+    ticks = []
+    for tick in event.get("effectTicks") or []:
+        if isinstance(tick, dict):
+            ticks.append({
+                key: tick.get(key)
+                for key in ("owner", "combatantId", "name", "roundsBefore", "roundsAfter", "expired")
+                if key in tick
+            })
+    compact = {
         "eventId": event.get("eventId"),
         "actorId": event.get("actorId"),
         "action": intent.get("action") or outcome.get("kind"),
@@ -1052,6 +1060,9 @@ def compact_combat_event(event):
         "rolls": rolls,
         "resources": resources,
     }
+    if ticks:
+        compact["effectTicks"] = ticks
+    return compact
 
 
 def record_round_events(state, round_number, events):

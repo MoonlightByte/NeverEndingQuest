@@ -3101,6 +3101,19 @@ def _round_facts_text(encounter, round_num):
             spent.append(piece)
         if spent:
             parts.append("resources: " + "; ".join(spent))
+        ticked = []
+        for tick in event.get("effectTicks") or []:
+            if not isinstance(tick, dict):
+                continue
+            holder = tick.get("owner") or _name(tick.get("combatantId"))
+            piece = f"{tick.get('name')} on {holder}"
+            if tick.get("expired"):
+                piece += " expired"
+            elif tick.get("roundsBefore") is not None and tick.get("roundsAfter") is not None:
+                piece += f" {tick.get('roundsBefore')} -> {tick.get('roundsAfter')} rounds"
+            ticked.append(piece)
+        if ticked:
+            parts.append("effects at round end: " + "; ".join(ticked))
         lines.append("- " + "; ".join(parts))
 
     states = []
