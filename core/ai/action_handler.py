@@ -208,6 +208,9 @@ class ApprovedTransitionPlan:
     # "engine": the engine's map approved the move (C10b) and travel commits
     # it; "snapshot": NEQ's own route check did (the engine was unavailable).
     authority: str = "snapshot"
+    # The engine's trip time in game minutes at SRD normal pace (C11); None
+    # under NEQ's own route check (the DM's estimate stands).
+    travel_minutes: object = None
 
 
 @dataclass(frozen=True)
@@ -295,6 +298,7 @@ def _approved_transition_plan(
     location_graph,
     topology_identity=None,
     authority="snapshot",
+    travel_minutes=None,
 ):
     return ApprovedTransitionPlan(
         origin_location_id=str(origin_location_id),
@@ -312,6 +316,7 @@ def _approved_transition_plan(
             path_analysis, plot_data
         ),
         authority=str(authority),
+        travel_minutes=travel_minutes if type(travel_minutes) is int else None,
     )
 
 
@@ -335,12 +340,15 @@ def _new_current_transition_checkpoint(
     origin_party_tracker,
     path=None,
     authority="snapshot",
+    travel_minutes=None,
 ):
     """Build the approved v2 record without content-derived authority.
     `path` is the approved route, origin to destination (location ids): the
     engine's party walks it after the commit (core/nql/travel.py). With
     authority "engine" the engine approved the move and travels it, so no
-    path is recorded to walk."""
+    path is recorded to walk. `travel_minutes` is the engine's approved trip
+    time (C11), kept for the commit's check; the deferred updateTime already
+    carries the applied time (travel.timed_deferred)."""
     operation_id = str(uuid4())
     persisted_history = safe_json_load(
         "modules/conversation_history/conversation_history.json"
@@ -483,6 +491,7 @@ def _new_current_transition_checkpoint(
         "destination_area_name": sanitize_text(destination_area_name),
         "path": [str(item) for item in (path or ())],
         "authority": str(authority),
+        "travel_minutes": travel_minutes if type(travel_minutes) is int else None,
         "origin_history_boundary": segment_start,
         "origin_segment_before": json.loads(json.dumps(origin_segment)),
         "departure_summary": {"status": "pending", "text": None, "provider_response_id": None},
@@ -2210,7 +2219,9 @@ def pre_validate_transition(
                 topology_identity=snapshot.get("topology_identity")
                 or snapshot.get("snapshot_hash"),
                 authority="engine",
+                travel_minutes=engine.get("minutes"),
             )
+            travel_minutes = plan.travel_minutes
             return finish(
                 True,
                 "",
@@ -2222,11 +2233,27 @@ def pre_validate_transition(
                     "destination_location_name": nodes[new_location_id]["location_name"],
                     "destination_area_id": nodes[new_location_id]["area_id"],
                     "destination_area_name": nodes[new_location_id]["area_name"],
-                    # No ticks: the map's uniform route ticks are not
-                    # minutes, and the validator read them as the travel
-                    # time (C10b live run). Travel time stays the DM's
-                    # until C11.
+                    # Never ticks: the validator read raw route ticks as
+                    # minutes (C10b live run). The trip time is given in
+                    # game minutes (C11).
                     "engine_route": {"stops": engine.get("stops")},
+                    **(
+                        {
+                            "travel_minutes": travel_minutes,
+                            "min_travel_minutes": _travel.floor_minutes(travel_minutes),
+                            "travel_time_rule": (
+                                "travel_minutes is the trip at SRD normal pace, in game "
+                                "minutes: use it as the travel-owned updateTime. A slow "
+                                "pace, difficult terrain or a detour adds time. Only a "
+                                "fast pace the narration shows (the party hurries) may "
+                                "go lower, to min_travel_minutes. The code applies at "
+                                "least min_travel_minutes and raises a lower value "
+                                "itself."
+                            ),
+                        }
+                        if travel_minutes is not None
+                        else {}
+                    ),
                     "authority": "engine",
                     "provisional_until_semantic_validation": True,
                 },
@@ -3859,6 +3886,7 @@ def process_action(
                         else approved_transition_plan.path
                     ),
                     authority=approved_transition_plan.authority,
+                    travel_minutes=getattr(approved_transition_plan, "travel_minutes", None),
                 )
                 transition_id = transition_checkpoint["operation_id"]
                 _write_location_transition_checkpoint(transition_checkpoint)
