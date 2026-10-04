@@ -47,6 +47,21 @@ SRD fast-pace time (``floor_minutes``); without one it is the normal-pace
 time; a larger DM estimate stands as added time (``timed_deferred``). The
 committing trip's own ticks are compared with the approved time.
 
+C12, across modules (engine follows; owner O4/O5): a module switch travels
+over the join of its two modules (utils/module_joins.py), whose route is
+declared only in the switch's own requests:
+
+- ``crossing``, at staging: the first crossing between two modules proposes
+  the join, from the place the party leaves to the place it arrives at, its
+  time the DM's updateTime; a later crossing reads the engine's time to the
+  target over the join (the map view) and applies C11's floor to the DM's
+  updateTime.
+- ``realign``, after the tracker is published: the party travels ``travel
+  party to`` under ``travel:<checkpoint>``, and the join is recorded once
+  the trip is on record. A refusal or a trip that ends elsewhere moves the
+  party, as in-module, and records nothing. The engine never refuses the
+  switch itself.
+
 Never a gate on play: an engine that is unavailable or refuses leaves the
 tracker as it is, with a warning, and the next call aligns again. With the
 engine unavailable, the route check stays NEQ's own (snapshot route and
@@ -54,7 +69,7 @@ T021).
 """
 import os
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from utils.enhanced_logger import info, warning
 from utils.file_operations import safe_read_json
@@ -238,11 +253,11 @@ def _place_ref(value: Any) -> str:
     return str(value or "")
 
 
-def map_view(root: str = ".") -> Optional[Dict[str, Any]]:
+def map_view(root: str = ".", joins: Tuple[Tuple[str, str, int], ...] = ()) -> Optional[Dict[str, Any]]:
     """{"view": the map view of the party's first member, "live": the
     document}, after the document's party is brought to the tracker. None
     when the engine is unavailable, the world has no map or the tracker
-    names no party member."""
+    names no party member. `joins`: cross-module routes for this view (C12)."""
     from core.nql import occupants
     tracker = safe_read_json(os.path.join(root, "party_tracker.json")) or {}
     members = _members(tracker)
@@ -251,7 +266,7 @@ def map_view(root: str = ".") -> Optional[Dict[str, Any]]:
     live = occupants._load(root) or {}
     if isinstance(live.get("map"), dict) and align_actions(live, tracker):
         _align(root, align_id(), live, tracker, "before the map view")
-    response = occupants.request(root=root, align=False, map_view=(members[0],))
+    response = occupants.request(root=root, align=False, map_view=(members[0],), joins=joins)
     if not response or not response.get("ok") or not response.get("map"):
         return None
     return {"view": response["map"][0], "live": response.get("live_state") or {}}
@@ -336,6 +351,69 @@ def _engine_route(module: str, origin_id: str, destination_id: str, path: List[s
     return {"verdict": "unvisited_stop", "stop": None, "fresh": fresh}
 
 
+def crossing(source_module: str, source_location: str, target_module: str, target_location: str,
+             clock_action: Dict[str, Any], *, root: str = ".") -> Dict[str, Any]:
+    """The join a module switch travels over, and its clock action (C12):
+    {"join", "minutes", "clock_action"}. The first crossing between the two
+    modules proposes the join (the place the party leaves, the place it
+    arrives at, the DM's updateTime); a later one reads the engine's time to
+    the target over the recorded join and floors the DM's updateTime
+    (``timed_deferred``). "join" is None when the switch cannot be one (it
+    then goes as before: the party is moved, not traveled)."""
+    none = {"join": None, "minutes": None, "clock_action": clock_action}
+    try:
+        from utils import module_joins
+        join = module_joins.between(source_module, target_module, root)
+        if join is None:
+            estimate = ((clock_action or {}).get("parameters") or {}).get("timeEstimate")
+            join = module_joins.proposed(source_module, source_location, target_module, target_location,
+                                         estimate, "")
+            if join is None:
+                warning("TRAVEL: the switch %s -> %s cannot be joined (estimate %r); the party is moved"
+                        % (source_module, target_module, estimate), category="location_transitions")
+                return none
+            info("TRAVEL: first crossing %s -> %s: the journey takes the DM's %d min"
+                 % (module_joins.place(source_module, source_location),
+                    module_joins.place(target_module, target_location), join["minutes"]),
+                 category="location_transitions")
+            return {"join": join, "minutes": join["minutes"], "clock_action": clock_action}
+        got = map_view(root, joins=(module_joins.route(join),))
+        target = module_joins.place(target_module, target_location)
+        found = None
+        for entry in (got or {}).get("view", {}).get("destinations") or []:
+            if isinstance(entry, dict) and _place_ref(entry.get("to")) == target \
+                    and not _place_ref(entry.get("halts_at")):
+                found = minutes(entry.get("ticks"))
+        if found is None:
+            info("TRAVEL: %s is not reachable over the join now; the DM's time stands" % target,
+                 category="location_transitions")
+            return {"join": join, "minutes": None, "clock_action": clock_action}
+        return {"join": join, "minutes": found, "clock_action": timed_deferred([clock_action], found)[0]}
+    except Exception as exc:  # fail forward: the switch goes as before
+        warning("TRAVEL: the crossing check failed (%s); the party is moved" % exc,
+                category="location_transitions")
+        return none
+
+
+def _ends(checkpoint: Dict[str, Any]) -> Tuple[str, str]:
+    """The trip's origin and target places. A module switch's target is in
+    its target module (C12)."""
+    module = str(checkpoint.get("module_name") or "").replace(" ", "_")
+    target_module = module
+    handoff = checkpoint.get("module_handoff")
+    if checkpoint.get("movement_kind") == "cross_module_root" and isinstance(handoff, dict):
+        target_module = str((handoff.get("target_projection") or {}).get("module") or "").replace(" ", "_")
+    return ("loc:%s/%s" % (module, checkpoint.get("origin_location_id")),
+            "loc:%s/%s" % (target_module, checkpoint.get("destination_location_id")))
+
+
+def _joins(checkpoint: Optional[Dict[str, Any]]) -> Tuple[Tuple[str, str, int], ...]:
+    """The join route a module switch's trip declares, or () (C12)."""
+    from utils import module_joins
+    join = (checkpoint or {}).get("join")
+    return (module_joins.route(join),) if module_joins.valid(join) else ()
+
+
 def _travel(root: str, checkpoint: Dict[str, Any], members: List[str], live: Dict[str, Any],
             done: set, here: Optional[str]) -> str:
     """Commit an engine-approved move: "traveled", "on record" (a resume),
@@ -343,17 +421,16 @@ def _travel(root: str, checkpoint: Dict[str, Any], members: List[str], live: Dic
     "unavailable"."""
     from core.nql import occupants
     cp = str(checkpoint.get("operation_id") or "")
-    module = str(checkpoint.get("module_name") or "").replace(" ", "_")
     rid = "travel:%s" % cp
     if rid in done:
         return "on record"
-    origin = "loc:%s/%s" % (module, checkpoint.get("origin_location_id"))
-    target = "loc:%s/%s" % (module, checkpoint.get("destination_location_id"))
+    origin, target = _ends(checkpoint)
     if target != here:
         return "diverged"
     actions = _membership(live, members) + _moves(live, members, origin, here)
     actions.append("travel party to %s;" % travel_map.q(target))
-    response = occupants.request("\n".join(actions), rid, root=root, actor=members[0], align=False)
+    response = occupants.request("\n".join(actions), rid, root=root, actor=members[0], align=False,
+                                 joins=_joins(checkpoint))
     if response is None:
         return "unavailable"
     if not response.get("ok"):
@@ -401,8 +478,7 @@ def realign(checkpoint: Optional[Dict[str, Any]] = None, *, root: str = ".") -> 
         wanted = set(_stops(checkpoint, here, None) or []) | ({here} if here else set())
         engine = (checkpoint or {}).get("authority") == "engine"
         if engine:
-            module = str(checkpoint.get("module_name") or "").replace(" ", "_")
-            wanted.add("loc:%s/%s" % (module, checkpoint.get("origin_location_id")))
+            wanted.add(_ends(checkpoint)[0])
         if not isinstance(live.get("map"), dict) or not wanted <= set(live.get("places") or []):
             response = occupants.request(root=root, align=False)
             if not response or not response.get("ok"):
@@ -416,7 +492,17 @@ def realign(checkpoint: Optional[Dict[str, Any]] = None, *, root: str = ".") -> 
         fallback = "realign:%s:move" % cp if cp else ""
         if engine and members and fallback not in done:
             outcome = _travel(root, checkpoint, members, live, done, here)
+            if outcome in ("traveled", "on record") and _joins(checkpoint):
+                # C12: the engine crossed by the join, so it is kept (a first
+                # crossing writes it; a recorded pair is left as it is). A
+                # crossing the engine refused records nothing.
+                from utils import module_joins
+                module_joins.record(checkpoint["join"], root)
             if outcome == "traveled":
+                if _joins(checkpoint):
+                    info("TRAVEL: the party crossed %s -> %s (travel:%s)" % (_ends(checkpoint) + (cp,)),
+                         category="location_transitions")
+                    return outcome
                 info("TRAVEL: the party traveled %s/%s -> %s (travel:%s)" % (
                     checkpoint.get("module_name"), checkpoint.get("origin_location_id"),
                     checkpoint.get("destination_location_id"), cp), category="location_transitions")

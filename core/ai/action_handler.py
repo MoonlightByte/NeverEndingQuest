@@ -661,6 +661,17 @@ def stage_cross_module_root_checkpoint(
     parameters.update(target_values)
     parameters["module"] = target_module
     source_world = party_tracker_data.get("worldConditions") or {}
+    # C12: the switch travels over the join of the two modules; a later
+    # crossing's updateTime takes the engine's floor.
+    from core.nql import travel as _travel
+    crossing = _travel.crossing(
+        source_module,
+        str(source_world.get("currentLocationId") or ""),
+        target_module,
+        target_values["currentLocationId"],
+        clock_action,
+    )
+    clock_action = crossing["clock_action"]
     checkpoint = _new_current_transition_checkpoint(
         module_name=source_module,
         origin_area_id=source_world.get("currentAreaId", ""),
@@ -673,8 +684,14 @@ def stage_cross_module_root_checkpoint(
         conversation_history=conversation_history,
         deferred_actions=[clock_action],
         origin_party_tracker=party_tracker_data,
+        authority="engine" if crossing["join"] is not None else "snapshot",
+        travel_minutes=crossing["minutes"],
     )
     checkpoint["movement_kind"] = "cross_module_root"
+    if crossing["join"] is not None:
+        join = dict(crossing["join"])
+        join["operationId"] = join.get("operationId") or checkpoint["operation_id"]
+        checkpoint["join"] = join
     source_projection = {
         "module": source_module,
         **{

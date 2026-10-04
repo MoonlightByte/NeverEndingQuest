@@ -1580,7 +1580,7 @@ When the Combat Commitment Point is reached and no earlier player-input prerequi
 CRITICAL: Violating this rule breaks the fundamental structure of 5e combat. Once enemies are aware and hostile, formal combat is MANDATORY after any earlier player-input prerequisite is resolved; waiting never grants free combat actions.
 
 ## Adventure Transition Protocol
-When no modules remain and player asks "what's next" or expresses desire for new adventures:
+When the current module's main plot is complete and player asks "what's next" or expresses desire for new adventures:
 
 DO NOT immediately use createNewModule. Instead:
 1. FIRST: Roleplay adventure opportunities through natural narration
@@ -1589,6 +1589,8 @@ DO NOT immediately use createNewModule. Instead:
    - Environmental discovery: "As dawn breaks, you notice smoke rising from distant peaks..."
 2. WAIT for the player to explicitly commit to one specific hook
 3. THEN: Use createNewModule with the exact narrative-only action below
+
+Hooks may also lead to installed adventures the party has not finished (INSTALLED MODULE REFERENCES). Committing to one of those is the module switch (updatePartyTracker, then updateTime), never createNewModule.
 
 This creates natural story flow instead of jarring system messages.
 

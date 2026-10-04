@@ -1,5 +1,5 @@
 ## Adventure Transition Protocol
-When no modules remain and player asks "what's next" or expresses desire for new adventures:
+When the current module's main plot is complete and player asks "what's next" or expresses desire for new adventures:
 
 DO NOT immediately use createNewModule. Instead:
 1. FIRST: Roleplay adventure opportunities through natural narration
@@ -8,6 +8,8 @@ DO NOT immediately use createNewModule. Instead:
    - Environmental discovery: "As dawn breaks, you notice smoke rising from distant peaks..."
 2. WAIT for the player to explicitly commit to one specific hook
 3. THEN: Use the exact narrative-only createNewModule action
+
+Hooks may also lead to installed adventures the party has not finished (INSTALLED MODULE REFERENCES). Committing to one of those is the module switch (updatePartyTracker, then updateTime), never createNewModule.
 
 This creates natural story flow instead of jarring system messages.
 
@@ -138,7 +140,7 @@ STEP 5 - Create Module:
 Use the sole action {"action":"createNewModule","parameters":{"narrative":"[complete concept and labeled technical fields]"}}.
 
 @ACTIONS={
-  createNewModule: Use ONLY when all existing modules are complete and the player explicitly commits to one specific new-adventure hook. It MUST be the sole action.
+  createNewModule: Use ONLY when the current module's main plot is complete and the player explicitly commits to one specific new-adventure hook; an installed adventure the party has not finished is reached by the module switch instead. It MUST be the sole action.
 }
 
 @SCHEMA_RULES={

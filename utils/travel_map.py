@@ -143,10 +143,14 @@ def played_visit(played: Dict[str, Any], master: Optional[Dict[str, Any]]) -> bo
 
 
 def lines(game, declared: Iterable[str], held: Optional[Dict[str, Any]] = None,
-          notes: Optional[List[Tuple[str, str]]] = None) -> List[str]:
+          notes: Optional[List[Tuple[str, str]]] = None,
+          joins: Iterable[Tuple[str, str, int]] = ()) -> List[str]:
     """The character lines and the map block for world (a). `declared` is
     every place the world declares; `held` is the document's
-    {"party": [ids], "characters": {id: place}} when there is a document."""
+    {"party": [ids], "characters": {id: place}} when there is a document.
+    `joins` are cross-module routes (gateway, entry, ticks), both ways,
+    declared only by a module switch's own requests (C12,
+    utils/module_joins.py)."""
     declared = list(declared)
     known = set(declared)
     routes: Dict[Tuple[str, str], int] = {}
@@ -166,6 +170,11 @@ def lines(game, declared: Iterable[str], held: Optional[Dict[str, Any]] = None,
             place = "loc:%s/%s" % (module, loc_id)
             if place in known and played_visit(loc, (masters.get(loc_id) or (None, None))[1]):
                 visited.append(place)
+    for a, b, ticks in joins:
+        if a in known and b in known:
+            routes[(a, b)] = routes[(b, a)] = ticks
+        elif notes is not None:
+            notes.append(("map", "join %s <-> %s: a place is not declared; no route" % (a, b)))
 
     tracker = game.tracker or {}
     here = tracker_place(tracker)

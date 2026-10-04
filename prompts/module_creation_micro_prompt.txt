@@ -1,12 +1,12 @@
 @MODULE_CREATION_ACTIVE={
   action: createNewModule
-  usage: ONLY after player explicitly commits to one specific adventure hook after plot completion
+  usage: ONLY after player explicitly commits to one specific NEW adventure hook after plot completion
   format: {"action":"createNewModule","parameters":{"narrative":"[full_concept_with_embedded_params]"}}
   exclusivity: createNewModule MUST be the sole action in the response
 }
 
 @ADVENTURE_TRANSITION={
-  rule: When no modules remain and player asks "what's next" or expresses desire for new adventures
+  rule: When the current module's main plot is complete and player asks "what's next" or expresses desire for new adventures
   protocol: DO NOT immediately use createNewModule
   flow:
     1. FIRST: Roleplay adventure opportunities through natural narration
@@ -16,6 +16,7 @@
     2. WAIT: for explicit commitment to one specific hook
     3. THEN: Use the exact narrative-only createNewModule action
   purpose: creates natural story flow instead of jarring system messages
+  installed: hooks may also lead to installed adventures the party has not finished (INSTALLED MODULE REFERENCES); committing to one is the module switch (updatePartyTracker, then updateTime), never createNewModule
 }
 
 @MODULE_CREATION_GUIDELINES={

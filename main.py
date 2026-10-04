@@ -1967,6 +1967,10 @@ def _resume_cross_module_root(operation_id, *, publish=True, publication=None):
             "status": "blocked",
             "reason": "party state matches neither staged module projection",
         }
+    # C12: the engine's party crosses with the tracker, over the join of the
+    # two modules; a trip already on record is skipped by its request id.
+    from core.nql import travel
+    travel.realign(checkpoint)
 
     targeted, completion = retry_staged_module_completions(
         pending,
@@ -8077,6 +8081,16 @@ def check_all_modules_plot_completion():
     
     return all_modules_data
 
+
+def campaign_end_reached(current_module, completion):
+    """M3 (owner O3): whether the campaign-end prompt is due. It is when the
+    party's current module (the tracker's) is complete by
+    check_all_modules_plot_completion's rule, whatever other installed
+    modules hold."""
+    module = str(current_module or "").replace(" ", "_")
+    summary = ((completion or {}).get("completion_summary") or {}).get(module)
+    return bool(isinstance(summary, dict) and summary.get("is_complete"))
+
 class _TravelRecoveryControl(BaseException):
     """A real terminal lifecycle choice, returned after recovery quiesces."""
 
@@ -9465,19 +9479,20 @@ def _main_game_loop(startup_authority, turn_authority):
                     print(f"DEBUG: [Module Manager] {module_name}: {summary['completed_plots']}/{summary['total_plots']} plots - {status}")
                 debug("STATE_CHANGE: === END SUMMARY ===", category="module_management")
             
-                # Determine if we should inject module creation prompt
-                # Only suggest module creation if ALL modules are complete
-                should_inject_creation_prompt = all_modules_complete and len(modules_checked) > 0
+                # M3 (owner O3): the campaign-end prompt follows the party's
+                # current module; other modules, finished or not, are offered
+                # by the DM as story, not counted here.
+                should_inject_creation_prompt = campaign_end_reached(current_module, all_modules_completion)
             
                 debug(f"STATE_CHANGE: All modules complete: {all_modules_complete}", category="module_management")
                 debug(f"STATE_CHANGE: Should inject module creation prompt: {should_inject_creation_prompt}", category="module_management")
                 print(f"DEBUG: [Module Manager] All modules complete: {all_modules_complete}")
                 print(f"DEBUG: [Module Manager] Module transfer available: {should_inject_creation_prompt}")
             
-                # If ALL modules are complete, inject creation prompt
+                # The current module is complete: inject the campaign-end prompt
                 if should_inject_creation_prompt:
                     debug("STATE_CHANGE: *** MODULE CREATION PROMPT INJECTION TRIGGERED ***", category="module_management")
-                    debug("STATE_CHANGE: All available modules have completed plots - suggesting new module creation", category="module_management")
+                    debug(f"STATE_CHANGE: The current module {current_module} has completed its plot - suggesting what comes next", category="module_management")
                     # Load the module creation prompt
                     import os
                     if os.path.exists("prompts/generators/module_creation_prompt.txt"):
