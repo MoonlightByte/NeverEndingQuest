@@ -3117,7 +3117,7 @@ Create atmospheric travel narration that leads into this adventure."""
         )
 
     def _registry_with_live_publication_identities(
-        self, registry: Dict[str, Any]
+        self, registry: Dict[str, Any], exclude_module: Optional[str] = None
     ) -> Dict[str, Any]:
         """Return a detached conflict view augmented from live module trees.
 
@@ -3125,7 +3125,8 @@ Create atmospheric travel narration that leads into this adventure."""
         map.  Conflict resolution still needs the identifiers owned by those
         already-live modules.  Rebuild that conflict-only view from disk while
         the caller owns ``module_refresh_lock``; never rewrite the live registry
-        as part of discovery.
+        as part of discovery. ``exclude_module`` leaves out the live tree that
+        a managed import is about to replace (its own old identities).
         """
         from utils.module_refresh_lock import assert_module_refresh_lock_owned
 
@@ -3153,6 +3154,8 @@ Create atmospheric travel narration that leads into this adventure."""
         for entry in entries:
             module_name = entry.name
             if module_name.startswith(".") or module_name in support_roots:
+                continue
+            if module_name == exclude_module:
                 continue
             if entry.is_symlink():
                 raise ValueError("Live module root is a link")
@@ -3189,7 +3192,9 @@ Create atmospheric travel narration that leads into this adventure."""
 
         return conflict_registry
 
-    def build_publication_registry_bytes(self, candidate_path, module_name):
+    def build_publication_registry_bytes(
+        self, candidate_path, module_name, *, replacing_live=False
+    ):
         """Store-free registry preparation for the atomic-publish path (P2b).
 
         Runs on a freshly built module candidate (utils/module_publish's hidden
@@ -3204,6 +3209,11 @@ Create atmospheric travel narration that leads into this adventure."""
         is made live. Any raise here aborts the publish with ``modules/<name>``
         never touched -- the player's game is unaffected and the build simply did
         not happen. Never operates on live module state.
+
+        ``replacing_live=True`` is the managed import of an unplayed live
+        module: the candidate is a copy of ``modules/<name>`` that will replace
+        it, so the occupied final path, a bare registry stub of the name, and
+        the live tree's own identities are not conflicts.
         """
         from utils.module_publish import validate_module_name
         from utils.module_refresh_lock import assert_module_refresh_lock_owned
@@ -3235,7 +3245,7 @@ Create atmospheric travel narration that leads into this adventure."""
                     raise ValueError(
                         "Managed candidate contains a link or reparse point"
                     )
-        if os.path.lexists(modules_root / module_name):
+        if not replacing_live and os.path.lexists(modules_root / module_name):
             raise FileExistsError("Managed module final path became occupied")
 
         prior_registry_bytes = Path(self.world_registry_file).read_bytes()
@@ -3261,9 +3271,12 @@ Create atmospheric travel narration that leads into this adventure."""
         elif not isinstance(prior_registry["areas"], dict):
             raise ValueError("World registry shape is invalid")
         conflict_registry = self._registry_with_live_publication_identities(
-            prior_registry
+            prior_registry,
+            exclude_module=module_name if replacing_live else None,
         )
-        if self._registry_references_module(prior_registry, module_name):
+        if self._registry_references_module(prior_registry, module_name) and not (
+            replacing_live and self._is_registry_stub(prior_registry, module_name)
+        ):
             raise ValueError("Allocated module name is already registry-owned")
 
         candidate_text = os.fspath(candidate)
