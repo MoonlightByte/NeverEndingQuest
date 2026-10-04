@@ -1003,6 +1003,99 @@ def stage_turn_events(encounter, turn_id, events):
     return pending
 
 
+ROUND_EVENTS_KEEP_ROUNDS = 3
+ROUND_EVENTS_MAX_PER_ROUND = 64
+ROUND_EVENT_DESCRIPTION_CHARS = 300
+
+
+def compact_combat_event(event):
+    """The mechanical record of one committed event, for the round summary.
+
+    Actor, action, every target's hp before and after with its status, the
+    rolls and the resources spent. The narration and the provider payload are
+    left out; the full event stays on the pending delivery as before.
+    """
+    intent = event.get("intent") if isinstance(event.get("intent"), dict) else {}
+    outcome = event.get("outcome") if isinstance(event.get("outcome"), dict) else {}
+    targets = []
+    for target in outcome.get("targets") or []:
+        if isinstance(target, dict):
+            targets.append({
+                key: target.get(key)
+                for key in ("combatantId", "hpBefore", "hpAfter", "statusAfter")
+            })
+    resources = []
+    for record in event.get("resources") or []:
+        if isinstance(record, dict):
+            resources.append({
+                key: record.get(key)
+                for key in ("owner", "kind", "name", "delta", "before", "after")
+                if key in record
+            })
+    rolls = []
+    for roll in event.get("rolls") or []:
+        if isinstance(roll, dict):
+            rolls.append({
+                key: roll.get(key)
+                for key in ("purpose", "die", "total", "value", "success")
+                if key in roll
+            })
+    description = intent.get("description") or outcome.get("description") or ""
+    if not isinstance(description, str):
+        description = str(description)
+    return {
+        "eventId": event.get("eventId"),
+        "actorId": event.get("actorId"),
+        "action": intent.get("action") or outcome.get("kind"),
+        "description": description[:ROUND_EVENT_DESCRIPTION_CHARS],
+        "targets": targets,
+        "rolls": rolls,
+        "resources": resources,
+    }
+
+
+def record_round_events(state, round_number, events):
+    """Keep the committed events of a round on the combat state, bounded.
+
+    ``roundEvents`` maps the round number (as a string) to its compact
+    events. Only the current round and the two before it are kept, because
+    round compression summarizes round N once round N+2 has begun. Encounters
+    written before this field exist read as having no round events.
+    """
+    try:
+        current = int(round_number)
+    except (TypeError, ValueError):
+        return
+    store = state.get("roundEvents")
+    if not isinstance(store, dict):
+        store = {}
+    rows = list(store.get(str(current)) or [])
+    rows.extend(compact_combat_event(event) for event in events if isinstance(event, dict))
+    store[str(current)] = rows[-ROUND_EVENTS_MAX_PER_ROUND:]
+    kept = {}
+    for key, value in store.items():
+        try:
+            number = int(key)
+        except (TypeError, ValueError):
+            continue
+        # Only the window current-2 .. current: rows above the current round
+        # (a restored or re-staged turn, a reused encounter) never linger and
+        # never receive appended events once the round catches up.
+        if current - ROUND_EVENTS_KEEP_ROUNDS < number <= current:
+            kept[str(number)] = value
+    state["roundEvents"] = kept
+
+
+def round_events(encounter, round_number):
+    """The compact committed events of one round, or an empty list."""
+    state = (encounter or {}).get("combatState") or {}
+    store = state.get("roundEvents")
+    if not isinstance(store, dict):
+        return []
+    rows = store.get(str(round_number))
+    return list(rows) if isinstance(rows, list) else []
+
+
 def commit_turn(encounter, turn_id, applied_event_ids):
     """Advance once after callers atomically apply the staged event effects."""
     state = ensure_combat_state(encounter)
@@ -1018,6 +1111,11 @@ def commit_turn(encounter, turn_id, applied_event_ids):
     duplicate = set(staged_ids).intersection(state["appliedEventIds"])
     if duplicate:
         raise CombatStateConflict(f"Combat events were already applied: {sorted(duplicate)!r}")
+
+    committed_round = pending.get("round")
+    if committed_round is None:
+        committed_round = state["round"]
+    record_round_events(state, committed_round, pending.get("events") or [])
 
     actor_ids = pending["actorIds"]
     consumed_actor_ids = list(pending.get("skippedActorIds") or []) + actor_ids
