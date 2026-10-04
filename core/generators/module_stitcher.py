@@ -417,8 +417,11 @@ class ModuleStitcher:
         # Load or create world registry
         self.world_registry = self._load_world_registry()
         # Modules the last scan could not join because their ids collide
-        # with a registered module: [{"module", "collides_with"}].
+        # with a registered module: [{"module", "collides_with",
+        # "refused_because"}], and the unplayed ones it joined by
+        # renumbering a copy: [{"module", "collides_with", "renumbered"}].
         self.import_required = []
+        self.imported = []
         
         # Clean up old connections if they exist (migration to isolated modules)
         if 'connections' in self.world_registry:
@@ -5184,8 +5187,10 @@ Respond with JSON:
         """Perform the scan while the caller owns module refresh."""
         integrated_modules = []
         self.import_required = []
+        self.imported = []
         
         try:
+            self._recover_managed_imports_locked()
             # Detect new modules
             new_modules = self.detect_new_modules()
             if priority_module in new_modules:
@@ -5205,19 +5210,38 @@ Respond with JSON:
                     if result.status is PublicationStatus.PUBLISHED:
                         integrated_modules.append(module_name)
                     elif result.status is PublicationStatus.IMPORT_REQUIRED:
-                        warning(
-                            f"Module {module_name} is installed but not joined: "
-                            f"{result.reason}",
-                            category="module_integration",
+                        collides_with = list(result.conflicting_modules)
+                        outcome = self._import_colliding_module_locked(
+                            module_name
                         )
-                        self.import_required.append(
-                            {
-                                "module": module_name,
-                                "collides_with": list(
-                                    result.conflicting_modules
-                                ),
-                            }
-                        )
+                        if outcome["status"] == "imported":
+                            info(
+                                f"Module {module_name} joined after renumbering "
+                                f"{outcome['renumbered']} location ids "
+                                f"(they collided with {', '.join(collides_with)})",
+                                category="module_integration",
+                            )
+                            integrated_modules.append(module_name)
+                            self.imported.append(
+                                {
+                                    "module": module_name,
+                                    "collides_with": collides_with,
+                                    "renumbered": outcome["renumbered"],
+                                }
+                            )
+                        else:
+                            warning(
+                                f"Module {module_name} is installed but not joined "
+                                f"({outcome['refused_because']}): {result.reason}",
+                                category="module_integration",
+                            )
+                            self.import_required.append(
+                                {
+                                    "module": module_name,
+                                    "collides_with": collides_with,
+                                    "refused_because": outcome["refused_because"],
+                                }
+                            )
                     elif result.status is PublicationStatus.INDETERMINATE:
                         error(
                             f"Publication state indeterminate for {module_name}: "
