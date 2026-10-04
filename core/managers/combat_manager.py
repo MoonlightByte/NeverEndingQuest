@@ -164,6 +164,7 @@ from core.managers.combat_state import (
     is_down,
     recovery_action,
     resolve_creature_controller,
+    round_events,
     valid_pending_delivery,
 )
 from core.combat.down_scene import (
@@ -3032,11 +3033,102 @@ def filter_encounter_for_system_prompt(encounter_data):
     debug("STATE_CHANGE: Created minimal encounter data for system prompt", category="combat_events")
     return minimal_data
 
+def _round_facts_text(encounter, round_num):
+    """The committed facts of one round for the round summary, or None.
+
+    Built from combatState.roundEvents (the compact committed events) and the
+    encounter's creature states. Names and initiatives come from the roster
+    by combatantId. Returns None when the encounter holds no events for the
+    round, so a legacy fight or an older encounter gives the prompt as before.
+    """
+    events = round_events(encounter, round_num)
+    if not events:
+        return None
+    roster = {}
+    for creature in (encounter or {}).get("creatures", []) or []:
+        if isinstance(creature, dict) and creature.get("combatantId"):
+            roster[str(creature["combatantId"])] = creature
+
+    def _name(combatant_id):
+        creature = roster.get(str(combatant_id))
+        if creature is None:
+            return str(combatant_id)
+        name = creature.get("name")
+        return name if isinstance(name, str) and name.strip() else str(combatant_id)
+
+    lines = []
+    for event in events:
+        actor_id = event.get("actorId")
+        creature = roster.get(str(actor_id)) or {}
+        initiative = creature.get("initiative")
+        head = _name(actor_id)
+        if isinstance(initiative, (int, float)) and not isinstance(initiative, bool):
+            head = f"{head} (initiative {initiative})"
+        action = str(event.get("action") or "action")
+        description = str(event.get("description") or "").strip()
+        parts = [f"{head}: {action}" + (f", {description}" if description else "")]
+        for target in event.get("targets") or []:
+            if not isinstance(target, dict):
+                continue
+            parts.append(
+                "target %s HP %s -> %s (%s)" % (
+                    _name(target.get("combatantId")),
+                    target.get("hpBefore"), target.get("hpAfter"),
+                    target.get("statusAfter") or "unknown",
+                )
+            )
+        rolls = []
+        for roll in event.get("rolls") or []:
+            if not isinstance(roll, dict):
+                continue
+            piece = str(roll.get("purpose") or roll.get("die") or "roll")
+            if roll.get("total") is not None:
+                piece += f" total {roll.get('total')}"
+            elif roll.get("value") is not None:
+                piece += f" {roll.get('value')}"
+            if roll.get("success") is not None:
+                piece += " success" if roll.get("success") else " failure"
+            rolls.append(piece)
+        if rolls:
+            parts.append("rolls: " + "; ".join(rolls))
+        spent = []
+        for record in event.get("resources") or []:
+            if not isinstance(record, dict):
+                continue
+            piece = f"{record.get('owner')} {record.get('kind')} {record.get('name')} {record.get('delta')}"
+            if record.get("before") is not None and record.get("after") is not None:
+                piece += f" ({record.get('before')} -> {record.get('after')})"
+            spent.append(piece)
+        if spent:
+            parts.append("resources: " + "; ".join(spent))
+        lines.append("- " + "; ".join(parts))
+
+    states = []
+    for creature in roster.values():
+        conditions = [str(c) for c in (creature.get("conditions") or []) if c]
+        states.append(
+            "- %s: HP %s/%s, %s%s" % (
+                _name(creature.get("combatantId")),
+                creature.get("currentHitPoints"), creature.get("maxHitPoints"),
+                creature.get("status") or "unknown",
+                (", conditions " + ", ".join(conditions)) if conditions else "",
+            )
+        )
+    return (
+        f"Committed facts for round {round_num} (authoritative for actors, initiatives, rolls, "
+        "damage and HP; the log above is for the narrative highlights):\n"
+        + "\n".join(lines)
+        + "\n\nCreature states at round end:\n"
+        + "\n".join(states)
+    )
+
+
 def compress_old_combat_rounds(
     conversation_history,
     current_round,
     keep_recent_rounds=1,
     invocation_claim=None,
+    encounter=None,
 ):
     """
     Compress old combat rounds in conversation history to reduce token usage.
@@ -3153,6 +3245,7 @@ def compress_old_combat_rounds(
                     round_to_compress,
                     round_messages,
                     invocation_claim=invocation_claim,
+                    facts=_round_facts_text(encounter, round_to_compress),
                 )
                 
                 if summary:
@@ -3299,20 +3392,26 @@ def generate_combat_round_summary(
     round_num,
     round_messages,
     invocation_claim=None,
+    facts=None,
 ):
-    """Generate a structured summary of a combat round using AI"""
+    """Generate a structured summary of a combat round using AI.
+
+    ``facts`` is the round's committed-facts text (see _round_facts_text);
+    when None the prompt is exactly the narration-only prompt of before.
+    """
     try:
         # Extract content from messages
         round_content = "\n\n".join([
             f"[{msg.get('role', 'unknown')}]: {msg.get('content', '')}"
             for msg in round_messages
         ])
-        
+        facts_block = f"\n{facts}\n" if facts else ""
+
         prompt = f"""Convert this combat round into a structured JSON summary optimized for AI consumption.
 
 Round {round_num} Combat Log:
 {round_content}
-
+{facts_block}
 Create a JSON summary with EXACTLY this structure:
 {{
   "round": {round_num},
@@ -5089,6 +5188,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                        committed_round,
                        keep_recent_rounds=1,
                        invocation_claim=invocation_claim,
+                       encounter=encounter_data,
                    )
                    if compressed_history != conversation_history:
                        conversation_history = compressed_history
@@ -5728,9 +5828,10 @@ Rules:
                        debug(f"COMPRESSION: Checking for round compression (current round: {new_round})", category="combat_events")
                        debug(f"COMPRESSION: About to call compress_old_combat_rounds with round {new_round}", category="combat_events")
                        compressed_history = compress_old_combat_rounds(
-                           conversation_history, 
-                           new_round, 
-                           keep_recent_rounds=1  # Changed from 2 to 1 for more aggressive compression
+                           conversation_history,
+                           new_round,
+                           keep_recent_rounds=1,  # Changed from 2 to 1 for more aggressive compression
+                           encounter=encounter_data,
                        )
                        
                        # Save compressed history
