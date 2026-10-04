@@ -93,3 +93,24 @@ probe result stays false: its response was code-fenced JSON, accepted by the rea
 startup parser. That result is a strict formatting failure, not a connectivity
 failure or completed game acceptance. Original evidence, synthetic worlds,
 candidate worktrees and runner files are preserved.
+
+## Desktop integration verification
+
+The standalone public review branch is based on `331ec9929a8c157b39b4de19c57a45e4c38f8ffe`.
+All 23 focused regressions passed again on that branch using native Windows
+Python; `git diff --check` is clean.
+
+A targeted real OpenRouter `openai/gpt-4.1-mini` call used this production
+normalization and review path on integration candidate `a6fc67c0`:
+projection applied successfully with no gaps, generated AC effects and saving
+throw totals, and the actual reviewer accepted the proposal. The raw fixture
+remained unchanged. This is a targeted reviewer check, not fresh character
+creation or proof of rules accuracy; the fixture retains separately tracked
+feature/rules defects. No hero was published by this check.
+
+A separate Gemma game journey completed creation, entry, turns, save, exit,
+restart and restoration, but its armor projection had gaps, so that journey
+alone does not verify the successful-projection branch. Further fresh attempts
+with Gemma and GPT-4o-mini encountered schema and rules-adherence loops; those
+attempts are not passing acceptance results. The reporter-specific #557 cause
+remains unconfirmed. Track this narrower demonstrated defect in #568.
