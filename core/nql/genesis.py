@@ -125,7 +125,7 @@ def charges_fields(entry: Dict[str, Any]) -> Tuple[Optional[Tuple[int, int]], Op
     quantity = entry.get("quantity")
     if type(quantity) is bool or quantity not in (None, 0, 1):
         return None, "a charged item is one physical unit (quantity 0 or 1)"
-    if entry.get("item_type") == "armor":
+    if entry.get("item_type") == "armor" and item_catalog.row_entry(entry)[0] is None:
         return None, "armor keeps its armor definition; charges on an armor row are not declared in this slice"
     if not str(entry.get("item_name") or "").strip():
         return None, "a charged item needs a name"
@@ -188,6 +188,131 @@ def charge_state(entry: Dict[str, Any], current: int, maximum: int, recharging: 
     if charges.get("seed") is not None:
         gaps.append(f"{label} carries a charges.seed but its per-row type never rolls; seed not declared")
     return f"charges {current} of {maximum}{since};"
+
+
+# Item charges H2b: a catalog row on a charged pack type takes its rule from
+# the PACK (the row carries no rechargeRate); a per-row charged item takes it
+# from its typed rate. One answer to "does this item's type recharge, and does
+# it roll dice" serves genesis, the refresh, the expend guard and the summary.
+SEED_MAX = 2 ** 64 - 1
+MINT_REASON = "needs a minted seed"
+
+
+@dataclass
+class ChargeRule:
+    source: str                    # "pack" (catalog type) or "row" (per-row type)
+    maximum: int
+    recharges: bool
+    uses_dice: bool                # initial dice, recharge dice or an exhausted roll
+    period: Optional[int] = None
+    offset: Optional[int] = None
+    rate: Optional[str] = None     # dawn/dusk/weekly/monthly (or the row's typed rate)
+    initial_dice: bool = False
+
+
+def valid_seed(value: Any) -> Optional[Tuple[int, int]]:
+    """(s1, s2) when ``value`` is two whole numbers 0..2^64-1 (the engine's
+    seed words), else None: anything else is treated as no seed, because a
+    bad word refuses the whole world at compile time."""
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    if any(type(word) is not int or not 0 <= word <= SEED_MAX for word in value):
+        return None
+    return int(value[0]), int(value[1])
+
+
+def pack_charge_rule(catalog_entry: Any) -> Optional[ChargeRule]:
+    """The charge rule of a pack entry (item_catalog.json ``charges``), or None
+    for an uncharged type."""
+    rule = catalog_entry.get("charges") if isinstance(catalog_entry, dict) else None
+    if not isinstance(rule, dict) or type(rule.get("max")) is not int:
+        return None
+    recharge = rule.get("recharge") if isinstance(rule.get("recharge"), dict) else None
+    exhausted = rule.get("exhausted") if isinstance(rule.get("exhausted"), dict) else None
+    initial_dice = isinstance(rule.get("initial_dice"), dict)
+    uses_dice = (initial_dice or (recharge is not None and isinstance(recharge.get("dice"), dict))
+                 or (exhausted is not None and exhausted.get("roll") is not None))
+    period = offset = rate = None
+    if recharge is not None:
+        period, offset = recharge.get("every"), recharge.get("at")
+        rate = next((name for name, pair in RECHARGE_RULES.items() if name != "daily" and pair == (period, offset)), None)
+        rate = rate or f"every {period} game seconds"
+    return ChargeRule("pack", rule["max"], recharge is not None, bool(uses_dice), period, offset, rate, initial_dice)
+
+
+def charge_rule(entry: Dict[str, Any]) -> Optional[ChargeRule]:
+    """How this row's TYPE handles charges: the pack rule for a catalog row,
+    the typed rate for a per-row charged item, None for an uncharged row."""
+    catalog, _ = item_catalog.row_entry(entry)
+    if catalog is not None:
+        return pack_charge_rule(catalog)
+    charges = entry.get("charges")
+    if not isinstance(charges, dict):
+        return None
+    line, _ = recharge_rule(entry)
+    rate = entry.get("rechargeRate") if line else None
+    period, offset = RECHARGE_RULES.get(rate, (None, None)) if isinstance(rate, str) else (None, None)
+    maximum = charges.get("max")
+    return ChargeRule("row", maximum if type(maximum) is int else 0, line is not None, False, period, offset, rate)
+
+
+def catalog_charge_state(entry: Dict[str, Any], rule: ChargeRule, gaps: List[str],
+                         label: str) -> Tuple[Optional[str], Optional[str]]:
+    """The charges clause of a row on a charged catalog type, from the row's
+    own ``charges`` object (H2b-1): (clause, None) states it; ("", None)
+    declares the row from the type without a clause (the engine then uses the
+    definition's count: a count-only or uses-per-dawn type starts full,
+    unanchored); (None, reason) when the row stands on a DICE type and cannot
+    be declared from it yet (no valid seed, a bad object, a max that differs):
+    the caller declares it from its own fields (present, held, uncharged) and
+    item_charges mints its state in one engine call (M1, M2, S3)."""
+    charges = entry.get("charges")
+    if rule.uses_dice:
+        fallback: Tuple[Optional[str], Optional[str]] = (None, MINT_REASON)
+    else:
+        fallback = ("", None)
+    if not isinstance(charges, dict):
+        return fallback
+    pair, reason = charges_fields(entry)
+    if reason:
+        gaps.append(f"{label} {reason}; " + (MINT_REASON if rule.uses_dice else "declared from its type without a count"))
+        return fallback
+    current, maximum = pair
+    if maximum != rule.maximum:
+        gaps.append(f"{label} charges.max {maximum} differs from its catalog type's {rule.maximum}; "
+                    + (MINT_REASON if rule.uses_dice else "declared from its type without a count"))
+        return fallback
+    since = ""
+    as_of = charges.get("asOf")
+    if as_of is not None:
+        if not rule.recharges:
+            gaps.append(f"{label} carries charges.asOf but its catalog type has no recharge rule; anchor dropped")
+        elif type(as_of) is not int or as_of < 0:
+            gaps.append(f"{label} has a charges.asOf that is not a whole number of game seconds; anchor dropped")
+        else:
+            since = f" since {as_of}"
+    seed = ""
+    if rule.uses_dice:
+        words = valid_seed(charges.get("seed"))
+        if words is None:
+            if charges.get("seed") is not None:
+                gaps.append(f"{label} has a charges.seed that is not two whole numbers below 2^64; {MINT_REASON}")
+            return None, MINT_REASON
+        seed = f" seed {words[0]} {words[1]}"
+    elif charges.get("seed") is not None:
+        gaps.append(f"{label} carries a charges.seed but its catalog type never rolls; seed not declared")
+    return f"charges {current} of {maximum}{since}{seed};", None
+
+
+def mint_reason(entry: Dict[str, Any]) -> Optional[str]:
+    """Why this row's charge state must be minted by the engine before the
+    world can declare it from its catalog type, or None (declarable, or not a
+    catalog charged row). Value checks only; no gap is recorded."""
+    catalog, _ = item_catalog.row_entry(entry)
+    rule = pack_charge_rule(catalog) if catalog is not None else None
+    if rule is None:
+        return None
+    return catalog_charge_state(entry, rule, [], "")[1]
 
 
 def character_id(sheet: Dict[str, Any]) -> str:
@@ -502,6 +627,20 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
     definition = None
     mode = None
     catalog, catalog_gap = item_catalog.row_entry(entry)
+    clause = ""
+    own_fields = False
+    if catalog is not None:
+        # H2b: a row on a charged catalog type states its own count, anchor
+        # and seed from its charges object; a row on a DICE type that has no
+        # valid state yet cannot be declared from the type (that refuses the
+        # whole world), so it is declared from its own fields below, present
+        # and held, until item_charges mints its state (M1, M2).
+        rule = pack_charge_rule(catalog)
+        if rule is not None:
+            clause, mint = catalog_charge_state(entry, rule, gaps, f"{cid}: {entry.get('item_name')!r}")
+            if mint:
+                gaps.append(f"{cid}: {entry.get('item_name')!r} ({catalog['id']}) {mint}; declared from its own fields")
+                catalog, clause, own_fields = None, "", True
     if catalog is not None:
         # A catalog row (GP): the pack's type supplies name, description and
         # equipment, and an item `from` a type may not add a definition of
@@ -520,10 +659,14 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
             fields.append(f"mode {_q(mode)};")
         if quantity is not None and quantity != 1:
             fields.append(f"quantity {quantity};")
+        if clause:
+            fields.append(clause)
         return f"item {_q(iid)} from {_q(catalog['id'])} {{ {' '.join(fields)} }}", (mode if worn else None)
     if catalog_gap:
         gaps.append(f"{cid}: {entry.get('item_name')!r} {catalog_gap}; declared from its own fields")
-    if charged is not None and isinstance(entry.get("charges"), dict):
+    # A row awaiting its mint keeps its charges object for the mint, but it is
+    # not declared as a per-row charged type (its rule is the pack's).
+    if charged is not None and isinstance(entry.get("charges"), dict) and not own_fields:
         pair, reason = charges_fields(entry)
         type_id = charged_type_id(iid)
         if reason:

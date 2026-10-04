@@ -100,8 +100,23 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
             return {"success": False, "error": (f"{entry['name']} is sold in lots of {per_lot}: quantity counts single items "
                                                 f"and must be {per_lot}, {2 * per_lot}, ... (one lot = quantity {per_lot})")}
 
+    # H2b-4: a charged catalog type (an SRD magic item) is one physical unit;
+    # its purchase world carries the party clock (the engine anchors the new
+    # item's recharge at purchase) and, for a type that rolls dice, fresh
+    # ``dice seed`` words (the engine draws the item's seed from them). The
+    # item's charge state is stored from the engine's view.
+    from core.managers.item_charges import _entropy, party_clock, store_view
+    rule = genesis.pack_charge_rule(entry)
+    if rule is not None and quantity != 1:
+        return {"success": False, "error": f"{entry['name']} is one charged item; acquire it one at a time (quantity 1)"}
+
     party = party_tracker or safe_json_load("party_tracker.json") or {}
     location = str((party.get("worldConditions") or {}).get("currentLocationId") or "party")
+    clock, clock_error = party_clock(party) if rule is not None else (None, None)
+    if rule is not None and clock is None:
+        debug(f"ACQUIRE: {entry['name']} bought without the game clock ({clock_error}); its recharge anchors at first use",
+              category="storage_operations")
+    dice = _entropy() if rule is not None and rule.uses_dice else None
 
     with _get_character_update_lock(os.path.basename(path)[:-5]):
         with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=30.0) as lease:
@@ -126,7 +141,7 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
             working = copy.deepcopy(sheet)
             genesis.assign_ids(working)
             cid = genesis.character_id(working)
-            world = genesis.build_world([working], location)
+            world = genesis.build_world([working], location, clock_tick=clock, dice_seed=dice)
             for gap in world.gaps:
                 debug(f"ACQUIRE: genesis gap: {gap}", category="storage_operations")
 
@@ -140,12 +155,15 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
                 iid = acquisition.next_item_id(working, entry)
                 lines = acquisition.coin_lines(cid, delta) + [acquisition.item_line(cid, iid, entry, quantity)]
             request = request_id or f"acquire:{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
+            document = {"world": world.source, "world_name": "acquire-genesis.nql",
+                        "actions": "\n".join(lines), "actions_name": "acquire.nql",
+                        "actor": {"kind": "character", "id": cid}, "request": request,
+                        "status": [cid], "items_at": [{"kind": "character", "id": cid}],
+                        "item_definitions": [entry["id"]]}
+            if rule is not None and not ammunition:
+                document["item_charges"] = [iid]
             try:
-                response = apply.call({"world": world.source, "world_name": "acquire-genesis.nql",
-                                       "actions": "\n".join(lines), "actions_name": "acquire.nql",
-                                       "actor": {"kind": "character", "id": cid}, "request": request,
-                                       "status": [cid], "items_at": [{"kind": "character", "id": cid}],
-                                       "item_definitions": [entry["id"]]})
+                response = apply.call(document)
             except apply.EngineUnavailable as error:
                 return {"success": False, "error": f"rules engine unavailable: {error}"}
             if not response.get("ok"):
@@ -181,14 +199,27 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
                          "description": entry.get("description", "")})
                 landed = f"{created.get('quantity', quantity)} {entry['name']} in the ammunition stock"
             else:
-                working.setdefault("equipment", []).append(acquisition.row_from_views(created, definition, entry))
+                row = acquisition.row_from_views(created, definition, entry)
+                if rule is not None:
+                    view = next((v for v in response.get("item_charges") or []
+                                 if isinstance(v, dict) and v.get("item") == iid), None)
+                    if view is None or type(view.get("current")) is not int or type(view.get("max")) is not int:
+                        return {"success": False, "error": "engine returned no charges view for the new item; nothing was bought"}
+                    row["charges"] = {"max": view["max"]}
+                    store_view(row["charges"], view, row.get("quantity", 1))
+                working.setdefault("equipment", []).append(row)
                 landed = f"{quantity} {entry['name']}"
+                if rule is not None:
+                    landed += f" ({row['charges']['current']} of {row['charges']['max']} charges)"
             message = (f"{working.get('name')} acquired {landed} ({acquisition.describe_coins(delta)}; "
                        f"purse now {acquisition.purse_text(working['currency'])})")
             receipts = [r for r in working.get("acquisitions") or [] if isinstance(r, dict)]
-            receipts.append({"request": request, "catalogId": entry["id"], "nqlId": iid, "quantity": quantity,
-                             "paid": {k: -v for k, v in delta.items() if v < 0},
-                             "change": {k: v for k, v in delta.items() if v > 0}, "message": message})
+            receipt = {"request": request, "catalogId": entry["id"], "nqlId": iid, "quantity": quantity,
+                       "paid": {k: -v for k, v in delta.items() if v < 0},
+                       "change": {k: v for k, v in delta.items() if v > 0}, "message": message}
+            if dice is not None:
+                receipt["dice"] = list(dice)
+            receipts.append(receipt)
             working["acquisitions"] = receipts[-RECEIPTS_KEPT:]
             out = _projected(working)
 

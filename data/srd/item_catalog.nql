@@ -1,4 +1,4 @@
-// SRD 5.2.1 item definitions, built by build_item_catalog.py.
+// SRD 5.2.1 item definitions, built by build_item_catalog.py; charged magic items added by add_charged_entries.py (v3).
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
 item type "itemdef:srd/club" named "Club" {
  description "Simple Melee weapon. Damage: 1d4 Bludgeoning. Properties: Light. Mastery: Slow.";
@@ -1009,4 +1009,612 @@ item type "itemdef:srd/holy-symbol-reliquary" named "Holy Symbol (Reliquary)" {
  magical false; consumable false;
  equipment "gear:worn";
  price "gold" 5 per 1;
+}
+item type "itemdef:srd/armor-of-invulnerability" named "Armor of Invulnerability" {
+ description "You have Resistance to Bludgeoning, Piercing, and Slashing damage while you wear this armor. Metal Shell. You can take a Magic action to give yourself Immunity to Bludgeoning, Piercing, and Slashing damage for 10 minutes or until you are no longer wearing the armor. Once this property is used, it can't be used again until the next dawn.";
+ kind "armor";
+ magical true; consumable false;
+ equipment "gear:srd/armor-of-invulnerability";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/bag-of-tricks" named "Bag of Tricks" {
+ description "This bag made from gray, rust, or tan cloth appears empty. Reaching inside the bag, however, reveals the presence of a small, fuzzy object. You can take a Magic action to pull the fuzzy object from the bag and throw it up to 20 feet. When the object lands, it transforms into a creature you determine by rolling on the table that corresponds to the bag's color. See \"Monsters\" for the creature's stat block. The creature vanishes at the next dawn or when it is reduced to 0 Hit Points. The creature is Friendly to you and your allies, and it acts immediately after you on your Initiative count. You can take a Bonus Action to command how the creature moves and what action it takes on its next turn, such as attacking an enemy. In the absence of such orders, the creature acts in a fashion appropriate to its nature. Once three fuzzy objects have been pulled from the bag, the bag can't be used again until the next dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/bowl-of-commanding-water-elementals" named "Bowl of Commanding Water Elementals" {
+ description "While this bowl is filled with water and you are within 5 feet of it, you can take a Magic action to summon a Water Elemental. The elemental appears in an unoccupied space as close to the bowl as possible, understands your languages, obeys your commands, and takes its turn immediately after you on your Initiative count. The elemental disappears after 1 hour, when it dies, or when you dismiss it as a Bonus Action. The bowl can't be used this way again until the next dawn. The bowl is about 1 foot in diameter and half as deep. It holds about 3 gallons.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/brazier-of-commanding-fire-elementals" named "Brazier of Commanding Fire Elementals" {
+ description "While you are within 5 feet of this brazier, you can take a Magic action to summon a Fire Elemental. The elemental appears in an unoccupied space as close to the brazier as possible, understands your languages, obeys your commands, and takes its turn immediately after you on your Initiative count. The elemental disappears after 1 hour, when it dies, or when you dismiss it as a Bonus Action. The brazier can't be used this way again until the next dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/cape-of-the-mountebank" named "Cape of the Mountebank" {
+ description "This cape smells faintly of brimstone. While wearing it, you can use it to cast Dimension Door as a Magic action. This property can't be used again until the next dawn. When you teleport with that spell, you leave behind a cloud of smoke. The space you left is Lightly Obscured by that smoke until the end of your next turn.";
+ kind "miscellaneous"; subtype "cloak";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/censer-of-controlling-air-elementals" named "Censer of Controlling Air Elementals" {
+ description "While gently swinging this censer, you can take a Magic action to summon an Air Elemental. The elemental appears in an unoccupied space as close to the censer as possible, understands your languages, obeys your commands, and takes its turn immediately after you on your Initiative count. The elemental disappears after 1 hour, when it dies, or when you dismiss it as a Bonus Action. The censer can't be used this way again until the next dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/circlet-of-blasting" named "Circlet of Blasting" {
+ description "While wearing this circlet, you can cast Scorching Ray with it (+5 to hit). The circlet can't cast this spell again until the next dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/cloak-of-arachnida" named "Cloak of Arachnida" {
+ description "This fine garment is made of black silk interwoven with faint, silvery threads. While wearing it, you gain the following benefits. Poison Resistance. You have Resistance to Poison damage. Spider Climb. You have a Climb Speed equal to your Speed and can move up, down, and across vertical surfaces and along ceilings, while leaving your hands free. Spider Walk. You can't be caught in webs of any sort and can move through webs as if they were Difficult Terrain. Web. You can cast Web (save DC 13). The web created by the spell fills twice its normal area. Once used, this property can't be used again until the next dawn.";
+ kind "miscellaneous"; subtype "cloak";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/cloak-of-invisibility" named "Cloak of Invisibility" {
+ description "This cloak has 3 charges and regains 1d3 expended charges daily at dawn. While wearing the cloak, you can take a Magic action to pull its hood over your head and expend 1 charge to give yourself the Invisible condition for 1 hour. The effect ends early if you pull the hood down (no action required) or cease wearing the cloak.";
+ kind "miscellaneous"; subtype "cloak";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/cloak-of-the-bat" named "Cloak of the Bat" {
+ description "While wearing this cloak, you have Advantage on Dexterity (Stealth) checks. In an area of Dim Light or Darkness, you can grip the edges of the cloak and use it to gain a Fly Speed of 40 feet. If you ever fail to grip the cloak's edges while flying in this way, or if you are no longer in Dim Light or Darkness, you lose this Fly Speed. While wearing the cloak in an area of Dim Light or Darkness, you can cast Polymorph on yourself, shape-shifting into a Bat. While in that form, you retain your Intelligence, Wisdom, and Charisma scores. The cloak can't be used this way again until the next dawn.";
+ kind "miscellaneous"; subtype "cloak";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/crystal-ball-of-telepathy" named "Crystal Ball of Telepathy" {
+ description "While touching this crystal orb, you can cast Scrying (save DC 17) with it. In addition, you can communicate telepathically with creatures you can see within 30 feet of the spell's sensor. You can also cast Suggestion (save DC 17) through the sensor on one of those creatures. You don't need to concentrate on this Suggestion to maintain it during its duration, but it ends if Scrying ends. You can't cast Suggestion in this way again until the next dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/cube-of-force" named "Cube of Force" {
+ description "This cube is about an inch across. Each face has a distinct marking on it. You can press one of those faces, expend the number of charges required for it, and thereby cast the spell associated with it (save DC 17), as shown in the Cube of Force Faces table. The cube starts with 10 charges, and it regains 1d6 expended charges daily at dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 10;
+ recharge every 86400 at 21600 dice 1 sides 6;
+}
+item type "itemdef:srd/cubic-gate" named "Cubic Gate" {
+ description "This cube is 3 inches across and radiates palpable magical energy. The six sides of the cube are each keyed to a different plane of existence, one of which is the Material Plane. The other sides are linked to planes determined by the GM. The cube has 3 charges and regains 1d3 expended charges daily at dawn. As a Magic action, you can expend 1 of the cube's charges to cast one of the following spells using the cube. Gate. Pressing one side of the cube, you cast Gate, opening a portal to the plane of existence keyed to that side. Plane Shift. Pressing one side of the cube twice, you cast Plane Shift, transporting the targets to the plane of existence keyed to that side.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/dagger-of-venom" named "Dagger of Venom" {
+ description "You gain a +1 bonus to attack rolls and damage rolls made with this magic weapon. You can take a Bonus Action to magically coat the blade with poison. The poison remains for 1 minute or until an attack using this weapon hits a creature. That creature must succeed on a DC 15 Constitution saving throw or take 2d10 Poison damage and have the Poisoned condition for 1 minute. The weapon can't be used this way again until the next dawn.";
+ kind "weapon";
+ magical true; consumable false;
+ equipment "gear:held";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/dragon-orb" named "Dragon Orb" {
+ description "An orb is an etched crystal globe about 10 inches in diameter. When used, it grows to about 20 inches in diameter, and mist swirls inside it. While attuned to an orb, you can take a Magic action to peer into the orb's depths. You must then make a DC 15 Charisma saving throw. On a successful save, you control the orb for as long as you remain attuned to it. On a failed save, the orb imposes the Charmed condition on you for as long as you remain attuned to it. While you are Charmed by the orb, you can't voluntarily end your Attunement to it, and the orb casts Suggestion on you at will (save DC 18), urging you to work toward the evil ends it desires. The dragon essence within the orb might want many things: the annihilation of a particular society or organization, freedom from the orb, to spread suffering in the world, to advance the worship of Tiamat, or something else the GM decides. Spells. The orb has 7 charges and regains 1d4 + 3 expended charges daily at dawn. If you control the orb, you can cast one of the spells on the following table from it. The table indicates how many charges you must expend to cast the spell. Call Dragons. While you control the orb, you can take a Magic action to cause the orb to issue a telepathic call that extends in all directions for 40 miles. Chromatic dragons in range feel compelled to come to the orb as soon as possible by the most direct route. Dragon deities such as Tiamat are unaffected by this call. Chromatic dragons drawn to the orb might be Hostile toward you for compelling them against their will. Once you have used this property, it can't be used again for 1 hour. Destroying an Orb. A Dragon Orb has AC 20 and is destroyed if it takes damage from a +3 Weapon or a Disintegrate spell. Nothing else can harm it.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 4 plus 3;
+}
+item type "itemdef:srd/dragon-scale-mail" named "Dragon Scale Mail" {
+ description "of dragon. Sometimes dragons collect their cast-off scales and gift them. Other times, hunters carefully preserve the hide of a dead dragon. In either case, Dragon Scale Mail is highly valued. While wearing this armor, you gain a +1 bonus to Armor Class, you have Advantage on saving throws against the breath weapons of Dragons, and you have Resistance to one damage type determined by the kind of dragon that provided the scales (see the accompanying table). Additionally, you can focus your senses as a Magic action to discern the distance and direction to the closest dragon within 30 miles of yourself that is of the same type as the armor. This action can't be used again until the next dawn.";
+ kind "armor";
+ magical true; consumable false;
+ equipment "gear:srd/dragon-scale-mail";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/eyes-of-charming" named "Eyes of Charming" {
+ description "These crystal lenses fit over the eyes. They have 3 charges. While wearing them, you can expend 1 or more charges to cast Charm Person (save DC 13). For 1 charge, you cast the level 1 version of the spell. You increase the spell's level by one for each additional charge you expend. The lenses regain all expended charges daily at dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/gem-of-brightness" named "Gem of Brightness" {
+ description "This prism has 50 charges. While you are holding it, you can take a Magic action and use one of three command words to cause one of the following effects: First Command Word. The gem sheds Bright Light in a 30-foot radius and Dim Light for an additional 30 feet. This effect doesn't expend a charge. It lasts until you take a Bonus Action to repeat the command word or until you use another function of the gem. Second Command Word. You expend 1 charge and cause the gem to fire a brilliant beam of light at one creature you can see within 60 feet of yourself. The creature must succeed on a DC 15 Constitution saving throw or have the Blinded condition for 1 minute. The creature repeats the save at the end of each of its turns, ending the effect on itself on a success. Third Command Word. You expend 5 charges and cause the gem to flare with intense light in a 30- foot Cone. Each creature in the Cone makes a saving throw as if struck by the beam created with the second command word. When all of the gem's charges are expended, the gem becomes a nonmagical jewel worth 50 GP.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 50;
+}
+item type "itemdef:srd/gem-of-seeing" named "Gem of Seeing" {
+ description "This gem has 3 charges. As a Magic action, you can expend 1 charge. For the next 10 minutes, you have Truesight out to 120 feet when you peer through the gem. The gem regains 1d3 expended charges daily at dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/hammer-of-thunderbolts" named "Hammer of Thunderbolts" {
+ description "You gain a +1 bonus to attack rolls and damage rolls made with this magic weapon. The weapon has 5 charges. You can expend 1 charge and make a ranged attack with the weapon, hurling it as if it had the Thrown property with a normal range of 20 feet and a long range of 60 feet. If the attack hits, the weapon unleashes a thunderclap audible out to 300 feet. The target and every creature within 30 feet of it other than you must succeed on a DC 17 Constitution saving throw or have the Stunned condition until the end of your next turn. Immediately after hitting or missing, the weapon flies back to your hand. The weapon regains 1d4 + 1 expended charges daily at dawn. Giant's Bane. While you are attuned to the weapon and wearing either a Belt of Giant Strength or Gauntlets of Ogre Power to which you are also attuned, you gain the following benefits: Giants' Bane. When you roll a 20 on the d20 for an attack roll made with this weapon against a Giant, the creature must succeed on a DC 17 Constitution saving throw or die. Might of Giants. The Strength score bestowed by your Belt of Giant Strength or Gauntlets of Ogre Power increases by 4, to a maximum of 30.";
+ kind "weapon";
+ magical true; consumable false;
+ equipment "gear:held";
+ charges 5;
+ recharge every 86400 at 21600 dice 1 sides 4 plus 1;
+}
+item type "itemdef:srd/helm-of-teleportation" named "Helm of Teleportation" {
+ description "This helm has 3 charges. While wearing it, you can expend 1 charge to cast Teleport from it. The helm regains 1d3 expended charges daily at dawn.";
+ kind "miscellaneous"; subtype "helmet";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/iron-bands" named "Iron Bands" {
+ description "This rusty iron sphere measures 3 inches in diameter and weighs 1 pound. You can take a Magic action to throw the sphere at a Huge or smaller creature you can see within 60 feet of yourself. As the sphere moves through the air, it opens into a tangle of metal bands. Make a ranged attack roll with an attack bonus equal to your Dexterity modifier plus your Proficiency Bonus. On a hit, the target has the Restrained condition until you take a Bonus Action to issue a command that releases it. Doing so or missing with the attack causes the bands to contract and become a sphere once more. A creature that can touch the bands, including the one Restrained, can take an action to make a DC 20 Strength (Athletics) check to break the iron bands. On a successful check, the item is destroyed, and the Restrained creature is freed. On a failed check, any further attempts made by that creature automatically fail until 24 hours have elapsed. Once the bands are used, they can't be used again until the next dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/javelin-of-lightning" named "Javelin of Lightning" {
+ description "Each time you make an attack roll with this magic weapon and hit, you can have it deal Lightning damage instead of Piercing damage. Lightning Bolt. When you throw this weapon at a target no farther than 120 feet from you, you can forgo making a ranged attack roll and instead turn the weapon into a bolt of lightning. This bolt forms a 5-foot-wide Line between you and the target. The target and each other creature in the Line (excluding you) makes a DC 13 Dexterity saving throw, taking 4d6 Lightning damage on a failed save or half as much damage on a successful one. Immediately after dealing this damage, the weapon reappears in your hand. This property can't be used again until the next dawn.";
+ kind "weapon";
+ magical true; consumable false;
+ equipment "gear:held";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/luck-blade" named "Luck Blade" {
+ description "You gain a +1 bonus to attack rolls and damage rolls made with this magic weapon. While the weapon is on your person, you also gain a +1 bonus to saving throws. Luck. If the weapon is on your person, you can call on its luck (no action required) to reroll one failed D20 Test if you don't have the Incapacitated condition. You must use the second roll. Once used, this property can't be used again until the next dawn. Wish. The weapon has 1d3 charges. While holding it, you can expend 1 charge and cast Wish from it. Once used, this property can't be used again until the next dawn. The weapon loses this property if it has no charges.";
+ kind "weapon";
+ magical true; consumable false;
+ equipment "gear:held";
+ charges 3;
+ initial dice 1 sides 3;
+}
+item type "itemdef:srd/mace-of-terror" named "Mace of Terror" {
+ description "This magic weapon has 3 charges and regains 1d3 expended charges daily at dawn. While holding the weapon, you can take a Magic action and expend 1 charge to release a wave of terror from it. Each creature of your choice within 30 feet of you must succeed on a DC 15 Wisdom saving throw or have the Frightened condition for 1 minute. While Frightened in this way, a creature must spend its turns trying to move as far away from you as it can, and it can't make Opportunity Attacks. For its action, it can use only the Dash action or try to escape from an effect that prevents it from moving. If it has nowhere it can move, the creature can take the Dodge action. At the end of each of its turns, a creature repeats the save, ending the effect on itself on a success.";
+ kind "weapon";
+ magical true; consumable false;
+ equipment "gear:held";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/medallion-of-thoughts" named "Medallion of Thoughts" {
+ description "The medallion has 5 charges. While wearing it, you can expend 1 charge to cast Detect Thoughts (save DC 13) from it. The medallion regains 1d4 expended charges daily at dawn.";
+ kind "miscellaneous"; subtype "amulet";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 5;
+ recharge every 86400 at 21600 dice 1 sides 4;
+}
+item type "itemdef:srd/nine-lives-stealer" named "Nine Lives Stealer" {
+ description "You gain a +2 bonus to attack rolls and damage rolls made with this magic weapon. Life Stealing. The weapon has 1d8 + 1 charges. When you attack a creature that has fewer than 100 Hit Points with this weapon and roll a 20 on the d20 for the attack roll, the creature must succeed on a DC 15 Constitution saving throw or be slain instantly as the sword tears its life force from its body. Constructs and Undead succeed on the save automatically. The weapon loses 1 charge if the creature is slain. When the weapon has no charges remaining, it loses this property.";
+ kind "weapon";
+ magical true; consumable false;
+ equipment "gear:held";
+ charges 9;
+ initial dice 1 sides 8 plus 1;
+}
+item type "itemdef:srd/pearl-of-power" named "Pearl of Power" {
+ description "While this pearl is on your person, you can take a Magic action to regain one expended spell slot of level 3 or lower. Once you use the pearl, it can't be used again until the next dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/periapt-of-health" named "Periapt of Health" {
+ description "While wearing this pendant, you can take a Magic action to regain 2d4 + 2 Hit Points. Once used, this property can't be used again until the next dawn. In addition, you have Advantage on saving throws to avoid or end the Poisoned condition while you wear this pendant.";
+ kind "miscellaneous"; subtype "amulet";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/pipes-of-haunting" named "Pipes of Haunting" {
+ description "These pipes have 3 charges and regain 1d3 expended charges daily at dawn. You can take a Magic action to play them and expend 1 charge to create an eerie, spellbinding tune. Each creature of your choice within 30 feet of you must succeed on a DC 15 Wisdom saving throw or have the Frightened condition for 1 minute. A creature that fails the save repeats it at the end of each of its turns, ending the effect on itself on a success. A creature that succeeds on its save is immune to the effect of these pipes for 24 hours.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/pipes-of-the-sewers" named "Pipes of the Sewers" {
+ description "While these pipes are on your person, ordinary rats and giant rats are Indifferent toward you and won't attack you unless you threaten or harm them. The pipes have 3 charges and regain 1d3 expended charges daily at dawn. If you play the pipes as a Magic action, you can take a Bonus Action to expend 1 to 3 charges, calling forth one Swarm of Rats with each expended charge if enough rats are within half a mile of you to be called in this fashion (as determined by the GM). If there aren't enough rats to form a swarm, the charge is wasted. Called swarms move toward the music by the shortest available route but aren't under your control otherwise. Whenever a Swarm of Rats that isn't under another creature's control comes within 30 feet of you while you are playing the pipes, the swarm makes a DC 15 Wisdom saving throw. On a successful save, the swarm behaves as it normally would and can't be swayed by the pipes' music for the next 24 hours. On a failed save, the swarm is swayed by the pipes' music and becomes Friendly to you and your allies for as long as you continue to play the pipes each round as a Magic action. A Friendly swarm obeys your commands. If you issue no commands to a Friendly swarm, it defends itself but otherwise takes no actions. If a Friendly swarm starts its turn more than 30 feet away from you, your control over that swarm ends, and the swarm behaves as it normally would and can't be swayed by the pipes' music for the next 24 hours.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/plate-armor-of-etherealness" named "Plate Armor of Etherealness" {
+ description "While you're wearing this armor, you can take a Magic action and use a command word to gain the effect of the Etherealness spell. The spell ends immediately if you remove the armor or take a Magic action to repeat the command word. This property of the armor can't be used again until the next dawn.";
+ kind "armor";
+ magical true; consumable false;
+ equipment "gear:srd/plate-armor-of-etherealness";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/ring-of-animal-influence" named "Ring of Animal Influence" {
+ description "This ring has 3 charges, and it regains 1d3 expended charges daily at dawn. While wearing the ring, you can expend 1 charge to cast one of the following spells (save DC 13) from it: * Animal Friendship * Fear (affects Beasts only) * Speak with Animals";
+ kind "miscellaneous"; subtype "ring";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/ring-of-elemental-command" named "Ring of Elemental Command" {
+ description "Each Ring of Elemental Command is linked to one of the four Elemental Planes. The GM chooses or randomly determines the linked plane. For example, a Ring of Elemental Command (air) is linked to the Elemental Plane of Air. Every Ring of Elemental Command has the following two properties: Elemental Bane. While wearing the ring, you have Advantage on attack rolls against Elementals and they have Disadvantage on attack rolls against you. Elemental Compulsion. While wearing the ring, you can take a Magic action to try to compel an Elemental you see within 60 feet of yourself. The Elemental makes a DC 18 Wisdom saving throw. On a failed save, the Elemental has the Charmed condition until the start your next turn, and you determine what it does with its move and action on its next turn. Elemental Focus. While wearing the ring, you benefit from additional properties corresponding to the ring's linked Elemental Plane: Air. You know Auran, you have Resistance to Lightning damage, and you have a Fly Speed equal to your Speed and can hover. Earth. You know Terran, and you have Resistance to Acid damage. Terrain composed of rubble, rocks, or dirt isn't Difficult Terrain for you. In addition, you can move through solid earth or rock as if those areas were Difficult Terrain without disturbing the matter through which you pass. If you end your turn in solid earth or rock, you are shunted out to the nearest unoccupied space you last occupied. Fire. You know Ignan, and you have Immunity to Fire damage. Water. You know Aquan, you gain a Swim Speed of 60 feet, and you can breathe underwater. Spellcasting. The ring has 5 charges and regains 1d4 + 1 expended charges daily at dawn. While wearing the ring, you can cast a spell from it. Choose the spell from the list of available spells based on the Elemental Plane the ring is linked to, as shown in the following table. The table indicates how many charges you must expend to cast the spell, which has a save DC of 18.";
+ kind "miscellaneous"; subtype "ring";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 5;
+ recharge every 86400 at 21600 dice 1 sides 4 plus 1;
+}
+item type "itemdef:srd/ring-of-evasion" named "Ring of Evasion" {
+ description "This ring has 3 charges, and it regains 1d3 expended charges daily at dawn. When you fail a Dexterity saving throw while wearing the ring, you can take a Reaction to expend 1 charge to succeed on that save instead.";
+ kind "miscellaneous"; subtype "ring";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/ring-of-shooting-stars" named "Ring of Shooting Stars" {
+ description "You can cast Dancing Lights or Light from the ring. The ring has 6 charges and regains 1d6 expended charges daily at dawn. You can expend its charges to use the properties below. Faerie Fire. You can expend 1 charge to cast Faerie Fire from the ring. Lightning Spheres. You can expend 2 charges as a Magic action to create up to four 3-foot-diameter spheres of lightning. Each sphereappears in an unoccupied space you can see within 120 feet of yourself. The spheres last as long as you maintain Concentration, up to 1 minute. Each sphere sheds Dim Light in a 30-foot radius. As a Bonus Action, you can move each sphere up to 30 feet, but no farther than 120 feet away from yourself. The first time the sphere comes within 5 feet of a creature other than you that isn't behind Total Cover, the sphere discharges lightning at that creature and disappears. That creature makes a DC 15 Dexterity saving throw. On a failed save, the creature takes Lightning damage based on the number of spheres you created, as shown in the following table. On a successful save, the creature takes half as much damage. Shooting Stars. You can expend 1 to 3 charges as a Magic action. For every charge you expend, you launch a glowing mote of light from the ring at a point you can see within 60 feet of yourself. Each creature in a 15-foot Cube originating from that point is showered in sparks and makes a DC 15 Dexterity saving throw, taking 5d4 Radiant damage on a failed save or half as much damage on a successful one.";
+ kind "miscellaneous"; subtype "ring";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 6;
+ recharge every 86400 at 21600 dice 1 sides 6;
+}
+item type "itemdef:srd/ring-of-three-wishes" named "Ring of Three Wishes" {
+ description "While wearing this ring, you can expend 1 of its 3 charges to cast Wish from it. The ring becomes nonmagical when you use the last charge.";
+ kind "miscellaneous"; subtype "ring";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+}
+item type "itemdef:srd/ring-of-the-ram" named "Ring of the Ram" {
+ description "This ring has 3 charges and regains 1d3 expended charges daily at dawn. While wearing the ring, you can take a Magic action to expend 1 to 3 charges to make a ranged spell attack against one creature you can see within 60 feet of yourself. The ring produces a spectral ram's head and makes its attack roll with a +7 bonus. On a hit, for each charge you spend, the target takes 2d10 Force damage and is pushed 5 feet away from you. Alternatively, you can expend 1 to 3 of the ring's charges as a Magic action to try to break a nonmagical object you can see within 60 feet of yourself that isn't being worn or carried. The ring makes a Strength check with a +5 bonus for each charge you spend.";
+ kind "miscellaneous"; subtype "ring";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/robe-of-scintillating-colors" named "Robe of Scintillating Colors" {
+ description "This robe has 3 charges, and it regains 1d3 expended charges daily at dawn. While you wear it, you can take a Magic action and expend 1 charge to cause the garment to display a shifting pattern of dazzling hues until the end of your next turn. During this time, the robe sheds Bright Light in a 30-foot radius and Dim Light for an additional 30 feet, and creatures that can see you have Disadvantage on attack rolls against you. Any creature in the Bright Light that can see you when the robe's power is activated must succeed on a DC 15 Wisdom saving throw or have the Stunned condition until the effect ends.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/rod-of-alertness" named "Rod of Alertness" {
+ description "This rod has the following properties. Alertness. While holding the rod, you have Advantage on Wisdom (Perception) checks and on Initiative rolls. Spells. While holding the rod, you can cast the following spells from it: * Detect Evil and Good * Detect Magic * Detect Poison and Disease * See Invisibility Protective Aura. As a Magic action, you can plant the haft end of the rod in the ground, whereupon the rod's head sheds Bright Light in a 60-foot radius and Dim Light for an additional 60 feet. While in that Bright Light, you and your allies gain a +1 bonus to Armor Class and saving throws and can sense the location of any Invisible creature that is also in the Bright Light. The rod's head stops glowing and the effect ends after 10 minutes or when a creature takes a Magic action to pull the rod from the ground. Once used, this property can't be used again until the next dawn.";
+ kind "miscellaneous"; subtype "rod";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/rod-of-resurrection" named "Rod of Resurrection" {
+ description "The rod has 5 charges. While you hold it, you can cast one of the following spells from it: Heal (expends 1 charge) or Resurrection (expends 5 charges). The rod regains 1 expended charge daily at dawn. If you expend the last charge, roll 1d20. On a 1, the rod disappears in a harmless burst of radiance.";
+ kind "miscellaneous"; subtype "rod";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 5;
+ recharge every 86400 at 21600 by 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/rod-of-rulership" named "Rod of Rulership" {
+ description "You can take a Magic action to present the rod and command obedience from each creature of your choice that you can see within 120 feet of yourself. Each target must succeed on a DC 15 Wisdom saving throw or have the Charmed condition for 8 hours. While Charmed in this way, the creature regards you as its trusted leader. If harmed by you or your allies or commanded to do something contrary to its nature, a target ceases to be Charmed in this way. Once used, this property can't be used again until the next dawn.";
+ kind "miscellaneous"; subtype "rod";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/scarab-of-protection" named "Scarab of Protection" {
+ description "This beetle-shaped medallion provides three benefits while it is on your person. Defense. You gain a +1 bonus to Armor Class. Preservation. The scarab has 12 charges. If you fail a saving throw against a Necromancy spell or a harmful effect originating from an Undead, you can take a Reaction to expend 1 charge and turn the failed save into a successful one. The scarab crumbles into powder and is destroyed when its last charge is expended. Spell Resistance. You have Advantage on saving throws against spells.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 12;
+ exhausted destroy;
+}
+item type "itemdef:srd/sending-stones" named "Sending Stones" {
+ description "carved to match the other so the pairing is easily recognized. While you touch one stone, you can cast Sending from it. The target is the bearer of the other stone. If no creature bears the other stone, you know that fact as soon as you use the stone, and you don't cast the spell. Once Sending is cast using either stone, the stones can't be used again until the next dawn. If one of the stones in a pair is destroyed, the other one becomes nonmagical.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/shield-of-the-cavalier" named "Shield of the Cavalier" {
+ description "While holding this Shield, you have a +2 bonus to Armor Class. This bonus is in addition to the Shield's normal bonus to AC. The Shield has the following additional properties that you can use while holding it. Forceful Bash. When you take the Attack action, you can make one of the attack rolls using the Shield against a target within 5 feet of yourself. Apply your Proficiency Bonus and Strength modifier to the attack roll. On a hit, the Shield deals Force damage to the target equal to 2d6 + 2 plus your Strength modifier, and if the target is a creature, you can push it up to 10 feet directly away from yourself. If the creature is your size or smaller, you can also knock it down, giving it the Prone condition. Protective Field. As a Reaction, when you or an ally you can see within 5 feet of you is targeted by an attack or makes a saving throw against an area of effect, you can use the Shield to create an immobile 5-foot Emanation originating from you. When the Emanation appears, any creatures or objects not fully contained within it are pushed into the nearest unoccupied spaces outside it. The attack or area of effect that triggered the Reaction has no effect on creatures and objects inside the Emanation, which lasts as long as you maintain Concentration, up to 1 minute. Nothing can pass into or out of the Emanation. A creature or object inside the Emanation can't be damaged by attacks or effects originating from outside, nor can a creature inside the Emanation damage anything outside it. Once this property is used, it can't be used again until the next dawn.";
+ kind "armor";
+ magical true; consumable false;
+ equipment "gear:srd/shield-of-the-cavalier";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/staff-of-charming" named "Staff of Charming" {
+ description "This staff has 10 charges. While holding the staff, you can use any of its properties: Cast Spell. You can expend 1 of the staff's charges to cast Charm Person, Command, or Comprehend Languages from it using your spell save DC. Reflect Enchantment. If you succeed on a saving throw against an Enchantment spell that targets only you, you can take a Reaction to expend 1 charge from the staff and turn the spell back on its caster as if you had cast the spell. Resist Enchantment. If you fail a saving throw against an Enchantment spell that targets only you, you can turn your failed save into a successful one. You can't use this property of the staff again until the next dawn. Regaining Charges. The staff regains 1d8 + 2 expended charges daily at dawn. If you expend the last charge, roll 1d20. On a 1, the staff crumbles to dust and is destroyed.";
+ kind "miscellaneous"; subtype "staff";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 10;
+ recharge every 86400 at 21600 dice 1 sides 8 plus 2;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/staff-of-fire" named "Staff of Fire" {
+ description "You have Resistance to Fire damage while you hold this staff. Spells. The staff has 10 charges. While holding the staff, you can cast one of the spells on the following table from it, using your spell save DC. The table indicates how many charges you must expend to cast the spell. Regaining Charges. The staff regains 1d6 + 4 expended charges daily at dawn. If you expend the last charge, roll 1d20. On a 1, the staff crumbles into cinders and is destroyed.";
+ kind "miscellaneous"; subtype "staff";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 10;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 4;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/staff-of-frost" named "Staff of Frost" {
+ description "You have Resistance to Cold damage while you hold this staff. Spells. The staff has 10 charges. While holding the staff, you can cast one of the spells on the following table from it, using your spell save DC. The table indicates how many charges you must expend to cast the spell. Regaining Charges. The staff regains 1d6 + 4 expended charges daily at dawn. If you expend the last charge, roll 1d20. On a 1, the staff turns to water and is destroyed.";
+ kind "miscellaneous"; subtype "staff";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 10;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 4;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/staff-of-healing" named "Staff of Healing" {
+ description "This staff has 10 charges. While holding the staff, you can cast one of the spells on the following table from it, using your spellcasting ability modifier. The table indicates how many charges you must expend to cast the spell. Regaining Charges. The staff regains 1d6 + 4 expended charges daily at dawn. If you expend the last charge, roll 1d20. On a 1, the staff vanishes in a flash of light, lost forever.";
+ kind "miscellaneous"; subtype "staff";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 10;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 4;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/staff-of-power" named "Staff of Power" {
+ description "This staff has 20 charges and can be wielded as a magic Quarterstaff that grants a +2 bonus to attack rolls and damage rolls made with it. While holding it, you gain a +2 bonus to Armor Class, saving throws, and spell attack rolls. Spells. While holding the staff, you can cast one of the spells on the following table from it, using your spell save DC. The table indicates how many charges you must expend to cast the spell. Regaining Charges. The staff regains 2d8 + 4 expended charges daily at dawn. If you expend the last charge, roll 1d20. On a 1, the staff retains its +2 bonus to attack rolls and damage rolls but loses all other properties. On a 20, the staff regains 1d8 + 2 charges. Retributive Strike. You can take a Magic action to break the staff over your knee or against a solid surface. The staff is destroyed and releases its magic in an explosion that fills a 30-foot Emanation originating from itself. You have a 50 percent chance to instantly travel to a random plane of existence, avoiding the explosion. If you fail to avoid the effect, you take Force damage equal to 16 times the number of charges in the staff. Each other creature in the area makes a DC 17 Dexterity saving throw. On a failed save, a creature takes Force damage equal to 4 times the number of charges in the staff. On a successful save, a creature takes half as much damage.";
+ kind "miscellaneous"; subtype "staff";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 20;
+ recharge every 86400 at 21600 dice 2 sides 8 plus 4;
+ exhausted roll 20 regain 20 dice 1 sides 8 plus 2;
+}
+item type "itemdef:srd/staff-of-striking" named "Staff of Striking" {
+ description "This staff can be wielded as a magic Quarterstaff that grants a +3 bonus to attack rolls and damage rolls made with it. The staff has 10 charges. When you hit with a melee attack using it, you can expend up to 3 charges. For each charge you expend, the target takes an extra 1d6 Force damage. Regaining Charges. The staff regains 1d6 + 4 expended charges daily at dawn. If you expend the last charge, roll 1d20. On a 1, the staff becomes a nonmagical Quarterstaff.";
+ kind "miscellaneous"; subtype "staff";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 10;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 4;
+}
+item type "itemdef:srd/staff-of-swarming-insects" named "Staff of Swarming Insects" {
+ description "This staff has 10 charges. Insect Cloud. While holding the staff, you can take a Magic action and expend 1 charge to cause a swarm of harmless flying insects to fill a 30- foot Emanation originating from you. The insects remain for 10 minutes, making the area Heavily Obscured for creatures other than you. A strong wind (like that created by Gust of Wind) disperses the swarm and ends the effect. Spells. While holding the staff, you can cast one of the spells on the following table from it, using your spell save DC and spell attack modifier. The table indicates how many charges you must expend to cast the spell. Regaining Charges. The staff regains 1d6 + 4 expended charges daily at dawn. If you expend the last charge, roll 1d20. On a 1, a swarm of insects consumes and destroys the staff, then disperses.";
+ kind "miscellaneous"; subtype "staff";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 10;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 4;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/staff-of-withering" named "Staff of Withering" {
+ description "This staff has 3 charges and regains 1d3 expended charges daily at dawn. The staff can be wielded as a magic Quarterstaff. On a hit, it deals damage as a normal Quarterstaff, and you can expend 1 charge to deal an extra 2d10 Necrotic damage to the target and force it to make a DC 15 Constitution saving throw. On a failed save, the target has Disadvantage for 1 hour on any ability check or saving throw that uses Strength or Constitution.";
+ kind "miscellaneous"; subtype "staff";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/staff-of-the-magi" named "Staff of the Magi" {
+ description "This staff has 50 charges and can be wielded as a magic Quarterstaff that grants a +2 bonus to attack rolls and damage rolls made with it. While you hold it, you gain a +2 bonus to spell attack rolls. Spell Absorption. While holding the staff, you have Advantage on saving throws against spells. In addition, you can take a Reaction when another creature casts a spell that targets only you. If you do, the staff absorbs the magic of the spell, canceling its effect and gaining a number of charges equal to the absorbed spell's level. However, if doing so brings the staff's total number of charges above 50, the staff explodes as if you activated its Retributive Strike (see below). Spells. While holding the staff, you can cast one of the spells on the following table from it, using your spell save DC. The table indicates how many charges you must expend to cast the spell. Regaining Charges. The staff regains 4d6 + 2 expended charges daily at dawn. If you expend the last charge, roll 1d20. On a 20, the staff regains 1d12 + 1 charges. Retributive Strike. You can take a Magic action to break the staff over your knee or against a solid surface. The staff is destroyed and releases its magic in an explosion that fills a 30-foot Emanation originating from itself. You have a 50 percent chance to instantly travel to a random plane of existence, avoiding the explosion. If you fail to avoid the effect, you take Force damage equal to 16 times the number of charges in the staff. Each other creature in the area makes a DC 17 Dexterity saving throw. On a failed save, a creature takes Force damage equal to 6 times the number of charges in the staff. On a successful save, a creature takes half as much damage.";
+ kind "miscellaneous"; subtype "staff";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 50;
+ recharge every 86400 at 21600 dice 4 sides 6 plus 2;
+ exhausted roll 20 regain 20 dice 1 sides 12 plus 1;
+}
+item type "itemdef:srd/staff-of-the-woodlands" named "Staff of the Woodlands" {
+ description "This staff has 6 charges and can be wielded as a magic Quarterstaff that grants a +2 bonus to attack rolls and damage rolls made with it. While holding it, you have a +2 bonus to spell attack rolls. Spells. While holding the staff, you can cast one of the spells on the following table from it, using your spell save DC. The table indicates how many charges you must expend to cast the spell. Tree Form. You can take a Magic action to plant one end of the staff in earth in an unoccupied space and expend 1 charge to transform the staff into a healthy tree. The tree is 60 feet tall and has a 5-foot-diameter trunk, and its branches at the top spread out in a 20-foot radius. The tree appears ordinary but radiates a faint aura of Transmutation magic that can be discerned with the Detect Magic spell. While touching the tree and using a Magic action, you return the staff to its normal form. Any creature in the tree falls when the tree reverts to a staff. Regaining Charges. The staff regains 1d6 expended charges daily at dawn. If you expend the last charge, roll 1d20. On a 1, the staff loses its properties and becomes a nonmagical Quarterstaff.";
+ kind "miscellaneous"; subtype "staff";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 6;
+ recharge every 86400 at 21600 dice 1 sides 6;
+}
+item type "itemdef:srd/stone-of-controlling-earth-elementals" named "Stone of Controlling Earth Elementals" {
+ description "While touching this 5-pound stone to the ground, you can take a Magic action to summon an Earth Elemental. The elemental appears in an unoccupied space you choose within 30 feet of yourself, obeys your commands, and takes its turn immediately after you on your Initiative count. The elemental disappears after 1 hour, when it dies, or when you dismiss it as a Bonus Action. The stone can't be used this way again until the next dawn.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/talisman-of-pure-good" named "Talisman of Pure Good" {
+ description "This talisman is a mighty symbol of goodness. A Fiend or an Undead that touches the talisman takes 8d6 Radiant damage and takes the damage again each time it ends its turn holding or carrying the talisman. Holy Symbol. You can use the talisman as a Holy Symbol. You gain a +2 bonus to spell attack rolls while you wear or hold it. Pure Rebuke. The talisman has 7 charges. While wearing or holding the talisman, you can take a Magic action to expend 1 charge and target one creature you can see on the ground within 120 feet of yourself. A flaming fissure opens under the target, and the target makes a DC 20 Dexterity saving throw. If the target is a Fiend or an Undead, it has Disadvantage on the save. On a failed save, the target falls into the fissure and is destroyed, leaving no remains. On a successful save, the target isn't cast into the fissure but takes 4d6 Psychic damage from the ordeal. In either case, the fissure then closes, leaving no trace of its existence. When you expend the last charge, the talisman disperses into motes of golden light and is destroyed.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ exhausted destroy;
+}
+item type "itemdef:srd/talisman-of-ultimate-evil" named "Talisman of Ultimate Evil" {
+ description "This item symbolizes unrepentant evil. A creature that isn't a Fiend or an Undead that touches the talisman takes 8d6 Necrotic damage and takes the damage again each time it ends its turn holding or carrying the talisman. Holy Symbol. You can use the talisman as a Holy Symbol. You gain a +2 bonus to spell attack rolls while you wear or hold it. Ultimate End. The talisman has 6 charges. While wearing or holding the talisman, you can take a Magic action to expend 1 charge and target one creature you can see on the ground within 120 feet of yourself. A flaming fissure opens under the target, and the target makes a DC 20 Dexterity saving throw. If the target is a Celestial, it has Disadvantage on the save. On a failed save, the target falls into the fissure and is destroyed, leaving no remains. On a successful save, the target isn't cast into the fissure but takes 4d6 Psychic damage from the ordeal. In either case, the fissure then closes, leaving no trace of its existence. When you expend the last charge, the talisman dissolves into foul-smelling slime and is destroyed.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 6;
+ exhausted destroy;
+}
+item type "itemdef:srd/thunderous-greatclub" named "Thunderous Greatclub" {
+ description "While you are attuned to this magic weapon, your Strength is 20 unless your Strength is already equal to or greater than that score. The weapon deals an extra 1d8 Thunder damage to any creature it hits and an extra 3d8 Thunder damage to objects it hits that aren't being worn or carried. The weapon has the following additional properties. Clap of Thunder. As a Magic action, you can strike the weapon against a hard surface to create a loud clap of thunder audible out to 300 feet. You also create a 30-foot Cone of thunderous energy. Each creature in the Cone must succeed on a DC 15 Strength saving throw or have the Prone condition. Nonmagical objects in the Cone that aren't being worn or carried take 3d8 Thunder damage. Earthquake. As a Magic action, you can strike the weapon against the ground to create an intense seismic disturbance in a 50-foot-radius circle centered on the point of impact. Structures in contact with the ground in that area take 50 Bludgeoning damage, and each creature on the ground in that area must succeed on a DC 20 Dexterity saving throw or have the Prone condition. If that creature is also concentrating, it must succeed on a DC 20 Constitution saving throw, or its Concentration is broken. In addition, you can cause a 30-foot-deep, 10-foot-wide fissure to open up on the ground anywhere in the area. Any creature on a spot where the fissure opens must make a DC 20 Dexterity saving throw, falling into the fissure on a failed save or moving with the fissure's edge on a successful one. Any structure on a spot where the fissure opens collapses into the fissure. Once you use this property, it can't be used again until the next dawn.";
+ kind "weapon";
+ magical true; consumable false;
+ equipment "gear:held";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/trident-of-fish-command" named "Trident of Fish Command" {
+ description "This magic weapon has 3 charges, and it regains 1d3 expended charges daily at dawn. While you carry it, you can expend 1 charge to cast Dominate Beast (save DC 15) from it on a Beast that has a Swim Speed.";
+ kind "weapon";
+ magical true; consumable false;
+ equipment "gear:held";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/wand-of-binding" named "Wand of Binding" {
+ description "This wand has 7 charges. Spells. While holding the wand, you can cast one of the spells (save DC 17) on the following table from it. The table indicates how many charges you must expend to cast the spell. Regaining Charges. The wand regains 1d6 + 1 expended charges daily at dawn. If you expend the wand's last charge, roll 1d20. On a 1, the wand crumbles into ashes and is destroyed.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/wand-of-enemy-detection" named "Wand of Enemy Detection" {
+ description "This wand has 7 charges. While holding it, you can take a Magic action to expend 1 charge. For 1 minute, you know the direction of the nearest creature Hostile to you within 60 feet, but not its distance from you. The wand can sense the presence of Hostile creatures that are Invisible, ethereal, disguised, or hidden, as well as those in plain sight. The effect ends if you stop holding the wand. Regaining Charges. The wand regains 1d6 + 1 expended charges daily at dawn. If you expend the wand's last charge, roll 1d20. On a 1, the wand crumbles into ashes and is destroyed.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/wand-of-fear" named "Wand of Fear" {
+ description "This wand has 7 charges. Spells. While holding the wand, you can cast one of the spells (save DC 15) on the following table from it. The table indicates how many charges you must expend to cast the spell. Regaining Charges. The wand regains 1d6 + 1 expended charges daily at dawn. If you expend the wand's last charge, roll 1d20. On a 1, the wand crumbles into ashes and is destroyed.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/wand-of-fireballs" named "Wand of Fireballs" {
+ description "This wand has 7 charges. While holding it, you can expend no more than 3 charges to cast Fireball (save DC 15) from it. For 1 charge, you cast the level 3 version of the spell. You can increase the spell's level by 1 for each additional charge you expend. Regaining Charges. The wand regains 1d6 + 1 expended charges daily at dawn. If you expend the wand's last charge, roll 1d20. On a 1, the wand crumbles into ashes and is destroyed.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/wand-of-lightning-bolts" named "Wand of Lightning Bolts" {
+ description "This wand has 7 charges. While holding it, you can expend no more than 3 charges to cast Lightning Bolt (save DC 15) from it. For 1 charge, you cast the level 3 version of the spell. You can increase the spell's level by 1 for each additional charge you expend. Regaining Charges. The wand regains 1d6 + 1 expended charges daily at dawn. If you expend the wand's last charge, roll 1d20. On a 1, the wand crumbles into ashes and is destroyed.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/wand-of-magic-detection" named "Wand of Magic Detection" {
+ description "This wand has 3 charges. While holding it, you can expend 1 charge to cast Detect Magic from it. The wand regains 1d3 expended charges daily at dawn.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/wand-of-magic-missiles" named "Wand of Magic Missiles" {
+ description "This wand has 7 charges. While holding it, you can expend no more than 3 charges to cast Magic Missile from it. For 1 charge, you cast the level 1 version of the spell. You can increase the spell's level by 1 for each additional charge you expend. Regaining Charges. The wand regains 1d6 + 1 expended charges daily at dawn. If you expend the wand's last charge, roll 1d20. On a 1, the wand crumbles into ashes and is destroyed.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/wand-of-paralysis" named "Wand of Paralysis" {
+ description "This wand has 7 charges. While holding it, you can take a Magic action to expend 1 charge to cause a thin blue ray to streak from the tip toward a creature you can see within 60 feet of yourself. The target must succeed on a DC 15 Constitution saving throw or have the Paralyzed condition for 1 minute. At the end of each of the target's turns, it repeats the save, ending the effect on itself on a success. Regaining Charges. The wand regains 1d6 + 1 expended charges daily at dawn. If you expend the wand's last charge, roll 1d20. On a 1, the wand crumbles into ashes and is destroyed.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/wand-of-polymorph" named "Wand of Polymorph" {
+ description "This wand has 7 charges. While holding it, you can expend 1 charge to cast Polymorph (save DC 15) from it. Regaining Charges. The wand regains 1d6 + 1 expended charges daily at dawn. If you expend the wand's last charge, roll 1d20. On a 1, the wand crumbles into ashes and is destroyed.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/wand-of-secrets" named "Wand of Secrets" {
+ description "This wand has 3 charges and regains 1d3 expended charges daily at dawn. While holding it, you can take a Magic action to expend 1 charge, and if a secret door or trap is within 60 feet of you, the wand pulses and points at the one nearest to you.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 3;
+ recharge every 86400 at 21600 dice 1 sides 3;
+}
+item type "itemdef:srd/wand-of-web" named "Wand of Web" {
+ description "This wand has 7 charges. While holding it, you can expend 1 charge to cast Web (save DC 13) from it. Regaining Charges. The wand regains 1d6 + 1 expended charges daily at dawn. If you expend the wand's last charge, roll 1d20. On a 1, the wand crumbles into ashes and is destroyed.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/wand-of-wonder" named "Wand of Wonder" {
+ description "This wand has 7 charges. While holding it, you can take a Magic action to expend 1 charge while choosing a point within 120 feet of yourself. That location becomes the point of origin of a spell or other magical effect determined by rolling on the Wand of Wonder Effects table. Spells cast from the wand have a save DC of 15. If a spell's maximum range is normally less than 120 feet, it becomes 120 feet when cast from the wand. If an effect has multiple possible subjects, the GM determines randomly which among them are affected. Regaining Charges. The wand regains 1d6 + 1 expended charges daily at dawn. If you expend the wand's last charge, roll 1d20. On a 1, the wand crumbles into dust and is destroyed.";
+ kind "miscellaneous"; subtype "wand";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 7;
+ recharge every 86400 at 21600 dice 1 sides 6 plus 1;
+ exhausted roll 20 destroy 1;
+}
+item type "itemdef:srd/wind-fan" named "Wind Fan" {
+ description "While holding this fan, you can cast Gust of Wind (save DC 13) from it. Each subsequent time the fan is used before the next dawn, it has a cumulative 20 percent chance of not working; if the fan fails to work, it tears into useless, nonmagical tatters.";
+ kind "miscellaneous"; subtype "other";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 1;
+ recharge every 86400 at 21600 all;
+}
+item type "itemdef:srd/winged-boots" named "Winged Boots" {
+ description "These boots have 4 charges and regain 1d4 expended charges daily at dawn. While wearing the boots, you can take a Magic action to expend 1 charge, gaining a Fly Speed of 30 feet for 1 hour. If you are flying when the duration expires, you descend at a rate of 30 feet per round until you land.";
+ kind "miscellaneous"; subtype "boots";
+ magical true; consumable false;
+ equipment "gear:worn";
+ charges 4;
+ recharge every 86400 at 21600 dice 1 sides 4;
 }
