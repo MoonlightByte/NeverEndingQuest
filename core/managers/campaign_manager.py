@@ -1895,13 +1895,19 @@ class CampaignManager:
         )
         return campaign
     
-    def refresh_modules(self):
-        """Scan and integrate modules explicitly, then sync campaign availability."""
+    def refresh_modules(self, priority_module=None):
+        """Scan and integrate modules explicitly, then sync campaign availability.
+
+        ``priority_module`` (the party's module) is integrated first. The
+        result's ``import_required`` lists modules left unjoined because
+        their ids collide with a registered module.
+        """
         with module_refresh_lock() as acquired:
             if not acquired:
                 return {
                     "success": False,
                     "newly_integrated": [],
+                    "import_required": [],
                     "available_modules": self.campaign_data.get("availableModules", []),
                     "error": "module_refresh_lock_timeout",
                 }
@@ -1928,7 +1934,9 @@ class CampaignManager:
                 from core.generators.module_stitcher import get_module_stitcher
 
                 stitcher = get_module_stitcher()
-                newly_integrated = stitcher.scan_and_integrate_new_modules()
+                newly_integrated = stitcher.scan_and_integrate_new_modules(
+                    priority_module=priority_module
+                )
 
                 self.party_tracker_data = safe_json_load("party_tracker.json")
                 if self.party_tracker_data and newly_integrated:
@@ -1998,6 +2006,7 @@ class CampaignManager:
                 return {
                     "success": True,
                     "newly_integrated": list(newly_integrated),
+                    "import_required": list(stitcher.import_required),
                     "available_modules": self.campaign_data.get("availableModules", []),
                 }
             except Exception as e:
@@ -2010,6 +2019,7 @@ class CampaignManager:
                 return {
                     "success": False,
                     "newly_integrated": [],
+                    "import_required": [],
                     "available_modules": self.campaign_data.get("availableModules", []),
                     "error": str(e),
                 }
@@ -2025,6 +2035,7 @@ class CampaignManager:
             return {
                 "success": False,
                 "newly_integrated": [],
+                "import_required": [],
                 "available_modules": self.campaign_data.get("availableModules", []),
                 "error": "refresh_timeout",
             }
