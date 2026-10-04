@@ -3114,11 +3114,15 @@ def _round_facts_text(encounter, round_num):
                 (", conditions " + ", ".join(conditions)) if conditions else "",
             )
         )
+    now_round = ((encounter or {}).get("combatState") or {}).get("round")
+    states_head = "Creature states now"
+    if isinstance(now_round, int) and not isinstance(now_round, bool):
+        states_head += f" (as of round {now_round}, after this round; deaths may be from later rounds)"
     return (
         f"Committed facts for round {round_num} (authoritative for actors, initiatives, rolls, "
         "damage and HP; the log above is for the narrative highlights):\n"
         + "\n".join(lines)
-        + "\n\nCreature states at round end:\n"
+        + f"\n\n{states_head}:\n"
         + "\n".join(states)
     )
 
@@ -3432,6 +3436,7 @@ Create a JSON summary with EXACTLY this structure:
 CRITICAL RULES:
 - The "deaths" array MUST include every creature shown as dead or at 0 HP in the creature states, even if they died in a prior round. This is a complete death list for state tracking.
 - Focus on mechanical accuracy for the actions -- exact roll values, damage numbers, and HP totals.
+- Every action carries "damage" or "heal"; a miss, a failed attempt or a non-damaging action carries "damage": "0".
 - For narrative_highlights, extract the most dramatic moments.
 - Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
 
