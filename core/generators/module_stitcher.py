@@ -874,6 +874,39 @@ class ModuleStitcher:
             for area_data in registry.get("areas", {}).values()
         )
 
+    @classmethod
+    def _is_registry_stub(
+        cls, registry: Dict[str, Any], module_name: str
+    ) -> bool:
+        """Whether the registry names the module only by a bare stub.
+
+        Startup reconciliation records every module directory as exactly
+        ``{"moduleName": M}``. Such an entry carries no areas and no module
+        data, so the module has not been integrated yet. Any other field,
+        an alias entry, or an area row naming the module means it is not a
+        stub.
+        """
+        modules = registry.get("modules", {})
+        areas = registry.get("areas", {})
+        if not isinstance(modules, dict) or not isinstance(areas, dict):
+            return False
+        if modules.get(module_name) != {"moduleName": module_name}:
+            return False
+        for key, module_data in modules.items():
+            if key == module_name:
+                continue
+            if cls._module_names_alias(key, module_name):
+                return False
+            if isinstance(module_data, dict) and cls._module_names_alias(
+                module_data.get("moduleName"), module_name
+            ):
+                return False
+        return not any(
+            isinstance(area_data, dict)
+            and cls._module_names_alias(area_data.get("module"), module_name)
+            for area_data in areas.values()
+        )
+
     def _prove_module_absent_from_registry_locked(
         self, module_name: str
     ) -> RegistryAbsenceResult:
@@ -1380,8 +1413,10 @@ class ModuleStitcher:
                 
                 # Check if module has area files (current data structure)
                 if self._has_area_files(item_path):
-                    # Check if already registered
-                    if item not in self.world_registry.get('modules', {}):
+                    # Check if already registered (a bare stub is not)
+                    if item not in self.world_registry.get(
+                        'modules', {}
+                    ) or self._is_registry_stub(self.world_registry, item):
                         detected_modules.append(item)
                         print(f"Detected new module: {item}")
             
@@ -3434,7 +3469,11 @@ Create atmospheric travel narration that leads into this adventure."""
         # in-memory baseline while candidate construction remains detached.
         self.world_registry = deepcopy(prior_registry)
 
-        referenced = self._registry_references_module(prior_registry, module_name)
+        # A bare stub names the module without integrating it; publish it
+        # through the unregistered path, whose candidate replaces the stub.
+        referenced = self._registry_references_module(
+            prior_registry, module_name
+        ) and not self._is_registry_stub(prior_registry, module_name)
         exact_entry = prior_registry.get("modules", {}).get(module_name)
         if referenced:
             if entry_state != "directory" or os.path.exists(
