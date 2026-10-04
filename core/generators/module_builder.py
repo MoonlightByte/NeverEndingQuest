@@ -407,6 +407,10 @@ class ModuleBuilder:
         self.context = ModuleContext()
         self.progress_callback = None  # For progress reporting
         self.per_area_locations = None  # For custom locations per area
+        # T104's validated identity decisions (Step 7.5), held by position so
+        # they survive publication id normalization; the module declaration
+        # is written from them after the stitcher re-prefix.
+        self.npc_identity_decisions = []
         
         # Initialize generators
         self.module_gen = ModuleGenerator()
@@ -2236,9 +2240,45 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 self._atomic_save_json(f"areas/{aid}.json", area)
             self.context = ModuleContext.from_artifacts(out, base_context=self.context)
             safe_write_json(context_path, self.context.to_dict())
+            self.npc_identity_decisions = self._identity_positions(parsed, packet, patched)
             self.log(f"Step 7.5: NPC coherence applied to {n_groups} group(s)")
         except Exception as exc:
             self.log(f"Step 7.5: NPC coherence skipped (non-fatal): {exc}")
+
+    @staticmethod
+    def _identity_positions(response, packet, areas):
+        """T104's validated decisions with each occurrence held as (areaId,
+        location index, exact NPC name) in the written areas. The stitcher
+        re-prefix keeps area ids and location order, so these still resolve
+        after normalization. A decision with an occurrence that cannot be
+        placed is left out (its NPCs derive as before)."""
+        index = packet.get("_occurrence_index") or {}
+        decisions = []
+        for dec in response.get("decisions") or []:
+            occurrences = []
+            for repair in dec.get("repairs") or []:
+                occ = index.get(repair.get("occurrenceId"))
+                positions = []
+                if occ is not None:
+                    locations = (areas.get(occ["area_id"]) or {}).get("locations") or []
+                    positions = [i for i, loc in enumerate(locations)
+                                 if loc.get("locationId") == occ["location_id"]]
+                if len(positions) != 1:
+                    occurrences = []
+                    break
+                occurrences.append({
+                    "occurrenceId": repair["occurrenceId"],
+                    "areaId": occ["area_id"],
+                    "locationIndex": positions[0],
+                    "name": (occ["npc"].get("name") or "").strip(),
+                })
+            if occurrences:
+                decisions.append({
+                    "classification": dec.get("classification"),
+                    "primaryOccurrenceId": dec.get("primaryOccurrenceId"),
+                    "occurrences": occurrences,
+                })
+        return decisions
 
     def validate_module(self):
         """Validate module consistency and save results"""
