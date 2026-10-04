@@ -2243,10 +2243,12 @@ def pre_validate_transition(
                             "min_travel_minutes": _travel.floor_minutes(travel_minutes),
                             "travel_time_rule": (
                                 "travel_minutes is the trip at SRD normal pace, in game "
-                                "minutes. The travel-owned updateTime is applied as at "
-                                "least min_travel_minutes (SRD fast pace); a larger value "
-                                "is the DM's added time (slow pace, difficult terrain, "
-                                "detours)."
+                                "minutes: use it as the travel-owned updateTime. A slow "
+                                "pace, difficult terrain or a detour adds time. Only a "
+                                "fast pace the narration shows (the party hurries) may "
+                                "go lower, to min_travel_minutes. The code applies at "
+                                "least min_travel_minutes and raises a lower value "
+                                "itself."
                             ),
                         }
                         if travel_minutes is not None
