@@ -1005,6 +1005,7 @@ def stage_turn_events(encounter, turn_id, events):
 
 ROUND_EVENTS_KEEP_ROUNDS = 3
 ROUND_EVENTS_MAX_PER_ROUND = 64
+ROUND_EVENT_DESCRIPTION_CHARS = 300
 
 
 def compact_combat_event(event):
@@ -1031,13 +1032,24 @@ def compact_combat_event(event):
                 for key in ("owner", "kind", "name", "delta", "before", "after")
                 if key in record
             })
+    rolls = []
+    for roll in event.get("rolls") or []:
+        if isinstance(roll, dict):
+            rolls.append({
+                key: roll.get(key)
+                for key in ("purpose", "die", "total", "value", "success")
+                if key in roll
+            })
+    description = intent.get("description") or outcome.get("description") or ""
+    if not isinstance(description, str):
+        description = str(description)
     return {
         "eventId": event.get("eventId"),
         "actorId": event.get("actorId"),
         "action": intent.get("action") or outcome.get("kind"),
-        "description": intent.get("description") or outcome.get("description") or "",
+        "description": description[:ROUND_EVENT_DESCRIPTION_CHARS],
         "targets": targets,
-        "rolls": deepcopy(event.get("rolls") or []),
+        "rolls": rolls,
         "resources": resources,
     }
 
@@ -1066,7 +1078,10 @@ def record_round_events(state, round_number, events):
             number = int(key)
         except (TypeError, ValueError):
             continue
-        if number > current - ROUND_EVENTS_KEEP_ROUNDS:
+        # Only the window current-2 .. current: rows above the current round
+        # (a restored or re-staged turn, a reused encounter) never linger and
+        # never receive appended events once the round catches up.
+        if current - ROUND_EVENTS_KEEP_ROUNDS < number <= current:
             kept[str(number)] = value
     state["roundEvents"] = kept
 
