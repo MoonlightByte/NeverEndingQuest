@@ -19,14 +19,15 @@ docs/WORLD_MAP.md, LIVE_STATE.md):
   every member the document's party still holds, until its ``leave party``
   is applied (a held party member the world stops declaring refuses the
   whole call).
-- Visited: the tracker's place and every place play has marked. That is
-  ``explorationState`` (written on departure), or a summary or gameplay
-  encounter the played file holds that its authored master does not; an
-  authored summary is module prose, not a visit (The Pumpkin King's
-  Curse authors one for every place). The engine takes the party and
-  visited from the source once, the first time the document meets a map;
-  after that the document's record stands, and core/nql/travel.py keeps it
-  aligned with the tracker.
+- Visited: the tracker's place (when the world declares it; else the party
+  stands at a declared place of its module, not marked) and every place
+  play has marked. That is ``explorationState`` (written on departure), or
+  a summary or gameplay encounter the played file holds that its authored
+  master does not; an authored summary is module prose, not a visit (The
+  Pumpkin King's Curse authors one for every place). The engine takes the
+  party and visited from the source once, the first time the document
+  meets a map; after that the document's record stands, and
+  core/nql/travel.py keeps it aligned with the tracker.
 """
 import json
 import os
@@ -140,9 +141,13 @@ def lines(game, declared: Iterable[str], held: Optional[Dict[str, Any]] = None,
 
     tracker = game.tracker or {}
     here = tracker_place(tracker)
+    # The party's own place is visited only when the world declares it; a
+    # stand-in place below is where the party is put, not a place it walked.
+    seen_here = [here] if here in known else []
     if here not in known:
         if notes is not None and here:
-            notes.append(("map", "the party's place %s is not declared" % here))
+            notes.append(("map", "the party's place %s is not declared; the party stands at a "
+                                 "declared place of its module, not marked visited" % here))
         module = str(tracker.get("module") or "").replace(" ", "_")
         here = next((p for p in declared if p.startswith("loc:%s/" % module)), declared[0] if declared else None)
     if here is None:
@@ -177,7 +182,7 @@ def lines(game, declared: Iterable[str], held: Optional[Dict[str, Any]] = None,
         paired.add((a, b))
     for ident in member_ids:
         out.append(" party %s;" % q(ident))
-    for place in dict.fromkeys([here] + visited):
+    for place in dict.fromkeys(seen_here + visited):
         out.append(" visited %s;" % q(place))
     out.append("}")
     return out
