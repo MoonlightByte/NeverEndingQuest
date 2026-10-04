@@ -4413,8 +4413,12 @@ Create atmospheric travel narration that leads into this adventure."""
         # first character. Reading only loc_id[0] treats 'AA01' as prefix 'A',
         # so start_index lands inside the already-used range and the new module
         # can be handed an already-used two-letter prefix.
+        # The module's own current prefixes count too: a new prefix equal to
+        # one of its old ones (CMS001 C->H while HLF001 still holds H01)
+        # would be rewritten again by the module-wide old->new reference
+        # mapping below, giving duplicate ids.
         max_prefix_index = -1
-        for loc_id in all_existing_loc_ids:
+        for loc_id in all_existing_loc_ids | new_module_loc_ids:
             m = re.match(r'^([A-Za-z]+)\d', loc_id or '')
             if m:
                 max_prefix_index = max(max_prefix_index, _location_prefix_to_index(m.group(1)))
