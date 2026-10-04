@@ -2815,6 +2815,21 @@ def _cache_module_starting_location(
 def get_module_starting_location(module_name: str) -> tuple:
     """Get the starting location for a module using AI analysis with caching"""
     try:
+        # The entry the module declares, when it resolves in its area files,
+        # comes before a cached or model-chosen one.
+        from utils import roster_conversion
+
+        path_manager = ModulePathManager(module_name)
+        declared = roster_conversion.declared_start(path_manager.module_dir)
+        if declared and declared["areaId"] in (path_manager.get_area_ids() or []):
+            area_data = safe_json_load(path_manager.get_area_path(declared["areaId"])) or {}
+            locations = area_data.get("locations") if isinstance(area_data, dict) else None
+            location = next((loc for loc in locations or [] if isinstance(loc, dict)
+                             and loc.get("locationId") == declared["locationId"]), None)
+            if location is not None and area_data.get("areaName") and location.get("name"):
+                debug(f"FILE_OP: Using declared entry for {module_name}", category="module_loading")
+                return (declared["locationId"], location["name"], declared["areaId"], area_data["areaName"])
+
         # Check world registry for cached starting location
         world_registry_path = "modules/world_registry.json"
         world_registry = safe_json_load(world_registry_path)

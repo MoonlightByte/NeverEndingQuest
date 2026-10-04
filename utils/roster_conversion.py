@@ -226,6 +226,27 @@ def usable_aliases(name, aliases):
     return kept[:16]
 
 
+def declared_start(module_dir):
+    """The module's declared entry: {"areaId", "locationId"} (bare ids) when
+    module_declaration.json in module_dir is a version 1 declaration whose
+    start was chosen as the entry (source "entry"), else None. A start the
+    build picked as the first location is not an entry and is not used. The
+    caller still resolves both ids against the module's files."""
+    try:
+        data = load(os.path.join(module_dir, DECLARATION))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("format") != "neq-module-declaration" or data.get("version") != 1:
+        return None
+    start = data.get("start")
+    if not isinstance(start, dict) or start.get("source") != "entry":
+        return None
+    area, loc = start.get("areaId"), start.get("locationId")
+    if not (isinstance(area, str) and area and isinstance(loc, str) and loc):
+        return None
+    return {"areaId": area, "locationId": loc}
+
+
 def declared_beings(game, module, notes):
     """What the module's declaration (written at publication) says about its
     people: ({(home, name): aliases}, {(place, name)} for the same being's
