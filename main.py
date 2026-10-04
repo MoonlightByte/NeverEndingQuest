@@ -4951,6 +4951,15 @@ def _module_join_refusal_line(refusal):
     )
 
 
+def _module_not_joined_line(refusal):
+    """Plain player line for an installed module publication refused."""
+    return (
+        "%s is installed, but its files did not pass the checks, so it cannot "
+        "be joined to this world yet. You can keep playing; nothing was changed."
+        % str(refusal.get("module")).replace("_", " ")
+    )
+
+
 
 
 
@@ -8904,7 +8913,8 @@ def _main_game_loop(startup_authority, turn_authority):
         # Integrate module directories the registry does not hold yet (a
         # bare reconcile stub, or a module dropped into modules/). The
         # party's module goes first; a module whose ids collide with a joined
-        # one stays installed and unjoined, and the player is told so.
+        # one, or whose files publication refuses, stays installed and
+        # unjoined, and the player is told so.
         try:
             refresh_result = CampaignManager().refresh_modules(
                 priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
@@ -8914,6 +8924,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 display_dm_narration(_module_joined_line(imported), channel="system")
             for refusal in refresh_result.get("import_required", []):
                 display_dm_narration(_module_join_refusal_line(refusal), channel="system")
+            for refusal in refresh_result.get("not_joined", []):
+                display_dm_narration(_module_not_joined_line(refusal), channel="system")
         except Exception as refresh_exc:
             warning(f"INITIALIZATION: startup module refresh failed: {refresh_exc}", category="startup")
     

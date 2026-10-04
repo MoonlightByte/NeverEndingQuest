@@ -420,8 +420,10 @@ class ModuleStitcher:
         # with a registered module: [{"module", "collides_with",
         # "refused_because"}], and the unplayed ones it joined by
         # renumbering a copy: [{"module", "collides_with", "renumbered"}].
+        # And the installed ones publication refused: [{"module", "reason"}].
         self.import_required = []
         self.imported = []
+        self.not_joined = []
         
         # Clean up old connections if they exist (migration to isolated modules)
         if 'connections' in self.world_registry:
@@ -5212,6 +5214,7 @@ Respond with JSON:
         integrated_modules = []
         self.import_required = []
         self.imported = []
+        self.not_joined = []
         
         try:
             self._recover_managed_imports_locked()
@@ -5271,6 +5274,17 @@ Respond with JSON:
                                     "collides_with": collides_with,
                                     "refused_because": outcome["refused_because"],
                                 }
+                            )
+                    elif result.status is PublicationStatus.NOT_PUBLISHED:
+                        warning(
+                            f"Module {module_name} is installed but not joined: "
+                            f"{result.reason}",
+                            category="module_integration",
+                        )
+                        # A module removed during the scan is not "installed".
+                        if os.path.isdir(os.path.join(self.modules_dir, module_name)):
+                            self.not_joined.append(
+                                {"module": module_name, "reason": result.reason}
                             )
                     elif result.status is PublicationStatus.INDETERMINATE:
                         error(
