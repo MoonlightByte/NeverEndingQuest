@@ -79,10 +79,23 @@ def _world(root: str):
             )
     notes: List[Tuple[str, str]] = []
     seed_list = roster_conversion.seeds(game, notes)
+    world, places = roster_conversion.world_source(game, seed_list, _held_party(root), notes)
     for kind, text in notes:
         debug("OCCUPANTS: seed note (%s): %s" % (kind, text), category="location_transitions")
-    world, places = roster_conversion.world_source(game, seed_list)
     return world, places, game
+
+
+def _held_party(root: str) -> Optional[Dict[str, Any]]:
+    """The document's party and character places (C10a), so the world keeps
+    declaring a member the document's party still holds."""
+    live = _load(root)
+    if not live:
+        return None
+    return {
+        "party": list((live.get("map") or {}).get("party") or []),
+        "characters": {c.get("id"): c.get("location") for c in live.get("characters") or []
+                       if isinstance(c, dict)},
+    }
 
 
 def _load(root: str) -> Optional[Dict[str, Any]]:
@@ -130,10 +143,11 @@ def _actor_of(world: str) -> Dict[str, str]:
 
 
 def _call(world: str, live: Dict[str, Any], actions: Optional[str], request_id: Optional[str],
-          view: List[str], quests: List[str] = ()) -> Dict[str, Any]:
+          view: List[str], quests: List[str] = (), actor: Optional[str] = None) -> Dict[str, Any]:
     body: Dict[str, Any] = {"world": world, "live_state": live}
     if actions:
-        body.update({"actions": actions, "actor": _actor_of(world), "request": request_id})
+        who = {"kind": "character", "id": actor} if actor else _actor_of(world)
+        body.update({"actions": actions, "actor": who, "request": request_id})
     if view:
         body["locations"] = list(view)
     if quests:
@@ -224,15 +238,19 @@ def _set_aside(root: str) -> None:
 
 def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
             view: Tuple[str, ...] = (), quests: Tuple[str, ...] = (), root: str = ".",
-            create: bool = True) -> Optional[Dict[str, Any]]:
+            create: bool = True, actor: Optional[str] = None,
+            align: bool = True) -> Optional[Dict[str, Any]]:
     """One engine call on the document. Returns the response (ok or a refusal
     of the actions, which the caller reconciles), or None when the engine is
     unavailable or the document could not be made. Writes the next document
     when it changed. With create=False a missing document is None (a reader
     never writes; the DM turn makes the document). `quests` asks for the
-    quests view of these ids (QS)."""
+    quests view of these ids (QS). `actor` is the acting character (default
+    the roster actor). A call with actions first brings the document's party
+    to the tracker when another writer moved it (core/nql/travel.py);
+    align=False is travel's own call."""
     try:
-        world, places, _ = _world(root)
+        world, places, game = _world(root)
         live = _load(root)
         created = False
         if live is None:
@@ -263,12 +281,14 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
             # QS: the switch. A new document, or one from before the quest
             # record (v2), takes the played plot once, before this turn's call.
             live = _convert_quests(root, world, live, "new document" if created else "document without quests")
+        if actions and align:
+            live = _align(root, world, live, game)
         tried_bak = False
         recreated = False
         redeclared: set = set()
         on_disk = live
         while True:
-            response = _call(world, live, actions, request_id, list(view), list(quests))
+            response = _call(world, live, actions, request_id, list(view), list(quests), actor)
             if response.get("ok"):
                 # Written when the engine changed it, or when the file holds
                 # a refused document and this one (the .bak) is good.
@@ -314,6 +334,28 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
         warning("OCCUPANTS: engine unavailable (%s); the roster record is not updated this turn"
                 % exc, category="location_transitions")
         return None
+
+
+def _align(root: str, world: str, live: Dict[str, Any], game) -> Dict[str, Any]:
+    """C10a: before a writer's call, the document's party follows the
+    tracker when another writer moved it (the wizard, a module switch, a
+    restore). `move` marks nothing; a committed in-module move is walked by
+    core/nql/travel.realign. A refusal keeps the document as it is."""
+    from core.nql import travel
+    actions = travel.align_actions(live, game.tracker or {})
+    if not actions:
+        return live
+    from utils.roster_conversion import ACTOR
+    rid = travel.align_id()
+    response = _call(world, live, "\n".join(actions), rid, [], [], ACTOR)
+    if not response.get("ok"):
+        warning("OCCUPANTS: aligning the party (%s) was refused: %s" % (rid, response.get("error")),
+                category="location_transitions")
+        return live
+    info("OCCUPANTS: the engine party follows the tracker (%s): %s" % (rid, " ".join(actions)),
+         category="location_transitions")
+    _write(root, response["live_state"])
+    return response["live_state"]
 
 
 def view(places: List[str], root: str = ".") -> List[Dict[str, Any]]:

@@ -2093,6 +2093,10 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
             "status": "blocked",
             "reason": "party location no longer matches the staged destination",
         }
+    # C10a: the engine's party walks the committed path; a walk already on
+    # record is skipped by its request id.
+    from core.nql import travel
+    travel.realign(checkpoint)
     context = {
         "origin_history_segment": checkpoint["origin_segment_before"],
         "origin_party_tracker": party,

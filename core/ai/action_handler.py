@@ -328,8 +328,11 @@ def _new_current_transition_checkpoint(
     conversation_history,
     deferred_actions,
     origin_party_tracker,
+    path=None,
 ):
-    """Build the approved v2 record without content-derived authority."""
+    """Build the approved v2 record without content-derived authority.
+    `path` is the approved route, origin to destination (location ids): the
+    engine's party walks it after the commit (core/nql/travel.py)."""
     operation_id = str(uuid4())
     persisted_history = safe_json_load(
         "modules/conversation_history/conversation_history.json"
@@ -470,6 +473,7 @@ def _new_current_transition_checkpoint(
         "destination_location_name": sanitize_text(destination_location_name),
         "destination_area_id": str(destination_area_id),
         "destination_area_name": sanitize_text(destination_area_name),
+        "path": [str(item) for item in (path or ())],
         "origin_history_boundary": segment_start,
         "origin_segment_before": json.loads(json.dumps(origin_segment)),
         "departure_summary": {"status": "pending", "text": None, "provider_response_id": None},
@@ -3719,6 +3723,7 @@ def process_action(
                     conversation_history=conversation_history,
                     deferred_actions=transition_deferred_actions,
                     origin_party_tracker=authoritative_party,
+                    path=approved_transition_plan.path,
                 )
                 transition_id = transition_checkpoint["operation_id"]
                 _write_location_transition_checkpoint(transition_checkpoint)
@@ -3840,6 +3845,10 @@ def process_action(
                         )
                     current_checkpoint["phase"] = "movement_committed"
                     _write_location_transition_checkpoint(current_checkpoint)
+                # C10a: the engine's party walks the committed path (the
+                # resume walks it again, answered from the record).
+                from core.nql import travel
+                travel.realign(current_checkpoint)
 
             if transition_prompt and transition_context is not None:
                 reconciliation_status = resolve_current_transition_reconciliation(
