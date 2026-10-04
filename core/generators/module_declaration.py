@@ -46,7 +46,10 @@ def load_declared_world(module_path, module_name):
     refused = Path(module_path) / "module_declaration.refused.json"
 
     def world():
-        modules = [m for m in roster_conversion.installed_modules(".") if m != module_name]
+        # The world play will load (the joined modules and the party's), not
+        # every installed directory: an unjoined module must not decide this
+        # module's load.
+        modules = [m for m in roster_conversion.world_modules(".") if m != module_name]
         modules.append(module_name)
         # A build before the first game has no root tracker: an empty party.
         tracker = None if os.path.exists("party_tracker.json") else {}
