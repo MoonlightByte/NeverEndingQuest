@@ -1420,23 +1420,25 @@ def _engine_charges(encounter, sheet, owner, name, delta, event_id, record):
     the in-memory sheet and the engine's normalized state is journaled on the
     resource record (chargesAfter, exhausted, engine true), so apply and any
     replay write the same values without the engine. The clock is the fight's
-    frozen effect clock. Returns True, or the violation text: a short count is
+    frozen effect clock. Returns (True, None), or (the violation text, the
+    refusal's plain fact; None for a model mistake): a short count is
     an overspend (T096 corrects); every other refusal, the engine unavailable
     included, leaves the item unspent (the count is engine-owned, there is no
     arithmetic to fall back on)."""
     if type(delta) is not int or delta >= 0:
-        return "charges are never added in combat: %s %s" % (owner, name)
+        return "charges are never added in combat: %s %s" % (owner, name), None
     state = encounter.get("combatState") or {}
     clock = state.get("effectsClockScalar") if type(state.get("effectsClockScalar")) is int else None
     try:
         from core.managers.item_charges import combat_request_id, combat_spend
         outcome = combat_spend(sheet, name, -delta, clock, "combat", combat_request_id(event_id, owner, name))
     except Exception as exc:  # engine wrapper faults never stop a fight
-        return "%s could not be spent (%s)" % (name, exc)
+        return "%s could not be spent (%s)" % (name, exc), "unusable"
     if not outcome.get("ok"):
+        fact = outcome.get("fact") or "unusable"
         if outcome.get("overspend"):
-            return "overspend rejected: %s charges %s (%s)" % (owner, name, outcome.get("reason"))
-        return "%s could not be spent (%s)" % (name, outcome.get("reason"))
+            return "overspend rejected: %s charges %s (%s)" % (owner, name, outcome.get("reason")), fact
+        return "%s could not be spent (%s)" % (name, outcome.get("reason")), fact
     record["before"] = outcome["before"]
     record["after"] = outcome["after"]
     record["chargesAfter"] = outcome["chargesAfter"]
@@ -1446,7 +1448,7 @@ def _engine_charges(encounter, sheet, owner, name, delta, event_id, record):
     if isinstance(outcome.get("exhausted"), dict):
         record["exhausted"] = outcome["exhausted"]
     record["engine"] = True
-    return True
+    return True, None
 
 
 def _save_bonus(encounter, characters, creature, save_type):
@@ -1738,9 +1740,17 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             # engine knows. Its answer is the record.
             record = {"owner": owner, "kind": kind, "name": name, "delta": delta,
                       "before": before, "after": before}
-            answer = _engine_charges(encounter, sheet, owner, name, delta, event_id, record)
+            answer, fact = _engine_charges(encounter, sheet, owner, name, delta, event_id, record)
             if answer is not True:
                 resolution["violations"].append(answer)
+                if fact is not None:
+                    # H3b: every refusal of a use the item could not pay for
+                    # (by exclusion: only a positive or zero delta is a
+                    # model mistake here; an unknown item or owner never
+                    # reaches this branch). For the player's own actor this
+                    # pauses for the player's choice (core/combat/pipeline.py).
+                    resolution.setdefault("chargeRefusals", []).append(
+                        {"owner": owner, "name": name, "reason": answer, "fact": fact})
                 continue
             event["resources"].append(record)
             continue

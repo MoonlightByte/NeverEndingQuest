@@ -291,7 +291,7 @@ def spend_working(working: Dict[str, Any], index: int, charges: int, clock: Opti
                                "actor": {"kind": "character", "id": cid}, "request": request,
                                "status": [cid], "item_charges": [iid]})
     except apply.EngineUnavailable as error:
-        return {"ok": False, "error": f"rules engine unavailable: {error}"}
+        return {"ok": False, "error": f"rules engine unavailable: {error}", "unavailable": True}
     if not response.get("ok"):
         return {"ok": False, "error": _refusal(response), "fault": response.get("fault") or {}}
 
@@ -458,7 +458,9 @@ def combat_spend(sheet: Dict[str, Any], item_name: str, charges: int, clock: Opt
     crash before the turn is staged re-mints unseen). Returns the journal
     record fields on success: {"ok": True, "before", "after", "chargesAfter"
     (the normalized state to write: current, max, asOf?, seed?, nextRecharge?,
-    quantity), "exhausted"?, "nqlId", "message"}; on a refusal {"ok": False,
+    quantity), "exhausted"?, "nqlId", "message"}; on a refusal {"ok": False, "fact"
+    (short, destroyed, clock, unavailable or unusable: the plain fact for the
+    player, H3b),
     "reason", "overspend": bool} where overspend marks a short count
     (E_CHARGES on the count itself), the violation T096 corrects."""
     if type(charges) is bool or type(charges) is not int or charges < 1:
@@ -472,14 +474,14 @@ def combat_spend(sheet: Dict[str, Any], item_name: str, charges: int, clock: Opt
     index = matches[0]
     row = sheet["equipment"][index]
     if row.get("quantity") == 0:
-        return {"ok": False, "overspend": False,
+        return {"ok": False, "overspend": False, "fact": "destroyed",
                 "reason": f"{item_name} was destroyed when its last charge was spent; nothing can be spent from it"}
     clock_error = None
     if clock is None:
         clock, clock_error = party_clock(safe_json_load("party_tracker.json") or {})
     rule = genesis.charge_rule(row)
     if clock is None and rule is not None and (rule.recharges or genesis.mint_reason(row)):
-        return {"ok": False, "overspend": False,
+        return {"ok": False, "overspend": False, "fact": "clock",
                 "reason": f"{item_name} keeps its charges on the game clock, which could not be read ({clock_error})"}
     working = copy.deepcopy(sheet)
     genesis.assign_ids(working)
@@ -496,7 +498,7 @@ def combat_spend(sheet: Dict[str, Any], item_name: str, charges: int, clock: Opt
         try:
             view, why = _mint_call(working, index, cid, catalog["id"], location, clock, _entropy(), f"{request}:mint", stated)
         except apply.EngineUnavailable as error:
-            return {"ok": False, "overspend": False, "reason": f"rules engine unavailable: {error}"}
+            return {"ok": False, "overspend": False, "fact": "unavailable", "reason": f"rules engine unavailable: {error}"}
         if view is None:
             return {"ok": False, "overspend": False, "reason": f"the engine could not set up {item_name}'s charges ({why})"}
         if not isinstance(wrow.get("charges"), dict):
@@ -511,7 +513,8 @@ def combat_spend(sheet: Dict[str, Any], item_name: str, charges: int, clock: Opt
         fault = spent.get("fault") or {}
         overspend = (fault.get("code") == "E_CHARGES" and fault.get("field") == "charges"
                      and str(fault.get("expected") or "").startswith("at least"))
-        return {"ok": False, "reason": spent["error"], "overspend": overspend}
+        fact = "short" if overspend else ("unavailable" if spent.get("unavailable") else "unusable")
+        return {"ok": False, "reason": spent["error"], "overspend": overspend, "fact": fact}
     wrow = working["equipment"][index]
     after_state = {key: wrow["charges"][key] for key in ("current", "max", "asOf", "seed", "nextRecharge")
                    if key in wrow["charges"]}
