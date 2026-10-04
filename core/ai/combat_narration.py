@@ -444,7 +444,7 @@ def update_narration_activity(activity, events):
         resources = [
             {
                 key: resource.get(key)
-                for key in ("owner", "kind", "name", "delta", "before", "after")
+                for key in ("owner", "kind", "name", "delta", "before", "after", "exhausted")
                 if key in resource
             }
             for resource in event.get("resources", []) or []

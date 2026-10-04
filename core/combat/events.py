@@ -18,7 +18,7 @@ REQUIRED_EVENT_FIELDS = ("eventId", "actorId", "intent", "outcome", "stateVersio
 # verify application without re-running the resolver.
 REQUIRED_TARGET_FIELDS = ("combatantId", "hpBefore", "hpAfter", "statusAfter")
 
-VALID_RESOURCE_KINDS = frozenset({"ammunition", "spellSlot", "featureUse", "item"})
+VALID_RESOURCE_KINDS = frozenset({"ammunition", "spellSlot", "featureUse", "item", "charges"})
 
 
 def make_event_id(encounter_id, round_number, turn_id, sequence):
