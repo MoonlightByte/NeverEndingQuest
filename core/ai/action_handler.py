@@ -205,6 +205,9 @@ class ApprovedTransitionPlan:
     path: tuple
     topology_identity: str
     evidence_identity: str
+    # "engine": the engine's map approved the move (C10b) and travel commits
+    # it; "snapshot": NEQ's own route check did (the engine was unavailable).
+    authority: str = "snapshot"
 
 
 @dataclass(frozen=True)
@@ -291,6 +294,7 @@ def _approved_transition_plan(
     plot_data,
     location_graph,
     topology_identity=None,
+    authority="snapshot",
 ):
     return ApprovedTransitionPlan(
         origin_location_id=str(origin_location_id),
@@ -307,6 +311,7 @@ def _approved_transition_plan(
         evidence_identity=_transition_evidence_identity(
             path_analysis, plot_data
         ),
+        authority=str(authority),
     )
 
 
@@ -329,10 +334,13 @@ def _new_current_transition_checkpoint(
     deferred_actions,
     origin_party_tracker,
     path=None,
+    authority="snapshot",
 ):
     """Build the approved v2 record without content-derived authority.
     `path` is the approved route, origin to destination (location ids): the
-    engine's party walks it after the commit (core/nql/travel.py)."""
+    engine's party walks it after the commit (core/nql/travel.py). With
+    authority "engine" the engine approved the move and travels it, so no
+    path is recorded to walk."""
     operation_id = str(uuid4())
     persisted_history = safe_json_load(
         "modules/conversation_history/conversation_history.json"
@@ -474,6 +482,7 @@ def _new_current_transition_checkpoint(
         "destination_area_id": str(destination_area_id),
         "destination_area_name": sanitize_text(destination_area_name),
         "path": [str(item) for item in (path or ())],
+        "authority": str(authority),
         "origin_history_boundary": segment_start,
         "origin_segment_before": json.loads(json.dumps(origin_segment)),
         "departure_summary": {"status": "pending", "text": None, "provider_response_id": None},
@@ -2102,6 +2111,126 @@ def pre_validate_transition(
 
         plot_data = _quest_record.module_plot(current_module) or {}
 
+        # C10b: the engine's map leads the in-module move (Q5 rule A: the
+        # party stops at every place it has not visited, and passes visited
+        # places freely unless a hostile is present). With no engine answer
+        # the route check below stays NEQ's own (T021).
+        from core.nql import travel as _travel
+
+        engine = _travel.engine_route(
+            current_module, current_location_id, new_location_id, path
+        )
+        if engine is not None:
+            nodes = snapshot.get("nodes", {})
+
+            def place_name(location_id):
+                return (nodes.get(location_id) or {}).get(
+                    "location_name", location_id
+                )
+
+            verdict = engine["verdict"]
+            info(
+                "TRAVEL: engine route %s -> %s: %s"
+                % (current_location_id, new_location_id, verdict),
+                category="transition_validation",
+            )
+            if verdict == "halt":
+                stop = engine["stop"]
+                stop_name = place_name(stop)
+                hostiles = list(engine.get("hostiles") or [])
+                reason = (
+                    "a hostile presence holds %s (%s) on the way, so the party "
+                    "stops there first"
+                    % (stop_name, ", ".join(hostiles) or "present occupants")
+                )
+                return finish(
+                    False,
+                    "[TRAVEL SYSTEM] Travel stops early: %s. Transition only to "
+                    "%s (%s) this turn." % (reason, stop, stop_name),
+                    reason_code="intermediate_stop",
+                    facts={
+                        "original_destination_id": str(new_location_id),
+                        "stop_location_id": str(stop),
+                        "stop_location_name": str(stop_name),
+                        "reason": reason,
+                        "hostiles_present": hostiles,
+                        "authority": "engine",
+                    },
+                    intermediate_destination_id=stop,
+                    intermediate_destination_name=stop_name,
+                )
+            if verdict == "unvisited_stop":
+                stop = engine.get("stop")
+                fresh = [
+                    {"id": loc, "name": place_name(loc)}
+                    for loc in engine.get("fresh") or []
+                ]
+                if stop is None and not fresh:
+                    return finish(
+                        False,
+                        "No route reaches that place from here through places "
+                        "the party can travel now.",
+                        reason_code="no_valid_route",
+                        facts={
+                            "requested_destination_id": str(new_location_id),
+                            "route_reason": "no reachable place on the way",
+                            "must_not_move": True,
+                            "authority": "engine",
+                        },
+                    )
+                stop_name = place_name(stop) if stop else ""
+                reason = (
+                    "the way to %s crosses places the party has not visited; "
+                    "the party stops at each one first"
+                    % place_name(new_location_id)
+                )
+                return finish(
+                    False,
+                    "[TRAVEL SYSTEM] Travel stops early: %s." % reason,
+                    reason_code="unvisited_stop",
+                    facts={
+                        "original_destination_id": str(new_location_id),
+                        "stop_location_id": str(stop or ""),
+                        "stop_location_name": str(stop_name),
+                        "reachable_unvisited": fresh,
+                        "reason": reason,
+                        "authority": "engine",
+                    },
+                    intermediate_destination_id=stop or "",
+                    intermediate_destination_name=stop_name,
+                )
+            plan = _approved_transition_plan(
+                origin_location_id=current_location_id,
+                destination_location_id=new_location_id,
+                module_name=current_module,
+                path=path,
+                path_analysis=path_analysis,
+                plot_data=plot_data,
+                location_graph=location_graph,
+                topology_identity=snapshot.get("topology_identity")
+                or snapshot.get("snapshot_hash"),
+                authority="engine",
+            )
+            return finish(
+                True,
+                "",
+                plan,
+                reason_code="approved",
+                facts={
+                    "module": current_module,
+                    "destination_location_id": str(new_location_id),
+                    "destination_location_name": nodes[new_location_id]["location_name"],
+                    "destination_area_id": nodes[new_location_id]["area_id"],
+                    "destination_area_name": nodes[new_location_id]["area_name"],
+                    "engine_route": {
+                        "stops": engine.get("stops"),
+                        "ticks": engine.get("ticks"),
+                    },
+                    "authority": "engine",
+                    "provisional_until_semantic_validation": True,
+                },
+            )
+
         # Get party level
         party_level = 1
         if party_tracker_data.get("partyMembers"):
@@ -3723,7 +3852,12 @@ def process_action(
                     conversation_history=conversation_history,
                     deferred_actions=transition_deferred_actions,
                     origin_party_tracker=authoritative_party,
-                    path=approved_transition_plan.path,
+                    path=(
+                        ()
+                        if approved_transition_plan.authority == "engine"
+                        else approved_transition_plan.path
+                    ),
+                    authority=approved_transition_plan.authority,
                 )
                 transition_id = transition_checkpoint["operation_id"]
                 _write_location_transition_checkpoint(transition_checkpoint)

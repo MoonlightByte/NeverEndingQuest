@@ -143,7 +143,8 @@ def _actor_of(world: str) -> Dict[str, str]:
 
 
 def _call(world: str, live: Dict[str, Any], actions: Optional[str], request_id: Optional[str],
-          view: List[str], quests: List[str] = (), actor: Optional[str] = None) -> Dict[str, Any]:
+          view: List[str], quests: List[str] = (), actor: Optional[str] = None,
+          map_view: List[str] = ()) -> Dict[str, Any]:
     body: Dict[str, Any] = {"world": world, "live_state": live}
     if actions:
         who = {"kind": "character", "id": actor} if actor else _actor_of(world)
@@ -152,6 +153,8 @@ def _call(world: str, live: Dict[str, Any], actions: Optional[str], request_id: 
         body["locations"] = list(view)
     if quests:
         body["quests"] = list(quests)
+    if map_view:
+        body["map"] = list(map_view)
     return apply.call(body, timeout=TIMEOUT)
 
 
@@ -239,7 +242,7 @@ def _set_aside(root: str) -> None:
 def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
             view: Tuple[str, ...] = (), quests: Tuple[str, ...] = (), root: str = ".",
             create: bool = True, actor: Optional[str] = None,
-            align: bool = True) -> Optional[Dict[str, Any]]:
+            align: bool = True, map_view: Tuple[str, ...] = ()) -> Optional[Dict[str, Any]]:
     """One engine call on the document. Returns the response (ok or a refusal
     of the actions, which the caller reconciles), or None when the engine is
     unavailable or the document could not be made. Writes the next document
@@ -248,7 +251,8 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
     quests view of these ids (QS). `actor` is the acting character (default
     the roster actor). A call with actions first brings the document's party
     to the tracker when another writer moved it (core/nql/travel.py);
-    align=False is travel's own call."""
+    align=False is travel's own call. `map_view` asks for the map view of
+    these characters (C10b)."""
     try:
         world, places, game = _world(root)
         live = _load(root)
@@ -288,7 +292,8 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
         redeclared: set = set()
         on_disk = live
         while True:
-            response = _call(world, live, actions, request_id, list(view), list(quests), actor)
+            response = _call(world, live, actions, request_id, list(view), list(quests), actor,
+                             list(map_view))
             if response.get("ok"):
                 # Written when the engine changed it, or when the file holds
                 # a refused document and this one (the .bak) is good.
