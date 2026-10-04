@@ -51,6 +51,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 
 DEFAULT_REASON = "left before the engine took over; not recorded"
 MAX_OPS = 128
@@ -113,9 +114,13 @@ def installed_modules(root):
 
 
 class Game:
-    def __init__(self, root, modules):
+    def __init__(self, root, modules, paths=None):
         self.root = root
         self.modules = modules
+        # Each module's directory: modules/<M> under the root, unless given
+        # (a module checked in its publication workspace before it is live).
+        self.paths = {m: os.path.join(root, "modules", m) for m in modules}
+        self.paths.update(paths or {})
         self.tracker = load(os.path.join(root, "party_tracker.json"))
         journal = os.path.join(root, "journal.json")
         self.journal = load(journal).get("entries", []) if os.path.exists(journal) else []
@@ -123,7 +128,7 @@ class Game:
         self.masters, self.played = {}, {}
         for m in modules:
             self.masters[m], self.played[m] = {}, {}
-            for path in sorted(glob.glob(os.path.join(root, "modules", m, "areas", "*.json"))):
+            for path in sorted(glob.glob(os.path.join(self.paths[m], "areas", "*.json"))):
                 name = os.path.basename(path)[:-5]
                 master = name.endswith("_BU")
                 area = name[:-3] if master else name
@@ -190,10 +195,11 @@ class Seed:
         self.place = "loc:%s/%s" % (module, loc)
         self.range = authored_count(entry) if kind == "creatures" else None
         self.decision = None
+        self.aliases = []
 
     def declaration(self):
         if self.kind == "person":
-            body = "person; attitude indifferent;"
+            body = "person; attitude indifferent;" + "".join(" alias %s;" % q(a) for a in self.aliases)
         elif self.range is None:
             body = "creatures; attitude hostile; type %s;" % q(slug(self.name))
         elif self.range[0] == self.range[1]:
@@ -203,11 +209,94 @@ class Seed:
         return "occupant %s named %s at %s { %s }" % (q(self.id), q(self.name), q(self.place), body)
 
 
+DECLARATION = "module_declaration.json"
+
+
+def usable_aliases(name, aliases):
+    """The aliases the engine will take for an occupant named name, in order:
+    trimmed, non-empty, no control characters, at most 4096 bytes, neither
+    the name nor one already kept, at most 16. The engine refuses the whole
+    world for any other alias, so the rest are dropped."""
+    kept = []
+    for a in aliases:
+        a = a.strip() if isinstance(a, str) else ""
+        if (a and a != name and a not in kept and len(a.encode("utf-8")) <= 4096
+                and not any(unicodedata.category(c) == "Cc" for c in a)):
+            kept.append(a)
+    return kept[:16]
+
+
+def declared_start(module_dir):
+    """The module's declared entry: {"areaId", "locationId"} (bare ids) when
+    module_declaration.json in module_dir is a version 1 declaration whose
+    start was chosen as the entry (source "entry"), else None. A start the
+    build picked as the first location is not an entry and is not used. The
+    caller still resolves both ids against the module's files."""
+    try:
+        data = load(os.path.join(module_dir, DECLARATION))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("format") != "neq-module-declaration" or data.get("version") != 1:
+        return None
+    start = data.get("start")
+    if not isinstance(start, dict) or start.get("source") != "entry":
+        return None
+    area, loc = start.get("areaId"), start.get("locationId")
+    if not (isinstance(area, str) and area and isinstance(loc, str) and loc):
+        return None
+    return {"areaId": area, "locationId": loc}
+
+
+def declared_beings(game, module, notes):
+    """What the module's declaration (written at publication) says about its
+    people: ({(home, name): aliases}, {(place, name)} for the same being's
+    other appearances). No file means none, and every entry derives as
+    before; so does an unreadable file or another format. A being is used
+    only when its home and each appearance list exactly one authored NPC of
+    that exact name. Home and appearances are bare location ids ("G04"), so
+    a re-prefix that rewrites the module's ids rewrites them too."""
+    homes, elsewhere = {}, set()
+    path = os.path.join(game.paths[module], DECLARATION)
+    if not os.path.exists(path):
+        return homes, elsewhere
+    try:
+        data = load(path)
+    except (OSError, ValueError) as exc:
+        notes.append(("declaration", "%s: %s unreadable (%s); derived as before" % (module, DECLARATION, exc)))
+        return homes, elsewhere
+    if not isinstance(data, dict) or data.get("format") != "neq-module-declaration" or data.get("version") != 1:
+        notes.append(("declaration", "%s: %s is not a version 1 declaration; derived as before" % (module, DECLARATION)))
+        return homes, elsewhere
+    masters = game.masters[module]
+
+    def authored_once(loc_id, name):
+        if loc_id not in masters:
+            return False
+        npcs = masters[loc_id][1].get("npcs") or []
+        return sum(1 for e in npcs if isinstance(e, dict) and (e.get("name") or "").strip() == name) == 1
+
+    for being in data.get("beings") if isinstance(data.get("beings"), list) else []:
+        being = being if isinstance(being, dict) else {}
+        name, home = being.get("name"), being.get("home")
+        appearances = being.get("appearances") if isinstance(being.get("appearances"), list) else []
+        if not (isinstance(name, str) and home in appearances
+                and all(isinstance(p, str) and authored_once(p, name) for p in appearances)):
+            notes.append(("declaration", "%s: being %r does not match the authored NPCs; derived as before" % (module, name)))
+            continue
+        aliases = being.get("aliases") if isinstance(being.get("aliases"), list) else []
+        homes[(home, name)] = usable_aliases(name, aliases)
+        elsewhere.update((p, name) for p in appearances if p != home)
+    return homes, elsewhere
+
+
 def seeds(game, notes):
     """Every authored monster and NPC of the masters, in file order, with
-    IDs occ:<Module>/<LocationId>/<slug>, -2, -3 for repeats at one place."""
+    IDs occ:<Module>/<LocationId>/<slug>, -2, -3 for repeats at one place.
+    A being the module declares as one figure across places is one person at
+    its home, with its aliases; its other appearances are not seeded."""
     out = []
     for m in game.modules:
+        homes, elsewhere = declared_beings(game, m, notes)
         for loc_id, (_, loc) in game.masters[m].items():
             used = collections.Counter()
             for field, kind in (("monsters", "creatures"), ("npcs", "person")):
@@ -216,10 +305,14 @@ def seeds(game, notes):
                     if not name or not name.strip():
                         notes.append(("seed", "%s/%s: a %s entry without a name is skipped" % (m, loc_id, field)))
                         continue
+                    if kind == "person" and (loc_id, name.strip()) in elsewhere:
+                        continue
                     s = slug(name)
                     used[s] += 1
                     ident = "occ:%s/%s/%s" % (m, loc_id, s) + ("" if used[s] == 1 else "-%d" % used[s])
                     seed = Seed(m, loc_id, name.strip(), kind, entry, ident)
+                    if kind == "person":
+                        seed.aliases = homes.get((loc_id, name.strip()), [])
                     if kind == "creatures" and seed.range is not None and not (1 <= seed.range[0] <= seed.range[1]):
                         notes.append(("seed", "%s: authored count %r is not a group size; declared uncounted" % (ident, seed.range)))
                         seed.range = None

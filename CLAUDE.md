@@ -80,6 +80,7 @@ The system uses modules as self-contained adventures with hub-and-spoke conversa
 - `module_builder.py` = ORCHESTRATOR (manages workflow, calls generators)
 - `module_generator.py` = WORKER (actual implementation, area connections, location IDs)
 - **Always fix bugs in module_generator.py, NOT module_builder.py**
+- Exception: the module declaration emitter (`ModuleBuilder.emit_module_declaration`) runs in the orchestrator, after publication id normalization.
 
 #### 3. Manager Pattern Implementation
 Major subsystems use dedicated managers:

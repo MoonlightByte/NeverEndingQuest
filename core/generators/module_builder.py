@@ -102,6 +102,87 @@ _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE = (
 )
 
 
+def _publication_step(prepare_candidate, builder_holder):
+    """The one publication step every entry path runs on its hidden candidate,
+    before the commit rename (utils/module_publish.publish_module_atomic).
+
+    Order matters: ids are normalized first (the caller's prepare_candidate,
+    i.e. the stitcher, when one is supplied), then the module declaration is
+    written. The stitcher re-prefix is positional and rewrites only the files
+    it knows, so a declaration written before it would keep stale ids. The
+    returned value is prepare_candidate's registry bytes, unchanged (None when
+    there is no prepare_candidate, as before: no registry write).
+    """
+    def step(candidate_path, final_name):
+        registry_bytes = None
+        if prepare_candidate is not None:
+            registry_bytes = prepare_candidate(candidate_path, final_name)
+        builder = builder_holder.get("builder")
+        if builder is not None and builder.emit_module_declaration():
+            _load_declared_world(candidate_path, final_name)
+        return registry_bytes
+
+    return step
+
+
+def _load_declared_world(candidate_path, final_name):
+    """Build-time engine load of the roster world with the candidate's
+    declaration, before the module is live. Never a gate on publication: a
+    world the engine refuses with the declaration but accepts without it sets
+    the declaration aside (module_declaration.refused.json), and the module
+    derives as before. The candidate's quests are not part of this load (they
+    are read from the live module path); the declaration does not touch them.
+    """
+    from core.nql import apply
+    from utils import roster_conversion
+
+    declared = Path(candidate_path) / roster_conversion.DECLARATION
+    refused = Path(candidate_path) / "module_declaration.refused.json"
+
+    def world():
+        modules = [m for m in roster_conversion.installed_modules(".") if m != final_name]
+        modules.append(final_name)
+        game = roster_conversion.Game(".", modules, paths={final_name: os.fspath(candidate_path)})
+        source, _ = roster_conversion.world_source(game, roster_conversion.seeds(game, []))
+        return source
+
+    try:
+        response = apply.call({"world": world()})
+        if response.get("ok"):
+            info(f"MODULE_DECLARATION: {final_name} loads in the engine with its declaration",
+                 category="module_creation")
+            return
+        reason = response.get("error")
+        os.replace(declared, refused)
+        try:
+            loads_without = bool(apply.call({"world": world()}).get("ok"))
+        except Exception:
+            os.replace(refused, declared)
+            raise
+        if loads_without:
+            warning(f"MODULE_DECLARATION: the engine refused {final_name} with its declaration "
+                    f"({reason}); set aside, the module derives as before",
+                    category="module_creation")
+            report_path = Path(candidate_path) / "validation_report.json"
+            from utils.file_operations import safe_read_json
+            report = safe_read_json(os.fspath(report_path))
+            if isinstance(report, dict) and isinstance(report.get("issues"), list):
+                report["issues"].append(f"module declaration refused by the engine and set aside: {reason}")
+                safe_write_json(os.fspath(report_path), report)
+            return
+        # Refused either way: the declaration is not the cause; keep it.
+        os.replace(refused, declared)
+        warning(f"MODULE_DECLARATION: the engine refuses the world with or without "
+                f"{final_name}'s declaration ({reason}); declaration kept",
+                category="module_creation")
+    except apply.EngineUnavailable as exc:
+        warning(f"MODULE_DECLARATION: engine unavailable ({exc}); {final_name} published "
+                "without the build-time load", category="module_creation")
+    except Exception as exc:
+        warning(f"MODULE_DECLARATION: build-time load skipped for {final_name} ({exc})",
+                category="module_creation")
+
+
 def _run_managed_module_build(
     *,
     requested_name,
@@ -407,6 +488,13 @@ class ModuleBuilder:
         self.context = ModuleContext()
         self.progress_callback = None  # For progress reporting
         self.per_area_locations = None  # For custom locations per area
+        # T104's validated identity decisions (Step 7.5), held by position so
+        # they survive publication id normalization; the module declaration
+        # is written from them after the stitcher re-prefix.
+        self.npc_identity_decisions = []
+        # How create_party_tracker chose the start: "entry" (the story's typed
+        # entry ids) or "first-location" (the first location of the first area).
+        self.party_start_source = None
         
         # Initialize generators
         self.module_gen = ModuleGenerator()
@@ -438,7 +526,121 @@ class ModuleBuilder:
             raise OSError(f"Could not save generated module file: {relative_filename}")
         self.log(f"Saved: {relative_filename}")
         return True
-    
+
+    # Classifications whose occurrences are one being (owner ruling Q3).
+    ONE_BEING = ("same_mobile_person", "deliberate_attitude_change")
+
+    def emit_module_declaration(self) -> bool:
+        """Write module_declaration.json: the typed facts the build already holds
+        and the roster world would otherwise rebuild from the area files.
+
+        Runs on the candidate AFTER publication id normalization: the stitcher
+        re-prefix rewrites only the files it knows, by position, so anything
+        written before it would keep the old ids. Every id is a bare
+        module-relative id ("G04", never "loc:<Module>/G04"), so a later
+        re-prefix that rewrites the module's ids by exact value rewrites these.
+        Declares one entry per being T104 typed as one figure across areas, the
+        party start with how it was chosen, and the location-level cross-area
+        links. Nothing is read from prose. An entry that does not resolve
+        against the written files is left out and logged; the module then
+        derives it as before. Never raises: on any failure no file is written
+        and the module derives as before.
+        """
+        try:
+            from utils.file_operations import safe_read_json
+            from utils.roster_conversion import slug
+
+            out = self.config.output_directory
+            areas = {}
+            for path in sorted(Path(out, "areas").glob("*.json")):
+                if path.name.endswith("_BU.json"):
+                    continue
+                area = safe_read_json(os.fspath(path))
+                if isinstance(area, dict) and isinstance(area.get("areaId"), str):
+                    areas[area["areaId"]] = area
+            location_ids = {
+                loc.get("locationId")
+                for area in areas.values()
+                for loc in area.get("locations") or []
+                if isinstance(loc, dict) and loc.get("locationId")
+            }
+            context = safe_read_json(os.path.join(out, "module_context.json")) or {}
+            people = list((context.get("npcs") or {}).values())
+
+            beings = []
+            for decision in self.npc_identity_decisions:
+                if decision.get("classification") not in self.ONE_BEING:
+                    continue
+                resolved = []
+                for occ in decision["occurrences"]:
+                    locations = (areas.get(occ["areaId"]) or {}).get("locations") or []
+                    if occ["locationIndex"] >= len(locations):
+                        break
+                    location = locations[occ["locationIndex"]]
+                    named = [n for n in location.get("npcs") or []
+                             if isinstance(n, dict) and (n.get("name") or "").strip() == occ["name"]]
+                    if len(named) != 1:
+                        break
+                    resolved.append(dict(occ, locationId=location.get("locationId")))
+                primary = [o for o in resolved
+                           if o["occurrenceId"] == decision.get("primaryOccurrenceId")]
+                if len(resolved) != len(decision["occurrences"]) or len(primary) != 1:
+                    self.log("Module declaration: identity decision not resolved "
+                             "after normalization; its NPCs derive as before")
+                    continue
+                name = primary[0]["name"]
+                entries = [p for p in people if isinstance(p, dict) and (
+                    p.get("name") == name or name in (p.get("aliases") or []))]
+                aliases, seen = [], {slug(name)}
+                for alias in (entries[0].get("aliases") or []) if len(entries) == 1 else []:
+                    if isinstance(alias, str) and alias.strip() and slug(alias) not in seen:
+                        seen.add(slug(alias))
+                        aliases.append(alias.strip())
+                beings.append({
+                    "name": name,
+                    "home": primary[0]["locationId"],
+                    "appearances": [o["locationId"] for o in resolved],
+                    "aliases": aliases[:16],
+                    "identity": decision["classification"],
+                })
+
+            start = None
+            tracker = safe_read_json(os.path.join(out, "party_tracker.json")) or {}
+            conditions = tracker.get("worldConditions") or {}
+            area_id, location_id = conditions.get("currentAreaId"), conditions.get("currentLocationId")
+            area_locations = {loc.get("locationId")
+                              for loc in (areas.get(area_id) or {}).get("locations") or []}
+            if self.party_start_source and location_id in area_locations:
+                start = {"areaId": area_id, "locationId": location_id,
+                         "source": self.party_start_source}
+            else:
+                self.log("Module declaration: party start not resolved; none declared")
+
+            gateways = []
+            for area in areas.values():
+                for loc in area.get("locations") or []:
+                    for target in loc.get("areaConnectivityId") or []:
+                        if loc.get("locationId") in location_ids and target in location_ids:
+                            gateways.append({"from": loc["locationId"], "to": target})
+                        else:
+                            self.log(f"Module declaration: gateway {loc.get('locationId')} -> "
+                                     f"{target} names an unknown location; left out")
+
+            declaration = {
+                "format": "neq-module-declaration",
+                "version": 1,
+                "module": self.config.module_name,
+                "beings": beings,
+                "start": start,
+                "gateways": gateways,
+            }
+            self._atomic_save_json("module_declaration.json", declaration)
+            return True
+        except Exception as exc:
+            self.log(f"Module declaration not written (non-fatal; the module derives "
+                     f"as before): {exc}")
+            return False
+
     def create_context_header(self, party_members: List[str]) -> str:
         """Create a context header to prepend to all generator prompts"""
         header = """
@@ -1876,8 +2078,10 @@ IMPORTANT:
                     "explicit party start location is missing or ambiguous"
                 )
             first_location = matches[0]
+            self.party_start_source = "entry"
         else:
             # Use the first area as the starting location
+            self.party_start_source = "first-location"
             first_area_id = list(self.areas_data.keys())[0]
             first_area = self.areas_data[first_area_id]
 
@@ -2236,9 +2440,45 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 self._atomic_save_json(f"areas/{aid}.json", area)
             self.context = ModuleContext.from_artifacts(out, base_context=self.context)
             safe_write_json(context_path, self.context.to_dict())
+            self.npc_identity_decisions = self._identity_positions(parsed, packet, patched)
             self.log(f"Step 7.5: NPC coherence applied to {n_groups} group(s)")
         except Exception as exc:
             self.log(f"Step 7.5: NPC coherence skipped (non-fatal): {exc}")
+
+    @staticmethod
+    def _identity_positions(response, packet, areas):
+        """T104's validated decisions with each occurrence held as (areaId,
+        location index, exact NPC name) in the written areas. The stitcher
+        re-prefix keeps area ids and location order, so these still resolve
+        after normalization. A decision with an occurrence that cannot be
+        placed is left out (its NPCs derive as before)."""
+        index = packet.get("_occurrence_index") or {}
+        decisions = []
+        for dec in response.get("decisions") or []:
+            occurrences = []
+            for repair in dec.get("repairs") or []:
+                occ = index.get(repair.get("occurrenceId"))
+                positions = []
+                if occ is not None:
+                    locations = (areas.get(occ["area_id"]) or {}).get("locations") or []
+                    positions = [i for i, loc in enumerate(locations)
+                                 if loc.get("locationId") == occ["location_id"]]
+                if len(positions) != 1:
+                    occurrences = []
+                    break
+                occurrences.append({
+                    "occurrenceId": repair["occurrenceId"],
+                    "areaId": occ["area_id"],
+                    "locationIndex": positions[0],
+                    "name": (occ["npc"].get("name") or "").strip(),
+                })
+            if occurrences:
+                decisions.append({
+                    "classification": dec.get("classification"),
+                    "primaryOccurrenceId": dec.get("primaryOccurrenceId"),
+                    "occurrences": occurrences,
+                })
+        return decisions
 
     def validate_module(self):
         """Validate module consistency and save results"""
@@ -3040,6 +3280,10 @@ def _ai_driven_module_creation_impl(
             category="module_creation",
         )
 
+        # The builder of the candidate being published, for the publication
+        # step's module declaration (set per attempt by build_candidate).
+        builder_holder: Dict[str, Any] = {}
+
         def build_candidate(
             candidate_path: Path,
             final_name: str,
@@ -3075,6 +3319,7 @@ def _ai_driven_module_creation_impl(
                     }
                 )
             builder = ModuleBuilder(config)
+            builder_holder["builder"] = builder
             if per_area_locations is not None:
                 builder.per_area_locations = list(per_area_locations)
 
@@ -3197,7 +3442,7 @@ def _ai_driven_module_creation_impl(
                 final_name,
                 story_first_path=False,
             ),
-            prepare_registry_fn=prepare_candidate,
+            prepare_registry_fn=_publication_step(prepare_candidate, builder_holder),
             use_story_first=use_story_first,
             progress_callback=progress_callback,
         )
