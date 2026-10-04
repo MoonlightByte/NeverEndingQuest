@@ -88,6 +88,17 @@ def _int(value: Any) -> Optional[int]:
 
 
 CHARGES_MAX = 1000  # the engine's bound for an item definition's charges
+TYPE_DESCRIPTION_MAX = 4096  # the catalog's bound for an item type description, in bytes
+
+
+def _type_description(entry: Dict[str, Any]) -> str:
+    """Display text for a per-row item type, within the catalog's byte bound
+    (a longer one refuses the whole world at compile time)."""
+    text = str(entry.get("description") or entry.get("item_name") or "")
+    raw = text.encode("utf-8")
+    if len(raw) <= TYPE_DESCRIPTION_MAX:
+        return text
+    return raw[:TYPE_DESCRIPTION_MAX - 3].decode("utf-8", errors="ignore") + "..."
 
 
 def charges_fields(entry: Dict[str, Any]) -> Tuple[Optional[Tuple[int, int]], Optional[str]]:
@@ -112,6 +123,10 @@ def charges_fields(entry: Dict[str, Any]) -> Tuple[Optional[Tuple[int, int]], Op
     quantity = entry.get("quantity")
     if type(quantity) is bool or quantity not in (None, 0, 1):
         return None, "a charged item is one physical unit (quantity 0 or 1)"
+    if entry.get("item_type") == "armor":
+        return None, "armor keeps its armor definition; charges on an armor row are not declared in this slice"
+    if not str(entry.get("item_name") or "").strip():
+        return None, "a charged item needs a name"
     return (current, maximum), None
 
 
@@ -453,7 +468,7 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
         return f"item {_q(iid)} from {_q(catalog['id'])} {{ {' '.join(fields)} }}", (mode if worn else None)
     if catalog_gap:
         gaps.append(f"{cid}: {entry.get('item_name')!r} {catalog_gap}; declared from its own fields")
-    if charged is not None and item_type != "armor":
+    if charged is not None and isinstance(entry.get("charges"), dict):
         pair, reason = charges_fields(entry)
         type_id = charged_type_id(iid)
         if reason:
@@ -467,7 +482,7 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
             charged[1].add(type_id)
             charged[0].append(
                 f"item type {_q(type_id)} named {_q(entry['item_name'])} {{\n"
-                f" description {_q(str(entry.get('description') or entry['item_name']))};\n"
+                f" description {_q(_type_description(entry))};\n"
                 f" kind {_q(str(kind))}; magical {'true' if entry.get('magical') is True else 'false'}; consumable false;\n"
                 f" equipment {_q('gear:' + mode)};\n"
                 f" charges {maximum};\n}}")
