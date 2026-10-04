@@ -971,6 +971,15 @@ NPC_TYPING_T122_GEMINI_PRO_LOW = copy.deepcopy(NPC_COHERENCE_T104_GEMINI_PRO_LOW
 NPC_TYPING_T122_LEGACY = copy.deepcopy(NPC_COHERENCE_T104_LEGACY)
 NPC_TYPING_T122_LMSTUDIO = copy.deepcopy(NPC_COHERENCE_T104_LMSTUDIO)
 
+# T123 (timing a built module's links, N5): one structured call over the
+# module's links, giving the minutes each takes at SRD normal pace. Bound like
+# T122 (a module-level structural typing call); its own names so they can
+# diverge.
+ROUTE_TIMING_T123_GPT56LUNA_NONE = copy.deepcopy(OPENAI_GPT56_LUNA_NONE)
+ROUTE_TIMING_T123_GEMINI_PRO_LOW = copy.deepcopy(NPC_COHERENCE_T104_GEMINI_PRO_LOW)
+ROUTE_TIMING_T123_LEGACY = copy.deepcopy(NPC_COHERENCE_T104_LEGACY)
+ROUTE_TIMING_T123_LMSTUDIO = copy.deepcopy(NPC_COHERENCE_T104_LMSTUDIO)
+
 # ----- T105 NPC Voice (+ isolated affinity classifier) & T107 NPC Profile Seed -----
 # Per-NPC "voice" micro-model agents (always on). These are per-NPC,
 # per-relevant-turn micro calls, so OpenAI uses the CHEAPEST luna tier. Both the
