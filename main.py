@@ -9061,6 +9061,17 @@ def _main_game_loop(startup_authority, turn_authority):
         # conversation_history = check_and_process_module_transitions(conversation_history, party_tracker_data)
         save_conversation_history(conversation_history)
     
+        # Item charges (H2): count the recharge of the party's due charged
+        # items at the game clock, so the sheet the DM reads carries the
+        # engine's count before the next narration. No call when nothing is
+        # due; a failure leaves it to the next turn.
+        try:
+            from core.managers.item_charges import refresh_party
+
+            refresh_party(party_tracker_data)
+        except Exception as charges_exc:
+            debug(f"CHARGES: refresh skipped this turn: {charges_exc}", category="storage_operations")
+
         # Retry a safe-boundary migration deferred by active combat, then run
         # deterministic expiry and exactly-once notification delivery.
         try:

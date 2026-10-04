@@ -226,3 +226,107 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
             _discard(backup)
             info(f"EXPEND: {message}", category="storage_operations")
             return {"success": True, "message": message}
+
+
+def due_rows(sheet: Dict[str, Any], now: int) -> List[int]:
+    """Equipment indexes whose recharge the engine should count now: a row
+    with a recharge rule and a unit left whose stored boundary has passed, or
+    that has no anchor yet, or whose anchor is later than now (an older save;
+    the engine answers "behind" and nothing changes). Value checks on our own
+    int fields only."""
+    out = []
+    for index, entry in enumerate(sheet.get("equipment") or []):
+        if not isinstance(entry, dict) or genesis.charges_fields(entry)[0] is None:
+            continue
+        if entry.get("quantity") == 0 or not genesis.recharge_rule(entry)[0]:
+            continue
+        charges = entry["charges"]
+        boundary, anchor = charges.get("nextRecharge"), charges.get("asOf")
+        if type(anchor) is not int or anchor > now or (type(boundary) is int and boundary <= now):
+            out.append(index)
+    return out
+
+
+def refresh_sheet(character_name: str, now: int, location: str = "party") -> Dict[str, Any]:
+    """Count the recharge of one character's due items and store the engine's
+    state. One view-only engine call (no actions, no event, revision 0), so
+    repeating it is harmless. {"refreshed": [item names]} or {"error"}."""
+    from updates.update_character_info import _get_character_update_lock
+    from utils.path_transaction_lock import path_transaction_lock
+
+    path = _resolve(character_name)
+    if path is None:
+        return {"error": f"no character sheet for {character_name!r}"}
+    with _get_character_update_lock(os.path.basename(path)[:-5]):
+        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=30.0) as lease:
+            if lease is None:
+                return {"error": "the character sheet is busy"}
+            sheet = safe_read_json(path)
+            if not sheet:
+                return {"error": "could not load the character sheet"}
+            due = due_rows(sheet, now)
+            if not due:
+                return {"refreshed": []}
+            working = copy.deepcopy(sheet)
+            genesis.assign_ids(working)
+            cid = genesis.character_id(working)
+            world = genesis.build_world([working], location, clock_tick=now)
+            ids = {index: (world.item_ids.get(cid) or {}).get(index) for index in due}
+            wanted = [iid for iid in ids.values() if iid and genesis._q(genesis.charged_type_id(iid)) in world.source]
+            if not wanted:
+                return {"refreshed": []}
+            try:
+                response = apply.call({"world": world.source, "world_name": "charges-refresh-genesis.nql",
+                                       "item_charges": wanted})
+            except apply.EngineUnavailable as error:
+                return {"error": f"rules engine unavailable: {error}"}
+            if not response.get("ok"):
+                return {"error": _refusal(response)}
+            views = {v.get("item"): v for v in response.get("item_charges") or [] if isinstance(v, dict)}
+            refreshed = []
+            for index, iid in ids.items():
+                view = views.get(iid)
+                if view is None or type(view.get("current")) is not int:
+                    continue
+                row = working["equipment"][index]
+                store_view(row["charges"], view, row.get("quantity", 1))
+                refreshed.append(f"{row['item_name']} {view['current']} of {row['charges']['max']}")
+            if not refreshed:
+                return {"refreshed": []}
+            out = _projected(working)
+            backup = _backup(path)
+            try:
+                if not safe_write_json(path, out):
+                    raise RuntimeError("failed to write the character sheet")
+            except Exception as error:
+                _restore(path, backup)
+                return {"error": f"could not save the character sheet: {error}"}
+            _discard(backup)
+            info(f"CHARGES: {working.get('name')} recharge counted: {'; '.join(refreshed)}", category="storage_operations")
+            return {"refreshed": refreshed}
+
+
+def refresh_party(party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, List[str]]:
+    """Count due recharges for every party member and companion at the party
+    clock. Nothing is called when no row is due; an unreadable calendar skips
+    the refresh (the next turn tries again). Never raises."""
+    party = party_tracker or safe_json_load("party_tracker.json") or {}
+    now, clock_error = party_clock(party)
+    if now is None:
+        debug(f"CHARGES: refresh skipped, the game clock could not be read ({clock_error})", category="storage_operations")
+        return {}
+    location = str((party.get("worldConditions") or {}).get("currentLocationId") or "party")
+    names = list(party.get("partyMembers") or [])
+    names += [npc.get("name") for npc in party.get("partyNPCs") or [] if isinstance(npc, dict) and npc.get("name")]
+    result: Dict[str, List[str]] = {}
+    for name in names:
+        try:
+            outcome = refresh_sheet(str(name), now, location)
+        except Exception as error:  # fail forward: a refresh never breaks the turn
+            debug(f"CHARGES: refresh of {name!r} skipped: {error}", category="storage_operations")
+            continue
+        if outcome.get("error"):
+            debug(f"CHARGES: refresh of {name!r} left to the next turn: {outcome['error']}", category="storage_operations")
+        elif outcome.get("refreshed"):
+            result[str(name)] = outcome["refreshed"]
+    return result
