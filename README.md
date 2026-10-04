@@ -21,6 +21,12 @@ build or the legacy player. See [Quick Start](#quick-start) for installation.
 
 An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campaigns with infinite adventure potential. Experience the world's most popular roleplaying game with an intelligent AI that remembers every decision, adapts to your playstyle, and creates endless adventures tailored to your party.
 
+**NEW: The NQL Rules Engine** - Dice, totals, inventories, conditions and the clock are
+now decided by a separate compiled rules engine, not by the language model. The AI
+Dungeon Master tells the story and declares what happens; the engine applies the SRD
+rules, keeps the books and journals every change. See
+[The Rules Engine](#the-rules-engine) for what it covers today and what is still moving.
+
 **🚀 NEW: React Player and Multi-Provider AI** - The component-based React player
 is now the default; the established legacy player remains an explicit launch option.
 Run the game with the current
@@ -44,6 +50,7 @@ server.
 
 - [Quick Start](#quick-start)
 - [Key Features](#key-features)
+- [The Rules Engine](#the-rules-engine)
 - [Module Toolkit](#module-toolkit)
 - [Installation](#installation)
 - [How It Overcomes AI Limitations](#how-it-overcomes-ai-limitations)
@@ -215,7 +222,7 @@ be entered again after a restart. Existing keys in the local, gitignored
 - **Automatic Routing** - Intelligent model selection for optimal cost/quality balance
 
 ### Core Game Systems
-- **SRD 5.2.1 Rules Engine** - Complete 5th edition compatible mechanics
+- **NQL Rules Engine** - SRD 5.2.1 mechanics decided by a compiled rules engine, not the language model (see [The Rules Engine](#the-rules-engine))
 - **AI Dungeon Master** - GPT-powered storytelling that adapts to your actions
 - **Turn-Based Combat** - Tactical combat with initiative tracking and AI validation
 - **Character Progression** - Full leveling system from 1-20 with all class features
@@ -393,6 +400,77 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 - Both web players use the same game state; React provides the component-based
   interface while legacy remains available through explicit boot selection
 
+## The Rules Engine
+
+### Why a separate engine
+Language models tell good stories and keep poor ledgers. Left to do their own
+bookkeeping they drift: a wand that never runs out, an arrow count that goes up, a
+long rest that forgets a condition, a purse that pays twice. Validation prompts catch
+some of this at a token cost, but they cannot make the arithmetic right by
+construction.
+
+NeverEndingQuest now separates the two jobs. The AI Dungeon Master narrates and
+declares typed actions ("Eirik fires the wand at the blight", "the party rests until
+morning"). A compiled rules engine, NQL, applies the SRD 5.2.1 rules to those
+declarations, refuses what the rules do not allow, and returns the resulting facts.
+Code reconciles the engine's answer onto the character sheets. Nothing is matched by
+keyword in the prose and nothing is guessed.
+
+### How it works
+- **Shipped binary**: the engine is a compiled command in `bin/` (`nql-apply` for
+  Linux, `nql-apply.exe` for Windows). `bin/NQL_ENGINE_VERSION.txt` records the
+  engine revision the shipped pair was built from, and the code on `main` never runs
+  ahead of its engine. The engine's source is maintained in its own repository.
+- **One call, one process**: each request is one JSON document each way. The engine
+  holds no state between calls; the game keeps the returned checkpoint and hands it
+  back on the next call.
+- **The world is built at startup** from the party's character sheets, storage
+  containers, the installed modules' places and people, and the SRD rules and item
+  pack in `data/srd/`.
+- **Journal and replay**: every change the engine makes is journaled with the
+  request that caused it. A save can be replayed from the journal without the engine,
+  and a retried request is applied once.
+- **Refusals correct the storyteller**: when the engine refuses a declaration (not
+  enough charges, an item the character does not hold, a condition that forbids the
+  action) the Dungeon Master is told why and redeclares. For a player's own action
+  the game narrates the failure and asks what they do instead; it never chooses for
+  them.
+- **If the binary cannot run**, engine-backed actions are either refused with a
+  message or kept on the previous arithmetic path, depending on the surface. Saves
+  are never corrupted either way.
+
+### What the engine decides today
+| Area | Decided by the engine |
+|---|---|
+| Money and trade | Coin balances, buying from the SRD item pack, giving and splitting between characters, inventory consolidation |
+| Storage | Location containers: store, retrieve, shared party access |
+| Equipment | Quantity changes, equipped state, armor class from what is worn, the link from a row to its SRD pack definition |
+| Character totals | Ability modifiers, proficiency, saves, skills, expertise; checks and saving throws with advantage, disadvantage and condition roll modes |
+| Resources | Hit points, temporary hit points, spell slots, class feature uses, long rests, ammunition (shots, pickups, after-fight recovery) |
+| Conditions and effects | Timed effects on the engine's clock, SRD conditions and exhaustion, concentration and its saves |
+| Combat | Damage and healing, saves, conditions, concentration, monster save abilities and recharge riders, XP awards |
+| Charged items | Charge counts, recharge from the item's rule at its boundary, engine-minted dice seeds, use in and out of combat, exhausted outcomes (a wand that crumbles or holds on its last charge) |
+| Progression | Experience totals, level-up growth tables |
+| Quests | Quest status as an engine record, including quests the party bypassed |
+| World and places | Who and what is at every location (the live roster), module declarations and NPC dispositions, drop-in module typing, the party's position after travel |
+
+### What is still being moved
+- **Travel led by the engine's map** inside a module: built and in live acceptance.
+  Travel time and cross-module travel follow it.
+- **Module build time**: routes and travel ticks from the generator, and the engine
+  consulted during generation.
+- **Module publication edge cases**, such as a dropped-in module refused for a stale
+  party tracker (issue #586).
+- **Not yet engine-backed**: charged items held by monsters and NPC shop stock.
+- **Not being migrated**: fights started under the pre-agentic combat pipeline, and
+  saves from before the engine, stay on the old path.
+
+Each step lands as one small change with an offline gate against the real engine and a
+live headless playthrough before it merges. The merge history on `main` records the
+sequence (branches named `feat/nql-*`, `feat/e12*`, `feat/c*`, `feat/charges-host-*`,
+`feat/m*`, `feat/n*`).
+
+
 ## How It Overcomes AI Limitations
 
 ### The Context Window Challenge
@@ -401,6 +479,13 @@ Traditional AI systems have limited memory - typically 100-200k tokens. In a tex
 - NPCs "forget" your previous interactions
 - Story continuity breaks between sessions
 - Module transitions lose important context
+
+### The Bookkeeping Challenge
+A second limit is arithmetic. A model narrating a fight will miscount arrows, forget a
+spent charge, or heal past the maximum, and no amount of context fixes that. The answer
+is a separate rules engine that decides the mechanics; see
+[The Rules Engine](#the-rules-engine).
+
 
 ### Our Solution: Intelligent Conversation Compression
 
@@ -697,11 +782,11 @@ The system automatically adjusts compression based on content type:
 
 ### SRD 5.2.1 Rules Implementation
 - **Complete Character System** - All classes, races, backgrounds from SRD
-- **Spell System** - Full spellcasting with components and concentration
-- **Combat Mechanics** - Actions, bonus actions, reactions, opportunity attacks
-- **Conditions & Effects** - All standard conditions tracked automatically
-- **Equipment & Magic Items** - Complete inventory with attunement rules
-- **Skill Checks & Saves** - Advantage/disadvantage, proficiency bonuses
+- **Spell System** - Full spellcasting with components and concentration; slots and concentration tracked by the engine
+- **Combat Mechanics** - Actions, bonus actions, reactions, opportunity attacks; damage, saves and XP applied by the engine
+- **Conditions & Effects** - Standard conditions, exhaustion and timed effects kept on the engine's clock
+- **Equipment & Magic Items** - Inventory and attunement, plus the SRD item pack with charged items that recharge and run out
+- **Skill Checks & Saves** - Totals, advantage/disadvantage and condition roll modes from the engine
 
 ### AI-Powered Features
 - **Adaptive Storytelling** - AI responds to creative solutions and unexpected actions
@@ -754,6 +839,14 @@ The codebase follows a clean Manager Pattern for all major subsystems:
 - **ModulePathManager** - Abstracts file system for module data
 - **IncrementalLocationCompressor** - Automatically compresses conversation history at current location
 - **CompanionMemoryManager** - Tracks NPC relationships and interactions
+
+### Rules Engine Integration
+- **`bin/nql-apply`** - The compiled engine; `core/nql/apply.py` runs it as a subprocess, one JSON document each way, with a timeout
+- **`core/nql/`** - One host module per rules domain: genesis, storage, currency, transfer, equipment, armor_class, checks, effects, resources, ammunition, concentration, experience, leveling, occupants, travel, acquisition, item_catalog, stats
+- **Typed declarations** - The Dungeon Master's structured actions are the only input; prose is never parsed for rules
+- **Checkpoint and journal** - The host keeps the engine's checkpoint and journals every applied change with its request id; replay is deterministic and a retried request applies once
+- **Version pinning** - `bin/NQL_ENGINE_VERSION.txt` names the engine revision; code and binary move together
+
 
 ### Module-Centric Architecture
 ```
@@ -1276,6 +1369,22 @@ This is unofficial Fan Content and is not affiliated with, endorsed, sponsored, 
 
 ## Recent Updates
 
+### Current Main - The NQL Rules Engine
+The mechanical side of the game has moved, one small merged change at a time, from the
+language model to a compiled rules engine. Highlights in merge order:
+- **Storage, giving, coins, armor typing, the validator** (#472-#477) - the first seams: containers, hand-offs and purses as engine transactions.
+- **Resources, temporary hit points, equipment deltas** (#478-#482) - hit points, slots, feature uses and quantities.
+- **Effects, stats, checks and conditions** (#486-#505) - timed effects on the engine's clock, derived totals, checks and saves with roll modes, exhaustion.
+- **Experience and concentration** (#506-#510); **combat hit points, concentration, saves and conditions** (#513-#519); **monster abilities** (#520-#521); **ammunition** (#515-#516).
+- **Location rosters** (#522-#529, #545) - the engine keeps who is where; typed occupant actions and escort receipts.
+- **Quests** (#548-#549) - quest status as an engine record.
+- **SRD item pack and buying** (#550-#551) - the catalog in `data/srd/`; acquiring an item by name at a catalog price.
+- **Compact context** (#554-#559) - validation evidence once per fact, the atlas built once per revision.
+- **Modules** (#562-#564, #575, #578, #582, #589) - registry stub recovery, managed import with re-prefixing, module declarations, NPC dispositions, drop-in typing.
+- **Charged items** (#563, #583, #585, #588, #590) - recharge rules and the clock, 74 charged items from the pack, engine-minted seeds, use in combat, and player agency when a wand cannot pay.
+- **Travel** (#584, #587) - the engine world is the published modules; the engine's party follows the tracker.
+
+
 ### Current Main - React Player, Multi-Provider AI, and Startup Improvements
 
 #### Player Interfaces
@@ -1396,6 +1505,7 @@ This is the first iteration of the compression system designed to reduce API cos
 - **Storage System** - Natural language inventory management
 
 ### Roadmap
+- **Rules Engine** - Engine-led travel and travel time, module build-time integration, remaining item edge cases (see [The Rules Engine](#the-rules-engine))
 - **Mobile Support** - Responsive web interface
 - **Voice Integration** - Speech-to-text commands
 - **AI Image Generation** - Scene and character art
