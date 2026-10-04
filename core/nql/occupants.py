@@ -56,8 +56,13 @@ def document_path(root: str = ".") -> str:
 
 
 def _modules(root: str) -> List[str]:
+    """The modules the world declares: those whose place ids are final (#572)."""
     from utils import roster_conversion
-    return roster_conversion.installed_modules(root)
+    notes: List[Tuple[str, str]] = []
+    modules = roster_conversion.world_modules(root, notes)
+    for _, text in notes:
+        warning("OCCUPANTS: %s" % text, category="location_transitions")
+    return modules
 
 
 def _world(root: str):
@@ -98,7 +103,7 @@ def _create(root: str, world: str, places: List[str]) -> Optional[Dict[str, Any]
         from utils import roster_conversion
         out = os.path.join(root, CONVERSION_DIR)
         try:
-            problems, live, _ = roster_conversion.run(root, out)
+            problems, live, _ = roster_conversion.run(root, out, modules=_modules(root))
             info("OCCUPANTS: live_state.json created by conversion of %d encounter files; "
                  "report at %s (%d expectation problems)" % (len(encounters), out, len(problems)),
                  category="location_transitions")
@@ -238,6 +243,22 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
                 return None
             _write(root, live)
             created = True
+        # Places the document holds that the world does not declare (a module
+        # not published, or seeded before #572): declared bare in one pass,
+        # as the refusal ladder below would one call at a time. A bare place
+        # has no seeds and no routes; the document keeps its record.
+        declared = {p[0] if isinstance(p, tuple) else p for p in places}
+        held = [p for p in live.get("places") or [] if isinstance(p, str) and p not in declared]
+        if held:
+            by_module: Dict[str, int] = {}
+            for place in held:
+                module = place.partition(":")[2].split("/", 1)[0]
+                by_module[module] = by_module.get(module, 0) + 1
+            info("OCCUPANTS: the document holds %d places the world does not declare (%s); "
+                 "declared bare, their record kept" % (
+                     len(held), ", ".join("%s %d" % kv for kv in sorted(by_module.items()))),
+                 category="location_transitions")
+            world += "".join('location "%s" named "%s";\n' % (p, p) for p in held)
         if created or "quests" not in live:
             # QS: the switch. A new document, or one from before the quest
             # record (v2), takes the played plot once, before this turn's call.
@@ -1016,7 +1037,8 @@ def _authored(root: str) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """{module: {location_id: authored location}} from the masters (the
     played file when a master is missing), read once per set of modules."""
     from utils import roster_conversion
-    modules = tuple(roster_conversion.installed_modules(root))
+    # The world's modules; _world already notes an unreadable registry.
+    modules = tuple(roster_conversion.world_modules(root))
     hit = _AUTHORED_CACHE.get(os.path.abspath(root))
     if hit and hit[0] == modules:
         return hit[1]

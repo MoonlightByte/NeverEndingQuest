@@ -113,6 +113,36 @@ def installed_modules(root):
     return out
 
 
+def world_modules(root, notes=None):
+    """The installed modules whose place ids are final, for the engine world
+    (LIVE_STATE.md: seed a module only once its place ids are final): those
+    the world registry has integrated, by the rule detect_new_modules uses
+    (an entry that is not a bare stub), plus the module the party tracker
+    names (spaces read as underscores), since play stands there. An
+    unreadable registry gives every installed module, as before, with a
+    note."""
+    from core.generators.module_stitcher import ModuleStitcher
+
+    installed = installed_modules(root)
+    try:
+        registry = load(os.path.join(root, "modules", "world_registry.json"))
+        modules = registry.get("modules") if isinstance(registry, dict) else None
+        if not isinstance(modules, dict):
+            raise ValueError("no modules table")
+    except (OSError, ValueError) as exc:
+        if notes is not None:
+            notes.append(("registry", "world_registry.json unreadable (%s); every installed "
+                                      "module is declared" % exc))
+        return installed
+    try:
+        tracker = load(os.path.join(root, "party_tracker.json"))
+        current = str(tracker.get("module") or "").replace(" ", "_") if isinstance(tracker, dict) else ""
+    except (OSError, ValueError):
+        current = ""
+    return [m for m in installed if m == current or (
+        m in modules and not ModuleStitcher._is_registry_stub(registry, m))]
+
+
 class Game:
     def __init__(self, root, modules, paths=None):
         self.root = root
@@ -875,7 +905,8 @@ def run(root, out, binary=None, modules=None, lower=(), overrides=None):
     if binary is None:
         from core.nql import apply
         binary = apply.binary_path()
-    modules = list(modules) if modules else installed_modules(root)
+    # None means every installed module; an empty list is a world with none.
+    modules = installed_modules(root) if modules is None else list(modules)
     lower = [m for m in lower if m in modules]
     game = Game(root, modules)
     seed_list, decisions, unapplied, notes = convert(game, lower, overrides or {})
@@ -909,7 +940,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
     overrides = load(args.overrides) if args.overrides else {}
     problems, _, _ = run(args.root, args.out, args.nql_apply,
-                         [m for m in args.modules.split(",") if m], [m for m in args.lower.split(",") if m], overrides)
+                         [m for m in args.modules.split(",") if m] or None,
+                         [m for m in args.lower.split(",") if m], overrides)
     for p in problems:
         print("PROBLEM: %s" % p)
     return 1 if problems else 0
