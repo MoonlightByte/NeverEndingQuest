@@ -176,6 +176,20 @@ def _speed_text(sheet):
         return f"{max(0, base - 5 * level)} ft NOW (base {base}, exhaustion level {level} costs {5 * level})"
     return str(base)
 
+def _charges_tag(item):
+    """"[charges C of M]" for an equipment row with an integer charges object
+    (plus its typed recharge rate when it has one), else an empty string."""
+    charges = item.get("charges") if isinstance(item, dict) else None
+    if not isinstance(charges, dict):
+        return ""
+    current, maximum = charges.get("current"), charges.get("max")
+    if type(current) is not int or type(maximum) is not int:
+        return ""
+    rate = item.get("rechargeRate")
+    rate_text = f", recharges {rate}" if isinstance(rate, str) and rate and rate != "never" else ""
+    return f"[charges {current} of {maximum}{rate_text}]"
+
+
 def _format_temporary_effects(character_data):
     values = []
     for effect in character_data.get("temporaryEffects", []) or []:
@@ -1148,6 +1162,11 @@ def update_character_data(conversation_history, party_tracker_data):
                         item_description = f"{item['item_name']} ({item['item_type']})"
                         if item['quantity'] > 1:
                             item_description = f"{item_description} x{item['quantity']}"
+                        # Item charges: the engine-held count (the DM never
+                        # invents one; the description's own number is flavor).
+                        charges_tag = _charges_tag(item)
+                        if charges_tag:
+                            item_description = f"{item_description} {charges_tag}"
                         # D-242-D: the item's whole description (single line).
                         item_desc_text = _single_line(item.get('description'))
                         if item_desc_text:
@@ -1238,6 +1257,9 @@ FLAWS: {member_data['flaws']}
                         # Check if quantity exists before accessing it
                         if item.get('quantity', 1) > 1:
                             item_description = f"{item_description} x{item['quantity']}"
+                        charges_tag = _charges_tag(item)
+                        if charges_tag:
+                            item_description = f"{item_description} {charges_tag}"
                         # D-242-D: the item's whole description (single line).
                         item_desc_text = _single_line(item.get('description'))
                         if item_desc_text:

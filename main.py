@@ -9068,7 +9068,18 @@ def _main_game_loop(startup_authority, turn_authority):
         try:
             from core.managers.item_charges import refresh_party
 
-            refresh_party(party_tracker_data)
+            recharged = refresh_party(party_tracker_data)
+            if recharged:
+                # The DM learns counts from the sheet summary and from the
+                # "Charges:" lines the spend action leaves, so a recharge gets
+                # the same line, and the summary (rebuilt only after a
+                # response) is rebuilt now for this turn's narration.
+                for owner_name, items in recharged.items():
+                    conversation_history.append({"role": "user", "content": (
+                        f"Charges: the rules engine counted {owner_name}'s recharge: " + "; ".join(items) + ".")})
+                conversation_history = update_character_data(conversation_history, party_tracker_data)
+                conversation_history = ensure_main_system_prompt(conversation_history, main_system_prompt_text)
+                conversation_history = order_conversation_messages(conversation_history, main_system_prompt_text)
         except Exception as charges_exc:
             debug(f"CHARGES: refresh skipped this turn: {charges_exc}", category="storage_operations")
 
