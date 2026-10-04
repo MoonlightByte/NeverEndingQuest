@@ -300,6 +300,53 @@ def declared_start(module_dir):
     return {"areaId": area, "locationId": loc}
 
 
+# A declared route's ticks: whole minutes, 1 to 720 (N5, T123).
+ROUTE_TICKS = (60, 43200)
+
+
+def declared_routes(module_dir, notes=None):
+    """Each declared link's time: {(from, to): ticks}, bare ids, from the
+    `routes` of a version 1 module_declaration.json in module_dir (N5). An
+    entry is used only when from and to are distinct non-empty strings,
+    ticks is a whole number of minutes in seconds within ROUTE_TICKS and
+    both is true or false. An explicit direction wins over the reverse that
+    another entry's `both` gives; a second explicit entry for one direction
+    is left out. No file, another format or no `routes` means none, and the
+    time table applies (utils/travel_map.py). Left-out entries are noted as
+    strings."""
+    notes = [] if notes is None else notes
+    try:
+        data = load(os.path.join(module_dir, DECLARATION))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or data.get("format") != "neq-module-declaration" or data.get("version") != 1:
+        return {}
+    entries = data.get("routes")
+    if entries is None:
+        return {}
+    if not isinstance(entries, list):
+        notes.append("routes is not a list; none used")
+        return {}
+    explicit, reverse = {}, {}
+    for k, entry in enumerate(entries):
+        entry = entry if isinstance(entry, dict) else {}
+        a, b, ticks, both = entry.get("from"), entry.get("to"), entry.get("ticks"), entry.get("both")
+        if not (isinstance(a, str) and a and isinstance(b, str) and b) or a == b:
+            notes.append("route %d: from and to are not two place ids; left out" % k)
+        elif type(ticks) is not int or ticks % 60 or not ROUTE_TICKS[0] <= ticks <= ROUTE_TICKS[1]:
+            notes.append("route %d (%s -> %s): ticks %r is not whole minutes in range; left out" % (k, a, b, ticks))
+        elif type(both) is not bool:
+            notes.append("route %d (%s -> %s): both is not true or false; left out" % (k, a, b))
+        elif (a, b) in explicit:
+            notes.append("route %d: %s -> %s is declared twice; the first is kept" % (k, a, b))
+        else:
+            explicit[(a, b)] = ticks
+            if both:
+                reverse.setdefault((b, a), ticks)
+    reverse.update(explicit)
+    return reverse
+
+
 def declared_beings(game, module, notes):
     """What the module's declaration says about its people: ({(home, name):
     aliases}, {(place, name)} for the same being's other appearances,
