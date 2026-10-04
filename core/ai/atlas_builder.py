@@ -326,9 +326,10 @@ def _current_location_id() -> Optional[str]:
 
 
 def format_atlas_for_conversation(atlas: Dict[str, Any], current_location_id: Optional[str] = None) -> str:
-    # C3: the place the party stands in is marked HERE; its traps and hostiles
-    # are told once, by the Current Location block, so their markers are
-    # kept for other places only.
+    # C3: the place the party stands in is told by the Current Location block,
+    # so its traps and hostiles keep their markers for other places only, and
+    # the atlas carries no marker for it (#559 R3: one mention, and the atlas
+    # line no longer changes with the party's position).
     if current_location_id is None:
         current_location_id = _current_location_id()
     """Format atlas into a complete world map for conversation context"""
@@ -359,8 +360,6 @@ def format_atlas_for_conversation(atlas: Dict[str, Any], current_location_id: Op
                 # Add special markers
                 markers = []
                 here = loc_id == current_location_id
-                if here:
-                    markers.append("HERE")
                 if loc_data.get("npcs"):
                     markers.append(f"NPCs: {', '.join(loc_data['npcs'])}")
                 if loc_data.get("hasTraps") and not here:
