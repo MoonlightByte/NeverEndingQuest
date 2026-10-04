@@ -177,17 +177,30 @@ def _speed_text(sheet):
     return str(base)
 
 def _charges_tag(item):
-    """"[charges C of M]" for an equipment row with an integer charges object
-    (plus its typed recharge rate when it has one), else an empty string."""
-    charges = item.get("charges") if isinstance(item, dict) else None
-    if not isinstance(charges, dict):
+    """"[charges C of M]" for an equipment row with an integer charges object,
+    plus how it recharges: the row's typed rate, or its catalog type's rule
+    (H2b; a catalog row carries no rate). A catalog charged item whose count
+    the engine has not set yet says so; a destroyed unit (quantity 0) says so."""
+    if not isinstance(item, dict):
         return ""
-    current, maximum = charges.get("current"), charges.get("max")
-    if type(current) is not int or type(maximum) is not int:
+    charges = item.get("charges")
+    rule = None
+    try:
+        from core.nql import genesis
+        rule = genesis.charge_rule(item)
+    except Exception:
+        rule = None
+    if not isinstance(charges, dict) or type(charges.get("current")) is not int or type(charges.get("max")) is not int:
+        if rule is not None and rule.source == "pack" and item.get("quantity") != 0:
+            return "[charged; the engine sets its count at first use]"
         return ""
+    if item.get("quantity") == 0:
+        return "[destroyed; its charges are gone]"
     rate = item.get("rechargeRate")
     rate_text = f", recharges {rate}" if isinstance(rate, str) and rate and rate != "never" else ""
-    return f"[charges {current} of {maximum}{rate_text}]"
+    if not rate_text and rule is not None and rule.source == "pack" and rule.recharges and rule.rate:
+        rate_text = f", recharges {rule.rate}"
+    return f"[charges {charges['current']} of {charges['max']}{rate_text}]"
 
 
 def _format_temporary_effects(character_data):

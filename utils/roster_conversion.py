@@ -113,6 +113,36 @@ def installed_modules(root):
     return out
 
 
+def world_modules(root, notes=None):
+    """The installed modules whose place ids are final, for the engine world
+    (LIVE_STATE.md: seed a module only once its place ids are final): those
+    the world registry has integrated, by the rule detect_new_modules uses
+    (an entry that is not a bare stub), plus the module the party tracker
+    names (spaces read as underscores), since play stands there. An
+    unreadable registry gives every installed module, as before, with a
+    note."""
+    from core.generators.module_stitcher import ModuleStitcher
+
+    installed = installed_modules(root)
+    try:
+        registry = load(os.path.join(root, "modules", "world_registry.json"))
+        modules = registry.get("modules") if isinstance(registry, dict) else None
+        if not isinstance(modules, dict):
+            raise ValueError("no modules table")
+    except (OSError, ValueError) as exc:
+        if notes is not None:
+            notes.append(("registry", "world_registry.json unreadable (%s); every installed "
+                                      "module is declared" % exc))
+        return installed
+    try:
+        tracker = load(os.path.join(root, "party_tracker.json"))
+        current = str(tracker.get("module") or "").replace(" ", "_") if isinstance(tracker, dict) else ""
+    except (OSError, ValueError):
+        current = ""
+    return [m for m in installed if m == current or (
+        m in modules and not ModuleStitcher._is_registry_stub(registry, m))]
+
+
 class Game:
     def __init__(self, root, modules, paths=None):
         self.root = root
@@ -124,15 +154,20 @@ class Game:
         self.tracker = load(os.path.join(root, "party_tracker.json"))
         journal = os.path.join(root, "journal.json")
         self.journal = load(journal).get("entries", []) if os.path.exists(journal) else []
-        # masters[M] and played[M] map a location ID to (area ID, location).
-        self.masters, self.played = {}, {}
+        # masters[M] and played[M] map a location ID to (area ID, location);
+        # played_areas[M] keeps each played area file whole (the map's links
+        # are read from them, utils/travel_map.py).
+        self.masters, self.played, self.played_areas = {}, {}, {}
         for m in modules:
-            self.masters[m], self.played[m] = {}, {}
+            self.masters[m], self.played[m], self.played_areas[m] = {}, {}, {}
             for path in sorted(glob.glob(os.path.join(self.paths[m], "areas", "*.json"))):
                 name = os.path.basename(path)[:-5]
                 master = name.endswith("_BU")
                 area = name[:-3] if master else name
-                for loc in load(path).get("locations", []) or []:
+                doc = load(path)
+                if not master:
+                    self.played_areas[m][name] = doc
+                for loc in doc.get("locations", []) or []:
                     (self.masters if master else self.played)[m][loc["locationId"]] = (area, loc)
         self.encounters = []
         for path in glob.glob(os.path.join(root, "modules", "encounters", "encounter_*.json")):
@@ -756,9 +791,11 @@ def npc_decision(game, s, fights, played, persons, played_lists, claimed):
 
 # Output -------------------------------------------------------------------
 
-def world_source(game, seed_list):
+def world_source(game, seed_list, held=None, notes=None):
     """Every place of the modules, masters first, then any place only the
-    played files have."""
+    played files have; and the map with the party (utils/travel_map.py).
+    `held` is the document's party and character places, when there is a
+    document."""
     places = []
     for m in game.modules:
         for loc_id, (_, loc) in game.masters[m].items():
@@ -780,6 +817,9 @@ def world_source(game, seed_list):
     # quest record; utils/quest_record.py).
     from utils import quest_record
     lines += quest_record.declaration_lines(game.root, game.modules)
+    # C10a: the map, the party at the tracker's place and the visited seed.
+    from utils import travel_map
+    lines += travel_map.lines(game, [p for p, _ in places], held, notes)
     return "\n".join(lines) + "\n", [p for p, _ in places]
 
 
@@ -901,7 +941,8 @@ def run(root, out, binary=None, modules=None, lower=(), overrides=None):
     if binary is None:
         from core.nql import apply
         binary = apply.binary_path()
-    modules = list(modules) if modules else installed_modules(root)
+    # None means every installed module; an empty list is a world with none.
+    modules = installed_modules(root) if modules is None else list(modules)
     lower = [m for m in lower if m in modules]
     game = Game(root, modules)
     seed_list, decisions, unapplied, notes = convert(game, lower, overrides or {})
@@ -935,7 +976,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
     overrides = load(args.overrides) if args.overrides else {}
     problems, _, _ = run(args.root, args.out, args.nql_apply,
-                         [m for m in args.modules.split(",") if m], [m for m in args.lower.split(",") if m], overrides)
+                         [m for m in args.modules.split(",") if m] or None,
+                         [m for m in args.lower.split(",") if m], overrides)
     for p in problems:
         print("PROBLEM: %s" % p)
     return 1 if problems else 0

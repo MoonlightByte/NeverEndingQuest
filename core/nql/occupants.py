@@ -56,8 +56,13 @@ def document_path(root: str = ".") -> str:
 
 
 def _modules(root: str) -> List[str]:
+    """The modules the world declares: those whose place ids are final (#572)."""
     from utils import roster_conversion
-    return roster_conversion.installed_modules(root)
+    notes: List[Tuple[str, str]] = []
+    modules = roster_conversion.world_modules(root, notes)
+    for _, text in notes:
+        warning("OCCUPANTS: %s" % text, category="location_transitions")
+    return modules
 
 
 def _world(root: str):
@@ -74,10 +79,23 @@ def _world(root: str):
             )
     notes: List[Tuple[str, str]] = []
     seed_list = roster_conversion.seeds(game, notes)
+    world, places = roster_conversion.world_source(game, seed_list, _held_party(root), notes)
     for kind, text in notes:
         debug("OCCUPANTS: seed note (%s): %s" % (kind, text), category="location_transitions")
-    world, places = roster_conversion.world_source(game, seed_list)
     return world, places, game
+
+
+def _held_party(root: str) -> Optional[Dict[str, Any]]:
+    """The document's party and character places (C10a), so the world keeps
+    declaring a member the document's party still holds."""
+    live = _load(root)
+    if not live:
+        return None
+    return {
+        "party": list((live.get("map") or {}).get("party") or []),
+        "characters": {c.get("id"): c.get("location") for c in live.get("characters") or []
+                       if isinstance(c, dict)},
+    }
 
 
 def _load(root: str) -> Optional[Dict[str, Any]]:
@@ -98,7 +116,7 @@ def _create(root: str, world: str, places: List[str]) -> Optional[Dict[str, Any]
         from utils import roster_conversion
         out = os.path.join(root, CONVERSION_DIR)
         try:
-            problems, live, _ = roster_conversion.run(root, out)
+            problems, live, _ = roster_conversion.run(root, out, modules=_modules(root))
             info("OCCUPANTS: live_state.json created by conversion of %d encounter files; "
                  "report at %s (%d expectation problems)" % (len(encounters), out, len(problems)),
                  category="location_transitions")
@@ -125,10 +143,11 @@ def _actor_of(world: str) -> Dict[str, str]:
 
 
 def _call(world: str, live: Dict[str, Any], actions: Optional[str], request_id: Optional[str],
-          view: List[str], quests: List[str] = ()) -> Dict[str, Any]:
+          view: List[str], quests: List[str] = (), actor: Optional[str] = None) -> Dict[str, Any]:
     body: Dict[str, Any] = {"world": world, "live_state": live}
     if actions:
-        body.update({"actions": actions, "actor": _actor_of(world), "request": request_id})
+        who = {"kind": "character", "id": actor} if actor else _actor_of(world)
+        body.update({"actions": actions, "actor": who, "request": request_id})
     if view:
         body["locations"] = list(view)
     if quests:
@@ -219,15 +238,19 @@ def _set_aside(root: str) -> None:
 
 def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
             view: Tuple[str, ...] = (), quests: Tuple[str, ...] = (), root: str = ".",
-            create: bool = True) -> Optional[Dict[str, Any]]:
+            create: bool = True, actor: Optional[str] = None,
+            align: bool = True) -> Optional[Dict[str, Any]]:
     """One engine call on the document. Returns the response (ok or a refusal
     of the actions, which the caller reconciles), or None when the engine is
     unavailable or the document could not be made. Writes the next document
     when it changed. With create=False a missing document is None (a reader
     never writes; the DM turn makes the document). `quests` asks for the
-    quests view of these ids (QS)."""
+    quests view of these ids (QS). `actor` is the acting character (default
+    the roster actor). A call with actions first brings the document's party
+    to the tracker when another writer moved it (core/nql/travel.py);
+    align=False is travel's own call."""
     try:
-        world, places, _ = _world(root)
+        world, places, game = _world(root)
         live = _load(root)
         created = False
         if live is None:
@@ -238,16 +261,34 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
                 return None
             _write(root, live)
             created = True
+        # Places the document holds that the world does not declare (a module
+        # not published, or seeded before #572): declared bare in one pass,
+        # as the refusal ladder below would one call at a time. A bare place
+        # has no seeds and no routes; the document keeps its record.
+        declared = {p[0] if isinstance(p, tuple) else p for p in places}
+        held = [p for p in live.get("places") or [] if isinstance(p, str) and p not in declared]
+        if held:
+            by_module: Dict[str, int] = {}
+            for place in held:
+                module = place.partition(":")[2].split("/", 1)[0]
+                by_module[module] = by_module.get(module, 0) + 1
+            info("OCCUPANTS: the document holds %d places the world does not declare (%s); "
+                 "declared bare, their record kept" % (
+                     len(held), ", ".join("%s %d" % kv for kv in sorted(by_module.items()))),
+                 category="location_transitions")
+            world += "".join('location "%s" named "%s";\n' % (p, p) for p in held)
         if created or "quests" not in live:
             # QS: the switch. A new document, or one from before the quest
             # record (v2), takes the played plot once, before this turn's call.
             live = _convert_quests(root, world, live, "new document" if created else "document without quests")
+        if actions and align:
+            live = _align(root, world, live, game)
         tried_bak = False
         recreated = False
         redeclared: set = set()
         on_disk = live
         while True:
-            response = _call(world, live, actions, request_id, list(view), list(quests))
+            response = _call(world, live, actions, request_id, list(view), list(quests), actor)
             if response.get("ok"):
                 # Written when the engine changed it, or when the file holds
                 # a refused document and this one (the .bak) is good.
@@ -293,6 +334,28 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
         warning("OCCUPANTS: engine unavailable (%s); the roster record is not updated this turn"
                 % exc, category="location_transitions")
         return None
+
+
+def _align(root: str, world: str, live: Dict[str, Any], game) -> Dict[str, Any]:
+    """C10a: before a writer's call, the document's party follows the
+    tracker when another writer moved it (the wizard, a module switch, a
+    restore). `move` marks nothing; a committed in-module move is walked by
+    core/nql/travel.realign. A refusal keeps the document as it is."""
+    from core.nql import travel
+    actions = travel.align_actions(live, game.tracker or {})
+    if not actions:
+        return live
+    from utils.roster_conversion import ACTOR
+    rid = travel.align_id()
+    response = _call(world, live, "\n".join(actions), rid, [], [], ACTOR)
+    if not response.get("ok"):
+        warning("OCCUPANTS: aligning the party (%s) was refused: %s" % (rid, response.get("error")),
+                category="location_transitions")
+        return live
+    info("OCCUPANTS: the engine party follows the tracker (%s): %s" % (rid, " ".join(actions)),
+         category="location_transitions")
+    _write(root, response["live_state"])
+    return response["live_state"]
 
 
 def view(places: List[str], root: str = ".") -> List[Dict[str, Any]]:
@@ -1016,7 +1079,8 @@ def _authored(root: str) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """{module: {location_id: authored location}} from the masters (the
     played file when a master is missing), read once per set of modules."""
     from utils import roster_conversion
-    modules = tuple(roster_conversion.installed_modules(root))
+    # The world's modules; _world already notes an unreadable registry.
+    modules = tuple(roster_conversion.world_modules(root))
     hit = _AUTHORED_CACHE.get(os.path.abspath(root))
     if hit and hit[0] == modules:
         return hit[1]
