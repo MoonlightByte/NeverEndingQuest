@@ -1901,7 +1901,9 @@ class CampaignManager:
         ``priority_module`` (the party's module) is integrated first. The
         result's ``import_required`` lists modules left unjoined because
         their ids collide with a registered module and they count as
-        played; ``imported`` lists the unplayed ones joined by renumbering.
+        played; ``imported`` lists the unplayed ones joined by renumbering;
+        ``not_joined`` lists the installed ones publication refused, with
+        the reason (#586).
         """
         with module_refresh_lock() as acquired:
             if not acquired:
@@ -1910,6 +1912,7 @@ class CampaignManager:
                     "newly_integrated": [],
                     "import_required": [],
                     "imported": [],
+                    "not_joined": [],
                     "available_modules": self.campaign_data.get("availableModules", []),
                     "error": "module_refresh_lock_timeout",
                 }
@@ -2010,6 +2013,7 @@ class CampaignManager:
                     "newly_integrated": list(newly_integrated),
                     "import_required": list(stitcher.import_required),
                     "imported": list(stitcher.imported),
+                    "not_joined": list(stitcher.not_joined),
                     "available_modules": self.campaign_data.get("availableModules", []),
                 }
             except Exception as e:
@@ -2024,6 +2028,7 @@ class CampaignManager:
                     "newly_integrated": [],
                     "import_required": [],
                     "imported": [],
+                    "not_joined": [],
                     "available_modules": self.campaign_data.get("availableModules", []),
                     "error": str(e),
                 }
@@ -2041,6 +2046,7 @@ class CampaignManager:
                 "newly_integrated": [],
                 "import_required": [],
                 "imported": [],
+                "not_joined": [],
                 "available_modules": self.campaign_data.get("availableModules", []),
                 "error": "refresh_timeout",
             }

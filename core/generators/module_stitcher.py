@@ -420,8 +420,10 @@ class ModuleStitcher:
         # with a registered module: [{"module", "collides_with",
         # "refused_because"}], and the unplayed ones it joined by
         # renumbering a copy: [{"module", "collides_with", "renumbered"}].
+        # And the installed ones publication refused: [{"module", "reason"}].
         self.import_required = []
         self.imported = []
+        self.not_joined = []
         
         # Clean up old connections if they exist (migration to isolated modules)
         if 'connections' in self.world_registry:
@@ -1187,8 +1189,10 @@ class ModuleStitcher:
         }
         # The module builder writes a module-level party tracker; published
         # modules (the repo's own, and modules dropped into modules/) never
-        # ship one and no gameplay path reads it. Validate it only when it
-        # is present.
+        # ship one, and no play path reads it through the schema (the
+        # declared start reads only its weather and politicalClimate). It is
+        # checked only when present, and its content never refuses
+        # publication (#586): a failure is logged and the module publishes.
         optional_files = {
             "party_tracker.json": "party_schema.json",
         }
@@ -1238,8 +1242,19 @@ class ModuleStitcher:
                     continue
                 if not file_path.is_file():
                     return False, f"Publication file is not a regular file: {filename}"
-                data = load_object(file_path)
-                validate_available_schema(data, schema_name, filename)
+                try:
+                    data = load_object(file_path)
+                    validate_available_schema(data, schema_name, filename)
+                except (OSError, ValueError) as exc:
+                    # Publication checks a module several times; report once.
+                    warned = self.__dict__.setdefault("_own_tracker_warned", set())
+                    if str(file_path) not in warned:
+                        warned.add(str(file_path))
+                        warning(
+                            f"MODULE_PUBLICATION: {module_root.name}'s own {filename} "
+                            f"is not used by play and fails: {exc}; publishing anyway",
+                            category="module_integration",
+                        )
 
             areas_dir = module_root / "areas"
             if not areas_dir.is_dir():
@@ -5199,6 +5214,7 @@ Respond with JSON:
         integrated_modules = []
         self.import_required = []
         self.imported = []
+        self.not_joined = []
         
         try:
             self._recover_managed_imports_locked()
@@ -5258,6 +5274,17 @@ Respond with JSON:
                                     "collides_with": collides_with,
                                     "refused_because": outcome["refused_because"],
                                 }
+                            )
+                    elif result.status is PublicationStatus.NOT_PUBLISHED:
+                        warning(
+                            f"Module {module_name} is installed but not joined: "
+                            f"{result.reason}",
+                            category="module_integration",
+                        )
+                        # A module removed during the scan is not "installed".
+                        if os.path.isdir(os.path.join(self.modules_dir, module_name)):
+                            self.not_joined.append(
+                                {"module": module_name, "reason": result.reason}
                             )
                     elif result.status is PublicationStatus.INDETERMINATE:
                         error(
