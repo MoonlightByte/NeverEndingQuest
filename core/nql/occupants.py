@@ -56,8 +56,13 @@ def document_path(root: str = ".") -> str:
 
 
 def _modules(root: str) -> List[str]:
+    """The modules the world declares: those whose place ids are final (#572)."""
     from utils import roster_conversion
-    return roster_conversion.installed_modules(root)
+    notes: List[Tuple[str, str]] = []
+    modules = roster_conversion.world_modules(root, notes)
+    for _, text in notes:
+        warning("OCCUPANTS: %s" % text, category="location_transitions")
+    return modules
 
 
 def _world(root: str):
@@ -98,7 +103,7 @@ def _create(root: str, world: str, places: List[str]) -> Optional[Dict[str, Any]
         from utils import roster_conversion
         out = os.path.join(root, CONVERSION_DIR)
         try:
-            problems, live, _ = roster_conversion.run(root, out)
+            problems, live, _ = roster_conversion.run(root, out, modules=_modules(root))
             info("OCCUPANTS: live_state.json created by conversion of %d encounter files; "
                  "report at %s (%d expectation problems)" % (len(encounters), out, len(problems)),
                  category="location_transitions")
@@ -1016,7 +1021,8 @@ def _authored(root: str) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """{module: {location_id: authored location}} from the masters (the
     played file when a master is missing), read once per set of modules."""
     from utils import roster_conversion
-    modules = tuple(roster_conversion.installed_modules(root))
+    # The world's modules; _world already notes an unreadable registry.
+    modules = tuple(roster_conversion.world_modules(root))
     hit = _AUTHORED_CACHE.get(os.path.abspath(root))
     if hit and hit[0] == modules:
         return hit[1]
