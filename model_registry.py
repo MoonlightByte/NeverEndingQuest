@@ -570,6 +570,17 @@ _declare(
     note="Classic-build NPC coherence repair is enabled at the reviewed tip default.",
 )
 _declare(
+    "T122",
+    _profiles(
+        "NPC_TYPING_T122_GPT56LUNA_NONE",
+        "NPC_TYPING_T122_GEMINI_PRO_LOW",
+        "NPC_TYPING_T122_LEGACY",
+        "NPC_TYPING_T122_LMSTUDIO",
+    ),
+    note="Typing a module that joins without a module declaration (N4), once per "
+         "module at its integration. Bound like T104.",
+)
+_declare(
     "T105",
     _profiles(
         "NPC_VOICE_T105_OPENAI_LUNA_NONE",
@@ -755,7 +766,7 @@ REGISTERED_TASK_IDS = tuple(
     "T054 T059 T063 T064 T065 T066 T067 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T092 T093 T094 T095 T096 T097 T098 "
     "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114 "
-    "T115 T116 T117 T118 T119 T120 T121".split()
+    "T115 T116 T117 T118 T119 T120 T121 T122".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 
