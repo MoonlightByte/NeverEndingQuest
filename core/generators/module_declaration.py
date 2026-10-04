@@ -48,7 +48,10 @@ def load_declared_world(module_path, module_name):
     def world():
         modules = [m for m in roster_conversion.installed_modules(".") if m != module_name]
         modules.append(module_name)
-        game = roster_conversion.Game(".", modules, paths={module_name: os.fspath(module_path)})
+        # A build before the first game has no root tracker: an empty party.
+        tracker = None if os.path.exists("party_tracker.json") else {}
+        game = roster_conversion.Game(".", modules, paths={module_name: os.fspath(module_path)},
+                                      tracker=tracker)
         source, _ = roster_conversion.world_source(game, roster_conversion.seeds(game, []))
         return source
 

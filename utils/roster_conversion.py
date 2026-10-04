@@ -144,14 +144,16 @@ def world_modules(root, notes=None):
 
 
 class Game:
-    def __init__(self, root, modules, paths=None):
+    def __init__(self, root, modules, paths=None, tracker=None):
         self.root = root
         self.modules = modules
         # Each module's directory: modules/<M> under the root, unless given
         # (a module checked in its publication workspace before it is live).
         self.paths = {m: os.path.join(root, "modules", m) for m in modules}
         self.paths.update(paths or {})
-        self.tracker = load(os.path.join(root, "party_tracker.json"))
+        # The root party tracker; a missing file raises. A caller with no
+        # game yet (the build-time load before a first game) passes its own.
+        self.tracker = load(os.path.join(root, "party_tracker.json")) if tracker is None else tracker
         journal = os.path.join(root, "journal.json")
         self.journal = load(journal).get("entries", []) if os.path.exists(journal) else []
         # masters[M] and played[M] map a location ID to (area ID, location);
