@@ -1743,8 +1743,7 @@ def update_party_tracker(module_name, character_name, *, live_scope=None, starti
             "currentArea": location["areaName"], "currentAreaId": location["areaId"],
         })
         for key in ("weather", "politicalClimate"):
-            # A declared entry carries the module's built values, which may be
-            # empty; they fill a key the tracker does not have yet.
+            # Preserve declared empty built weather/climate on a new tracker.
             if location.get(key) or (key not in world and isinstance(location.get(key), str)):
                 world[key] = location[key]
         party_data["module"] = module_name
