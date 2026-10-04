@@ -238,6 +238,101 @@ def _refusal(response: Dict[str, Any]) -> str:
     return f"{words} [{code or 'unknown'}]{(': ' + detail) if detail and code not in _FAULT_WORDS else ''}"
 
 
+def spend_working(working: Dict[str, Any], index: int, charges: int, clock: Optional[int], location: str,
+                  request: str) -> Dict[str, Any]:
+    """The engine half of a spend, on an already-prepared sheet copy (ids
+    assigned, mint done): declares the sheet with the clock, sends one
+    ``expend`` and writes the engine's facts onto the working row (the view's
+    normalized state; quantity 0 and unworn on a destroyed unit; the status
+    view through stats.store). Takes no lock and writes no file, so the
+    agentic combat pipeline (H3) can call it on its in-memory sheet and
+    journal the result. Returns {"ok": True, "iid", "view", "event",
+    "exhausted", "before", "max", "message"} or {"ok": False, "error"}."""
+    row = working["equipment"][index]
+    cid = genesis.character_id(working)
+    pair, reason = genesis.charges_fields(row)
+    if pair is None:
+        why = reason or "it has no charges"
+        if isinstance(row.get("charges"), dict) and row["charges"].get("gap"):
+            why = f"the engine could not set up its charges ({row['charges']['gap']})"
+        return {"ok": False, "error": f"{row.get('item_name')} cannot spend charges: {why}"}
+    world = genesis.build_world([working], location, clock_tick=clock)
+    for gap in world.gaps:
+        debug(f"EXPEND: genesis gap: {gap}", category="storage_operations")
+    iid = (world.item_ids.get(cid) or {}).get(index)
+    if not iid:
+        return {"ok": False, "error": "the item was not declared to the engine; nothing changed"}
+    if not _declared_from_type(world, iid, row):
+        # genesis declared the row without charges (a gap names why);
+        # refuse here with that reason rather than let the engine say
+        # "no charges" for an item the sheet shows charged.
+        marker = repr(row.get("item_name")) + " "
+        why = next((g.split("; declared ")[0].split(marker, 1)[1] for g in world.gaps
+                    if "; declared " in g and marker in g),
+                   "its charges could not be declared to the engine")
+        if isinstance(row.get("charges"), dict) and row["charges"].get("gap"):
+            why = f"the engine could not set up its charges ({row['charges']['gap']})"
+        return {"ok": False, "error": f"{row.get('item_name')} cannot spend charges: {why}"}
+    try:
+        response = apply.call({"world": world.source, "world_name": "expend-genesis.nql",
+                               "actions": f'expend {charges} charges of {genesis._q(iid)} by {genesis._q(cid)};',
+                               "actions_name": "expend.nql",
+                               "actor": {"kind": "character", "id": cid}, "request": request,
+                               "status": [cid], "item_charges": [iid]})
+    except apply.EngineUnavailable as error:
+        return {"ok": False, "error": f"rules engine unavailable: {error}"}
+    if not response.get("ok"):
+        return {"ok": False, "error": _refusal(response), "fault": response.get("fault") or {}}
+
+    view = next((v for v in response.get("item_charges") or [] if isinstance(v, dict) and v.get("item") == iid), None)
+    if view is None or type(view.get("current")) is not int:
+        return {"ok": False, "error": "engine returned no charges view for the item; nothing changed"}
+    # Write the engine's facts back from the VIEW row: current (never
+    # `available`, which is 0 for a quantity-0 unit, and never the
+    # event's `before`, which includes recharge from E2 on).
+    target = working["equipment"][index]
+    before = target["charges"]["current"]
+    # The ChargesExpended event: `before` is the count the engine spent
+    # from (recharge included), and `exhausted` the outcome of the
+    # type's rule when this spend took the last charge (H2b-3).
+    event = next((e.get("charges") for e in (response.get("receipt") or {}).get("events") or []
+                  if isinstance(e, dict) and e.get("kind") == "ChargesExpended"
+                  and isinstance(e.get("charges"), dict) and e["charges"].get("item") == iid), {})
+    exhausted = event.get("exhausted") if isinstance(event.get("exhausted"), dict) else None
+    if exhausted is not None and exhausted.get("outcome") == "destroyed":
+        # The unit is gone: the row stays at quantity 0 and unworn
+        # (the engine unequips it first), and store_view then drops
+        # its boundary. The DM narrates how it crumbles.
+        target["quantity"] = 0
+        target["equipped"] = False
+    store_view(target["charges"], view, target.get("quantity", 1))
+    target["charges"]["max"] = pair[1]
+    # The count the engine spent from, from the event (R2); above the
+    # stored count means the item had recharged since the sheet was
+    # last written (numbers from the engine, not computed here).
+    had = event.get("before") if type(event.get("before")) is int else view["current"] + charges
+    status = next((s for s in response.get("status") or []
+                   if isinstance(s.get("character"), dict) and s["character"].get("id") == cid), None)
+    if status is not None:
+        stats.store(working, status)
+    name = working.get("name")
+    regained = f"; it had recharged to {had} of {pair[1]} since its last use" if had > before else ""
+    outcome = ""
+    if exhausted is not None:
+        face = f" (rolled {exhausted['face']})" if type(exhausted.get("face")) is int else ""
+        if exhausted.get("outcome") == "destroyed":
+            outcome = f"; its last charge is gone and the item is destroyed{face}"
+        elif exhausted.get("outcome") == "regained":
+            outcome = (f"; its last charge was spent{face}: it regains {exhausted.get('regained')}, "
+                       f"now {view['current']} of {pair[1]}")
+        else:
+            outcome = f"; its last charge was spent{face}: the item holds"
+    message = (f"{name} spent {charges} charge{'s' if charges != 1 else ''} of {target['item_name']} "
+               f"({view['current']} of {pair[1]} remain{regained}){outcome}")
+    return {"ok": True, "iid": iid, "view": view, "event": event, "exhausted": exhausted, "before": before,
+            "max": pair[1], "message": message}
+
+
 def execute_expend(character_name: str, item_name: str, charges: Any, request_id: Optional[str] = None,
                    party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Spend ``charges`` of the character's item. {"success": True, "message"} or {"success": False, "error"}."""
@@ -303,90 +398,16 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
                 # first (the one being used is always tried; the others only
                 # when no earlier mint was refused).
                 mint_rows(path, working, cid, location, clock, retry={index})
-            row = working["equipment"][index]
-            pair, reason = genesis.charges_fields(row)
-            if pair is None:
-                why = reason or "it has no charges"
-                if isinstance(row.get("charges"), dict) and row["charges"].get("gap"):
-                    why = f"the engine could not set up its charges ({row['charges']['gap']})"
-                return {"success": False, "error": f"{row.get('item_name')} cannot spend charges: {why}"}
-            world = genesis.build_world([working], location, clock_tick=clock)
-            for gap in world.gaps:
-                debug(f"EXPEND: genesis gap: {gap}", category="storage_operations")
-            iid = (world.item_ids.get(cid) or {}).get(index)
-            if not iid:
-                return {"success": False, "error": "the item was not declared to the engine; nothing changed"}
-            if not _declared_from_type(world, iid, row):
-                # genesis declared the row without charges (a gap names why);
-                # refuse here with that reason rather than let the engine say
-                # "no charges" for an item the sheet shows charged.
-                marker = repr(row.get("item_name")) + " "
-                why = next((g.split("; declared ")[0].split(marker, 1)[1] for g in world.gaps
-                            if "; declared " in g and marker in g),
-                           "its charges could not be declared to the engine")
-                if isinstance(row.get("charges"), dict) and row["charges"].get("gap"):
-                    why = f"the engine could not set up its charges ({row['charges']['gap']})"
-                return {"success": False, "error": f"{row.get('item_name')} cannot spend charges: {why}"}
             request = request_id or f"expend:{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
-            try:
-                response = apply.call({"world": world.source, "world_name": "expend-genesis.nql",
-                                       "actions": f'expend {charges} charges of {genesis._q(iid)} by {genesis._q(cid)};',
-                                       "actions_name": "expend.nql",
-                                       "actor": {"kind": "character", "id": cid}, "request": request,
-                                       "status": [cid], "item_charges": [iid]})
-            except apply.EngineUnavailable as error:
-                return {"success": False, "error": f"rules engine unavailable: {error}"}
-            if not response.get("ok"):
-                return {"success": False, "error": _refusal(response)}
-
-            view = next((v for v in response.get("item_charges") or [] if isinstance(v, dict) and v.get("item") == iid), None)
-            if view is None or type(view.get("current")) is not int:
-                return {"success": False, "error": "engine returned no charges view for the item; nothing changed"}
-            # Write the engine's facts back from the VIEW row: current (never
-            # `available`, which is 0 for a quantity-0 unit, and never the
-            # event's `before`, which includes recharge from E2 on).
+            spent = spend_working(working, index, charges, clock, location, request)
+            if not spent["ok"]:
+                return {"success": False, "error": spent["error"]}
             target = working["equipment"][index]
-            before = target["charges"]["current"]
-            # The ChargesExpended event: `before` is the count the engine spent
-            # from (recharge included), and `exhausted` the outcome of the
-            # type's rule when this spend took the last charge (H2b-3).
-            event = next((e.get("charges") for e in (response.get("receipt") or {}).get("events") or []
-                          if isinstance(e, dict) and e.get("kind") == "ChargesExpended"
-                          and isinstance(e.get("charges"), dict) and e["charges"].get("item") == iid), {})
-            exhausted = event.get("exhausted") if isinstance(event.get("exhausted"), dict) else None
-            if exhausted is not None and exhausted.get("outcome") == "destroyed":
-                # The unit is gone: the row stays at quantity 0 and unworn
-                # (the engine unequips it first), and store_view then drops
-                # its boundary. The DM narrates how it crumbles.
-                target["quantity"] = 0
-                target["equipped"] = False
-            store_view(target["charges"], view, target.get("quantity", 1))
-            target["charges"]["max"] = pair[1]
-            # The count the engine spent from, from the event (R2); above the
-            # stored count means the item had recharged since the sheet was
-            # last written (numbers from the engine, not computed here).
-            had = event.get("before") if type(event.get("before")) is int else view["current"] + charges
-            status = next((s for s in response.get("status") or []
-                           if isinstance(s.get("character"), dict) and s["character"].get("id") == cid), None)
-            if status is not None:
-                stats.store(working, status)
-            name = working.get("name")
-            regained = f"; it had recharged to {had} of {pair[1]} since its last use" if had > before else ""
-            outcome = ""
-            if exhausted is not None:
-                face = f" (rolled {exhausted['face']})" if type(exhausted.get("face")) is int else ""
-                if exhausted.get("outcome") == "destroyed":
-                    outcome = f"; its last charge is gone and the item is destroyed{face}"
-                elif exhausted.get("outcome") == "regained":
-                    outcome = (f"; its last charge was spent{face}: it regains {exhausted.get('regained')}, "
-                               f"now {view['current']} of {pair[1]}")
-                else:
-                    outcome = f"; its last charge was spent{face}: the item holds"
-            message = (f"{name} spent {charges} charge{'s' if charges != 1 else ''} of {target['item_name']} "
-                       f"({view['current']} of {pair[1]} remain{regained}){outcome}")
+            view, exhausted = spent["view"], spent["exhausted"]
+            message = spent["message"]
             receipts = [r for r in working.get("chargeUses") or [] if isinstance(r, dict)]
-            receipt = {"request": request, "nqlId": iid, "item": target["item_name"], "requested": charges,
-                       "before": before, "after": view["current"], "message": message}
+            receipt = {"request": request, "nqlId": spent["iid"], "item": target["item_name"], "requested": charges,
+                       "before": spent["before"], "after": view["current"], "message": message}
             if exhausted is not None:
                 receipt["exhausted"] = exhausted
             receipts.append(receipt)
