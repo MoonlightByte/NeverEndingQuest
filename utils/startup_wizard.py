@@ -1743,8 +1743,7 @@ def update_party_tracker(module_name, character_name, *, live_scope=None, starti
             "currentArea": location["areaName"], "currentAreaId": location["areaId"],
         })
         for key in ("weather", "politicalClimate"):
-            # A declared entry carries the module's built values, which may be
-            # empty; they fill a key the tracker does not have yet.
+            # Preserve declared empty built weather/climate on a new tracker.
             if location.get(key) or (key not in world and isinstance(location.get(key), str)):
                 world[key] = location[key]
         party_data["module"] = module_name
@@ -1815,6 +1814,36 @@ def initialize_startup_conversation():
     _set_startup_progress(conversation, phase="module_selection")
     return conversation
 
+def _startup_configuration_handback(exc, provider, revision, scope):
+    from utils.startup_provider_recovery import (
+        configuration_required_message, notify_configuration_saved,
+        wait_for_configuration,
+    )
+    from utils.capture.live_provider_call import LiveProviderSuperseded, _safe_emit
+
+    message = configuration_required_message(exc)
+    if message is None:
+        return False
+    _emit_startup_phase("startup_configuration_required")
+    # Web Settings stays usable while the normal command row remains busy.
+    # Console mode uses its existing input owner for an explicit retry/cancel.
+    def emit(text):
+        status_manager.update_status(text, True)
+    _safe_emit(emit, message)
+    if not web_mode:
+        while True:
+            if scope.is_superseded():
+                raise LiveProviderSuperseded("startup configuration wait superseded")
+            answer = input("\nAfter updating provider configuration, type retry, or cancel: ").strip().lower()
+            if answer in {"cancel", "quit", "exit"}:
+                raise StartupCancelled()
+            if answer == "retry":
+                notify_configuration_saved(provider)
+                break
+    wait_for_configuration(provider, revision, scope, message, emit)
+    return True
+
+
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
                     startup_phase="startup_interview"):
     """Run T092 through shared cancellable transport; borrowed scope stays open."""
@@ -1822,17 +1851,17 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
         LiveProviderSuperseded, finish_live_turn_scope, open_live_turn_scope,
         _interruptible_wait, _delay_for_error,
     )
-    from model_config import MODEL_PROVIDER
+    from model_config import get_provider
+    from utils.startup_provider_recovery import configuration_revision
 
     owned = live_scope is None
     scope = open_live_turn_scope() if owned else live_scope
-    provider = MODEL_PROVIDER
-    main_cfg = {
+    profiles = {
         "openai": config.DM_MAIN_GPT52_NONE,
         "gemini": config.DM_MAIN_GEMINI_PRO_LOW,
         "lmstudio": config.DM_MAIN_LMSTUDIO,
         "legacy": config.DM_MAIN_LEGACY,
-    }[provider]
+    }
 
     request_messages = copy.deepcopy(conversation)
     _emit_startup_phase(startup_phase)
@@ -1842,6 +1871,9 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
             if scope.is_superseded():
                 raise LiveProviderSuperseded("startup request superseded")
             try:
+                provider = get_provider()
+                main_cfg = profiles[provider]
+                revision = configuration_revision(provider)
                 response = capture_and_fanout(
                     "T092", api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
@@ -1863,7 +1895,13 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                 return content
             except LiveProviderSuperseded:
                 raise
+            except (StartupCancelled, KeyboardInterrupt, EOFError):
+                raise
             except Exception as exc:
+                if _startup_configuration_handback(exc, provider, revision, scope):
+                    _emit_startup_phase(startup_phase)
+                    status_processing_ai()
+                    continue
                 warning(f"Startup provider correction remains pending: {exc}", category="startup")
                 # Transient requests reissue inside the shared transport. This
                 # handback retains completed-error context, without a count cap.
@@ -1951,12 +1989,13 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
         info(f"Starting at {module['moduleName']}'s declared entry "
              f"{declared['areaId']}/{declared['locationId']}", category="startup")
         return declared
-    from model_config import MODEL_PROVIDER
+    from model_config import get_provider
+    from utils.startup_provider_recovery import configuration_revision
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, _interruptible_wait, _delay_for_error,
     )
 
-    provider = request_provider or MODEL_PROVIDER
+    provider = request_provider or get_provider()
     profiles = {
         "openai": config.MINI_UTIL_GPT54MINI_NONE,
         "gemini": config.MINI_UTIL_GEMINI_FLASH_LOW,
@@ -1980,6 +2019,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
         )}]
         while True:
             try:
+                revision = configuration_revision(provider)
                 response = capture_and_fanout(
                     "T093", api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
@@ -2007,7 +2047,15 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                 )})
             except LiveProviderSuperseded:
                 raise
+            except (StartupCancelled, KeyboardInterrupt, EOFError):
+                raise
             except Exception as exc:
+                if _startup_configuration_handback(exc, provider, revision, scope):
+                    provider = get_provider()
+                    mini_cfg = profiles.get(provider, config.MINI_UTIL_LEGACY)
+                    _emit_startup_phase("startup_location")
+                    status_processing_ai()
+                    continue
                 warning(f"Startup location remains pending: {exc}", category="startup")
                 messages.append({"role": "system", "content": (
                     f"The last location request failed: {exc}. Retain the task and "

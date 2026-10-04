@@ -894,6 +894,7 @@ class WebOutputCapture:
                             "startup_module_selection",
                             "startup_interview",
                             "startup_review",
+                            "startup_configuration_required",
                             "startup_location",
                             "startup_character_commit",
                             "startup_party_commit",
@@ -4424,6 +4425,8 @@ def handle_set_provider(data):
                 raise ValueError(f"Unknown provider: {provider}. Valid: {list(model_config.PROVIDER_MODELS.keys())}")
             model_config.persist_provider(provider)
             model_config.set_provider(provider)
+            from utils.startup_provider_recovery import notify_configuration_saved
+            notify_configuration_saved()
 
             debug(f"Model provider set to: {provider}", category="web_interface")
 
@@ -4467,6 +4470,8 @@ def handle_set_local_endpoint(data):
             base_url=data.get('base_url', ''),
             api_key=(raw_key if raw_key else None),
             model=data.get('model', ''))
+        from utils.startup_provider_recovery import notify_configuration_saved
+        notify_configuration_saved('lmstudio')
         debug("Local endpoint updated via web UI", category="web_interface")
         ep = model_config.get_local_endpoint()
         emit('local_endpoint_changed', {
@@ -4518,6 +4523,9 @@ def handle_set_openai_key(data):
             return
         _cfg.OPENAI_API_KEY = api_key            # live: all config.OPENAI_API_KEY readers
         model_config.persist_openai_key(api_key) # survive restart
+        from utils.startup_provider_recovery import notify_configuration_saved
+        notify_configuration_saved('legacy')
+        notify_configuration_saved('openai')
         debug("OpenAI API key updated via web UI", category="web_interface")
         emit('openai_key_status', {'has_key': model_config.has_openai_key()}, broadcast=True)
     except Exception as e:
@@ -4559,6 +4567,8 @@ def handle_set_gemini_key(data):
             return
         _cfg.GEMINI_API_KEY = api_key            # live: config.GEMINI_API_KEY readers
         model_config.persist_gemini_key(api_key) # survive restart
+        from utils.startup_provider_recovery import notify_configuration_saved
+        notify_configuration_saved('gemini')
         debug("Gemini API key updated via web UI", category="web_interface")
         emit('gemini_key_status', {'has_key': model_config.has_gemini_key()}, broadcast=True)
     except Exception as e:
