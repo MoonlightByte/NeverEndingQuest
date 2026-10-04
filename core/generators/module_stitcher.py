@@ -4873,6 +4873,260 @@ Respond with JSON:
             print(f"Warning: Schema validation failed: {e}")
             return False
     
+    _IMPORT_WORKSPACE_PREFIX = ".module_import_"
+
+    def _managed_import_refusal(self, module_name: str) -> Optional[str]:
+        """Why an installed module counts as played, or None when unplayed.
+
+        A played module is never rewritten. Value checks only:
+        ``tracker``: the party's module is this one;
+        ``live_state``: the live record holds a place, occupant or quest of
+        it (typed ids ``kind:<Module>/...``);
+        ``archive``: a campaign archive or summary names it as its
+        moduleName, or the campaign lists it as completed or current;
+        ``saved_games``: its folder holds a save.
+        An unreadable record counts as played (the module is left alone).
+        """
+        try:
+            tracker = safe_json_load(self.party_tracker_file) if os.path.exists(
+                self.party_tracker_file
+            ) else {}
+        except Exception:
+            return "tracker"
+        if isinstance(tracker, dict) and str(
+            tracker.get("module") or ""
+        ).replace(" ", "_") == module_name:
+            return "tracker"
+
+        live_path = os.path.join(self.root_dir, "live_state.json")
+        if os.path.exists(live_path):
+            try:
+                live = safe_json_load(live_path)
+            except Exception:
+                live = None
+            if not isinstance(live, dict):
+                return "live_state"
+            typed_ids = list(live.get("places") or [])
+            for occupant in live.get("occupants") or []:
+                if isinstance(occupant, dict):
+                    typed_ids += [occupant.get("id"), occupant.get("location")]
+            for quest in live.get("quests") or []:
+                if isinstance(quest, dict):
+                    typed_ids.append(quest.get("id"))
+            for typed_id in typed_ids:
+                if isinstance(typed_id, str) and (
+                    typed_id.partition(":")[2].split("/", 1)[0] == module_name
+                ):
+                    return "live_state"
+
+        for record_dir in ("campaign_archives", "campaign_summaries"):
+            directory = os.path.join(self.modules_dir, record_dir)
+            if not os.path.isdir(directory):
+                continue
+            for filename in sorted(os.listdir(directory)):
+                if not filename.endswith(".json"):
+                    continue
+                try:
+                    record = safe_json_load(os.path.join(directory, filename))
+                except Exception:
+                    return "archive"
+                if isinstance(record, dict) and record.get("moduleName") == module_name:
+                    return "archive"
+        campaign_path = os.path.join(self.modules_dir, "campaign.json")
+        if os.path.exists(campaign_path):
+            try:
+                campaign = safe_json_load(campaign_path)
+            except Exception:
+                return "archive"
+            if isinstance(campaign, dict) and (
+                campaign.get("currentModule") == module_name
+                or module_name in (campaign.get("completedModules") or [])
+            ):
+                return "archive"
+
+        saves = os.path.join(self.modules_dir, module_name, "saved_games")
+        if os.path.isdir(saves) and os.listdir(saves):
+            return "saved_games"
+        return None
+
+    @staticmethod
+    def _area_location_ids(module_path: str) -> Dict[str, List[Any]]:
+        """Location ids per live area file, in file order."""
+        areas_dir = os.path.join(module_path, "areas")
+        out = {}
+        for filename in sorted(os.listdir(areas_dir)):
+            if filename.endswith(".json") and not filename.endswith("_BU.json"):
+                area = safe_json_load(os.path.join(areas_dir, filename))
+                locations = area.get("locations", []) if isinstance(area, dict) else []
+                out[filename] = [
+                    location.get("locationId")
+                    for location in locations
+                    if isinstance(location, dict)
+                ]
+        return out
+
+    def _settle_import_workspace(self, workspace: Path, module_name: str) -> bool:
+        """Leave the module live and remove the workspace; never lose the module.
+
+        If the live entry is missing while the retired original is in the
+        workspace (a stop between the two renames), the original is renamed
+        back first. The workspace is removed only once ``modules/<name>``
+        exists. Returns whether the workspace is gone.
+        """
+        from utils.module_publish import _replace_entry
+
+        live_path = Path(self.modules_dir) / module_name
+        retired = workspace / "retired" / module_name
+        if not os.path.lexists(live_path) and os.path.lexists(retired):
+            _replace_entry(retired, live_path)
+            warning(
+                f"Managed import of {module_name} was interrupted between its "
+                "renames; the original module was put back",
+                category="module_integration",
+            )
+        if not os.path.lexists(live_path):
+            error(
+                f"Managed import workspace {workspace.name} kept: {module_name} "
+                "is not live and no original was found in it",
+                category="module_integration",
+            )
+            return False
+        shutil.rmtree(workspace)
+        return True
+
+    def _recover_managed_imports_locked(self) -> int:
+        """Settle every managed import workspace a stopped run left behind."""
+        settled = 0
+        try:
+            entries = sorted(os.listdir(self.modules_dir))
+        except OSError:
+            return settled
+        for entry in entries:
+            if not entry.startswith(self._IMPORT_WORKSPACE_PREFIX):
+                continue
+            workspace = Path(self.modules_dir) / entry
+            try:
+                marker = safe_json_load(str(workspace / "import.json"))
+            except Exception:
+                marker = None
+            module_name = marker.get("module") if isinstance(marker, dict) else None
+            try:
+                if module_name is None:
+                    # The marker is written before anything is moved, so a
+                    # workspace without one holds no original; one with a
+                    # retired entry anyway is kept for a person to look at.
+                    retired_dir = workspace / "retired"
+                    if retired_dir.is_dir() and os.listdir(retired_dir):
+                        error(
+                            f"Managed import workspace {entry} has no marker "
+                            "but holds a retired entry; kept",
+                            category="module_integration",
+                        )
+                        continue
+                    shutil.rmtree(workspace)
+                    settled += 1
+                    continue
+                if self._target_module_path(module_name) is None:
+                    error(
+                        f"Managed import workspace {entry} names an unsafe module",
+                        category="module_integration",
+                    )
+                    continue
+                if self._settle_import_workspace(workspace, module_name):
+                    settled += 1
+            except Exception as exc:
+                error(
+                    f"Managed import workspace {entry} could not be settled: {exc}",
+                    category="module_integration",
+                )
+        return settled
+
+    def _import_colliding_module_locked(self, module_name: str) -> Dict[str, Any]:
+        """Join an unplayed module whose ids collide, renumbering a copy.
+
+        The caller owns module_refresh_lock. A played module is refused. The
+        live folder is copied into a hidden workspace, the copy goes through
+        the hidden-candidate publication path (re-prefix, validation, T032,
+        T033, registry bytes), and only then is it swapped in: live ->
+        retired, candidate -> live, registry bytes. Any failure before the
+        swap leaves the live folder as it was.
+        """
+        from utils.module_publish import (
+            _replace_entry,
+            _replace_exact_bytes,
+            _sync_directory,
+        )
+        from utils.transient_filesystem import retry_transient_filesystem
+
+        refusal = self._managed_import_refusal(module_name)
+        if refusal:
+            return {"status": "refused", "refused_because": refusal}
+
+        live_path = Path(self.modules_dir) / module_name
+        workspace = Path(self.modules_dir) / (
+            f"{self._IMPORT_WORKSPACE_PREFIX}{uuid4().hex}"
+        )
+        candidate = workspace / "candidate" / module_name
+        retired = workspace / "retired" / module_name
+        try:
+            (workspace / "candidate").mkdir(parents=True)
+            (workspace / "retired").mkdir()
+            (workspace / "import.json").write_text(
+                json.dumps({"module": module_name}), encoding="utf-8"
+            )
+            shutil.copytree(live_path, candidate, symlinks=True)
+            before = self._area_location_ids(str(candidate))
+            registry_bytes = self.build_publication_registry_bytes(
+                candidate, module_name, replacing_live=True
+            )
+            after = self._area_location_ids(str(candidate))
+            renumbered = sum(
+                old != new
+                for area in before
+                for old, new in zip(before[area], after.get(area, []))
+            )
+            _sync_directory(candidate)
+            _replace_entry(live_path, retired)
+            _replace_entry(candidate, live_path)
+        except Exception as exc:
+            warning(
+                f"Managed import of {module_name} did not complete; the module "
+                f"is left as it was: {exc}",
+                category="module_integration",
+            )
+            try:
+                self._settle_import_workspace(workspace, module_name)
+            except Exception as settle_exc:
+                error(
+                    f"Managed import workspace {workspace.name} kept for the "
+                    f"next scan: {settle_exc}",
+                    category="module_integration",
+                )
+            return {"status": "failed", "refused_because": "import_failed"}
+
+        # The renumbered module is live; nothing below may undo that.
+        try:
+            retry_transient_filesystem(
+                lambda: _replace_exact_bytes(
+                    Path(self.world_registry_file), registry_bytes
+                )
+            )
+            self.world_registry = json.loads(registry_bytes.decode("utf-8"))
+        except Exception as exc:
+            error(
+                f"Module {module_name} was renumbered and is live, but its "
+                f"registry write failed; the next scan integrates it: {exc}",
+                category="module_integration",
+            )
+        try:
+            self._settle_import_workspace(workspace, module_name)
+        except Exception as exc:
+            warning(
+                f"Managed import workspace {workspace.name} not removed: {exc}",
+                category="module_integration",
+            )
+        return {"status": "imported", "renumbered": renumbered}
+
     def scan_and_integrate_new_modules(
         self, priority_module: Optional[str] = None
     ) -> List[str]:
