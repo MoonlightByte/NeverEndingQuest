@@ -1143,6 +1143,12 @@ class ModuleStitcher:
         required_files = {
             "module_plot.json": "plot_schema.json",
             "module_context.json": None,
+        }
+        # The module builder writes a module-level party tracker; published
+        # modules (the repo's own, and modules dropped into modules/) never
+        # ship one and no gameplay path reads it. Validate it only when it
+        # is present.
+        optional_files = {
             "party_tracker.json": "party_schema.json",
         }
 
@@ -1183,6 +1189,14 @@ class ModuleStitcher:
                 file_path = module_root / filename
                 if not file_path.is_file():
                     return False, f"Required publication file is missing: {filename}"
+                data = load_object(file_path)
+                validate_available_schema(data, schema_name, filename)
+            for filename, schema_name in optional_files.items():
+                file_path = module_root / filename
+                if not os.path.lexists(file_path):
+                    continue
+                if not file_path.is_file():
+                    return False, f"Publication file is not a regular file: {filename}"
                 data = load_object(file_path)
                 validate_available_schema(data, schema_name, filename)
 
