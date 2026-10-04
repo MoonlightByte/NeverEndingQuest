@@ -1386,7 +1386,67 @@ def _resource_snapshot(sheet, kind, name):
             if isinstance(item, dict) and item.get("item_name") == name:
                 return int(item.get("quantity", 0) or 0), None
         return None
+    if kind == "charges":
+        # H3: a charged equipment row. The engine decides the spend; this
+        # snapshot only makes the record resolvable. A catalog row still
+        # waiting for its engine-minted state reads 0 of its type's max.
+        row = _charged_row(sheet, name)
+        if row is None:
+            return None
+        charges = row.get("charges") if isinstance(row.get("charges"), dict) else {}
+        current = charges.get("current") if type(charges.get("current")) is int else 0
+        cap = charges.get("max") if type(charges.get("max")) is int else None
+        return current, cap
     return None
+
+
+def _charged_row(sheet, name):
+    """The equipment row named ``name`` when it carries charges: a ``charges``
+    object (H1) or a charged SRD catalog type (H2b). None otherwise."""
+    for item in (sheet or {}).get("equipment", []):
+        if isinstance(item, dict) and item.get("item_name") == name:
+            if isinstance(item.get("charges"), dict):
+                return item
+            try:
+                from core.nql import genesis
+                return item if genesis.charge_rule(item) is not None else None
+            except Exception:
+                return None
+    return None
+
+
+def _engine_charges(encounter, sheet, owner, name, delta, event_id, record):
+    """H3: the rules engine spends ``-delta`` charges of the holder's item on
+    the in-memory sheet and the engine's normalized state is journaled on the
+    resource record (chargesAfter, exhausted, engine true), so apply and any
+    replay write the same values without the engine. The clock is the fight's
+    frozen effect clock. Returns True, or the violation text: a short count is
+    an overspend (T096 corrects); every other refusal, the engine unavailable
+    included, leaves the item unspent (the count is engine-owned, there is no
+    arithmetic to fall back on)."""
+    if type(delta) is not int or delta >= 0:
+        return "charges are never added in combat: %s %s" % (owner, name)
+    state = encounter.get("combatState") or {}
+    clock = state.get("effectsClockScalar") if type(state.get("effectsClockScalar")) is int else None
+    try:
+        from core.managers.item_charges import combat_request_id, combat_spend
+        outcome = combat_spend(sheet, name, -delta, clock, "combat", combat_request_id(event_id, owner, name))
+    except Exception as exc:  # engine wrapper faults never stop a fight
+        return "%s could not be spent (%s)" % (name, exc)
+    if not outcome.get("ok"):
+        if outcome.get("overspend"):
+            return "overspend rejected: %s charges %s (%s)" % (owner, name, outcome.get("reason"))
+        return "%s could not be spent (%s)" % (name, outcome.get("reason"))
+    record["before"] = outcome["before"]
+    record["after"] = outcome["after"]
+    record["chargesAfter"] = outcome["chargesAfter"]
+    record["request"] = combat_request_id(event_id, owner, name)
+    record["nqlId"] = outcome.get("nqlId")
+    record["message"] = outcome.get("message")
+    if isinstance(outcome.get("exhausted"), dict):
+        record["exhausted"] = outcome["exhausted"]
+    record["engine"] = True
+    return True
 
 
 def _save_bonus(encounter, characters, creature, save_type):
@@ -1660,12 +1720,30 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             resolution["violations"].append(
                 "non-integer resource delta for %r dropped" % owner)
             continue
+        if kind == "item" and isinstance(sheet, dict) and _charged_row(sheet, name) is not None:
+            # H3: a wand, staff or rod is one unit whose charges are spent;
+            # lowering its quantity would destroy it.
+            resolution["violations"].append(
+                "%s is a charged item: declare kind 'charges' with the count its use costs, never kind 'item'" % name)
+            continue
         snapshot = _resource_snapshot(sheet, kind, name) if isinstance(sheet, dict) else None
         if snapshot is None:
             resolution["violations"].append(
                 "unresolvable resource %r/%r/%r dropped" % (owner, kind, name))
             continue
         before, cap = snapshot
+        if kind == "charges":
+            # H3: no arithmetic check here; the sheet's stored count can be
+            # below the real one (a dawn since its last write) and only the
+            # engine knows. Its answer is the record.
+            record = {"owner": owner, "kind": kind, "name": name, "delta": delta,
+                      "before": before, "after": before}
+            answer = _engine_charges(encounter, sheet, owner, name, delta, event_id, record)
+            if answer is not True:
+                resolution["violations"].append(answer)
+                continue
+            event["resources"].append(record)
+            continue
         after = before + delta
         if after < 0:
             resolution["violations"].append(
@@ -2511,6 +2589,41 @@ def _refresh_character_effect_projections(encounter, characters):
                 creature[encounter_field] = int(value)
 
 
+def _apply_charges_after(sheet, item, resource, after_state):
+    """Write one journaled charge state onto the row and keep the sheet's
+    chargeUses receipt in step with the out-of-combat path (H1): the same
+    request is never recorded twice (a crash between the sheet write and
+    the applied-event ledger replays this apply)."""
+    charges = item.get("charges") if isinstance(item.get("charges"), dict) else {}
+    charges.pop("gap", None)
+    charges["current"] = int(after_state["current"])
+    if type(after_state.get("max")) is int:
+        charges["max"] = after_state["max"]
+    for key in ("asOf", "seed", "nextRecharge"):
+        if key in after_state:
+            charges[key] = deepcopy(after_state[key])
+        else:
+            charges.pop(key, None)
+    item["charges"] = charges
+    exhausted = resource.get("exhausted") if isinstance(resource.get("exhausted"), dict) else None
+    if after_state.get("quantity") == 0 or (exhausted and exhausted.get("outcome") == "destroyed"):
+        # The unit is gone: unworn, quantity 0, no boundary; the row and its
+        # count stay (H2b-3).
+        item["quantity"] = 0
+        item["equipped"] = False
+        charges.pop("nextRecharge", None)
+    request = resource.get("request")
+    receipts = [r for r in sheet.get("chargeUses") or [] if isinstance(r, dict)]
+    if request and not any(r.get("request") == request for r in receipts):
+        receipt = {"request": request, "nqlId": resource.get("nqlId"), "item": item.get("item_name"),
+                   "requested": -int(resource.get("delta") or 0), "before": resource.get("before"),
+                   "after": charges["current"], "message": resource.get("message")}
+        if exhausted:
+            receipt["exhausted"] = deepcopy(exhausted)
+        receipts.append(receipt)
+        sheet["chargeUses"] = receipts[-20:]  # item_charges.RECEIPTS_KEPT
+
+
 def apply_resolution(encounter, characters, resolution):
     """Copy-on-write application with hard bounds. Returns (enc, chars).
 
@@ -2606,6 +2719,16 @@ def apply_resolution(encounter, characters, resolution):
                 if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
                     item["quantity"] = setter(int(item.get("quantity", 0) or 0))
                     break
+        elif resource["kind"] == "charges":
+            # H3: the journaled engine state is written whole (a field the
+            # record omits is removed, the H2 store_view rule); a record
+            # without it applies nothing, there is no delta fallback.
+            after_state = resource.get("chargesAfter")
+            if isinstance(after_state, dict) and type(after_state.get("current")) is int:
+                for item in sheet.get("equipment", []):
+                    if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
+                        _apply_charges_after(sheet, item, resource, after_state)
+                        break
 
     for op in (resolution.get("effectOps") or event.get("effects") or []):
         if op.get("op") == "add" and isinstance(op.get("effect"), dict):

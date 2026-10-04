@@ -342,6 +342,16 @@ An adjudicated intent may contain:
   spends ammunition by itself. The rules engine spends the declared delta;
   never write a quantity, and after the fight the engine returns the
   recoverable share.
+  A wand, staff, rod or any equipment row with a `charges` object spends
+  charges, never quantity: kind 'charges', name exactly as the holder's sheet
+  lists it, delta = minus the count the item's text costs for this use (1
+  unless it says more; a staff spending 3 for one spell is delta -3), owner
+  the sheet that holds it. The rules engine spends exactly or refuses; a row
+  whose charges.current is 0 and whose text promises recharge may still be
+  spent after a dawn has passed, so declare the use and let the engine
+  answer. Never add charges in combat, never write a count, and never spend
+  a charged item as kind 'item'. When the engine reports the item destroyed
+  (its last charge gone), the narration says so.
 - effects: [{op:'add', owner, effect:{name,description,roundsRemaining,
   concentration,tickTrigger,modifiers:[{stat,value}],conditions:[],
   incapacitates:false,onApply:[],onRemove:[]}}] or
@@ -614,7 +624,10 @@ T097_SCENE_CONTRACT_SENTENCE = (
     "as a grounded tactic; never attribute the companion's gear to the player. "
     "Give companions a distinct voice and an observable reaction appropriate to "
     "the committed outcome and their supplied personality, without repeating "
-    "generic warnings or inventing additional actions, healing, or resources."
+    "generic warnings or inventing additional actions, healing, or resources. "
+    "A resource of kind charges states the item's count before and after; when "
+    "its exhausted.outcome is destroyed the item is gone (narrate it crumbling, "
+    "cracking or burning out), when it is regained the item flared back to life."
 )
 
 
