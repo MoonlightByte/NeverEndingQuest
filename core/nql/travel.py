@@ -40,6 +40,13 @@ present):
   world changed after review), moves the party to the tracker's place
   under ``realign:<checkpoint>:move``, with a warning.
 
+C11, travel time: route ticks are seconds at SRD normal pace
+(utils/travel_map.py), so an engine-approved move's trip time is a time in
+game minutes (``minutes``). Its travel-owned updateTime is at least the
+SRD fast-pace time (``floor_minutes``); without one it is the normal-pace
+time; a larger DM estimate stands as added time (``timed_deferred``). The
+committing trip's own ticks are compared with the approved time.
+
 Never a gate on play: an engine that is unavailable or refuses leaves the
 tracker as it is, with a warning, and the next call aligns again. With the
 engine unavailable, the route check stays NEQ's own (snapshot route and
@@ -56,6 +63,54 @@ from utils import travel_map
 # The engine's work bound per request (WORLD_MAP.md): a hop costs a move per
 # member plus its time; membership edits and the start moves take the rest.
 UNITS = 128
+
+# SRD fast pace: 4 miles an hour against the normal 3, so 3/4 of the time
+# (owner Q1/Q2, C11: the DM may travel at fast pace, never faster).
+FAST_PACE = (3, 4)
+
+
+def minutes(ticks: Any) -> Optional[int]:
+    """Game minutes for a trip of `ticks` seconds (rounded up), or None."""
+    if type(ticks) is not int or ticks < 0:
+        return None
+    return -(-ticks // 60)
+
+
+def floor_minutes(travel_minutes: int) -> int:
+    """The least travel time at SRD fast pace (rounded up)."""
+    return -(-travel_minutes * FAST_PACE[0] // FAST_PACE[1])
+
+
+def timed_deferred(deferred: List[Any], travel_minutes: Optional[int]) -> List[Any]:
+    """The deferred actions of an engine-approved move with its travel time
+    applied (C11): the first travel-owned updateTime is raised to the
+    fast-pace floor when the DM's estimate is lower (or unreadable), and one
+    with the normal-pace time leads when there is none. A larger estimate
+    stands (slow pace, terrain, detours). Without engine minutes the list is
+    returned as it is (NEQ's own route check: the DM's estimate)."""
+    if type(travel_minutes) is not int:
+        return deferred
+    least = floor_minutes(travel_minutes)
+    out = list(deferred or [])
+    for index, action in enumerate(out):
+        if isinstance(action, dict) and action.get("action") == "updateTime":
+            parameters = action.get("parameters") if isinstance(action.get("parameters"), dict) else {}
+            try:
+                estimate = int(parameters.get("timeEstimate"))
+            except (TypeError, ValueError):
+                estimate = None
+            if estimate is not None and estimate >= least:
+                info("TRAVEL: travel time %d min (engine %d min at normal pace, at least %d)"
+                     % (estimate, travel_minutes, least), category="location_transitions")
+                return out
+            out[index] = dict(action, parameters=dict(parameters, timeEstimate=least))
+            info("TRAVEL: travel time %d min: the DM's estimate %s is below the fast-pace time "
+                 "(engine %d min at normal pace)" % (least, parameters.get("timeEstimate"), travel_minutes),
+                 category="location_transitions")
+            return out
+    info("TRAVEL: travel time %d min (engine, normal pace; the DM gave none)" % travel_minutes,
+         category="location_transitions")
+    return [{"action": "updateTime", "parameters": {"timeEstimate": travel_minutes}}] + out
 
 
 def _members(tracker: Dict[str, Any]) -> List[str]:
@@ -220,7 +275,8 @@ def engine_route(module: str, origin_id: str, destination_id: str, path: List[st
     name the first unvisited place on the way. Returns None when the engine
     cannot answer (the caller keeps NEQ's own route check), else a dict:
 
-    - {"verdict": "approved", "stops", "ticks"}
+    - {"verdict": "approved", "stops", "ticks", "minutes"}: `minutes` is
+      the trip time in game minutes (C11), None if the engine gave none
     - {"verdict": "halt", "stop", "hostiles"}: a place on the way holds a
       present hostile occupant; the trip stops there.
     - {"verdict": "unvisited_stop", "stop", "fresh"}: the way crosses a
@@ -269,7 +325,8 @@ def _engine_route(module: str, origin_id: str, destination_id: str, path: List[s
     target = full(destination_id)
     if target in reach:
         entry = reach[target]
-        return halt_or(target, {"verdict": "approved", "stops": entry.get("stops"), "ticks": entry.get("ticks")})
+        return halt_or(target, {"verdict": "approved", "stops": entry.get("stops"), "ticks": entry.get("ticks"),
+                                "minutes": minutes(entry.get("ticks"))})
     visited = set((live.get("map") or {}).get("visited") or [])
     fresh = [bare(p) for p, d in sorted(reach.items())
              if not d.get("visited") and p.startswith("loc:%s/" % module)]
@@ -312,6 +369,16 @@ def _travel(root: str, checkpoint: Dict[str, Any], members: List[str], live: Dic
                 "the party follows the tracker" % (rid, end.get(members[0]), target),
                 category="location_transitions")
         return "diverged"
+    approved = checkpoint.get("travel_minutes")
+    if type(approved) is int:
+        # The time is read once, from this committing trip (nql-7d, C11).
+        trips = [e.get("trip") for e in (response.get("receipt") or {}).get("events") or []
+                 if isinstance(e, dict) and e.get("kind") == "PartyTraveled"]
+        took = minutes((trips[-1] or {}).get("ticks")) if trips and isinstance(trips[-1], dict) else None
+        if took != approved:
+            warning("TRAVEL: the trip %s took %s min, not the approved %d (the world changed after "
+                    "the review); the clock keeps the approved time" % (rid, took, approved),
+                    category="location_transitions")
     return "traveled"
 
 

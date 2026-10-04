@@ -5801,6 +5801,16 @@ def process_ai_response(
             pre_transition_message = None
             transition_actions = actions[: transition_action_index + 1]
             deferred_actions = actions[transition_action_index + 1 :]
+            if approved_transition_plan is not None:
+                # C11: an engine-approved move's travel time is the engine's
+                # trip time (at least SRD fast pace). The same list feeds the
+                # checkpoint and the deferred loop below, so they agree.
+                from core.nql.travel import timed_deferred
+
+                deferred_actions = timed_deferred(
+                    deferred_actions,
+                    getattr(approved_transition_plan, "travel_minutes", None),
+                )
             for action in transition_actions:
                 if action.get("action") == "transitionLocation":
                     # Make the accepted command available to the transition
