@@ -121,7 +121,7 @@ def _publication_step(prepare_candidate, builder_holder):
         if builder is not None and builder.emit_module_declaration():
             from core.generators.module_declaration import load_declared_world
 
-            load_declared_world(candidate_path, final_name)
+            builder.record_engine_verdict(load_declared_world(candidate_path, final_name))
         return registry_bytes
 
     return step
@@ -470,6 +470,22 @@ class ModuleBuilder:
             raise OSError(f"Could not save generated module file: {relative_filename}")
         self.log(f"Saved: {relative_filename}")
         return True
+
+    def record_engine_verdict(self, verdict) -> None:
+        """Record the build-time engine load's verdict (load_declared_world) as
+        validation_report.json's `engine` object, in the candidate before the
+        commit rename. A record, never a gate: a failure here is logged and the
+        module publishes."""
+        from utils.file_operations import safe_read_json
+
+        try:
+            report = safe_read_json(os.path.join(self.config.output_directory, "validation_report.json"))
+            if not isinstance(report, dict) or not isinstance(verdict, dict):
+                return
+            report["engine"] = verdict
+            self._atomic_save_json("validation_report.json", report)
+        except Exception as exc:
+            warning(f"MODULE_DECLARATION: engine verdict not recorded ({exc})", category="module_creation")
 
     # Classifications whose occurrences are one being (owner ruling Q3).
     ONE_BEING = ("same_mobile_person", "deliberate_attitude_change")

@@ -38,6 +38,11 @@ def load_declared_world(module_path, module_name):
     aside (module_declaration.refused.json), and the module derives as
     before. The module's quests are not part of this load (they are read from
     the live module path); the declaration does not touch them.
+
+    Returns the verdict: {"loaded": "declared" | "derived" | "none" | None,
+    "reason": the engine's refusal or why the load did not run, or None}.
+    "derived" is the declaration set aside; "none" is a world refused with or
+    without it; None is no load (engine unavailable, or skipped).
     """
     from core.nql import apply
     from utils import roster_conversion
@@ -63,7 +68,7 @@ def load_declared_world(module_path, module_name):
         if response.get("ok"):
             info(f"MODULE_DECLARATION: {module_name} loads in the engine with its declaration",
                  category="module_creation")
-            return
+            return {"loaded": "declared", "reason": None}
         reason = response.get("error")
         os.replace(declared, refused)
         try:
@@ -81,18 +86,21 @@ def load_declared_world(module_path, module_name):
             if isinstance(report, dict) and isinstance(report.get("issues"), list):
                 report["issues"].append(f"module declaration refused by the engine and set aside: {reason}")
                 safe_write_json(os.fspath(report_path), report)
-            return
+            return {"loaded": "derived", "reason": reason}
         # Refused either way: the declaration is not the cause; keep it.
         os.replace(refused, declared)
         warning(f"MODULE_DECLARATION: the engine refuses the world with or without "
                 f"{module_name}'s declaration ({reason}); declaration kept",
                 category="module_creation")
+        return {"loaded": "none", "reason": reason}
     except apply.EngineUnavailable as exc:
         warning(f"MODULE_DECLARATION: engine unavailable ({exc}); {module_name} published "
                 "without the build-time load", category="module_creation")
+        return {"loaded": None, "reason": f"engine unavailable: {exc}"}
     except Exception as exc:
         warning(f"MODULE_DECLARATION: build-time load skipped for {module_name} ({exc})",
                 category="module_creation")
+        return {"loaded": None, "reason": f"skipped: {exc}"}
 
 
 def typing_packet(game, module):
