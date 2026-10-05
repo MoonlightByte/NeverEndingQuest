@@ -368,7 +368,7 @@ def _coerce_module_safety_result(result: Any) -> ModuleSafetyResult:
 
 
 def _location_prefix_to_index(prefix: str) -> int:
-    """Inverse of ModuleBuilder.get_location_prefix's 0-indexed scheme:
+    """Inverse of module_generator.get_location_prefix's 0-indexed scheme:
     0->A .. 25->Z, 26->AA, 27->AB, ...
 
     Used by INT-H2 to find the next free location-prefix index from existing
